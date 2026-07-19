@@ -123,15 +123,35 @@ class TestStudyTrainingManagerDelegation:
 
     def test_model_holder_property(self):
         study = Study()
-        holder = ModelHolder(int, 0)
+        holder = ModelHolder(torch.nn.Identity, {})
         study.model_holder = holder
-        assert study.training_manager.model_holder is holder
+        published = study.training_manager.model_holder
+
+        assert published is not None
+        assert published is not holder
+        assert published.target_model is holder.target_model
+        assert published.model_params_map == holder.model_params_map
+        assert published.pretrained_weight_path == holder.pretrained_weight_path
 
     def test_training_option_property(self):
         study = Study()
-        opt = MagicMock()
+        opt = _make_option()
         study.training_option = opt
-        assert study.training_manager.training_option is opt
+        published = study.training_manager.training_option
+
+        assert published is not None
+        assert published is not opt
+        assert published.output_dir == opt.output_dir
+        assert published.optim is opt.optim
+        assert published.optim_params == opt.optim_params
+        assert published.use_cpu is opt.use_cpu
+        assert published.gpu_idx == opt.gpu_idx
+        assert published.epoch == opt.epoch
+        assert published.bs == opt.bs
+        assert published.lr == opt.lr
+        assert published.checkpoint_epoch == opt.checkpoint_epoch
+        assert published.evaluation_option is opt.evaluation_option
+        assert published.repeat_num == opt.repeat_num
 
     def test_saliency_params_property(self):
         study = Study()

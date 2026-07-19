@@ -1,4 +1,5 @@
 import weakref
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -10,38 +11,65 @@ from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.components.info_panel_service import InfoPanelService
 
 
-@pytest.fixture
-def study_mock():
-    study = MagicMock(spec=Study)
-    controllers = {
-        "dataset": MagicMock(),
-        "preprocess": MagicMock(),
-    }
-    study.get_controller.side_effect = lambda name: controllers[name]
-    return study
+class FakeDatasetController(Observable):
+    def __init__(self) -> None:
+        super().__init__()
+        self.loaded_data_list: list[object] = []
+
+    def get_loaded_data_list(self) -> list[object]:
+        return list(self.loaded_data_list)
+
+
+class FakePreprocessController(Observable):
+    def __init__(self) -> None:
+        super().__init__()
+        self.preprocessed_data_list: list[object] = []
+
+    def get_preprocessed_data_list(self) -> list[object]:
+        return list(self.preprocessed_data_list)
+
+
+class FakeInfoPanelStudy:
+    def __init__(self) -> None:
+        self.controllers = {
+            "dataset": FakeDatasetController(),
+            "preprocess": FakePreprocessController(),
+        }
+
+    def get_controller(self, controller_type: str) -> Observable:
+        return self.controllers[controller_type]
 
 
 @pytest.fixture
-def service(study_mock):
-    return InfoPanelService(study_mock)
+def compatibility_study() -> FakeInfoPanelStudy:
+    return FakeInfoPanelStudy()
 
 
-def test_service_initialization(service, study_mock):
-    assert service.study == study_mock
+@pytest.fixture
+def service(compatibility_study):
+    return InfoPanelService(compatibility_study)
+
+
+def test_service_initialization(service, compatibility_study):
+    assert service.study == compatibility_study
     assert service._observes_controller_events is True
-    assert service.dataset_bridge.observable is study_mock.get_controller("dataset")
+    assert service.dataset_bridge.observable is compatibility_study.get_controller(
+        "dataset"
+    )
     assert service.dataset_bridge.event_name == "data_changed"
-    assert service.preprocess_bridge.observable is study_mock.get_controller(
+    assert service.preprocess_bridge.observable is compatibility_study.get_controller(
         "preprocess"
     )
     assert service.preprocess_bridge.event_name == "preprocess_changed"
 
 
-def test_service_can_delegate_observer_refresh_to_main_window_coordinator(study_mock):
+def test_service_can_delegate_observer_refresh_to_main_window_coordinator(
+    compatibility_study,
+):
     """MainWindow can own event refresh without duplicate InfoPanelService bridges."""
-    service = InfoPanelService(study_mock, observe_controller_events=False)
+    service = InfoPanelService(compatibility_study, observe_controller_events=False)
 
-    assert service.study == study_mock
+    assert service.study == compatibility_study
     assert service._observes_controller_events is False
     assert not hasattr(service, "dataset_bridge")
     assert not hasattr(service, "preprocess_bridge")
@@ -49,18 +77,19 @@ def test_service_can_delegate_observer_refresh_to_main_window_coordinator(study_
 
 def test_real_study_info_service_does_not_subscribe_direct_controller_bridges():
     study = Study()
-    study.get_controller = MagicMock(
-        side_effect=AssertionError("real Study controller bridge is not allowed"),
-    )
+
+    def fail_controller_lookup(_name: str):
+        raise AssertionError("real Study controller bridge is not allowed")
+
+    cast(Any, study).get_controller = fail_controller_lookup
 
     service = InfoPanelService(study)
 
-    study.get_controller.assert_not_called()
     assert not hasattr(service, "dataset_bridge")
     assert not hasattr(service, "preprocess_bridge")
 
 
-def test_register_and_notify(service, study_mock):
+def test_register_and_notify(service, compatibility_study):
     """Test registering a panel and notifying it."""
     panel_mock = MagicMock()
 
@@ -73,11 +102,11 @@ def test_register_and_notify(service, study_mock):
 
     # 2. Notify
     # Setup mock data return
-    dataset_ctrl = study_mock.get_controller("dataset")
-    dataset_ctrl.get_loaded_data_list.return_value = ["loaded_data"]
+    dataset_ctrl = compatibility_study.get_controller("dataset")
+    dataset_ctrl.loaded_data_list = ["loaded_data"]
 
-    preprocess_ctrl = study_mock.get_controller("preprocess")
-    preprocess_ctrl.get_preprocessed_data_list.return_value = ["prep_data"]
+    preprocess_ctrl = compatibility_study.get_controller("preprocess")
+    preprocess_ctrl.preprocessed_data_list = ["prep_data"]
 
     # Trigger notification
     service.notify_all()
@@ -104,11 +133,14 @@ def test_successful_legacy_import_updates_info_once(qtbot):
             self.dataset = DatasetController()
             self.preprocess = PreprocessController()
 
-        def get_controller(self, name):
-            return {"dataset": self.dataset, "preprocess": self.preprocess}[name]
+        def get_controller(self, controller_type: str) -> Observable:
+            return {
+                "dataset": self.dataset,
+                "preprocess": self.preprocess,
+            }[controller_type]
 
     study = StudyLike()
-    service = InfoPanelService(cast(Any, study))
+    service = InfoPanelService(study)
     panel = MagicMock()
     service.register(panel)
     panel.update_info.reset_mock()
@@ -168,3 +200,21 @@ def test_weak_ref_cleanup(service):
     # note: locally 'panel' is gone, but we can't easily assert weakref collection in simple sync test without gc.collect()
     # But we can check that it IS a WeakSet
     assert isinstance(service._listeners, weakref.WeakSet)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "XBrainLab/ui/components/info_panel_service.py",
+        "XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py",
+        "XBrainLab/ui/panels/dataset/sidebar.py",
+    ],
+)
+def test_product_ui_runtime_contracts_do_not_import_unittest_mock(
+    relative_path: str,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+
+    source = (repo_root / relative_path).read_text(encoding="utf-8")
+
+    assert "unittest.mock" not in source

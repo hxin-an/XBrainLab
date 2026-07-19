@@ -3,6 +3,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QStackedWidget, QTabWidget, QWidget
 
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
+)
 from XBrainLab.ui.components.agent_manager import AgentManager
 
 
@@ -28,11 +32,14 @@ class MockMainWindow(QWidget):
                 panel.tabs.addTab(QWidget(), "3D Plot")
             self.stack.addWidget(panel)
 
-    def switch_page(self, index):
+    def switch_page(self, index, *, on_ready=None):
         """Mimic MainWindow.switch_page for testing."""
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
+        if on_ready is not None:
+            on_ready(self.stack.widget(index))
+        return True
 
     def statusBar(self):
         return MagicMock()
@@ -46,9 +53,9 @@ def mock_main_window(qtbot):
     return window
 
 
-def test_switch_panel_with_view_mode_logic(qtbot, mock_main_window):
+def test_typed_panel_navigation_with_view_mode_logic(qtbot, mock_main_window):
     """
-    Verify that AgentManager.switch_panel correctly:
+    Verify that typed AgentManager panel navigation correctly:
     1. Switches the main stack to Visualization (index 4)
     2. Switches the Visualization tabs to 3D Plot (index 3)
     """
@@ -58,8 +65,12 @@ def test_switch_panel_with_view_mode_logic(qtbot, mock_main_window):
         manager = AgentManager(mock_main_window, study)
 
         # Action: Switch to 3D Plot
-        params = {"panel": "visualization", "view_mode": "3d_plot"}
-        manager.switch_panel(params)
+        manager.handle_panel_navigation(
+            AssistantPanelNavigationRequest(
+                AssistantPanelTarget.VISUALIZATION,
+                view_mode="3d_plot",
+            )
+        )
 
         # Assert Main Stack Switch
         assert mock_main_window.stack.currentIndex() == 4

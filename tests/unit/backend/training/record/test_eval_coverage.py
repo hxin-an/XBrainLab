@@ -10,7 +10,32 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from XBrainLab.backend.training.record.eval import EvalRecord
+from XBrainLab.backend.training.record.eval import (
+    EvalRecord,
+    SaliencyArtifactContext,
+    SaliencyProducerIdentity,
+)
+
+
+def _saliency_context() -> SaliencyArtifactContext:
+    producer_identity = SaliencyProducerIdentity.from_components(
+        dataset={"name": "coverage"},
+        split={"name": "coverage"},
+        run={"name": "coverage"},
+        model={"name": "coverage"},
+    )
+    return SaliencyArtifactContext(
+        class_map=((0, "class 0"), (1, "class 1")),
+        channel_names=("Cz",),
+        sampling_frequency_hz=1.0,
+        epoch_start_seconds=0.0,
+        epoch_end_seconds=1.0,
+        epoch_sample_count=2,
+        montage_fingerprint=None,
+        epoch_data_fingerprint=producer_identity.dataset_fingerprint,
+        producer_identity=producer_identity,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -53,7 +78,28 @@ def saliency_eval():
     smooth = {0: np.array([0.1, 0.2]), 1: np.array([0.3, 0.4])}
     smooth_sq = {0: np.array([0.01, 0.04]), 1: np.array([0.09, 0.16])}
     vargrad = {0: np.array([0.05, 0.1]), 1: np.array([0.15, 0.2])}
-    return EvalRecord(label, output, grad, grad_input, smooth, smooth_sq, vargrad)
+    return EvalRecord(
+        label,
+        output,
+        grad,
+        grad_input,
+        smooth,
+        smooth_sq,
+        vargrad,
+        saliency_context=_saliency_context(),
+        saliency_method_parameters={
+            "Gradient": {},
+            "Gradient * Input": {},
+            "SmoothGrad": {},
+            "SmoothGrad_Squared": {},
+            "VarGrad": {},
+        },
+        saliency_noise_seeds={
+            "SmoothGrad": 1,
+            "SmoothGrad_Squared": 1,
+            "VarGrad": 1,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +157,17 @@ class TestLoadExport:
         label = np.array([0, 1, 0])
         output = np.array([[1.0, 0.0], [0.0, 1.0], [0.8, 0.2]])
         record = EvalRecord(
-            label, output, {"g": 1}, {"gi": 2}, {"s": 3}, {"ss": 4}, {"v": 5}
+            label,
+            output,
+            {
+                0: np.array([1.0], dtype=np.float32),
+                1: np.array([2.0], dtype=np.float32),
+            },
+            {},
+            {},
+            {},
+            {},
+            saliency_context=_saliency_context(),
         )
         record.export(str(tmp_path))
 
@@ -119,7 +175,7 @@ class TestLoadExport:
         assert loaded is not None
         np.testing.assert_array_equal(loaded.label, label)
         np.testing.assert_array_equal(loaded.output, output)
-        assert loaded.gradient == {"g": 1}
+        assert sorted(loaded.gradient) == [0, 1]
 
     def test_load_nonexistent(self, tmp_path):
         result = EvalRecord.load(str(tmp_path / "nonexistent"))
@@ -151,13 +207,15 @@ class TestSaliency:
     )
     def test_export_saliency(self, saliency_eval, method, attr):
         result = saliency_eval.export_saliency(method)
-        assert result == getattr(saliency_eval, attr)
+        assert result["method"] == method
+        assert result["saliency"] == getattr(saliency_eval, attr)
+        assert result["saliency_context"] == _saliency_context().to_payload()
 
     def test_export_saliency_with_save(self, saliency_eval, tmp_path):
         target = str(tmp_path / "saliency.pt")
         result = saliency_eval.export_saliency("Gradient", target_path=target)
         assert os.path.exists(target)
-        assert result == saliency_eval.gradient
+        assert result["saliency"] == saliency_eval.gradient
 
     def test_export_saliency_unknown(self, saliency_eval):
         with pytest.raises(ValueError, match="Unknown saliency"):

@@ -113,9 +113,7 @@ class TestCommandParser:
 
         text = '{"tool_name": "load_data", "parameters": {"path": "test.fif"}}'
         result = CommandParser.parse(text)
-        assert result is not None
-        assert len(result) == 1
-        assert result[0][0] == "load_data"
+        assert result == [("load_data", {"path": "test.fif"})]
 
     def test_parse_plain_text(self):
         from XBrainLab.llm.agent.parser import CommandParser

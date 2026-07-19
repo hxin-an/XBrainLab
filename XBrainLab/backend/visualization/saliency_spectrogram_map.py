@@ -7,6 +7,7 @@ from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
 from .base import Visualizer
+from .saliency_semantics import shared_color_limits
 
 
 def _compact_colorbar_tick(value: float, _position: int) -> str:
@@ -38,7 +39,10 @@ class SaliencySpectrogramMapViz(Visualizer):
             matplotlib.figure.Figure: The rendered spectrogram figure.
 
         """
-        sfreq = self.epoch_data.get_model_args()["sfreq"]
+        del absolute  # STFT magnitude is non-negative by definition.
+        sfreq = float(self.epoch_data.get_model_args()["sfreq"])
+        if sfreq <= 0:
+            raise ValueError("Sampling frequency must be positive for a spectrogram.")
         if self.fig is None:
             raise RuntimeError("Visualizer figure was not initialized")
         fig = self.fig
@@ -51,55 +55,135 @@ class SaliencySpectrogramMapViz(Visualizer):
         visible_label_number = len(saliency_by_label)
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
-        fig.subplots_adjust(
-            left=0.08,
-            right=0.90,
-            bottom=0.12,
-            top=0.90,
-            wspace=0.55,
-            hspace=0.55,
-        )
-        for plot_index, (_label_key, label_name, raw_saliency) in enumerate(
-            saliency_by_label,
-        ):
-            ax = fig.add_subplot(rows, cols, plot_index + 1)
+        spectrogram_by_label = []
+        for label_key, label_name, raw_saliency in saliency_by_label:
+            sample_count = int(raw_saliency.shape[-1])
+            if sample_count < 2:
+                raise ValueError(
+                    "At least two epoch samples are required for a spectrogram.",
+                )
+            segment_samples = min(max(2, round(sfreq)), sample_count)
+            overlap_samples = min(segment_samples // 2, segment_samples - 1)
+            # SciPy accepts ``None`` to disable boundary extension, but its
+            # current type stub only advertises string modes.
+            boundary_mode: Any = None
 
             freqs, timestamps, stft_saliency = signal.stft(
                 raw_saliency,
                 fs=sfreq,
                 axis=-1,
-                nperseg=int(sfreq),
-                noverlap=int(sfreq) // 2,
+                nperseg=segment_samples,
+                noverlap=overlap_samples,
+                boundary=boundary_mode,
+                padded=False,
             )
-            # [:saliency.shape[0]//2,:]
             saliency = np.mean(np.mean(abs(stft_saliency), axis=0), axis=0)
-            cmap = "coolwarm"
-            im = ax.imshow(
+            epoch_start = float(getattr(self.epoch_data, "tmin", 0.0))
+            time_centers = epoch_start + timestamps
+            if time_centers.size == 1:
+                half_bin_width = segment_samples / (2 * sfreq)
+                time_min = float(time_centers[0] - half_bin_width)
+                time_max = float(time_centers[0] + half_bin_width)
+            else:
+                time_min = float(
+                    time_centers[0] - (time_centers[1] - time_centers[0]) / 2,
+                )
+                time_max = float(
+                    time_centers[-1] + (time_centers[-1] - time_centers[-2]) / 2,
+                )
+            spectrogram_by_label.append(
+                (
+                    label_key,
+                    label_name,
+                    saliency,
+                    freqs,
+                    time_centers,
+                    time_min,
+                    time_max,
+                ),
+            )
+
+        _, color_max = shared_color_limits(
+            [
+                saliency
+                for (
+                    _label_key,
+                    _label_name,
+                    saliency,
+                    _freqs,
+                    _time_centers,
+                    _time_min,
+                    _time_max,
+                ) in spectrogram_by_label
+            ],
+            nonnegative=True,
+            value_name="Spectrogram magnitude",
+        )
+        fig.subplots_adjust(
+            left=0.10,
+            right=0.86,
+            bottom=0.12,
+            top=0.84,
+            wspace=0.38,
+            hspace=0.55,
+        )
+        fig.suptitle(
+            "Attribution magnitude spectrogram",
+            color="#cccccc",
+            fontsize=10,
+        )
+        plot_axes = []
+        image = None
+        for plot_index, (
+            _label_key,
+            label_name,
+            saliency,
+            freqs,
+            time_centers,
+            time_min,
+            time_max,
+        ) in enumerate(
+            spectrogram_by_label,
+        ):
+            ax = fig.add_subplot(rows, cols, plot_index + 1)
+            plot_axes.append(ax)
+
+            cmap = "magma"
+            image = ax.imshow(
                 saliency,
-                interpolation="gaussian",
+                origin="lower",
+                interpolation="nearest",
                 aspect="auto",
                 cmap=cmap,
-                vmin=saliency.min(),
-                vmax=saliency.max(),
+                vmin=0.0,
+                vmax=color_max,
+                extent=(
+                    time_min,
+                    time_max,
+                    float(freqs[0]),
+                    float(freqs[-1]),
+                ),
             )
-            tick_interval = 0.5
-            tick_label = np.round(np.arange(0, timestamps[-1], tick_interval), 1)
-            ticks = np.linspace(0, saliency.shape[1], len(tick_label))
-            ticks = ticks - tick_interval
-            ax.set_xlabel("time")
-            ax.set_ylabel("frequency")
-            ax.set_xticks(ticks=ticks, labels=[str(label) for label in tick_label])
+            tick_count = min(5, time_centers.size)
+            tick_label = np.round(
+                np.linspace(time_centers[0], time_centers[-1], tick_count),
+                2,
+            )
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Frequency (Hz)")
+            ax.set_xticks(tick_label)
             ax.tick_params(axis="x", labelsize=6)
-            ax.set_yticks(freqs[np.where(freqs % 10 == 0)])
+            ax.set_yticks(freqs[np.where(np.isclose(freqs % 10, 0))])
 
+            ax.set_title(str(label_name))
+        if image is not None:
             colorbar = fig.colorbar(
-                im,
-                ax=ax,
+                image,
+                ax=plot_axes,
                 orientation="vertical",
-                fraction=0.046,
+                fraction=0.035,
                 pad=0.04,
                 format=FuncFormatter(_compact_colorbar_tick),
             )
             colorbar.ax.tick_params(labelsize=7, pad=1)
-            ax.set_title(f"Saliency spectrogram of class {label_name}")
         return fig

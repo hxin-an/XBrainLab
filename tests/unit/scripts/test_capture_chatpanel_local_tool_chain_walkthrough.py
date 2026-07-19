@@ -1,8 +1,26 @@
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     EXPECTED_TOOLS,
+    _capture_current_window,
     render_markdown,
     tool_chain_status,
 )
+
+
+def test_shared_chatpanel_capture_settles_and_records_visible_widget(qtbot, tmp_path):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    layout = QVBoxLayout(widget)
+    layout.addWidget(QLabel("Rendered product surface"))
+    widget.resize(420, 240)
+    widget.show()
+
+    output = tmp_path / "settled.png"
+
+    assert _capture_current_window(widget, output) == 0
+    assert output.exists()
+    assert output.stat().st_size > 0
 
 
 def test_tool_chain_status_accepts_expected_successful_sequence():

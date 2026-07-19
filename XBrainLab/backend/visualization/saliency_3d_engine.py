@@ -1,13 +1,31 @@
-"""3-D saliency visualisation engine using PyVista and Qt threading."""
+"""Thread-agnostic 3-D saliency visualisation engine using PyVista."""
 
-import contextlib
 import os
+import threading
+from collections import OrderedDict
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import ClassVar, cast
 
 import numpy as np
 import pyvista as pv
-from PyQt6.QtCore import QObject, pyqtSignal
 
+from XBrainLab.backend.application.saliency_render import SaliencyRenderData
+from XBrainLab.backend.dataset import Epochs
+from XBrainLab.backend.training.record.eval import EvalRecord
+from XBrainLab.backend.training.saliency_provenance import SaliencyArtifactContext
 from XBrainLab.backend.utils.logger import logger
+
+from .base import SaliencyClassIdentity, resolve_saliency_class_identities
+from .saliency_semantics import saliency_color_scale
+
+
+@dataclass(frozen=True)
+class _StaticMeshAssets:
+    head_mesh: pv.PolyData
+    brain_mesh: pv.PolyData
+    head_scaled: pv.PolyData
+    brain_scaled: pv.PolyData
 
 
 def inverse_dist_weighted_sum(dist, val):
@@ -46,15 +64,13 @@ def channel_convex_hull(ch_pos):
     return surf
 
 
-class Saliency3DEngine(QObject):
+class Saliency3DEngine:
     """Backend engine for 3-D saliency visualisation.
 
     Handles mesh loading, electrode-to-mesh mapping, saliency interpolation,
     and PyVista actor management.
 
     Attributes:
-        model_loaded: Signal emitted once both head and brain meshes are
-            loaded and ready.
         mesh_scale_scalar: Uniform scaling factor applied to meshes.
         head_mesh: Loaded head ``PolyData`` mesh, or ``None``.
         brain_mesh: Loaded brain ``PolyData`` mesh, or ``None``.
@@ -65,23 +81,29 @@ class Saliency3DEngine(QObject):
 
     """
 
-    model_loaded = pyqtSignal()
+    _MAX_MESH_CACHE_ENTRIES: ClassVar[int] = 1
+    _mesh_cache_lock: ClassVar[threading.RLock] = threading.RLock()
+    _mesh_cache: ClassVar[OrderedDict[tuple[object, ...], _StaticMeshAssets]] = (
+        OrderedDict()
+    )
 
     def __init__(self, mesh_scale_scalar=0.8):
-        """Initialise the engine and begin asynchronous model loading.
+        """Initialise the engine and load the required local mesh assets.
 
         Args:
             mesh_scale_scalar: Uniform scaling factor applied to all meshes.
 
         """
-        super().__init__()
         self.mesh_scale_scalar = mesh_scale_scalar
         self.head_mesh = None
         self.brain_mesh = None
+        self.head_scaled = None
+        self.brain_scaled = None
         self.saliency_cap = None
 
         self.pos_on_3d = None
         self.saliency = None
+        self.time_axis_seconds = np.array([], dtype=float)
         self.model_error = ""
 
         self._load_models()
@@ -121,16 +143,85 @@ class Saliency3DEngine(QObject):
         brain_path = os.path.join(model_dir, "brain.ply")
 
         try:
-            self.head_mesh = pv.read(head_path)
-            if self.head_mesh is None or not hasattr(self.head_mesh, "bounds"):
-                logger.error("Invalid head model.")
-                return
-
-            self.brain_mesh = pv.read(brain_path)
-            logger.info("3D Models loaded successfully.")
-            self.model_loaded.emit()
+            cache_key = self._mesh_cache_key(head_path, brain_path)
+            assets = self._cached_mesh_assets(
+                cache_key=cache_key,
+                head_path=head_path,
+                brain_path=brain_path,
+            )
+            self.head_mesh = assets.head_mesh
+            self.brain_mesh = assets.brain_mesh
+            self.head_scaled = assets.head_scaled
+            self.brain_scaled = assets.brain_scaled
         except Exception as e:
             logger.error("Failed to load meshes: %s", e)
+
+    def _mesh_cache_key(
+        self,
+        head_path: str,
+        brain_path: str,
+    ) -> tuple[object, ...]:
+        return (
+            *self._asset_signature(head_path),
+            *self._asset_signature(brain_path),
+            float(self.mesh_scale_scalar),
+        )
+
+    @staticmethod
+    def _asset_signature(path: str) -> tuple[object, ...]:
+        resolved = os.path.realpath(path)
+        metadata = os.stat(resolved)
+        return (
+            resolved,
+            int(metadata.st_size),
+            int(metadata.st_mtime_ns),
+        )
+
+    def _cached_mesh_assets(
+        self,
+        *,
+        cache_key: tuple[object, ...],
+        head_path: str,
+        brain_path: str,
+    ) -> _StaticMeshAssets:
+        with self._mesh_cache_lock:
+            cached = self._mesh_cache.get(cache_key)
+            if cached is not None:
+                self._mesh_cache.move_to_end(cache_key)
+                return cached
+
+            head_mesh = cast(pv.PolyData, pv.read(head_path))
+            if head_mesh is None or not hasattr(head_mesh, "bounds"):
+                raise ValueError("Invalid head model.")
+            brain_mesh = cast(pv.PolyData, pv.read(brain_path))
+            if brain_mesh is None or not hasattr(brain_mesh, "bounds"):
+                raise ValueError("Invalid brain model.")
+            scaling = np.ones(3) * self.mesh_scale_scalar
+            head_scaled = cast(
+                pv.PolyData,
+                head_mesh.copy().scale(scaling, inplace=False),
+            )
+            brain_scaled = cast(
+                pv.PolyData,
+                brain_mesh.copy().scale(scaling * 0.001, inplace=False).triangulate(),
+            )
+            assets = _StaticMeshAssets(
+                head_mesh=head_mesh,
+                brain_mesh=brain_mesh,
+                head_scaled=head_scaled,
+                brain_scaled=brain_scaled,
+            )
+            self._mesh_cache[cache_key] = assets
+            while len(self._mesh_cache) > self._MAX_MESH_CACHE_ENTRIES:
+                self._mesh_cache.popitem(last=False)
+            logger.info("3D Models loaded successfully.")
+            return assets
+
+    @classmethod
+    def _clear_mesh_cache(cls) -> None:
+        """Release process-local static mesh references (used by lifecycle tests)."""
+        with cls._mesh_cache_lock:
+            cls._mesh_cache.clear()
 
     def process_data(
         self,
@@ -163,6 +254,29 @@ class Saliency3DEngine(QObject):
             RuntimeError: If the head or brain mesh has not been loaded.
 
         """
+        render_data = (
+            eval_record if isinstance(eval_record, SaliencyRenderData) else None
+        )
+        if render_data is not None:
+            epoch_data = render_data
+        context: SaliencyArtifactContext | None = None
+        context_status = getattr(
+            eval_record,
+            "saliency_context_status",
+            "runtime_unbound",
+        )
+        context_value = getattr(eval_record, "saliency_context", None)
+        validate_context = getattr(eval_record, "validate_saliency_context", None)
+        if (
+            isinstance(eval_record, EvalRecord)
+            and callable(validate_context)
+            and (
+                isinstance(epoch_data, Epochs)
+                or context_value is not None
+                or context_status == "legacy_missing"
+            )
+        ):
+            context = cast(SaliencyArtifactContext, validate_context(epoch_data))
         # Training records usually store saliency by class index, while EEG files
         # often keep original event codes such as 769/770. Resolve both shapes.
         saliency_store = self._saliency_store(eval_record, method)
@@ -170,6 +284,13 @@ class Saliency3DEngine(QObject):
             saliency_store,
             epoch_data,
             selected_event_name,
+            class_items=(
+                render_data.class_map
+                if render_data is not None
+                else context.class_map
+                if context is not None
+                else None
+            ),
         )
         saliency_raw = np.asarray(saliency_store[label_key], dtype=float)
         if not self._has_saliency_data(saliency_raw):
@@ -180,18 +301,45 @@ class Saliency3DEngine(QObject):
             )
         if absolute:
             saliency_raw = np.abs(saliency_raw)
-        self.saliency = saliency_raw.mean(axis=0)
-        self.scalar_bar_range = [
-            float(self.saliency.min()),
-            float(self.saliency.max()),
-        ]
+        saliency = saliency_raw.mean(axis=0)
 
-        # get channel pos
         ch_pos = epoch_data.get_montage_position()
         electrode = epoch_data.get_channel_names()
 
         if ch_pos is None or len(ch_pos) == 0:
             raise ValueError("No montage positions found. Please set a montage first.")
+        if saliency.ndim != 2:
+            raise ValueError(
+                "3D saliency must resolve to a channels-by-time matrix; "
+                f"received shape {saliency.shape}."
+            )
+        identity_counts = {
+            "EEG channel names": len(electrode),
+            "montage positions": len(ch_pos),
+            "saliency channels": int(saliency.shape[0]),
+        }
+        if len(set(identity_counts.values())) != 1:
+            details = ", ".join(
+                f"{name}={count}" for name, count in identity_counts.items()
+            )
+            raise ValueError(
+                "3D channel identity mismatch: "
+                f"{details}. Set a matching montage or recompute saliency."
+            )
+
+        time_axis_seconds = self._build_time_axis_seconds(
+            epoch_data,
+            sample_count=int(saliency.shape[1]),
+        )
+
+        self.saliency = saliency
+        self.time_axis_seconds = time_axis_seconds
+        self.cmap_name, color_min, color_max = saliency_color_scale(
+            method,
+            self.saliency,
+            absolute=absolute,
+        )
+        self.scalar_bar_range = [color_min, color_max]
 
         # get electrode pos in 3d
         pos_on_3d = []
@@ -211,11 +359,8 @@ class Saliency3DEngine(QObject):
             dtype=float,
         )
 
-        for idx, _ele in enumerate(electrode):
-            if idx >= len(ch_pos):
-                continue
-
-            center = self._translated_channel_position(ch_pos[idx], trans)
+        for position in ch_pos:
+            center = self._translated_channel_position(position, trans)
             if center[1] > 0:
                 center[2] += 0.007
             pos_on_3d.append(center)
@@ -225,22 +370,11 @@ class Saliency3DEngine(QObject):
 
         self.pos_on_3d = np.asarray(pos_on_3d)
 
-        # Prepare Meshes
-        scaling = np.ones(3) * self.mesh_scale_scalar
-
-        # We clone to avoid mutating cached original meshes repeatedly
-        # if this is called multiple times.
-        # Or just scale once? The original code scaled inplace.
-        # Let's clone for safety if reusable.
         if self.head_mesh is None or self.brain_mesh is None:
             raise RuntimeError("Meshes not loaded")
-
-        self.head_scaled = self.head_mesh.copy().scale(scaling, inplace=False)
-        self.brain_scaled = (
-            self.brain_mesh.copy().scale(scaling * 0.001, inplace=False).triangulate()
-        )
+        self._ensure_scaled_meshes()
         self.saliency_cap = channel_convex_hull(self.pos_on_3d).scale(
-            scaling,
+            np.ones(3) * self.mesh_scale_scalar,
             inplace=False,
         )
 
@@ -248,70 +382,150 @@ class Saliency3DEngine(QObject):
 
         return self.saliency.shape[0]  # Number of channels
 
+    def _ensure_scaled_meshes(self) -> None:
+        """Prepare static meshes when tests or callers inject uncached assets."""
+        scaling = np.ones(3) * self.mesh_scale_scalar
+        if self.head_scaled is None:
+            if self.head_mesh is None:
+                raise RuntimeError("Head mesh not loaded")
+            self.head_scaled = self.head_mesh.copy().scale(scaling, inplace=False)
+        if self.brain_scaled is None:
+            if self.brain_mesh is None:
+                raise RuntimeError("Brain mesh not loaded")
+            self.brain_scaled = (
+                self.brain_mesh.copy()
+                .scale(scaling * 0.001, inplace=False)
+                .triangulate()
+            )
+
+    @staticmethod
+    def _build_time_axis_seconds(epoch_data, *, sample_count: int) -> np.ndarray:
+        """Build the epoch-relative seconds axis represented by saliency samples."""
+        if sample_count < 1:
+            raise ValueError("3D saliency requires at least one time sample.")
+        model_args = epoch_data.get_model_args()
+        sfreq = float(model_args["sfreq"])
+        if not np.isfinite(sfreq) or sfreq <= 0:
+            raise ValueError(
+                "Sampling frequency must be finite and positive for 3D saliency."
+            )
+        epoch_start = float(getattr(epoch_data, "tmin", 0.0))
+        if not np.isfinite(epoch_start):
+            raise ValueError("Epoch start time must be finite for 3D saliency.")
+        return epoch_start + np.arange(sample_count, dtype=float) / sfreq
+
+    @property
+    def time_range_seconds(self) -> tuple[float, float]:
+        """Return the first and last epoch-relative times represented by saliency."""
+        if self.time_axis_seconds.size == 0:
+            raise RuntimeError("3D saliency time axis is not initialized.")
+        return (
+            float(self.time_axis_seconds[0]),
+            float(self.time_axis_seconds[-1]),
+        )
+
+    @property
+    def initial_time_seconds(self) -> float:
+        """Return the initial slider value in epoch-relative seconds."""
+        return self.time_range_seconds[0]
+
+    def sample_index_for_time(self, time_seconds: float) -> int:
+        """Return the nearest sample index, clamped to the represented epoch."""
+        if self.time_axis_seconds.size == 0:
+            raise RuntimeError("3D saliency time axis is not initialized.")
+        requested_time = float(time_seconds)
+        if not np.isfinite(requested_time):
+            raise ValueError("3D saliency time must be finite.")
+
+        insertion_index = int(
+            np.searchsorted(self.time_axis_seconds, requested_time, side="left")
+        )
+        if insertion_index <= 0:
+            return 0
+        if insertion_index >= self.time_axis_seconds.size:
+            return int(self.time_axis_seconds.size - 1)
+
+        before_index = insertion_index - 1
+        before_distance = requested_time - self.time_axis_seconds[before_index]
+        after_distance = self.time_axis_seconds[insertion_index] - requested_time
+        if before_distance <= after_distance:
+            return before_index
+        return insertion_index
+
     @staticmethod
     def _translated_channel_position(position, translation):
         """Return a numeric channel position after applying 3-D translation."""
         return np.asarray(position, dtype=float) + np.asarray(translation, dtype=float)
 
     @staticmethod
-    def _resolve_saliency_label_key(saliency_store, epoch_data, selected_event_name):
+    def _resolve_saliency_label_key(
+        saliency_store,
+        epoch_data,
+        selected_event_name,
+        *,
+        class_items=None,
+    ):
         """Map an EEG event name/code to the saliency key used by training results."""
         event_id = getattr(epoch_data, "event_id", {}) or {}
-        event_names = list(event_id.keys())
         event_value = event_id.get(selected_event_name)
-        try:
-            event_order_index = event_names.index(selected_event_name)
-        except ValueError:
-            event_order_index = None
+        label_items = (
+            list(class_items)
+            if class_items is not None
+            else [(value, name) for name, value in event_id.items()]
+        )
+        identities = resolve_saliency_class_identities(saliency_store, label_items)
+        matches = [
+            identity
+            for identity in identities
+            if Saliency3DEngine._identity_matches_selection(
+                identity,
+                selected_event_name,
+                event_value,
+            )
+        ]
+        if len(matches) > 1:
+            raise KeyError(
+                f"Selected class {selected_event_name!r} maps to multiple saliency "
+                "classes. Recompute saliency with normalized class metadata."
+            )
+        if matches:
+            resolved_key = matches[0].saliency_key
+            if Saliency3DEngine._has_saliency_data(saliency_store[resolved_key]):
+                return resolved_key
+            raise KeyError(
+                f"No saliency for selected class {selected_event_name!r}. "
+                "Recompute saliency using an evaluation split that contains "
+                "this class."
+            )
 
-        candidates = [event_value, selected_event_name]
-        with contextlib.suppress(TypeError, ValueError):
-            candidates.append(int(selected_event_name))
-        if event_order_index is not None:
-            candidates.append(event_order_index)
-
-        if isinstance(saliency_store, dict):
-            for candidate in candidates:
-                if candidate is None:
-                    continue
-                if candidate in saliency_store and Saliency3DEngine._has_saliency_data(
-                    saliency_store[candidate],
-                ):
-                    return candidate
-                for key in saliency_store:
-                    key_matches = str(key) == str(candidate)
-                    has_data = Saliency3DEngine._has_saliency_data(
-                        saliency_store[key],
-                    )
-                    if key_matches and has_data:
-                        return key
-            fallback = Saliency3DEngine._first_nonempty_saliency_key(saliency_store)
-            if fallback is not None:
-                return fallback
-            available = ", ".join(map(str, saliency_store.keys()))
-        else:
-            try:
-                gradient_len = len(saliency_store)
-            except TypeError:
-                gradient_len = 0
-            for candidate in candidates:
-                if (
-                    isinstance(candidate, (int, np.integer))
-                    and 0 <= int(candidate) < gradient_len
-                    and Saliency3DEngine._has_saliency_data(saliency_store[candidate])
-                ):
-                    return candidate
-            fallback = Saliency3DEngine._first_nonempty_saliency_key(saliency_store)
-            if fallback is not None:
-                return fallback
-            available = f"0..{max(gradient_len - 1, 0)}"
-
+        available = ", ".join(map(str, Saliency3DEngine._saliency_keys(saliency_store)))
         raise KeyError(
             "Cannot map EEG event "
             f"{selected_event_name!r} "
             f"(event code {event_value!r}) to saliency results. "
             f"Available saliency keys: {available}."
         )
+
+    @staticmethod
+    def _identity_matches_selection(
+        identity: SaliencyClassIdentity,
+        selected_event_name: object,
+        selected_event_code: object,
+    ) -> bool:
+        if identity.display_name == str(selected_event_name):
+            return True
+        if selected_event_code is not None:
+            return str(identity.event_code) == str(selected_event_code)
+        return str(identity.saliency_key) == str(selected_event_name)
+
+    @staticmethod
+    def _saliency_keys(saliency_store) -> list[object]:
+        if isinstance(saliency_store, Mapping):
+            return list(saliency_store)
+        try:
+            return list(range(len(saliency_store)))
+        except TypeError:
+            return []
 
     @staticmethod
     def _has_saliency_data(value) -> bool:
@@ -321,24 +535,14 @@ class Saliency3DEngine(QObject):
             return False
 
     @staticmethod
-    def _first_nonempty_saliency_key(saliency_store):
-        if isinstance(saliency_store, dict):
-            for key, value in saliency_store.items():
-                if Saliency3DEngine._has_saliency_data(value):
-                    return key
-            return None
-        try:
-            store_len = len(saliency_store)
-        except TypeError:
-            return None
-        for index in range(store_len):
-            if Saliency3DEngine._has_saliency_data(saliency_store[index]):
-                return index
-        return None
-
-    @staticmethod
     def _saliency_store(eval_record, method):
         """Return saliency data for the selected 3-D method."""
+        if isinstance(eval_record, SaliencyRenderData):
+            if method != eval_record.method:
+                raise ValueError(
+                    f"Render publication contains {eval_record.method}, not {method}."
+                )
+            return eval_record.saliency_by_class
         if method == "Gradient":
             store = getattr(eval_record, "gradient", None)
         elif method == "Gradient * Input":
@@ -355,7 +559,7 @@ class Saliency3DEngine(QObject):
             raise KeyError(f"No {method} saliency is available for this evaluation.")
         return store
 
-    def update_scalars(self, timestamp, neighbor=3):
+    def update_scalars(self, sample_index, neighbor=3):
         """Update scalar values on the saliency cap for a given time point.
 
         For each vertex of the cap mesh the *neighbor* nearest channels are
@@ -363,7 +567,7 @@ class Saliency3DEngine(QObject):
         weighting.
 
         Args:
-            timestamp: Time-step index into the saliency matrix.
+            sample_index: Zero-based sample index into the saliency matrix.
             neighbor: Number of nearest channels to use for interpolation.
 
         Returns:
@@ -374,10 +578,7 @@ class Saliency3DEngine(QObject):
         if self.saliency is None or self.saliency_cap is None or self.pos_on_3d is None:
             return None
 
-        t_idx = int(timestamp)
-        # Clamp t_idx
-        if t_idx >= self.saliency.shape[1]:
-            t_idx = self.saliency.shape[1] - 1
+        t_idx = min(max(int(sample_index), 0), self.saliency.shape[1] - 1)
 
         current_saliency = self.saliency[:, t_idx]
 

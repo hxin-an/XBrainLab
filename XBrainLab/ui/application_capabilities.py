@@ -3,34 +3,156 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import suppress
-from typing import Any, TypeVar
-from unittest.mock import Mock
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
-from PyQt6 import sip
-from PyQt6.QtCore import QThreadPool
+from PyQt6.QtCore import QCoreApplication, QThread
 
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.application.commands import Command, CommandName
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.core.worker import Worker
+from XBrainLab.ui.async_command_runner import (
+    QtApplicationCommandRunner,
+)
+from XBrainLab.ui.interaction_outcome import (
+    InteractionOutcome,
+    prepare_interaction_command_callbacks,
+)
 from XBrainLab.ui.refresh_coordinator import (
     refresh_after_command,
     suppress_observer_refresh_during_command,
 )
+
+if TYPE_CHECKING:
+    from XBrainLab.backend.application.epoch_context import EpochDialogContext
+    from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
+    from XBrainLab.backend.application.saliency_render import (
+        SaliencyRenderPublication,
+        SaliencyRenderRequest,
+    )
+    from XBrainLab.backend.application.view_publication import (
+        ApplicationViewPublication,
+        InterpretationReviewIdentity,
+    )
 
 _FallbackResult = TypeVar("_FallbackResult")
 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE = (
     "XBrainLab could not safely complete this action from the current window "
     "state. Refresh the workflow and try again."
 )
-get_application_service: Callable[[Study], Any] | None = None
 
 
 class ControllerCompatibilityUnavailableError(RuntimeError):
     """Raised when product runtime attempts a controller compatibility mutation."""
+
+
+@dataclass(frozen=True)
+class CommandReviewContext:
+    """One command capability and the publication generation it came from."""
+
+    capability: CommandCapability
+    publication_generation: int
+
+
+class ApplicationUiRuntime(Protocol):
+    """Application command boundary used by UI capability helpers."""
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        """Return one committed state/capability publication."""
+        ...
+
+    def execute(
+        self,
+        command: Command,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        """Execute one command through ApplicationService."""
+        ...
+
+    def get_interpretation_review(
+        self,
+        *,
+        expected_identity: InterpretationReviewIdentity | None = None,
+    ) -> dict[str, Any]:
+        """Return the exact pending Data Import review payload."""
+        ...
+
+    def get_saliency_render(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication:
+        """Return a detached saliency render publication."""
+        ...
+
+    def request_shutdown_fence(self) -> None:
+        """Close command admission before application shutdown."""
+        ...
+
+    def release_shutdown_fence(self) -> bool:
+        """Reopen command admission after a cancelled shutdown."""
+        ...
+
+    def wait_for_background_tasks(self, timeout: float | None = None) -> bool:
+        """Wait for application-owned background work at lifecycle boundaries."""
+        ...
+
+
+@dataclass(frozen=True)
+class _StudyApplicationUiRuntime:
+    """Production adapter from a genuine Study to ApplicationService."""
+
+    study: Study
+
+    def _service(self):
+        from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+            get_application_service,
+        )
+
+        return get_application_service(self.study)
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        return self._service().get_view_publication()
+
+    def execute(
+        self,
+        command: Command,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        return self._service().execute(
+            command,
+            expected_publication_generation=expected_publication_generation,
+        )
+
+    def get_interpretation_review(
+        self,
+        *,
+        expected_identity: InterpretationReviewIdentity | None = None,
+    ) -> dict[str, Any]:
+        return self._service().get_interpretation_review(
+            expected_identity=expected_identity,
+        )
+
+    def get_saliency_render(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication:
+        return self._service().get_saliency_render(request)
+
+    def get_training_resource_preflight(self) -> ResourcePreflightResult | None:
+        return self._service().get_training_resource_preflight()
+
+    def request_shutdown_fence(self) -> None:
+        self._service().request_shutdown_fence()
+
+    def release_shutdown_fence(self) -> bool:
+        return self._service().release_shutdown_fence()
+
+    def wait_for_background_tasks(self, timeout: float | None = None) -> bool:
+        return self._service().wait_for_background_tasks(timeout=timeout)
 
 
 def find_study(context: Any) -> Any | None:
@@ -68,23 +190,254 @@ def find_study(context: Any) -> Any | None:
     return None
 
 
-def has_real_application_context(context: Any) -> bool:
-    """Return whether a UI context is backed by a real product ``Study``."""
+def application_ui_runtime(context: Any) -> ApplicationUiRuntime | None:
+    """Resolve the production UI runtime from a genuine Study context."""
     study = find_study(context)
-    return (
-        study is not None and isinstance(study, Study) and not isinstance(study, Mock)
+    if not issubclass(type(study), Study):
+        return None
+    return _StudyApplicationUiRuntime(cast(Study, study))
+
+
+def _resolve_application_ui_runtime(
+    context: Any,
+    runtime: ApplicationUiRuntime | None,
+) -> ApplicationUiRuntime | None:
+    return runtime if runtime is not None else application_ui_runtime(context)
+
+
+def has_real_application_context(
+    context: Any,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
+    """Return whether a UI context has an explicit application runtime."""
+    return _resolve_application_ui_runtime(context, runtime) is not None
+
+
+def is_application_runtime_deferred(context: Any) -> bool:
+    """Return whether first paint intentionally precedes command-runtime startup."""
+    study = find_study(context)
+    if not issubclass(type(study), Study):
+        return False
+    main_window = getattr(context, "main_window", None)
+    host = main_window if main_window is not None else context
+    return bool(
+        getattr(host, "_defer_initial_application_runtime", False)
+        and not application_runtime_initialized(context)
     )
+
+
+def application_runtime_initialized(context: Any) -> bool:
+    """Read command-runtime readiness without constructing the service."""
+    study = find_study(context)
+    if not issubclass(type(study), Study):
+        return False
+    from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+        application_service_initialized,
+    )
+
+    return application_service_initialized(cast(Study, study))
+
+
+def get_application_view_publication(
+    context: Any,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> ApplicationViewPublication | None:
+    """Read one full state/capability publication for an atomic UI render."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    return application_runtime.get_view_publication()
 
 
 def get_command_capability(
     context: Any,
     command_name: CommandName | str,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
 ) -> CommandCapability | None:
     """Read one command capability from the shared ApplicationService policy."""
-    study = find_study(context)
-    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+    publication = get_application_view_publication(context, runtime=runtime)
+    if publication is None:
         return None
-    return _application_service_for(study).get_capabilities().get(command_name)
+    return publication.effective_capabilities.get(command_name)
+
+
+def get_command_review_context(
+    context: Any,
+    command_name: CommandName | str,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> CommandReviewContext | None:
+    """Bind a reviewed command capability to one immutable publication."""
+    publication = get_application_view_publication(context, runtime=runtime)
+    if publication is None:
+        return None
+    return CommandReviewContext(
+        capability=publication.effective_capabilities.get(command_name),
+        publication_generation=publication.generation,
+    )
+
+
+def get_interpretation_review(
+    context: Any,
+    *,
+    expected_identity: InterpretationReviewIdentity | None = None,
+    runtime: ApplicationUiRuntime | None = None,
+) -> dict[str, Any]:
+    """Return the current review through the production ApplicationService."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        raise ControllerCompatibilityUnavailableError(
+            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+        )
+    return application_runtime.get_interpretation_review(
+        expected_identity=expected_identity,
+    )
+
+
+def get_epoch_dialog_context(
+    context: Any,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> EpochDialogContext:
+    """Read one typed epoch-dialog context from one application publication."""
+    from XBrainLab.backend.application.epoch_context import (  # noqa: PLC0415
+        EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE,
+        EpochDialogContext,
+        validated_epoch_handoff,
+    )
+    from XBrainLab.backend.application.state import (  # noqa: PLC0415
+        ApplicationStateSnapshot,
+        InterpretationStateSnapshot,
+    )
+    from XBrainLab.backend.application.view_publication import (  # noqa: PLC0415
+        ApplicationViewPublication,
+    )
+
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return EpochDialogContext.unavailable()
+    try:
+        publication = application_runtime.get_view_publication()
+    except Exception:
+        logger.error("Failed to read epoch dialog publication.", exc_info=True)
+        return EpochDialogContext.unavailable()
+
+    if not isinstance(publication, ApplicationViewPublication):
+        return EpochDialogContext.unavailable()
+    generation = publication.generation
+    if (
+        isinstance(generation, bool)
+        or not isinstance(generation, int)
+        or generation < 1
+    ):
+        return EpochDialogContext.unavailable()
+    if (
+        not isinstance(publication.verified, bool)
+        or not isinstance(publication.stale, bool)
+        or not (
+            publication.refresh_error is None
+            or isinstance(publication.refresh_error, str)
+        )
+    ):
+        return EpochDialogContext.unavailable(publication_generation=generation)
+
+    try:
+        capability = publication.effective_capabilities.get(CommandName.CREATE_EPOCH)
+    except Exception:
+        logger.error("Failed to read epoch capability publication.", exc_info=True)
+        return EpochDialogContext.unavailable(publication_generation=generation)
+    if not isinstance(capability, CommandCapability):
+        return EpochDialogContext.unavailable(publication_generation=generation)
+
+    state = publication.state
+    state_read_errors_valid = isinstance(state, ApplicationStateSnapshot) and (
+        isinstance(state.read_errors, list)
+        and all(isinstance(error, str) for error in state.read_errors)
+    )
+    publication_usable = (
+        publication.usable
+        and publication.refresh_error is None
+        and isinstance(state, ApplicationStateSnapshot)
+        and state_read_errors_valid
+        and state.state_reliable is True
+        and not state.read_errors
+        and isinstance(state.interpretation, InterpretationStateSnapshot)
+    )
+    if not publication_usable:
+        return EpochDialogContext.unavailable(
+            reason=(
+                publication.public_unavailable_reason
+                or EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE
+            ),
+            capability=capability,
+            publication_generation=generation,
+        )
+
+    try:
+        handoff = validated_epoch_handoff(state.interpretation.epoch_handoff)
+    except (TypeError, ValueError):
+        logger.error("Published epoch handoff payload is invalid.", exc_info=True)
+        return EpochDialogContext.unavailable(
+            capability=capability,
+            publication_generation=generation,
+        )
+    return EpochDialogContext(
+        capability=capability,
+        epoch_handoff=handoff,
+        publication_generation=generation,
+        usable=True,
+        unavailable_reason=None,
+    )
+
+
+def get_training_resource_preflight(
+    context: Any,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> ResourcePreflightResult | None:
+    """Read the current training resource preflight through ApplicationService."""
+    from XBrainLab.backend.application.resource_guard import (  # noqa: PLC0415
+        ResourcePreflightResult,
+    )
+
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    getter = getattr(application_runtime, "get_training_resource_preflight", None)
+    if not callable(getter):
+        return None
+    try:
+        result = getter()
+    except Exception:
+        logger.error("Training resource preflight failed.", exc_info=True)
+        return None
+    return result if isinstance(result, ResourcePreflightResult) else None
+
+
+def get_saliency_render_publication(
+    context: Any,
+    request: SaliencyRenderRequest,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> SaliencyRenderPublication | None:
+    """Read one detached visualization payload through ApplicationService."""
+    from XBrainLab.backend.application.saliency_render import (  # noqa: PLC0415
+        SaliencyRenderPublication,
+        SaliencyRenderRequest,
+    )
+
+    if not isinstance(request, SaliencyRenderRequest):
+        raise TypeError("request must be a SaliencyRenderRequest")
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    publication = application_runtime.get_saliency_render(request)
+    if not isinstance(publication, SaliencyRenderPublication):
+        raise TypeError("Application runtime returned an invalid saliency render")
+    return publication
 
 
 def blocked_reason(capability: CommandCapability | None, fallback: str) -> str:
@@ -96,55 +449,113 @@ def blocked_reason(capability: CommandCapability | None, fallback: str) -> str:
     return fallback
 
 
+def is_stale_publication_result(result: Any) -> bool:
+    """Return whether a command was rejected before its handler for stale review."""
+    diagnostics = getattr(result, "diagnostics", None)
+    return (
+        isinstance(diagnostics, dict) and diagnostics.get("stale_publication") is True
+    )
+
+
+def _execute_runtime_command(
+    runtime: ApplicationUiRuntime,
+    command: Command,
+    *,
+    expected_publication_generation: int | None,
+) -> CommandResult:
+    if expected_publication_generation is None:
+        return runtime.execute(command)
+    return runtime.execute(
+        command,
+        expected_publication_generation=expected_publication_generation,
+    )
+
+
 def execute_application_command(
     context: Any,
     command: Command,
     *,
     refresh: bool = True,
+    expected_publication_generation: int | None = None,
+    runtime: ApplicationUiRuntime | None = None,
 ) -> CommandResult | None:
     """Execute an ApplicationService command for real Study-backed UI paths.
 
-    Returns ``None`` when the caller is backed by a mock or compatibility non-Study
-    object. Product UI callers should treat that as blocked for state-changing
-    commands; read-only compatibility adapters are handled separately.
+    Returns ``None`` when the caller has no production or explicitly supplied
+    application runtime. Product UI callers should treat that as blocked for
+    state-changing commands; read-only compatibility adapters are separate.
     """
-    study = find_study(context)
-    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
         return None
     with suppress_observer_refresh_during_command(context):
-        result = _application_service_for(study).execute(command)
+        result = _execute_runtime_command(
+            application_runtime,
+            command,
+            expected_publication_generation=expected_publication_generation,
+        )
     if refresh:
         refresh_after_command(context, result)
     return result
 
 
-def request_application_shutdown_fence(context: Any) -> bool:
+def request_application_shutdown_fence(
+    context: Any,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
     """Close command admission immediately without waiting for the command lock."""
-    study = find_study(context)
-    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
         return False
-    _application_service_for(study).request_shutdown_fence()
+    application_runtime.request_shutdown_fence()
     return True
 
 
-def release_application_shutdown_fence(context: Any) -> bool:
+def release_application_shutdown_fence(
+    context: Any,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
     """Reopen command admission immediately after a cancelled close attempt."""
-    study = find_study(context)
-    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
         return False
-    _application_service_for(study).release_shutdown_fence()
-    return True
+    released = application_runtime.release_shutdown_fence()
+    return released is not False
+
+
+def application_background_tasks_idle(
+    context: Any,
+    *,
+    timeout: float | None = 0.0,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
+    """Observe application-owned worker completion without blocking the GUI."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return True
+    waiter = getattr(application_runtime, "wait_for_background_tasks", None)
+    if not callable(waiter):
+        return True
+    try:
+        return bool(waiter(timeout=timeout))
+    except Exception:
+        logger.exception("Could not verify application background task shutdown")
+        return False
 
 
 def execute_application_command_async(
     context: Any,
     command: Command,
     *,
-    on_result: Callable[[CommandResult], None],
+    on_result: Callable[[CommandResult], InteractionOutcome | None],
     on_error: Callable[[tuple], None] | None = None,
     refresh: bool = True,
     busy_target: Any | None = None,
     allow_during_shutdown: bool = False,
+    expected_publication_generation: int | None = None,
+    runtime: ApplicationUiRuntime | None = None,
 ) -> bool:
     """Execute an ApplicationService command through QThreadPool for UI flows.
 
@@ -152,155 +563,54 @@ def execute_application_command_async(
     but expensive work is offloaded from the GUI thread. Result handling and UI
     refresh are delivered through Qt signals on the receiver thread.
 
-    Returns ``False`` for mock/compatibility contexts so callers can show an explicit
-    blocked state for state-changing commands or use read-only compatibility
-    adapters where that is still intentional.
+    Returns ``False`` when no application runtime is available so callers can show
+    an explicit blocked state or use an intentional read-only compatibility adapter.
     """
-    study = find_study(context)
-    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
-        return False
-
-    service = _application_service_for(study)
-    target = busy_target if busy_target is not None else context
-    set_busy = getattr(target, "set_busy", None)
-    if callable(set_busy):
-        set_busy(True)
-
-    suppression = suppress_observer_refresh_during_command(context)
-    suppression.__enter__()
-
-    worker = Worker(lambda: service.execute(command))
-    active_workers = _active_application_workers(context)
-    active_workers.append(worker)
-    worker_finished = False
-
-    def _finish_worker() -> None:
-        nonlocal worker_finished
-        if worker_finished:
-            return
-        worker_finished = True
-        with suppress(Exception):
-            suppression.__exit__(None, None, None)
-        if callable(set_busy) and not _qt_object_deleted(target):
-            set_busy(False)
-        with suppress(ValueError):
-            active_workers.remove(worker)
-
-    def _handle_result(result: CommandResult) -> None:
-        _finish_worker()
-        if _qt_object_deleted(context) or (
-            not allow_during_shutdown and _context_is_closing(context)
-        ):
-            return
-        if refresh:
-            refresh_after_command(context, result)
-        on_result(result)
-
-    def _handle_error(error: tuple) -> None:
-        _finish_worker()
-        message = error[1] if len(error) > 1 else error
-        formatted_traceback = error[2] if len(error) > 2 else ""
+    application = QCoreApplication.instance()
+    if application is None or QThread.currentThread() != application.thread():
         logger.error(
-            "Async application command failed: %s: %s",
+            "Async UI command %s must be dispatched from the GUI thread.",
             command.name,
-            message,
-        )
-        if formatted_traceback:
-            logger.debug(
-                "Async application command traceback:\n%s",
-                formatted_traceback,
-            )
-        if (
-            on_error is not None
-            and not _qt_object_deleted(context)
-            and (allow_during_shutdown or not _context_is_closing(context))
-        ):
-            on_error(error)
-
-    def _handle_finished() -> None:
-        _finish_worker()
-
-    worker.signals.result.connect(_handle_result)
-    worker.signals.error.connect(_handle_error)
-    worker.signals.finished.connect(_handle_finished)
-
-    thread_pool = QThreadPool.globalInstance()
-    if thread_pool is None:
-        _finish_worker()
-        return False
-
-    try:
-        thread_pool.start(worker)
-    except Exception as exc:
-        _finish_worker()
-        logger.warning(
-            "Could not start async application command %s: %s",
-            command.name,
-            exc,
         )
         return False
-    return True
 
-
-def _active_application_workers(context: Any) -> list[Worker]:
-    workers = getattr(context, "_xbrainlab_active_application_workers", None)
-    if isinstance(workers, list):
-        return workers
-    workers = []
-    context._xbrainlab_active_application_workers = workers
-    return workers
-
-
-def _qt_object_deleted(obj: Any) -> bool:
-    """Return ``True`` when a Qt wrapper was deleted before async callbacks."""
-    if obj is None:
-        return False
-    try:
-        return bool(sip.isdeleted(obj))
-    except (AttributeError, TypeError, RuntimeError):
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
         return False
 
-
-def _context_is_closing(context: Any) -> bool:
-    """Return whether the owning window has entered its close lifecycle."""
-    current = context
-    visited: set[int] = set()
-    while current is not None and id(current) not in visited:
-        visited.add(id(current))
-        if _qt_object_deleted(current):
-            return True
-        try:
-            if getattr(current, "_closing_in_progress", None) is True:
-                return True
-            main_window = getattr(current, "main_window", None)
-            if getattr(main_window, "_closing_in_progress", None) is True:
-                return True
-            parent = getattr(current, "parent", None)
-            current = parent() if callable(parent) else None
-        except RuntimeError:
-            return True
-    return False
-
-
-def _application_service_for(study: Study):
-    """Load the ApplicationService runtime only when a real command needs it."""
-    patched = globals()["get_application_service"]
-    if patched is not None:
-        return patched(study)
-    from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
-        get_application_service as runtime_get_application_service,
+    completion_callbacks = prepare_interaction_command_callbacks(
+        context=context,
+        command_name=command.name.value,
+        on_result=on_result,
+        on_error=on_error,
     )
-
-    return runtime_get_application_service(study)
+    started = QtApplicationCommandRunner(
+        context=context,
+        command=command,
+        execute=lambda: _execute_runtime_command(
+            application_runtime,
+            command,
+            expected_publication_generation=expected_publication_generation,
+        ),
+        on_result=completion_callbacks.on_result,
+        on_error=completion_callbacks.on_error,
+        on_finished=completion_callbacks.on_finished,
+        refresh=refresh,
+        busy_target=busy_target,
+        allow_during_shutdown=allow_during_shutdown,
+    ).start()
+    completion_callbacks.mark_started(started)
+    return started
 
 
 def run_controller_compatibility_call(
     context: Any,
     fallback: Callable[[], _FallbackResult],
+    *,
+    runtime: ApplicationUiRuntime | None = None,
 ) -> _FallbackResult:
-    """Run controller fallback only for mock or compatibility non-Study UI contexts."""
-    study = find_study(context)
-    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+    """Run controller fallback only when no application runtime is available."""
+    if _resolve_application_ui_runtime(context, runtime) is None:
         return fallback()
     raise ControllerCompatibilityUnavailableError(
         CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -311,8 +621,10 @@ def get_controller_for_compatibility_context(
     context: Any,
     study: Any,
     controller_name: str,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
 ) -> Any | None:
-    """Return a controller only for mock / compatibility UI contexts.
+    """Return a controller only for explicit compatibility UI contexts.
 
     Product MainWindow wiring injects controllers into panels. This helper keeps
     older tests and standalone contexts working without allowing real Study UI
@@ -325,6 +637,7 @@ def get_controller_for_compatibility_context(
         return run_controller_compatibility_call(
             context,
             lambda: getter(controller_name),
+            runtime=runtime,
         )
     except ControllerCompatibilityUnavailableError:
         return None

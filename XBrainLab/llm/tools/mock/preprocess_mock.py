@@ -1,10 +1,15 @@
 """Mock implementations of EEG preprocessing tools.
 
-Return canned success/error strings without modifying any data,
-enabling offline agent testing and development.
+Return deterministic results without modifying any data, enabling
+offline agent testing and development.
 """
 
 from typing import Any
+
+from XBrainLab.backend.training.input_contract import (
+    TrainingInputContractError,
+    normalize_strict_boolean,
+)
 
 from ..definitions.preprocess_def import (
     BaseBandPassFilterTool,
@@ -14,12 +19,31 @@ from ..definitions.preprocess_def import (
     BaseNotchFilterTool,
     BaseRereferenceTool,
     BaseResampleTool,
+    BaseResetPreprocessTool,
     BaseSetMontageTool,
     BaseStandardPreprocessTool,
 )
+from ..result_contract import ToolResult
+from .state import MockWorkflowState
 
 
-class MockStandardPreprocessTool(BaseStandardPreprocessTool):
+class _RequiresLoadedData:
+    """Keep mock preprocessing prerequisites aligned with ApplicationService."""
+
+    def __init__(self, state: MockWorkflowState | None = None) -> None:
+        self._state = state if state is not None else MockWorkflowState()
+
+    def _loaded_data_precondition(self) -> ToolResult | None:
+        if self._state.data_loaded:
+            return None
+        return ToolResult(
+            ok=False,
+            message="Load EEG data before preprocessing.",
+            error_type="precondition",
+        )
+
+
+class MockStandardPreprocessTool(_RequiresLoadedData, BaseStandardPreprocessTool):
     """Mock implementation of :class:`BaseStandardPreprocessTool`."""
 
     def execute(
@@ -32,7 +56,7 @@ class MockStandardPreprocessTool(BaseStandardPreprocessTool):
         resample_rate: int | None = None,
         normalize_method: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Return a simulated standard-preprocessing result.
 
         Args:
@@ -49,13 +73,40 @@ class MockStandardPreprocessTool(BaseStandardPreprocessTool):
             A confirmation message summarising the pipeline.
 
         """
-        return (
-            f"Applied standard preprocessing pipeline (BP: {l_freq}-{h_freq}Hz, "
-            f"Notch: {notch_freq}Hz)."
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
+        return ToolResult(
+            ok=True,
+            message=(
+                f"Applied standard preprocessing pipeline (BP: {l_freq}-{h_freq}Hz, "
+                f"Notch: {notch_freq}Hz)."
+            ),
         )
 
 
-class MockBandPassFilterTool(BaseBandPassFilterTool):
+class MockResetPreprocessTool(_RequiresLoadedData, BaseResetPreprocessTool):
+    """Mock the narrow preprocessing reset without clearing loaded raw data."""
+
+    def execute(self, study: Any, **kwargs) -> ToolResult:
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
+        try:
+            normalize_strict_boolean(
+                "confirmed",
+                kwargs.get("confirmed", False),
+            )
+        except TrainingInputContractError as exc:
+            return ToolResult(False, str(exc), error_type="input")
+        self._state.reset_preprocess()
+        return ToolResult(
+            ok=True,
+            message="Preprocessing reset to loaded raw data.",
+        )
+
+
+class MockBandPassFilterTool(_RequiresLoadedData, BaseBandPassFilterTool):
     """Mock implementation of :class:`BaseBandPassFilterTool`."""
 
     def execute(
@@ -64,7 +115,7 @@ class MockBandPassFilterTool(BaseBandPassFilterTool):
         low_freq: float | None = None,
         high_freq: float | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Return a simulated bandpass-filter result.
 
         Args:
@@ -77,15 +128,30 @@ class MockBandPassFilterTool(BaseBandPassFilterTool):
             A confirmation or error message.
 
         """
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
         if low_freq is None or high_freq is None:
-            return "Error: frequencies are required"
-        return f"Applied bandpass filter ({low_freq}-{high_freq} Hz)."
+            return ToolResult(
+                ok=False,
+                message="Error: frequencies are required",
+                error_type="input",
+            )
+        return ToolResult(
+            ok=True,
+            message=f"Applied bandpass filter ({low_freq}-{high_freq} Hz).",
+        )
 
 
-class MockNotchFilterTool(BaseNotchFilterTool):
+class MockNotchFilterTool(_RequiresLoadedData, BaseNotchFilterTool):
     """Mock implementation of :class:`BaseNotchFilterTool`."""
 
-    def execute(self, study: Any, freq: float | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        freq: float | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Return a simulated notch-filter result.
 
         Args:
@@ -97,15 +163,30 @@ class MockNotchFilterTool(BaseNotchFilterTool):
             A confirmation or error message.
 
         """
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
         if freq is None:
-            return "Error: frequency is required"
-        return f"Applied notch filter at {freq} Hz."
+            return ToolResult(
+                ok=False,
+                message="Error: frequency is required",
+                error_type="input",
+            )
+        return ToolResult(
+            ok=True,
+            message=f"Applied notch filter at {freq} Hz.",
+        )
 
 
-class MockResampleTool(BaseResampleTool):
+class MockResampleTool(_RequiresLoadedData, BaseResampleTool):
     """Mock implementation of :class:`BaseResampleTool`."""
 
-    def execute(self, study: Any, rate: int | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        rate: int | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Return a simulated resample result.
 
         Args:
@@ -117,15 +198,27 @@ class MockResampleTool(BaseResampleTool):
             A confirmation or error message.
 
         """
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
         if rate is None:
-            return "Error: rate is required"
-        return f"Resampled data to {rate} Hz."
+            return ToolResult(
+                ok=False,
+                message="Error: rate is required",
+                error_type="input",
+            )
+        return ToolResult(ok=True, message=f"Resampled data to {rate} Hz.")
 
 
-class MockNormalizeTool(BaseNormalizeTool):
+class MockNormalizeTool(_RequiresLoadedData, BaseNormalizeTool):
     """Mock implementation of :class:`BaseNormalizeTool`."""
 
-    def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        method: str | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Return a simulated normalisation result.
 
         Args:
@@ -137,15 +230,30 @@ class MockNormalizeTool(BaseNormalizeTool):
             A confirmation or error message.
 
         """
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
         if method is None:
-            return "Error: method is required"
-        return f"Normalized data using {method} method."
+            return ToolResult(
+                ok=False,
+                message="Error: method is required",
+                error_type="input",
+            )
+        return ToolResult(
+            ok=True,
+            message=f"Normalized data using {method} method.",
+        )
 
 
-class MockRereferenceTool(BaseRereferenceTool):
+class MockRereferenceTool(_RequiresLoadedData, BaseRereferenceTool):
     """Mock implementation of :class:`BaseRereferenceTool`."""
 
-    def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        method: str | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Return a simulated re-reference result.
 
         Args:
@@ -157,15 +265,27 @@ class MockRereferenceTool(BaseRereferenceTool):
             A confirmation or error message.
 
         """
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
         if method is None:
-            return "Error: method is required"
-        return f"Re-referenced data to {method}."
+            return ToolResult(
+                ok=False,
+                message="Error: method is required",
+                error_type="input",
+            )
+        return ToolResult(ok=True, message=f"Re-referenced data to {method}.")
 
 
-class MockChannelSelectionTool(BaseChannelSelectionTool):
+class MockChannelSelectionTool(_RequiresLoadedData, BaseChannelSelectionTool):
     """Mock implementation of :class:`BaseChannelSelectionTool`."""
 
-    def execute(self, study: Any, channels: list[str] | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        channels: list[str] | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Return a simulated channel-selection result.
 
         Args:
@@ -177,15 +297,30 @@ class MockChannelSelectionTool(BaseChannelSelectionTool):
             A confirmation or error message.
 
         """
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
         if channels is None:
-            return "Error: channels list is required"
-        return f"Selected {len(channels)} channels."
+            return ToolResult(
+                ok=False,
+                message="Error: channels list is required",
+                error_type="input",
+            )
+        return ToolResult(
+            ok=True,
+            message=f"Selected {len(channels)} channels.",
+        )
 
 
-class MockSetMontageTool(BaseSetMontageTool):
+class MockSetMontageTool(_RequiresLoadedData, BaseSetMontageTool):
     """Mock implementation of :class:`BaseSetMontageTool`."""
 
-    def execute(self, study: Any, montage_name: str | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        montage_name: str | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Return a simulated set-montage result.
 
         Args:
@@ -197,13 +332,23 @@ class MockSetMontageTool(BaseSetMontageTool):
             A confirmation or error message.
 
         """
+        blocked = self._loaded_data_precondition()
+        if blocked is not None:
+            return blocked
         if montage_name is None:
-            return "Error: montage_name is required"
-        return f"Set montage to {montage_name}."
+            return ToolResult(
+                ok=False,
+                message="Error: montage_name is required",
+                error_type="input",
+            )
+        return ToolResult(ok=True, message=f"Set montage to {montage_name}.")
 
 
 class MockEpochDataTool(BaseEpochDataTool):
     """Mock implementation of :class:`BaseEpochDataTool`."""
+
+    def __init__(self, state: MockWorkflowState | None = None) -> None:
+        self._state = state if state is not None else MockWorkflowState()
 
     def execute(
         self,
@@ -213,7 +358,7 @@ class MockEpochDataTool(BaseEpochDataTool):
         event_id: list[str] | None = None,
         baseline: list[float] | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Return a simulated epoching result.
 
         Args:
@@ -228,4 +373,14 @@ class MockEpochDataTool(BaseEpochDataTool):
             A confirmation message with the epoch window.
 
         """
-        return f"Epoched data from {t_min}s to {t_max}s."
+        if not self._state.data_loaded:
+            return ToolResult(
+                ok=False,
+                message="Load EEG data before creating epochs.",
+                error_type="precondition",
+            )
+        self._state.mark_epochs_ready()
+        return ToolResult(
+            ok=True,
+            message=f"Epoched data from {t_min}s to {t_max}s.",
+        )

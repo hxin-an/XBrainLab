@@ -1,8 +1,7 @@
 """Pipeline state machine for stage-based agent prompting.
 
-Defines the :class:`PipelineStage` enum and :data:`STAGE_CONFIG` mapping
-that drive which tools and system-prompt context the LLM agent receives
-at each stage of the EEG analysis pipeline.
+Consumes the backend :class:`PipelineStage` read-model contract and defines the
+:data:`STAGE_CONFIG` mapping that drives stage-specific assistant guidance.
 
 For real product sessions, the stage is derived only from the ApplicationService
 state snapshot so tool prompts, capability policy, and command execution share
@@ -12,123 +11,14 @@ Study-shaped reads for compatibility tests.
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
-from unittest.mock import Mock
 
-from XBrainLab.backend.application.runtime import get_application_service
-from XBrainLab.backend.study import Study
+from XBrainLab.backend.application.pipeline_stage import (
+    PipelineStage,
+    compute_pipeline_stage,
+)
 
-
-class PipelineStage(Enum):
-    """Stages of the EEG analysis pipeline.
-
-    The pipeline follows a linear progression with a training loop::
-
-        EMPTY → DATA_LOADED → PREPROCESSED → DATASET_READY ⇄ TRAINED
-                                                   ↕
-                                                TRAINING
-
-    ``clear_dataset`` resets any stage back to ``EMPTY``.
-    """
-
-    EMPTY = "empty"
-    DATA_LOADED = "data_loaded"
-    PREPROCESSED = "preprocessed"
-    DATASET_READY = "dataset_ready"
-    TRAINING = "training"
-    TRAINED = "trained"
-
-    @property
-    def label(self) -> str:
-        """Human-friendly display name for prompt usage."""
-        return {
-            PipelineStage.EMPTY: "Empty (No Data)",
-            PipelineStage.DATA_LOADED: "Data Loaded",
-            PipelineStage.PREPROCESSED: "Preprocessed",
-            PipelineStage.DATASET_READY: "Dataset Ready",
-            PipelineStage.TRAINING: "Training In Progress",
-            PipelineStage.TRAINED: "Trained",
-        }[self]
-
-
-def compute_pipeline_stage(study: Any) -> PipelineStage:
-    """Derive the current pipeline stage from ApplicationService state.
-
-    The check order matters — more advanced stages are tested first so
-    that the most specific match wins (e.g. ``TRAINING`` before
-    ``TRAINED``).
-
-    Args:
-        study: The global ``Study`` instance.  If ``None``, returns
-            :attr:`PipelineStage.EMPTY`.
-
-    Returns:
-        The current :class:`PipelineStage`.
-
-    """
-    if study is None:
-        return PipelineStage.EMPTY
-
-    if _is_real_product_study(study):
-        return _application_service_pipeline_stage(study) or PipelineStage.EMPTY
-
-    return _legacy_study_pipeline_stage(study)
-
-
-def _is_real_product_study(study: Any) -> bool:
-    """Return whether stage truth must come from ApplicationService."""
-    return isinstance(study, Study) and not isinstance(study, Mock)
-
-
-def _legacy_study_pipeline_stage(study: Any) -> PipelineStage:
-    """Return stage from direct Study-shaped attributes for mock compatibility."""
-    if (
-        study.trainer is not None
-        and hasattr(study.trainer, "is_running")
-        and study.trainer.is_running()
-    ):
-        return PipelineStage.TRAINING
-
-    # Trainer exists but not running → training completed
-    if study.trainer is not None:
-        return PipelineStage.TRAINED
-
-    # Datasets generated → ready to configure & train
-    if study.datasets:
-        return PipelineStage.DATASET_READY
-
-    # Epoch data exists → preprocessing done
-    if study.epoch_data is not None:
-        return PipelineStage.PREPROCESSED
-
-    # Raw data loaded
-    if study.loaded_data_list:
-        return PipelineStage.DATA_LOADED
-
-    return PipelineStage.EMPTY
-
-
-def _application_service_pipeline_stage(study: Any) -> PipelineStage | None:
-    """Return stage from the shared ApplicationService snapshot when available."""
-    if not _is_real_product_study(study):
-        return None
-
-    try:
-        value = get_application_service(study).get_state().pipeline_stage
-    except Exception:
-        return None
-    return _pipeline_stage_from_value(value)
-
-
-def _pipeline_stage_from_value(value: Any) -> PipelineStage | None:
-    text = getattr(value, "value", value)
-    if not isinstance(text, str):
-        return None
-    for stage in PipelineStage:
-        if stage.value == text:
-            return stage
-    return None
+__all__ = ["STAGE_CONFIG", "PipelineStage", "compute_pipeline_stage"]
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +27,7 @@ def _pipeline_stage_from_value(value: Any) -> PipelineStage | None:
 
 _PREPROCESS_TOOLS: list[str] = [
     "apply_standard_preprocess",
+    "reset_preprocess",
     "apply_bandpass_filter",
     "apply_notch_filter",
     "resample_data",
@@ -169,6 +60,27 @@ _ANALYSIS_TOOLS: list[str] = [
 ]
 
 
+def _stage_system_prompt(
+    *,
+    role: str,
+    stage: str,
+    status: str,
+    boundary: str,
+) -> str:
+    """Build concise stage context without publishing a second tool policy."""
+    return (
+        f"You are XBrainLab Assistant, an {role}.\n\n"
+        f"## Current Stage: {stage}\n"
+        f"{status}\n"
+        f"{boundary}\n\n"
+        "The request-scoped action contracts below are authoritative. Use only "
+        "an action contract listed for this exact turn. Do not infer permission "
+        "from the stage description, prior chat, examples, or a recommended "
+        "next step. Never replace the user's request with a prerequisite or "
+        "substitute action."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Stage configuration — tools + system prompt
 # ---------------------------------------------------------------------------
@@ -180,31 +92,16 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             *_DATA_INTERPRETATION_TOOLS,
             "switch_panel",
         ],
-        "system_prompt": (
-            "You are XBrainLab Assistant — an EEG analysis guide.\n"
-            "\n"
-            "## Current Stage: Empty (No Data)\n"
-            "The user has just opened the application and no data has been "
-            "loaded yet. Your primary goal is to help them locate EEG data "
-            "and start the Data Interpretation workflow.\n"
-            "\n"
-            "### What you should do\n"
-            "- Ask the user where their EEG files (.gdf / .edf / .set) are "
-            "located.\n"
-            "- Use 'list_files' to browse the file system and show available "
-            "files.\n"
-            "- Use 'scan_source' once the user has provided a source path, "
-            "then preview, validate, and apply the interpretation before "
-            "preprocessing.\n"
-            "- Use 'reload_interpretation_recipe' when the user provides a "
-            "saved import recipe, then review the preview before apply.\n"
-            "- If the user seems unfamiliar, briefly explain what EEG file "
-            "formats XBrainLab supports.\n"
-            "\n"
-            "### What you should NOT do\n"
-            "- Do NOT suggest preprocessing or training — there is no data "
-            "yet.\n"
-            "- Do NOT attempt to call tools that are not listed below.\n"
+        "system_prompt": _stage_system_prompt(
+            role="EEG data import guide",
+            stage="Empty (No Data)",
+            status=(
+                "No data is loaded. The workflow is ready to begin Data Interpretation."
+            ),
+            boundary=(
+                "A concrete source path is required before XBrainLab can inspect "
+                "an EEG recording or dataset."
+            ),
         ),
     },
     PipelineStage.DATA_LOADED: {
@@ -215,153 +112,106 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "clear_dataset",
             "switch_panel",
         ],
-        "system_prompt": (
-            "You are XBrainLab Assistant — an EEG preprocessing guide.\n"
-            "\n"
-            "## Current Stage: Data Loaded\n"
-            "EEG data has been loaded. The user needs to preprocess the raw "
-            "signals before generating datasets for training.\n"
-            "\n"
-            "### What you should do\n"
-            "- Recommend 'apply_standard_preprocess' for a quick one-step "
-            "pipeline (bandpass 1-40 Hz, notch 50/60 Hz, normalize, epoch).\n"
-            "- For advanced users, guide them step by step: bandpass filter "
-            "→ notch filter → set reference → resample → normalize → select "
-            "channels → set montage → epoch.\n"
-            "- Use 'get_dataset_info' to show the current data summary.\n"
-            "- If labels or events are needed, use Data Interpretation tools "
-            "to scan, preview, validate, and apply label/event carriers with "
-            "reviewable metadata and recipe trace.\n"
-            "- If the user wants to start over, use 'clear_dataset'.\n"
-            "\n"
-            "### What you should NOT do\n"
-            "- Do NOT suggest training-related steps yet — the data must be "
-            "preprocessed and a dataset generated first.\n"
-            "- Do NOT attempt to call tools that are not listed below.\n"
+        "system_prompt": _stage_system_prompt(
+            role="EEG preprocessing guide",
+            stage="Data Loaded",
+            status="Raw EEG data is available, but preprocessing is not complete.",
+            boundary=(
+                "Preprocessing must complete before epoching and training dataset "
+                "construction."
+            ),
         ),
     },
     PipelineStage.PREPROCESSED: {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
+            "get_dataset_info",
+            "clear_dataset",
+            "switch_panel",
+        ],
+        "system_prompt": _stage_system_prompt(
+            role="EEG epoching guide",
+            stage="Preprocessed",
+            status="Preprocessing is complete. The workflow is Ready for epoching.",
+            boundary=(
+                "Epoch creation requires a target event and epoch window before "
+                "a training dataset can be built."
+            ),
+        ),
+    },
+    PipelineStage.EPOCH_READY: {
+        "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
+            "reset_preprocess",
             "generate_dataset",
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
         ],
-        "system_prompt": (
-            "You are XBrainLab Assistant — an EEG dataset generation guide.\n"
-            "\n"
-            "## Current Stage: Preprocessed\n"
-            "Preprocessing is complete and epoch data is ready. The next "
-            "milestone is generating a training/test dataset.\n"
-            "\n"
-            "### What you should do\n"
-            "- Guide the user to run 'generate_dataset' to split data into "
-            "training and test sets.\n"
-            "- Use 'get_dataset_info' to show the current preprocessing "
-            "results.\n"
-            "- If the user wants to adjust preprocessing, they can still "
-            "re-run individual preprocessing steps (e.g. change filter "
-            "parameters).\n"
-            "- If labels are still missing, use Data Interpretation preview "
-            "and validation so label/event semantics stay tied to the import "
-            "recipe.\n"
-            "\n"
-            "### What you should NOT do\n"
-            "- Do NOT suggest model selection or training — the dataset has "
-            "not been generated yet.\n"
-            "- Do NOT attempt to call tools that are not listed below.\n"
+        "system_prompt": _stage_system_prompt(
+            role="EEG dataset generation guide",
+            stage="Epochs Ready",
+            status="Preprocessed epoch data is available.",
+            boundary=(
+                "A split strategy and dataset settings are required before model "
+                "training can be configured."
+            ),
         ),
     },
     PipelineStage.DATASET_READY: {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
+            "reset_preprocess",
             *_TRAINING_TOOLS,
             *_ANALYSIS_TOOLS,
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
         ],
-        "system_prompt": (
-            "You are XBrainLab Assistant — an EEG model training guide.\n"
-            "\n"
-            "## Current Stage: Dataset Ready\n"
-            "Training and test datasets have been generated. The user can "
-            "now select a model, configure training parameters, and start "
-            "training.\n"
-            "\n"
-            "### What you should do\n"
-            "- Help the user choose a model: EEGNet (lightweight, good "
-            "default), SCCNet (spatial-spectral), or ShallowConvNet "
-            "(frequency features). Use 'set_model' to configure.\n"
-            "- Use 'configure_training' to set epochs, learning rate, "
-            "batch size, etc.\n"
-            "- Use 'start_training' when the user is ready.\n"
-            "- Use 'get_dataset_info' to review the dataset summary.\n"
-            "\n"
-            "### What you should NOT do\n"
-            "- Do NOT suggest preprocessing steps — the dataset is locked. "
-            "To redo preprocessing, the user must first 'clear_dataset'.\n"
-            "- Do NOT attempt to call tools that are not listed below.\n"
+        "system_prompt": _stage_system_prompt(
+            role="EEG model training guide",
+            stage="Dataset Ready",
+            status="The training dataset is ready.",
+            boundary=(
+                "A model and training settings must be resolved before a run can "
+                "start, and starting training may require confirmation."
+            ),
         ),
     },
     PipelineStage.TRAINING: {
         "tools": [
+            "stop_training",
             "switch_panel",
         ],
-        "system_prompt": (
-            "You are XBrainLab Assistant.\n"
-            "\n"
-            "## Current Stage: Training In Progress\n"
-            "A training job is currently running in the background. No "
-            "data-modifying operations are available.\n"
-            "\n"
-            "### What you should do\n"
-            "- Inform the user that training is in progress.\n"
-            "- Suggest using 'switch_panel' to navigate to the Training "
-            "panel to monitor progress (loss, accuracy, epoch).\n"
-            "- Answer general questions about EEG / BCI while waiting.\n"
-            "\n"
-            "### What you should NOT do\n"
-            "- Do NOT try to start another training run.\n"
-            "- Do NOT try to modify data or parameters.\n"
-            "- Do NOT attempt to call tools that are not listed below.\n"
+        "system_prompt": _stage_system_prompt(
+            role="EEG training monitor",
+            stage="Training In Progress",
+            status="A training job is currently running in the background.",
+            boundary=(
+                "Do not start another run or mutate its data and settings while "
+                "the active job is running."
+            ),
         ),
     },
     PipelineStage.TRAINED: {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
+            "reset_preprocess",
             *_TRAINING_TOOLS,
             *_ANALYSIS_TOOLS,
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
         ],
-        "system_prompt": (
-            "You are XBrainLab Assistant — an EEG results & iteration "
-            "guide.\n"
-            "\n"
-            "## Current Stage: Trained\n"
-            "Training has completed. The user can now evaluate results, "
-            "visualize saliency maps, or iterate by re-training with "
-            "different parameters.\n"
-            "\n"
-            "### What you should do\n"
-            "- Use 'evaluate' to summarize evaluation readiness, completed "
-            "runs, and metrics before opening result views.\n"
-            "- Use 'visualize' to summarize available visualization views.\n"
-            "- Use 'saliency' to query or configure saliency readiness before "
-            "opening saliency maps.\n"
-            "- If the user wants to re-train with different settings, "
-            "use 'set_model' / 'configure_training' / 'start_training'.\n"
-            "- If the user wants to start completely over, use "
-            "'clear_dataset'.\n"
-            "\n"
-            "### What you should NOT do\n"
-            "- Do NOT suggest preprocessing — the dataset is locked. Use "
-            "'clear_dataset' to go back.\n"
-            "- Do NOT attempt to call tools that are not listed below.\n"
+        "system_prompt": _stage_system_prompt(
+            role="EEG results & iteration guide",
+            stage="Trained",
+            status="At least one training run has completed.",
+            boundary=(
+                "Completed training results can be reviewed; retraining or "
+                "resetting derived state remains a separate explicit action."
+            ),
         ),
     },
 }

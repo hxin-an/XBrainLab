@@ -33,7 +33,7 @@ landing page，也不是炫技網頁。
 4. `docs/planning/now.md`
 5. `docs/validation/README.md`
 6. `mkdocs.yml`
-7. `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+7. `artifacts/ui/human-like-walkthrough-runs/current/human-like-walkthrough.md`
 8. `.agents/skills/docs-curator/SKILL.md`
 9. `.agents/skills/ui-product-reviewer/SKILL.md`
 

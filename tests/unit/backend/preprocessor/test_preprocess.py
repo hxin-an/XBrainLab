@@ -308,43 +308,74 @@ def test_window_epoch(annotated_raw):
 
 
 # normalization
-@pytest.mark.parametrize("target_str", ["raw", "epoch"])
-def test_normalization_z_score(target_str, request):
-    target = request.getfixturevalue(target_str)
-    processor = preprocessor.Normalize([target])
+def test_raw_normalization_is_deferred_without_reading_recording_statistics(
+    raw,  # noqa: F811
+):
+    original = raw.get_mne().get_data().copy()
+    processor = preprocessor.Normalize([raw])
     processor.data_preprocess("z score")
     result = processor.get_preprocessed_data_list()[0]
 
+    np.testing.assert_array_equal(result.get_mne().get_data(), original)
+    assert result.get_runtime_detail("normalization") == {
+        "method": "z score",
+        "scope": "per_epoch_per_channel",
+        "status": "pending",
+        "requested_on": "raw",
+        "uses_recording_statistics": False,
+    }
+    assert result.get_preprocess_history()[-1] == (
+        "z score normalization requested (deferred to per-epoch application)"
+    )
+
+
+def test_pending_raw_normalization_is_applied_after_event_epoching(annotated_raw):
+    queued = preprocessor.Normalize([annotated_raw]).data_preprocess("zscore")
+    result = preprocessor.TimeEpoch(queued).data_preprocess(
+        baseline=None,
+        selected_event_names=["a", "b", "c", "d"],
+        tmin=0,
+        tmax=1,
+    )[0]
+
     data = result.get_mne().get_data()
-    # Check if mean is close to 0 and std is close to 1 for each channel/epoch
-    if target_str == "raw":
-        # (n_channels, n_times)
-        assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
-        assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
-    else:
-        # (n_epochs, n_channels, n_times)
-        assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
-        assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
+    assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
+    assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
+    assert result.get_runtime_detail("normalization") == {
+        "method": "z score",
+        "scope": "per_epoch_per_channel",
+        "status": "applied",
+        "requested_on": "raw",
+        "uses_recording_statistics": False,
+    }
+    assert result.get_preprocess_history()[-2:] == [
+        "Epoching 0 ~ 1 by event (None baseline)",
+        "z score normalization applied independently per epoch and channel",
+    ]
 
-    assert result.get_preprocess_history()[-1] == "z score normalization"
 
-
-@pytest.mark.parametrize("target_str", ["raw", "epoch"])
-def test_normalization_minmax(target_str, request):
-    target = request.getfixturevalue(target_str)
-    processor = preprocessor.Normalize([target])
-    processor.data_preprocess("minmax")
+def test_epoched_z_score_normalization_is_per_epoch_and_channel(epoch):
+    processor = preprocessor.Normalize([epoch])
+    processor.data_preprocess("z-score")
     result = processor.get_preprocessed_data_list()[0]
 
     data = result.get_mne().get_data()
-    # Check if min is 0 and max is 1 for each channel/epoch
-    if target_str == "raw":
-        # (n_channels, n_times)
-        assert np.allclose(data.min(axis=-1), 0, atol=1e-7)
-        assert np.allclose(data.max(axis=-1), 1, atol=1e-7)
-    else:
-        # (n_epochs, n_channels, n_times)
-        assert np.allclose(data.min(axis=-1), 0, atol=1e-7)
-        assert np.allclose(data.max(axis=-1), 1, atol=1e-7)
+    assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
+    assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
+    assert result.get_runtime_detail("normalization")["requested_on"] == "epochs"
+    assert result.get_preprocess_history()[-1] == (
+        "z score normalization applied independently per epoch and channel"
+    )
 
-    assert result.get_preprocess_history()[-1] == "minmax normalization"
+
+def test_epoched_minmax_normalization_is_per_epoch_and_channel(epoch):
+    processor = preprocessor.Normalize([epoch])
+    processor.data_preprocess("min-max")
+    result = processor.get_preprocessed_data_list()[0]
+
+    data = result.get_mne().get_data()
+    assert np.allclose(data.min(axis=-1), 0, atol=1e-7)
+    assert np.allclose(data.max(axis=-1), 1, atol=1e-7)
+    assert result.get_preprocess_history()[-1] == (
+        "minmax normalization applied independently per epoch and channel"
+    )

@@ -8,6 +8,9 @@ from unittest.mock import patch
 
 import pytest
 
+from scripts.dev.report_data_interpretation_format_matrix import (
+    capture_public_fixture_facts,
+)
 from XBrainLab.backend.application import (
     ApplicationService,
     CommandName,
@@ -52,23 +55,26 @@ PUBLIC_TRAINING_FIXTURES: tuple[PublicTrainingFixture, ...] = (
         "tmax": 2,
         "split_ratio": 0.2,
     },
+)
+
+PUBLIC_EPOCH_ONLY_FIXTURES: tuple[PublicTrainingFixture, ...] = (
     {
         "name": "sccn-eeglab",
         "filename": "sccn-eeglab_data.set",
         "event_ids": ["rt", "square"],
         "tmin": 0,
-        "tmax": 2,
-        "split_ratio": 0.2,
+        "tmax": 1.5,
+        "split_ratio": 0.0,
     },
-)
-
-PUBLIC_EPOCH_ONLY_FIXTURES: tuple[PublicTrainingFixture, ...] = (
     {
         "name": "mne-cnt",
         "filename": "scan41_short.cnt",
-        "event_ids": ["0", "109", "7"],
+        # Marker 0 is exactly at the recording boundary and 109 has a
+        # near-terminal occurrence. Use the interior task marker so this case
+        # proves CNT epoch support without bypassing epoch-boundary safety.
+        "event_ids": ["7"],
         "tmin": 0,
-        "tmax": 2,
+        "tmax": 1.5,
         "split_ratio": 0.0,
     },
 )
@@ -80,6 +86,16 @@ def _build_public_training_service(
     filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
     if not filepath.exists():
         pytest.skip(f"Public fixture not downloaded at {filepath}")
+
+    fact_case_id = {
+        "physionet-edf": "public_physionet_motor_edf",
+        "bbci-gdf": "public_bbci_gdf",
+        "sccn-eeglab": "public_sccn_eeglab",
+        "mne-cnt": "public_mne_cnt",
+    }[fixture["name"]]
+    facts = capture_public_fixture_facts(fact_case_id, ROOT.parent)
+    assert facts["status"] == "passed"
+    assert facts["mismatches"] == []
 
     service = ApplicationService()
     load_result = service.execute(LoadDataCommand(paths=[str(filepath)]))
@@ -128,7 +144,14 @@ def test_public_cross_source_training_smoke(
 
     assert filter_result.ok is True
     assert normalize_result.ok is True
+    assert normalize_result.diagnostics["normalization_scope"] == (
+        "per_epoch_per_channel"
+    )
+    assert normalize_result.diagnostics["raw_requests_deferred"] == 1
+    assert normalize_result.diagnostics["recording_statistics_used"] is False
     assert epoch_result.ok is True
+    assert epoch_result.diagnostics["deferred_normalization_applied_count"] == 1
+    assert epoch_result.diagnostics["recording_statistics_used"] is False
     assert epoch_result.state.epoch.event_names == list(fixture["event_ids"])
     assert epoch_result.state.epoch.event_ids == {
         event_name: index for index, event_name in enumerate(fixture["event_ids"])
@@ -196,7 +219,7 @@ def test_public_cross_source_training_smoke(
 def test_public_cross_source_epoch_only_boundary(
     fixture: PublicTrainingFixture,
 ) -> None:
-    """Tiny public fixtures should prove IO/epoch support without overclaiming training."""
+    """Boundary-limited fixtures prove IO/epoch support without training claims."""
     service = _build_public_training_service(fixture)
 
     filter_result = service.execute(
@@ -222,7 +245,12 @@ def test_public_cross_source_epoch_only_boundary(
 
     assert filter_result.ok is True
     assert normalize_result.ok is True
+    assert normalize_result.diagnostics["normalization_scope"] == (
+        "per_epoch_per_channel"
+    )
+    assert normalize_result.diagnostics["raw_requests_deferred"] == 1
     assert epoch_result.ok is True
+    assert epoch_result.diagnostics["deferred_normalization_applied_count"] == 1
     assert epoch_result.state.epoch.event_names == list(fixture["event_ids"])
     assert epoch_result.state.epoch.epoch_count is not None
     assert epoch_result.state.epoch.epoch_count > 0

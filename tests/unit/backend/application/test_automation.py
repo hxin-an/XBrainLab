@@ -19,6 +19,10 @@ from XBrainLab.backend.application import (
     command_specs,
     execute_automation_payload,
     mcp_tool_specs,
+    resource_guard,
+)
+from XBrainLab.backend.application.view_publication import (
+    PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
 )
 from XBrainLab.backend.study import Study
 
@@ -39,6 +43,20 @@ def test_command_specs_cover_application_commands_with_autonomy_policy():
     apply_spec = specs[CommandName.APPLY_INTERPRETATION.value]
     assert apply_spec.taxonomy == "data_interpretation"
     assert apply_spec.input_schema["properties"]["confirmed"]["type"] == "boolean"
+    assert (
+        apply_spec.input_schema["properties"]["resource_preflight_confirmed"]["type"]
+        == "boolean"
+    )
+    assert apply_spec.input_schema["properties"]["resource_preflight_token"] == {
+        "type": "string",
+        "nullable": True,
+    }
+
+    load_spec = specs[CommandName.LOAD_DATA.value]
+    assert load_spec.input_schema["properties"]["resource_preflight_token"] == {
+        "type": "string",
+        "nullable": True,
+    }
 
     dataset_spec = specs[CommandName.GENERATE_DATASET.value]
     split_config = dataset_spec.input_schema["properties"]["split_config"]
@@ -56,6 +74,29 @@ def test_command_specs_cover_application_commands_with_autonomy_policy():
     splitter = split_config["properties"]["test_splitters"]["items"]
     assert "By Trial" in splitter["properties"]["split_type"]["enum"]
     assert "Ratio" in splitter["properties"]["split_unit"]["enum"]
+
+
+def test_command_specs_fail_closed_when_published_state_is_stale() -> None:
+    service = ApplicationService(Study())
+    service.state_snapshot.build = MagicMock(
+        side_effect=RuntimeError("state refresh failed"),
+    )
+    with pytest.raises(RuntimeError, match="state refresh failed"):
+        service.get_state()
+
+    specs = {spec.name: spec for spec in command_specs(service)}
+
+    scan = specs[CommandName.SCAN_SOURCE.value]
+    assert scan.capability is not None
+    assert scan.capability["enabled"] is False
+    assert scan.capability["reasons"] == [PUBLIC_VIEW_UNAVAILABLE_MESSAGE]
+    publication = service.get_view_publication()
+    assert publication.diagnostic_error == "state refresh failed"
+    assert specs[CommandName.QUERY_STATE.value].capability["enabled"] is True
+    assert specs[CommandName.STOP_TRAINING.value].capability["enabled"] is True
+    reset = specs[CommandName.RESET_SESSION.value].capability
+    assert reset["enabled"] is True
+    assert reset["requires_confirmation"] is True
 
 
 def test_preview_command_spec_exposes_recipe_remap_choices():
@@ -211,6 +252,70 @@ def test_build_command_from_payload_validates_required_and_unknown_arguments():
         )
 
 
+@pytest.mark.parametrize(
+    ("command_name", "field_name", "expected_type", "invalid_value"),
+    [
+        (CommandName.CONFIGURE_TRAINING, "model_name", "string", 123),
+        (CommandName.CONFIGURE_TRAINING, "output_dir", "string", 123),
+        (CommandName.TRAIN, "append", "boolean", "false"),
+        (CommandName.TRAIN, "interactive", "boolean", "false"),
+    ],
+)
+def test_build_training_command_rejects_values_outside_published_schema(
+    command_name: CommandName,
+    field_name: str,
+    expected_type: str,
+    invalid_value: object,
+) -> None:
+    spec = next(spec for spec in command_specs() if spec.name == command_name.value)
+    assert spec.input_schema["properties"][field_name]["type"] == expected_type
+
+    with pytest.raises(AutomationPayloadError, match=field_name):
+        build_command_from_payload(
+            {
+                "command": command_name.value,
+                "arguments": {field_name: invalid_value},
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    ("command_name", "field_name", "invalid_value"),
+    [
+        (CommandName.CONFIGURE_TRAINING, "model_name", 123),
+        (CommandName.CONFIGURE_TRAINING, "output_dir", 123),
+        (CommandName.TRAIN, "append", "false"),
+        (CommandName.TRAIN, "interactive", "false"),
+    ],
+)
+def test_execute_training_payload_rejects_schema_error_before_service_execution(
+    command_name: CommandName,
+    field_name: str,
+    invalid_value: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ApplicationService(Study())
+    execute_spy = MagicMock(
+        side_effect=AssertionError("invalid payload must not reach service.execute"),
+    )
+    monkeypatch.setattr(service, "execute", execute_spy)
+
+    execution = execute_automation_payload(
+        service,
+        {
+            "command": command_name.value,
+            "arguments": {field_name: invalid_value},
+        },
+    )
+
+    assert execution.accepted is False
+    assert execution.command_name == command_name.value
+    assert execution.verification["schema_valid"] is False
+    assert field_name in execution.verification["error"]
+    assert execution.result is None
+    execute_spy.assert_not_called()
+
+
 def test_build_command_preserves_typed_enum_values():
     command = build_command_from_payload(
         {
@@ -292,9 +397,18 @@ def test_execute_automation_payload_state_contains_interpretation_review_truth(
                             "anchor": "onset",
                             "time_model": "seconds",
                             "granularity": "trial",
+                            "value_decisions": {
+                                "left": {
+                                    "role": "stimulus",
+                                    "keep_event": True,
+                                    "use_as_class": True,
+                                    "class_name": "left hand",
+                                    "decision_source": "user_choice",
+                                    "provenance": "automation_test",
+                                }
+                            },
                         },
                     },
-                    "class_map": {"left": "left hand"},
                 },
             },
         },
@@ -331,6 +445,73 @@ def test_execute_automation_payload_reports_schema_error_without_service_executi
     assert execution.verification["schema_valid"] is False
     assert "missing required" in execution.verification["error"]
     assert execution.result is None
+
+
+def test_headless_load_requires_explicit_resource_warning_confirmation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "warning.unknown"
+    path.write_bytes(b"0" * 100)
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 2_000_000)
+
+    blocked = execute_automation_payload(
+        service,
+        {"command": "load_data", "arguments": {"paths": [str(path)]}},
+    )
+
+    assert blocked.result is not None
+    assert blocked.result["status"] == "failed"
+    assert blocked.result["error_type"] == "confirmation_required"
+    assert blocked.result["diagnostics"]["resource_preflight"]["risk_level"] == (
+        "warning"
+    )
+    challenge = blocked.result["diagnostics"]["resource_preflight"][
+        "confirmation_challenge"
+    ]
+    assert challenge["command_name"] == "load_data"
+    service.dataset.import_files.assert_not_called()
+
+    continued = execute_automation_payload(
+        service,
+        {
+            "command": "load_data",
+            "arguments": {
+                "paths": [str(path)],
+                "resource_preflight_confirmed": True,
+                "resource_preflight_token": challenge["challenge_id"],
+            },
+        },
+    )
+
+    assert continued.result is not None
+    assert continued.result["status"] == "ok"
+    assert continued.result["diagnostics"]["resource_preflight"]["risk_level"] == (
+        "warning"
+    )
+    service.dataset.import_files.assert_called_once_with([str(path)])
+
+
+def test_automation_preflight_reads_one_committed_publication():
+    service = ApplicationService(Study())
+    publication = service.get_view_publication()
+    service.get_view_publication = MagicMock(return_value=publication)
+    service.get_state = MagicMock(
+        side_effect=AssertionError("automation must not rebuild state separately"),
+    )
+    service.get_capabilities = MagicMock(
+        side_effect=AssertionError("automation must not rebuild policy separately"),
+    )
+
+    execution = execute_automation_payload(
+        service,
+        {"command": "scan_source", "arguments": {}},
+    )
+
+    assert execution.accepted is False
+    service.get_view_publication.assert_called_once_with()
 
 
 def test_headless_cli_lists_mcp_tool_specs():

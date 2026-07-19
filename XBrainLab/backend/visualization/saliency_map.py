@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 
 from .base import Visualizer
+from .saliency_semantics import saliency_color_scale
 
 
 class SaliencyMapViz(Visualizer):
@@ -38,39 +39,77 @@ class SaliencyMapViz(Visualizer):
             ax.set_axis_off()
             return fig
         visible_label_number = len(saliency_by_label)
-        duration = self.epoch_data.get_epoch_duration()
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
-        for plot_index, (_label_key, label_name, raw_saliency) in enumerate(
-            saliency_by_label,
-        ):
-            ax = fig.add_subplot(rows, cols, plot_index + 1)
-
+        display_by_label = []
+        for label_key, label_name, raw_saliency in saliency_by_label:
             if absolute:
                 saliency = np.abs(raw_saliency).mean(axis=0)
-                cmap = "Reds"
             else:
                 saliency = raw_saliency.mean(axis=0)
-                cmap = "coolwarm"
+            display_by_label.append((label_key, label_name, saliency))
 
-            im = ax.imshow(
+        cmap, color_min, color_max = saliency_color_scale(
+            method,
+            [saliency for _label_key, _label_name, saliency in display_by_label],
+            absolute=absolute,
+        )
+        plot_axes = []
+        image = None
+        for plot_index, (_label_key, label_name, saliency) in enumerate(
+            display_by_label,
+        ):
+            ax = fig.add_subplot(rows, cols, plot_index + 1)
+            plot_axes.append(ax)
+
+            image = ax.imshow(
                 saliency,
                 aspect="auto",
                 cmap=cmap,
-                vmin=saliency.min(),
-                vmax=saliency.max(),
+                vmin=color_min,
+                vmax=color_max,
                 interpolation="none",
             )
 
-            ax.set_xlabel("time")
-            ax.set_ylabel("channel")
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Channel")
             ch_names = self.epoch_data.get_channel_names()
             ax.set_yticks(ticks=range(len(ch_names)), labels=ch_names, fontsize=6)
+            sample_count = int(saliency.shape[-1])
+            sfreq = float(self.epoch_data.get_model_args()["sfreq"])
+            if sfreq <= 0:
+                raise ValueError(
+                    "Sampling frequency must be positive for a saliency map."
+                )
+            epoch_start = float(getattr(self.epoch_data, "tmin", 0.0))
+            epoch_end = epoch_start + (sample_count - 1) / sfreq
+            tick_count = min(4, sample_count)
             ax.set_xticks(
-                ticks=np.linspace(0, saliency.shape[-1], 5),
-                labels=np.round(np.linspace(0, duration, 5), 2),
+                ticks=np.linspace(0, sample_count - 1, tick_count),
+                labels=np.round(
+                    np.linspace(epoch_start, epoch_end, tick_count),
+                    2,
+                ),
             )
-            fig.colorbar(im, ax=ax, orientation="vertical")
-            ax.set_title(f"Saliency Map of class {label_name}")
-        fig.tight_layout()
+            ax.tick_params(axis="x", labelsize=7)
+            # The view already names the plot type. Repeating it on every
+            # subplot makes class titles overlap in the desktop panel.
+            ax.set_title(str(label_name))
+        if image is not None:
+            colorbar = fig.colorbar(
+                image,
+                ax=plot_axes,
+                orientation="vertical",
+                fraction=0.035,
+                pad=0.04,
+            )
+            colorbar.ax.tick_params(labelsize=7, pad=1)
+        fig.subplots_adjust(
+            left=0.10,
+            right=0.88,
+            bottom=0.12,
+            top=0.88,
+            wspace=0.38,
+            hspace=0.45,
+        )
         return fig

@@ -17,6 +17,9 @@ from XBrainLab.backend.utils.observer import Observable
 
 if TYPE_CHECKING:
     from XBrainLab.backend.study import Study
+    from XBrainLab.backend.training_state_contract import (
+        PostTrainingSaliencyScheduleOutcome,
+    )
 
 
 class VisualizationController(Observable):
@@ -123,15 +126,20 @@ class VisualizationController(Observable):
         """
         return self._study.get_saliency_params()
 
-    def set_saliency_params(self, params: dict) -> None:
+    def set_saliency_params(
+        self,
+        params: dict,
+    ) -> PostTrainingSaliencyScheduleOutcome | None:
         """Set saliency parameters in the study.
 
         Args:
             params: Dictionary of saliency configuration values.
 
         """
-        self._study.set_saliency_params(params)
-        self.notify("saliency_changed")
+        schedule = self._study.set_saliency_params(params)
+        if schedule is None or schedule.scheduled:
+            self.notify("saliency_changed")
+        return schedule
 
     def get_averaged_record(
         self,

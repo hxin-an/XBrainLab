@@ -1,14 +1,65 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
-import numpy as np
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog
 
+from XBrainLab.backend.application.commands import PreviewLabelImportCommand
 from XBrainLab.ui.dialogs.dataset import (
     EventFilterDialog,
     ImportLabelDialog,
     LabelMappingDialog,
 )
+
+
+def _preview_summary(
+    paths: list[str],
+    unique_labels: list[object],
+    *,
+    mode: str = "sequence",
+    target_count: int | None = 3,
+    total_count: int | None = None,
+) -> dict[str, object]:
+    return {
+        "preview_id": "label-preview-test",
+        "label_paths": paths,
+        "label_configs": {
+            path: {
+                "label_field": None,
+                "anchor": None,
+                "duration_field": None,
+                "sequence_only": False,
+            }
+            for path in paths
+        },
+        "mode": mode,
+        "target_count": target_count,
+        "total_label_count": total_count if total_count is not None else target_count,
+        "mapping_cardinality_limit": 256,
+        "unique_labels": unique_labels,
+    }
+
+
+def _complete_preview(monkeypatch, summary: dict[str, object]):
+    commands: list[PreviewLabelImportCommand] = []
+
+    def _execute(_context, command, *, on_result, **_kwargs):
+        commands.append(command)
+        on_result(
+            SimpleNamespace(
+                failed=False,
+                diagnostics={"label_preview": summary},
+            )
+        )
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.import_label_dialog."
+        "execute_application_command_async",
+        _execute,
+    )
+    return commands
 
 
 def test_import_label_dialog_init(qtbot):
@@ -37,26 +88,112 @@ def test_import_label_dialog_shows_target_context(qtbot):
     assert "updates the current import recipe trace" in dialog.recipe_note_label.text()
 
 
-def test_import_label_dialog_load_file(qtbot):
-    """Test loading label files."""
+def test_import_label_dialog_load_file_uses_typed_async_preview(
+    qtbot, tmp_path, monkeypatch
+):
     dialog = ImportLabelDialog()
     qtbot.addWidget(dialog)
 
-    # Directly test the load_file method instead of browse_files
-    with patch(
-        "XBrainLab.ui.dialogs.dataset.import_label_dialog.load_label_file",
-        return_value=[1, 2, 1],
+    label_path = tmp_path / "labels.txt"
+    label_path.write_text("1 2 1\n", encoding="utf-8")
+    commands = _complete_preview(
+        monkeypatch,
+        _preview_summary([str(label_path)], [1, 2], total_count=3),
+    )
+    dialog.load_file(str(label_path))
+
+    assert dialog.file_list.count() == 1
+    assert dialog.label_paths == [str(label_path)]
+    assert dialog.unique_labels == [1, 2]
+    assert dialog.map_table.rowCount() == 2
+    assert len(commands) == 1
+    assert isinstance(commands[0], PreviewLabelImportCommand)
+    assert commands[0].label_paths == [str(label_path)]
+
+
+def test_import_label_dialog_binds_preview_to_reviewed_generation(
+    qtbot,
+    tmp_path,
+    monkeypatch,
+):
+    observed_generations: list[int | None] = []
+
+    def _execute(
+        _context,
+        _command,
+        *,
+        on_result,
+        expected_publication_generation=None,
+        **_kwargs,
     ):
-        dialog.load_file("/path/to/labels.txt")
-        dialog.file_list.addItem("labels.txt")
-        dialog.update_unique_labels()
+        observed_generations.append(expected_publication_generation)
+        on_result(
+            SimpleNamespace(
+                failed=False,
+                diagnostics={
+                    "label_preview": _preview_summary(
+                        [str(label_path)],
+                        [1, 2],
+                        total_count=3,
+                    ),
+                },
+            )
+        )
+        return True
 
-        assert dialog.file_list.count() == 1
-        assert "/path/to/labels.txt" in dialog.label_data_map
-        assert dialog.label_data_map["/path/to/labels.txt"] == [1, 2, 1]
+    label_path = tmp_path / "labels.txt"
+    label_path.write_text("1 2 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.import_label_dialog."
+        "execute_application_command_async",
+        _execute,
+    )
+    dialog = ImportLabelDialog(expected_publication_generation=73)
+    qtbot.addWidget(dialog)
 
-        assert dialog.unique_labels == [1, 2]
-        assert dialog.map_table.rowCount() == 2
+    dialog.load_file(str(label_path))
+
+    assert observed_generations == [73]
+    assert dialog.preview_summary["preview_id"] == "label-preview-test"
+
+
+def test_import_label_dialog_presents_stale_preview_as_review_again(
+    qtbot,
+    tmp_path,
+    monkeypatch,
+):
+    def _execute(_context, _command, *, on_result, **_kwargs):
+        on_result(
+            SimpleNamespace(
+                failed=True,
+                diagnostics={"stale_publication": True},
+                error_type=None,
+                message="The reviewed dataset changed.",
+            )
+        )
+        return True
+
+    label_path = tmp_path / "labels.txt"
+    label_path.write_text("1 2 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.import_label_dialog."
+        "execute_application_command_async",
+        _execute,
+    )
+    dialog = ImportLabelDialog(expected_publication_generation=73)
+    qtbot.addWidget(dialog)
+
+    with patch(
+        "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.warning"
+    ) as warning:
+        dialog.load_file(str(label_path))
+
+    warning.assert_called_once_with(
+        dialog,
+        "Review Label Import Again",
+        "The reviewed dataset changed.",
+    )
+    assert dialog.preview_summary == {}
 
 
 def test_import_label_dialog_accept_success(qtbot):
@@ -64,9 +201,9 @@ def test_import_label_dialog_accept_success(qtbot):
     dialog = ImportLabelDialog()
     qtbot.addWidget(dialog)
 
-    # Manually populate data
-    dialog.label_data_map = {"file1.txt": [1, 2]}
-    dialog.update_unique_labels()
+    dialog._apply_preview_summary(
+        _preview_summary(["file1.txt"], [1, 2], total_count=2)
+    )
 
     # Set mapping names
     dialog.map_table.item(0, 1).setText("Event A")  # Code 1
@@ -75,8 +212,11 @@ def test_import_label_dialog_accept_success(qtbot):
     dialog.accept()
     assert dialog.result() == QDialog.DialogCode.Accepted
 
-    labels, mapping = dialog.get_result()
-    assert labels == {"file1.txt": [1, 2]}
+    selection, mapping = dialog.get_result()
+    assert selection is not None
+    assert selection.preview_id == "label-preview-test"
+    assert selection.label_paths == ("file1.txt",)
+    assert selection.mode == "sequence"
     assert mapping == {1: "Event A", 2: "Event B"}
 
 
@@ -85,10 +225,13 @@ def test_import_label_dialog_supports_string_sequence_labels(qtbot):
     dialog = ImportLabelDialog()
     qtbot.addWidget(dialog)
 
-    dialog.label_data_map = {
-        "labels.csv": np.array(["left", "right", "left"], dtype=object)
-    }
-    dialog.update_unique_labels()
+    dialog._apply_preview_summary(
+        _preview_summary(
+            ["labels.csv"],
+            ["left", "right"],
+            total_count=3,
+        )
+    )
 
     assert dialog.unique_labels == ["left", "right"]
     assert dialog.map_table.item(0, 0).text() == "left"
@@ -97,9 +240,21 @@ def test_import_label_dialog_supports_string_sequence_labels(qtbot):
     dialog.map_table.item(0, 1).setText("Left Hand")
     dialog.map_table.item(1, 1).setText("Right Hand")
 
-    labels, mapping = dialog.get_result()
-    assert labels is not None
+    selection, mapping = dialog.get_result()
+    assert selection is not None
     assert mapping == {"left": "Left Hand", "right": "Right Hand"}
+
+
+def test_import_label_dialog_rejects_summary_above_backend_mapping_limit(qtbot):
+    dialog = ImportLabelDialog()
+    qtbot.addWidget(dialog)
+    summary = _preview_summary(["labels.csv"], [1, 2, 3], total_count=3)
+    summary["mapping_cardinality_limit"] = 2
+
+    with pytest.raises(ValueError, match="incomplete"):
+        dialog._apply_preview_summary(summary)
+
+    assert dialog.map_table.rowCount() == 0
 
 
 def test_event_filter_dialog(qtbot):
@@ -222,10 +377,11 @@ class TestImportLabelDialogBrowse:
             patch(
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
             ) as mock_fd,
-            patch.object(dialog, "load_file"),
+            patch.object(dialog, "_request_preview") as request_preview,
         ):
             mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
             dialog.browse_files()
+        request_preview.assert_called_once_with()
         assert dialog.file_list.count() == 1
         assert (
             dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == "/tmp/labels.txt"
@@ -234,14 +390,18 @@ class TestImportLabelDialogBrowse:
     def test_browse_files_skips_duplicate(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog.label_data_map["/tmp/labels.txt"] = [1]
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
-        ) as mock_fd:
+        dialog._add_label_path("/tmp/labels.txt")
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
+            ) as mock_fd,
+            patch.object(dialog, "_request_preview") as request_preview,
+        ):
             mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
             dialog.browse_files()
-        # Should not add a second entry
-        assert dialog.file_list.count() == 0
+        request_preview.assert_not_called()
+        assert dialog.file_list.count() == 1
+        assert dialog.label_paths == ["/tmp/labels.txt"]
 
     def test_browse_files_allows_same_basename_from_different_dirs(self, qtbot):
         dialog = ImportLabelDialog()
@@ -250,7 +410,7 @@ class TestImportLabelDialogBrowse:
             patch(
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
             ) as mock_fd,
-            patch.object(dialog, "load_file"),
+            patch.object(dialog, "_request_preview"),
         ):
             mock_fd.getOpenFileNames.return_value = (
                 ["/tmp/sub01/labels.txt", "/tmp/sub02/labels.txt"],
@@ -268,35 +428,48 @@ class TestImportLabelDialogBrowse:
             == "/tmp/sub02/labels.txt"
         )
 
-    def test_browse_files_handles_error(self, qtbot):
+    def test_browse_files_handles_backend_preview_error(self, qtbot, monkeypatch):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
+
+        def _execute(_context, _command, *, on_result, **_kwargs):
+            on_result(
+                SimpleNamespace(
+                    failed=True,
+                    diagnostics={},
+                    error_type=None,
+                    message="The label file is corrupt.",
+                )
+            )
+            return True
+
+        monkeypatch.setattr(
+            "XBrainLab.ui.dialogs.dataset.import_label_dialog."
+            "execute_application_command_async",
+            _execute,
+        )
         with (
             patch(
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
             ) as mock_fd,
-            patch.object(
-                dialog,
-                "load_file",
-                side_effect=ValueError("corrupt"),
-            ),
             patch(
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox"
             ) as mock_mb,
         ):
             mock_fd.getOpenFileNames.return_value = (["/tmp/bad.txt"], "")
             dialog.browse_files()
-        mock_mb.warning.assert_called_once()
+        mock_mb.critical.assert_called_once()
+        assert dialog.preview_summary == {}
 
     def test_remove_files(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog.label_data_map["a.txt"] = [1]
-        dialog.file_list.addItem("a.txt")
+        dialog._add_label_path("a.txt")
         dialog.file_list.item(0).setSelected(True)
         dialog.remove_files()
         assert dialog.file_list.count() == 0
-        assert "a.txt" not in dialog.label_data_map
+        assert dialog.label_paths == []
+        assert dialog.preview_summary == {}
 
     def test_remove_files_no_selection(self, qtbot):
         dialog = ImportLabelDialog()
@@ -309,19 +482,21 @@ class TestImportLabelDialogBrowse:
     def test_update_unique_labels_timestamp_mode(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog.label_data_map["ts.txt"] = [
-            {"label": 10, "onset": 0.0},
-            {"label": 20, "onset": 1.0},
-            {"label": 10, "onset": 2.0},
-        ]
-        dialog.update_unique_labels()
+        dialog._apply_preview_summary(
+            _preview_summary(
+                ["ts.txt"],
+                [10, 20],
+                mode="timestamp",
+                target_count=None,
+                total_count=3,
+            )
+        )
         assert dialog.unique_labels == [10, 20]
         assert dialog.map_table.rowCount() == 2
 
     def test_update_unique_labels_empty(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog.label_data_map.clear()
         dialog.update_unique_labels()
         assert dialog.unique_labels == []
         assert "No labels" in dialog.info_label.text()
@@ -329,13 +504,15 @@ class TestImportLabelDialogBrowse:
     def test_update_unique_labels_preserves_mapping(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog.label_data_map["a.txt"] = [1, 2]
-        dialog.update_unique_labels()
+        dialog._apply_preview_summary(
+            _preview_summary(["a.txt"], [1, 2], total_count=2)
+        )
         # Set custom name
         dialog.map_table.item(0, 1).setText("MyEvent")
         # Re-update — should preserve "MyEvent" for code 1
-        dialog.label_data_map["b.txt"] = [1, 3]
-        dialog.update_unique_labels()
+        dialog._apply_preview_summary(
+            _preview_summary(["a.txt", "b.txt"], [1, 2, 3], total_count=4)
+        )
         assert dialog.map_table.item(0, 1).text() == "MyEvent"
 
     def test_get_results_empty(self, qtbot):
@@ -356,8 +533,9 @@ class TestImportLabelDialogBrowse:
     def test_accept_no_mapping(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog.label_data_map["f.txt"] = [1]
-        dialog.update_unique_labels()
+        dialog._apply_preview_summary(
+            _preview_summary(["f.txt"], [1], target_count=1, total_count=1)
+        )
         # Clear the event name so mapping is empty
         dialog.map_table.item(0, 1).setText("")
         with patch(

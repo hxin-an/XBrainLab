@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-05-12`
+最後更新：`2026-07-19`
 
 ## 這份文件的用途
 
@@ -14,6 +14,28 @@
 - 主要 evidence 入口在哪裡
 - 還不能宣稱完成的是什麼
 - 下一手 owner 應該看哪裡
+
+## 2026-07-19 Desktop MVP Candidate Closure
+
+### 目前狀態
+
+- Backend、Data Import / BIDS epoch、training / saliency、Qt lifecycle、UI 與 local assistant
+  已收斂在單一 integration candidate。
+- 完整 unit `9006 passed, 1 skipped`、integration `388 passed`；最新 fast dashboard 的實質
+  checks 全 PASS，overall 只因尚未 commit 的 branch traceability 標為 WARN。
+- required multi-dataset matrix、strict cross-source `4/4`、human-like walkthrough `40/40`
+  phases / 42 screenshots，以及真實 Phi-4 ChatPanel workflow 都已重跑。
+- Phi-4 workflow 的 post-close evidence 證明 runtime / dispatcher `closed`、controller released、
+  registered / running generation threads 都為 `0`。
+
+### 邊界與下一步
+
+- raw local-model accuracy 仍是 development `6/12`、anti-overfit `1/7`；host safety 不能冒充
+  raw-model 或 thesis accuracy。
+- 獨立 agent/runtime 與 test-quality reviewer re-gate 已 PASS；尚需 commit / push 與
+  exact-commit dashboard，再交給使用者做 Windows 真人 click-through。
+- 仍不宣稱 full BIDS validator、signed installer、Windows DPI / dual-monitor acceptance、
+  長時間 local-model session 或 product complete。
 
 ## 文件分工
 

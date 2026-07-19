@@ -155,6 +155,18 @@ deterministic CLI 也同樣分層：`scripts/agent/evals/run_tool_call_eval.py` 
 只允許 `--case-id` / `--case-family` / `--case-limit` subset 和 repeat `1`；正式 full-suite
 dashboard refresh 必須顯式帶 `--eval-gate release` 或 `--eval-gate thesis`。
 
+Local LLM CLI 的 process exit 與 artifact contract 如下：
+
+- `--strict` 以 primary raw-model score 作為 hard gate；任何 failed case、空 case set 或不一致的
+  case summary 都回傳 exit code `1`。host-assisted normalization / safe blocking 不可把 raw-model
+  failure 轉成 gate pass。
+- `--eval-gate release` / `--eval-gate thesis` 預設使用 strict process-exit 語意。
+- fast / candidate run 預設為 report-only；也可顯式使用 `--report-only`。完成評估並寫出報告後
+  回傳 `0`，但 artifact 仍保留 `cli_gate.passed=false` 與 failed-case 數，不能宣稱模型通過。
+- resource preflight 在模型執行前失敗時回傳 exit code `2`，與模型評分失敗分開判讀。
+- `xbrainlab.local_tool_call_eval.v4` artifact 必須保存 `cli_gate.mode`、`score_scope`、pass/fail
+  case 數、`passed` 與 `exit_code`，使 CI 與人工報告可重現同一個 gate 判斷。
+
 ## Scripted Replay
 
 scripted replay 不能只停在文字報告。它應分成兩層：

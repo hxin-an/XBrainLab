@@ -23,6 +23,7 @@ from XBrainLab.backend.application import (
     CommandName,
     build_command_from_payload,
     execute_automation_payload,
+    get_application_service,
     mcp_tool_specs,
 )
 from XBrainLab.backend.study import Study
@@ -63,7 +64,7 @@ class MCPServer:
         transport = transport.strip().lower()
         if transport not in {"stdio", "http"}:
             raise ValueError(f"Unsupported MCP transport: {transport}")
-        self._service = service or ApplicationService(Study())
+        self._service = service or get_application_service(Study())
         self._transport = transport
         self._session_id = f"mcp-{transport}-{uuid.uuid4().hex[:12]}"
         self._long_running_handler = long_running_handler

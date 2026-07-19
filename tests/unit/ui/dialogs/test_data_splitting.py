@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -13,26 +13,53 @@ from PyQt6.QtWidgets import QFrame, QTreeWidgetItem, QWidget
 from XBrainLab.backend.study import Study
 
 
-@pytest.fixture
-def epoch_data():
-    """Mock epoch data for DataSplittingDialog."""
-    ed = MagicMock()
-    ed.get_data_length.return_value = 100
-    ed.subject_map = {"S01": [0, 1, 2], "S02": [3, 4, 5]}
-    ed.session_map = {"sess1": [0, 1, 2, 3, 4, 5]}
-    ed.label_map = {"left": 0, "right": 1}
-    ed.data = MagicMock()
-    ed.get_subject_map.return_value = ed.subject_map
-    ed.get_session_map.return_value = ed.session_map
-    return ed
+class FakeEpochData:
+    def __init__(self) -> None:
+        self.subject_map = {"S01": [0, 1, 2], "S02": [3, 4, 5]}
+        self.session_map = {"sess1": [0, 1, 2, 3, 4, 5]}
+        self.label_map = {"left": 0, "right": 1}
+        self.data = list(range(100))
+
+    def get_data_length(self) -> int:
+        return 100
+
+    def get_subject_map(self) -> dict[str, list[int]]:
+        return self.subject_map
+
+    def get_session_map(self) -> dict[str, list[int]]:
+        return self.session_map
+
+
+class FakeDataSplittingController:
+    def __init__(self, epoch_data: FakeEpochData) -> None:
+        self.epoch_data = epoch_data
+        self.dataset_generator = None
+        self.epoch_reads = 0
+        self.generator_reads = 0
+        self.fail_on_read = False
+
+    def get_epoch_data(self) -> FakeEpochData:
+        self.epoch_reads += 1
+        if self.fail_on_read:
+            raise AssertionError("stale controller read")
+        return self.epoch_data
+
+    def get_dataset_generator(self) -> object | None:
+        self.generator_reads += 1
+        if self.fail_on_read:
+            raise AssertionError("stale controller read")
+        return self.dataset_generator
 
 
 @pytest.fixture
-def controller(epoch_data):
-    ctrl = MagicMock()
-    ctrl.get_epoch_data.return_value = epoch_data
-    ctrl.get_dataset_generator.return_value = None
-    return ctrl
+def epoch_data() -> FakeEpochData:
+    """Return contract-valid epoch data for DataSplittingDialog."""
+    return FakeEpochData()
+
+
+@pytest.fixture
+def controller(epoch_data: FakeEpochData) -> FakeDataSplittingController:
+    return FakeDataSplittingController(epoch_data)
 
 
 class TestDrawRegion:
@@ -171,6 +198,31 @@ class TestDataSplittingDialog:
         qtbot.addWidget(dlg)
         assert dlg.windowTitle() == "Data Splitting Setting"
 
+    def test_assistant_handoff_prefills_explicit_split_choices(
+        self,
+        qtbot,
+        controller,
+    ):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(
+            None,
+            controller,
+            initial_values={
+                "training_mode": "individual",
+                "split_strategy": "subject",
+                "test_ratio": "0.3",
+            },
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.train_type_combo.currentText() == "Individual"
+        assert dialog.test_combo.currentText() == "By Subject"
+        assert dialog.val_combo.currentText() == "By Subject"
+        assert dialog.initial_values["test_ratio"] == "0.3"
+
     @pytest.mark.parametrize("available_width", [752, 760])
     def test_narrow_geometry_reflows_and_keeps_confirm_visible(
         self,
@@ -195,6 +247,8 @@ class TestDataSplittingDialog:
         assert dlg.btn_confirm is not None
         assert dlg.minimumSizeHint().width() <= available_width
         assert settings.geometry().top() >= preview.geometry().bottom()
+        assert abs(settings.geometry().left() - preview.geometry().left()) <= 2
+        assert settings.geometry().width() >= preview.geometry().width() - 4
         assert dlg.btn_confirm.isVisible()
 
         confirm_bottom_right = dlg.btn_confirm.mapTo(
@@ -221,10 +275,7 @@ class TestDataSplittingDialog:
 
         parent = RealStudyParent()
         qtbot.addWidget(parent)
-        controller.get_epoch_data.side_effect = AssertionError("stale controller read")
-        controller.get_dataset_generator.side_effect = AssertionError(
-            "stale controller read"
-        )
+        controller.fail_on_read = True
 
         dlg = DataSplittingDialog(parent, controller)
         qtbot.addWidget(dlg)
@@ -235,8 +286,8 @@ class TestDataSplittingDialog:
         assert not dlg.btn_confirm.isEnabled()
         assert dlg.blocked_label is not None
         assert "Create epochs" in dlg.blocked_label.text()
-        controller.get_epoch_data.assert_not_called()
-        controller.get_dataset_generator.assert_not_called()
+        assert controller.epoch_reads == 0
+        assert controller.generator_reads == 0
 
     def test_confirm_without_epoch_data_does_not_open_preview(
         self,
@@ -331,6 +382,13 @@ class TestDataSplittingDialog:
         assert results_panel.frameShape() == QFrame.Shape.NoFrame
         assert "QFrame#SplitPreviewSummaryPanel" in dlg.styleSheet()
         assert "QFrame#SplitPreviewPanel" in dlg.styleSheet()
+        assert "QFrame#SplitPreviewSummaryPanel QLabel" in dlg.styleSheet()
+        summary_label_style = dlg.styleSheet().split(
+            "QFrame#SplitPreviewSummaryPanel QLabel",
+            1,
+        )[1]
+        summary_label_style = summary_label_style.split("}", 1)[0]
+        assert "background: transparent;" in summary_label_style
         split_panel_style = dlg.styleSheet().split("QFrame#SplitPreviewPanel", 1)[1]
         split_panel_style = split_panel_style.split("}", 1)[0]
         assert "border: none;" in split_panel_style
@@ -347,7 +405,9 @@ class TestDataSplittingDialog:
         qtbot.wait(10)
 
         last_row = dlg.tree.visualItemRect(rows[-1])
-        unused_viewport_height = dlg.tree.viewport().height() - last_row.bottom()
+        viewport = dlg.tree.viewport()
+        assert viewport is not None
+        unused_viewport_height = viewport.height() - last_row.bottom()
         assert unused_viewport_height <= 12
         assert (
             dlg.tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -581,14 +641,12 @@ class TestDataSplittingDialogSplitTypes:
             MockPreview.assert_called_once()
 
     def test_confirm_accepts_on_step2_ok(self, qtbot, controller):
-        from unittest.mock import MagicMock, patch
-
         dlg = self._make_dialog(qtbot, controller)
         with patch(
             "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
         ) as MockPreview:
             MockPreview.return_value.exec.return_value = True
-            MockPreview.return_value.get_result.return_value = MagicMock()
+            MockPreview.return_value.get_result.return_value = object()
             dlg.confirm()
             assert dlg.split_result is not None
 

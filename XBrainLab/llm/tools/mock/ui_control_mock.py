@@ -7,6 +7,7 @@ the actual GUI, enabling offline agent testing.
 from typing import Any
 
 from ..definitions.ui_control_def import BaseSwitchPanelTool
+from ..result_contract import ToolResult, UiRequest, UiRequestKind
 
 
 class MockSwitchPanelTool(BaseSwitchPanelTool):
@@ -18,7 +19,7 @@ class MockSwitchPanelTool(BaseSwitchPanelTool):
         panel_name: str | None = None,
         view_mode: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult | UiRequest:
         """Return a simulated panel-switch result.
 
         Args:
@@ -32,8 +33,8 @@ class MockSwitchPanelTool(BaseSwitchPanelTool):
 
         """
         if panel_name is None:
-            return "Error: panel_name is required"
-        msg = f"Switched UI view to {panel_name} panel"
-        if view_mode:
-            msg += f" showing {view_mode}"
-        return msg + "."
+            return ToolResult(False, "A panel name is required.", error_type="input")
+        return UiRequest(
+            UiRequestKind.SWITCH_PANEL,
+            {"panel": panel_name, "view_mode": view_mode},
+        )

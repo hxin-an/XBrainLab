@@ -36,15 +36,22 @@ def test_full_workflow(main_window, qtbot):
     assert isinstance(main_window.stack.currentWidget(), DatasetPanel)
 
     # 2. Training Panel
-    main_window.switch_page(2)
+    training_ready = []
+    main_window.switch_page(2, on_ready=training_ready.append)
+    qtbot.waitUntil(lambda: bool(training_ready), timeout=5_000)
     assert isinstance(main_window.stack.currentWidget(), TrainingPanel)
+    assert training_ready == [main_window.stack.currentWidget()]
 
     # 3. Evaluation Panel
-    main_window.switch_page(3)
-    # This might trigger the AttributeError if it happens on switch/show
+    evaluation_ready = []
+    main_window.switch_page(3, on_ready=evaluation_ready.append)
+    qtbot.waitUntil(lambda: bool(evaluation_ready), timeout=5_000)
     assert main_window.stack.currentIndex() == 3
+    assert evaluation_ready == [main_window.stack.currentWidget()]
 
     # 4. Visualization Panel
-    main_window.switch_page(4)
-    # This might trigger the NameError if it happens on switch/show
+    visualization_ready = []
+    main_window.switch_page(4, on_ready=visualization_ready.append)
+    qtbot.waitUntil(lambda: bool(visualization_ready), timeout=5_000)
     assert main_window.stack.currentIndex() == 4
+    assert visualization_ready == [main_window.stack.currentWidget()]

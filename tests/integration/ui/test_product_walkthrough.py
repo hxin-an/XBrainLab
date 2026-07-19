@@ -2,20 +2,34 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import mne
 import numpy as np
+import pytest
 import torch
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractButton, QLabel, QMessageBox, QWidget
 
+import XBrainLab.backend.application.service as application_service_module
 from XBrainLab.backend.application import (
+    CommandName,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    ScanSourceCommand,
     TrainCommand,
+    ValidateInterpretationCommand,
     get_application_service,
+)
+from XBrainLab.backend.application.workflow_projection import (
+    build_workflow_projection,
 )
 from XBrainLab.backend.dataset import (
     DataSplitter,
@@ -26,8 +40,25 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 from XBrainLab.backend.model_base import EEGNet
-from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.backend.training import (
+    ModelHolder,
+    Trainer,
+    TrainingEvaluation,
+    TrainingOption,
+    TrainingPlanHolder,
+)
 from XBrainLab.backend.training.record import RecordKey, TrainRecordKey
+from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
+from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
+from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+    RuntimeActivationResult,
+    RuntimeActivationStatus,
+    RuntimeSetupAction,
+    RuntimeSetupOutcome,
+)
+from XBrainLab.ui.components.assistant_status_projection import (
+    AssistantWorkflowSurface,
+)
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
@@ -39,6 +70,45 @@ EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY = {
     "test_count": 3,
     "audit": {"ok": True, "dataset_count": 1, "issues": []},
 }
+
+
+def test_human_like_capture_script_is_a_real_exit_code_gate(tmp_path) -> None:
+    """Execute the product capture itself so helper-only tests cannot mask failure."""
+    root = Path(__file__).resolve().parents[3]
+    output_dir = tmp_path / "human-like-walkthrough-runs" / "current"
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    completed = subprocess.run(  # noqa: S603 - fixed repository script path
+        [
+            sys.executable,
+            "scripts/dev/capture_human_like_product_walkthrough.py",
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=120,
+    )
+    reports = sorted(output_dir.parent.glob("*/human-like-walkthrough.md"))
+    report_text = reports[-1].read_text(encoding="utf-8") if reports else ""
+
+    assert completed.returncode == 0, (
+        "Human-like walkthrough process failed.\n"
+        f"stdout:\n{completed.stdout}\n"
+        f"stderr:\n{completed.stderr}\n"
+        f"report:\n{report_text}"
+    )
+    payload = json.loads(
+        (output_dir / "human-like-walkthrough.json").read_text(encoding="utf-8")
+    )
+    assert payload["status"] == "passed"
+    assert payload["pass_fail_summary"]["observed_phase_count"] == 40
+    assert payload["pass_fail_summary"]["required_phase_count"] == 40
+    assert payload["artifact_run"]["source_fingerprint"]
+    assert isinstance(payload["artifact_run"]["working_tree_dirty"], bool)
 
 
 def _click(qtbot, button) -> None:
@@ -57,6 +127,25 @@ def _wait_for_raw_count(qtbot, study, expected: int) -> None:
     )
 
 
+def _wait_for_dataset_count(qtbot, study, expected: int) -> None:
+    qtbot.waitUntil(
+        lambda: _application_state(study)["dataset"]["count"] == expected,
+        timeout=10000,
+    )
+
+
+def _wait_for_workflow_panel(qtbot, window, index: int, attr_name: str):
+    """Wait for user-click navigation to finish lazy panel materialization."""
+
+    qtbot.waitUntil(
+        lambda: index in window._loaded_panel_indices
+        and window.stack.currentIndex() == index
+        and window.stack.currentWidget() is getattr(window, attr_name),
+        timeout=10000,
+    )
+    return getattr(window, attr_name)
+
+
 def _query_diagnostics(study, query: str, *, include_objects: bool = False):
     result = get_application_service(study).execute(
         QueryStateCommand(query=query, include_objects=include_objects),
@@ -69,23 +158,17 @@ def _write_synthetic_raw_fif(tmp_path):
     sfreq = 128
     ch_names = ["C3", "C4", "Cz", "Pz"]
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    data = np.random.default_rng(7).normal(size=(len(ch_names), sfreq * 8))
+    event_samples = sfreq + np.arange(12) * int(1.5 * sfreq)
+    data = np.random.default_rng(7).normal(
+        size=(len(ch_names), int(event_samples[-1] + 2 * sfreq)),
+    )
     raw = mne.io.RawArray(data, info)
-    events = np.array(
-        [
-            [128, 0, 1],
-            [192, 0, 2],
-            [256, 0, 1],
-            [320, 0, 2],
-            [384, 0, 1],
-            [448, 0, 2],
-            [512, 0, 1],
-            [576, 0, 2],
-            [640, 0, 1],
-            [704, 0, 2],
-            [768, 0, 1],
-            [832, 0, 2],
-        ],
+    events = np.column_stack(
+        (
+            event_samples,
+            np.zeros(len(event_samples), dtype=int),
+            np.tile([1, 2], len(event_samples) // 2),
+        ),
     )
     raw.set_annotations(
         mne.annotations_from_events(
@@ -99,16 +182,66 @@ def _write_synthetic_raw_fif(tmp_path):
     return path
 
 
+def _assert_assistant_status_matches_publication(
+    manager,
+    *,
+    command_name: str,
+    surface: AssistantWorkflowSurface,
+    decision_fields: tuple[str, ...],
+) -> None:
+    service = get_application_service(manager.study)
+    publication = service.get_view_publication()
+    backend_projection = build_workflow_projection(
+        publication.state,
+        publication.effective_capabilities,
+    )
+
+    manager.refresh_backend_status()
+    ui_projection = manager.assistant_status_projection
+
+    assert ui_projection is not None
+    assert ui_projection.publication_generation == publication.generation
+    assert ui_projection.recommended_command == command_name
+    assert ui_projection.recommended_command == backend_projection.recommended_command
+    assert ui_projection.blocked_command == backend_projection.blocked_command
+    assert ui_projection.blocked_reasons == backend_projection.blocked_reasons
+    assert ui_projection.decision_fields == decision_fields
+    assert ui_projection.decision_fields == backend_projection.decision_fields
+    assert ui_projection.existing_ui_surface is surface
+    assert (
+        manager.chat_panel.empty_state_action_button.text()
+        == ui_projection.recommended_label
+    )
+    tooltip = manager.chat_panel.empty_state_widget.toolTip()
+    assert surface.value in tooltip
+    for reason in backend_projection.blocked_reasons:
+        assert reason in tooltip
+    if not backend_projection.blocked_reasons:
+        assert "Action required:" not in tooltip
+
+
 def test_assistant_product_click_through_layout(test_app, qtbot):
     """Open assistant, verify product language, bubbles, composer, and nav."""
     test_app.init_agent()
     manager = test_app.agent_manager
     with (
-        patch.object(manager, "_load_runtime_config", return_value=SimpleNamespace()),
         patch.object(
-            manager,
-            "_assistant_runtime_start_status",
-            return_value=(False, "Model cache not found."),
+            manager.assistant_runtime,
+            "load_config",
+            return_value=SimpleNamespace(),
+        ),
+        patch.object(
+            manager.assistant_runtime,
+            "needs_first_run",
+            return_value=False,
+        ),
+        patch.object(
+            manager.assistant_runtime,
+            "activate",
+            return_value=RuntimeActivationResult(
+                RuntimeActivationStatus.UNAVAILABLE,
+                message="Model cache not found.",
+            ),
         ),
     ):
         _click(qtbot, test_app.ai_btn)
@@ -122,31 +255,15 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         if label.text()
     )
     assert dock_title_text == "XBrainLab"
-    assert panel.title_label.text() == ""
-    assert panel.title_label.isHidden()
-    assert panel.findChild(type(panel.title_label), "AssistantSubtitle").isHidden()
-    assert panel.findChild(QWidget, "AssistantHeader").isHidden()
-    assert panel.workflow_guidance.isHidden()
-    assert "Commands:" not in panel.available_commands_chip.text()
-    assert "load_data" not in panel.available_commands_chip.text()
-    assert "attach_labels" not in panel.available_commands_chip.text()
-    assert "Load EEG data" not in panel.available_commands_chip.text()
-    assert "Attach labels" not in panel.available_commands_chip.text()
-    assert "Scan data source" in panel.available_commands_chip.text()
-    visible_footer_text = " ".join(
-        label.text()
-        for label in panel.control_panel.findChildren(type(panel.title_label))
-        if label.isVisible()
-    )
-    assert visible_footer_text == ""
-    assert "Local" not in visible_footer_text
-    assert "Backend" not in visible_footer_text
-    assert panel.options_btn.isHidden()
-    assert panel.feature_btn.isHidden()
-    assert panel.mode_btn.isHidden()
-    assert panel.step_mode_status_label.isHidden()
-    assert panel.input_field.placeholderText() == "Ask about EEG workflow"
-    assert len(panel.input_field.placeholderText()) <= 24
+    assert panel.empty_state_title.text() == "Start with your EEG data"
+    assert panel.empty_state_action_button.text() == "Scan data source"
+    assert panel.runtime_state_widget.isVisible()
+    assert panel.runtime_state_title.text() == "Assistant setup required"
+    assert "Model cache not found" not in panel.runtime_state_detail.text()
+    assert "Backend" not in panel.runtime_state_detail.text()
+    assert panel.input_field.placeholderText() == "Set up assistant"
+    assert panel.input_field.isEnabled() is False
+    assert panel.send_btn.isEnabled() is False
 
     visible_first_layer = " ".join(
         child.text()
@@ -173,10 +290,14 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     ]:
         assert forbidden not in visible_first_layer
 
-    heading_text = f"{dock_title_text} {panel.title_label.text()}"
-    assert heading_text.count("Assistant") == 0
+    assert dock_title_text.count("XBrainLab") == 1
 
-    assert manager.retry_title_btn.text() == "↻"
+    assert manager.retry_title_btn.text() == ""
+    assert not manager.retry_title_btn.icon().isNull()
+    assert manager.settings_btn.text() == ""
+    assert not manager.settings_btn.icon().isNull()
+    assert manager.float_btn.text() == ""
+    assert not manager.float_btn.icon().isNull()
     assert manager.retry_title_btn.isEnabled() is False
     assert not hasattr(manager, "clear_title_btn")
     assert manager.retry_title_btn.geometry().right() <= (
@@ -185,7 +306,7 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     menu_text = [
         action.text() for action in manager.settings_menu.actions() if action.text()
     ]
-    assert menu_text == ["Assistant settings", "Clear conversation"]
+    assert menu_text == ["Assistant settings", "New chat"]
     assert manager.clear_conversation_title_action.isEnabled() is False
 
     visible_title_text = " ".join(
@@ -211,18 +332,18 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         assert forbidden not in visible_transcript
 
     with (
-        patch.object(manager, "_load_runtime_config", return_value=SimpleNamespace()),
         patch.object(
-            manager,
-            "_assistant_runtime_start_status",
-            return_value=(False, "Model cache not found."),
+            manager.assistant_runtime,
+            "activate_persisted",
+            return_value=RuntimeActivationResult(
+                RuntimeActivationStatus.UNAVAILABLE,
+                message="Model cache not found.",
+            ),
         ),
     ):
         manager.handle_user_input("hello")
-    assert manager.retry_title_btn.isEnabled()
-    assert manager.clear_conversation_title_action.isEnabled()
-    assert panel.retry_btn.isHidden()
-    assert panel.clear_btn.isHidden()
+    assert manager.retry_title_btn.isEnabled() is False
+    assert manager.clear_conversation_title_action.isEnabled() is False
 
     send_text_width = panel.send_btn.fontMetrics().horizontalAdvance(
         panel.send_btn.text()
@@ -230,26 +351,41 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert send_text_width < panel.send_btn.width() - 12
 
     panel.append_message("user", "hello from a product user")
-    user_bubble = panel.chat_layout.itemAt(panel.chat_layout.count() - 2).widget()
+    user_bubble = panel._latest_layout_message_bubble()
+    assert user_bubble is not None
     assert user_bubble.get_text().endswith("user")
     assert user_bubble.text_edit.toPlainText().endswith("user")
     assert (
         user_bubble.text_edit.document().textWidth() < user_bubble.bubble_frame.width()
     )
 
-    manager._handle_agent_response(
-        "Tool",
-        "Tool list_files completed. Error: directory is required",
+    submission = manager._assistant_turn_state.begin_submission()
+    correlation = AssistantTurnCorrelation(
+        generation=submission.generation,
+        turn_id=1,
     )
-    transcript_after_tool = "\n".join(
+    assert manager._assistant_turn_state.accept_admission(
+        submission,
+        correlation,
+    )
+    manager._handle_response_presentation(
+        AssistantResponsePresentation(
+            correlation=correlation,
+            text=(
+                "The requested action needs a dataset location before it can continue."
+            ),
+        )
+    )
+    transcript_after_guidance = "\n".join(
         message["content"] for message in manager.chat_controller.messages
     )
-    assert "Tool list_files completed" not in transcript_after_tool
-    assert "could not complete" in panel.notice_label.text()
+    assert "needs a dataset location" in transcript_after_guidance
 
-    manager._handle_agent_response(
-        "Tool",
-        "Workflow state ready. Import EEG files to begin.",
+    manager._handle_response_presentation(
+        AssistantResponsePresentation(
+            correlation=correlation,
+            text="Workflow state ready. Import EEG files to begin.",
+        )
     )
     transcript_after_safe_tool = "\n".join(
         message["content"] for message in manager.chat_controller.messages
@@ -269,27 +405,94 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         assert getattr(test_app, attr).isVisible()
 
 
-def test_assistant_first_open_preserves_local_runtime_confirmation(test_app, qtbot):
+@pytest.mark.parametrize(
+    ("choice", "outcome_message", "visible_message"),
+    [
+        (
+            LocalRuntimeFirstRunDialog.LATER,
+            "Assistant setup was deferred.",
+            "Assistant setup was deferred. Open assistant settings when you are "
+            "ready to continue.",
+        ),
+        (
+            LocalRuntimeFirstRunDialog.DISABLE,
+            "Assistant is disabled.",
+            "Assistant is disabled. Open assistant settings to enable it.",
+        ),
+    ],
+)
+def test_assistant_first_open_preserves_local_runtime_confirmation(
+    test_app,
+    qtbot,
+    choice,
+    outcome_message,
+    visible_message,
+):
     """Opening the dock still reaches the local runtime first-run confirmation."""
     test_app.init_agent()
     manager = test_app.agent_manager
+    status_messages: list[str] = []
+    manager.status_message_received.connect(status_messages.append)
     with (
-        patch.object(manager, "_load_runtime_config", return_value=SimpleNamespace()),
-        patch.object(manager, "_needs_local_runtime_first_run", return_value=True),
+        patch.object(
+            manager.assistant_runtime,
+            "load_config",
+            return_value=SimpleNamespace(),
+        ),
+        patch.object(
+            manager.assistant_runtime,
+            "needs_first_run",
+            return_value=True,
+        ),
         patch.object(
             manager,
             "_show_local_runtime_first_run_dialog",
-            return_value=LocalRuntimeFirstRunDialog.LATER,
+            return_value=choice,
         ) as show_first_run,
-        patch.object(manager, "_assistant_runtime_start_status") as start_status,
-        patch.object(manager, "start_system") as start_system,
+        patch.object(
+            manager.assistant_runtime,
+            "apply_first_run_choice",
+            return_value=RuntimeSetupOutcome(
+                RuntimeSetupAction.STOP,
+                outcome_message,
+            ),
+        ),
+        patch.object(manager.assistant_runtime, "activate") as activate,
     ):
         _click(qtbot, test_app.ai_btn)
 
-    assert manager.chat_dock.isVisible()
+    assert manager.chat_dock.isVisible() is True
+    assert test_app.ai_btn.isChecked() is True
     show_first_run.assert_called_once()
-    start_status.assert_not_called()
-    start_system.assert_not_called()
+    activate.assert_not_called()
+    assert status_messages[-1] == visible_message
+    assert manager.chat_panel.runtime_state_title.text() == "Assistant setup required"
+    assert manager.chat_panel.runtime_state_detail.text() == visible_message
+    assert manager.chat_panel.setup_btn.isVisible()
+
+
+def test_assistant_status_uses_real_interpretation_confirmation_publication(
+    test_app,
+    qtbot,
+    tmp_path,
+):
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    service = get_application_service(test_app.study)
+
+    assert service.execute(ScanSourceCommand(source_path=str(fif_path))).ok
+    assert service.execute(PreviewInterpretationCommand()).ok
+    validation = service.execute(ValidateInterpretationCommand())
+
+    assert validation.ok
+    assert validation.state.interpretation.pending_confirmation is True
+    _assert_assistant_status_matches_publication(
+        manager,
+        command_name="apply_interpretation",
+        surface=AssistantWorkflowSurface.DATA_IMPORT,
+        decision_fields=("metadata_review", "label_matching"),
+    )
 
 
 def test_import_command_success_refreshes_dataset_table_without_stale_controller(
@@ -353,6 +556,111 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
     )
     fif_path = _write_synthetic_raw_fif(tmp_path)
+    training_option_holder = {}
+    fake_train_calls = []
+
+    def fake_handle_train(
+        _training_commands,
+        command,
+        *,
+        defer_synchronous_completion=False,
+    ):
+        """Populate finished-run state through the command route without real training."""
+        assert isinstance(command, TrainCommand)
+        assert command.confirmed is True
+        assert defer_synchronous_completion is False
+        fake_train_calls.append(command)
+        eval_record = SimpleNamespace(
+            label=np.array([0, 1, 0, 1]),
+            output=np.array([0, 1, 0, 1]),
+            gradient={},
+            gradient_input={},
+            smoothgrad={},
+            smoothgrad_sq={},
+            vargrad={},
+            get_per_class_metrics=lambda: {
+                0: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
+                1: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
+                "macro_avg": {
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "f1-score": 1.0,
+                    "support": 4,
+                },
+            },
+            get_acc=lambda: 1.0,
+            get_auc=lambda: None,
+            get_kappa=lambda: 1.0,
+        )
+        record = SimpleNamespace(
+            epoch=1,
+            repeat=0,
+            train={
+                TrainRecordKey.LOSS: [0.25],
+                TrainRecordKey.ACC: [100.0],
+                TrainRecordKey.AUC: [None],
+                TrainRecordKey.LR: [0.001],
+                TrainRecordKey.TIME: [0.1],
+            },
+            val={
+                RecordKey.LOSS: [0.2],
+                RecordKey.ACC: [100.0],
+                RecordKey.AUC: [None],
+            },
+            eval_record=eval_record,
+            is_finished=lambda: True,
+            get_epoch=lambda: 1,
+            get_eval_record=lambda: eval_record,
+            get_confusion_figure=lambda show_percentage=False: Figure(figsize=(3, 2)),
+        )
+        model_holder = ModelHolder(EEGNet, {}, None)
+        option = training_option_holder["option"]
+
+        class _CompletedWalkthroughPlan(TrainingPlanHolder):
+            def __init__(self):
+                self.model_holder = model_holder
+                self.option = option
+                self.train_record_list = [record]
+                self._state_tracker = None
+                self._interrupt = False
+                self.error = None
+                self.status = "Finished"
+
+            def bind_state_tracker(self, tracker) -> None:
+                self._state_tracker = tracker
+
+            def get_name(self) -> str:
+                return "Product walkthrough dry-run"
+
+            def get_plans(self):
+                return list(self.train_record_list)
+
+            def get_training_repeat(self) -> int:
+                return 0
+
+        test_app.study.trainer = Trainer([_CompletedWalkthroughPlan()])
+        return (
+            "Training started.",
+            {
+                "append": command.append,
+                "interactive": command.interactive,
+                "fake_training": True,
+            },
+        )
+
+    monkeypatch.setattr(
+        application_service_module._LazyTrainingCommandService,
+        "handle_train",
+        fake_handle_train,
+    )
+    test_app.study._application_service = None
+    service = get_application_service(test_app.study)
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    assert service._command_handlers[CommandName.TRAIN] == (
+        service._handle_train_with_automation
+    )
+
     test_app.switch_page(0)
 
     with (
@@ -377,6 +685,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     assert test_app.dataset_panel.table.rowCount() == 1
 
     _click(qtbot, test_app.nav_btns[1])
+    _wait_for_workflow_panel(qtbot, test_app, 1, "preprocess_panel")
 
     class FakeFilteringDialog:
         def __init__(self, _parent):
@@ -398,12 +707,21 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         def get_params(self):
             return (None, ["left", "right"], 0.0, 1.3)
 
+        def get_confirmation_receipt(self):
+            return None
+
     with patch(
         "XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog",
         FakeFilteringDialog,
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_filter)
     assert _application_state(test_app.study)["preprocessed"]["count"] == 1
+    _assert_assistant_status_matches_publication(
+        manager,
+        command_name="create_epoch",
+        surface=AssistantWorkflowSurface.EPOCH_SETTINGS,
+        decision_fields=("target_event", "epoch_window"),
+    )
     qtbot.waitUntil(
         lambda: test_app.preprocess_panel.sidebar.btn_epoch.isEnabled(),
         timeout=5000,
@@ -424,8 +742,15 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     assert epoch_state["n_channels"] == 4
     assert epoch_state["n_times"] == 167
     assert epoch_state["event_ids"] == {"left": 0, "right": 1}
+    _assert_assistant_status_matches_publication(
+        manager,
+        command_name="generate_dataset",
+        surface=AssistantWorkflowSurface.DATASET_SPLIT,
+        decision_fields=("split_strategy", "training_mode"),
+    )
 
     _click(qtbot, test_app.nav_btns[2])
+    _wait_for_workflow_panel(qtbot, test_app, 2, "training_panel")
 
     split_config = DataSplittingConfig(
         train_type=TrainingType.IND,
@@ -492,8 +817,6 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         def get_result(self):
             return ModelHolder(EEGNet, {}, None)
 
-    training_option_holder = {}
-
     class FakeTrainingSettingDialog:
         def __init__(self, _parent, _controller, **_dialog_context):
             pass
@@ -522,9 +845,16 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog", FakeSplitDialog
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_split)
+    _wait_for_dataset_count(qtbot, test_app.study, 1)
     dataset_state = _application_state(test_app.study)["dataset"]
     assert dataset_state["count"] == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY["count"]
     assert dataset_state["split_summary"] == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY
+    _assert_assistant_status_matches_publication(
+        manager,
+        command_name="configure_training",
+        surface=AssistantWorkflowSurface.TRAINING_SETTINGS,
+        decision_fields=("model", "training_options"),
+    )
 
     with patch(
         "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog", FakeModelDialog
@@ -545,83 +875,26 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     assert training_state["training_option"]["batch_size"] == 2
     assert test_app.training_panel.sidebar.btn_start.isEnabled()
 
-    service = get_application_service(test_app.study)
-
-    def fake_handle_train(command):
-        """Populate finished-run state through the command route without real training."""
-        assert isinstance(command, TrainCommand)
-        assert command.confirmed is True
-        eval_record = SimpleNamespace(
-            get_per_class_metrics=lambda: {
-                0: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
-                1: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
-                "macro_avg": {
-                    "precision": 1.0,
-                    "recall": 1.0,
-                    "f1-score": 1.0,
-                    "support": 4,
-                },
-            }
-        )
-        record = SimpleNamespace(
-            epoch=1,
-            repeat=0,
-            train={
-                TrainRecordKey.LOSS: [0.25],
-                TrainRecordKey.ACC: [100.0],
-                TrainRecordKey.LR: [0.001],
-            },
-            val={
-                RecordKey.LOSS: [0.2],
-                RecordKey.ACC: [100.0],
-            },
-            eval_record=eval_record,
-            is_finished=lambda: True,
-            get_epoch=lambda: 1,
-            get_eval_record=lambda: eval_record,
-            get_confusion_figure=lambda show_percentage=False: Figure(figsize=(3, 2)),
-        )
-        model_holder = ModelHolder(EEGNet, {}, None)
-        option = training_option_holder["option"]
-        plan = SimpleNamespace(
-            model_holder=model_holder,
-            option=option,
-            get_name=lambda: "Product walkthrough dry-run",
-            get_plans=lambda: [record],
-            get_training_repeat=lambda: 0,
-        )
-        test_app.study.trainer = SimpleNamespace(
-            get_training_plan_holders=lambda: [plan],
-            is_running=lambda: False,
-            current_idx=0,
-        )
-        return (
-            "Training started.",
-            {
-                "append": command.append,
-                "interactive": command.interactive,
-            },
-        )
-
-    with (
-        patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.Yes,
-        ),
-        patch.object(
-            service.training_commands,
-            "handle_train",
-            side_effect=fake_handle_train,
-        ),
+    with patch.object(
+        QMessageBox,
+        "question",
+        return_value=QMessageBox.StandardButton.Yes,
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_start)
+        qtbot.waitUntil(lambda: len(fake_train_calls) == 1, timeout=5000)
 
+    assert len(fake_train_calls) == 1
+    qtbot.waitUntil(
+        lambda: _application_state(test_app.study)["training"]["finished_run_count"]
+        == 1,
+        timeout=5000,
+    )
     training_state = _application_state(test_app.study)["training"]
     assert training_state["has_trainer"] is True
     assert training_state["plan_count"] == 1
     assert training_state["finished_run_count"] == 1
 
     _click(qtbot, test_app.nav_btns[3])
+    _wait_for_workflow_panel(qtbot, test_app, 3, "evaluation_panel")
     assert test_app.evaluation_panel.model_combo.currentText().startswith("Fold 1")
     assert "Finished" in test_app.evaluation_panel.run_combo.currentText()

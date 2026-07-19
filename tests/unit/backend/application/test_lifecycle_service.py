@@ -11,6 +11,7 @@ from XBrainLab.backend.application.commands import (
     ResetPreprocessCommand,
     ResetSessionCommand,
 )
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.lifecycle_service import (
     HandlerResult,
     LifecycleCommandService,
@@ -28,6 +29,15 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyStatus,
+    TrainingOutcomeState,
+    TrainingPipelineMutationBoundary,
+    TrainingReadBoundary,
+    TrainingStateToken,
+    TrainingTerminalOutcome,
+)
 
 
 class _DataManager:
@@ -44,6 +54,47 @@ class _DataManager:
 class _TrainingManager:
     def __init__(self) -> None:
         self.trainer: Any | None = None
+        self.saliency_generation = 0
+
+    def capture_pipeline_mutation_boundary(
+        self,
+    ) -> TrainingPipelineMutationBoundary:
+        trainer_identity = (
+            None if self.trainer is None else f"trainer:{id(self.trainer)}"
+        )
+        return TrainingPipelineMutationBoundary(
+            read_boundary=(
+                TrainingReadBoundary.no_trainer()
+                if trainer_identity is None
+                else TrainingReadBoundary(
+                    trainer_identity=trainer_identity,
+                    token=TrainingStateToken(generation=1, stable=True),
+                )
+            ),
+            terminal_outcome=TrainingTerminalOutcome(
+                state=(
+                    TrainingOutcomeState.UNKNOWN
+                    if trainer_identity is None
+                    else TrainingOutcomeState.NOT_STARTED
+                ),
+                detail="No active training worker.",
+            ),
+            saliency_status=PostTrainingSaliencyStatus.idle(
+                generation=self.saliency_generation,
+            ),
+            saliency_work_active=False,
+        )
+
+    def retire_trainer_if_current(
+        self,
+        expected: TrainingPipelineMutationBoundary,
+    ) -> bool:
+        if self.capture_pipeline_mutation_boundary() != expected:
+            raise StaleTrainingPipelineMutationError
+        retired = self.trainer is not None
+        self.trainer = None
+        self.saliency_generation += 1
+        return retired
 
 
 class _Study:
@@ -52,6 +103,7 @@ class _Study:
         self.training_manager = _TrainingManager()
         self.fail_reset = False
         self.reset_called = False
+        self.replacement_trainer_on_reset: Any | None = None
 
     @property
     def preprocessed_data_list(self) -> list[Any]:
@@ -84,6 +136,10 @@ class _Study:
             self.data_manager.dataset_locked = False
         self.data_manager.preprocessed_data_list = []
         self.data_manager.epoch_data = None
+        self.data_manager.datasets = []
+        self.data_manager.dataset_generator = None
+        if self.replacement_trainer_on_reset is not None:
+            self.training_manager.trainer = self.replacement_trainer_on_reset
         if self.fail_reset:
             raise RuntimeError("reset failed")
 
@@ -125,10 +181,10 @@ class _TrainingController:
 
 class _TrainingCommands:
     def __init__(self) -> None:
-        self.cleared_managers: list[Any] = []
+        self.clear_count = 0
 
-    def clear_configuration(self, training_manager: Any | None) -> None:
-        self.cleared_managers.append(training_manager)
+    def clear_configuration(self) -> None:
+        self.clear_count += 1
 
 
 class _InterpretationCommands:
@@ -199,7 +255,8 @@ def _service() -> tuple[
 
 
 def test_lifecycle_service_resets_preprocess_and_clears_downstream_state() -> None:
-    service, _study, dataset, preprocess, training, _, _ = _service()
+    service, study, dataset, preprocess, training, _, _ = _service()
+    study.training_manager.trainer = object()
 
     message, payload = _expect_payload(
         service.handle_reset_preprocess(ResetPreprocessCommand(confirmed=True)),
@@ -212,7 +269,8 @@ def test_lifecycle_service_resets_preprocess_and_clears_downstream_state() -> No
         "dataset_count_before": 2,
         "trainer_cleared": True,
     }
-    assert training.cleaned is True
+    assert training.cleaned is False
+    assert study.training_manager.trainer is None
     assert preprocess.notifications == ["preprocess_changed"]
     assert dataset.notifications == [
         ("data_changed",),
@@ -252,8 +310,8 @@ def test_lifecycle_service_rolls_back_reset_preprocess_failure() -> None:
     assert study.training_manager.trainer is previous_trainer
 
 
-def test_lifecycle_service_rolls_back_second_stage_cleanup_failure() -> None:
-    service, study, _dataset, _preprocess, training, _, _ = _service()
+def test_lifecycle_service_rolls_back_stale_training_commit() -> None:
+    service, study, _dataset, _preprocess, _training, _, _ = _service()
     previous_loaded = [object()]
     previous_backup = [object()]
     previous_preprocessed = [object()]
@@ -261,6 +319,7 @@ def test_lifecycle_service_rolls_back_second_stage_cleanup_failure() -> None:
     previous_dataset = object()
     previous_generator = object()
     previous_trainer = object()
+    replacement_trainer = object()
     study.data_manager.loaded_data_list = previous_loaded
     study.data_manager.backup_loaded_data_list = previous_backup
     study.data_manager.preprocessed_data_list = previous_preprocessed
@@ -269,9 +328,9 @@ def test_lifecycle_service_rolls_back_second_stage_cleanup_failure() -> None:
     study.data_manager.dataset_generator = previous_generator
     study.data_manager.dataset_locked = True
     study.training_manager.trainer = previous_trainer
-    training.fail_clean = True
+    study.replacement_trainer_on_reset = replacement_trainer
 
-    with pytest.raises(RuntimeError, match="dataset cleanup failed"):
+    with pytest.raises(PreconditionError, match="changed"):
         service.handle_reset_preprocess(ResetPreprocessCommand(confirmed=True))
 
     assert study.data_manager.loaded_data_list == previous_loaded
@@ -281,7 +340,7 @@ def test_lifecycle_service_rolls_back_second_stage_cleanup_failure() -> None:
     assert study.data_manager.datasets == [previous_dataset]
     assert study.data_manager.dataset_generator is previous_generator
     assert study.data_manager.dataset_locked is True
-    assert study.training_manager.trainer is previous_trainer
+    assert study.training_manager.trainer is replacement_trainer
 
 
 def test_lifecycle_service_reset_session_and_new_session_clear_dependent_state() -> (
@@ -289,7 +348,7 @@ def test_lifecycle_service_reset_session_and_new_session_clear_dependent_state()
 ):
     (
         service,
-        study,
+        _study,
         dataset,
         _preprocess,
         _training,
@@ -306,8 +365,5 @@ def test_lifecycle_service_reset_session_and_new_session_clear_dependent_state()
     assert new_message == "New session started."
     assert new_payload == {"single_session_backend": True}
     assert dataset.cleaned is True
-    assert training_commands.cleared_managers == [
-        study.training_manager,
-        study.training_manager,
-    ]
+    assert training_commands.clear_count == 2
     assert interpretation.cleared is True

@@ -1,169 +1,314 @@
-from XBrainLab.llm.agent.parser import CommandParser
+import pytest
+
+from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 
 
-def test_valid_json_command():
-    text = """
-    Sure, here is the command:
-    ```json
-    {
-        "command": "load_data",
-        "parameters": {"file_paths": ["/data/A.gdf"]}
-    }
-    ```
-    """
-    parsed = CommandParser.parse(text)
-    assert parsed == [("load_data", {"file_paths": ["/data/A.gdf"]})]
+def test_product_parser_accepts_one_complete_strict_envelope():
+    text = '  {"tool_name":"load_data","parameters":{"file_paths":["/data/A.gdf"]}}\n'
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.VALID
+    assert result.commands == (("load_data", {"file_paths": ["/data/A.gdf"]}),)
+    assert result.error == ""
+    assert CommandParser.parse(text) == [("load_data", {"file_paths": ["/data/A.gdf"]})]
 
 
-def test_no_json_block():
-    text = "Just a normal conversation response."
-    result = CommandParser.parse(text)
-    assert result is None
-
-
-def test_malformed_json():
-    text = """
-    ```json
-    { "command": "load_data", "parameters": { ... broken ...
-    ```
-    """
-    result = CommandParser.parse(text)
-    assert result is None
-
-
-def test_parse_partial_tool_name_json_as_empty_parameters():
-    text = """
-    ```json
-    {"tool_name": "preview_interpretation", "parameters": {"choices": {"task":
-    ```
-    """
-
-    result = CommandParser.parse(text)
-
-    assert result == [("preview_interpretation", {})]
-
-
-def test_json_without_command_payload():
-    text = '{"command": "test"}'
-    result = CommandParser.parse(text)
-    assert result is None
-
-
-def test_parse_command_only_json_with_reason_as_empty_parameters():
-    text = '{"command": "validate_interpretation", "reasons": []}'
-    result = CommandParser.parse(text)
-    assert result == [("validate_interpretation", {})]
-
-
-def test_parse_command_only_json_with_decision_boundary_as_empty_parameters():
+def test_product_parser_rejects_tool_call_wrapper_even_when_inner_shape_is_valid():
     text = (
-        '{"command": "apply_interpretation", '
-        '"requires_confirmation": false, "decision_boundary": "data_apply"}'
+        '{"tool_call":{"tool_name":"scan_source","parameters":'
+        '{"source_path":"/data/A.gdf","label_sources":[]}}}'
     )
-    result = CommandParser.parse(text)
-    assert result == [("apply_interpretation", {})]
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert "exactly tool_name plus parameters" in result.error
+    assert CommandParser.parse(text) is None
 
 
-def test_parse_none_tool_name_as_no_call():
-    text = '{"tool_name": "none", "parameters": {}}'
-    result = CommandParser.parse(text)
-    assert result is None
+def test_product_parser_rejects_wrapped_respond_to_user_envelope():
+    text = (
+        '{"tool_call":{"tool_name":"respond_to_user","parameters":{'
+        '"decision":"missing_input","missing_inputs":["source_path"],'
+        '"message":"Please provide the EEG source path."}}}'
+    )
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert result.decision is None
+    assert result.missing_inputs == ()
 
 
-def test_parse_bare_tool_name_at_start():
-    result = CommandParser.parse("save_interpretation_recipe\nBlocked reasons: None.")
-    assert result == [("save_interpretation_recipe", {})]
+def test_product_parser_rejects_plain_text_at_strict_action_boundary():
+    result = CommandParser.parse_product("Just a normal conversation response.")
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert "JSON object" in result.error
+    assert CommandParser.parse("Just a normal conversation response.") is None
 
 
-def test_does_not_parse_explanatory_sentence_starting_with_tool_name():
-    result = CommandParser.parse("epoch_data is used to create time windows.")
-    assert result is None
+def test_product_parser_preserves_model_owned_blocked_decision():
+    text = (
+        '{"tool_name":"respond_to_user","parameters":{'
+        '"decision":"blocked",'
+        '"message":"Load EEG data before training."}}'
+    )
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.NO_TOOL
+    assert result.commands == ()
+    assert result.decision == "blocked"
+    assert result.intent == "no_tool"
+    assert result.missing_inputs == ()
+    assert result.message == "Load EEG data before training."
 
 
-def test_parse_analysis_bare_tool_names():
-    assert CommandParser.parse("evaluate\nBlocked reasons: None.") == [("evaluate", {})]
-    assert CommandParser.parse("visualize\nBlocked reasons: None.") == [
-        ("visualize", {})
+def test_product_parser_preserves_model_owned_missing_input_decision():
+    text = (
+        '{"tool_name":"respond_to_user","parameters":{'
+        '"decision":"missing_input","missing_inputs":["source_path"],'
+        '"message":"Please provide the EEG source path."}}'
+    )
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.NO_TOOL
+    assert result.commands == ()
+    assert result.decision == "missing_input"
+    assert result.intent == "no_tool"
+    assert result.missing_inputs == ("source_path",)
+    assert result.message == "Please provide the EEG source path."
+
+
+def test_product_parser_preserves_model_owned_answer_decision():
+    text = (
+        '{"tool_name":"respond_to_user","parameters":{'
+        '"decision":"answer",'
+        '"message":"An epoch is a window around an event."}}'
+    )
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.NO_TOOL
+    assert result.commands == ()
+    assert result.decision == "answer"
+    assert result.intent == "no_tool"
+    assert result.missing_inputs == ()
+    assert result.message == "An epoch is a window around an event."
+
+
+def test_product_parser_keeps_direct_tool_decision_compact():
+    text = '{"tool_name":"scan_source","parameters":{"source_path":"/data/A.gdf"}}'
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.VALID
+    assert result.commands == (("scan_source", {"source_path": "/data/A.gdf"}),)
+    assert result.decision == "tool"
+    assert result.intent == ""
+    assert result.missing_inputs == ()
+    assert result.message == ""
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        (
+            '{"tool_name":"respond_to_user","parameters":{'
+            '"decision":"blocked","missing_inputs":[],'
+            '"message":"Blocked."}}'
+        ),
+        (
+            '{"tool_name":"respond_to_user","parameters":{'
+            '"decision":"answer","missing_inputs":[],'
+            '"message":"An epoch is a window around an event."}}'
+        ),
+        (
+            '{"tool_name":"respond_to_user","parameters":{'
+            '"decision":"missing_input",'
+            '"message":"Please provide the path."}}'
+        ),
+        (
+            '{"tool_name":"respond_to_user","parameters":{'
+            '"decision":"missing_input","missing_inputs":[],'
+            '"message":"Please provide the path."}}'
+        ),
+        (
+            '{"tool_name":"respond_to_user","parameters":{'
+            '"decision":"BLOCKED",'
+            '"message":"Blocked."}}'
+        ),
+    ],
+)
+def test_product_parser_rejects_contradictory_structured_decisions(text):
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert result.error
+
+
+def test_product_parser_rejects_abandoned_top_level_decision_shape():
+    result = CommandParser.parse_product(
+        '{"decision":"blocked","intent":"train","message":"Blocked."}'
+    )
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+
+
+def test_product_parser_rejects_parameter_explanation_at_action_boundary():
+    text = "These parameters: batch size and epochs can be adjusted in settings."
+
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+
+
+@pytest.mark.parametrize(
+    ("text", "error_fragment"),
+    [
+        (
+            'Sure, here is the command:\n{"tool_name":"load_data","parameters":{}}',
+            "entire response",
+        ),
+        (
+            '```json\n{"tool_name":"load_data","parameters":{}}\n```',
+            "entire response",
+        ),
+        ("load_data\nBlocked reasons: None.", "JSON object"),
+        (
+            '{"tool_name":"preview_interpretation","parameters":{"choices":',
+            "complete JSON",
+        ),
+        (
+            '[{"tool_name":"get_dataset_info","parameters":{}}]',
+            "top-level object",
+        ),
+        (
+            '{"tool_name":"query_state","parameters":{}}'
+            '{"tool_name":"query_state","parameters":{}}',
+            "complete JSON",
+        ),
+        (
+            '{"command":"load_data","parameters":{}}',
+            "exactly",
+        ),
+        (
+            '{"tool_name":"scan_source","arguments":{"source_path":"/data"}}',
+            "exactly",
+        ),
+        (
+            '{"tool_name":"scan_source","parameters":{},"confidence":0.9}',
+            "exactly",
+        ),
+        (
+            '{"tool_calls":[{"tool_name":"query_state","parameters":{}}]}',
+            "exactly",
+        ),
+        (
+            '{"tool_name":"query_state","parameters":[],"parameters":{}}',
+            "duplicate",
+        ),
+        (
+            '{"tool_name":"query_state","parameters":{"value":NaN}}',
+            "non-standard",
+        ),
+        (
+            '{"tool_name":"none","parameters":{}}',
+            "normal text",
+        ),
+    ],
+)
+def test_product_parser_rejects_non_contract_tool_outputs(text, error_fragment):
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert error_fragment in result.error
+    assert CommandParser.parse(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"tool_name":"load_data"}',
+        '{"tool_name":"","parameters":{}}',
+        '{"tool_name":42,"parameters":{}}',
+        '{"tool_name":"load_data","parameters":null}',
+        '{"tool_name":"load_data","parameters":"{}"}',
+    ],
+)
+def test_product_parser_rejects_invalid_envelope_field_types(text):
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert result.error
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        ('Sure: {"tool_call":{"tool_name":"query_state","parameters":{}}}'),
+        ('```json\n{"tool_call":{"tool_name":"query_state","parameters":{}}}\n```'),
+        '[{"tool_call":{"tool_name":"query_state","parameters":{}}}]',
+        (
+            '{"tool_call":{"tool_name":"query_state","parameters":{}}}'
+            '{"tool_call":{"tool_name":"query_state","parameters":{}}}'
+        ),
+        ('{"tool_call":{"tool_name":"query_state","parameters":{}},"extra":true}'),
+        (
+            '{"tool_call":{"tool_name":"query_state","parameters":{}},'
+            '"tool_call":{"tool_name":"query_state","parameters":{}}}'
+        ),
+        (
+            '{"tool_call":{"tool_name":"query_state","tool_name":"evaluate",'
+            '"parameters":{}}}'
+        ),
+        ('{"tool_call":{"tool_name":"query_state","parameters":{},"parameters":{}}}'),
+        ('{"tool_call":{"tool_name":"query_state","parameters":{},"confidence":0.9}}'),
+        '{"tool_call":{"name":"query_state","arguments":{}}}',
+        ('{"tool_call":{"tool_call":{"tool_name":"query_state","parameters":{}}}}'),
+        '{"tool_call":[{"tool_name":"query_state","parameters":{}}]}',
+        '{"tool_call":null}',
+        '{"tool_call":"query_state"}',
+        '{"tool_call":{"tool_name":42,"parameters":{}}}',
+        '{"tool_call":{"tool_name":"query_state","parameters":[]}}',
+        '{"tool_call":{"tool_name":"none","parameters":{}}}',
+        '{"tool_call":{"tool_name":"query_state","parameters":{"value":NaN}}}',
+    ],
+)
+def test_product_parser_rejects_non_contract_tool_call_wrappers(text):
+    result = CommandParser.parse_product(text)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert result.error
+    assert CommandParser.parse(text) is None
+
+
+def test_diagnostic_parser_is_explicitly_tolerant_for_legacy_artifacts():
+    text = (
+        "Legacy model output:\n```json\n"
+        '{"command":"load_data","arguments":{"file_paths":["/data/A.gdf"]}}'
+        "\n```"
+    )
+
+    assert CommandParser.parse_diagnostic(text) == [
+        ("load_data", {"file_paths": ["/data/A.gdf"]})
     ]
-    assert CommandParser.parse("saliency\nBlocked reasons: None.") == [("saliency", {})]
 
 
-def test_parse_arguments_alias():
-    text = '{"tool_name":"scan_source","arguments":{"source_path":"/data"}}'
-    parsed = CommandParser.parse(text)
-    assert parsed == [("scan_source", {"source_path": "/data"})]
+def test_diagnostic_parser_never_changes_product_parser_result():
+    text = "evaluate\nBlocked reasons: None."
 
-
-def test_parse_tool_alias():
-    text = '{"tool":"scan_source","parameters":{"source_path":"/data"}}'
-    parsed = CommandParser.parse(text)
-    assert parsed == [("scan_source", {"source_path": "/data"})]
-
-
-def test_parse_tool_calls_list():
-    text = """
-    {
-      "tool_calls": [
-        {"tool_name": "scan_source", "arguments": {"source_path": "/data"}},
-        {"tool_name": "preview_interpretation", "parameters": {}}
-      ]
-    }
-    """
-    result = CommandParser.parse(text)
-    assert result == [
-        ("scan_source", {"source_path": "/data"}),
-        ("preview_interpretation", {}),
-    ]
-
-
-def test_parse_top_level_tool_call_array():
-    text = '[{"tool_name":"get_dataset_info","parameters":{}}]'
-    result = CommandParser.parse(text)
-    assert result == [("get_dataset_info", {})]
-
-
-def test_parse_openai_function_tool_call_shape():
-    text = """
-    {
-      "tool_calls": [
-        {
-          "type": "function",
-          "function": {
-            "name": "scan_source",
-            "arguments": "{\\"source_path\\":\\"/data/bids_mi\\",\\"source_hint\\":\\"bids\\"}"
-          }
-        }
-      ]
-    }
-    """
-    result = CommandParser.parse(text)
-    assert result == [
-        ("scan_source", {"source_path": "/data/bids_mi", "source_hint": "bids"})
-    ]
-
-
-def test_parse_relaxed_json_block():
-    # Case 1: Uppercase JSON
-    text_caps = """
-    Here is the command:
-    ```JSON
-    {
-        "command": "test_cmd",
-        "parameters": {"k": "v"}
-    }
-    ```
-    """
-    parsed = CommandParser.parse(text_caps)
-    assert parsed == [("test_cmd", {"k": "v"})]
-
-    # Case 2: No language identifier
-    text_no_lang = """
-    ```
-    {
-        "command": "test_cmd_2",
-        "parameters": {"x": 1}
-    }
-    ```
-    """
-    parsed2 = CommandParser.parse(text_no_lang)
-    assert parsed2 == [("test_cmd_2", {"x": 1})]
+    assert CommandParser.parse_diagnostic(text) == [("evaluate", {})]
+    assert CommandParser.parse_product(text).status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert CommandParser.parse(text) is None

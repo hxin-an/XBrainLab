@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.application import (
-    ApplicationService,
     command_specs,
     execute_automation_payload,
+    get_application_service,
     mcp_tool_specs,
 )
 from XBrainLab.backend.study import Study
@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     logging.getLogger("XBrainLab").setLevel(logging.WARNING)
-    service = ApplicationService(Study())
+    service = get_application_service(Study())
 
     if args.list_schemas:
         print(

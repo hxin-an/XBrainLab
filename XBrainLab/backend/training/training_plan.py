@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import datetime
+import os
 import threading
+from collections.abc import Callable, Sequence
+from contextlib import nullcontext
+from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -19,11 +24,111 @@ from XBrainLab.backend.utils.logger import logger
 # ... (Previous imports remain, but remove captum/sklearn if unused locally)
 # Actually, maintain clean imports:
 from ..dataset import Dataset
+from ..exceptions import StaleSaliencyUpdateError
 from ..utils import set_seed, validate_type
 from .evaluator import Evaluator
 from .model_holder import ModelHolder
 from .option import TrainingEvaluation, TrainingOption
-from .record import RecordKey, TrainRecord, TrainRecordKey
+from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
+from .saliency_provenance import (
+    SaliencyContextError,
+    SaliencyProducerIdentity,
+    fingerprint_saliency_epoch_data,
+    fingerprint_saliency_model_state,
+    fingerprint_saliency_split_mask,
+)
+
+if TYPE_CHECKING:
+    from .state_tracker import TrainingStateTracker
+
+
+@dataclass(frozen=True, slots=True)
+class SaliencyUpdatePlan:
+    """Stable record selection captured before expensive saliency computation."""
+
+    holder: TrainingPlanHolder
+    saliency_params: dict
+    tracker_generation: int | None
+    records: tuple[tuple[TrainRecord, EvalRecord], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedSaliencyUpdate:
+    """Fully computed saliency state that is ready for atomic publication."""
+
+    plan: SaliencyUpdatePlan
+    eval_records: tuple[tuple[TrainRecord, EvalRecord, EvalRecord], ...]
+
+    @property
+    def holder(self) -> TrainingPlanHolder:
+        """Return the holder captured by the immutable computation plan."""
+        return self.plan.holder
+
+    @property
+    def saliency_params(self) -> dict:
+        """Return the parameters captured by the immutable computation plan."""
+        return self.plan.saliency_params
+
+    @property
+    def tracker_generation(self) -> int | None:
+        """Return the stable generation captured before computation."""
+        return self.plan.tracker_generation
+
+
+def _raise_if_prepared_saliency_records_stale(
+    updates: list[PreparedSaliencyUpdate],
+) -> None:
+    """Verify every record captured by each plan still has the same identity."""
+    for update in updates:
+        holder_records = update.holder.train_record_list
+        if any(
+            not any(record is candidate for candidate in holder_records)
+            or record.eval_record is not previous_eval_record
+            for record, previous_eval_record in update.plan.records
+        ):
+            raise StaleSaliencyUpdateError
+
+
+def publish_prepared_saliency_updates(
+    updates: list[PreparedSaliencyUpdate],
+    *,
+    manager_params: dict | None = None,
+    publish_manager_params: Callable[[dict], None] | None = None,
+) -> None:
+    """Publish prepared holder and manager state in one tracked mutation."""
+    manager_params_copy = dict(manager_params or {})
+    if not updates:
+        if publish_manager_params is not None:
+            publish_manager_params(manager_params_copy)
+        return
+
+    tracker = updates[0].holder._state_tracker
+    if any(update.holder._state_tracker is not tracker for update in updates[1:]):
+        raise RuntimeError("Saliency updates do not share one state tracker")
+
+    holder_params = [dict(update.saliency_params) for update in updates]
+    _raise_if_prepared_saliency_records_stale(updates)
+
+    if tracker is not None:
+        token = tracker.token()
+        if not token.stable or any(
+            update.tracker_generation != token.generation for update in updates
+        ):
+            raise StaleSaliencyUpdateError
+        mutation = tracker.mutation_if_current(token.generation)
+    else:
+        mutation = updates[0].holder._state_mutation()
+
+    with mutation as current:
+        if current is False:
+            raise StaleSaliencyUpdateError
+        _raise_if_prepared_saliency_records_stale(updates)
+        if publish_manager_params is not None:
+            publish_manager_params(manager_params_copy)
+        for update, params in zip(updates, holder_params, strict=True):
+            update.holder.saliency_params = params
+            for record, _previous_eval_record, eval_record in update.eval_records:
+                record.eval_record = eval_record
 
 
 class SharedMemoryDataset(torch_data.Dataset):
@@ -126,6 +231,17 @@ def to_holder(
     return dataloader
 
 
+def _read_model_args_for_identity(epoch_data: object) -> dict:
+    """Return one isolated model input contract for artifact provenance."""
+    getter = getattr(epoch_data, "get_model_args", None)
+    value = getter() if callable(getter) else None
+    if not isinstance(value, dict):
+        raise SaliencyContextError(
+            "EEG model input contract is unavailable for saliency provenance."
+        )
+    return dict(value)
+
+
 class Status(Enum):
     """Enumeration of training plan execution states.
 
@@ -206,6 +322,7 @@ class TrainingPlanHolder:
         self.plan_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
         self.train_record_list = []
+        self._state_tracker: TrainingStateTracker | None = None
         self._interrupt = threading.Event()
         self.error: str | None = None
         self.status = Status.PENDING.value
@@ -236,6 +353,37 @@ class TrainingPlanHolder:
                     plan_id=self.plan_id,
                 ),
             )
+        self._validate_loaded_saliency_artifacts()
+
+    def _validate_loaded_saliency_artifacts(self) -> None:
+        """Fail closed when a persisted record belongs to another producer."""
+        epoch_data = self.dataset.get_epoch_data()
+        for record in self.train_record_list:
+            eval_record = record.eval_record
+            if eval_record is None or not eval_record.has_saliency_data():
+                continue
+            try:
+                producer_identity = self.build_saliency_producer_identity(
+                    record,
+                    evaluation_split=eval_record.evaluation_split,
+                )
+                eval_record.validate_saliency_context(
+                    epoch_data,
+                    producer_identity=producer_identity,
+                )
+            except SaliencyContextError as exc:
+                eval_record.mark_saliency_context_incompatible(str(exc))
+
+    def bind_state_tracker(self, tracker: TrainingStateTracker) -> None:
+        """Bind this holder and all records to one trainer mutation token."""
+        self._state_tracker = tracker
+        for record in self.train_record_list:
+            record.bind_state_tracker(tracker)
+
+    def _state_mutation(self):
+        """Return the shared mutation context when attached to a trainer."""
+        tracker = getattr(self, "_state_tracker", None)
+        return tracker.mutation() if tracker is not None else nullcontext()
 
     def check_data(self) -> None:
         """Validate that the training plan has valid dataset, option, and model.
@@ -269,44 +417,74 @@ class TrainingPlanHolder:
         """
         try:
             for i in range(self.option.repeat_num):
-                self.status = Status.INIT.value.format(
-                    self.train_record_list[i].get_name(),
-                )
+                with self._state_mutation():
+                    self.status = Status.INIT.value.format(
+                        self.train_record_list[i].get_name(),
+                    )
                 train_record = self.train_record_list[i]
                 train_record.resume()
                 self.train_one_repeat(train_record)
                 train_record.pause()
-            if self.is_finished():
-                self.status = Status.DONE.value
-            else:
-                self.status = Status.PENDING.value
+            with self._state_mutation():
+                if self.is_finished():
+                    self.status = Status.DONE.value
+                else:
+                    self.status = Status.PENDING.value
         except Exception as e:
             logger.error("Training plan execution failed: %s", e, exc_info=True)
-            if is_cuda_oom_error(e):
-                release_cuda_cache(torch)
-                self.error = (
-                    "CUDA out of memory during training. The current "
-                    "configuration is too large for the available GPU memory. "
-                    "Try reducing batch size, input length, or model size."
-                )
-                self.status = "Failed: CUDA out of memory"
-            else:
-                self.error = str(e)
-                self.status = Status.PENDING.value
+            with self._state_mutation():
+                if is_cuda_oom_error(e):
+                    self.error = (
+                        "CUDA out of memory during training. The current "
+                        "configuration is too large for the available GPU memory. "
+                        "Try reducing batch size, input length, or model size."
+                    )
+                    self.status = "Failed: CUDA out of memory"
+                else:
+                    self.error = str(e)
+                    self.status = Status.PENDING.value
         finally:
             # Ensure GPU models are moved back to CPU to prevent VRAM leaks
             for tr in self.train_record_list:
                 self._safe_move_to_cpu(tr)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            release_cuda_cache(torch)
 
-    @staticmethod
-    def _safe_move_to_cpu(train_record):
-        """Move a training record's model to CPU, logging failures."""
+    @classmethod
+    def _safe_move_to_cpu(cls, train_record):
+        """Move archived model and optimizer state to CPU without losing history."""
         try:
             train_record.model.cpu()
-        except RuntimeError:
-            logger.debug("Failed to move model to CPU", exc_info=True)
+            optimizer = getattr(train_record, "optim", None)
+            if optimizer is not None:
+                for state in optimizer.state.values():
+                    for key, value in tuple(state.items()):
+                        state[key] = cls._move_optimizer_value(value, "cpu")
+        except Exception:
+            logger.debug("Failed to move training resources to CPU", exc_info=True)
+
+    @classmethod
+    def _move_optimizer_value(cls, value, device: str):
+        """Recursively move tensor-bearing optimizer state to one device."""
+        if torch.is_tensor(value):
+            return value.detach().to(device)
+        if isinstance(value, dict):
+            return {
+                key: cls._move_optimizer_value(item, device)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [cls._move_optimizer_value(item, device) for item in value]
+        if isinstance(value, tuple):
+            return tuple(cls._move_optimizer_value(item, device) for item in value)
+        return value
+
+    @staticmethod
+    def _restore_optimizer_state_for_model(
+        optimizer: torch.optim.Optimizer,
+    ) -> None:
+        """Cast archived optimizer state back to its current model parameters."""
+        if optimizer.state:
+            optimizer.load_state_dict(optimizer.state_dict())
 
     def get_loader(
         self,
@@ -384,7 +562,18 @@ class TrainingPlanHolder:
         """
         target_loader = test_loader or val_loader
 
-        # Determine the state_dict without consulting test-set metrics.
+        state = self._selected_evaluation_state(train_record)
+
+        # Only create the model on GPU once we know we have a valid state_dict
+        target_model = self.model_holder.get_model(
+            self.dataset.get_epoch_data().get_model_args(),
+        ).to(self.option.get_device())
+        target_model.load_state_dict(state)
+        target_model = target_model.eval()
+        return target_model, target_loader
+
+    def _selected_evaluation_state(self, train_record: TrainRecord) -> dict:
+        """Return the same validation-selected model state used for evaluation."""
         if self.option.evaluation_option == TrainingEvaluation.VAL_LOSS:
             state = getattr(train_record, f"best_val_{RecordKey.LOSS}_model")
         elif self.option.evaluation_option == TrainingEvaluation.VAL_ACC:
@@ -402,14 +591,7 @@ class TrainingPlanHolder:
                 "for final evaluation"
             )
             state = train_record.model.state_dict()
-
-        # Only create the model on GPU once we know we have a valid state_dict
-        target_model = self.model_holder.get_model(
-            self.dataset.get_epoch_data().get_model_args(),
-        ).to(self.option.get_device())
-        target_model.load_state_dict(state)
-        target_model = target_model.eval()
-        return target_model, target_loader
+        return state
 
     def train_one_repeat(self, train_record: TrainRecord) -> None:
         """Train one repetition of the training plan
@@ -426,8 +608,12 @@ class TrainingPlanHolder:
         if self.option.epoch > 0 and not train_loader:
             raise ValueError("No Training Data")
         optimizer = train_record.optim
+        if optimizer is None:
+            raise RuntimeError("Training optimizer is unavailable")
+        self._restore_optimizer_state_for_model(optimizer)
         criterion = train_record.criterion
-        self.status = Status.TRAIN.value.format(train_record.get_name())
+        with self._state_mutation():
+            self.status = Status.TRAIN.value.format(train_record.get_name())
         # train one epoch
         while train_record.epoch < self.option.epoch:
             if self._interrupt.is_set():
@@ -444,7 +630,8 @@ class TrainingPlanHolder:
             )
 
         if train_record.epoch == self.option.epoch:
-            self.status = Status.EVAL.value.format(train_record.get_name())
+            with self._state_mutation():
+                self.status = Status.EVAL.value.format(train_record.get_name())
             target, target_loader = self.get_eval_pair(
                 train_record,
                 val_loader,
@@ -521,12 +708,14 @@ class TrainingPlanHolder:
 
     def set_interrupt(self) -> None:
         """Set the interrupt flag to stop training after the current batch."""
-        self._interrupt.set()
+        with self._state_mutation():
+            self._interrupt.set()
 
     def clear_interrupt(self) -> None:
         """Clear the interrupt flag and reset the error status."""
-        self.error = None
-        self._interrupt.clear()
+        with self._state_mutation():
+            self.error = None
+            self._interrupt.clear()
 
     # getter
     def get_name(self) -> str:
@@ -565,6 +754,79 @@ class TrainingPlanHolder:
         """
         return self.saliency_params
 
+    @staticmethod
+    def _qualified_type_name(value: object) -> str:
+        target = value if isinstance(value, type) else value.__class__
+        return f"{target.__module__}.{target.__qualname__}"
+
+    def build_saliency_producer_identity(
+        self,
+        train_record: TrainRecord,
+        *,
+        evaluation_split: str,
+    ) -> SaliencyProducerIdentity:
+        """Build exact-content provenance for one dataset split, run, and model."""
+        if not any(train_record is item for item in self.train_record_list):
+            raise ValueError("Training record belongs to another training plan")
+        epoch_data = self.dataset.get_epoch_data()
+        option = self.option
+        optimizer = option.optim
+        evaluation_option = option.evaluation_option
+        pretrained_path = self.model_holder.pretrained_weight_path
+
+        dataset_component = {
+            "dataset_type": self._qualified_type_name(self.dataset),
+            "epoch_data_fingerprint": fingerprint_saliency_epoch_data(epoch_data),
+        }
+        split_component = {
+            "evaluation_split": str(evaluation_split or "unknown"),
+            "train_mask": fingerprint_saliency_split_mask(self.dataset.train_mask),
+            "validation_mask": fingerprint_saliency_split_mask(self.dataset.val_mask),
+            "test_mask": fingerprint_saliency_split_mask(self.dataset.test_mask),
+        }
+        run_component = {
+            "plan_id": str(train_record.plan_id or self.plan_id),
+            "repeat": int(train_record.repeat),
+            "seed": int(train_record.seed),
+            "evaluation_split": str(evaluation_split or "unknown"),
+            "training_option": {
+                "epochs": int(option.epoch),
+                "batch_size": int(option.bs),
+                "learning_rate": float(option.lr),
+                "checkpoint_epoch": int(option.checkpoint_epoch),
+                "optimizer": (
+                    self._qualified_type_name(optimizer)
+                    if optimizer is not None
+                    else None
+                ),
+                "optimizer_params": dict(option.optim_params or {}),
+                "evaluation_option": (
+                    f"{evaluation_option.__class__.__module__}."
+                    f"{evaluation_option.__class__.__qualname__}."
+                    f"{evaluation_option.name}"
+                ),
+            },
+        }
+        model_component = {
+            "model_type": self._qualified_type_name(self.model_holder.target_model),
+            "model_params": self.model_holder.model_params_map,
+            "input_contract": _read_model_args_for_identity(epoch_data),
+            "selected_state_fingerprint": fingerprint_saliency_model_state(
+                self._selected_evaluation_state(train_record)
+            ),
+            "pretrained_weight_path": (
+                os.path.normcase(os.path.normpath(os.fspath(pretrained_path)))
+                if pretrained_path
+                else None
+            ),
+        }
+        return SaliencyProducerIdentity.from_components(
+            dataset=dataset_component,
+            split=split_component,
+            run=run_component,
+            model=model_component,
+        )
+
     # setter
     def set_saliency_params(self, saliency_params: dict | None) -> None:
         """Set new saliency parameters and re-evaluate all finished repeats.
@@ -574,35 +836,111 @@ class TrainingPlanHolder:
                 values keep finished records on metric-only evaluation.
 
         """
-        self.saliency_params = dict(saliency_params or {})
-        finished_records = [
-            record for record in self.train_record_list if record.is_finished()
-        ]
-        if not finished_records:
-            return
+        prepared_update = self.prepare_saliency_update(saliency_params)
+        publish_prepared_saliency_updates([prepared_update])
+
+    def prepare_saliency_update_plan(
+        self,
+        saliency_params: dict | None,
+        *,
+        records: Sequence[TrainRecord] | None = None,
+    ) -> SaliencyUpdatePlan:
+        """Capture an immutable selection without doing expensive model work."""
+        prepared_params = dict(saliency_params or {})
+        tracker = self._state_tracker
+        tracker_generation: int | None = None
+        if tracker is not None:
+            token = tracker.token()
+            if not token.stable:
+                raise StaleSaliencyUpdateError
+            tracker_generation = token.generation
+
+        selected_records = (
+            tuple(records)
+            if records is not None
+            else tuple(
+                record for record in self.train_record_list if record.is_finished()
+            )
+        )
+        if any(
+            not any(record is candidate for candidate in self.train_record_list)
+            or not record.is_finished()
+            or record.eval_record is None
+            for record in selected_records
+        ):
+            raise StaleSaliencyUpdateError
+        return SaliencyUpdatePlan(
+            holder=self,
+            saliency_params=prepared_params,
+            tracker_generation=tracker_generation,
+            records=tuple(
+                (record, record.eval_record)
+                for record in selected_records
+                if record.eval_record is not None
+            ),
+        )
+
+    def compute_saliency_update(
+        self,
+        plan: SaliencyUpdatePlan,
+        *,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> PreparedSaliencyUpdate:
+        """Compute replacement records without mutating shared training state."""
+        if plan.holder is not self:
+            raise ValueError("Saliency update plan belongs to another holder")
+        self._raise_if_saliency_plan_stale(plan, should_cancel=should_cancel)
+        if not plan.records:
+            return PreparedSaliencyUpdate(plan=plan, eval_records=())
 
         train_loader, val_loader, test_loader = self.get_loader()
-        for train_record in finished_records:
+        prepared_eval_records: list[tuple[TrainRecord, EvalRecord, EvalRecord]] = []
+        for train_record, previous_eval_record in plan.records:
+            self._raise_if_saliency_plan_stale(plan, should_cancel=should_cancel)
             target, target_loader = self.get_eval_pair(
                 train_record,
                 val_loader,
                 test_loader,
             )
-            if target_loader is None and train_loader is not None:
-                target_loader = train_loader
-            evaluation_split = self._evaluation_split_name(
-                target_loader,
-                train_loader=train_loader,
-                val_loader=val_loader,
-                test_loader=test_loader,
-            )
-            if target is not None and target_loader is not None:  # model is trained
-                if self.saliency_params:
+            try:
+                if target_loader is None and train_loader is not None:
+                    target_loader = train_loader
+                evaluation_split = self._evaluation_split_name(
+                    target_loader,
+                    train_loader=train_loader,
+                    val_loader=val_loader,
+                    test_loader=test_loader,
+                )
+                self._raise_if_saliency_plan_stale(
+                    plan,
+                    should_cancel=should_cancel,
+                )
+                if target is None or target_loader is None:
+                    continue
+                if plan.saliency_params:
+                    producer_identity = self.build_saliency_producer_identity(
+                        train_record,
+                        evaluation_split=evaluation_split,
+                    )
                     eval_record = Evaluator.evaluate_with_saliency(
                         target,
                         target_loader,
-                        self.saliency_params,
+                        plan.saliency_params,
                         evaluation_split=evaluation_split,
+                    )
+                    self._raise_if_saliency_plan_stale(
+                        plan,
+                        should_cancel=should_cancel,
+                    )
+                    current_producer_identity = self.build_saliency_producer_identity(
+                        train_record,
+                        evaluation_split=evaluation_split,
+                    )
+                    if current_producer_identity != producer_identity:
+                        raise StaleSaliencyUpdateError
+                    eval_record.bind_saliency_context(
+                        self.dataset.get_epoch_data(),
+                        producer_identity=producer_identity,
                     )
                 else:
                     eval_record = Evaluator.evaluate(
@@ -610,7 +948,70 @@ class TrainingPlanHolder:
                         target_loader,
                         evaluation_split=evaluation_split,
                     )
-                train_record.set_eval_record(eval_record)
+                self._raise_if_saliency_plan_stale(
+                    plan,
+                    should_cancel=should_cancel,
+                )
+                prepared_eval_records.append(
+                    (train_record, previous_eval_record, eval_record)
+                )
+            finally:
+                self._release_evaluation_model(target, train_record)
+        self._raise_if_saliency_plan_stale(plan, should_cancel=should_cancel)
+        return PreparedSaliencyUpdate(
+            plan=plan,
+            eval_records=tuple(prepared_eval_records),
+        )
+
+    def prepare_saliency_update(
+        self,
+        saliency_params: dict | None,
+        *,
+        records: Sequence[TrainRecord] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> PreparedSaliencyUpdate:
+        """Compute replacement evaluation records without mutating shared state."""
+        plan = self.prepare_saliency_update_plan(
+            saliency_params,
+            records=records,
+        )
+        return self.compute_saliency_update(plan, should_cancel=should_cancel)
+
+    def _raise_if_saliency_plan_stale(
+        self,
+        plan: SaliencyUpdatePlan,
+        *,
+        should_cancel: Callable[[], bool] | None,
+    ) -> None:
+        """Reject computed results once their captured training state is obsolete."""
+        if should_cancel is not None and should_cancel():
+            raise StaleSaliencyUpdateError
+
+        tracker = self._state_tracker
+        if tracker is not None:
+            token = tracker.token()
+            if not token.stable or plan.tracker_generation != token.generation:
+                raise StaleSaliencyUpdateError
+
+        holder_records = self.train_record_list
+        if any(
+            not any(record is candidate for candidate in holder_records)
+            or record.eval_record is not previous_eval_record
+            for record, previous_eval_record in plan.records
+        ):
+            raise StaleSaliencyUpdateError
+
+    @staticmethod
+    def _release_evaluation_model(target, train_record: TrainRecord) -> None:
+        """Return temporary evaluation models to CPU after saliency computation."""
+        if target is None or target is getattr(train_record, "model", None):
+            return
+        move_to_cpu = getattr(target, "cpu", None)
+        if callable(move_to_cpu):
+            try:
+                move_to_cpu()
+            except RuntimeError:
+                logger.debug("Failed to move saliency model to CPU", exc_info=True)
 
     @staticmethod
     def _evaluation_split_name(

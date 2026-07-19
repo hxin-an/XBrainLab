@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import os
 import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.event_semantics import gdf_event_semantic
+
+from .data_interpretation_resource_reader import AdmittedResourceReader
+from .errors import PreconditionError
 
 INTERNAL_EVENT_EXTENSIONS = (
     ".gdf",
@@ -41,7 +46,11 @@ _CLASS_LIKE_TOKENS = {
 _NUMBER_RE = re.compile(r"\b\d+\b")
 
 
-def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
+def build_internal_event_preview(
+    selected_files: list[str],
+    *,
+    resource_reader: AdmittedResourceReader | None = None,
+) -> dict[str, Any]:
     """Build UI/agent-readable evidence from events embedded in EEG files."""
     event_files = [
         str(item) for item in selected_files if _has_internal_event_extension(str(item))
@@ -49,12 +58,29 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
     if not event_files:
         return {}
 
+    file_identities = [_file_identity(item) for item in event_files]
     file_names = [Path(item).name or str(item) for item in event_files]
+    display_names = dict(zip(file_identities, file_names, strict=True))
     aggregates: dict[str, dict[str, Any]] = {}
     scan_warnings: list[str] = []
-    for file_path, file_name in zip(event_files, file_names, strict=True):
+    for file_path, file_identity in zip(
+        event_files,
+        file_identities,
+        strict=True,
+    ):
         try:
-            payload = _read_internal_events_for_file(file_path)
+            guard = (
+                resource_reader.guard(
+                    [file_path],
+                    purpose="embedded EEG event preview",
+                )
+                if resource_reader is not None
+                else contextlib.nullcontext()
+            )
+            with guard:
+                payload = _read_internal_events_for_file(file_path)
+        except PreconditionError:
+            raise
         except Exception as exc:  # pragma: no cover - covered through caller payload
             scan_warnings.append(_scan_warning(file_path, exc))
             continue
@@ -75,8 +101,8 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
             )
             count = int(row["count"])
             stats["total_count"] += count
-            stats["file_counts"][file_name] = (
-                int(stats["file_counts"].get(file_name, 0)) + count
+            stats["file_counts"][file_identity] = (
+                int(stats["file_counts"].get(file_identity, 0)) + count
             )
             description = str(row.get("description") or "").strip()
             if description:
@@ -88,10 +114,19 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
     semantics_by_code = {
         str(stats["code"]): _semantic_for_event(stats) for stats in aggregates.values()
     }
-    _apply_count_pattern_evidence(aggregates, semantics_by_code, file_names)
+    _apply_count_pattern_evidence(
+        aggregates,
+        semantics_by_code,
+        file_identities,
+    )
     for stats in sorted(aggregates.values(), key=_event_sort_key):
         semantic = semantics_by_code[str(stats["code"])]
-        row = _preview_row(stats, semantic, file_names)
+        row = _preview_row(
+            stats,
+            semantic,
+            file_identities,
+            display_names=display_names,
+        )
         if semantic["bucket"] == "candidate":
             candidate_rows.append(row)
         else:
@@ -100,7 +135,8 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
     result: dict[str, Any] = {
         "source": "mne_internal_events",
         "file_count": len(event_files),
-        "scanned_files": file_names,
+        "scanned_files": file_identities,
+        "scanned_file_names": file_names,
         "event_count": sum(int(item["total_count"]) for item in aggregates.values()),
         "candidate_label_events": candidate_rows,
         "not_used_events": not_used_rows,
@@ -131,8 +167,14 @@ def _read_internal_events_for_file(path: str) -> dict[str, Any]:
     """Read embedded events from one EEG file using MNE without preloading data."""
     mne = importlib.import_module("mne")
 
-    raw = _read_mne_object(path, mne)
-    return {"events": _events_from_mne_object(raw, mne)}
+    mne_object = _read_mne_object(path, mne)
+    try:
+        return {"events": _events_from_mne_object(mne_object, mne)}
+    finally:
+        with contextlib.suppress(Exception):
+            close = getattr(mne_object, "close", None)
+            if callable(close):
+                close()
 
 
 def _read_mne_object(path: str, mne: Any) -> Any:
@@ -542,7 +584,9 @@ def _timing_code_for_candidate_group(
 def _preview_row(
     stats: dict[str, Any],
     semantic: dict[str, str],
-    file_names: list[str],
+    file_identities: list[str],
+    *,
+    display_names: dict[str, str],
 ) -> dict[str, Any]:
     file_counts = {
         str(key): int(value)
@@ -552,8 +596,13 @@ def _preview_row(
         )
     }
     present_files = len(file_counts)
-    total_files = len(file_names)
-    missing_files = [name for name in file_names if name not in file_counts]
+    total_files = len(file_identities)
+    missing_file_paths = [
+        identity for identity in file_identities if identity not in file_counts
+    ]
+    missing_files = [
+        display_names.get(identity, identity) for identity in missing_file_paths
+    ]
     row: dict[str, Any] = {
         "event_code": str(stats["code"]),
         "code": str(stats["code"]),
@@ -563,6 +612,7 @@ def _preview_row(
         "present_files": present_files,
         "total_files": total_files,
         "missing_files": missing_files,
+        "missing_file_paths": missing_file_paths,
         "file_counts": file_counts,
         "evidence": _evidence_text(semantic["evidence"], file_counts, missing_files),
     }
@@ -630,6 +680,63 @@ def _run_dependent_mapping(
     }
 
 
+def review_run_dependent_event_mappings(
+    preview: dict[str, Any],
+    selected_files: list[str],
+    mappings: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Review whether every affected EEG file has a complete per-run map."""
+    event_codes = [
+        str(code)
+        for code in preview.get("run_dependent_event_codes", [])
+        if str(code).upper() in {"T1", "T2"}
+    ]
+    name_counts: dict[str, int] = {}
+    run_counts: dict[str, int] = {}
+    for path in selected_files:
+        name = Path(path).name
+        run = _run_token_for_file(path)
+        name_counts[name] = name_counts.get(name, 0) + 1
+        if run:
+            run_counts[run] = run_counts.get(run, 0) + 1
+
+    files: list[dict[str, Any]] = []
+    affected_files: list[str] = []
+    for path in selected_files:
+        name = Path(path).name
+        run = _run_token_for_file(path)
+        keys = [path]
+        if name_counts.get(name) == 1:
+            keys.append(name)
+        if run and run_counts.get(run) == 1:
+            keys.extend([run, f"run-{run}"])
+        selected_mapping = next(
+            (dict(mappings[key]) for key in keys if key in mappings),
+            {},
+        )
+        events = {
+            code: str(selected_mapping.get(code) or "").strip() for code in event_codes
+        }
+        missing = [code for code, meaning in events.items() if not meaning]
+        status = "needs_confirmation" if missing else "safe"
+        if missing:
+            affected_files.append(name)
+        files.append(
+            {
+                "file": name,
+                "run": run,
+                "status": status,
+                "events": events,
+                "missing_event_codes": missing,
+            }
+        )
+    return {
+        "status": "needs_confirmation" if affected_files else "safe",
+        "affected_files": affected_files,
+        "files": files,
+    }
+
+
 def _run_token_for_file(path: str) -> str:
     stem = Path(path).stem
     match = re.search(r"R(\d+)(?:[_-]|$)", stem, re.IGNORECASE)
@@ -680,6 +787,10 @@ def _file_suffix(path: str) -> str:
     if lower.endswith(".fif.gz"):
         return ".fif.gz"
     return Path(lower).suffix
+
+
+def _file_identity(path: str) -> str:
+    return os.path.normcase(str(Path(path).expanduser().resolve()))
 
 
 def _event_sort_key(item: dict[str, Any]) -> tuple[int, int | str]:

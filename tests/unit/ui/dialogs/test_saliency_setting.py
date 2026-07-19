@@ -114,6 +114,24 @@ class TestSaliencySettingInit:
             assert layout.columnStretch(0) == 0
             assert layout.columnStretch(1) == 0
 
+    def test_parameter_forms_use_product_labels_and_keep_raw_result_keys(
+        self,
+        dialog,
+    ):
+        labels = {
+            label.text(): label
+            for label in dialog.findChildren(QLabel, "SaliencyParamLabel")
+        }
+        assert set(labels) == {
+            "Noise samples",
+            "Samples per batch",
+            "Noise standard deviation",
+        }
+        assert all(label.toolTip() for label in labels.values())
+        for editors in dialog.param_editors.values():
+            assert editors["nt_samples_batch_size"].specialValueText() == "Automatic"
+            assert all(editor.toolTip() for editor in editors.values())
+
     def test_method_parameters_panel_is_lightweight_not_heavy_gray_block(self, dialog):
         params_panel = dialog.findChild(QWidget, "SaliencyMethodParametersPanel")
         assert params_panel is not None

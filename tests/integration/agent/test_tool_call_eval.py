@@ -5,9 +5,47 @@ from pathlib import Path
 
 from scripts.agent.evals.run_tool_call_eval import (
     build_eval_cases,
+    make_state,
     run_eval,
     write_artifacts,
 )
+from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application.capabilities import build_capability_policy
+
+
+def test_eval_epoch_states_publish_usable_multiclass_payload() -> None:
+    epoch_state_names = {
+        case.state_name
+        for case in build_eval_cases()
+        if make_state(case.state_name).epoch.available
+    }
+
+    for state_name in epoch_state_names:
+        state = make_state(state_name)
+        epoch = state.epoch
+
+        assert epoch.exists, state_name
+        assert (
+            isinstance(epoch.epoch_count, int)
+            and not isinstance(epoch.epoch_count, bool)
+            and epoch.epoch_count > 0
+        ), state_name
+        assert isinstance(epoch.event_ids, dict), state_name
+        assert len(epoch.event_ids) >= 2, state_name
+        assert set(epoch.event_names) == set(epoch.event_ids), state_name
+        assert len(set(epoch.event_ids.values())) >= 2, state_name
+
+    positive_dataset_cases = [
+        case
+        for case in build_eval_cases()
+        if any(call.tool_name == "generate_dataset" for call in case.expected_tools)
+    ]
+    for case in positive_dataset_cases:
+        capability = build_capability_policy(make_state(case.state_name)).get(
+            CommandName.GENERATE_DATASET
+        )
+
+        assert capability.enabled, f"{case.case_id}: {capability.reasons}"
 
 
 def test_deterministic_tool_call_eval_passes_and_writes_artifacts(tmp_path: Path):

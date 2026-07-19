@@ -1,10 +1,10 @@
-"""Label import dialog for loading and mapping external label files.
+"""Path-based dialog for reviewing and mapping external label files."""
 
-Provides file selection, automatic label code detection, and a mapping
-table for assigning human-readable event names to numeric label codes.
-"""
+from __future__ import annotations
 
 import os
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -25,34 +25,49 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from XBrainLab.backend.load_data.label_loader import load_label_file
+from XBrainLab.backend.application.commands import PreviewLabelImportCommand
+from XBrainLab.backend.application.resource_preflight import (
+    ResourcePreflightContractError,
+    ResourcePreflightView,
+)
+from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import (
+    execute_application_command_async,
+    is_stale_publication_result,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
+from XBrainLab.ui.interaction_outcome import InteractionOutcome
+
+
+@dataclass(frozen=True, slots=True)
+class LabelImportSelection:
+    """Path/config/identity result accepted by the label import action."""
+
+    preview_id: str
+    label_paths: tuple[str, ...]
+    label_configs: dict[str, dict[str, Any]]
+    mode: str
+    target_count: int | None
 
 
 def _normalize_label_value(value: Any) -> Any:
-    """Convert NumPy scalars to native Python scalars for UI/state storage."""
     if isinstance(value, np.generic):
         return value.item()
     return value
 
 
 def _label_sort_key(value: Any) -> tuple[int, Any]:
-    """Sort numeric codes numerically and other labels lexically."""
     value = _normalize_label_value(value)
-
     if isinstance(value, (int, np.integer)) and not isinstance(value, bool):
         return (0, int(value))
-
     if isinstance(value, (float, np.floating)) and float(value).is_integer():
         return (0, int(value))
-
     return (1, str(value))
 
 
 def _parse_display_code(text: str) -> Any:
-    """Best-effort parser for compatibility table rows that only stored text."""
     try:
         return int(text)
     except ValueError:
@@ -60,38 +75,36 @@ def _parse_display_code(text: str) -> Any:
 
 
 class ImportLabelDialog(BaseDialog):
-    """Dialog for importing label files and mapping codes to event names.
+    """Review external labels through ApplicationService without owning payloads."""
 
-    Supports loading label files in various formats (txt, mat, csv, tsv),
-    detecting unique label values, and allowing the user to assign
-    descriptive event names to each value.
-
-    Attributes:
-        label_data_map: Mapping of label file path to loaded label data arrays.
-        unique_labels: Sorted list of unique label values across all files.
-        file_list: QListWidget displaying loaded label files.
-        map_table: QTableWidget for code-to-event-name mapping.
-        info_label: QLabel showing summary statistics.
-
-    """
-
-    def __init__(self, parent=None, target_files: list[Any] | None = None):
-        self.label_data_map: dict[str, Any] = {}  # {label_path: label_array}
+    def __init__(
+        self,
+        parent=None,
+        target_files: list[Any] | None = None,
+        *,
+        expected_publication_generation: int | None = None,
+    ):
+        self.label_paths: list[str] = []
+        self.label_configs: dict[str, dict[str, Any]] = {}
+        self.preview_summary: dict[str, Any] = {}
         self.unique_labels: list[Any] = []
         self.target_files = list(target_files or [])
+        self._expected_publication_generation = expected_publication_generation
+        self._preview_pending = False
 
-        # UI Elements
         self.file_list: QListWidget | None = None
         self.map_table: QTableWidget | None = None
         self.info_label: QLabel | None = None
         self.target_summary_label: QLabel | None = None
         self.recipe_note_label: QLabel | None = None
+        self.browse_button: QPushButton | None = None
+        self.remove_button: QPushButton | None = None
+        self.button_box: QDialogButtonBox | None = None
 
         super().__init__(parent, title="Add Labels to Loaded Data")
         self.resize(580, 460)
 
-    def init_ui(self):
-        """Initialize the dialog UI with file list, mapping table, and buttons."""
+    def init_ui(self) -> None:
         layout = QVBoxLayout(self)
 
         self.target_summary_label = QLabel(self._target_summary_text())
@@ -108,32 +121,27 @@ class ImportLabelDialog(BaseDialog):
         self.recipe_note_label.setWordWrap(True)
         layout.addWidget(self.recipe_note_label)
 
-        # 1. File Selection
         file_group = QGroupBox("Select Label File")
         file_layout = QHBoxLayout()
-
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.file_list.itemSelectionChanged.connect(self.on_file_selection_changed)
 
-        btn_layout = QVBoxLayout()
-        browse_btn = QPushButton("Add Files...")
-        browse_btn.clicked.connect(self.browse_files)
-        remove_btn = QPushButton("Remove Selected")
-        remove_btn.clicked.connect(self.remove_files)
-        btn_layout.addWidget(browse_btn)
-        btn_layout.addWidget(remove_btn)
-        btn_layout.addStretch()
-
+        button_layout = QVBoxLayout()
+        self.browse_button = QPushButton("Add Files...")
+        self.browse_button.clicked.connect(self.browse_files)
+        self.remove_button = QPushButton("Remove Selected")
+        self.remove_button.clicked.connect(self.remove_files)
+        button_layout.addWidget(self.browse_button)
+        button_layout.addWidget(self.remove_button)
+        button_layout.addStretch()
         file_layout.addWidget(self.file_list, stretch=1)
-        file_layout.addLayout(btn_layout)
+        file_layout.addLayout(button_layout)
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
 
-        # 3. Label Mapping
         map_group = QGroupBox("Map Codes to Event Names")
         map_layout = QVBoxLayout()
-
         self.map_table = QTableWidget()
         self.map_table.setColumnCount(2)
         self.map_table.setHorizontalHeaderLabels(["Code", "Event Name"])
@@ -141,27 +149,24 @@ class ImportLabelDialog(BaseDialog):
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         map_layout.addWidget(self.map_table)
-
         map_group.setLayout(map_layout)
         layout.addWidget(map_group)
 
-        # 4. Info Label
-        self.info_label = QLabel("")
+        self.info_label = QLabel("No labels selected.")
         layout.addWidget(self.info_label)
 
-        # Buttons
-        buttons = QDialogButtonBox(
+        self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        normalize_dialog_button_box(buttons)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        normalize_dialog_button_box(self.button_box)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+        self._set_preview_busy(False)
 
     def _target_summary_text(self) -> str:
         if not self.target_files:
             return "Apply labels to the loaded EEG files selected in the dataset table."
-
         names = [self._target_file_name(item) for item in self.target_files]
         visible = ", ".join(names[:3])
         if len(names) > 3:
@@ -186,177 +191,322 @@ class ImportLabelDialog(BaseDialog):
                 return os.path.basename(value)
         return str(item)
 
-    def browse_files(self):
-        """Open a file picker and load selected label files."""
+    def browse_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self,
             "Open Label Files",
             "",
-            "Label Files (*.txt *.mat *.csv *.tsv)",
+            "Label Files (*.txt *.mat *.csv *.tsv *.npy)",
         )
         if not paths:
             return
-
+        changed = False
         for path in paths:
-            filename = os.path.basename(path)
-            # Check duplicates
-            if path in self.label_data_map:
-                continue
+            changed = self._add_label_path(path) or changed
+        if changed:
+            self._request_preview()
 
-            try:
-                self.load_file(path)
-                if self.file_list is not None:
-                    item = QListWidgetItem(filename)
-                    item.setData(Qt.ItemDataRole.UserRole, path)
-                    item.setToolTip(path)
-                    self.file_list.addItem(item)
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to load {filename}: {e}")
-
-        self.update_unique_labels()
-
-    def remove_files(self):
-        """Remove selected files from the loaded list."""
+    def remove_files(self) -> None:
         if self.file_list is None:
             return
-
         selected_items = self.file_list.selectedItems()
         if not selected_items:
             return
-
         for item in selected_items:
-            label_path = item.data(Qt.ItemDataRole.UserRole) or item.text()
-            if label_path in self.label_data_map:
-                del self.label_data_map[label_path]
+            path = str(item.data(Qt.ItemDataRole.UserRole) or item.text())
+            self.label_paths = [
+                existing for existing in self.label_paths if existing != path
+            ]
+            self.label_configs.pop(path, None)
             self.file_list.takeItem(self.file_list.row(item))
+        if self.label_paths:
+            self._request_preview()
+        else:
+            self._clear_preview("No labels selected.")
 
-        self.update_unique_labels()
+    def on_file_selection_changed(self) -> None:
+        """File selection does not alter the current backend preview."""
 
-    def on_file_selection_changed(self):
-        """Handle file list selection changes (reserved for future use)."""
-        # Maybe show info for selected file?
+    def load_file(self, path: str) -> None:
+        """Register a path and asynchronously request its backend preview."""
+        if self._add_label_path(path):
+            self._request_preview()
 
-    def load_file(self, path):
-        """Load a label file and store its data.
+    def _add_label_path(self, path: str) -> bool:
+        normalized = os.path.abspath(os.path.expanduser(str(path)))
+        if normalized in self.label_paths:
+            return False
+        self.label_paths.append(normalized)
+        if self.file_list is not None:
+            item = QListWidgetItem(os.path.basename(normalized))
+            item.setData(Qt.ItemDataRole.UserRole, normalized)
+            item.setToolTip(normalized)
+            self.file_list.addItem(item)
+        return True
 
-        Args:
-            path: Absolute path to the label file.
-
-        """
-        labels = load_label_file(path)
-        if labels is not None:
-            self.label_data_map[path] = labels
-
-    def update_unique_labels(self):
-        """Aggregates labels from all loaded files, finds unique values,
-        and updates the mapping table.
-        """
-        if self.info_label is None or self.map_table is None:
+    def _request_preview(
+        self,
+        *,
+        confirmed: bool = False,
+        token: str | None = None,
+    ) -> None:
+        paths = tuple(self.label_paths)
+        if not paths:
+            self._clear_preview("No labels selected.")
             return
-
-        all_labels: list[Any] = []
-        for labels in self.label_data_map.values():
-            if (
-                isinstance(labels, list)
-                and len(labels) > 0
-                and isinstance(labels[0], dict)
-            ):
-                # Timestamp Mode: Extract 'label' from dicts
-                all_labels.extend(
-                    _normalize_label_value(item["label"]) for item in labels
-                )
-            else:
-                # Sequence Mode: labels is ndarray
-                all_labels.extend(_normalize_label_value(label) for label in labels)
-
-        if not all_labels:
-            self.unique_labels = []
-            self.info_label.setText("No labels loaded.")
-            self.map_table.setRowCount(0)
-            return
-
-        unique_labels = {_normalize_label_value(label): None for label in all_labels}
-        self.unique_labels = sorted(unique_labels.keys(), key=_label_sort_key)
-        self.info_label.setText(
-            f"Loaded {len(all_labels)} labels from {len(self.label_data_map)} files. "
-            f"Found {len(self.unique_labels)} unique codes.",
+        self.preview_summary = {}
+        self._set_preview_busy(True)
+        if self.info_label is not None:
+            self.info_label.setText("Reviewing label files...")
+        command = PreviewLabelImportCommand(
+            label_paths=list(paths),
+            label_configs={
+                key: dict(value) for key, value in self.label_configs.items()
+            },
+            resource_preflight_confirmed=confirmed,
+            resource_preflight_token=token,
         )
 
-        # Preserve existing mapping if possible
-        current_mapping = {}
-        for i in range(self.map_table.rowCount()):
-            code_item = self.map_table.item(i, 0)
-            name_item = self.map_table.item(i, 1)
-            if code_item and name_item:
-                try:
-                    code = code_item.data(Qt.ItemDataRole.UserRole)
-                    if code is None:
-                        code = _parse_display_code(code_item.text())
-                    name = name_item.text()
-                    current_mapping[code] = name
-                except Exception:
-                    logger.exception("Failed to parse mapping code")
+        def _handle_result(result: Any) -> InteractionOutcome | None:
+            if tuple(self.label_paths) != paths:
+                return InteractionOutcome.cancelled("The selected labels changed.")
+            self._set_preview_busy(False)
+            if getattr(result, "failed", False):
+                return self._handle_preview_failure(result)
+            raw_summary = getattr(result, "diagnostics", {}).get("label_preview")
+            if not isinstance(raw_summary, Mapping):
+                self._clear_preview("The backend returned an invalid label preview.")
+                QMessageBox.critical(
+                    self,
+                    "Label Preview Failed",
+                    "The backend returned an invalid label preview.",
+                )
+                return InteractionOutcome.failed("Invalid label preview response.")
+            self._apply_preview_summary(dict(raw_summary))
+            return InteractionOutcome.completed("Label preview is ready.")
 
-        # Populate Table
-        self.map_table.setRowCount(len(self.unique_labels))
-        for i, code in enumerate(self.unique_labels):
-            # Code (Read-only)
-            item_code = QTableWidgetItem(str(code))
-            item_code.setFlags(item_code.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            item_code.setData(Qt.ItemDataRole.UserRole, code)
-            self.map_table.setItem(i, 0, item_code)
+        def _handle_error(error: tuple[Any, ...]) -> None:
+            self._set_preview_busy(False)
+            self._clear_preview("Label preview failed.")
+            message = error[1] if len(error) > 1 else error
+            QMessageBox.critical(self, "Label Preview Failed", str(message))
 
-            # Name (Editable)
-            # Use existing name if available, else default
-            name = current_mapping.get(code, f"Event_{code}")
-            item_name = QTableWidgetItem(name)
-            self.map_table.setItem(i, 1, item_name)
+        execute_kwargs: dict[str, Any] = {}
+        if self._expected_publication_generation is not None:
+            execute_kwargs["expected_publication_generation"] = (
+                self._expected_publication_generation
+            )
+        started = execute_application_command_async(
+            self,
+            command,
+            on_result=_handle_result,
+            on_error=_handle_error,
+            refresh=False,
+            busy_target=self,
+            **execute_kwargs,
+        )
+        if not started:
+            self._set_preview_busy(False)
+            self._clear_preview("Label preview is unavailable.")
+            QMessageBox.warning(
+                self,
+                "Label Preview Unavailable",
+                "The application backend is unavailable for label review.",
+            )
 
-    def get_results(self):
-        """Return the loaded label data and code-to-name mapping.
+    def _handle_preview_failure(self, result: Any) -> InteractionOutcome:
+        if is_stale_publication_result(result):
+            self._clear_preview("The loaded data changed. Review label import again.")
+            QMessageBox.warning(
+                self,
+                "Review Label Import Again",
+                str(result.message),
+            )
+            self.reject()
+            return InteractionOutcome.blocked(str(result.message))
+        try:
+            preflight = ResourcePreflightView.from_diagnostics(
+                getattr(result, "diagnostics", {})
+            )
+        except ResourcePreflightContractError:
+            preflight = None
+        error_type = getattr(
+            getattr(result, "error_type", None),
+            "value",
+            getattr(result, "error_type", None),
+        )
+        if (
+            preflight is not None
+            and preflight.requires_confirmation
+            and preflight.challenge is not None
+            and error_type == ErrorType.CONFIRMATION_REQUIRED.value
+        ):
+            reply = QMessageBox.question(
+                self,
+                "Label Resource Check",
+                (preflight.message or result.message)
+                + "\n\nContinue reviewing these label files?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._request_preview(
+                    confirmed=True,
+                    token=preflight.challenge.challenge_id,
+                )
+                return InteractionOutcome.accepted(
+                    "Confirmed label preview was scheduled."
+                )
+            self._clear_preview("Label review was cancelled.")
+            return InteractionOutcome.cancelled("Label review was cancelled.")
+        self._clear_preview("Label preview failed.")
+        QMessageBox.critical(self, "Label Preview Failed", str(result.message))
+        return InteractionOutcome.blocked(str(result.message))
 
-        Returns:
-            Tuple of (label_data_map, mapping_dict) where label_data_map maps
-            filenames to label arrays and mapping_dict maps raw label values
-            to event name strings. Returns (None, None) if no data loaded.
+    def _apply_preview_summary(self, summary: Mapping[str, Any]) -> None:
+        preview_id = str(summary.get("preview_id") or "").strip()
+        raw_paths = summary.get("label_paths")
+        raw_unique = summary.get("unique_labels")
+        raw_mapping_limit = summary.get("mapping_cardinality_limit")
+        if (
+            not preview_id
+            or not isinstance(raw_paths, list)
+            or not raw_paths
+            or not isinstance(raw_unique, list)
+            or isinstance(raw_mapping_limit, bool)
+            or not isinstance(raw_mapping_limit, int)
+            or raw_mapping_limit <= 0
+            or len(raw_unique) > raw_mapping_limit
+        ):
+            raise ValueError("Label preview summary is incomplete.")
+        normalized_paths = [str(path) for path in raw_paths if str(path)]
+        if len(normalized_paths) != len(raw_paths):
+            raise ValueError("Label preview paths are incomplete.")
+        raw_configs = summary.get("label_configs")
+        configs = (
+            {
+                str(path): dict(config)
+                for path, config in raw_configs.items()
+                if isinstance(config, Mapping)
+            }
+            if isinstance(raw_configs, Mapping)
+            else {}
+        )
+        self.label_paths = normalized_paths
+        self.label_configs = configs
+        self.preview_summary = dict(summary)
+        self.unique_labels = sorted(
+            (_normalize_label_value(value) for value in raw_unique),
+            key=_label_sort_key,
+        )
+        self.update_unique_labels()
 
-        """
-        if not self.label_data_map or not self.map_table:
-            return None, None
+    def _clear_preview(self, message: str) -> None:
+        self.preview_summary = {}
+        self.unique_labels = []
+        if self.map_table is not None:
+            self.map_table.setRowCount(0)
+        if self.info_label is not None:
+            self.info_label.setText(message)
 
-        mapping = {}
-        for i in range(self.map_table.rowCount()):
-            code_item = self.map_table.item(i, 0)
-            name_item = self.map_table.item(i, 1)
-            if code_item and name_item:
+    def _set_preview_busy(self, busy: bool) -> None:
+        self._preview_pending = busy
+        for widget in (self.file_list, self.browse_button, self.remove_button):
+            if widget is not None:
+                widget.setEnabled(not busy)
+        if self.button_box is not None:
+            ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
+            if ok_button is not None:
+                ok_button.setEnabled(not busy and bool(self.preview_summary))
+
+    def update_unique_labels(self) -> None:
+        if self.info_label is None or self.map_table is None:
+            return
+        if not self.preview_summary:
+            self._clear_preview("No labels reviewed.")
+            return
+        current_mapping: dict[Any, str] = {}
+        for row in range(self.map_table.rowCount()):
+            code_item = self.map_table.item(row, 0)
+            name_item = self.map_table.item(row, 1)
+            if code_item is not None and name_item is not None:
                 code = code_item.data(Qt.ItemDataRole.UserRole)
-                if code is None:
-                    code = _parse_display_code(code_item.text())
-                name = name_item.text().strip()
-                if code is not None and name:
-                    mapping[code] = name
+                current_mapping[
+                    _parse_display_code(code_item.text()) if code is None else code
+                ] = name_item.text()
+        self.map_table.setRowCount(len(self.unique_labels))
+        for row, code in enumerate(self.unique_labels):
+            code_item = QTableWidgetItem(str(code))
+            code_item.setFlags(code_item.flags() ^ Qt.ItemFlag.ItemIsEditable)
+            code_item.setData(Qt.ItemDataRole.UserRole, code)
+            self.map_table.setItem(row, 0, code_item)
+            self.map_table.setItem(
+                row,
+                1,
+                QTableWidgetItem(current_mapping.get(code, f"Event_{code}")),
+            )
+        total_count = int(self.preview_summary.get("total_label_count") or 0)
+        file_count = len(self.label_paths)
+        self.info_label.setText(
+            f"Reviewed {total_count} labels from {file_count} files. "
+            f"Found {len(self.unique_labels)} unique codes."
+        )
+        self._set_preview_busy(False)
 
-        return self.label_data_map, mapping
+    def get_results(
+        self,
+    ) -> tuple[LabelImportSelection | None, dict[Any, str] | None]:
+        if not self.preview_summary or self.map_table is None:
+            return None, None
+        preview_id = str(self.preview_summary.get("preview_id") or "").strip()
+        if not preview_id:
+            return None, None
+        mapping: dict[Any, str] = {}
+        for row in range(self.map_table.rowCount()):
+            code_item = self.map_table.item(row, 0)
+            name_item = self.map_table.item(row, 1)
+            if code_item is None or name_item is None:
+                continue
+            code = code_item.data(Qt.ItemDataRole.UserRole)
+            if code is None:
+                code = _parse_display_code(code_item.text())
+            name = name_item.text().strip()
+            if name:
+                mapping[code] = name
+        raw_target_count = self.preview_summary.get("target_count")
+        target_count = raw_target_count if isinstance(raw_target_count, int) else None
+        selection = LabelImportSelection(
+            preview_id=preview_id,
+            label_paths=tuple(self.label_paths),
+            label_configs={
+                key: dict(value) for key, value in self.label_configs.items()
+            },
+            mode=str(self.preview_summary.get("mode") or "").lower(),
+            target_count=target_count,
+        )
+        return selection, mapping
 
-    def get_result(self):
-        """Return the import results.
-
-        Returns:
-            Tuple of (label_data_map, mapping_dict).
-
-        """
+    def get_result(
+        self,
+    ) -> tuple[LabelImportSelection | None, dict[Any, str] | None]:
         return self.get_results()
 
-    def accept(self):
-        """Validate loaded data and mapping before accepting the dialog."""
-        if not self.label_data_map:
-            QMessageBox.warning(self, "Warning", "No labels loaded.")
+    def accept(self) -> None:
+        if self._preview_pending:
+            QMessageBox.warning(self, "Warning", "Label review is still running.")
             return
-
-        # Validate mapping
-        _, mapping = self.get_results()
-        if not mapping:
-            QMessageBox.warning(self, "Warning", "Please provide event names.")
+        selection, mapping = self.get_results()
+        if selection is None:
+            QMessageBox.warning(self, "Warning", "No labels have been reviewed.")
             return
-
+        if selection.mode == "mixed":
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "Timestamp and sequence label files cannot be mixed in one import.",
+            )
+            return
+        if not mapping or len(mapping) != len(self.unique_labels):
+            QMessageBox.warning(self, "Warning", "Please provide all event names.")
+            return
         super().accept()

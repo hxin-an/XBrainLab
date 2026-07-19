@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
+from contextlib import suppress
+from typing import Any
 
+from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.core.model_catalog import (
     MAX_TOTAL_MODEL_CACHE_GB,
     allowed_local_model_ids,
@@ -22,10 +25,10 @@ from XBrainLab.llm.core.model_catalog import (
 )
 
 
-def classify_runtime(config: LLMConfig) -> dict[str, object]:
+def classify_runtime(config: LLMConfig) -> dict[str, Any]:
     """Return a structured classification of current local-assistant readiness."""
     selection = config.assistant_runtime_selection()
-    result: dict[str, object] = {
+    result: dict[str, Any] = {
         "current_backend_mode": selection.backend_mode,
         "current_model_id": selection.model_id,
         "current_ui_active_mode": selection.ui_active_mode,
@@ -107,7 +110,7 @@ def classify_runtime(config: LLMConfig) -> dict[str, object]:
     return result
 
 
-def render_markdown(result: dict[str, object]) -> str:
+def render_markdown(result: dict[str, Any]) -> str:
     """Render a human-readable host-runtime summary."""
     lines = [
         "# Local Assistant Runtime Inspection",
@@ -165,7 +168,7 @@ def run_prompt_smoke(
     config: LLMConfig,
     *,
     prompt: str = "Reply with READY.",
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Run a minimal local prompt-response smoke when the runtime is ready."""
     selection = config.assistant_runtime_selection()
     if selection.backend_mode != "local":
@@ -184,6 +187,7 @@ def run_prompt_smoke(
 
     config.max_new_tokens = min(int(config.max_new_tokens), 32)
     config.do_sample = False
+    engine: LLMEngine | None = None
     try:
         engine = LLMEngine(config)
         engine.load_model()
@@ -195,11 +199,16 @@ def run_prompt_smoke(
                         "content": "You are a local XBrainLab health checker.",
                     },
                     {"role": "user", "content": prompt},
-                ]
+                ],
+                profile=GenerationProfile.INFORMATIONAL_TEXT,
             )
         )
     except Exception as exc:
         return {"status": "failed", "message": str(exc), "response": ""}
+    finally:
+        if engine is not None:
+            with suppress(Exception):
+                engine.close()
 
     response = "".join(chunks).strip()
     return {
@@ -211,27 +220,7 @@ def run_prompt_smoke(
     }
 
 
-def _extract_json_object(text: str) -> dict[str, object] | None:
-    """Extract the first JSON object from model output."""
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE)
-        stripped = re.sub(r"\s*```$", "", stripped)
-    candidates = [stripped]
-    match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
-    if match:
-        candidates.append(match.group(0))
-    for candidate in candidates:
-        try:
-            value = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            return value
-    return None
-
-
-def run_structured_output_smoke(config: LLMConfig) -> dict[str, object]:
+def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
     """Check whether the local model can follow the tool-call JSON protocol."""
     selection = config.assistant_runtime_selection()
     if selection.backend_mode != "local":
@@ -250,6 +239,7 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, object]:
 
     config.max_new_tokens = min(int(config.max_new_tokens), 96)
     config.do_sample = False
+    engine: LLMEngine | None = None
     try:
         engine = LLMEngine(config)
         engine.load_model()
@@ -266,28 +256,37 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, object]:
                     {
                         "role": "user",
                         "content": (
-                            'Return exactly {"tool_name":"get_state","arguments":{}}'
+                            'Return exactly {"tool_name":"query_state","parameters":{}}'
                         ),
                     },
-                ]
+                ],
+                profile=GenerationProfile.STRUCTURED_DECISION,
             )
         )
     except Exception as exc:
         return {"status": "failed", "message": str(exc), "response": ""}
+    finally:
+        if engine is not None:
+            with suppress(Exception):
+                engine.close()
 
     response = "".join(chunks).strip()
-    parsed = _extract_json_object(response)
-    if parsed == {"tool_name": "get_state", "arguments": {}}:
+    envelope = CommandParser.parse_product(response)
+    if envelope.status is ToolEnvelopeStatus.VALID and envelope.commands == (
+        ("query_state", {}),
+    ):
         return {
             "status": "passed",
-            "message": "Structured-output smoke completed.",
+            "message": "Product tool-envelope smoke completed.",
             "response": response[:500],
         }
     return {
         "status": "failed",
-        "message": "Model did not return the expected tool-call JSON object.",
+        "failure_type": "output_format",
+        "message": "Model did not return the strict product tool envelope.",
         "response": response[:500],
-        "parsed": parsed,
+        "parse_status": envelope.status.value,
+        "parse_error": envelope.error,
     }
 
 

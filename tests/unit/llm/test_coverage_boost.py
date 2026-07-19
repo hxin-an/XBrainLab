@@ -1,11 +1,37 @@
 """Coverage-boost tests for remaining LLM module gaps."""
 
-from collections import deque
+import json
+import logging
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from XBrainLab.backend.application.results import ErrorType
+from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionOutcome
+from XBrainLab.llm.agent.turn import (
+    AssistantGenerationEvent,
+    AssistantGenerationEventPhase,
+)
+from XBrainLab.llm.tools import application_surface
+from XBrainLab.llm.tools.application_surface import (
+    ToolAvailability,
+    ToolAvailabilityContext,
+    ToolCommandResult,
+)
+
+
+def _tool_outcome(message: str, *, ok: bool = True) -> ToolExecutionOutcome:
+    return ToolExecutionOutcome(
+        ok,
+        ToolCommandResult(
+            ok=ok,
+            tool_name="cmd",
+            message=message,
+            error_type="none" if ok else "runtime",
+        ),
+    )
 
 
 def _command_result(
@@ -19,7 +45,41 @@ def _command_result(
         ok=not failed,
         message=message,
         diagnostics=diagnostics or {},
+        error_type=ErrorType.RUNTIME if failed else ErrorType.NONE,
+        recoverable=True,
     )
+
+
+def _install_application_surface_contract(
+    monkeypatch,
+    tool_name: str,
+    *,
+    result: ToolCommandResult | None = None,
+    side_effect: Exception | None = None,
+) -> tuple[MagicMock, MagicMock, ToolAvailabilityContext]:
+    command_name = application_surface.TOOL_TO_COMMAND[tool_name].value
+    context = ToolAvailabilityContext(
+        availability=ToolAvailability(
+            tool_name=tool_name,
+            enabled=True,
+            command_name=command_name,
+        ),
+        state={"canonical_snapshot": True},
+        generation=13,
+    )
+    get_context = MagicMock(return_value=context)
+    execute_surface = MagicMock()
+    if side_effect is not None:
+        execute_surface.side_effect = side_effect
+    else:
+        execute_surface.return_value = result
+    monkeypatch.setattr(application_surface, "get_application_context", get_context)
+    monkeypatch.setattr(
+        application_surface,
+        "execute_application_tool_command",
+        execute_surface,
+    )
+    return get_context, execute_surface, context
 
 
 # ── retriever.py ────────────────────────────────────────────
@@ -98,10 +158,11 @@ class TestRetrieverEdgeCases:
         from XBrainLab.llm.rag.retriever import RAGRetriever
 
         r = RAGRetriever()
-        r.client = MagicMock()
-        r._executor = MagicMock()
+        client = MagicMock()
+        r.client = client
         r.close()
-        r.client.close.assert_called_once()
+        client.close.assert_called_once()
+        assert r.client is None
 
     def test_hybrid_retrieval_exception(self):
         """L301-303: exception in hybrid search returns empty string."""
@@ -109,13 +170,10 @@ class TestRetrieverEdgeCases:
 
         r = RAGRetriever()
         r.is_initialized = True
+        r.client = MagicMock()
         r.embeddings = MagicMock()
+        r.embeddings.embed_query.side_effect = Exception("fail")
         r.bm25_index = MagicMock()
-        r._executor = MagicMock()
-        # Force the future to raise
-        fut = MagicMock()
-        fut.result.side_effect = Exception("fail")
-        r._executor.submit.return_value = fut
         result = r.get_similar_examples("test")
         assert result == ""
 
@@ -126,12 +184,26 @@ class TestRetrieverEdgeCases:
         r = RAGRetriever()
         r.is_initialized = True
         r.embeddings = MagicMock()
+        strict_metadata = {
+            "tool_calls": [
+                {
+                    "tool_name": "scan_source",
+                    "parameters": {
+                        "source_path": "/tmp/example.fif",
+                        "label_sources": [],
+                    },
+                }
+            ]
+        }
 
         # Mock qdrant client query_points
         mock_point = MagicMock()
         mock_point.id = "1"
         mock_point.score = 0.9
-        mock_point.payload = {"page_content": "hello world", "metadata": {}}
+        mock_point.payload = {
+            "page_content": "hello world",
+            "metadata": strict_metadata,
+        }
         mock_result = MagicMock()
         mock_result.points = [mock_point]
         r.client = MagicMock()
@@ -139,14 +211,10 @@ class TestRetrieverEdgeCases:
 
         # Set up BM25
         bm25 = MagicMock()
-        bm25.query.return_value = [(5.0, "1", "hello world", {"id": "1"})]
+        bm25.query.return_value = [(5.0, "1", "hello world", strict_metadata)]
         r.bm25_index = bm25
 
-        # Mock executor to run embed inline
-        r._executor = MagicMock()
-        fut = MagicMock()
-        fut.result.return_value = [0.1, 0.2, 0.3]  # fake embedding
-        r._executor.submit.return_value = fut
+        r.embeddings.embed_query.return_value = [0.1, 0.2, 0.3]
 
         result = r.get_similar_examples("test")
         assert isinstance(result, str)
@@ -159,39 +227,44 @@ class TestRetrieverEdgeCases:
 class TestDownloadWorkerRun:
     """Cover L107-144: DownloadWorker.run() main loop."""
 
+    @staticmethod
+    def _process_context(process, result_queue):
+        context = MagicMock()
+        context.Process.return_value = process
+        context.Queue.return_value = result_queue
+        return patch(
+            "XBrainLab.llm.core.downloader.multiprocessing.get_context",
+            return_value=context,
+        )
+
     def test_cancelled_during_run(self):
-        """L125-128: cancel flag terminates process."""
+        """A cancelled worker reaps its child before reporting terminal failure."""
         from XBrainLab.llm.core.downloader import DownloadWorker
 
-        w: Any = DownloadWorker.__new__(DownloadWorker)
-        w.repo_id = "test/repo"
-        w.cache_dir = "/tmp"
-        w.download_finished = MagicMock()
-        w.download_failed = MagicMock()
-        w.download_progress = MagicMock()
+        w = DownloadWorker("test/repo", "/tmp")
+        failed = MagicMock()
+        w.download_failed.connect(failed)
         w._is_cancelled = True
 
         mock_proc = MagicMock()
+        mock_proc.is_alive.side_effect = [True, False]
         mock_q = MagicMock()
-        mock_q.get_nowait.side_effect = Exception("empty")
-        with (
-            patch("multiprocessing.Process", return_value=mock_proc),
-            patch("multiprocessing.Queue", return_value=mock_q),
-        ):
+        with self._process_context(mock_proc, mock_q):
             w.run()
-        w.download_failed.emit.assert_called()
+
+        failed.assert_called_once_with("Cancelled by user")
+        mock_proc.terminate.assert_called_once()
+        mock_proc.join.assert_called()
+        assert w._process is None
+        assert w._queue is None
 
     def test_process_dies_unexpectedly(self):
         """L131-140: process not alive + no success in queue."""
         from XBrainLab.llm.core.downloader import DownloadWorker
 
-        w: Any = DownloadWorker.__new__(DownloadWorker)
-        w.repo_id = "test/repo"
-        w.cache_dir = "/tmp"
-        w.download_finished = MagicMock()
-        w.download_failed = MagicMock()
-        w.download_progress = MagicMock()
-        w._is_cancelled = False
+        w = DownloadWorker("test/repo", "/tmp")
+        failed = MagicMock()
+        w.download_failed.connect(failed)
 
         mock_proc = MagicMock()
         mock_proc.is_alive.return_value = False
@@ -202,28 +275,21 @@ class TestDownloadWorkerRun:
         mock_q = MagicMock()
         mock_q.get_nowait.side_effect = stdlib_queue.Empty
 
-        with (
-            patch("multiprocessing.Process", return_value=mock_proc),
-            patch("multiprocessing.Queue", return_value=mock_q),
-        ):
+        with self._process_context(mock_proc, mock_q):
             w.run()
-        w.download_failed.emit.assert_called()
+        failed.assert_called()
 
     def test_check_queue_success(self):
         """L143-144: successful download detected from queue."""
         from XBrainLab.llm.core.downloader import DownloadWorker
 
-        w: Any = DownloadWorker.__new__(DownloadWorker)
-        w.repo_id = "test/repo"
-        w.cache_dir = "/tmp"
-        w.download_finished = MagicMock()
-        w.download_failed = MagicMock()
-        w.download_progress = MagicMock()
-        w._is_cancelled = False
+        w = DownloadWorker("test/repo", "/tmp")
+        finished = MagicMock()
+        w.download_finished.connect(finished)
 
         mock_proc = MagicMock()
-        # First check: alive. Second check (after queue): not alive.
-        mock_proc.is_alive.side_effect = [True, False]
+        # Monitor sees the child, then cleanup verifies it before and after join.
+        mock_proc.is_alive.side_effect = [True, False, False]
 
         import queue as stdlib_queue
 
@@ -237,12 +303,9 @@ class TestDownloadWorkerRun:
 
         mock_q.get_nowait.side_effect = side_effect
 
-        with (
-            patch("multiprocessing.Process", return_value=mock_proc),
-            patch("multiprocessing.Queue", return_value=mock_q),
-        ):
+        with self._process_context(mock_proc, mock_q):
             w.run()
-        w.download_finished.emit.assert_called_once_with("/model")
+        finished.assert_called_once_with("/model")
 
 
 # ── controller.py remaining lines ───────────────────────────
@@ -251,8 +314,16 @@ class TestDownloadWorkerRun:
 def _make_ctrl() -> Any:
     from PyQt6.QtCore import QObject
 
+    from XBrainLab.llm.agent.assembler import PromptToolPublication
     from XBrainLab.llm.agent.controller import LLMController
-    from XBrainLab.llm.agent.execution_policy import HostExecutionPolicy
+    from XBrainLab.llm.agent.strict_envelope_recovery import (
+        StrictEnvelopeRecoveryPolicy,
+    )
+    from XBrainLab.llm.agent.tool_attempt_coordinator import ToolAttemptCoordinator
+    from XBrainLab.llm.agent.tool_execution_coordinator import (
+        ToolExecutionCoordinator,
+    )
+    from XBrainLab.llm.tools.application_surface import READ_ONLY_TOOLS, TOOL_TO_COMMAND
 
     ctrl = LLMController.__new__(LLMController)
     QObject.__init__(ctrl)
@@ -262,37 +333,61 @@ def _make_ctrl() -> Any:
     ctrl.metrics = MagicMock()
     ctrl.metrics.current_turn = MagicMock()
     ctrl.status_update = MagicMock()
-    ctrl.chunk_received = MagicMock()
     ctrl.processing_finished = MagicMock()
-    ctrl.remove_content = MagicMock()
+    ctrl.turn_finished = MagicMock()
+    ctrl._active_host_turn_id = 1
+    ctrl._active_host_turn_generation = 1
     ctrl.sig_generate = MagicMock()
     ctrl.assembler = MagicMock()
-    ctrl.generation_started = MagicMock()
-    ctrl.response_ready = MagicMock()
-    ctrl.request_user_interaction = MagicMock()
+    ctrl.generation_event = MagicMock()
+    ctrl.response_presentation_ready = MagicMock()
+    ctrl.panel_navigation_requested = MagicMock()
     ctrl.error_occurred = MagicMock()
     ctrl.current_response = ""
-    ctrl._emitted_len = 0
-    ctrl._is_buffering = False
+    ctrl._generation_id = 0
+    ctrl._active_generation_id = None
     ctrl._retry_count = 0
-    ctrl._max_retries = 3
+    ctrl._strict_envelope_recovery_policy = StrictEnvelopeRecoveryPolicy(
+        max_recovery_attempts=3,
+    )
     ctrl.is_processing = True
     ctrl._tool_failure_count = 0
     ctrl._max_tool_failures = 3
     ctrl._successful_tool_count = 0
-    ctrl._execution_policy = HostExecutionPolicy()
     ctrl._tool_execution_count = 0
     ctrl._max_tool_executions = 5
     ctrl._turn_cancelled = False
     ctrl._execution_mode = ctrl.MODE_SINGLE
-    ctrl._recent_tool_calls = deque(maxlen=10)
-    ctrl._pending_confirmation = None
+    from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
+
+    ctrl._pending_interactions = PendingInteractionCoordinator()
     ctrl._loop_break_count = 0
     ctrl._max_loop_breaks = 2
+    ctrl._active_tool_publication = PromptToolPublication(
+        tool_names=frozenset(set(TOOL_TO_COMMAND) | set(READ_ONLY_TOOLS))
+    )
     ctrl.registry = MagicMock()
     ctrl.study = MagicMock()
     ctrl.verifier = MagicMock()
-    ctrl.rag_retriever = MagicMock()
+    ctrl._rag_lifecycle = MagicMock()
+    ctrl._rag_lifecycle.retriever = MagicMock()
+    context_source = MagicMock()
+    context_source.get_context.side_effect = lambda tool_name: (
+        ToolAvailabilityContext(
+            availability=ToolAvailability(tool_name=tool_name, enabled=True),
+            state={"pipeline_stage": "empty"},
+            generation=1,
+        )
+    )
+    ctrl._tool_attempt_coordinator = ToolAttemptCoordinator(
+        registry=ctrl.registry,
+        verifier=ctrl.verifier,
+        context_source=context_source,
+    )
+    ctrl._tool_execution_coordinator = ToolExecutionCoordinator(
+        ctrl,
+        block_policy=ctrl._tool_attempt_coordinator,
+    )
     return ctrl
 
 
@@ -302,64 +397,86 @@ class TestControllerResponseComplete:
     def test_tool_calls_path(self):
         """Parsed tool calls trigger _process_tool_calls."""
         ctrl = _make_ctrl()
-        commands = [("load_data", {"paths": ["/a"]})]
-        ctrl.current_response = "```json\n{}\n```"
-        with (
-            patch(
-                "XBrainLab.llm.agent.controller.CommandParser.parse",
-                return_value=commands,
-            ),
-            patch.object(ctrl, "_process_tool_calls") as mock_ptc,
-        ):
-            ctrl._on_generation_finished()
-        mock_ptc.assert_called_once()
+        ctrl.current_response = (
+            '{"tool_name":"load_data","parameters":{"paths":["/a"]}}'
+        )
+        ctrl._active_generation_id = 61
+        with patch.object(ctrl, "_process_tool_calls") as mock_ptc:
+            ctrl._on_generation_finished(61, [])
+        mock_ptc.assert_called_once_with(
+            [("load_data", {"paths": ["/a"]})],
+            ctrl.current_response,
+        )
         assert ctrl._retry_count == 0
+        ctrl.generation_event.emit.assert_called_once_with(
+            AssistantGenerationEvent(
+                generation_id=61,
+                phase=AssistantGenerationEventPhase.FINISHED,
+            )
+        )
 
     def test_plain_text_path(self):
-        """No tool calls emit remaining text and finalize."""
+        """No tool calls publish one typed response and finalize."""
+        from XBrainLab.llm.agent.turn import AssistantResponseContract
+
         ctrl = _make_ctrl()
         ctrl.current_response = "Hello world"
-        ctrl._emitted_len = 5
-        with patch(
-            "XBrainLab.llm.agent.controller.CommandParser.parse",
-            return_value=None,
-        ):
-            ctrl._on_generation_finished()
-        ctrl.chunk_received.emit.assert_called()
+        ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
+        ctrl._active_generation_id = 62
+        ctrl._on_generation_finished(62, [])
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.text == "Hello world"
         assert ctrl.is_processing is False
 
     def test_max_retries_json(self):
-        """L406-409: max retries reached returns False."""
+        """Max retries consumes malformed output and closes the turn safely."""
+        from XBrainLab.llm.agent.parser import CommandParser
+
         ctrl = _make_ctrl()
         ctrl._retry_count = 3
-        result = ctrl._handle_json_broken_retry('{"broken', None)
-        assert result is False
+        response = '{"broken'
+        result = ctrl._handle_tool_envelope_failure(
+            response,
+            CommandParser.parse_product(response),
+        )
+        assert result is True
+        ctrl.response_presentation_ready.emit.assert_called_once()
+        ctrl.processing_finished.emit.assert_called_once()
+        assert ctrl.is_processing is False
 
-    def test_non_serializable_params(self):
-        """Non-serializable params fall back to str() in loop detection."""
+    def test_on_generation_error(self):
+        """A correlated generation failure emits a typed terminal event."""
         ctrl = _make_ctrl()
-        bad_params = {"key": object()}
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl._check_tool_availability = MagicMock(return_value=None)
-        ctrl._detect_loop = MagicMock(return_value=False)
-        ctrl.registry.get_tool.return_value = MagicMock(requires_confirmation=False)
-        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
-        ctrl._handle_tool_result_logic = MagicMock()
-        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._active_generation_id = 63
 
-        ctrl._process_tool_calls([("load_data", bad_params)], "tool response")
+        ctrl._on_generation_error(63, "Something failed")
 
-        assert ctrl._recent_tool_calls[-1][0] == "load_data"
-        assert ctrl._recent_tool_calls[-1][1] == str(bad_params)
-
-    def test_on_worker_error(self):
-        """L823-827: _on_worker_error emits signals."""
-        ctrl = _make_ctrl()
-        ctrl._on_worker_error("Something failed")
+        ctrl.generation_event.emit.assert_called_once_with(
+            AssistantGenerationEvent(
+                generation_id=63,
+                phase=AssistantGenerationEventPhase.ERROR,
+                text="Something failed",
+            )
+        )
         ctrl.error_occurred.emit.assert_called_with("Something failed")
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert "could not complete the request" in presentation.text
         ctrl.status_update.emit.assert_called_with("Error")
         assert ctrl.is_processing is False
         ctrl.processing_finished.emit.assert_called()
+
+    def test_on_runtime_error_without_active_generation(self):
+        """An uncorrelated runtime failure stays on the runtime error path."""
+        ctrl = _make_ctrl()
+        ctrl._active_generation_id = None
+
+        ctrl._on_runtime_error("Runtime failed")
+
+        ctrl.generation_event.emit.assert_not_called()
+        ctrl.error_occurred.emit.assert_called_once_with("Runtime failed")
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert "could not complete the request" in presentation.text
+        assert ctrl.is_processing is False
 
 
 # ── worker.py remaining lines ───────────────────────────────
@@ -370,10 +487,18 @@ class TestWorkerEdgeCases:
 
     def test_generation_thread_interruption(self):
         """L49-50: interruption check in GenerationThread.run()."""
+        from XBrainLab.llm.agent.turn import (
+            AssistantGenerationRequest,
+            AssistantResponseContract,
+        )
         from XBrainLab.llm.agent.worker import GenerationThread
 
         engine = MagicMock()
-        t = GenerationThread(engine, [{"role": "user", "content": "hi"}])
+        request = AssistantGenerationRequest.from_messages(
+            [{"role": "user", "content": "hi"}],
+            response_contract=AssistantResponseContract.STRUCTURED_ACTION,
+        ).correlated(71)
+        t = GenerationThread(engine, request)
         chunk_received = MagicMock()
         finished_generation = MagicMock()
         error_occurred = MagicMock()
@@ -397,33 +522,50 @@ class TestWorkerEdgeCases:
         w.engine = MagicMock()
         w.generation_thread = MagicMock()
         w.generation_thread.chunk_received = MagicMock()
-        w.generation_thread.finished = MagicMock()
-        w.generation_thread.error = MagicMock()
+        w.generation_thread.finished_generation = MagicMock()
+        w.generation_thread.error_occurred = MagicMock()
         # Disconnect raises TypeError → should be caught
         w.generation_thread.chunk_received.disconnect.side_effect = TypeError
-        w.generation_thread.finished.disconnect.side_effect = TypeError
-        w.generation_thread.error.disconnect.side_effect = TypeError
+        w.generation_thread.finished_generation.disconnect.side_effect = TypeError
+        w.generation_thread.error_occurred.disconnect.side_effect = TypeError
         w.generation_thread.isRunning.return_value = False
         w._cleanup_generation_thread()
 
     def test_timeout_disconnect_fail(self):
-        """L233-234: timeout handler when disconnect already done."""
+        """A timeout remains pending even when callbacks were disconnected."""
         from XBrainLab.llm.agent.worker import AgentWorker
 
         w = AgentWorker()
         w.engine = MagicMock()
-        w.generation_thread = MagicMock()
-        w.generation_thread.chunk_received = MagicMock()
-        w.generation_thread.finished = MagicMock()
-        w.generation_thread.error = MagicMock()
-        w.generation_thread.chunk_received.disconnect.side_effect = RuntimeError
-        w.generation_thread.finished.disconnect.side_effect = RuntimeError
-        w.generation_thread.error.disconnect.side_effect = RuntimeError
-        w.generation_thread.isRunning.return_value = True
-        errors = []
-        w.error.connect(errors.append)
+        thread = MagicMock()
+        thread.chunk_received = MagicMock()
+        thread.finished_generation = MagicMock()
+        thread.error_occurred = MagicMock()
+        thread.chunk_received.disconnect.side_effect = RuntimeError
+        thread.finished_generation.disconnect.side_effect = RuntimeError
+        thread.error_occurred.disconnect.side_effect = RuntimeError
+        thread.isRunning.return_value = True
+        w.generation_thread = thread
+        w._active_generation_id = 72
+        lifecycle_errors = []
+        generation_errors = []
+        w.error.connect(lifecycle_errors.append)
+        w.generation_error.connect(
+            lambda generation_id, message: generation_errors.append(
+                (generation_id, message)
+            )
+        )
+
         w._on_timeout()
-        assert errors == ["Error: Generation timed out (Local LLM is too slow)."]
+
+        assert lifecycle_errors == []
+        assert generation_errors == []
+        assert w.generation_thread is thread
+        w._release_generation_thread(thread)
+        assert lifecycle_errors == []
+        assert generation_errors == [
+            (72, "Error: Generation timed out (Local LLM is too slow).")
+        ]
 
 
 # ── config.py ───────────────────────────────────────────────
@@ -439,33 +581,44 @@ class TestLLMConfig:
         with patch("builtins.__import__", side_effect=ImportError("torch missing")):
             assert config_module._cuda_available() is False
 
-    def test_save_to_file_default_path(self):
+    def test_save_to_file_default_path(self, tmp_path):
         """L129: save_to_file uses default path."""
         from XBrainLab.llm.core.config import LLMConfig
 
         cfg = LLMConfig()
-        with (
-            patch("builtins.open", MagicMock()),
-            patch("json.dump"),
-            patch.object(cfg, "_default_settings_path", return_value="test.json"),
+        target = tmp_path / "settings.json"
+        with patch.object(
+            cfg,
+            "_default_settings_path",
+            return_value=str(target),
         ):
-            cfg.save_to_file()
+            saved = cfg.save_to_file()
 
-    def test_save_to_file_exception(self):
+        assert saved is True
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        assert payload["local"]["model_name"] == cfg.model_name
+        assert payload["inference_mode"] == "local"
+
+    def test_save_to_file_exception(self, tmp_path, caplog):
         """L149-150: save failure logged."""
         from XBrainLab.llm.core.config import LLMConfig
 
         cfg = LLMConfig()
+        target = tmp_path / "settings.json"
+        original = b'{"local":{"model_name":"known-good"}}\n'
+        target.write_bytes(original)
         with (
-            patch("builtins.open", side_effect=OSError("disk full")),
-            patch("logging.getLogger") as get_logger,
+            patch(
+                "XBrainLab.llm.core.config.json.dump", side_effect=OSError("disk full")
+            ),
+            caplog.at_level(logging.ERROR, logger="XBrainLab.llm.core.config"),
         ):
-            cfg.save_to_file("bad_path.json")
+            saved = cfg.save_to_file(str(target))
 
-        get_logger.return_value.error.assert_called_once()
-        assert (
-            "Error saving settings" in get_logger.return_value.error.call_args.args[0]
-        )
+        assert saved is False
+        assert target.read_bytes() == original
+        assert list(tmp_path.glob(".settings.json.*.tmp")) == []
+        assert "Error saving settings" in caplog.text
 
 
 # ── engine.py ───────────────────────────────────────────────
@@ -509,6 +662,7 @@ class TestLLMEngine:
     def test_generate_stream_no_backend(self):
         """L135: raise RuntimeError if no backend."""
         from XBrainLab.llm.core.engine import LLMEngine
+        from XBrainLab.llm.core.generation import GenerationProfile
 
         e = LLMEngine.__new__(LLMEngine)
         e.config = MagicMock()
@@ -518,7 +672,12 @@ class TestLLMEngine:
         e.active_backend = None
 
         with pytest.raises(RuntimeError, match="No active backend"):
-            list(e.generate_stream([]))
+            list(
+                e.generate_stream(
+                    [],
+                    profile=GenerationProfile.INFORMATIONAL_TEXT,
+                )
+            )
 
 
 # ── backends: local.py only ─────────────────────────────────
@@ -581,6 +740,7 @@ class TestLocalBackendExtra:
     def test_generate_stream_no_model(self):
         """L206: raises RuntimeError when model not loaded."""
         from XBrainLab.llm.core.backends.local import LocalBackend
+        from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 
         b = LocalBackend.__new__(LocalBackend)
         b.model = None
@@ -588,7 +748,15 @@ class TestLocalBackendExtra:
         b.is_loaded = False
         b.load = MagicMock(side_effect=RuntimeError("model not loaded"))
         with pytest.raises(RuntimeError, match="not loaded"):
-            list(b.generate_stream([{"role": "user", "content": "hi"}]))
+            list(
+                b.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=ResolvedGenerationOptions(
+                        max_new_tokens=128,
+                        do_sample=False,
+                    ),
+                )
+            )
         b.load.assert_called_once()
 
 
@@ -614,27 +782,34 @@ class TestRAGIndexerEdgeCases:
 
 
 class TestMockPreprocessErrors:
-    """Cover L81, 101, 121, 141, 161, 181, 201 in preprocess_mock.py."""
+    """Verify missing preprocessing arguments use typed input failures."""
 
     @pytest.mark.parametrize(
-        "cls_name,params",
+        "cls_name,params,message",
         [
-            ("MockBandPassFilterTool", {}),
-            ("MockNotchFilterTool", {}),
-            ("MockResampleTool", {}),
-            ("MockNormalizeTool", {}),
-            ("MockRereferenceTool", {}),
-            ("MockChannelSelectionTool", {}),
-            ("MockSetMontageTool", {}),
+            ("MockBandPassFilterTool", {}, "Error: frequencies are required"),
+            ("MockNotchFilterTool", {}, "Error: frequency is required"),
+            ("MockResampleTool", {}, "Error: rate is required"),
+            ("MockNormalizeTool", {}, "Error: method is required"),
+            ("MockRereferenceTool", {}, "Error: method is required"),
+            ("MockChannelSelectionTool", {}, "Error: channels list is required"),
+            ("MockSetMontageTool", {}, "Error: montage_name is required"),
         ],
     )
-    def test_missing_required_params(self, cls_name, params):
+    def test_missing_required_params(self, cls_name, params, message):
         import XBrainLab.llm.tools.mock.preprocess_mock as mod
+        from XBrainLab.llm.tools.mock.state import MockWorkflowState
+        from XBrainLab.llm.tools.result_contract import ToolResult
 
         cls = getattr(mod, cls_name)
-        tool = cls()
+        tool = cls(MockWorkflowState(data_loaded=True))
         result = tool.execute(MagicMock(), **params)
-        assert "Error" in result or "error" in result.lower()
+        assert isinstance(result, ToolResult)
+        assert result.ok is False
+        assert result.message == message
+        assert result.payload is None
+        assert result.error_type == "input"
+        assert result.recoverable is True
 
 
 # ── real training tools error/success ───────────────────────
@@ -643,44 +818,139 @@ class TestMockPreprocessErrors:
 class TestRealTrainingTools:
     """Cover training_real.py remaining lines."""
 
-    def test_set_model_success(self):
-        """L35: successful model set."""
+    def test_set_model_success(self, monkeypatch):
         from XBrainLab.llm.tools.real.training_real import RealSetModelTool
 
-        tool = RealSetModelTool()
-        service = MagicMock()
-        service.execute.return_value = _command_result()
-        with patch(
-            "XBrainLab.llm.tools.real.training_real.get_application_service",
-            return_value=service,
-        ):
-            result = tool.execute(MagicMock(), model_name="EEGNet")
-        assert "successfully" in result.lower() or "EEGNet" in result
+        surface_result = ToolCommandResult(
+            ok=True,
+            tool_name="set_model",
+            command_name="configure_training",
+            message="Model successfully set to EEGNet.",
+            error_type="none",
+            recoverable=True,
+            diagnostics={"model_name": "EEGNet"},
+        )
+        get_context, execute_surface, context = _install_application_surface_contract(
+            monkeypatch,
+            "set_model",
+            result=surface_result,
+        )
+        study = object()
 
-    def test_configure_training_exception(self):
-        """L90-91: exception in configure."""
+        result = RealSetModelTool().execute(study, model_name="EEGNet")
+
+        assert result.ok is True
+        assert result.message == "Model successfully set to EEGNet."
+        assert result.payload is None
+        assert result.error_type == "none"
+        assert result.recoverable is True
+        assert result.command_name == "configure_training"
+        assert result.diagnostics == {"model_name": "EEGNet"}
+        get_context.assert_called_once_with(study, "set_model")
+        execute_surface.assert_called_once_with(
+            study,
+            "set_model",
+            {"model_name": "EEGNet"},
+            availability=context.availability,
+            state=context.state,
+        )
+
+    def test_configure_training_exception(self, monkeypatch):
         from XBrainLab.llm.tools.real.training_real import RealConfigureTrainingTool
 
-        tool = RealConfigureTrainingTool()
-        service = MagicMock()
-        service.execute.side_effect = Exception("bad config")
-        with patch(
-            "XBrainLab.llm.tools.real.training_real.get_application_service",
-            return_value=service,
-        ):
-            result = tool.execute(MagicMock(), learning_rate=0.001)
-        assert "Failed" in result or "bad config" in result
+        error = RuntimeError("bad config")
+        get_context, execute_surface, context = _install_application_surface_contract(
+            monkeypatch,
+            "configure_training",
+            side_effect=error,
+        )
+        study = object()
 
-    def test_start_training_exception(self):
-        """L123-124: exception in start training."""
+        result = RealConfigureTrainingTool().execute(
+            study,
+            epoch=10,
+            batch_size=32,
+            learning_rate=0.001,
+        )
+
+        expected_params = {
+            "model_name": None,
+            "epoch": 10,
+            "batch_size": 32,
+            "learning_rate": 0.001,
+            "repeat": 1,
+            "device": "cpu",
+            "optimizer": "adam",
+            "evaluation_option": "last_epoch",
+            "save_checkpoints_every": 0,
+        }
+        assert result.ok is False
+        assert result.message == (
+            "The assistant tool could not complete the action. "
+            "Refresh application state before retrying."
+        )
+        assert result.payload is None
+        assert result.error_type == "runtime"
+        assert result.recoverable is False
+        assert result.command_name == "configure_training"
+        assert result.error_code == "unexpected_tool_failure"
+        assert result.recovery_action == "refresh_application_state"
+        assert result.state is None
+        assert result.capability is None
+        assert result.changed_state["state_unknown"] is True
+        assert result.diagnostics["incident_id"]
+        get_context.assert_called_once_with(
+            study,
+            "configure_training",
+        )
+        execute_surface.assert_called_once_with(
+            study,
+            "configure_training",
+            expected_params,
+            availability=context.availability,
+            state=context.state,
+        )
+
+    def test_start_training_exception(self, monkeypatch):
         from XBrainLab.llm.tools.real.training_real import RealStartTrainingTool
 
-        tool = RealStartTrainingTool()
-        service = MagicMock()
-        service.execute.side_effect = Exception("GPU OOM")
-        with patch(
-            "XBrainLab.llm.tools.real.training_real.get_application_service",
-            return_value=service,
-        ):
-            result = tool.execute(MagicMock())
-        assert "Failed" in result or "GPU OOM" in result
+        error = RuntimeError("GPU OOM")
+        get_context, execute_surface, context = _install_application_surface_contract(
+            monkeypatch,
+            "start_training",
+            side_effect=error,
+        )
+        study = object()
+
+        result = RealStartTrainingTool().execute(study)
+
+        expected_params = {
+            "append": True,
+            "interactive": True,
+            "confirmed": False,
+            "resource_preflight_confirmed": False,
+            "resource_preflight_token": None,
+        }
+        assert result.ok is False
+        assert result.message == (
+            "The assistant tool could not complete the action. "
+            "Refresh application state before retrying."
+        )
+        assert result.payload is None
+        assert result.error_type == "runtime"
+        assert result.recoverable is False
+        assert result.command_name == "train"
+        assert result.error_code == "unexpected_tool_failure"
+        assert result.recovery_action == "refresh_application_state"
+        assert result.state is None
+        assert result.capability is None
+        assert result.changed_state["state_unknown"] is True
+        assert result.diagnostics["incident_id"]
+        get_context.assert_called_once_with(study, "start_training")
+        execute_surface.assert_called_once_with(
+            study,
+            "start_training",
+            expected_params,
+            availability=context.availability,
+            state=context.state,
+        )

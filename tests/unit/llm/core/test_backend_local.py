@@ -6,6 +6,7 @@ import pytest
 
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 
 
 @pytest.fixture
@@ -93,4 +94,12 @@ class TestGenerateStream:
         # Mock load to do nothing (don't actually download model)
         backend.load = MagicMock(side_effect=RuntimeError("no model"))
         with pytest.raises(RuntimeError):
-            list(backend.generate_stream([{"role": "user", "content": "hi"}]))
+            list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=ResolvedGenerationOptions(
+                        max_new_tokens=128,
+                        do_sample=False,
+                    ),
+                )
+            )

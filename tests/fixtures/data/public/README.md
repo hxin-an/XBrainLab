@@ -10,6 +10,27 @@
 ```
 
 下載器會驗證公開檔案的 SHA-256，避免 0-byte 或 partial download 被誤當成可用 fixture。
+每個檔案也有固定 byte size；下載先寫入 `.part`，只有 size 與 SHA-256 都正確才會
+原子替換既有 cache，失敗下載不會破壞上一份有效 fixture。
+
+Required CI 使用受控的小型 profile：
+
+```bash
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+  --profile required-ci --verify-only
+```
+
+- manifest 目前總量是 `14,795,721 bytes`，程式內硬上限為 `20 MiB`
+- fixture 只存在 `tests/fixtures/data/public/`，由該目錄的 `.gitignore` 排除，不進 Git
+- GitHub Actions 只 cache 這個目錄；cache key 綁定下載器 manifest 的 hash
+- cache 過期或內容損壞時，下載器會逐檔驗證並修復；`--verify-only` 缺件或損壞會非零結束
+- 不包含完整公開資料集、模型權重、訓練輸出或使用者資料
+
+一般本機 pytest 仍允許在尚未下載 public fixtures 時 skip，方便日常開發。CI 的
+`Required Public Multi-Dataset Gate` 不依賴這個 skip：它會先下載 required profile、
+執行 `--verify-only` 與 strict dataset matrix，再跑 public IO、BIDS、cross-source
+training smoke；因此 required fixtures 缺失時不能顯示綠燈。
 
 目前 fixture 組合：
 
@@ -28,7 +49,8 @@
 - `sccn-eeglab_data.set`
   - Source: SCCN / EEGLAB tutorial dataset
   - Format: EEGLAB `.set`
-  - Type: event-rich tutorial EEG sample distributed with EEGLAB
+  - Type: reviewed annotation IO/epoch-only sample; the fixture does not provide
+    protocol ground truth that defines `rt` / `square` as supervised classes
 - `scan41_short.cnt`
   - Source: MNE testing-data
   - Format: Neuroscan CNT
@@ -46,6 +68,31 @@
   - Type: compact downloaded folder-level BIDS-EEG import, metadata, label
     placement, recipe, and epoch handoff coverage
 
+## Pinned source facts
+
+`report_data_interpretation_format_matrix.py --strict` 會經 product loader 重新量測下表。
+`canonical units` 是 MNE channel metadata 的標準單位，`source units` 是 loader 保留的原始單位；
+events 是 raw 內嵌 event summary，不把 external carrier 混入分母。
+
+| Fixture | Hz | Channels / types | Canonical / source units | Samples | Embedded events | Import warnings |
+| --- | ---: | --- | --- | ---: | --- | --- |
+| `physionet-eegmmidb-S008R01.edf` | 160 | 64 / EEG 64 | V 64 / uV 64 | 9,760 | 1 (`T0`) | none |
+| `physionet-eegmmidb-S008R04.edf` | 160 | 64 / EEG 64 | V 64 / uV 64 | 19,680 | 30 (`T0`, `T1`, `T2`) | none |
+| `bbci-competition-iii-O3VR.gdf` | 125 | 2 / EEG 2 | V 2 / unknown 2 | 729,558 | 2,560 (`768`, `769`, `770`, `781`, `783`, `785`) | 1 RuntimeWarning |
+| `sccn-eeglab_data.set` | 128 | 32 / EEG 32 | V 32 / unknown 32 | 30,504 | 154 (`rt`, `square`) | none |
+| `scan41_short.cnt` | 400 | 128 / EEG 128 | V 128 / unknown 128 | 3,070 | 6 (`0`, `7`, `109`) | 2 RuntimeWarnings |
+| `test_NO.vhdr` | 5,000 | 65 / EEG 65 | V 65 / uV 65 | 2,238 | 0 | none |
+| MNE-BIDS EEG `.vhdr` | 5,000 | 69 / EEG 67, misc 2 | V 67, degC 1, none 1 / uV 67, S 1, C 1 | 10,000 | 1 raw comment; external `events.tsv` has 2 rows | none |
+
+固定 warning contract：
+
+- BBCI：`RuntimeWarning: Limited 1 annotation(s) that were expanding outside the data range.`
+- CNT：`RuntimeWarning: Could not parse meas date from the header. Setting to None.`
+- CNT：`RuntimeWarning: Could not define the number of bytes automatically. Defaulting to 2.`
+
+sampling rate、channel/type/unit、sample/event count、event labels 或 warning
+category/message/count 任一漂移，都會使 strict matrix 失敗。
+
 目前這組 public baseline 已覆蓋：
 
 - EDF
@@ -55,14 +102,15 @@
 - BrainVision `.vhdr`
 - BIDS EEG folder
 
-其中目前可直接推進到 cross-source one-epoch training smoke 的 event-rich fixtures 是：
+其中有 public protocol class semantics、可直接推進到 cross-source one-epoch training smoke
+的 fixtures 固定只有：
 
 - `physionet-eegmmidb-S008R04.edf`
 - `bbci-competition-iii-O3VR.gdf`
-- `sccn-eeglab_data.set`
 
-`scan41_short.cnt` 是 compact CNT IO/preprocess/epoch-only evidence；它的可用 epoch
-數太少，不再被當成 class-balanced one-epoch training smoke fixture。
+`sccn-eeglab_data.set` 與 `scan41_short.cnt` 固定是 IO/preprocess/epoch-only evidence。
+SCCN 的 `rt` / `square` 缺少 public protocol class ground truth；CNT 的可用 epoch 數太少。
+兩者都不算 supervised class 或 class-balanced one-epoch training evidence。
 
 可重跑命令：
 

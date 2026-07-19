@@ -22,21 +22,19 @@ from XBrainLab.backend.application.errors import PreconditionError
 class _DatasetController:
     def __init__(self) -> None:
         self.loaded_data: list[Any] = []
-        self.metadata_updates: list[tuple[int, str | None, str | None]] = []
+        self.metadata_batches: list[list[tuple[int, str | None, str | None]]] = []
         self.smart_parse_payload: dict[str, tuple[str, str]] | None = None
         self.removed_indices: list[int] = []
 
     def get_loaded_data_list(self) -> list[Any]:
         return self.loaded_data
 
-    def update_metadata(
+    def update_metadata_batch(
         self,
-        index: int,
-        *,
-        subject: str | None,
-        session: str | None,
-    ) -> None:
-        self.metadata_updates.append((index, subject, session))
+        updates: list[tuple[int, str | None, str | None]],
+    ) -> int:
+        self.metadata_batches.append(list(updates))
+        return len(updates)
 
     def apply_smart_parse(self, payload: dict[str, tuple[str, str]]) -> int:
         self.smart_parse_payload = payload
@@ -76,7 +74,7 @@ def test_data_table_service_updates_metadata_and_reports_skipped_rows() -> None:
 
     assert message == "Updated metadata for 1 file(s)."
     assert payload == {"success_count": 1, "skipped_indices": [5]}
-    assert dataset.metadata_updates == [(0, "S01", None)]
+    assert dataset.metadata_batches == [[(0, "S01", None)]]
 
 
 def test_data_table_service_normalizes_smart_parse_results() -> None:

@@ -4,8 +4,10 @@ Provides UI for managing approved local model downloads and generation
 parameters. Remote assistant runtimes are not part of the product path.
 """
 
-import os
+import contextlib
+import weakref
 
+from PyQt6.QtCore import QCoreApplication, QObject, QSignalBlocker, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -20,14 +22,18 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.downloader import ModelDownloader
-from XBrainLab.llm.core.model_catalog import (
-    format_bytes,
-    plan_model_download,
+from XBrainLab.llm.core.downloader import ModelDownloadOutcome
+from XBrainLab.llm.core.model_catalog import format_bytes
+from XBrainLab.llm.core.model_download_lifecycle import (
+    ModelCacheCleanupReason,
+    ModelCacheCleanupResult,
+    ModelDownloadLifecycle,
+    ModelDownloadLifecycleContract,
+    ModelStatusInspectionRequest,
+    ModelStatusInspectionResult,
 )
-
-DOWNLOAD_TEARDOWN_WAIT_MS = 2000
 
 
 class ModelSettingsDialog(QDialog):
@@ -40,7 +46,7 @@ class ModelSettingsDialog(QDialog):
         agent_manager: Reference to AgentManager for safe backend switching.
         config: The current LLM configuration.
         local_downloaded: Whether the selected local model is downloaded.
-        downloader: ModelDownloader instance for managing model downloads.
+        download_lifecycle: Application owner for model download resources.
         is_downloading: Whether a download is currently in progress.
 
     """
@@ -50,27 +56,50 @@ class ModelSettingsDialog(QDialog):
         parent=None,
         config: LLMConfig | None = None,
         agent_manager=None,
+        download_lifecycle: ModelDownloadLifecycleContract | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle("AI Assistant Settings")
-        self.setFixedSize(500, 480)
+        self.setMinimumSize(460, 400)
+        self.resize(500, 440)
 
         # Reference to AgentManager for safe deletion (switching backend)
         self.agent_manager = agent_manager
 
         # Load config or create default
-        saved_config = LLMConfig.load_from_file()
-        self.config = saved_config if saved_config else (config or LLMConfig())
+        self._persisted_config_pending = config is None
+        self.config = config or LLMConfig(device="cpu")
         self.config._force_local_runtime_selection()
         self.local_downloaded = False
 
-        # Downloader
-        self.downloader = ModelDownloader()
-        self.downloader.progress.connect(self.on_download_progress)
-        self.downloader.finished.connect(self.on_download_finished)
-        self.downloader.failed.connect(self.on_download_failed)
-        self.is_downloading = False
-        self._download_teardown_in_progress = False
+        # Product composition injects the AgentManager-owned lifecycle. The
+        # fallback is parented to the Qt application for standalone dialogs.
+        if download_lifecycle is None:
+            lifecycle_parent = (
+                agent_manager
+                if isinstance(agent_manager, QObject)
+                else parent
+                if isinstance(parent, QObject)
+                else QCoreApplication.instance()
+            )
+            download_lifecycle = ModelDownloadLifecycle(
+                parent=lifecycle_parent,
+            )
+        self.download_lifecycle = download_lifecycle
+        self.download_lifecycle.progress.connect(self.on_download_progress)
+        self.download_lifecycle.finished.connect(self.on_download_finished)
+        self.download_lifecycle.failed.connect(self.on_download_failed)
+        self.download_lifecycle.cache_cleanup_finished.connect(
+            self.on_cache_cleanup_finished
+        )
+        self.download_lifecycle.inspection_finished.connect(
+            self._on_model_inspection_finished
+        )
+        self._download_observers_attached = True
+        self.is_downloading = self.download_lifecycle.active_target is not None
+        self._inspection_request_id = 0
+        self._pending_inspection_request_id: int | None = None
+        self._current_local_model_state: ModelStatusInspectionResult | None = None
 
         self.init_ui()
         self.load_state()
@@ -111,8 +140,7 @@ class ModelSettingsDialog(QDialog):
         self.local_resource_label.setWordWrap(True)
         local_layout.addWidget(self.local_resource_label)
 
-        # Enable Checkbox (Moved to bottom)
-        self.local_enable_chk = QCheckBox("ACTIVATE LOCAL MODEL")
+        self.local_enable_chk = QCheckBox("Use local assistant")
         self.local_enable_chk.toggled.connect(self._on_local_enable_toggled)
         local_layout.addWidget(self.local_enable_chk)
 
@@ -120,7 +148,7 @@ class ModelSettingsDialog(QDialog):
         layout.addWidget(local_group)
 
         # --- Generation Parameters Section ---
-        gen_group = QGroupBox("Generation Parameters")
+        gen_group = QGroupBox("Informational answer style")
         gen_layout = QVBoxLayout()
 
         # Temperature
@@ -132,7 +160,8 @@ class ModelSettingsDialog(QDialog):
         self.temperature_spin.setDecimals(2)
         self.temperature_spin.setValue(self.config.temperature)
         self.temperature_spin.setToolTip(
-            "Controls randomness. 0 = deterministic, higher = more creative."
+            "Controls variety in explanatory answers. Workflow actions always "
+            "use deterministic decoding."
         )
         temp_layout.addWidget(self.temperature_spin)
         gen_layout.addLayout(temp_layout)
@@ -145,7 +174,7 @@ class ModelSettingsDialog(QDialog):
         self.top_p_spin.setSingleStep(0.05)
         self.top_p_spin.setDecimals(2)
         self.top_p_spin.setValue(self.config.top_p)
-        self.top_p_spin.setToolTip("Nucleus sampling cutoff. 1.0 = no filtering.")
+        self.top_p_spin.setToolTip("Nucleus sampling cutoff for explanatory answers.")
         topp_layout.addWidget(self.top_p_spin)
         gen_layout.addLayout(topp_layout)
 
@@ -157,7 +186,8 @@ class ModelSettingsDialog(QDialog):
         self.max_tokens_spin.setSingleStep(64)
         self.max_tokens_spin.setValue(self.config.max_new_tokens)
         self.max_tokens_spin.setToolTip(
-            "Maximum number of tokens to generate per response."
+            "Maximum length of explanatory answers. Workflow actions use a "
+            "separate safety limit."
         )
         tokens_layout.addWidget(self.max_tokens_spin)
         gen_layout.addLayout(tokens_layout)
@@ -175,10 +205,10 @@ class ModelSettingsDialog(QDialog):
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.clicked.connect(self.reject)
 
-        self.btn_activate = QPushButton("Activate")
+        self.btn_activate = QPushButton("Save")
         self.btn_activate.setEnabled(False)
         self.btn_activate.clicked.connect(self.on_activate_clicked)
-        # Style Activate button
+        # Keep the primary Save action visually distinct from Cancel.
         self.btn_activate.setStyleSheet(
             """
             QPushButton {
@@ -196,77 +226,160 @@ class ModelSettingsDialog(QDialog):
         layout.addLayout(footer_layout)
 
     def load_state(self):
-        """Load UI state from config."""
+        """Load lightweight config state and defer cache/runtime inspection."""
         selection = self.config.assistant_runtime_selection()
 
-        # Local
-        index = self.local_model_combo.findText(self.config.model_name)
-        if index >= 0:
-            self.local_model_combo.setCurrentIndex(index)
+        with QSignalBlocker(self.local_model_combo):
+            index = self.local_model_combo.findText(self.config.model_name)
+            if index >= 0:
+                self.local_model_combo.setCurrentIndex(index)
 
-        # Set Enable Checkbox state and trigger update
-        self.local_enable_chk.setChecked(self.config.local_model_enabled)
-        self._on_local_enable_toggled(self.config.local_model_enabled)
+        with QSignalBlocker(self.local_enable_chk):
+            self.local_enable_chk.setChecked(self.config.local_model_enabled)
         self.config.active_mode = selection.ui_active_mode
         self.config.inference_mode = selection.backend_mode
 
-        self.check_local_model_status()
+        self._show_model_status_checking()
         self.update_validation_state()
-
-    def _refresh_local_runtime_status(self):
-        """Reflect local-runtime readiness without trying to load the model."""
-        model_name = self.local_model_combo.currentText()
-        preflight = plan_model_download(model_name, self.config.cache_dir)
-        self.local_resource_label.setText(
-            "Local runtime uses this computer's GPU or CPU only after activation. "
-            f"Estimated download: {format_bytes(preflight.estimated_download_bytes)}; "
-            f"current cache: {format_bytes(preflight.current_cache_bytes)}; "
-            f"projected cache: {format_bytes(preflight.projected_cache_bytes)}."
+        dialog_ref = weakref.ref(self)
+        QTimer.singleShot(
+            0,
+            lambda ref=dialog_ref: ModelSettingsDialog._run_deferred_status_check(ref),
         )
-        message = self.config.local_backend_status_message(model_name=model_name)
-        if self.config.local_backend_ready(model_name=model_name):
-            detail = message.removeprefix("Local runtime ready.").strip()
+
+    @staticmethod
+    def _run_deferred_status_check(dialog_ref) -> None:
+        """Start deferred inspection without retaining a closed dialog."""
+        dialog = dialog_ref()
+        if dialog is not None:
+            dialog.check_local_model_status()
+
+    def _show_model_status_checking(self) -> None:
+        """Render a non-blocking placeholder while inspection runs."""
+        self._current_local_model_state = None
+        self.local_downloaded = False
+        self.local_status_label.setText("Model: Checking...")
+        self.local_status_label.setStyleSheet("color: #888888;")
+        self.local_runtime_label.setText("Runtime: Checking...")
+        self.local_runtime_label.setStyleSheet("color: #888888;")
+        self.local_resource_label.setText("")
+        self.local_action_btn.setText("Checking...")
+        self.local_action_btn.setEnabled(False)
+
+    def _render_local_model_state(
+        self,
+        state: ModelStatusInspectionResult,
+    ) -> None:
+        """Render a coherent model state without re-querying the filesystem."""
+        self._current_local_model_state = state
+        self.local_downloaded = state.installed
+        if state.installed:
+            self.local_status_label.setText("Model: Installed")
+            self.local_status_label.setStyleSheet("color: #4caf50;")
+            self.local_action_btn.setText("Delete")
+        else:
+            self.local_status_label.setText("Model: Not installed")
+            self.local_status_label.setStyleSheet("color: #888888;")
+            self.local_action_btn.setText("Install Model")
+        self.local_action_btn.setEnabled(
+            not self.is_downloading and not state.diagnostic_message
+        )
+
+        if state.installed:
+            self.local_resource_label.setText(
+                f"Model cache: {format_bytes(state.current_cache_bytes)} used."
+            )
+        else:
+            self.local_resource_label.setText(
+                f"Download size: {format_bytes(state.estimated_download_bytes)}; "
+                f"current model cache: {format_bytes(state.current_cache_bytes)}; "
+                f"after install: {format_bytes(state.projected_cache_bytes)}."
+            )
+
+        if state.runtime_ready:
+            detail = state.runtime_message.removeprefix("Local runtime ready.").strip()
             if not detail:
-                self.local_runtime_label.setText("Runtime: Ready")
+                self.local_runtime_label.setText("Runtime: Available")
                 self.local_runtime_label.setStyleSheet("color: #4caf50;")
             else:
-                self.local_runtime_label.setText(f"Runtime: {detail}")
+                self.local_runtime_label.setText(f"Runtime available: {detail}")
                 self.local_runtime_label.setStyleSheet("color: #ff9800;")
             return
 
-        detail = message.removeprefix("Local runtime unavailable. ")
-        self.local_runtime_label.setText(f"Runtime: {detail}")
-        if "Missing optional packages" in message:
+        detail = state.runtime_message.removeprefix("Local runtime unavailable. ")
+        self.local_runtime_label.setText(f"Runtime unavailable: {detail}")
+        if "Missing optional packages" in state.runtime_message:
             self.local_runtime_label.setStyleSheet("color: #f44336;")
         else:
             self.local_runtime_label.setStyleSheet("color: #ff9800;")
 
-    def check_local_model_status(self):
-        """Check if selected model exists in cache."""
-        model_name = self.local_model_combo.currentText()
-        if self.config.has_local_model_cache(model_name):
-            self.local_downloaded = True
-            self.local_status_label.setText("[+] Downloaded")
-            self.local_status_label.setStyleSheet("color: #4caf50;")
-            self.local_action_btn.setText("Delete")
-            self.local_action_btn.setEnabled(True)
-        else:
-            self.local_downloaded = False
-            self.local_status_label.setText("Status: Not downloaded")
-            self.local_status_label.setStyleSheet("color: #888888;")
-            self.local_action_btn.setText("Install Model")
-            self.local_action_btn.setEnabled(True)
-
-        self._refresh_local_runtime_status()
+    def check_local_model_status(self, *_args):
+        """Request one coherent status snapshot without blocking the GUI."""
+        if not self._download_observers_attached:
+            return
+        self._inspection_request_id += 1
+        request = ModelStatusInspectionRequest(
+            request_id=self._inspection_request_id,
+            model_name=self.local_model_combo.currentText(),
+            cache_dir=self.config.cache_dir,
+            device=str(self.config.device),
+            load_in_4bit=bool(self.config.load_in_4bit),
+            load_persisted_config=self._persisted_config_pending,
+        )
+        self._pending_inspection_request_id = request.request_id
+        self._show_model_status_checking()
         self.update_validation_state()
+        if self.download_lifecycle.request_model_inspection(request):
+            return
+        if self._pending_inspection_request_id != request.request_id:
+            return
+        self._on_model_inspection_finished(
+            ModelStatusInspectionResult.unavailable(
+                request,
+                "Model status could not be checked. Try again.",
+            )
+        )
+
+    def _on_model_inspection_finished(self, result: object) -> None:
+        """Render only the latest selected-model inspection result."""
+        if not self._download_observers_attached:
+            return
+        if not isinstance(result, ModelStatusInspectionResult):
+            return
+        if result.request.request_id != self._pending_inspection_request_id:
+            return
+        if self._persisted_config_pending:
+            if result.resolved_config is not None:
+                self.config = result.resolved_config
+                self.config._force_local_runtime_selection()
+                self._apply_config_to_controls()
+            self._persisted_config_pending = False
+        if result.request.model_name != self.local_model_combo.currentText():
+            return
+        self._pending_inspection_request_id = None
+        self.is_downloading = self.download_lifecycle.active_target is not None
+        self._render_local_model_state(result)
+        self.update_validation_state()
+
+    def _apply_config_to_controls(self) -> None:
+        """Render a background-loaded config without emitting new inspections."""
+        with QSignalBlocker(self.local_model_combo):
+            index = self.local_model_combo.findText(self.config.model_name)
+            if index >= 0:
+                self.local_model_combo.setCurrentIndex(index)
+        with QSignalBlocker(self.local_enable_chk):
+            self.local_enable_chk.setChecked(self.config.local_model_enabled)
+        self.temperature_spin.setValue(self.config.temperature)
+        self.top_p_spin.setValue(self.config.top_p)
+        self.max_tokens_spin.setValue(self.config.max_new_tokens)
 
     def on_local_action_clicked(self):
         """Handle local model install/delete/cancel button click."""
         if self.is_downloading:
-            # Action is Cancel
-            self.downloader.cancel_download()
-            self.is_downloading = False
-            self.check_local_model_status()
+            self.download_lifecycle.request_cancel()
+            self.local_action_btn.setText("Cancelling...")
+            self.local_action_btn.setEnabled(False)
+            self.update_validation_state()
             return
 
         if self.local_downloaded:
@@ -275,46 +388,66 @@ class ModelSettingsDialog(QDialog):
             self._start_download()
 
     def _on_local_enable_toggled(self, checked):
-        """Enable/Disable local model controls."""
-        self.local_model_combo.setEnabled(checked)
-        self.local_action_btn.setEnabled(checked)
-        self.check_local_model_status()
-        self._refresh_local_runtime_status()
+        """Update whether the current assistant preference can be saved."""
+        del checked
+        self.update_validation_state()
 
     def _start_download(self):
         """Begin downloading the selected local model."""
         model_name = self.local_model_combo.currentText()
-        preflight = plan_model_download(model_name, self.config.cache_dir)
-        if not preflight.ok:
-            cleanup = ""
-            if preflight.cleanup_candidates:
-                cleanup = "\n\nCleanup candidates:\n" + "\n".join(
-                    f"- {path}" for path in preflight.cleanup_candidates
-                )
+        state = self._current_local_model_state
+        if state is None or state.request.model_name != model_name:
+            self.check_local_model_status()
+            return
+        if not state.preflight_ok:
+            logger.warning(
+                "Model download preflight blocked model=%s cache=%s reason=%s "
+                "cleanup_candidates=%s",
+                model_name,
+                self.config.cache_dir,
+                state.preflight_message,
+                state.cleanup_candidates,
+            )
+            cleanup_hint = (
+                "\n\nUnused or unsupported model files may need removal."
+                if state.cleanup_candidates
+                else ""
+            )
             QMessageBox.warning(
                 self,
                 "Model Download Blocked",
                 (
-                    f"{preflight.message}\n\n"
-                    f"Current cache: {format_bytes(preflight.current_cache_bytes)}\n"
+                    "The model download cannot start because the storage or "
+                    "model policy check did not pass.\n\n"
+                    f"Current cache: {format_bytes(state.current_cache_bytes)}\n"
                     f"Estimated download: "
-                    f"{format_bytes(preflight.estimated_download_bytes)}\n"
+                    f"{format_bytes(state.estimated_download_bytes)}\n"
                     f"Available disk: "
-                    f"{format_bytes(preflight.available_disk_bytes)}\n"
+                    f"{format_bytes(state.available_disk_bytes)}\n"
                     f"Projected cache: "
-                    f"{format_bytes(preflight.projected_cache_bytes)}\n"
-                    f"Cache directory: {preflight.cache_dir}"
-                    f"{cleanup}"
+                    f"{format_bytes(state.projected_cache_bytes)}"
+                    f"{cleanup_hint}"
                 ),
             )
             self.check_local_model_status()
             return
 
+        started = self.download_lifecycle.start_download(
+            model_name,
+            self.config.cache_dir,
+        )
+        if not started:
+            self.is_downloading = not self.download_lifecycle.is_idle()
+            self.local_status_label.setText(
+                "Another model download is still active."
+                if self.is_downloading
+                else "Download could not start."
+            )
+            self.update_validation_state()
+            return
         self.is_downloading = True
         self.local_action_btn.setText("Cancel")
         self.local_status_label.setText("Downloading...")
-
-        self.downloader.start_download(model_name, self.config.cache_dir)
         self.update_validation_state()
 
     def _delete_model(self):
@@ -333,25 +466,22 @@ class ModelSettingsDialog(QDialog):
             ):
                 return
 
-            import shutil
-
-            try:
-                removed_any = False
-                for path in self.config.local_cache_candidates(repo_id):
-                    if not os.path.exists(path):
-                        continue
-                    shutil.rmtree(path)
-                    removed_any = True
-                if not removed_any:
-                    QMessageBox.critical(
-                        self,
-                        "Error",
-                        f"Failed to delete: {repo_id}",
-                    )
-                    return
-                self.check_local_model_status()
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
+            started = self.download_lifecycle.request_cache_removal(
+                repo_id,
+                self.config.cache_dir,
+                reason=ModelCacheCleanupReason.USER_DELETE,
+            )
+            if not started:
+                QMessageBox.warning(
+                    self,
+                    "Model Cleanup Busy",
+                    "Another model download or cleanup is still active.",
+                )
+                return
+            self.is_downloading = True
+            self.local_status_label.setText("Deleting model...")
+            self.local_action_btn.setEnabled(False)
+            self.update_validation_state()
 
     def on_download_progress(self, percent, msg):
         """Handle download progress updates.
@@ -361,76 +491,92 @@ class ModelSettingsDialog(QDialog):
             msg: Progress message to display.
 
         """
-        self.local_status_label.setText(msg)
+        del percent
+        target = self.download_lifecycle.active_target
+        if target is None or target.repo_id == self.local_model_combo.currentText():
+            self.local_status_label.setText(msg)
 
-    def on_download_finished(self, path):
+    def on_download_finished(self, outcome: object):
         """Handle successful download completion.
 
         Args:
-            path: Path where the model was downloaded.
+            outcome: Immutable target-aware download outcome.
 
         """
-        self.is_downloading = False
+        if not isinstance(outcome, ModelDownloadOutcome):
+            return
+        self.is_downloading = not self.download_lifecycle.is_idle()
         self.check_local_model_status()
         QMessageBox.information(self, "Success", "Model downloaded successfully!")
 
-    def on_download_failed(self, error):
+    def on_download_failed(self, outcome: object):
         """Handle download failure.
 
         Args:
-            error: Error message describing the failure.
+            outcome: Immutable target-aware download outcome.
 
         """
-        self.is_downloading = False
-        self.local_status_label.setText("[x] Failed")
-        self.local_status_label.setStyleSheet("color: #f44336;")
-        self.local_action_btn.setText("Retry")
-
-        # Special handling for Cancellation Cleanup (User Request)
-        if "Cancelled by user" in error:
-            # User requested auto-cleanup without asking
-            if self._download_teardown_in_progress:
-                self._cleanup_partial_files(show_message=False)
-            else:
-                self._cleanup_partial_files()
+        if not isinstance(outcome, ModelDownloadOutcome):
             return
+        self.is_downloading = not self.download_lifecycle.is_idle()
+        selected_target = outcome.target.repo_id == self.local_model_combo.currentText()
+        self.check_local_model_status()
+        if outcome.cancelled:
+            return
+        logger.error(
+            "Model download failed model=%s diagnostic=%s",
+            outcome.target.repo_id,
+            outcome.diagnostic_message or outcome.message,
+        )
+        if selected_target:
+            self.local_status_label.setText("Download failed")
+            self.local_status_label.setStyleSheet("color: #f44336;")
+            self.local_action_btn.setText("Retry")
+        QMessageBox.critical(
+            self,
+            "Download Failed",
+            "Model download failed. Check the application log and try again.",
+        )
 
-        QMessageBox.critical(self, "Download Failed", error)
-
-    def _cleanup_partial_files(self, show_message=True):
-        """Best-effort cleanup of partial download files."""
-        try:
-            import shutil
-
-            repo_id = self.local_model_combo.currentText()
-            removed_any = False
-            for path in self.config.local_cache_candidates(repo_id):
-                if not os.path.exists(path):
-                    continue
-                shutil.rmtree(path)
-                removed_any = True
-
-            if removed_any:
-                self.check_local_model_status()  # Update UI state
-                if show_message:
-                    QMessageBox.information(self, "Cleanup", "Partial files removed.")
-        except Exception as e:
-            if show_message:
-                QMessageBox.warning(
-                    self,
-                    "Cleanup Error",
-                    f"Failed to cleanup partials directly: {e}",
-                )
+    def on_cache_cleanup_finished(self, result: object) -> None:
+        """Render explicit deletion after app-owned recursive cleanup terminal."""
+        if not isinstance(result, ModelCacheCleanupResult):
+            return
+        if result.reason is not ModelCacheCleanupReason.USER_DELETE:
+            return
+        self.is_downloading = not self.download_lifecycle.is_idle()
+        self.check_local_model_status()
+        if result.ok:
+            QMessageBox.information(
+                self,
+                "Model Deleted",
+                result.public_message,
+            )
+        else:
+            logger.error(
+                "Model cleanup failed model=%s diagnostics=%s",
+                result.target.repo_id,
+                result.diagnostic_errors,
+            )
+            QMessageBox.warning(
+                self,
+                "Model Cleanup Failed",
+                result.public_message,
+            )
 
     def update_validation_state(self):
-        """Enable Activate button if conditions met."""
+        """Allow Save when disabled, or when the enabled runtime is available."""
         model_name = self.local_model_combo.currentText()
-        local_ready = (
-            self.local_enable_chk.isChecked()
-            and self.local_downloaded
-            and self.config.local_backend_ready(model_name=model_name)
+        state = self._current_local_model_state
+        enabled_runtime_ready = (
+            state is not None
+            and state.request.model_name == model_name
+            and state.installed
+            and state.runtime_ready
         )
-        is_ready = local_ready and not self.is_downloading
+        is_ready = not self.is_downloading and (
+            not self.local_enable_chk.isChecked() or enabled_runtime_ready
+        )
 
         self.btn_activate.setEnabled(is_ready)
 
@@ -446,21 +592,34 @@ class ModelSettingsDialog(QDialog):
         self.config.top_p = self.top_p_spin.value()
         self.config.max_new_tokens = self.max_tokens_spin.value()
 
-        local_ready = (
+        state = self._current_local_model_state
+        if self.config.local_model_enabled and (
+            state is None or state.request.model_name != self.config.model_name
+        ):
+            QMessageBox.warning(
+                self,
+                "Model Status Pending",
+                "Wait for the selected model status check to finish, then try again.",
+            )
+            self.check_local_model_status()
+            return
+
+        local_ready = bool(
             self.config.local_model_enabled
-            and self.local_downloaded
-            and self.config.local_backend_ready()
+            and state is not None
+            and state.installed
+            and state.runtime_ready
         )
 
-        if (
-            self.config.local_model_enabled
-            and self.local_downloaded
-            and not self.config.local_backend_ready()
-        ):
+        if self.config.local_model_enabled and not local_ready:
             QMessageBox.critical(
                 self,
                 "Local Runtime Unavailable",
-                self.config.local_backend_status_message(),
+                (
+                    state.runtime_message
+                    if state is not None
+                    else "Local runtime status is unavailable. Try again."
+                ),
             )
             return
 
@@ -475,22 +634,50 @@ class ModelSettingsDialog(QDialog):
 
         self.accept()
 
+    def accept(self) -> None:
+        """Accept without retaining this dialog through lifecycle signals."""
+        self._shutdown_active_download()
+        self._detach_download_observers()
+        super().accept()
+
     def reject(self):
         """Cancel any active download and reject the dialog."""
         self._shutdown_active_download()
+        self._detach_download_observers()
         super().reject()
 
     def closeEvent(self, event):  # noqa: N802
         """Ensure threads stop on close."""
         self._shutdown_active_download()
+        self._detach_download_observers()
         super().closeEvent(event)
 
     def _shutdown_active_download(self):
-        """Cancel in-flight download work before dialog teardown."""
+        """Request cancellation without releasing application ownership."""
         if self.is_downloading:
-            self._download_teardown_in_progress = True
-            self.downloader.shutdown(wait_ms=DOWNLOAD_TEARDOWN_WAIT_MS)
-            self.is_downloading = False
+            return self.download_lifecycle.request_cancel()
+        return True
+
+    def _detach_download_observers(self) -> None:
+        """Stop hidden-dialog callbacks without affecting app ownership."""
+        connections = (
+            (self.download_lifecycle.progress, self.on_download_progress),
+            (self.download_lifecycle.finished, self.on_download_finished),
+            (self.download_lifecycle.failed, self.on_download_failed),
+            (
+                self.download_lifecycle.cache_cleanup_finished,
+                self.on_cache_cleanup_finished,
+            ),
+            (
+                self.download_lifecycle.inspection_finished,
+                self._on_model_inspection_finished,
+            ),
+        )
+        for signal, slot in connections:
+            with contextlib.suppress(RuntimeError, TypeError):
+                signal.disconnect(slot)
+        self._download_observers_attached = False
+        self._pending_inspection_request_id = None
 
     def get_config(self):
         """Return the current LLM configuration.

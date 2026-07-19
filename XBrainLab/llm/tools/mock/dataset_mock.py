@@ -1,10 +1,15 @@
 """Mock implementations of dataset tools.
 
-Return canned success/error strings without interacting with the
-backend, enabling offline agent testing and development.
+Return deterministic results without interacting with the backend,
+enabling offline agent testing and development.
 """
 
 from typing import Any
+
+from XBrainLab.backend.training.input_contract import (
+    TrainingInputContractError,
+    normalize_strict_boolean,
+)
 
 from ..definitions.dataset_def import (
     BaseApplyInterpretationTool,
@@ -21,6 +26,8 @@ from ..definitions.dataset_def import (
     BaseScanSourceTool,
     BaseValidateInterpretationTool,
 )
+from ..result_contract import ToolResult
+from .state import MockWorkflowState
 
 
 class MockListFilesTool(BaseListFilesTool):
@@ -32,7 +39,7 @@ class MockListFilesTool(BaseListFilesTool):
         directory: str | None = None,
         pattern: str = "*",
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Return a simulated file listing.
 
         Args:
@@ -46,14 +53,27 @@ class MockListFilesTool(BaseListFilesTool):
 
         """
         if directory is None:
-            return "Error: directory is required"
-        return f"['A01T.gdf', 'A02T.gdf'] found in {directory} matching {pattern}"
+            return ToolResult(False, "A folder path is required.", error_type="input")
+        files = ["A01T.gdf", "A02T.gdf"]
+        return ToolResult(
+            True,
+            f"Found {len(files)} file(s) matching {pattern}.",
+            payload=files,
+        )
 
 
 class MockLoadDataTool(BaseLoadDataTool):
     """Mock implementation of :class:`BaseLoadDataTool`."""
 
-    def execute(self, study: Any, paths: list[str] | None = None, **kwargs) -> str:
+    def __init__(self, state: MockWorkflowState | None = None) -> None:
+        self._state = state if state is not None else MockWorkflowState()
+
+    def execute(
+        self,
+        study: Any,
+        paths: list[str] | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Return a simulated data-load result.
 
         Args:
@@ -65,9 +85,17 @@ class MockLoadDataTool(BaseLoadDataTool):
             A success message indicating how many paths were loaded.
 
         """
-        if paths is None:
-            return "Error: paths list is required"
-        return f"Successfully loaded data from {len(paths)} sources: {paths}"
+        if not paths:
+            return ToolResult(
+                ok=False,
+                message="Error: paths list is required",
+                error_type="input",
+            )
+        self._state.mark_data_loaded()
+        return ToolResult(
+            ok=True,
+            message=f"Successfully loaded data from {len(paths)} sources: {paths}",
+        )
 
 
 class MockScanSourceTool(BaseScanSourceTool):
@@ -80,12 +108,21 @@ class MockScanSourceTool(BaseScanSourceTool):
         source_hint: str = "auto",
         label_sources: list[str] | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         if not source_path:
-            return "Error: source_path is required"
+            return ToolResult(
+                ok=False,
+                message="Error: source_path is required",
+                error_type="input",
+            )
         label_count = len(label_sources or [])
         suffix = f" Attached {label_count} label source(s)." if label_count else ""
-        return f"Scanned {source_path} as {source_hint}; found 1 EEG file.{suffix}"
+        return ToolResult(
+            ok=True,
+            message=(
+                f"Scanned {source_path} as {source_hint}; found 1 EEG file.{suffix}"
+            ),
+        )
 
 
 class MockPreviewInterpretationTool(BasePreviewInterpretationTool):
@@ -97,9 +134,12 @@ class MockPreviewInterpretationTool(BasePreviewInterpretationTool):
         scan_id: str | None = None,
         choices: dict[str, Any] | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         target = scan_id or "latest scan"
-        return f"Interpretation preview ready for {target}."
+        return ToolResult(
+            ok=True,
+            message=f"Interpretation preview ready for {target}.",
+        )
 
 
 class MockValidateInterpretationTool(BaseValidateInterpretationTool):
@@ -110,13 +150,19 @@ class MockValidateInterpretationTool(BaseValidateInterpretationTool):
         study: Any,
         candidate_id: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         target = candidate_id or "latest candidate"
-        return f"Interpretation validation for {target}: safe."
+        return ToolResult(
+            ok=True,
+            message=f"Interpretation validation for {target}: safe.",
+        )
 
 
 class MockApplyInterpretationTool(BaseApplyInterpretationTool):
     """Mock implementation of :class:`BaseApplyInterpretationTool`."""
+
+    def __init__(self, state: MockWorkflowState | None = None) -> None:
+        self._state = state if state is not None else MockWorkflowState()
 
     def execute(
         self,
@@ -124,10 +170,14 @@ class MockApplyInterpretationTool(BaseApplyInterpretationTool):
         candidate_id: str | None = None,
         confirmed: bool = False,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         target = candidate_id or "latest candidate"
         marker = " with confirmation" if confirmed else ""
-        return f"Applied interpretation for {target}{marker}."
+        self._state.mark_data_loaded()
+        return ToolResult(
+            ok=True,
+            message=f"Applied interpretation for {target}{marker}.",
+        )
 
 
 class MockSaveInterpretationRecipeTool(BaseSaveInterpretationRecipeTool):
@@ -138,9 +188,12 @@ class MockSaveInterpretationRecipeTool(BaseSaveInterpretationRecipeTool):
         study: Any,
         recipe_path: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         target = recipe_path or "default recipe path"
-        return f"Interpretation recipe saved to {target}."
+        return ToolResult(
+            ok=True,
+            message=f"Interpretation recipe saved to {target}.",
+        )
 
 
 class MockReloadInterpretationRecipeTool(BaseReloadInterpretationRecipeTool):
@@ -151,10 +204,17 @@ class MockReloadInterpretationRecipeTool(BaseReloadInterpretationRecipeTool):
         study: Any,
         recipe_path: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         if not recipe_path:
-            return "Error: recipe_path is required"
-        return f"Interpretation recipe reloaded from {recipe_path}."
+            return ToolResult(
+                ok=False,
+                message="Error: recipe_path is required",
+                error_type="input",
+            )
+        return ToolResult(
+            ok=True,
+            message=f"Interpretation recipe reloaded from {recipe_path}.",
+        )
 
 
 class MockAttachLabelsTool(BaseAttachLabelsTool):
@@ -166,7 +226,7 @@ class MockAttachLabelsTool(BaseAttachLabelsTool):
         mapping: dict[str, str] | None = None,
         label_format: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Return a simulated label-attach result.
 
         Args:
@@ -180,14 +240,24 @@ class MockAttachLabelsTool(BaseAttachLabelsTool):
 
         """
         if mapping is None:
-            return "Error: mapping is required"
-        return f"Attached labels to {len(mapping)} files."
+            return ToolResult(
+                ok=False,
+                message="Error: mapping is required",
+                error_type="input",
+            )
+        return ToolResult(
+            ok=True,
+            message=f"Attached labels to {len(mapping)} files.",
+        )
 
 
 class MockClearDatasetTool(BaseClearDatasetTool):
     """Mock implementation of :class:`BaseClearDatasetTool`."""
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def __init__(self, state: MockWorkflowState | None = None) -> None:
+        self._state = state if state is not None else MockWorkflowState()
+
+    def execute(self, study: Any, **kwargs) -> ToolResult:
         """Return a simulated dataset-clear confirmation.
 
         Args:
@@ -198,13 +268,27 @@ class MockClearDatasetTool(BaseClearDatasetTool):
             A confirmation message.
 
         """
-        return "Dataset cleared."
+        try:
+            confirmed = normalize_strict_boolean(
+                "confirmed",
+                kwargs.get("confirmed", False),
+            )
+        except TrainingInputContractError as exc:
+            return ToolResult(False, str(exc), error_type="input")
+        if not confirmed:
+            return ToolResult(
+                ok=False,
+                message="Dataset reset requires confirmation.",
+                error_type="confirmation_required",
+            )
+        self._state.clear_dataset()
+        return ToolResult(ok=True, message="Dataset cleared.")
 
 
 class MockGetDatasetInfoTool(BaseGetDatasetInfoTool):
     """Mock implementation of :class:`BaseGetDatasetInfoTool`."""
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolResult:
         """Return a simulated dataset summary.
 
         Args:
@@ -215,18 +299,47 @@ class MockGetDatasetInfoTool(BaseGetDatasetInfoTool):
             A canned dataset-info string.
 
         """
-        return "Dataset Info: 2 files loaded, 250Hz, 22 channels."
+        return ToolResult(
+            True,
+            "Dataset Info: 2 files loaded, 250Hz, 22 channels.",
+            payload={"count": 2, "sampling_rate": 250, "channels": 22},
+        )
 
 
 class MockQueryStateTool(BaseQueryStateTool):
     """Mock implementation of :class:`BaseQueryStateTool`."""
 
-    def execute(self, study: Any, **kwargs) -> str:
-        return "Application state snapshot ready."
+    def __init__(self, state: MockWorkflowState | None = None) -> None:
+        self._state = state if state is not None else MockWorkflowState()
+
+    def execute(self, study: Any, **kwargs) -> ToolResult:
+        from XBrainLab.backend.application.pipeline_stage import (  # noqa: PLC0415
+            PipelineStage,
+            pipeline_stage_readiness_message,
+        )
+
+        if self._state.dataset_generated:
+            stage = PipelineStage.DATASET_READY
+        elif self._state.epochs_ready:
+            stage = PipelineStage.EPOCH_READY
+        elif self._state.data_loaded:
+            stage = PipelineStage.DATA_LOADED
+        else:
+            stage = PipelineStage.EMPTY
+        return ToolResult(
+            ok=True,
+            message=pipeline_stage_readiness_message(
+                stage,
+                raw_count=1 if self._state.data_loaded else 0,
+            ),
+        )
 
 
 class MockGenerateDatasetTool(BaseGenerateDatasetTool):
     """Mock implementation of :class:`BaseGenerateDatasetTool`."""
+
+    def __init__(self, state: MockWorkflowState | None = None) -> None:
+        self._state = state if state is not None else MockWorkflowState()
 
     def execute(
         self,
@@ -236,7 +349,7 @@ class MockGenerateDatasetTool(BaseGenerateDatasetTool):
         split_strategy: str = "trial",
         training_mode: str = "individual",
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Return a simulated dataset-generation result.
 
         Args:
@@ -251,4 +364,16 @@ class MockGenerateDatasetTool(BaseGenerateDatasetTool):
             A confirmation message with the split strategy and mode.
 
         """
-        return f"Generated dataset (Split: {split_strategy}, Mode: {training_mode})."
+        if not self._state.epochs_ready:
+            return ToolResult(
+                ok=False,
+                message="Create epochs before generating a dataset.",
+                error_type="precondition",
+            )
+        self._state.dataset_generated = True
+        return ToolResult(
+            ok=True,
+            message=(
+                f"Generated dataset (Split: {split_strategy}, Mode: {training_mode})."
+            ),
+        )

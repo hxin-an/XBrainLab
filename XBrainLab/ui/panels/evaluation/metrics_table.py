@@ -80,7 +80,12 @@ class MetricsTableWidget(QTableWidget):
             )
         self.setPalette(palette)
 
-    def update_data(self, metrics: dict):
+    def update_data(
+        self,
+        metrics: dict,
+        *,
+        class_names: dict[int, str] | None = None,
+    ):
         """Update table with metrics data.
 
         Args:
@@ -99,7 +104,8 @@ class MetricsTableWidget(QTableWidget):
 
         # Add per-class rows
         for class_idx in keys:
-            self._add_row(str(class_idx), metrics[class_idx])
+            label = (class_names or {}).get(class_idx, str(class_idx))
+            self._add_row(label, metrics[class_idx])
 
         # Add Macro Avg row
         if "macro_avg" in metrics:

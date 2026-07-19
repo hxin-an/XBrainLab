@@ -254,8 +254,15 @@ class MCPHTTPJobRegistry:
         adapter: dict[str, Any],
     ) -> dict[str, Any]:
         with self._lock:
+            if self._starting_command_name is not None:
+                return self._job_conflict_execution(
+                    command_name,
+                    capability,
+                    adapter,
+                    active_job=None,
+                )
             active_job = self._active_job_locked()
-            if self._starting_command_name is not None or active_job is not None:
+            if active_job is not None:
                 return self._job_conflict_execution(
                     command_name,
                     capability,
@@ -330,7 +337,8 @@ class MCPHTTPJobRegistry:
         }
 
     def _active_job_locked(self) -> dict[str, Any] | None:
-        running = bool(self._mcp_server.service.get_state().active_training.is_running)
+        publication = self._mcp_server.service.get_view_publication()
+        running = bool(publication.state.active_training.is_running)
         for record in self._jobs.values():
             if _job_status(record, running) in {"running", "cancel_requested"}:
                 return self._job_snapshot_locked(record)
@@ -393,7 +401,7 @@ class MCPHTTPJobRegistry:
                     "starting_command_name": starting_command_name,
                 },
             },
-            "state": self._mcp_server.service.get_state().to_dict(),
+            "state": self._mcp_server.service.get_view_publication().state.to_dict(),
             "adapter": adapter,
         }
 
@@ -425,7 +433,7 @@ class MCPHTTPJobRegistry:
         }
 
     def _job_snapshot_locked(self, record: MCPHTTPJobRecord) -> dict[str, Any]:
-        state = self._mcp_server.service.get_state()
+        state = self._mcp_server.service.get_view_publication().state
         running = bool(state.active_training.is_running)
         status = _job_status(record, running)
         if record.terminal_status is None and status in {
@@ -524,7 +532,7 @@ def _job_status(record: MCPHTTPJobRecord, running: bool) -> str:
 
 
 def _training_progress_message(service: ApplicationService) -> str:
-    state = service.get_state()
+    state = service.get_view_publication().state
     progress_message = getattr(state.training, "progress_message", None)
     if isinstance(progress_message, str) and progress_message:
         return progress_message

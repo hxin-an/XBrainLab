@@ -30,7 +30,10 @@ class _FakeSettings:
 
 def _make_lightweight_window(qtbot, settings):
     with (
-        patch("XBrainLab.ui.main_window.QSettings", return_value=settings),
+        patch(
+            "XBrainLab.ui.window_geometry_lifecycle.QSettings",
+            return_value=settings,
+        ),
         patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
         patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
@@ -47,57 +50,93 @@ def _make_normal_lightweight_window(qtbot, settings):
 
 
 def _healthy_user_geometry(window: MainWindow) -> QRect:
-    available = window._available_screen_geometry()
+    geometry = window.window_geometry
+    policy = geometry.policy
+    available = geometry.available_screen_geometry()
     width = min(
-        max(window.MIN_WINDOW_SIZE.width(), available.width() // 2),
-        available.width() - (window.WINDOW_EDGE_MARGIN * 2),
+        max(policy.minimum_size.width(), available.width() // 2),
+        available.width() - (policy.edge_margin * 2),
     )
     height = min(
-        max(window.MIN_WINDOW_SIZE.height(), available.height() // 2),
-        available.height()
-        - window.WINDOW_TOP_DRAG_MARGIN
-        - window.WINDOW_BOTTOM_MARGIN,
+        max(policy.minimum_size.height(), available.height() // 2),
+        available.height() - policy.top_drag_margin - policy.bottom_margin,
     )
     width = max(min(width, available.width()), 1)
     height = max(min(height, available.height()), 1)
-    x, y = window._bounded_window_position(
+    x, y = geometry.bounded_position(
         available,
         width,
         height,
         available.left() + max((available.width() - width) // 3, 0),
-        available.top() + window.WINDOW_TOP_DRAG_MARGIN + 32,
+        available.top() + policy.top_drag_margin + 32,
     )
     return QRect(x, y, width, height)
 
 
 def _default_centered_geometry(window: MainWindow) -> QRect:
-    available = window._available_screen_geometry()
-    size = window._default_window_size_for_screen()
+    geometry = window.window_geometry
+    available = geometry.available_screen_geometry()
+    size = geometry.default_window_size()
     width = min(size.width(), available.width())
     height = min(size.height(), available.height())
     x = available.left() + max((available.width() - width) // 2, 0)
     y = available.top() + max((available.height() - height) // 2, 0)
-    x, y = window._bounded_window_position(available, width, height, x, y)
+    x, y = geometry.bounded_position(available, width, height, x, y)
     return QRect(x, y, width, height)
+
+
+def test_top_navigation_uses_readable_selector_when_width_is_constrained(qtbot):
+    window = _make_lightweight_window(qtbot, _FakeSettings())
+
+    window.top_bar.resize(window.COMPACT_NAV_BREAKPOINT - 1, 50)
+    window._update_navigation_layout()
+
+    assert window.compact_nav_combo.isVisibleTo(window.top_bar)
+    assert [button.isVisibleTo(window.top_bar) for button in window.nav_btns] == [
+        False,
+    ] * 5
+    assert [
+        window.compact_nav_combo.itemText(index)
+        for index in range(window.compact_nav_combo.count())
+    ] == ["Dataset", "Preprocess", "Training", "Evaluation", "Visualization"]
+
+    window.top_bar.resize(window.COMPACT_NAV_BREAKPOINT + 1, 50)
+    window._update_navigation_layout()
+
+    assert not window.compact_nav_combo.isVisible()
+    assert all(button.isVisibleTo(window.top_bar) for button in window.nav_btns)
+
+
+def test_top_navigation_reacts_when_a_dock_reduces_central_width(qtbot):
+    window = _make_lightweight_window(qtbot, _FakeSettings())
+
+    window.top_bar.resize(window.COMPACT_NAV_BREAKPOINT + 1, 50)
+    qtbot.waitUntil(lambda: not window.compact_nav_combo.isVisible())
+
+    window.top_bar.resize(window.COMPACT_NAV_BREAKPOINT - 1, 50)
+    qtbot.waitUntil(lambda: window.compact_nav_combo.isVisibleTo(window.top_bar))
+
+    assert not any(button.isVisibleTo(window.top_bar) for button in window.nav_btns)
 
 
 def test_first_launch_window_is_on_available_screen(qtbot):
     window = _make_lightweight_window(qtbot, _FakeSettings())
 
-    available = window._available_screen_geometry()
+    owner = window.window_geometry
+    available = owner.available_screen_geometry()
     geometry = window.geometry()
-    _min_x, _max_x, min_y, _max_y = window._usable_window_position_bounds(
+    _min_x, _max_x, min_y, _max_y = owner.position_bounds(
         available,
         geometry.width(),
         geometry.height(),
-        screen_geometry=window._screen_geometry(),
+        screen_geometry=owner.full_screen_geometry(),
     )
 
     assert available.contains(geometry.topLeft())
     assert available.contains(geometry.bottomRight())
     assert geometry.y() >= min_y
     assert geometry.center().y() > available.center().y() - 2
-    assert window._is_current_window_geometry_usable()
+    assert owner.is_current_geometry_usable()
     assert window.isMaximized()
     assert not window.isFullScreen()
     assert not window.windowFlags() & Qt.WindowType.FramelessWindowHint
@@ -106,8 +145,9 @@ def test_first_launch_window_is_on_available_screen(qtbot):
 @pytest.mark.parametrize("anchor", ["left", "center", "right"])
 def test_saved_top_edge_window_geometry_is_reset_and_recentered(qtbot, anchor):
     seed = _make_normal_lightweight_window(qtbot, _FakeSettings())
-    available = seed._available_screen_geometry()
-    width = seed.MIN_WINDOW_SIZE.width()
+    policy = seed.window_geometry.policy
+    available = seed.window_geometry.available_screen_geometry()
+    width = policy.minimum_size.width()
     if anchor == "left":
         x = available.left()
     elif anchor == "center":
@@ -119,7 +159,7 @@ def test_saved_top_edge_window_geometry_is_reset_and_recentered(qtbot, anchor):
             x,
             available.top(),
             width,
-            seed.MIN_WINDOW_SIZE.height(),
+            policy.minimum_size.height(),
         )
     )
     saved_geometry = seed.saveGeometry()
@@ -130,7 +170,7 @@ def test_saved_top_edge_window_geometry_is_reset_and_recentered(qtbot, anchor):
 
     assert window.isMaximized()
     assert not window.isFullScreen()
-    assert window._is_current_window_geometry_usable()
+    assert window.window_geometry.is_current_geometry_usable()
     assert settings.removed_keys == ["main_window/geometry"]
 
 
@@ -138,7 +178,7 @@ def test_frame_geometry_above_available_top_is_unusable(qtbot):
     window = _make_normal_lightweight_window(qtbot, _FakeSettings())
     window.setGeometry(_healthy_user_geometry(window))
 
-    available = window._available_screen_geometry()
+    available = window.window_geometry.available_screen_geometry()
     current = window.geometry()
     bad_frame = QRect(
         current.left(),
@@ -148,7 +188,7 @@ def test_frame_geometry_above_available_top_is_unusable(qtbot):
     )
 
     with patch.object(window, "frameGeometry", return_value=bad_frame):
-        assert not window._is_current_window_geometry_usable()
+        assert not window.window_geometry.is_current_geometry_usable()
 
 
 def test_saved_offscreen_window_geometry_is_reset_and_recentered(qtbot):
@@ -160,7 +200,7 @@ def test_saved_offscreen_window_geometry_is_reset_and_recentered(qtbot):
     settings = _FakeSettings(saved_geometry)
     window = _make_lightweight_window(qtbot, settings)
 
-    available = window._available_screen_geometry()
+    available = window.window_geometry.available_screen_geometry()
     geometry = window.geometry()
 
     assert geometry == _default_centered_geometry(window)
@@ -170,7 +210,7 @@ def test_saved_offscreen_window_geometry_is_reset_and_recentered(qtbot):
     assert geometry.height() <= available.height()
     assert window.isMaximized()
     assert not window.isFullScreen()
-    assert window._is_current_window_geometry_usable()
+    assert window.window_geometry.is_current_geometry_usable()
     assert settings.removed_keys == ["main_window/geometry"]
 
 
@@ -187,25 +227,25 @@ def test_healthy_saved_window_geometry_is_preserved(qtbot):
     assert window.geometry() == expected_geometry
     assert not window.isMaximized()
     assert not window.isFullScreen()
-    assert window._is_current_window_geometry_usable()
+    assert window.window_geometry.is_current_geometry_usable()
     assert settings.removed_keys == []
 
 
 def test_close_event_discards_unusable_window_geometry(qtbot):
     settings = _FakeSettings()
     window = _make_normal_lightweight_window(qtbot, settings)
-    available = window._available_screen_geometry()
+    policy = window.window_geometry.policy
+    available = window.window_geometry.available_screen_geometry()
     window.setGeometry(
         QRect(
             available.left(),
             available.top(),
-            window.MIN_WINDOW_SIZE.width(),
-            window.MIN_WINDOW_SIZE.height(),
+            policy.minimum_size.width(),
+            policy.minimum_size.height(),
         )
     )
 
-    with patch.object(MainWindow, "_window_settings", return_value=settings):
-        window.close()
+    window.close()
 
     assert "main_window/geometry" not in settings.values
     assert settings.removed_keys == ["main_window/geometry"]
@@ -220,18 +260,17 @@ def test_main_window_can_resize_maximize_and_restore(qtbot):
 
     window.showNormal()
     qtbot.wait(50)
-    available = window._available_screen_geometry()
+    policy = window.window_geometry.policy
+    available = window.window_geometry.available_screen_geometry()
     target_width = max(
         window.minimumWidth(),
-        min(960, available.width() - (window.WINDOW_EDGE_MARGIN * 2)),
+        min(960, available.width() - (policy.edge_margin * 2)),
     )
     target_height = max(
         window.minimumHeight(),
         min(
             620,
-            available.height()
-            - window.WINDOW_TOP_DRAG_MARGIN
-            - window.WINDOW_BOTTOM_MARGIN,
+            available.height() - policy.top_drag_margin - policy.bottom_margin,
         ),
     )
     window.resize(target_width, target_height)
@@ -251,12 +290,18 @@ def test_main_window_can_resize_maximize_and_restore(qtbot):
 
 
 def test_show_event_schedules_immediate_and_delayed_geometry_recovery(qtbot):
-    with patch("XBrainLab.ui.main_window.QTimer.singleShot") as single_shot:
-        window = _make_lightweight_window(qtbot, _FakeSettings())
+    window = _make_lightweight_window(qtbot, _FakeSettings())
+    with patch.object(
+        window.window_geometry,
+        "recover_if_needed",
+    ) as recover_if_needed:
         window.show()
-        qtbot.waitUntil(lambda: single_shot.call_count >= 2, timeout=1000)
+        qtbot.waitUntil(lambda: recover_if_needed.call_count == 2, timeout=1_000)
 
-    assert [call.args[0] for call in single_shot.call_args_list] == [0, 250]
+    assert [call.args[0] for call in recover_if_needed.call_args_list] == [
+        "post_show_0ms",
+        "post_show_250ms",
+    ]
 
 
 def test_delayed_recovery_recenters_late_top_edge_geometry(qtbot):
@@ -267,20 +312,21 @@ def test_delayed_recovery_recenters_late_top_edge_geometry(qtbot):
     window.showNormal()
     qtbot.wait(50)
 
-    available = window._available_screen_geometry()
+    policy = window.window_geometry.policy
+    available = window.window_geometry.available_screen_geometry()
     window.setGeometry(
         QRect(
             available.left(),
             available.top(),
-            window.MIN_WINDOW_SIZE.width(),
-            window.MIN_WINDOW_SIZE.height(),
+            policy.minimum_size.width(),
+            policy.minimum_size.height(),
         )
     )
 
-    assert not window._is_current_window_geometry_usable()
+    assert not window.window_geometry.is_current_geometry_usable()
 
-    window._recover_unusable_window_geometry("post_show_250ms")
+    window.window_geometry.recover_if_needed("post_show_250ms")
 
     assert window.isMaximized()
     assert not window.isFullScreen()
-    assert window._is_current_window_geometry_usable()
+    assert window.window_geometry.is_current_geometry_usable()

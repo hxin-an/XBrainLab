@@ -8,25 +8,62 @@ import platform
 import subprocess
 from math import ceil
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QDesktopServices, QTextOption
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QLabel,
     QSizePolicy,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
+from XBrainLab.backend.controller.chat_controller import (
+    ChatMessagePresentationKind,
+)
 from XBrainLab.backend.utils.logger import logger
 
 from .styles import (
     AGENT_BUBBLE_FRAME_STYLE,
     AGENT_BUBBLE_TEXT_STYLE,
+    ATTENTION_BUBBLE_FRAME_STYLE,
+    CANCELLED_BUBBLE_FRAME_STYLE,
+    CLARIFICATION_BUBBLE_FRAME_STYLE,
+    ERROR_BUBBLE_FRAME_STYLE,
+    MESSAGE_KIND_LABEL_STYLES,
+    TOOL_RESULT_BUBBLE_FRAME_STYLE,
     USER_BUBBLE_FRAME_STYLE,
     USER_BUBBLE_TEXT_STYLE,
 )
+
+MessagePresentationKind = ChatMessagePresentationKind
+"""Compatibility alias for the typed persisted presentation kind."""
+
+
+_SEMANTIC_PRESENTATION = {
+    MessagePresentationKind.CLARIFICATION: (
+        "Needs input",
+        CLARIFICATION_BUBBLE_FRAME_STYLE,
+    ),
+    MessagePresentationKind.ATTENTION: (
+        "Needs attention",
+        ATTENTION_BUBBLE_FRAME_STYLE,
+    ),
+    MessagePresentationKind.ERROR: (
+        "Error",
+        ERROR_BUBBLE_FRAME_STYLE,
+    ),
+    MessagePresentationKind.TOOL_RESULT: (
+        "Completed",
+        TOOL_RESULT_BUBBLE_FRAME_STYLE,
+    ),
+    MessagePresentationKind.CANCELLED: (
+        "Cancelled",
+        CANCELLED_BUBBLE_FRAME_STYLE,
+    ),
+}
 
 
 class MessageBubble(QWidget):
@@ -43,7 +80,14 @@ class MessageBubble(QWidget):
 
     """
 
-    def __init__(self, text: str, is_user: bool, parent=None):
+    def __init__(
+        self,
+        text: str,
+        is_user: bool,
+        parent=None,
+        *,
+        presentation_kind: MessagePresentationKind | None = None,
+    ):
         """Initialize the message bubble.
 
         Args:
@@ -57,7 +101,13 @@ class MessageBubble(QWidget):
         self.is_user = is_user
         self.bubble_frame: QFrame | None = None
         self.text_edit: QTextBrowser | None = None
+        self.kind_label: QLabel | None = None
         self._raw_text = text  # Store raw text to preserve fidelity
+        self.presentation_kind = presentation_kind or (
+            MessagePresentationKind.USER
+            if is_user
+            else MessagePresentationKind.ASSISTANT
+        )
 
         self._init_ui(text)
 
@@ -84,7 +134,12 @@ class MessageBubble(QWidget):
         # Create bubble's internal layout
         bubble_layout = QVBoxLayout(self.bubble_frame)
         bubble_layout.setContentsMargins(15, 10, 15, 10)
-        bubble_layout.setSpacing(0)
+        bubble_layout.setSpacing(5)
+
+        self.kind_label = QLabel("")
+        self.kind_label.setObjectName("MessageKindLabel")
+        self.kind_label.setVisible(False)
+        bubble_layout.addWidget(self.kind_label)
 
         # Create the text edit (ReadOnly)
         self.text_edit = QTextBrowser()
@@ -137,6 +192,41 @@ class MessageBubble(QWidget):
             row_layout.addWidget(self.bubble_frame)
             row_layout.addStretch(1)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignLeft)
+        self.set_presentation_kind(self.presentation_kind)
+
+    def set_presentation_kind(self, kind: MessagePresentationKind) -> None:
+        """Apply one semantic transcript treatment without changing message text."""
+        if not isinstance(kind, MessagePresentationKind):
+            raise TypeError("Message presentation kind must be typed.")
+        if self.is_user:
+            kind = MessagePresentationKind.USER
+        self.presentation_kind = kind
+        if self.bubble_frame is None or self.kind_label is None:
+            return
+
+        semantic = _SEMANTIC_PRESENTATION.get(kind)
+        if semantic is None:
+            self.kind_label.clear()
+            self.kind_label.setVisible(False)
+            self.bubble_frame.setStyleSheet(
+                USER_BUBBLE_FRAME_STYLE
+                if kind is MessagePresentationKind.USER
+                else AGENT_BUBBLE_FRAME_STYLE
+            )
+        else:
+            label, frame_style = semantic
+            self.kind_label.setText(label)
+            self.kind_label.setAccessibleName(label)
+            self.kind_label.setStyleSheet(MESSAGE_KIND_LABEL_STYLES[kind.value])
+            self.kind_label.setVisible(True)
+            self.bubble_frame.setStyleSheet(frame_style)
+        self.bubble_frame.setProperty("assistantMessageKind", kind.value)
+        style = self.bubble_frame.style()
+        if style is not None:
+            style.unpolish(self.bubble_frame)
+            style.polish(self.bubble_frame)
+        if self.isVisible():
+            QTimer.singleShot(0, self._reflow_after_text_change)
 
     def _on_link_clicked(self, url: QUrl):
         """Handle link clicks, supporting local file URLs.
@@ -180,7 +270,7 @@ class MessageBubble(QWidget):
         if container_width <= 0:
             return
 
-        max_bubble_width = int(container_width * 0.88)
+        max_bubble_width = min(int(container_width * 0.88), 720)
         min_bubble_width = 84 if self.is_user else 96
 
         # Margins: 15+15=30 horizontal, 10+10=20 vertical
@@ -197,6 +287,11 @@ class MessageBubble(QWidget):
         # 1. Start with infinite width to find natural width
         doc.setTextWidth(-1)
         natural_width = doc.idealWidth() + layout_h_margins
+        if self.kind_label is not None and not self.kind_label.isHidden():
+            natural_width = max(
+                natural_width,
+                self.kind_label.sizeHint().width() + layout_h_margins,
+            )
 
         # 2. Determine actual width. Keep a modest minimum text column so short
         # words remain readable without turning tiny messages into large boxes.
@@ -219,7 +314,10 @@ class MessageBubble(QWidget):
         # Enforce minimum height
         desc_height = max(desc_height, 20)
         text_height = ceil(desc_height) + 8
-        final_height = text_height + layout_v_margins + 4
+        semantic_header_height = 0
+        if self.kind_label is not None and not self.kind_label.isHidden():
+            semantic_header_height = self.kind_label.sizeHint().height() + 5
+        final_height = text_height + layout_v_margins + semantic_header_height + 4
 
         # 5. Apply Height
         if self.text_edit:
@@ -237,11 +335,16 @@ class MessageBubble(QWidget):
         self._raw_text = text
         if self.text_edit:
             self.text_edit.setMarkdown(text)
+            if self.isVisible():
+                QTimer.singleShot(0, self._reflow_after_text_change)
 
-            # Re-adjust if visible
-            if self.isVisible() and self.parent():
-                # Trigger re-layout if width allows
-                pass
+    def _reflow_after_text_change(self) -> None:
+        """Resize a live bubble after streamed Markdown changes its height."""
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        self.adjust_width(parent.width())
+        self.updateGeometry()
 
     def get_text(self) -> str:
         """Get the original raw text content.

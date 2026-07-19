@@ -64,6 +64,52 @@ class TestLoadMat:
             np.array([[100, 0, 1], [250, 0, 2], [400, 0, 1]], dtype=np.int32),
         )
 
+    def test_mat_sample_anchor_preserves_reviewed_duration(self, tmp_path):
+        p = tmp_path / "labels.mat"
+        scipy.io.savemat(
+            str(p),
+            {
+                "classlabel": np.array([1, 2]),
+                "cue_onset": np.array([100, 250]),
+                "cue_duration": np.array([50, 75]),
+            },
+        )
+
+        labels = load_label_file(
+            str(p),
+            label_field="classlabel",
+            anchor="cue_onset",
+            duration_field="cue_duration",
+        )
+
+        assert labels == [
+            {"onset": 100, "duration": 50, "label": 1},
+            {"onset": 250, "duration": 75, "label": 2},
+        ]
+
+    def test_mat_sample_anchor_converts_reviewed_end_to_duration(self, tmp_path):
+        p = tmp_path / "labels.mat"
+        scipy.io.savemat(
+            str(p),
+            {
+                "classlabel": np.array([1, 2]),
+                "cue_onset": np.array([100, 250]),
+                "offset": np.array([150, 325]),
+            },
+        )
+
+        labels = load_label_file(
+            str(p),
+            label_field="classlabel",
+            anchor="cue_onset",
+            duration_field="offset",
+        )
+
+        assert labels == [
+            {"onset": 100, "duration": 50, "label": 1},
+            {"onset": 250, "duration": 75, "label": 2},
+        ]
+
     def test_mat_n_by_1(self, tmp_path):
         """(n, 1) shape should flatten to 1D."""
         p = tmp_path / "labels.mat"

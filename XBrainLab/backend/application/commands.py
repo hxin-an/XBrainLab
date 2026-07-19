@@ -55,12 +55,21 @@ class PreprocessOperation(str, Enum):
     STANDARD = "standard"
 
 
+class DatasetGenerationMode(str, Enum):
+    """How generated datasets should be committed to the active study."""
+
+    CREATE = "create"
+    REPLACE_EXISTING = "replace_existing"
+
+
 @dataclass(frozen=True)
 class LoadDataCommand:
     """Load raw EEG files into the active study."""
 
     paths: list[str]
     allow_append: bool = True
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -72,7 +81,10 @@ class AttachLabelsCommand:
     """Attach label files to already-loaded raw files."""
 
     mapping: dict[str, str]
+    label_paths: list[str] = field(default_factory=list)
     label_format: str | None = None
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -98,6 +110,8 @@ class PreviewInterpretationCommand:
 
     scan_id: str | None = None
     choices: dict[str, Any] = field(default_factory=dict)
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -112,6 +126,8 @@ class ReviewInterpretationCommand:
     source_hint: str = "auto"
     label_sources: list[str] = field(default_factory=list)
     choices: dict[str, Any] = field(default_factory=dict)
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -135,6 +151,8 @@ class ApplyInterpretationCommand:
 
     candidate_id: str | None = None
     confirmed: bool = False
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -157,6 +175,8 @@ class ReloadInterpretationRecipeCommand:
     """Reload a recipe and re-run scan/preview/validation without applying."""
 
     recipe_path: str
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -165,10 +185,12 @@ class ReloadInterpretationRecipeCommand:
 
 @dataclass(frozen=True)
 class LabelImportPlan:
-    """Plan for applying labels already collected by a UI import dialog."""
+    """Plan for loading label paths and applying them to selected raw data."""
 
+    preview_id: str | None = None
     target_indices: list[int] = field(default_factory=list)
-    label_map: dict[str, Any] = field(default_factory=dict)
+    label_paths: list[str] = field(default_factory=list)
+    label_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     mapping: Any = None
     file_mapping: dict[str, str] = field(default_factory=dict)
     mode: str = "batch"
@@ -177,10 +199,27 @@ class LabelImportPlan:
 
 
 @dataclass(frozen=True)
+class PreviewLabelImportCommand:
+    """Materialize label paths once and publish only a typed UI summary."""
+
+    label_paths: list[str]
+    label_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
+
+    @property
+    def name(self) -> CommandName:
+        # Preview and commit intentionally share one capability and command lock.
+        return CommandName.IMPORT_LABELS
+
+
+@dataclass(frozen=True)
 class ImportLabelsCommand:
     """Apply an explicit label import plan to loaded raw data."""
 
     plan: LabelImportPlan
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -258,6 +297,7 @@ class CreateEpochCommand:
     t_max: float
     baseline: list[float] | tuple[float | None, float | None] | None = None
     event_ids: list[str] | dict[str, int] | None = None
+    confirmation_receipt: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -273,6 +313,8 @@ class GenerateDatasetCommand:
     split_strategy: str = "subject"
     training_mode: str = "individual"
     split_config: dict[str, Any] = field(default_factory=dict)
+    replacement_mode: DatasetGenerationMode = DatasetGenerationMode.CREATE
+    confirmed: bool = False
 
     @property
     def name(self) -> CommandName:
@@ -307,7 +349,6 @@ class ConfigureTrainingCommand:
     model_name: str | None = None
     model_params: dict[str, Any] = field(default_factory=dict)
     pretrained_weight_path: str | None = None
-    training_option: Any | None = None
 
     @property
     def name(self) -> CommandName:
@@ -321,6 +362,8 @@ class TrainCommand:
     append: bool = True
     interactive: bool = True
     confirmed: bool = False
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -460,6 +503,7 @@ Command = (
     | ReloadInterpretationRecipeCommand
     | LoadDataCommand
     | AttachLabelsCommand
+    | PreviewLabelImportCommand
     | ImportLabelsCommand
     | UpdateMetadataCommand
     | ApplySmartParseCommand

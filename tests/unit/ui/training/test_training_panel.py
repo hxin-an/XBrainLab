@@ -5,9 +5,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
-from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.application.results import (
+    ChangedState,
+    CommandResult,
+    ErrorType,
+)
+from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingRunIdentity,
+    TrainingStateToken,
+    TrainingTerminalOutcome,
+)
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
 
@@ -119,6 +130,28 @@ def test_training_panel_update_panel_refreshes_training_history(
     panel.update_panel()
 
     panel.update_loop.assert_called_once_with()
+
+
+def test_training_panel_gives_remaining_height_to_plots_for_small_history(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.resize(1100, 760)
+    panel.show()
+    panel.history_table.update_history([_make_history_entry()])
+    qtbot.wait(0)
+
+    assert panel.history_group.height() <= (
+        panel.history_table.preferred_content_height() + 52
+    )
+    assert panel.plots_group.height() > panel.history_group.height()
 
 
 def test_training_panel_split_data_success(mock_main_window, mock_controller, qtbot):
@@ -400,6 +433,159 @@ def test_training_panel_refuses_real_study_query_none_controller_history(
     stale_controller.get_formatted_history.assert_not_called()
     assert panel.history_table.rowCount() == 0
     assert panel.current_plotting_record is None
+
+
+def test_training_panel_keeps_verified_history_when_live_query_is_busy(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_entry = _make_history_entry(model_name="ServiceNet")
+    ready = CommandResult.success_result(
+        command_name="query_state",
+        message="Training history query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "training_history",
+            "row_count": 1,
+            "rows": [service_entry],
+        },
+    )
+    busy = CommandResult.failure_result(
+        command_name="query_state",
+        message="Training state changed while results were being read.",
+        state={},
+        changed_state=ChangedState(),
+        error_type=ErrorType.PRECONDITION,
+        recoverable=True,
+        diagnostics={"training_state_changed": True, "retryable": True},
+    )
+    recovered_entry = _make_history_entry(model_name="RecoveredNet")
+    recovered = CommandResult.success_result(
+        command_name="query_state",
+        message="Training history query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "training_history",
+            "row_count": 1,
+            "rows": [recovered_entry],
+        },
+    )
+    query = MagicMock(side_effect=[ready, busy, busy, recovered])
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.training.panel.execute_application_command",
+        query,
+    )
+    stale_controller = Observable()
+    stale_controller.validate_ready = MagicMock(return_value=True)
+    stale_controller.has_datasets = MagicMock(return_value=True)
+    stale_controller.has_model = MagicMock(return_value=True)
+    stale_controller.has_training_option = MagicMock(return_value=True)
+    stale_controller.get_formatted_history = MagicMock(
+        side_effect=AssertionError("controller history must not replace query truth"),
+    )
+
+    panel = TrainingPanel(
+        parent=RealMainWindow(),
+        controller=stale_controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_loop()
+    verified_record = panel.current_plotting_record
+    with patch.object(panel, "show_status_message") as status:
+        panel.update_loop(log_epochs=True)
+        panel.update_loop(log_epochs=True)
+
+    stale_controller.get_formatted_history.assert_not_called()
+    assert panel.history_table.rowCount() == 1
+    assert panel.history_table.item(0, 2).text() == "ServiceNet"
+    assert panel.current_plotting_record is verified_record
+    status.assert_called_once_with(
+        "Training view is updating · Keeping the last verified results"
+    )
+
+    panel.update_loop()
+
+    assert panel.history_table.item(0, 2).text() == "RecoveredNet"
+    assert panel.current_plotting_record is recovered_entry["record"]
+    assert panel._history_query_unavailable_shown is False
+
+
+def test_terminal_publication_preserves_verified_objects_when_final_query_is_busy(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_entry = _make_history_entry(epoch_count=1)
+    service_entry["plan"].option.epoch = 1
+    ready = CommandResult.success_result(
+        command_name="query_state",
+        message="Training history query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "training_history",
+            "row_count": 1,
+            "rows": [service_entry],
+        },
+    )
+    busy = CommandResult.failure_result(
+        command_name="query_state",
+        message="Application state is changing. Retry this query shortly.",
+        state={},
+        changed_state=ChangedState(),
+        error_type=ErrorType.PRECONDITION,
+        recoverable=True,
+        diagnostics={"application_busy": True},
+    )
+    query = MagicMock(side_effect=[ready, busy])
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.training.panel.execute_application_command",
+        query,
+    )
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+
+    panel = TrainingPanel(
+        parent=RealMainWindow(),
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    panel.sidebar.check_ready_to_train = MagicMock()
+    panel.update_loop()
+    assert panel.history_table.item(0, 3).text() == "Running"
+    service_entry["record"].is_finished.return_value = True
+
+    panel._on_training_terminal_published(
+        TrainingLifecycleEvent(
+            token=TrainingStateToken(generation=12, stable=True),
+            outcome=TrainingTerminalOutcome(
+                state=TrainingOutcomeState.COMPLETED,
+                run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+            ),
+            publication_generation=31,
+        )
+    )
+
+    assert query.call_count == 2
+    assert panel.history_table.item(0, 3).text() == "Completed"
+    assert "All training jobs finished." in panel.log_text.toPlainText()
 
 
 def test_training_panel_clears_stale_history_on_config_changed(
@@ -856,6 +1042,500 @@ def test_training_panel_clears_log_on_history_cleared(
     qtbot.wait(50)
 
     assert panel.log_text.toPlainText() == ""
+
+
+def test_training_panel_reports_terminal_oom_as_failed(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+    query_result = CommandResult.success_result(
+        command_name="query_state",
+        message="State query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "state": {
+                "training": {
+                    "terminal_outcome": {
+                        "state": "failed",
+                        "run": {"trainer_id": "trainer-1", "run_id": 1},
+                        "detail": (
+                            "Error: CUDA out of memory during training. "
+                            "Try reducing batch size."
+                        ),
+                    },
+                },
+            },
+        },
+    )
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.panel.execute_application_command",
+            return_value=query_result,
+        ),
+        patch.object(panel, "show_status_message") as status_message,
+    ):
+        panel._on_training_stopped()
+
+    status_message.assert_called_once_with("Training failed · Adjust settings")
+    log = panel.log_text.toPlainText()
+    assert "CUDA out of memory during training" in log
+    assert "All training jobs finished" not in log
+
+
+@pytest.mark.parametrize(
+    ("terminal_state", "expected_status", "expected_log"),
+    [
+        ("completed", "Training complete · Review results", "finished"),
+        ("cancelled", "Training stopped", "stopped before completion"),
+    ],
+)
+def test_training_panel_uses_typed_terminal_outcome_for_terminal_copy(
+    mock_main_window,
+    qtbot,
+    terminal_state,
+    expected_status,
+    expected_log,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+    query_result = CommandResult.success_result(
+        command_name="query_state",
+        message="State query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "state": {
+                "training": {
+                    "terminal_outcome": {
+                        "state": terminal_state,
+                        "run": {"trainer_id": "trainer-1", "run_id": 1},
+                        "detail": None,
+                    },
+                },
+            },
+        },
+    )
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.panel.execute_application_command",
+            return_value=query_result,
+        ),
+        patch.object(panel, "show_status_message") as status_message,
+    ):
+        panel._on_training_stopped()
+
+    status_message.assert_called_once_with(expected_status)
+    assert expected_log in panel.log_text.toPlainText()
+
+
+@pytest.mark.parametrize("terminal_state", ["running", "stop_requested", "unknown"])
+def test_training_panel_does_not_treat_nonterminal_typed_state_as_finished(
+    mock_main_window,
+    qtbot,
+    terminal_state,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+    query_result = CommandResult.success_result(
+        command_name="query_state",
+        message="State query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "state": {
+                "training": {
+                    "terminal_outcome": {
+                        "state": terminal_state,
+                        "run": {"trainer_id": "trainer-1", "run_id": 1},
+                        "detail": None,
+                    },
+                },
+            },
+        },
+    )
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.panel.execute_application_command",
+            return_value=query_result,
+        ),
+        patch.object(panel, "show_status_message") as status_message,
+    ):
+        panel._on_training_stopped()
+
+    status_message.assert_not_called()
+    assert panel.training_completed_shown is False
+    assert "All training jobs finished" not in panel.log_text.toPlainText()
+
+
+@pytest.mark.parametrize(
+    "query_result",
+    [
+        None,
+        CommandResult.failure_result(
+            command_name="query_state",
+            message="State query failed.",
+            state={},
+            changed_state=ChangedState(),
+            error_type=ErrorType.RUNTIME,
+            recoverable=True,
+        ),
+        CommandResult.success_result(
+            command_name="query_state",
+            message="State query ready.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics={"state": {}},
+        ),
+    ],
+)
+def test_training_panel_does_not_report_success_when_terminal_state_is_unknown(
+    mock_main_window,
+    qtbot,
+    query_result,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.panel.execute_application_command",
+            return_value=query_result,
+        ),
+        patch.object(panel, "show_status_message") as status_message,
+    ):
+        panel._on_training_stopped()
+
+    status_message.assert_not_called()
+    log = panel.log_text.toPlainText()
+    assert "Training outcome could not be verified" not in log
+    assert "All training jobs finished" not in log
+
+
+def test_training_panel_reconciles_transient_unknown_without_latching_it(
+    mock_main_window,
+    qtbot,
+):
+    """A stop event racing the train command must not hide its final OOM."""
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+    failed_result = CommandResult.success_result(
+        command_name="query_state",
+        message="State query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "state": {
+                "training": {
+                    "terminal_outcome": {
+                        "state": "failed",
+                        "run": {"trainer_id": "trainer-1", "run_id": 1},
+                        "detail": (
+                            "CUDA out of memory during training. "
+                            "Try reducing batch size."
+                        ),
+                    },
+                },
+            },
+        },
+    )
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.panel.execute_application_command",
+            side_effect=[None, failed_result],
+        ),
+        patch.object(panel, "show_status_message") as status_message,
+        patch(
+            "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+            return_value=False,
+        ),
+    ):
+        panel._on_training_stopped()
+
+        assert panel.training_completed_shown is False
+        assert "could not be verified" not in panel.log_text.toPlainText()
+
+        panel.reconcile_training_terminal_outcome()
+
+    assert panel.training_completed_shown is True
+    status_message.assert_called_once_with("Training failed · Adjust settings")
+    assert "CUDA out of memory during training" in panel.log_text.toPlainText()
+
+
+def test_late_started_generation_cannot_overwrite_terminal_ui(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    history_entry = _make_history_entry()
+    history_entry["record"].is_finished.return_value = True
+    controller.get_formatted_history = MagicMock(return_value=[history_entry])
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    panel.update_loop()
+    run = TrainingRunIdentity(trainer_id="trainer-1", run_id=1)
+    terminal = TrainingLifecycleEvent(
+        token=TrainingStateToken(generation=12, stable=True),
+        outcome=TrainingTerminalOutcome(
+            state=TrainingOutcomeState.COMPLETED,
+            run=run,
+        ),
+        publication_generation=31,
+    )
+    late_started = TrainingLifecycleEvent(
+        token=TrainingStateToken(generation=11, stable=True),
+        outcome=TrainingTerminalOutcome(
+            state=TrainingOutcomeState.RUNNING,
+            run=run,
+        ),
+    )
+
+    with patch(
+        "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+    ) as refresh:
+        panel._on_training_terminal_published(terminal)
+        terminal_log = panel.log_text.toPlainText()
+        panel._on_training_started_state(late_started)
+
+    assert panel.history_table.item(0, 3).text() == "Completed"
+    assert panel.sidebar.btn_start.isEnabled()
+    assert not panel.sidebar.btn_stop.isEnabled()
+    assert panel.log_text.toPlainText() == terminal_log
+    assert "All training jobs finished." in terminal_log
+    assert "Training started (event)." not in terminal_log
+    refresh.assert_called_once_with(
+        panel,
+        event_name="training_terminal_published",
+    )
+
+
+def test_completed_terminal_publication_refreshes_running_history_before_saliency(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    history_entry = _make_history_entry()
+    controller.get_formatted_history = MagicMock(return_value=[history_entry])
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    panel.update_loop()
+    panel.sidebar.btn_stop.setEnabled(True)
+    assert panel.history_table.item(0, 3).text() == "Running"
+    history_entry["record"].is_finished.return_value = True
+    event = TrainingLifecycleEvent(
+        token=TrainingStateToken(generation=12, stable=True),
+        outcome=TrainingTerminalOutcome(
+            state=TrainingOutcomeState.COMPLETED,
+            run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+        ),
+        publication_generation=31,
+    )
+
+    def refresh_training(*_args, **_kwargs) -> bool:
+        panel.update_panel()
+        return True
+
+    with patch(
+        "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+        side_effect=refresh_training,
+    ) as refresh:
+        panel._on_training_terminal_published(event)
+
+    assert panel.history_table.item(0, 3).text() == "Completed"
+    assert panel.sidebar.btn_start.isEnabled()
+    assert not panel.sidebar.btn_stop.isEnabled()
+    assert "All training jobs finished." in panel.log_text.toPlainText()
+    refresh.assert_called_once_with(
+        panel,
+        event_name="training_terminal_published",
+    )
+
+
+def test_duplicate_failed_terminal_publication_refreshes_once(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    event = TrainingLifecycleEvent(
+        token=TrainingStateToken(generation=8, stable=True),
+        outcome=TrainingTerminalOutcome(
+            state=TrainingOutcomeState.FAILED,
+            run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+            detail="CUDA out of memory during training.",
+        ),
+        publication_generation=22,
+    )
+
+    with patch(
+        "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+    ) as refresh:
+        panel._on_training_terminal_published(event)
+        panel._on_training_terminal_published(event)
+
+    refresh.assert_called_once_with(
+        panel,
+        event_name="training_terminal_published",
+    )
+    assert panel.log_text.toPlainText().count("Training failed:") == 1
+
+
+def test_terminal_refresh_restores_failure_copy_after_history_rerender(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    panel.training_completed_shown = True
+    panel._latest_terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.FAILED,
+        run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+        detail="CUDA out of memory during training.",
+    )
+    panel.log_text.append(
+        "Training failed: CUDA out of memory during training.",
+    )
+
+    with patch.object(panel, "update_panel", side_effect=panel.log_text.clear):
+        panel.refresh_terminal_publication()
+
+    assert panel.log_text.toPlainText() == (
+        "Training failed: CUDA out of memory during training."
+    )
+
+
+def test_duplicate_analysis_publication_refreshes_once(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    event = TrainingLifecycleEvent(
+        token=TrainingStateToken(generation=8, stable=True),
+        outcome=TrainingTerminalOutcome(
+            state=TrainingOutcomeState.COMPLETED,
+            run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+        ),
+        publication_generation=24,
+    )
+
+    with patch(
+        "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+    ) as refresh:
+        panel._on_training_analysis_published(event)
+        panel._on_training_analysis_published(event)
+
+    refresh.assert_called_once_with(
+        panel,
+        event_name="training_analysis_published",
+    )
 
 
 def test_training_panel_high_level_events_refresh_coordinator_scope(

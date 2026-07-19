@@ -334,6 +334,7 @@ class DatasetGenerator:
         if self.datasets:
             return self.datasets
         Dataset.SEQ = 0
+        self.epoch_data.reset_trial_selection_evidence()
         # individual scheme
         if self.config.train_type == TrainingType.IND:
             self.handle_ind()

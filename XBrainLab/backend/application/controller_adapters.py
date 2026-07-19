@@ -11,6 +11,8 @@ from XBrainLab.backend.study import Study
 
 class _ObservableControllerPort(Protocol):
     def notify(self, event: str, *args: Any, **kwargs: Any) -> Any: ...
+    def subscribe(self, event: str, callback: Any) -> Any: ...
+    def unsubscribe(self, event: str, callback: Any) -> Any: ...
 
 
 class _DatasetControllerPort(_ObservableControllerPort, Protocol):
@@ -34,6 +36,10 @@ class _DatasetControllerPort(_ObservableControllerPort, Protocol):
         subject: str | None = None,
         session: str | None = None,
     ) -> None: ...
+    def update_metadata_batch(
+        self,
+        updates: Sequence[tuple[int, str | None, str | None]],
+    ) -> int: ...
     def apply_smart_parse(self, results: Mapping[str, tuple[str, str]]) -> int: ...
     def remove_files(self, indices: Sequence[int]) -> None: ...
     def apply_channel_selection(self, channels: list[str]) -> bool: ...
@@ -47,6 +53,7 @@ class _DatasetControllerPort(_ObservableControllerPort, Protocol):
 
 
 class _PreprocessControllerPort(_ObservableControllerPort, Protocol):
+    def get_preprocessed_data_list(self) -> list[Any]: ...
     def get_runtime_diagnostics(self) -> dict[str, Any]: ...
     def is_epoched(self) -> bool: ...
     def get_channel_names(self) -> list[str]: ...
@@ -59,6 +66,16 @@ class _PreprocessControllerPort(_ObservableControllerPort, Protocol):
     def apply_resample(self, rate: float) -> bool: ...
     def apply_normalization(self, method: str) -> bool: ...
     def apply_rereference(self, channels: str | list[str]) -> bool: ...
+    def apply_standard_pipeline(
+        self,
+        *,
+        l_freq: float,
+        h_freq: float,
+        notch_freq: float | None = None,
+        rate: float | None = None,
+        ref_channels: str | list[str] | None = None,
+        normalization: str | None = None,
+    ) -> bool: ...
     def apply_epoching(
         self,
         baseline: tuple[float | None, float | None] | None,
@@ -90,12 +107,20 @@ class _TrainingControllerPort(_ObservableControllerPort, Protocol):
         *,
         append: bool = True,
         interactive: bool = True,
-    ) -> None: ...
-    def stop_training(self) -> None: ...
+    ) -> int: ...
     def clear_history(self) -> Any: ...
     def apply_data_splitting(self, generator: Any) -> Any: ...
     def clean_datasets(self, *args: Any, **kwargs: Any) -> Any: ...
     def is_training(self) -> bool: ...
+    def wait_for_terminal_notification(
+        self,
+        generation: int | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> bool: ...
+    def wait_until_restart_safe(self, *, timeout: float | None = None) -> bool: ...
+    def cancel_terminal_notification_waits(self, reason: str) -> None: ...
+    def get_progress_text(self) -> str: ...
     def get_formatted_history(self) -> list[dict[str, Any]]: ...
 
 
@@ -106,7 +131,17 @@ class _EvaluationControllerPort(_ObservableControllerPort, Protocol):
 
 
 class _VisualizationControllerPort(_ObservableControllerPort, Protocol):
+    notifications_deferred: bool
+    notification_batch_generation: int | None
+
     def get_trainers(self) -> Any: ...
+    def batch_notifications(self) -> AbstractContextManager[None]: ...
+    def consume_batched_delivery(
+        self,
+        event_name: str,
+        generation: int,
+    ) -> bool | None: ...
+    def is_notification_batch_active(self, generation: int) -> bool: ...
     def set_saliency_params(self, params: Any) -> Any: ...
     def get_saliency_params(self) -> Any: ...
     def get_averaged_record(self, trainer: Any) -> Any: ...
@@ -132,6 +167,14 @@ class LazyControllerAdapter:
 
     def notify(self, event: str, *args: Any, **kwargs: Any) -> Any:
         return self._observable_controller().notify(event, *args, **kwargs)
+
+    def subscribe(self, event: str, callback: Any) -> Any:
+        """Subscribe application orchestration to one controller lifecycle event."""
+        return self._observable_controller().subscribe(event, callback)
+
+    def unsubscribe(self, event: str, callback: Any) -> Any:
+        """Remove an application orchestration lifecycle subscription."""
+        return self._observable_controller().unsubscribe(event, callback)
 
 
 class DatasetControllerAdapter(LazyControllerAdapter):
@@ -192,6 +235,12 @@ class DatasetControllerAdapter(LazyControllerAdapter):
     ) -> None:
         return self._controller().update_metadata(index, subject, session)
 
+    def update_metadata_batch(
+        self,
+        updates: Sequence[tuple[int, str | None, str | None]],
+    ) -> int:
+        return int(self._controller().update_metadata_batch(updates))
+
     def apply_smart_parse(self, results: Mapping[str, tuple[str, str]]) -> int:
         return self._controller().apply_smart_parse(results)
 
@@ -233,6 +282,9 @@ class PreprocessControllerAdapter(LazyControllerAdapter):
     def get_runtime_diagnostics(self) -> dict[str, Any]:
         return self._controller().get_runtime_diagnostics()
 
+    def get_preprocessed_data_list(self) -> list[Any]:
+        return self._controller().get_preprocessed_data_list()
+
     def is_epoched(self) -> bool:
         return bool(self._controller().is_epoched())
 
@@ -255,6 +307,27 @@ class PreprocessControllerAdapter(LazyControllerAdapter):
 
     def apply_rereference(self, channels: str | list[str]) -> Any:
         return self._controller().apply_rereference(channels)
+
+    def apply_standard_pipeline(
+        self,
+        *,
+        l_freq: float,
+        h_freq: float,
+        notch_freq: float | None = None,
+        rate: float | None = None,
+        ref_channels: str | list[str] | None = None,
+        normalization: str | None = None,
+    ) -> bool:
+        return bool(
+            self._controller().apply_standard_pipeline(
+                l_freq=l_freq,
+                h_freq=h_freq,
+                notch_freq=notch_freq,
+                rate=rate,
+                ref_channels=ref_channels,
+                normalization=normalization,
+            )
+        )
 
     def apply_epoching(
         self,
@@ -311,28 +384,11 @@ class TrainingControllerAdapter(LazyControllerAdapter):
             update_option=update_option,
         )
 
-    def start_training(self, *, append: bool = True, interactive: bool = True) -> None:
+    def start_training(self, *, append: bool = True, interactive: bool = True) -> int:
         return self._controller().start_training(
             append=append,
             interactive=interactive,
         )
-
-    def get_resource_preflight_context(self) -> dict[str, Any]:
-        return {
-            "datasets": list(getattr(self._study, "datasets", []) or []),
-            "training_option": getattr(self._study, "training_option", None),
-            "model_holder": getattr(self._study, "model_holder", None),
-        }
-
-    def stop_training(self, *, wait_timeout: float | None = None) -> bool:
-        controller = self._controller()
-        was_running = bool(controller.is_training())
-        if not was_running:
-            return False
-        if wait_timeout is not None:
-            return bool(self._study.stop_training(wait_timeout=wait_timeout))
-        controller.stop_training()
-        return True
 
     def clear_history(self) -> Any:
         return self._controller().clear_history()
@@ -345,6 +401,34 @@ class TrainingControllerAdapter(LazyControllerAdapter):
 
     def is_training(self) -> bool:
         return bool(self._controller().is_training())
+
+    def wait_for_terminal_notification(
+        self,
+        generation: int | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> bool:
+        """Wait until callbacks complete for one exact controller-admitted run."""
+        return bool(
+            self._controller().wait_for_terminal_notification(
+                generation,
+                timeout=timeout,
+            ),
+        )
+
+    def wait_until_restart_safe(self, *, timeout: float | None = None) -> bool:
+        """Wait outside command serialization for the old monitor to retire."""
+        return bool(
+            self._controller().wait_until_restart_safe(timeout=timeout),
+        )
+
+    def cancel_terminal_notification_waits(self, reason: str) -> None:
+        """Wake pending run handoffs when application ownership is closing."""
+        self._controller().cancel_terminal_notification_waits(reason)
+
+    def get_progress_text(self) -> str:
+        """Return the controller-owned terminal or in-progress status text."""
+        return str(self._controller().get_progress_text() or "")
 
     def get_formatted_history(self) -> list[dict[str, Any]]:
         return list(self._controller().get_formatted_history())
@@ -380,6 +464,32 @@ class VisualizationControllerAdapter(LazyControllerAdapter):
 
     def get_trainers(self) -> Any:
         return self._controller().get_trainers()
+
+    def batch_notifications(self) -> AbstractContextManager[None]:
+        """Defer controller events until the Application command boundary exits."""
+        return self._controller().batch_notifications()
+
+    @property
+    def notifications_deferred(self) -> bool:
+        """Return whether the controller is holding one notification batch."""
+        return bool(self._controller().notifications_deferred)
+
+    @property
+    def notification_batch_generation(self) -> int | None:
+        """Return the generation currently holding deferred notifications."""
+        return self._controller().notification_batch_generation
+
+    def consume_batched_delivery(
+        self,
+        event_name: str,
+        generation: int,
+    ) -> bool | None:
+        """Consume one exact deferred delivery result through the typed port."""
+        return self._controller().consume_batched_delivery(event_name, generation)
+
+    def is_notification_batch_active(self, generation: int) -> bool:
+        """Return whether the exact command batch still owns delivery."""
+        return bool(self._controller().is_notification_batch_active(generation))
 
     def set_saliency_params(self, params: Any) -> Any:
         return self._controller().set_saliency_params(params)

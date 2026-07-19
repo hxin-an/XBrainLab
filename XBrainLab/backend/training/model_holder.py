@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from typing import Any
+
 import torch
 
 
@@ -24,8 +27,13 @@ class ModelHolder:
         pretrained_weight_path: str | None = None,
     ):
         self.target_model = target_model
-        self.model_params_map = model_params_map
+        self._model_params_map = deepcopy(model_params_map)
         self.pretrained_weight_path = pretrained_weight_path
+
+    @property
+    def model_params_map(self) -> dict[str, Any]:
+        """Return an isolated snapshot of configured model parameters."""
+        return deepcopy(self._model_params_map)
 
     def get_model_desc_str(self) -> str:
         """Get a human-readable model description string.
@@ -36,9 +44,9 @@ class ModelHolder:
 
         """
         option_list = [
-            f"{i}={self.model_params_map[i]}"
-            for i in self.model_params_map
-            if self.model_params_map[i] is not None
+            f"{name}={value}"
+            for name, value in self._model_params_map.items()
+            if value is not None
         ]
         options = ", ".join(option_list)
         return f"{self.target_model.__name__} ({options})"
@@ -56,7 +64,7 @@ class ModelHolder:
             A new instance of the target model with weights loaded if applicable.
 
         """
-        model = self.target_model(**self.model_params_map, **args)
+        model = self.target_model(**self._model_params_map, **args)
         if self.pretrained_weight_path:
             model.load_state_dict(
                 torch.load(self.pretrained_weight_path, weights_only=True),

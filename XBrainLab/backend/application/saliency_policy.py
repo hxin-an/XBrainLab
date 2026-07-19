@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from XBrainLab.backend.visualization.saliency_methods import (
+from XBrainLab.backend.saliency_methods import (
     all_saliency_methods,
     recommended_saliency_methods,
     supported_saliency_methods,

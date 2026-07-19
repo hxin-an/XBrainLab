@@ -28,6 +28,9 @@ class TestPreviewWidgetInit:
     def test_has_plot_freq(self, preview):
         assert isinstance(preview.plot_freq, QWidget)
 
+    def test_debounce_timer_is_owned_by_preview_widget(self, preview):
+        assert preview.plot_timer.parent() is preview
+
 
 class TestPreviewWidgetMethods:
     def test_reset_view(self, preview):
@@ -35,6 +38,51 @@ class TestPreviewWidgetMethods:
 
     def test_show_locked_message(self, preview):
         preview.show_locked_message("Data locked")
+
+        assert preview.locked_status_label.text() == "Data locked"
+        assert not preview.locked_status_label.isHidden()
+        assert not preview.plot_tabs.isEnabled()
+        assert not preview.chan_combo.isEnabled()
+        assert not preview.yscale_spin.isEnabled()
+        assert not preview.time_slider.isEnabled()
+        assert not preview.time_spin.isEnabled()
+
+    def test_new_channel_options_restore_preview_after_locked_state(
+        self,
+        preview,
+        qtbot,
+    ):
+        preview.show()
+        preview.show_locked_message("Data is Epoched - Preprocessing Locked")
+        qtbot.wait(0)
+
+        assert preview.locked_status_label.isVisibleTo(preview)
+        assert not preview.chan_combo.isEnabled()
+
+        preview.chan_combo.clear()
+        preview.chan_combo.addItems(["C3", "C4"])
+        qtbot.wait(0)
+
+        assert preview.plot_tabs.isEnabled()
+        assert preview.chan_combo.isEnabled()
+        assert preview.yscale_spin.isEnabled()
+        assert preview.time_slider.isEnabled()
+        assert preview.time_spin.isEnabled()
+        assert not preview.locked_status_label.isVisibleTo(preview)
+
+    def test_new_curve_data_restores_preview_without_repopulating_channels(
+        self,
+        preview,
+    ):
+        preview.chan_combo.addItem("C3")
+        preview.show_locked_message("Data is Epoched - Preprocessing Locked")
+
+        preview.time_current_curve.setData([0.0, 0.1], [1.0, 2.0])
+
+        assert preview.plot_tabs.isEnabled()
+        assert preview.chan_combo.isEnabled()
+        assert preview.time_slider.isEnabled()
+        assert preview.locked_status_label.isHidden()
 
     def test_clear_plot_data_keeps_persistent_items(self, preview):
         preview.time_current_curve.setData([0, 1], [0, 1])

@@ -4,6 +4,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import pytest
 
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
 
@@ -93,3 +94,33 @@ class TestGetStyleSheet:
     def test_contains_qwidget(self):
         ss = Theme.get_style_sheet()
         assert "QWidget" in ss
+
+
+class TestMainWindowStylesheet:
+    def test_dock_separator_uses_low_key_solid_theme_style(self):
+        stylesheet = Stylesheets.MAIN_WINDOW
+
+        assert "QMainWindow::separator" in stylesheet
+        assert f"background-color: {Theme.BACKGROUND_LIGHT}" in stylesheet
+        assert "width: 1px" in stylesheet
+        assert "height: 1px" in stylesheet
+
+
+class TestSidebarStylesheet:
+    def test_sidebar_border_targets_only_the_sidebar_owner(self):
+        stylesheet = Stylesheets.SIDEBAR_CONTAINER
+
+        assert "QWidget#RightPanel" in stylesheet
+        assert "QWidget {" not in stylesheet
+
+
+class TestPrimaryButtonStylesheet:
+    def test_disabled_primary_uses_shared_neutral_button_tokens(self):
+        stylesheet = Stylesheets.BTN_PRIMARY
+
+        assert "QPushButton:disabled" in stylesheet
+        disabled = stylesheet.split("QPushButton:disabled", maxsplit=1)[1]
+        assert f"background-color: {Theme.BTN_DISABLED_BG}" in disabled
+        assert f"color: {Theme.BTN_DISABLED_TEXT}" in disabled
+        assert f"border: 1px solid {Theme.BTN_DISABLED_BORDER}" in disabled
+        assert "font-weight: normal" in disabled

@@ -26,6 +26,8 @@ configure_qt_platform_for_runtime()
 from PyQt6.QtCore import QPoint, QSettings, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QApplication
 
+from scripts.dev.ui_navigation import open_workflow_panel
+
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
 OUTPUT_PATH = ARTIFACTS_DIR / "main-window-initial.png"
@@ -103,13 +105,12 @@ def _prepare_capture_step(window, step_target) -> None:
         return
 
     if step_target == AI_DOCK_STEP:
-        window.switch_page(0)
+        open_workflow_panel(window, 0)
         if window.agent_manager is None:
             window.init_agent()
         manager = window.agent_manager
         if manager is None:
             return
-        manager.agent_initialized = True
         if manager.chat_dock is not None:
             manager.chat_dock.show()
         if hasattr(manager, "update_ai_btn_state"):
@@ -118,11 +119,12 @@ def _prepare_capture_step(window, step_target) -> None:
             window.ai_btn.setChecked(True)
         return
 
-    window.switch_page(step_target)
+    open_workflow_panel(window, step_target)
 
 
 def capture_window(app: QApplication, output_path: Path) -> int:
     """Launch the main window and capture the shell plus all five panels."""
+    from XBrainLab.backend.application.runtime import get_application_service
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
@@ -130,6 +132,7 @@ def capture_window(app: QApplication, output_path: Path) -> int:
 
     _clear_saved_main_window_geometry()
     study = Study()
+    get_application_service(study)
     window = MainWindow(study)
     _set_baseline_window_geometry(window)
     window.show()

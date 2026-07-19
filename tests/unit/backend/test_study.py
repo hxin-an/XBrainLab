@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import mne
 import pytest
+import torch
 
 from XBrainLab.backend.dataset import (
     Dataset,
@@ -13,7 +14,13 @@ from XBrainLab.backend.dataset import (
 from XBrainLab.backend.load_data import Raw, RawDataLoader
 from XBrainLab.backend.preprocessor import PreprocessBase
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.backend.training import (
+    ModelHolder,
+    Trainer,
+    TrainingEvaluation,
+    TrainingOption,
+    TrainingPlanHolder,
+)
 
 
 def test_study_load_data():
@@ -203,12 +210,103 @@ def trainer_study():
 @pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_training_option(trainer_study, force_update):
     option = TrainingOption(
-        "test", int, {}, True, None, 1, 1, 1, 1, TrainingEvaluation.VAL_ACC, 1
+        "test",
+        torch.optim.Adam,
+        {},
+        True,
+        None,
+        1,
+        1,
+        1,
+        1,
+        TrainingEvaluation.VAL_ACC,
+        1,
     )
 
     trainer_study.set_training_option(option, force_update)
 
-    assert trainer_study.training_option == option
+    published = trainer_study.training_option
+    assert published is not None
+    assert published is not option
+    assert published.epoch == option.epoch
+
+
+def test_study_set_training_option_rejects_mutated_invalid_option():
+    study = Study()
+    existing = TrainingOption(
+        "test",
+        torch.optim.Adam,
+        {},
+        True,
+        None,
+        1,
+        1,
+        0.001,
+        0,
+        TrainingEvaluation.VAL_ACC,
+        1,
+    )
+    invalid = TrainingOption(
+        "test",
+        torch.optim.Adam,
+        {},
+        True,
+        None,
+        1,
+        1,
+        0.001,
+        0,
+        TrainingEvaluation.VAL_ACC,
+        1,
+    )
+    cast(Any, invalid).repeat_num = 1.5
+    study.set_training_option(existing)
+
+    with pytest.raises(ValueError):
+        study.set_training_option(invalid)
+
+    published = study.training_option
+    assert published is not None
+    assert published.epoch == existing.epoch
+
+
+def test_study_compatibility_property_rejects_invalid_training_option():
+    study = Study()
+    existing = TrainingOption(
+        "test",
+        torch.optim.Adam,
+        {},
+        True,
+        None,
+        1,
+        1,
+        0.001,
+        0,
+        TrainingEvaluation.VAL_ACC,
+        1,
+    )
+    study.set_training_option(existing)
+
+    with pytest.raises(TypeError):
+        cast(Any, study).training_option = object()
+
+    published = study.training_option
+    assert published is not None
+    assert published.epoch == 1
+
+
+def test_study_compatibility_property_rejects_invalid_model_holder():
+    study = Study()
+    holder = ModelHolder(int, {})
+    study.set_model_holder(holder)
+
+    with pytest.raises(TypeError):
+        cast(Any, study).model_holder = object()
+
+    published = study.model_holder
+    assert published is not None
+    assert published is not holder
+    assert published.target_model is holder.target_model
 
 
 @pytest.mark.parametrize("force_update", [True, False])
@@ -217,7 +315,10 @@ def test_study_set_model_holder(trainer_study, force_update):
 
     trainer_study.set_model_holder(holder, force_update)
 
-    assert trainer_study.model_holder == holder
+    published = trainer_study.model_holder
+    assert published is not None
+    assert published is not holder
+    assert published.target_model is holder.target_model
 
 
 @pytest.mark.parametrize("force_update", [True, False])
@@ -231,8 +332,22 @@ def test_study_generate_plan(trainer_study, force_update):
         ) as trainer_mock,
     ):
         cast(Any, trainer_study).datasets = [1, 2, 3]
-        cast(Any, trainer_study).training_option = 2
-        cast(Any, trainer_study).model_holder = 3
+        option = TrainingOption(
+            "test",
+            torch.optim.Adam,
+            {},
+            True,
+            None,
+            1,
+            1,
+            0.001,
+            0,
+            TrainingEvaluation.VAL_ACC,
+            1,
+        )
+        holder = ModelHolder(int, {})
+        trainer_study.set_training_option(option)
+        trainer_study.set_model_holder(holder)
         if force_update:
             trainer_study.generate_plan(force_update=force_update)
         else:
@@ -245,9 +360,10 @@ def test_study_generate_plan(trainer_study, force_update):
         assert len(called_args_list) == 3
         for i in range(3):
             called_args = called_args_list[i][0]
-            assert called_args[0] == 3
+            assert called_args[0] is not holder
+            assert called_args[0].target_model is holder.target_model
             assert called_args[1] == (i + 1)
-            assert called_args[2] == 2
+            assert called_args[2].epoch == option.epoch
             assert called_args[3] is None  # saliency_params
 
         trainer_mock.assert_called_once()
@@ -264,8 +380,22 @@ def test_study_generate_plan(trainer_study, force_update):
 def test_study_generate_plan_missing_options(missing_part, complain):
     study = Study()
     cast(Any, study).datasets = [1, 2, 3]
-    cast(Any, study).training_option = 2
-    cast(Any, study).model_holder = 3
+    study.set_training_option(
+        TrainingOption(
+            "test",
+            torch.optim.Adam,
+            {},
+            True,
+            None,
+            1,
+            1,
+            0.001,
+            0,
+            TrainingEvaluation.VAL_ACC,
+            1,
+        )
+    )
+    study.set_model_holder(ModelHolder(int, {}))
     setattr(study, missing_part, None)
 
     with pytest.raises(ValueError, match=rf".*{complain}.*"):
@@ -274,8 +404,9 @@ def test_study_generate_plan_missing_options(missing_part, complain):
 
 def test_study_training(trainer_study):
     assert not trainer_study.is_training()
-    trainer_study.train()
+    trainer_study.train(interact=True)
     assert trainer_study.is_training()
+    assert trainer_study.trainer.interact is True
     trainer_study.stop_training()
     assert trainer_study.trainer.interrupt
 
@@ -321,6 +452,12 @@ def test_study_export_output_csv_not_set():
 
 def test_study_set_channels():
     class FakeEpochData:
+        def __init__(self):
+            self.channels = ["Cz"]
+
+        def get_channel_names(self):
+            return list(self.channels)
+
         def set_channels(self, channels, channel_types):
             self.channels = channels
             self.channel_types = channel_types
@@ -339,23 +476,64 @@ def test_study_set_channels_not_set():
         study.set_channels([], [])
 
 
+def test_study_blocks_channel_identity_change_after_dataset_generation():
+    class FakeEpochData:
+        def __init__(self):
+            self.channels = ["C3", "C4"]
+
+        def get_channel_names(self):
+            return list(self.channels)
+
+        def set_channels(self, channels, _positions):
+            self.channels = list(channels)
+
+    study = Study()
+    fake_epoch_data = FakeEpochData()
+    cast(Any, study).epoch_data = fake_epoch_data
+    cast(Any, study).datasets = [object()]
+
+    with pytest.raises(ValueError, match="before generating datasets"):
+        study.set_channels(["C3"], [(0.0, 0.0, 1.0)])
+
+    assert fake_epoch_data.channels == ["C3", "C4"]
+
+
+def test_study_allows_position_update_for_same_channels_after_training():
+    class FakeEpochData:
+        def __init__(self):
+            self.channels = ["C3", "C4"]
+            self.positions = None
+
+        def get_channel_names(self):
+            return list(self.channels)
+
+        def set_channels(self, channels, positions):
+            self.channels = list(channels)
+            self.positions = list(positions)
+
+    study = Study()
+    fake_epoch_data = FakeEpochData()
+    cast(Any, study).epoch_data = fake_epoch_data
+    cast(Any, study).datasets = [object()]
+    positions = [(0.0, 0.0, 1.0), (0.1, 0.0, 0.9)]
+
+    study.set_channels(["C3", "C4"], positions)
+
+    assert fake_epoch_data.positions == positions
+
+
 def test_study_saliency_params():
     study = Study()
     params = {"method": {"param": 1}}
     study.set_saliency_params(params)
     assert study.get_saliency_params() == params
 
-    # Test propagation to trainer
-    class FakePlanHolder:
-        def set_saliency_params(self, params):
-            self.params = params
+    holder = object.__new__(TrainingPlanHolder)
+    holder.train_record_list = []
+    holder._state_tracker = None
+    holder.saliency_params = {}
+    study.trainer = Trainer([holder])
 
-    holder = FakePlanHolder()
-
-    class FakeTrainer:
-        def get_training_plan_holders(self):
-            return [holder]
-
-    cast(Any, study).trainer = FakeTrainer()
     study.set_saliency_params(params)
-    assert holder.params == params
+
+    assert holder.saliency_params == params

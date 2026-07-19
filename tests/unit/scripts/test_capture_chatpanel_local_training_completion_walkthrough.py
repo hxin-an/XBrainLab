@@ -1,14 +1,27 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import mne
+
 from scripts.dev.capture_chatpanel_local_training_completion_walkthrough import (
     TURN_SPECS,
     build_prompts,
     prepare_training_dataset_ready_state,
     render_markdown,
     validate_training_completion_payload,
+    write_synthetic_training_raw_fif,
 )
 from XBrainLab.backend.application import PreviewInterpretationCommand
+
+
+def test_synthetic_training_fixture_has_balanced_split_coverage():
+    source_path = write_synthetic_training_raw_fif()
+    raw = mne.io.read_raw_fif(source_path, preload=False, verbose=False)
+
+    assert len(raw.annotations) == 12
+    assert set(raw.annotations.description) == {"left", "right"}
+    assert list(raw.annotations.description).count("left") == 6
+    assert list(raw.annotations.description).count("right") == 6
 
 
 def _base_payload():

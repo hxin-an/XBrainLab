@@ -136,3 +136,21 @@ class TestEpochRunner:
     def test_public_api_does_not_accept_test_loader(self):
         """Epoch-level checkpoint selection must never inspect the test split."""
         assert "test_loader" not in signature(EpochRunner.run).parameters
+
+    def test_run_does_not_flush_cuda_allocator_after_each_epoch(self):
+        """Allocator cache is retained between epochs and cleared at run boundaries."""
+        interrupt = threading.Event()
+        runner = EpochRunner(interrupt=interrupt)
+        model = _make_simple_model()
+        loader = _make_loader()
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        criterion = torch.nn.CrossEntropyLoss()
+        record = MagicMock()
+        record.get_epoch.return_value = 1
+
+        with patch(
+            "XBrainLab.backend.training.epoch_runner.torch.cuda.empty_cache"
+        ) as empty_cache:
+            runner.run(model, loader, None, optimizer, criterion, record)
+
+        empty_cache.assert_not_called()

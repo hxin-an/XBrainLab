@@ -66,7 +66,7 @@ class MetricsBarChartWidget(QWidget):
         self.plot_layout.addWidget(self.canvas)
         layout.addWidget(self.plot_container)
 
-    def update_plot(self, metrics):
+    def update_plot(self, metrics, *, class_names: dict[int, str] | None = None):
         """Update the bar chart with metrics data.
 
         Args:
@@ -92,7 +92,7 @@ class MetricsBarChartWidget(QWidget):
                     va="center",
                 )
                 self.ax.axis("off")
-                self.canvas.draw_idle()
+                self._draw_canvas_now()
                 return
 
             # Extract data
@@ -109,7 +109,7 @@ class MetricsBarChartWidget(QWidget):
                     va="center",
                 )
                 self.ax.axis("off")
-                self.canvas.draw_idle()
+                self._draw_canvas_now()
                 return
 
             precision = [metrics[c]["precision"] for c in classes]
@@ -142,7 +142,11 @@ class MetricsBarChartWidget(QWidget):
             self.ax.set_ylabel("Score")
             self.ax.set_title("Per-Class Metrics")
             self.ax.set_xticks(x)
-            self.ax.set_xticklabels([f"Class {c}" for c in classes])
+            labels = [
+                (class_names or {}).get(class_index, f"Class {class_index}")
+                for class_index in classes
+            ]
+            self.ax.set_xticklabels(labels)
             self.ax.set_ylim(0, 1.1)
 
             # Legend
@@ -175,10 +179,17 @@ class MetricsBarChartWidget(QWidget):
                     "Skipping metrics bar chart tight_layout: %s",
                     layout_error,
                 )
-            self.canvas.draw_idle()
+            self._draw_canvas_now()
 
         except Exception as e:
             logger.error("Error plotting bar chart: %s", e, exc_info=True)
+
+    def _draw_canvas_now(self) -> None:
+        """Draw synchronously so parent teardown cannot outlive a queued callback."""
+        if self.canvas is None:
+            return
+        with suppress(RuntimeError):
+            self.canvas.draw()
 
     def _release_canvas(self) -> None:
         if self.canvas is None:

@@ -6,9 +6,11 @@ _force_apply_single, get_epoch_count_for_file.
 
 from unittest.mock import MagicMock, patch
 
+import mne
 import numpy as np
 import pytest
 
+from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.services.label_import_service import (
     LabelImportService,
     infer_event_ids_for_label_count,
@@ -221,6 +223,89 @@ class TestApplyLabelsToSingleFile:
 
 
 class TestApplyLabelsBatch:
+    def test_timestamp_batch_rolls_back_all_files_when_late_row_fails(
+        self,
+        service,
+    ):
+        info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+        first = Raw(
+            "/data/first.fif",
+            mne.io.RawArray(np.zeros((1, 300)), info, verbose=False),
+        )
+        second = Raw(
+            "/data/second.fif",
+            mne.io.RawArray(np.zeros((1, 300)), info, verbose=False),
+        )
+        for raw in (first, second):
+            raw.get_mne().set_annotations(
+                mne.Annotations([0.25], [0.1], ["acquisition"])
+            )
+            raw.set_event(np.array([[25, 0, 9]]), {"original": 9})
+
+        result = service.apply_labels_batch(
+            [first, second],
+            {
+                "first.csv": [{"onset": 1.0, "duration": 0.0, "label": "left"}],
+                "second.csv": [
+                    {"onset": 1.0, "duration": 0.0, "label": "left"},
+                    {"onset": 3.0, "duration": 0.0, "label": "left"},
+                ],
+            },
+            {
+                first.get_filepath(): "first.csv",
+                second.get_filepath(): "second.csv",
+            },
+            {"left": "Left hand"},
+        )
+
+        assert result == 0
+        for raw in (first, second):
+            assert raw.is_labels_imported() is False
+            assert raw.get_mne().annotations.description.tolist() == ["acquisition"]
+            events, event_id = raw.get_event_list()
+            np.testing.assert_array_equal(events, np.array([[25, 0, 9]]))
+            assert event_id == {"original": 9}
+
+    def test_batch_rejects_mixed_timestamp_and_sequence_without_mutation(
+        self,
+        service,
+    ):
+        info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+        first = Raw(
+            "/data/first.fif",
+            mne.io.RawArray(np.zeros((1, 300)), info, verbose=False),
+        )
+        second = Raw(
+            "/data/second.fif",
+            mne.io.RawArray(np.zeros((1, 300)), info, verbose=False),
+        )
+        for raw in (first, second):
+            raw.get_mne().set_annotations(
+                mne.Annotations([0.25], [0.1], ["acquisition"])
+            )
+            raw.set_event(np.array([[25, 0, 9]]), {"original": 9})
+
+        result = service.apply_labels_batch(
+            [first, second],
+            {
+                "first.csv": [{"onset": 1.0, "duration": 0.0, "label": "left"}],
+                "second.mat": [1],
+            },
+            {
+                first.get_filepath(): "first.csv",
+                second.get_filepath(): "second.mat",
+            },
+            {"left": "Left", 1: "Right"},
+        )
+
+        assert result == 0
+        for raw in (first, second):
+            assert raw.is_labels_imported() is False
+            assert raw.get_mne().annotations.description.tolist() == ["acquisition"]
+            events, event_id = raw.get_event_list()
+            np.testing.assert_array_equal(events, np.array([[25, 0, 9]]))
+            assert event_id == {"original": 9}
+
     def test_batch_success(self, service):
         data1 = _make_data_mock("/data/sub01.set")
         data2 = _make_data_mock("/data/sub02.set")
@@ -242,7 +327,21 @@ class TestApplyLabelsBatch:
             assert result == 2
             assert mock_apply.call_count == 2
 
-    def test_batch_partial_match(self, service):
+    def test_batch_accepts_numpy_sequence_labels(self, service):
+        data = _make_data_mock("/data/sub01.gdf")
+
+        with patch.object(service, "apply_labels_to_single_file") as mock_apply:
+            result = service.apply_labels_batch(
+                [data],
+                {"labels.mat": np.asarray([1, 2, 1])},
+                {"/data/sub01.gdf": "labels.mat"},
+                {1: "Left", 2: "Right"},
+            )
+
+        assert result == 1
+        mock_apply.assert_called_once()
+
+    def test_batch_partial_match_fails_without_applying_any_target(self, service):
         data1 = _make_data_mock("/data/sub01.set")
         data2 = _make_data_mock("/data/sub02.set")
 
@@ -254,9 +353,10 @@ class TestApplyLabelsBatch:
             result = service.apply_labels_batch(
                 [data1, data2], label_map, file_mapping, mapping
             )
-            assert result == 1
+            assert result == 0
+            mock_apply.assert_not_called()
 
-    def test_batch_error_continues(self, service):
+    def test_batch_late_preparation_error_rolls_back_the_whole_batch(self, service):
         data1 = _make_data_mock("/data/sub01.set")
         data2 = _make_data_mock("/data/sub02.set")
 
@@ -267,14 +367,65 @@ class TestApplyLabelsBatch:
         with patch.object(
             service,
             "apply_labels_to_single_file",
-            side_effect=[RuntimeError("fail"), None],
+            side_effect=[None, RuntimeError("fail")],
         ) as mock_apply:
             result = service.apply_labels_batch(
                 [data1, data2], label_map, file_mapping, mapping
             )
-            # First fails, second succeeds
-            assert result == 1
+            assert result == 0
             assert mock_apply.call_count == 2
+
+    def test_batch_commit_failure_restores_every_target(self, service):
+        info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+        targets = [
+            Raw(
+                f"/data/target-{index}.fif",
+                mne.io.RawArray(np.zeros((1, 200)), info, verbose=False),
+            )
+            for index in range(2)
+        ]
+        for target in targets:
+            target.set_event(np.array([[25, 0, 1]]), {"original": 1})
+
+        def prepare(staged, *_args):
+            staged.set_event(np.array([[75, 0, 9]]), {"changed": 9})
+            staged.set_labels_imported(True)
+
+        original_replace = service._replace_raw_label_state
+        commit_calls = 0
+
+        def fail_second_commit(target, source):
+            nonlocal commit_calls
+            commit_calls += 1
+            if commit_calls == 2:
+                raise RuntimeError("second commit failed")
+            original_replace(target, source)
+
+        with (
+            patch.object(service, "apply_labels_to_single_file", side_effect=prepare),
+            patch.object(
+                service,
+                "_replace_raw_label_state",
+                side_effect=fail_second_commit,
+            ),
+        ):
+            result = service.apply_labels_batch(
+                targets,
+                {"first.mat": [1], "second.mat": [2]},
+                {
+                    targets[0].get_filepath(): "first.mat",
+                    targets[1].get_filepath(): "second.mat",
+                },
+                {1: "left", 2: "right"},
+            )
+
+        assert result == 0
+        assert commit_calls == 4
+        for target in targets:
+            assert target.is_labels_imported() is False
+            events, event_id = target.get_event_list()
+            np.testing.assert_array_equal(events, np.array([[25, 0, 1]]))
+            assert event_id == {"original": 1}
 
     def test_batch_no_match(self, service):
         data1 = _make_data_mock("/data/sub01.set")
@@ -320,6 +471,36 @@ class TestApplyLabelsSequence:
         with patch.object(service, "get_epoch_count_for_file", return_value=10):
             result = service.apply_labels_sequence([d1], labels, mapping)
             assert result == 0
+
+    def test_late_preparation_failure_does_not_commit_any_sequence_target(
+        self,
+        service,
+    ):
+        targets = [
+            _make_data_mock("/data/sub01.set"),
+            _make_data_mock("/data/sub02.set"),
+        ]
+        with (
+            patch.object(
+                service,
+                "get_epoch_count_for_file",
+                side_effect=[1, 1, 1, 1],
+            ),
+            patch.object(
+                service,
+                "apply_labels_to_single_file",
+                side_effect=[None, RuntimeError("second target failed")],
+            ),
+            patch.object(service, "_replace_raw_label_state") as replace_state,
+        ):
+            result = service.apply_labels_sequence(
+                targets,
+                [1, 2],
+                {1: "left", 2: "right"},
+            )
+
+        assert result == 0
+        replace_state.assert_not_called()
 
     def test_force_import(self, service):
         d1 = _make_data_mock("/data/sub01.set")

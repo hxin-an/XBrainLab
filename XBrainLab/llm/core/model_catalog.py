@@ -6,17 +6,27 @@ scatter model allow/block lists across the UI, downloader, and runtime checks.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
 BYTES_PER_GB = 1_000_000_000
 MAX_SINGLE_MODEL_DOWNLOAD_GB = 10.0
 MAX_TOTAL_MODEL_CACHE_GB = 20.0
+MIN_DISK_FREE_AFTER_DOWNLOAD_GB = 5.0
+MIN_MODEL_WEIGHT_BYTES = 256_000_000
 
 PRIMARY_LOCAL_MODEL_ID = "microsoft/Phi-4-mini-instruct"
 FALLBACK_LOCAL_MODEL_ID = "microsoft/Phi-3.5-mini-instruct"
+PRIMARY_LOCAL_MODEL_REVISION = (
+    "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
+)
+FALLBACK_LOCAL_MODEL_REVISION = (
+    "2fe192450127e6a83f7441aef6e3ca586c338b77"  # pragma: allowlist secret
+)
 
 DISALLOWED_LOCAL_MODEL_PREFIXES = (
     "Qwen/",
@@ -40,6 +50,7 @@ class LocalModelSpec:
     """A supported local model entry."""
 
     repo_id: str
+    revision: str
     label: str
     provider: str
     role: str
@@ -72,9 +83,28 @@ class DownloadPreflightResult:
     cleanup_candidates: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ModelCacheValidationResult:
+    """Post-download validation for one immutable Hugging Face snapshot."""
+
+    ok: bool
+    model_id: str
+    revision: str
+    message: str
+    snapshot_path: str | None
+    model_cache_bytes: int
+    total_cache_bytes: int
+    available_disk_bytes: int
+
+
+class CacheInspectionError(RuntimeError):
+    """Raised when cache usage cannot be measured without guessing."""
+
+
 LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
     LocalModelSpec(
         repo_id=PRIMARY_LOCAL_MODEL_ID,
+        revision=PRIMARY_LOCAL_MODEL_REVISION,
         label="Phi-4 Mini Instruct (Primary)",
         provider="Microsoft",
         role="primary",
@@ -96,6 +126,7 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
     ),
     LocalModelSpec(
         repo_id=FALLBACK_LOCAL_MODEL_ID,
+        revision=FALLBACK_LOCAL_MODEL_REVISION,
         label="Phi-3.5 Mini Instruct (Fallback)",
         provider="Microsoft",
         role="fallback",
@@ -165,7 +196,7 @@ def local_model_policy_error(repo_id: str | None) -> str | None:
 
 
 def safe_model_cache_name(repo_id: str) -> str:
-    """Return the local-dir cache name used by the downloader."""
+    """Return the legacy local-dir name, retained for cleanup compatibility."""
     return repo_id.replace("/", "_")
 
 
@@ -175,48 +206,261 @@ def hf_model_cache_name(repo_id: str) -> str:
 
 
 def model_cache_candidates(cache_dir: str, repo_id: str) -> list[str]:
-    """Return supported cache layouts for a model."""
-    return [
-        os.path.join(cache_dir, safe_model_cache_name(repo_id)),
-        os.path.join(cache_dir, hf_model_cache_name(repo_id)),
-    ]
+    """Return the runtime-supported Hugging Face cache root for a model."""
+    return [os.path.join(cache_dir, hf_model_cache_name(repo_id))]
 
 
-def model_cache_exists(cache_dir: str, repo_id: str) -> bool:
-    """Return whether a supported local cache layout already exists."""
-    return any(
-        Path(path).exists() for path in model_cache_candidates(cache_dir, repo_id)
+_REQUIRED_MODEL_METADATA = ("config.json", "tokenizer_config.json")
+_WEIGHT_INDEX_NAMES = (
+    "model.safetensors.index.json",
+    "pytorch_model.bin.index.json",
+)
+_DIRECT_WEIGHT_NAMES = ("model.safetensors", "pytorch_model.bin")
+_PARTIAL_SUFFIXES = (".incomplete", ".lock", ".partial", ".tmp")
+_MAX_SMALL_MANIFEST_BYTES = 8 * 1024 * 1024
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _artifact_size(path: Path, *, cache_root: Path) -> int | None:
+    """Return a file's size only when its resolved target stays in the cache."""
+    try:
+        resolved_root = cache_root.resolve(strict=True)
+        resolved_path = path.resolve(strict=True)
+        if not _path_is_within(resolved_path, resolved_root):
+            return None
+        if not resolved_path.is_file():
+            return None
+        size = resolved_path.stat().st_size
+    except OSError:
+        return None
+    return size if size > 0 else None
+
+
+def _tree_has_unsafe_symlink(root: Path, *, cache_root: Path) -> bool:
+    try:
+        resolved_cache = cache_root.resolve(strict=True)
+
+        def _raise_walk_error(error: OSError) -> None:
+            raise error
+
+        for current_root, directories, files in os.walk(
+            root,
+            followlinks=False,
+            onerror=_raise_walk_error,
+        ):
+            for name in (*directories, *files):
+                candidate = Path(current_root) / name
+                if not candidate.is_symlink():
+                    continue
+                target = candidate.resolve(strict=True)
+                if not _path_is_within(target, resolved_cache):
+                    return True
+    except OSError:
+        return True
+    return False
+
+
+def _contains_partial_markers(root: Path) -> bool:
+    try:
+
+        def _raise_walk_error(error: OSError) -> None:
+            raise error
+
+        for current_root, directories, files in os.walk(
+            root,
+            followlinks=False,
+            onerror=_raise_walk_error,
+        ):
+            names = (*directories, *files)
+            if any(name.lower().endswith(_PARTIAL_SUFFIXES) for name in names):
+                return True
+            # ``os.walk`` does not follow directory symlinks by default.
+            if Path(current_root) == root and not names:
+                return False
+    except OSError:
+        return True
+    return False
+
+
+def _safe_manifest_json(path: Path) -> dict[str, object] | None:
+    try:
+        size = path.stat().st_size
+        if size <= 0 or size > _MAX_SMALL_MANIFEST_BYTES:
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _safe_relative_artifact(root: Path, raw_name: object) -> Path | None:
+    name = str(raw_name or "")
+    if not name or os.path.isabs(name):
+        return None
+    candidate = root / name
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if ".." in Path(name).parts:
+        return None
+    return candidate
+
+
+def _weight_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
+    for index_name in _WEIGHT_INDEX_NAMES:
+        index_path = root / index_name
+        if not index_path.exists():
+            continue
+        if _artifact_size(index_path, cache_root=cache_root) is None:
+            return False
+        manifest = _safe_manifest_json(index_path)
+        if manifest is None:
+            return False
+        weight_map = manifest.get("weight_map")
+        if not isinstance(weight_map, dict) or not weight_map:
+            return False
+        referenced = {
+            _safe_relative_artifact(root, name) for name in weight_map.values()
+        }
+        if None in referenced:
+            return False
+        sizes = [
+            _artifact_size(path, cache_root=cache_root)
+            for path in referenced
+            if path is not None
+        ]
+        return (
+            all(size is not None for size in sizes)
+            and sum(size or 0 for size in sizes) >= MIN_MODEL_WEIGHT_BYTES
+        )
+
+    try:
+        weight_paths = [
+            path for path in root.iterdir() if path.name.lower() in _DIRECT_WEIGHT_NAMES
+        ]
+    except OSError:
+        return False
+    if not weight_paths:
+        return False
+    sizes = [_artifact_size(path, cache_root=cache_root) for path in weight_paths]
+    return (
+        all(size is not None for size in sizes)
+        and sum(size or 0 for size in sizes) >= MIN_MODEL_WEIGHT_BYTES
     )
 
 
+def _model_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
+    try:
+        resolved_cache = cache_root.resolve(strict=True)
+        resolved_root = root.resolve(strict=True)
+    except OSError:
+        return False
+    if (
+        not root.is_dir()
+        or not _path_is_within(resolved_root, resolved_cache)
+        or _contains_partial_markers(root)
+        or _tree_has_unsafe_symlink(root, cache_root=cache_root)
+    ):
+        return False
+    if not all(
+        _artifact_size(root / name, cache_root=cache_root) is not None
+        for name in _REQUIRED_MODEL_METADATA
+    ):
+        return False
+    if not all(
+        _safe_manifest_json(root / name) is not None
+        for name in _REQUIRED_MODEL_METADATA
+    ):
+        return False
+    return _weight_artifacts_complete(root, cache_root=cache_root)
+
+
+def model_snapshot_path(cache_dir: str, repo_id: str) -> Path | None:
+    """Return the immutable snapshot path used by the local-only runtime."""
+    spec = local_model_spec(repo_id)
+    if spec is None:
+        return None
+    return Path(cache_dir) / hf_model_cache_name(repo_id) / "snapshots" / spec.revision
+
+
+def model_cache_complete(cache_dir: str, repo_id: str) -> bool:
+    """Return whether the pinned local-only Hugging Face snapshot is complete."""
+    snapshot = model_snapshot_path(cache_dir, repo_id)
+    if snapshot is None:
+        return False
+    return _model_artifacts_complete(snapshot, cache_root=Path(cache_dir))
+
+
+def model_cache_exists(cache_dir: str, repo_id: str) -> bool:
+    """Compatibility alias for complete, startup-usable cache truth."""
+    return model_cache_complete(cache_dir, repo_id)
+
+
 def _directory_size_bytes(path: Path) -> int:
-    """Return recursive directory size, ignoring files that disappear mid-scan."""
-    if not path.exists():
+    """Return recursive logical size, failing closed on an unreadable subtree."""
+    try:
+        root_stat = path.lstat()
+    except FileNotFoundError:
         return 0
-    if path.is_file():
+    except OSError as exc:
+        raise CacheInspectionError(
+            f"Could not inspect cache path {path}: {exc}"
+        ) from exc
+
+    if stat.S_ISREG(root_stat.st_mode):
+        return root_stat.st_size
+    if stat.S_ISLNK(root_stat.st_mode):
         try:
-            return path.stat().st_size
-        except OSError:
-            return 0
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            raise CacheInspectionError(
+                f"Could not resolve cache path {path}: {exc}"
+            ) from exc
+        return _directory_size_bytes(resolved)
+    if not stat.S_ISDIR(root_stat.st_mode):
+        return 0
 
     total = 0
     seen: set[tuple[int, int]] = set()
-    for root, _, files in os.walk(path):
-        for filename in files:
-            file_path = Path(root) / filename
-            try:
+    try:
+
+        def _raise_walk_error(error: OSError) -> None:
+            raise error
+
+        for root, directories, files in os.walk(
+            path,
+            followlinks=False,
+            onerror=_raise_walk_error,
+        ):
+            for dirname in directories:
+                directory_path = Path(root) / dirname
+                if directory_path.is_symlink():
+                    total += directory_path.lstat().st_size
+            for filename in files:
+                file_path = Path(root) / filename
                 if file_path.is_symlink():
                     total += file_path.lstat().st_size
                     continue
 
-                stat = file_path.stat()
-                inode_key = (stat.st_dev, stat.st_ino)
-                if inode_key in seen:
+                file_stat = file_path.stat()
+                inode_key = (file_stat.st_dev, file_stat.st_ino)
+                if file_stat.st_ino and inode_key in seen:
                     continue
-                seen.add(inode_key)
-                total += stat.st_size
-            except OSError:
-                continue
+                if file_stat.st_ino:
+                    seen.add(inode_key)
+                total += file_stat.st_size
+    except OSError as exc:
+        raise CacheInspectionError(
+            f"Could not measure local model cache {path}: {exc}"
+        ) from exc
     return total
 
 
@@ -228,15 +472,28 @@ def cache_usage_bytes(cache_dir: str) -> int:
 def disallowed_cache_candidates(cache_dir: str) -> list[str]:
     """Return existing cache paths that belong to blocked model providers."""
     root = Path(cache_dir)
-    if not root.exists():
+    try:
+        root.lstat()
+    except FileNotFoundError:
         return []
+    except OSError as exc:
+        raise CacheInspectionError(
+            f"Could not inspect local model cache {root}: {exc}"
+        ) from exc
 
     candidates: list[str] = []
-    for child in root.iterdir():
-        name = child.name
-        normalized = name.removeprefix("models--").replace("--", "/").replace("_", "/")
-        if is_disallowed_local_model(normalized):
-            candidates.append(str(child))
+    try:
+        for child in root.iterdir():
+            name = child.name
+            normalized = (
+                name.removeprefix("models--").replace("--", "/").replace("_", "/")
+            )
+            if is_disallowed_local_model(normalized):
+                candidates.append(str(child))
+    except OSError as exc:
+        raise CacheInspectionError(
+            f"Could not inspect local model cache {root}: {exc}"
+        ) from exc
     return candidates
 
 
@@ -269,11 +526,28 @@ def plan_model_download(
 ) -> DownloadPreflightResult:
     """Check product download limits before starting a model download."""
     policy_error = local_model_policy_error(repo_id)
-    current_bytes = cache_usage_bytes(cache_dir)
     max_single_bytes = _bytes_from_gb(max_single_model_gb)
     max_total_bytes = _bytes_from_gb(max_total_cache_gb)
     free_bytes = available_disk_bytes(cache_dir)
-    cleanup = tuple(disallowed_cache_candidates(cache_dir))
+    try:
+        current_bytes = cache_usage_bytes(cache_dir)
+        cleanup = tuple(disallowed_cache_candidates(cache_dir))
+    except CacheInspectionError:
+        return DownloadPreflightResult(
+            ok=False,
+            model_id=repo_id,
+            message=(
+                "Local model cache usage could not be verified. Check cache "
+                "permissions and try again."
+            ),
+            cache_dir=cache_dir,
+            estimated_download_bytes=0,
+            current_cache_bytes=0,
+            projected_cache_bytes=0,
+            max_single_model_bytes=max_single_bytes,
+            max_total_cache_bytes=max_total_bytes,
+            available_disk_bytes=free_bytes,
+        )
 
     if policy_error is not None:
         return DownloadPreflightResult(
@@ -306,7 +580,73 @@ def plan_model_download(
             cleanup_candidates=cleanup,
         )
     estimated_bytes = _bytes_from_gb(spec.estimated_download_gb)
-    if model_cache_exists(cache_dir, repo_id):
+    try:
+        target_cache_bytes = sum(
+            _directory_size_bytes(Path(path))
+            for path in model_cache_candidates(cache_dir, repo_id)
+        )
+    except CacheInspectionError:
+        return DownloadPreflightResult(
+            ok=False,
+            model_id=repo_id,
+            message=(
+                f"The cache for {repo_id} could not be verified. Check cache "
+                "permissions and try again."
+            ),
+            cache_dir=cache_dir,
+            estimated_download_bytes=estimated_bytes,
+            current_cache_bytes=current_bytes,
+            projected_cache_bytes=current_bytes,
+            max_single_model_bytes=max_single_bytes,
+            max_total_cache_bytes=max_total_bytes,
+            available_disk_bytes=free_bytes,
+            cleanup_candidates=cleanup,
+        )
+    cache_complete = model_cache_complete(cache_dir, repo_id)
+
+    if target_cache_bytes > max_single_bytes:
+        return DownloadPreflightResult(
+            ok=False,
+            model_id=repo_id,
+            message=(
+                f"The cache for {repo_id} is larger than the "
+                f"{max_single_model_gb:.2f} GB per-model limit. "
+                "Remove it before installing the model again."
+            ),
+            cache_dir=cache_dir,
+            estimated_download_bytes=0 if cache_complete else estimated_bytes,
+            current_cache_bytes=current_bytes,
+            projected_cache_bytes=(
+                current_bytes if cache_complete else current_bytes + estimated_bytes
+            ),
+            max_single_model_bytes=max_single_bytes,
+            max_total_cache_bytes=max_total_bytes,
+            available_disk_bytes=free_bytes,
+            cleanup_candidates=cleanup,
+        )
+
+    if current_bytes > max_total_bytes:
+        return DownloadPreflightResult(
+            ok=False,
+            model_id=repo_id,
+            message=(
+                "The local model cache is already above the "
+                f"{max_total_cache_gb:.2f} GB total limit. "
+                "Remove unused model files before continuing."
+            ),
+            cache_dir=cache_dir,
+            estimated_download_bytes=0 if cache_complete else estimated_bytes,
+            current_cache_bytes=current_bytes,
+            projected_cache_bytes=(
+                current_bytes if cache_complete else current_bytes + estimated_bytes
+            ),
+            max_single_model_bytes=max_single_bytes,
+            max_total_cache_bytes=max_total_bytes,
+            available_disk_bytes=free_bytes,
+            cleanup_candidates=cleanup,
+        )
+
+    if cache_complete:
         return DownloadPreflightResult(
             ok=True,
             model_id=repo_id,
@@ -318,6 +658,24 @@ def plan_model_download(
             estimated_download_bytes=0,
             current_cache_bytes=current_bytes,
             projected_cache_bytes=current_bytes,
+            max_single_model_bytes=max_single_bytes,
+            max_total_cache_bytes=max_total_bytes,
+            available_disk_bytes=free_bytes,
+            cleanup_candidates=cleanup,
+        )
+
+    if free_bytes <= 0:
+        return DownloadPreflightResult(
+            ok=False,
+            model_id=repo_id,
+            message=(
+                "Available disk space could not be verified. Check that the model "
+                "cache drive is available and try again."
+            ),
+            cache_dir=cache_dir,
+            estimated_download_bytes=estimated_bytes,
+            current_cache_bytes=current_bytes,
+            projected_cache_bytes=current_bytes + estimated_bytes,
             max_single_model_bytes=max_single_bytes,
             max_total_cache_bytes=max_total_bytes,
             available_disk_bytes=free_bytes,
@@ -343,14 +701,17 @@ def plan_model_download(
             cleanup_candidates=cleanup,
         )
 
-    if free_bytes and estimated_bytes > free_bytes:
+    minimum_free_after_download = _bytes_from_gb(MIN_DISK_FREE_AFTER_DOWNLOAD_GB)
+    if estimated_bytes + minimum_free_after_download > free_bytes:
         return DownloadPreflightResult(
             ok=False,
             model_id=repo_id,
             message=(
                 f"Estimated download for {repo_id} is "
                 f"{spec.estimated_download_gb:.2f} GB, "
-                f"but only {format_bytes(free_bytes)} is available on the cache disk."
+                f"but only {format_bytes(free_bytes)} is available on the cache disk. "
+                f"Keep at least {MIN_DISK_FREE_AFTER_DOWNLOAD_GB:.2f} GB free after "
+                "the download."
             ),
             cache_dir=cache_dir,
             estimated_download_bytes=estimated_bytes,
@@ -403,4 +764,143 @@ def plan_model_download(
         max_total_cache_bytes=max_total_bytes,
         available_disk_bytes=free_bytes,
         cleanup_candidates=cleanup,
+    )
+
+
+def validate_downloaded_model_cache(
+    repo_id: str,
+    cache_dir: str,
+    downloaded_path: str,
+    *,
+    max_single_model_gb: float = MAX_SINGLE_MODEL_DOWNLOAD_GB,
+    max_total_cache_gb: float = MAX_TOTAL_MODEL_CACHE_GB,
+) -> ModelCacheValidationResult:
+    """Verify immutable snapshot identity, artifacts, and actual resource limits."""
+    spec = local_model_spec(repo_id)
+    expected_snapshot = model_snapshot_path(cache_dir, repo_id)
+    free_bytes = available_disk_bytes(cache_dir)
+    revision = spec.revision if spec is not None else ""
+
+    def _result(
+        ok: bool,
+        message: str,
+        *,
+        snapshot_path: str | None = None,
+        model_cache_bytes: int = 0,
+        total_cache_bytes: int = 0,
+    ) -> ModelCacheValidationResult:
+        return ModelCacheValidationResult(
+            ok=ok,
+            model_id=repo_id,
+            revision=revision,
+            message=message,
+            snapshot_path=snapshot_path,
+            model_cache_bytes=model_cache_bytes,
+            total_cache_bytes=total_cache_bytes,
+            available_disk_bytes=free_bytes,
+        )
+
+    policy_error = local_model_policy_error(repo_id)
+    if policy_error is not None or spec is None or expected_snapshot is None:
+        return _result(False, policy_error or f"Unsupported local model: {repo_id}.")
+
+    cache_root = Path(cache_dir)
+    returned_snapshot = Path(downloaded_path)
+    try:
+        resolved_cache = cache_root.resolve(strict=True)
+        resolved_returned = returned_snapshot.resolve(strict=True)
+    except OSError:
+        return _result(
+            False,
+            "Downloaded model snapshot could not be found or resolved.",
+        )
+    resolved_expected = expected_snapshot.resolve(strict=False)
+
+    if (
+        not _path_is_within(resolved_expected, resolved_cache)
+        or not _path_is_within(resolved_returned, resolved_cache)
+        or resolved_returned != resolved_expected
+    ):
+        return _result(
+            False,
+            (
+                "Downloaded model revision does not match the pinned local runtime "
+                f"revision {spec.revision}."
+            ),
+        )
+
+    if not model_cache_complete(cache_dir, repo_id):
+        return _result(
+            False,
+            "Downloaded model snapshot is incomplete or contains unsafe artifacts.",
+            snapshot_path=str(expected_snapshot),
+        )
+
+    model_root = Path(cache_dir) / hf_model_cache_name(repo_id)
+    try:
+        model_bytes = _directory_size_bytes(model_root)
+        total_bytes = cache_usage_bytes(cache_dir)
+    except CacheInspectionError:
+        return _result(
+            False,
+            "Downloaded model cache size could not be verified.",
+            snapshot_path=str(expected_snapshot),
+        )
+
+    max_single_bytes = _bytes_from_gb(max_single_model_gb)
+    if model_bytes > max_single_bytes:
+        return _result(
+            False,
+            (
+                f"The downloaded cache for {repo_id} exceeds the "
+                f"{max_single_model_gb:.2f} GB per-model limit."
+            ),
+            snapshot_path=str(expected_snapshot),
+            model_cache_bytes=model_bytes,
+            total_cache_bytes=total_bytes,
+        )
+
+    max_total_bytes = _bytes_from_gb(max_total_cache_gb)
+    if total_bytes > max_total_bytes:
+        return _result(
+            False,
+            (
+                "The downloaded local model cache exceeds the "
+                f"{max_total_cache_gb:.2f} GB total cache limit."
+            ),
+            snapshot_path=str(expected_snapshot),
+            model_cache_bytes=model_bytes,
+            total_cache_bytes=total_bytes,
+        )
+
+    minimum_reserve = _bytes_from_gb(MIN_DISK_FREE_AFTER_DOWNLOAD_GB)
+    if free_bytes <= 0:
+        return _result(
+            False,
+            "Free disk space could not be verified after model download.",
+            snapshot_path=str(expected_snapshot),
+            model_cache_bytes=model_bytes,
+            total_cache_bytes=total_bytes,
+        )
+    if free_bytes < minimum_reserve:
+        return _result(
+            False,
+            (
+                "The model download did not preserve the required "
+                f"{MIN_DISK_FREE_AFTER_DOWNLOAD_GB:.2f} GB free disk reserve."
+            ),
+            snapshot_path=str(expected_snapshot),
+            model_cache_bytes=model_bytes,
+            total_cache_bytes=total_bytes,
+        )
+
+    return _result(
+        True,
+        (
+            f"Verified pinned model revision {spec.revision}; model cache "
+            f"{format_bytes(model_bytes)}, total cache {format_bytes(total_bytes)}."
+        ),
+        snapshot_path=str(expected_snapshot),
+        model_cache_bytes=model_bytes,
+        total_cache_bytes=total_bytes,
     )

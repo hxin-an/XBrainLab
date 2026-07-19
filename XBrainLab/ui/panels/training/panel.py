@@ -3,6 +3,7 @@
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
+    QSizePolicy,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -10,10 +11,16 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingTerminalOutcome,
+)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
+    application_runtime_initialized,
     execute_application_command,
     get_controller_for_compatibility_context,
     local_result_payload,
@@ -104,6 +111,13 @@ class TrainingPanel(BasePanel):
         self._logged_epoch_signatures_by_record: dict[int, dict[int, tuple]] = {}
         self._selection_pinned_by_user = False
         self._suppress_log_render_once = False
+        self._history_query_unavailable_shown = False
+        self._has_verified_history_render = False
+        self._last_verified_history_rows: list[dict] = []
+        self._latest_training_generation_by_trainer: dict[str, int] = {}
+        self._terminal_training_generation_by_run: dict[tuple[str, int], int] = {}
+        self._last_training_analysis_publication_generation = 0
+        self._latest_terminal_outcome: TrainingTerminalOutcome | None = None
         self.plan_items = {}
         self.run_items = {}
 
@@ -112,6 +126,7 @@ class TrainingPanel(BasePanel):
         self.init_ui()
 
         self.training_completed_shown = False
+        self._training_outcome_unverified_shown = False
 
     def _setup_bridges(self):
         """Register Qt observer bridges for training and dataset events."""
@@ -126,8 +141,23 @@ class TrainingPanel(BasePanel):
         )
         self._create_bridge(
             self.controller,
+            "training_started_state",
+            self._on_training_started_state,
+        )
+        self._create_bridge(
+            self.controller,
             "training_stopped",
             self._on_training_stopped,
+        )
+        self._create_bridge(
+            self.controller,
+            "training_terminal_published",
+            self._on_training_terminal_published,
+        )
+        self._create_bridge(
+            self.controller,
+            "training_analysis_published",
+            self._on_training_analysis_published,
         )
         self._create_bridge(
             self.controller,
@@ -171,8 +201,8 @@ class TrainingPanel(BasePanel):
         left_layout.setSpacing(0)
 
         # Training Plots Group
-        plots_group = QGroupBox("TRAINING PLOTS")
-        plots_layout = QVBoxLayout(plots_group)
+        self.plots_group = QGroupBox("TRAINING PLOTS")
+        plots_layout = QVBoxLayout(self.plots_group)
         plots_layout.setContentsMargins(10, 20, 10, 10)
 
         # Tabs
@@ -195,11 +225,11 @@ class TrainingPanel(BasePanel):
         self.tabs.addTab(self.log_text, "Log")
 
         plots_layout.addWidget(self.tabs)
-        left_layout.addWidget(plots_group, stretch=2)
+        left_layout.addWidget(self.plots_group, stretch=1)
 
         # Training History Group
-        history_group = QGroupBox("TRAINING HISTORY")
-        history_layout = QVBoxLayout(history_group)
+        self.history_group = QGroupBox("TRAINING HISTORY")
+        history_layout = QVBoxLayout(self.history_group)
         history_layout.setContentsMargins(10, 20, 10, 10)
 
         # History Table
@@ -207,13 +237,23 @@ class TrainingPanel(BasePanel):
         self.history_table.selection_changed_record.connect(
             self.on_history_selection_changed,
         )
+        self.history_table.content_height_changed.connect(
+            self._set_history_group_height,
+        )
 
         history_layout.addWidget(self.history_table)
 
         # Internal map to track rows: row_index -> (plan, run)
         self.row_map = {}
 
-        left_layout.addWidget(history_group, stretch=1)
+        self.history_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self._set_history_group_height(
+            self.history_table.preferred_content_height(),
+        )
+        left_layout.addWidget(self.history_group, stretch=0)
         main_layout.addWidget(left_widget, stretch=1)
 
         # --- Right Side: Sidebar ---
@@ -222,6 +262,11 @@ class TrainingPanel(BasePanel):
 
         # Initial Check
         # Sidebar does its own check on init
+
+    def _set_history_group_height(self, table_height: int) -> None:
+        """Keep short history intentional and give the rest of the panel to plots."""
+        self.history_group.setFixedHeight(max(int(table_height), 0) + 42)
+        self.history_group.updateGeometry()
 
     # --- Event Handlers ---
 
@@ -236,20 +281,142 @@ class TrainingPanel(BasePanel):
 
     def _on_training_started(self):
         """Event handler: Training has started."""
+        if application_runtime_initialized(self):
+            return
+        self._render_training_started()
+        refresh_after_observer(self, event_name="training_started")
         self.log_text.append("Training started (event).")
+
+    def _on_training_started_state(self, event: TrainingLifecycleEvent) -> None:
+        """Apply a started edge only while its generation is still current."""
+        if not self._accept_started_event(event):
+            return
+        self._render_training_started()
+        refresh_after_observer(self, event_name="training_started")
+        self.log_text.append("Training started (event).")
+
+    def _render_training_started(self) -> None:
+        """Render one accepted running generation."""
         self.training_completed_shown = False
+        self._training_outcome_unverified_shown = False
+        self._latest_terminal_outcome = None
         self.show_status_message("Training started")
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_started(refresh_ready=False)
-        refresh_after_observer(self, event_name="training_started")
 
     def _on_training_stopped(self):
         """Event handler: Training has stopped."""
-        self.training_finished(refresh_ready=False)
+        if application_runtime_initialized(self):
+            return
+        self.reconcile_training_terminal_outcome()
         self.log_text.append("Training stopped (event).")
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_stopped(refresh_ready=False)
         refresh_after_observer(self, event_name="training_stopped")
+
+    def _on_training_terminal_published(
+        self,
+        event: TrainingLifecycleEvent,
+    ) -> None:
+        """Render one authoritative terminal publication on the GUI thread."""
+        if not self._accept_terminal_event(event):
+            return
+        self.training_completed_shown = False
+        self._training_outcome_unverified_shown = False
+        self._latest_terminal_outcome = event.outcome
+        self.training_finished(
+            refresh_ready=False,
+            report_unverified=False,
+            outcome=event.outcome,
+        )
+        self.log_text.append("Training stopped (event).")
+        if hasattr(self, "sidebar"):
+            self.sidebar.on_training_stopped(refresh_ready=False)
+        refresh_after_observer(
+            self,
+            event_name="training_terminal_published",
+        )
+
+    def _accept_started_event(self, event: TrainingLifecycleEvent) -> bool:
+        if not isinstance(event, TrainingLifecycleEvent) or not event.token.stable:
+            return False
+        outcome = event.outcome
+        run = outcome.run
+        if outcome.state is not TrainingOutcomeState.RUNNING or run is None:
+            return False
+        trainer_id = run.trainer_id
+        generation = event.token.generation
+        if generation < self._latest_training_generation_by_trainer.get(
+            trainer_id,
+            -1,
+        ):
+            return False
+        terminal_generation = self._terminal_training_generation_by_run.get(
+            (trainer_id, run.run_id),
+        )
+        if terminal_generation is not None and generation <= terminal_generation:
+            return False
+        self._latest_training_generation_by_trainer[trainer_id] = generation
+        return True
+
+    def _on_training_analysis_published(
+        self,
+        event: TrainingLifecycleEvent,
+    ) -> None:
+        """Fan out one final automatic-analysis publication."""
+        if not self._accept_analysis_event(event):
+            return
+        refresh_after_observer(
+            self,
+            event_name="training_analysis_published",
+        )
+
+    def _accept_analysis_event(self, event: TrainingLifecycleEvent) -> bool:
+        if (
+            not isinstance(event, TrainingLifecycleEvent)
+            or not event.token.stable
+            or event.publication_generation is None
+            or event.outcome.state is not TrainingOutcomeState.COMPLETED
+            or event.outcome.run is None
+        ):
+            return False
+        publication_generation = event.publication_generation
+        if (
+            publication_generation
+            <= self._last_training_analysis_publication_generation
+        ):
+            return False
+        run = event.outcome.run
+        training_generation = event.token.generation
+        latest = self._latest_training_generation_by_trainer.get(run.trainer_id, -1)
+        if training_generation < latest:
+            return False
+        self._latest_training_generation_by_trainer[run.trainer_id] = (
+            training_generation
+        )
+        self._last_training_analysis_publication_generation = publication_generation
+        return True
+
+    def _accept_terminal_event(self, event: TrainingLifecycleEvent) -> bool:
+        if (
+            not isinstance(event, TrainingLifecycleEvent)
+            or not event.token.stable
+            or event.publication_generation is None
+            or not event.outcome.is_terminal
+            or event.outcome.run is None
+        ):
+            return False
+        run = event.outcome.run
+        key = (run.trainer_id, run.run_id)
+        generation = event.token.generation
+        if generation <= self._terminal_training_generation_by_run.get(key, -1):
+            return False
+        latest = self._latest_training_generation_by_trainer.get(run.trainer_id, -1)
+        if generation < latest:
+            return False
+        self._latest_training_generation_by_trainer[run.trainer_id] = generation
+        self._terminal_training_generation_by_run[key] = generation
+        return True
 
     def _on_training_updated(self):
         """Refresh live training progress and shared observer status."""
@@ -271,6 +438,7 @@ class TrainingPanel(BasePanel):
         self._last_plot_signature = None
         self._selection_pinned_by_user = False
         self._logged_epoch_signatures_by_record.clear()
+        self._last_verified_history_rows = []
         self.history_table.clear_history()
 
     def _select_preferred_plot_record(self, plans, force_active=False):
@@ -365,15 +533,119 @@ class TrainingPanel(BasePanel):
         self.tab_acc.set_series(epoch_values, train_acc_values, val_acc_values)
         self.tab_loss.set_series(epoch_values, train_loss_values, val_loss_values)
 
-    def training_finished(self, *, refresh_ready: bool = True):
-        """Report completion without interrupting the workflow."""
+    def training_finished(
+        self,
+        *,
+        refresh_ready: bool = True,
+        report_unverified: bool = True,
+        outcome: TrainingTerminalOutcome | None = None,
+    ) -> bool:
+        """Report one verified backend terminal outcome.
+
+        A controller stop notification can reach Qt while the asynchronous
+        ``TrainCommand`` is still publishing its result.  In that window the
+        state query is intentionally non-authoritative.  Do not latch that
+        transient read as completion; callers can reconcile after command
+        delivery without losing the eventual typed failure.
+        """
         if refresh_ready and hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
 
-        if not self.training_completed_shown:
-            self.training_completed_shown = True
-            self.log_text.append("All training jobs finished.")
-            self.show_status_message("Training complete · Review results")
+        if self.training_completed_shown:
+            return True
+
+        if outcome is None:
+            terminal_state, terminal_detail = self._training_terminal_outcome()
+        else:
+            terminal_state, terminal_detail = outcome.state, outcome.detail
+        if terminal_state not in {
+            TrainingOutcomeState.COMPLETED,
+            TrainingOutcomeState.FAILED,
+            TrainingOutcomeState.CANCELLED,
+        }:
+            if report_unverified and not self._training_outcome_unverified_shown:
+                self._training_outcome_unverified_shown = True
+                self.log_text.append(
+                    "Training outcome could not be verified. Refresh the workflow "
+                    "status before using the results."
+                )
+                self.show_status_message(
+                    "Training outcome could not be verified · Refresh status"
+                )
+            return False
+
+        self.training_completed_shown = True
+        if terminal_state is TrainingOutcomeState.FAILED:
+            detail = terminal_detail or "Training stopped unexpectedly."
+            self._ensure_terminal_log_visible(terminal_state, detail)
+            self.show_status_message("Training failed · Adjust settings")
+            return True
+        if terminal_state is TrainingOutcomeState.CANCELLED:
+            self._ensure_terminal_log_visible(terminal_state, terminal_detail)
+            self.show_status_message("Training stopped")
+            return True
+        if terminal_state is not TrainingOutcomeState.COMPLETED:
+            return False
+        self._ensure_terminal_log_visible(
+            TrainingOutcomeState.COMPLETED,
+            terminal_detail,
+        )
+        self.show_status_message("Training complete · Review results")
+        return True
+
+    def _ensure_terminal_log_visible(
+        self,
+        terminal_state: TrainingOutcomeState,
+        terminal_detail: str | None,
+    ) -> None:
+        """Keep one terminal line visible after history-log reconstruction."""
+        if terminal_state is TrainingOutcomeState.FAILED:
+            detail = terminal_detail or "Training stopped unexpectedly."
+            message = f"Training failed: {detail}"
+        elif terminal_state is TrainingOutcomeState.CANCELLED:
+            message = "Training stopped before completion."
+        elif terminal_state is TrainingOutcomeState.COMPLETED:
+            message = "All training jobs finished."
+        else:
+            return
+        if message not in self.log_text.toPlainText():
+            self.log_text.append(message)
+
+    def reconcile_training_terminal_outcome(self) -> bool:
+        """Re-read a terminal outcome after async command publication."""
+        return self.training_finished(
+            refresh_ready=False,
+            report_unverified=False,
+        )
+
+    def _training_terminal_outcome(
+        self,
+    ) -> tuple[TrainingOutcomeState | None, str | None]:
+        """Read the backend's typed terminal outcome without inferring from copy."""
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None:
+            return None, None
+        # A concurrent analysis command can mark the global view stale, but this
+        # query still carries the immutable last-committed training publication.
+        state = result.diagnostics.get("state")
+        if not isinstance(state, dict):
+            return None, None
+        training = state.get("training") if isinstance(state, dict) else None
+        if not isinstance(training, dict):
+            return None, None
+        outcome = training.get("terminal_outcome")
+        if not isinstance(outcome, dict):
+            return None, None
+        try:
+            terminal_state = TrainingOutcomeState(str(outcome.get("state", "")))
+        except ValueError:
+            return None, None
+        detail = outcome.get("detail")
+        return terminal_state, str(detail).strip() if detail else None
 
     def show_status_message(self, message: str, timeout_ms: int = 7000) -> bool:
         """Show a non-modal status message on the application status bar."""
@@ -392,31 +664,55 @@ class TrainingPanel(BasePanel):
             self.sidebar.check_ready_to_train()
         self.update_loop()
 
+    def refresh_terminal_publication(self) -> None:
+        """Render one accepted terminal generation after observer coalescing."""
+        self.update_panel()
+        if not self.training_completed_shown or not hasattr(self, "sidebar"):
+            return
+        outcome = self._latest_terminal_outcome
+        if outcome is not None:
+            self._ensure_terminal_log_visible(outcome.state, outcome.detail)
+        else:
+            terminal_state, terminal_detail = self._training_terminal_outcome()
+            if terminal_state is not None:
+                self._ensure_terminal_log_visible(
+                    terminal_state,
+                    terminal_detail,
+                )
+        self.sidebar.btn_start.setEnabled(True)
+        self.sidebar.btn_stop.setEnabled(False)
+
     def update_loop(self, force_active=False, log_epochs=False):
         """Handle real-time training updates."""
         # 1. Update History Table
-        plans = self._history_from_application_query()
+        plans = self._history_for_render()
         if plans is None:
-            plans = self._compatibility_history_for_render()
-        if plans is not None:
-            if not plans:
-                self._clear_training_display()
+            if self.training_completed_shown and self._last_verified_history_rows:
+                plans = list(self._last_verified_history_rows)
+                self._history_query_unavailable_shown = False
+            else:
+                self._report_history_query_unavailable()
                 return
+        self._history_query_unavailable_shown = False
+        if not plans:
+            self._has_verified_history_render = False
+            self._clear_training_display()
+            return
 
-            self.history_table.update_table(plans)
-            preferred_record = self._select_preferred_plot_record(
-                plans,
-                force_active=force_active,
-            )
-            if preferred_record is not self.current_plotting_record:
-                self.current_plotting_record = preferred_record
-                self._last_epoch_count = -1
-                self._last_plot_signature = None
-                self._selection_pinned_by_user = False
-                if self._suppress_log_render_once:
-                    self._suppress_log_render_once = False
-                else:
-                    self._render_epoch_logs_for_record(preferred_record)
+        self.history_table.update_table(plans)
+        preferred_record = self._select_preferred_plot_record(
+            plans,
+            force_active=force_active,
+        )
+        if preferred_record is not self.current_plotting_record:
+            self.current_plotting_record = preferred_record
+            self._last_epoch_count = -1
+            self._last_plot_signature = None
+            self._selection_pinned_by_user = False
+            if self._suppress_log_render_once:
+                self._suppress_log_render_once = False
+            else:
+                self._render_epoch_logs_for_record(preferred_record)
 
         # 3. Update Plots if the current record is active and has new data
         if self.current_plotting_record:
@@ -568,19 +864,26 @@ class TrainingPanel(BasePanel):
         except (TypeError, ValueError):
             return str(value)
 
-    def _history_from_application_query(self):
+    def _history_for_render(self):
         result = execute_application_command(
             self,
             QueryStateCommand(query="training_history", include_objects=True),
             refresh=False,
         )
-        if result is None or result.failed:
+        if result is None:
+            self._has_verified_history_render = False
+            return self._compatibility_history_for_render()
+        if result.failed:
             return None
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "training_history":
             return None
         rows = local_result_payload(result).get("rows")
-        return list(rows) if isinstance(rows, list) else []
+        if not isinstance(rows, list):
+            return None
+        self._has_verified_history_render = bool(rows)
+        self._last_verified_history_rows = list(rows)
+        return list(self._last_verified_history_rows)
 
     def _compatibility_history_for_render(self):
         if self.controller is None:
@@ -591,7 +894,19 @@ class TrainingPanel(BasePanel):
                 self.controller.get_formatted_history,
             )
         except ControllerCompatibilityUnavailableError:
-            return []
+            return None
+
+    def _report_history_query_unavailable(self) -> None:
+        """Keep the last verified render while an object query is unstable."""
+        if (
+            self._history_query_unavailable_shown
+            or not self._has_verified_history_render
+        ):
+            return
+        self._history_query_unavailable_shown = True
+        self.show_status_message(
+            "Training view is updating · Keeping the last verified results"
+        )
 
     # check_ready_to_train moved to Sidebar
 

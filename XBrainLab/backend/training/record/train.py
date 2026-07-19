@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -18,6 +19,9 @@ from ...training import TrainingOption
 from ...utils import get_random_state, set_random_state
 from .eval import EvalRecord, calculate_confusion
 from .key import RecordKey, TrainRecordKey
+
+if TYPE_CHECKING:
+    from ..state_tracker import TrainingStateTracker
 
 
 def _prepare_figure(
@@ -115,6 +119,7 @@ class TrainRecord:
         self.model = model
         self.optim = self.option.get_optim(model)
         self.criterion = self.option.criterion
+        self._state_tracker: TrainingStateTracker | None = None
         self.eval_record: EvalRecord | None = None
         for key in RecordKey():
             setattr(self, "best_val_" + key + "_model", None)
@@ -138,6 +143,15 @@ class TrainRecord:
 
         # Load existing data if available
         self.load()
+
+    def bind_state_tracker(self, tracker: TrainingStateTracker) -> None:
+        """Bind record mutations to the owning trainer's state token."""
+        self._state_tracker = tracker
+
+    def _state_mutation(self):
+        """Return the shared mutation context when attached to a trainer."""
+        tracker = self._state_tracker
+        return tracker.mutation() if tracker is not None else nullcontext()
 
     def init_dir(self) -> None:
         """Initialize the output directory for saving checkpoints and records.
@@ -168,14 +182,16 @@ class TrainRecord:
 
         Also sets the start timestamp if this is the first resume.
         """
-        set_random_state(self.random_state)
-        if self.start_timestamp is None:
-            self.start_timestamp = time.time()
+        with self._state_mutation():
+            set_random_state(self.random_state)
+            if self.start_timestamp is None:
+                self.start_timestamp = time.time()
 
     def pause(self) -> None:
         """Pause training by saving the current random state and timestamp."""
-        self.random_state = get_random_state()
-        self.end_timestamp = time.time()
+        with self._state_mutation():
+            self.random_state = get_random_state()
+            self.end_timestamp = time.time()
 
     def get_name(self) -> str:
         """Return the display name of this record.
@@ -227,6 +243,11 @@ class TrainRecord:
             arr: Array to be appended
 
         """
+        with self._state_mutation():
+            self._append_record(val, arr)
+
+    def _append_record(self, val: Any, arr: list) -> None:
+        """Append one value while the caller owns the mutation interval."""
         while len(arr) < self.epoch:
             arr.append(None)
         if len(arr) > self.epoch:
@@ -250,7 +271,7 @@ class TrainRecord:
 
         """
         for key, value in test_result.items():
-            self.append_record(value, self.val[key])
+            self._append_record(value, self.val[key])
             if value is None:
                 continue
             best_key = f"best_val_{key}"
@@ -275,7 +296,8 @@ class TrainRecord:
             result: Dictionary of validation metrics for the current epoch.
 
         """
-        self._update_validation_metrics(result)
+        with self._state_mutation():
+            self._update_validation_metrics(result)
 
     def update_train(self, test_result: dict[str, float | None]) -> None:
         """Append training statistics for the current epoch.
@@ -284,8 +306,9 @@ class TrainRecord:
             test_result: Dictionary of training metrics (loss, accuracy, AUC).
 
         """
-        for key, value in test_result.items():
-            self.append_record(value, self.train[key])
+        with self._state_mutation():
+            for key, value in test_result.items():
+                self._append_record(value, self.train[key])
 
     def update_statistic(self, statistic: dict[str, float]) -> None:
         """Append extra statistics (e.g., learning rate) for the current epoch.
@@ -294,12 +317,14 @@ class TrainRecord:
             statistic: Dictionary of statistic values to record.
 
         """
-        for key, value in statistic.items():
-            self.append_record(value, self.train[key])
+        with self._state_mutation():
+            for key, value in statistic.items():
+                self._append_record(value, self.train[key])
 
     def step(self) -> None:
         """Advance the epoch counter by one."""
-        self.epoch += 1
+        with self._state_mutation():
+            self.epoch += 1
 
     def set_eval_record(self, eval_record: EvalRecord) -> None:
         """Set the evaluation record after training completes.
@@ -308,7 +333,8 @@ class TrainRecord:
             eval_record: The :class:`EvalRecord` containing final evaluation results.
 
         """
-        self.eval_record = eval_record
+        with self._state_mutation():
+            self.eval_record = eval_record
 
     def export_checkpoint(self) -> None:
         """Save the current training state, best models, and evaluation record to disk.
@@ -347,38 +373,46 @@ class TrainRecord:
         Restores training statistics, best records, seed, and evaluation record
         from :attr:`target_path` if files exist.
         """
-        if not self.target_path or not os.path.exists(self.target_path):
-            return
+        with self._state_mutation():
+            if not self.target_path or not os.path.exists(self.target_path):
+                return
 
-        # Load record dict
-        record_path = os.path.join(self.target_path, "record")
-        if os.path.exists(record_path):
-            try:
-                # SECURITY: weights_only=False required because record
-                # contains non-tensor objects (dicts, lists).  Only load
-                # files from trusted sources.
-                data = torch.load(record_path, weights_only=False)
-                self.train = data["train"]
-                self.val = data["val"]
-                self._legacy_test_history = data.get(
-                    "test",
-                    self._legacy_test_history,
-                )
-                loaded_best = data.get("best_record", {})
-                for key in self.best_record:
-                    if key in loaded_best:
-                        value = loaded_best[key]
-                        if not key.endswith("_epoch") and value in {-1, torch.inf}:
-                            value = None
-                        self.best_record[key] = value
-                self.seed = data["seed"]
-                # Restore epoch from train loss length
-                self.epoch = len(self.train[RecordKey.LOSS])
-            except Exception as e:
-                logger.error("Failed to load TrainRecord stats: %s", e, exc_info=True)
+            # Load record dict
+            record_path = os.path.join(self.target_path, "record")
+            if os.path.exists(record_path):
+                try:
+                    # SECURITY: weights_only=False required because record
+                    # contains non-tensor objects (dicts, lists).  Only load
+                    # files from trusted sources.
+                    data = torch.load(record_path, weights_only=False)
+                    self.train = data["train"]
+                    self.val = data["val"]
+                    self._legacy_test_history = data.get(
+                        "test",
+                        self._legacy_test_history,
+                    )
+                    loaded_best = data.get("best_record", {})
+                    for key in self.best_record:
+                        if key in loaded_best:
+                            value = loaded_best[key]
+                            if not key.endswith("_epoch") and value in {
+                                -1,
+                                torch.inf,
+                            }:
+                                value = None
+                            self.best_record[key] = value
+                    self.seed = data["seed"]
+                    # Restore epoch from train loss length
+                    self.epoch = len(self.train[RecordKey.LOSS])
+                except Exception as e:
+                    logger.error(
+                        "Failed to load TrainRecord stats: %s",
+                        e,
+                        exc_info=True,
+                    )
 
-        # Load EvalRecord
-        self.eval_record = EvalRecord.load(self.target_path)
+            # Load EvalRecord
+            self.eval_record = EvalRecord.load(self.target_path)
 
     def get_model_output(self) -> str:
         """Return a formatted string summary of the training history.

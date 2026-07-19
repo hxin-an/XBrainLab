@@ -60,6 +60,7 @@ from scripts.agent.benchmarks.simple_bench import (
 from XBrainLab.llm.agent.parser import CommandParser
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.core.model_catalog import (
     FALLBACK_LOCAL_MODEL_ID,
     PRIMARY_LOCAL_MODEL_ID,
@@ -188,7 +189,12 @@ def _do_llm_call(engine, msgs, timeout_sec: int):
     """Single LLM call with retry."""
 
     def _infer():
-        return "".join(engine.generate_stream(msgs))
+        return "".join(
+            engine.generate_stream(
+                msgs,
+                profile=GenerationProfile.STRUCTURED_DECISION,
+            )
+        )
 
     for attempt in range(3):
         try:

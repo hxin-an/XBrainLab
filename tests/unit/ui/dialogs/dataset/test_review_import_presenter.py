@@ -1,10 +1,137 @@
+import pytest
+
 from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
+    SubmissionFacts,
+    SubmissionProjection,
     eeg_data_summary,
     internal_label_placement_summary,
     label_source_summary,
     metadata_summary,
+    project_submission,
     recipe_note,
 )
+
+
+def _submission_facts(
+    *,
+    decision: str = "safe",
+    resource_blocked: bool = False,
+    has_unresolved_required_decisions: bool = False,
+    has_remap_options: bool = False,
+    has_complete_remap_choices: bool = False,
+    event_values_ready_for_recheck: bool = False,
+) -> SubmissionFacts:
+    return SubmissionFacts(
+        decision=decision,
+        resource_blocked=resource_blocked,
+        has_unresolved_required_decisions=has_unresolved_required_decisions,
+        has_remap_options=has_remap_options,
+        has_complete_remap_choices=has_complete_remap_choices,
+        event_values_ready_for_recheck=event_values_ready_for_recheck,
+    )
+
+
+@pytest.mark.parametrize(
+    ("facts", "expected"),
+    [
+        (
+            _submission_facts(),
+            SubmissionProjection(
+                can_submit_for_backend_review=True,
+                confirmed_on_accept=True,
+                recheck_kind=None,
+            ),
+        ),
+        (
+            _submission_facts(has_unresolved_required_decisions=True),
+            SubmissionProjection(
+                can_submit_for_backend_review=False,
+                confirmed_on_accept=False,
+                recheck_kind=None,
+            ),
+        ),
+        (
+            _submission_facts(
+                decision="blocked",
+                has_unresolved_required_decisions=True,
+                has_remap_options=True,
+                has_complete_remap_choices=True,
+            ),
+            SubmissionProjection(
+                can_submit_for_backend_review=True,
+                confirmed_on_accept=True,
+                recheck_kind="remap",
+            ),
+        ),
+        (
+            _submission_facts(
+                decision="blocked",
+                has_remap_options=True,
+                has_complete_remap_choices=False,
+            ),
+            SubmissionProjection(
+                can_submit_for_backend_review=False,
+                confirmed_on_accept=False,
+                recheck_kind=None,
+            ),
+        ),
+        (
+            _submission_facts(
+                decision="blocked",
+                event_values_ready_for_recheck=True,
+            ),
+            SubmissionProjection(
+                can_submit_for_backend_review=True,
+                confirmed_on_accept=True,
+                recheck_kind="event_values",
+            ),
+        ),
+        (
+            _submission_facts(
+                decision="blocked",
+                event_values_ready_for_recheck=True,
+                has_unresolved_required_decisions=True,
+            ),
+            SubmissionProjection(
+                can_submit_for_backend_review=False,
+                confirmed_on_accept=False,
+                recheck_kind=None,
+            ),
+        ),
+    ],
+)
+def test_project_submission_owns_submission_and_confirmation_truth(
+    facts: SubmissionFacts,
+    expected: SubmissionProjection,
+):
+    assert project_submission(facts) == expected
+
+
+@pytest.mark.parametrize(
+    "facts",
+    [
+        _submission_facts(resource_blocked=True),
+        _submission_facts(
+            decision="blocked",
+            resource_blocked=True,
+            has_remap_options=True,
+            has_complete_remap_choices=True,
+        ),
+        _submission_facts(
+            decision="blocked",
+            resource_blocked=True,
+            event_values_ready_for_recheck=True,
+        ),
+    ],
+)
+def test_project_submission_never_submits_a_resource_blocker(
+    facts: SubmissionFacts,
+):
+    assert project_submission(facts) == SubmissionProjection(
+        can_submit_for_backend_review=False,
+        confirmed_on_accept=False,
+        recheck_kind=None,
+    )
 
 
 def test_eeg_data_summary_keeps_scope_and_preview_separate():

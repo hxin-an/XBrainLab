@@ -1,8 +1,6 @@
-"""Agent Manager for AI assistant lifecycle and UI integration.
+"""Qt composition and presentation adapter for the in-app assistant."""
 
-Orchestrates the ChatController, LLMController, and ChatPanel dock widget,
-handling initialization, user interaction, model switching, and VRAM checks.
-"""
+from typing import Any, cast
 
 from PyQt6.QtCore import (
     QObject,
@@ -11,7 +9,7 @@ from PyQt6.QtCore import (
     Qt,
     pyqtSignal,
 )
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -20,50 +18,97 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QStyle,
     QWidget,
 )
 
 from XBrainLab.backend.application import (
-    ApplyMontageCommand,
-    CommandName,
-    QueryStateCommand,
     get_application_service,
 )
-from XBrainLab.backend.controller.chat_controller import ChatController
+from XBrainLab.backend.controller.chat_controller import (
+    ChatController,
+    ChatMessagePresentationKind,
+    ChatResponseAction,
+    ChatResponseActionKind,
+    ChatResponseActionSelection,
+)
+from XBrainLab.backend.controller.chat_controller import (
+    ChatPanelTarget as ChatHistoryPanelTarget,
+)
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.llm.agent.assistant_activity import (
+    AssistantTurnActivity,
+    AssistantTurnActivityPhase,
+)
+from XBrainLab.llm.agent.confirmation import (
+    AgentConfirmationRequest,
+    AgentConfirmationResolution,
+    AgentConfirmationResolutionStatus,
+)
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.agent.decision_context import recommended_next_step
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
+    AssistantResponseAction,
+    AssistantResponseActionKind,
+    AssistantResponseKind,
+    AssistantResponsePresentation,
+)
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
+from XBrainLab.llm.agent.turn import AssistantTurnCorrelation, AssistantTurnTerminal
+from XBrainLab.llm.agent.ui_handoff import (
+    WorkflowUiHandoffRequest,
+    WorkflowUiHandoffResolution,
+    WorkflowUiHandoffResolutionStatus,
+)
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.ui.application_capabilities import (
-    ControllerCompatibilityUnavailableError,
-    blocked_reason,
-    execute_application_command,
-    get_command_capability,
-    get_controller_for_compatibility_context,
-    run_controller_compatibility_call,
+from XBrainLab.llm.core.model_download_lifecycle import ModelDownloadLifecycle
+from XBrainLab.llm.core.runtime_selection import (
+    AssistantRuntimeSelectionFailureCode,
+)
+from XBrainLab.llm.tools.result_contract import (
+    redact_public_text,
+    safe_unexpected_failure,
 )
 from XBrainLab.ui.chat.panel import ChatPanel
-from XBrainLab.ui.components.assistant_command_dispatcher import (
-    AssistantCommandDispatcher,
+from XBrainLab.ui.chat.presentation import (
+    ChatResponseActionSelectionView,
+    ChatTurnPresentation,
+    present_assistant_activity,
+)
+from XBrainLab.ui.chat.turn_state import (
+    AssistantUiTurnPhase,
+    AssistantUiTurnStateMachine,
+    AssistantUiTurnSubmission,
+)
+from XBrainLab.ui.components.agent_presentation_service import (
+    AgentPresentationService,
+)
+from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+    AssistantRuntimeLifecycle,
+    RuntimeActivationResult,
+    RuntimeActivationStatus,
+    RuntimeCommandAdmissionResult,
+    RuntimeSetupAction,
+)
+from XBrainLab.ui.components.assistant_status_projection import (
+    AssistantStatusProjection,
+    build_assistant_status_projection,
 )
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
-from XBrainLab.ui.components.workflow_surface_router import WorkflowSurfaceRouter
+from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
-from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
-from XBrainLab.ui.montage_positions import normalize_montage_positions
-from XBrainLab.ui.product_language import (
-    command_labels,
-    tool_action_label,
-    workflow_stage_label,
-)
 from XBrainLab.ui.refresh_coordinator import (
     begin_command_refresh_suppression,
-    end_command_refresh_suppression,
-    refresh_after_serialized_command,
+    complete_command_refresh_suppression,
 )
+from XBrainLab.ui.styles.icons import Icons
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 VIZ_TAB_3D_PLOT = 3
@@ -75,6 +120,42 @@ PANEL_PREPROCESS = 1
 PANEL_TRAINING = 2
 PANEL_EVALUATION = 3
 PANEL_VISUALIZATION = 4
+
+_ASSISTANT_CONTROLLER_UI_SIGNALS = (
+    "response_presentation_ready",
+    "status_update",
+    "activity_changed",
+    "confirmation_requested",
+    "panel_navigation_requested",
+    "workflow_ui_handoff_requested",
+    "application_command_completed",
+    "application_command_started",
+    "execution_mode_changed",
+    "turn_finished",
+)
+
+_DELIVERY_TERMINAL_MESSAGES = {
+    "delivery_error": (
+        "The assistant could not receive this request. Retry the request. "
+        "If it happens again, restart the assistant from Settings."
+    ),
+    "delivery_rejected": (
+        "The assistant did not accept this request. Retry the request. "
+        "If it happens again, restart the assistant from Settings."
+    ),
+    "rejected_busy": (
+        "The assistant did not accept this request. Retry the request. "
+        "If it happens again, restart the assistant from Settings."
+    ),
+    "rejected_closing": (
+        "The assistant did not accept this request. Retry the request. "
+        "If it happens again, restart the assistant from Settings."
+    ),
+    "delivery_timeout": (
+        "The assistant did not acknowledge this request. Retry the request. "
+        "If it happens again, restart the assistant from Settings."
+    ),
+}
 
 
 class AssistantDockTitleBar(QWidget):
@@ -109,11 +190,11 @@ class AssistantDockTitleBar(QWidget):
 
 
 class AgentManager(QObject):
-    """Manages the lifecycle and UI integration of the AI Agent System.
+    """Compose assistant collaborators and adapt their signals to product UI.
 
-    Orchestrates the interaction between the ``ChatController`` (UI-side
-    state management), ``LLMController`` (AI inference), and the
-    ``ChatPanel`` (visual chat interface).
+    Runtime readiness, controller ownership, command dispatch, model switching,
+    and shutdown belong to ``AssistantRuntimeLifecycle``. This class owns the
+    dock, dialogs, navigation, presentation, and Qt signal wiring only.
 
     Attributes:
         main_window: Reference to the parent ``MainWindow``.
@@ -121,14 +202,19 @@ class AgentManager(QObject):
         chat_panel: The ``ChatPanel`` widget, or ``None`` before init.
         chat_dock: The ``QDockWidget`` hosting the chat panel.
         chat_controller: The ``ChatController`` managing chat state.
-        preprocess_controller: Controller for preprocessing operations.
-        agent_controller: The ``LLMController`` for AI inference, or
-            ``None`` before lazy initialization.
-        agent_initialized: Whether the agent system has been started.
+        agent_controller: Read-only access to the lifecycle-owned controller.
+        agent_initialized: Read-only lifecycle initialization state.
 
     """
 
-    def __init__(self, main_window, study):
+    def __init__(
+        self,
+        main_window,
+        study,
+        *,
+        runtime_lifecycle: AssistantRuntimeLifecycle | None = None,
+        model_download_lifecycle: ModelDownloadLifecycle | None = None,
+    ):
         """Initialize the AgentManager.
 
         Args:
@@ -151,31 +237,69 @@ class AgentManager(QObject):
         self.chat_controller.processing_state_changed.connect(
             self.on_processing_state_changed,
         )
-        self.preprocess_controller = get_controller_for_compatibility_context(
-            self,
-            study,
-            "preprocess",
-        )
-        self.agent_controller = None
-
-        self.agent_initialized = False
         self._last_user_input: str | None = None
         self._runtime_unavailable_notice: str | None = None
-        self._execution_mode = "single"
-        self._agent_dispatcher = AssistantCommandDispatcher(self)
-        self._workflow_surface_router = WorkflowSurfaceRouter(
-            self.main_window,
-            lambda params: self.switch_panel(params),
+        self._assistant_status_projection: AssistantStatusProjection | None = None
+        self._active_response_presentation_id: str | None = None
+        self._application_command_in_flight = False
+        self._last_assistant_activity: AssistantTurnActivity | None = None
+        self._assistant_turn_state = AssistantUiTurnStateMachine()
+        self._deferred_submission_events: list[tuple[str, object]] | None = None
+        self._assistant_runtime = runtime_lifecycle or AssistantRuntimeLifecycle(
+            study,
+            controller_factory=self._create_assistant_controller,
+            parent=self,
         )
-        self._agent_closed = False
-
+        self._assistant_runtime.controller_created.connect(
+            self._wire_assistant_controller,
+        )
+        self._assistant_runtime.runtime_snapshot_changed.connect(
+            self._render_assistant_runtime,
+        )
+        self._assistant_runtime.turn_finished.connect(
+            self._on_assistant_turn_finished,
+        )
+        self._model_download_lifecycle = (
+            model_download_lifecycle or ModelDownloadLifecycle(parent=self)
+        )
+        self._presentation = AgentPresentationService()
+        self._execution_mode = "single"
+        self._workflow_ui_handoff_host = WorkflowUiHandoffHost(
+            self.main_window,
+            application_service=self.application_service,
+        )
         # M3.4 VRAM Monitoring — delegated to VRAMConflictChecker
         self.vram_checker = VRAMConflictChecker(
             self.main_window,
-            lambda: self.agent_controller,
+            lambda: self._assistant_runtime.current,
         )
         self._visualization_monitor_connected = False
         self.connect_visualization_monitor()
+
+    @property
+    def agent_controller(self) -> LLMController | None:
+        """Return the controller owned by ``AssistantRuntimeLifecycle``."""
+        return cast(LLMController | None, self._assistant_runtime.controller)
+
+    @property
+    def assistant_runtime(self) -> AssistantRuntimeLifecycle:
+        """Expose the focused runtime contract for diagnostics and integration."""
+        return self._assistant_runtime
+
+    @property
+    def model_download_lifecycle(self) -> ModelDownloadLifecycle:
+        """Expose app-owned model download state without transferring ownership."""
+        return self._model_download_lifecycle
+
+    @property
+    def assistant_status_projection(self) -> AssistantStatusProjection | None:
+        """Return the last atomically derived workflow status projection."""
+        return self._assistant_status_projection
+
+    @property
+    def agent_initialized(self) -> bool:
+        """Return whether the runtime owner initialized its controller."""
+        return self._assistant_runtime.initialized
 
     def _on_main_window_destroyed(self, _object=None) -> None:
         """Stop assistant threads before Qt destroys QObject children."""
@@ -200,18 +324,30 @@ class AgentManager(QObject):
         adds the dock to the main window's right area.
         """
         self.chat_panel = ChatPanel()
+        self._assistant_runtime.replay_runtime_snapshot()
 
         # Connect UI to ChatController
+        self.chat_panel.active_response_presentation_changed.connect(
+            self._on_active_response_presentation_changed
+        )
         self.chat_panel.connect_controller(self.chat_controller)
 
         # Connect ChatPanel signals to self (for further dispatch)
         self.chat_panel.send_message.connect(self.handle_user_input)
         self.chat_panel.stop_generation.connect(self.stop_generation)
-        self.chat_panel.model_changed.connect(self.set_model)
         self.chat_panel.execution_mode_changed.connect(self._on_execution_mode_changed)
-        self.chat_panel.settings_requested.connect(self.open_settings_dialog)
-        self.chat_panel.new_conversation_requested.connect(self.start_new_conversation)
-        self.chat_panel.retry_requested.connect(self.retry_last_user_input)
+        self.chat_panel.debug_tool_requested.connect(self._handle_debug_tool_requested)
+        self.chat_panel.open_settings_requested.connect(self.open_settings_dialog)
+        retry_runtime_requested = getattr(
+            self.chat_panel,
+            "retry_local_assistant_requested",
+            None,
+        )
+        if retry_runtime_requested is not None:
+            retry_runtime_requested.connect(self.retry_local_assistant)
+        self.chat_panel.response_action_requested.connect(
+            self._handle_response_action_selection
+        )
 
         self.chat_dock = QDockWidget("XBrainLab", self.main_window)
         self.chat_dock.setWidget(self.chat_panel)
@@ -234,31 +370,51 @@ class AgentManager(QObject):
         title_layout.setSpacing(4)
 
         title_label = QLabel("XBrainLab")
+        title_label.setObjectName("AssistantDockTitle")
         title_label.setStyleSheet(Stylesheets.AGENT_TITLE_LABEL)
         title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        title_label.setMinimumWidth(title_label.sizeHint().width())
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
-        self.retry_title_btn = QPushButton("↻")
-        self.retry_title_btn.setFixedSize(20, 20)
+        title_style = title_bar.style()
+        if title_style is None:
+            title_style = QApplication.style()
+        if title_style is None:
+            raise RuntimeError("Qt application style is unavailable.")
+
+        self.retry_title_btn = QPushButton()
+        self.retry_title_btn.setIcon(
+            title_style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        self.retry_title_btn.setIconSize(QSize(16, 16))
+        self.retry_title_btn.setFixedSize(28, 28)
         self.retry_title_btn.setToolTip("Send a request before retrying.")
+        self.retry_title_btn.setAccessibleName("Retry last request")
         self.retry_title_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.retry_title_btn.setEnabled(False)
         self.retry_title_btn.clicked.connect(self.retry_last_user_input)
         title_layout.addWidget(self.retry_title_btn)
 
-        # New Conversation Button (+ icon)
+        # New chat clears only the assistant conversation, never workflow state.
         self.new_conv_title_btn = QPushButton("+")
-        self.new_conv_title_btn.setFixedSize(20, 20)
-        self.new_conv_title_btn.setToolTip("New Conversation")
+        self.new_conv_title_btn.setFixedSize(28, 28)
+        self.new_conv_title_btn.setToolTip("New chat")
+        self.new_conv_title_btn.setAccessibleName("New chat")
+        self.new_conv_title_btn.setAccessibleDescription(
+            "Clear the assistant conversation without changing the EEG workflow."
+        )
         self.new_conv_title_btn.setStyleSheet(Stylesheets.AGENT_NEW_CONV_BTN)
         self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
         title_layout.addWidget(self.new_conv_title_btn)
 
         # Options menu. Keep it to real, implemented actions.
-        self.settings_btn = QPushButton("...")
-        self.settings_btn.setFixedSize(26, 20)
-        self.settings_btn.setToolTip("Options")
+        self.settings_btn = QPushButton()
+        self.settings_btn.setIcon(QIcon(Icons.SETTINGS.path))
+        self.settings_btn.setIconSize(QSize(16, 16))
+        self.settings_btn.setFixedSize(28, 28)
+        self.settings_btn.setToolTip("Assistant options")
+        self.settings_btn.setAccessibleName("Assistant options")
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.settings_menu = QMenu(self.settings_btn)
         settings_action = QAction("Assistant settings", self.settings_btn)
@@ -267,8 +423,11 @@ class AgentManager(QObject):
         )
         self.settings_menu.addAction(settings_action)
         self.clear_conversation_title_action = QAction(
-            "Clear conversation",
+            "New chat",
             self.settings_btn,
+        )
+        self.clear_conversation_title_action.setToolTip(
+            "Clear the assistant conversation without changing the EEG workflow."
         )
         self.clear_conversation_title_action.setEnabled(False)
         self.clear_conversation_title_action.triggered.connect(
@@ -278,13 +437,29 @@ class AgentManager(QObject):
         self.settings_btn.setMenu(self.settings_menu)
         title_layout.addWidget(self.settings_btn)
 
-        # Float Button (❐ icon) - allows undocking
-        self.float_btn = QPushButton("❐")
-        self.float_btn.setFixedSize(20, 20)
-        self.float_btn.setToolTip("Float / Dock")
+        self.float_btn = QPushButton()
+        self.float_btn.setIcon(
+            title_style.standardIcon(QStyle.StandardPixmap.SP_TitleBarNormalButton)
+        )
+        self.float_btn.setIconSize(QSize(16, 16))
+        self.float_btn.setFixedSize(28, 28)
+        self.float_btn.setToolTip("Float assistant")
+        self.float_btn.setAccessibleName("Float assistant")
         self.float_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.float_btn.clicked.connect(self._toggle_float)
         title_layout.addWidget(self.float_btn)
+
+        self.close_btn = QPushButton()
+        self.close_btn.setIcon(
+            title_style.standardIcon(QStyle.StandardPixmap.SP_TitleBarCloseButton)
+        )
+        self.close_btn.setIconSize(QSize(16, 16))
+        self.close_btn.setFixedSize(28, 28)
+        self.close_btn.setToolTip("Close assistant")
+        self.close_btn.setAccessibleName("Close assistant")
+        self.close_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
+        self.close_btn.clicked.connect(self.chat_dock.close)
+        title_layout.addWidget(self.close_btn)
 
         self.chat_dock.setTitleBarWidget(title_bar)
         self.chat_dock.topLevelChanged.connect(self._on_dock_top_level_changed)
@@ -320,6 +495,10 @@ class AgentManager(QObject):
 
     def _on_dock_top_level_changed(self, floating: bool) -> None:
         """Keep the assistant dock usable when it becomes a floating window."""
+        action = "Dock assistant" if floating else "Float assistant"
+        if hasattr(self, "float_btn"):
+            self.float_btn.setToolTip(action)
+            self.float_btn.setAccessibleName(action)
         if floating:
             self._place_floating_dock()
 
@@ -372,38 +551,37 @@ class AgentManager(QObject):
             if hasattr(self.main_window, "ai_btn"):
                 self.main_window.ai_btn.setChecked(True)
 
-            config = self._load_runtime_config()
-            if self._needs_local_runtime_first_run(config):
+            config = self._assistant_runtime.load_config()
+            if self._assistant_runtime.needs_first_run(config):
                 choice = self._show_local_runtime_first_run_dialog(config)
-                if not self._handle_local_runtime_first_run_choice(config, choice):
+                outcome = self._assistant_runtime.apply_first_run_choice(
+                    config,
+                    choice,
+                )
+                if outcome.action is RuntimeSetupAction.OPEN_SETTINGS:
+                    self.open_settings_dialog()
                     return
-                config = self._load_runtime_config()
+                if outcome.action is RuntimeSetupAction.STOP:
+                    self.refresh_backend_status()
+                    self._show_runtime_setup_required(outcome.message)
+                    return
+                config = self._assistant_runtime.load_config()
 
-            ready, message = self._assistant_runtime_start_status(config)
+            activation = self._assistant_runtime.activate(
+                config,
+                execution_mode=self._execution_mode,
+            )
             self.refresh_backend_status()
-            if ready:
-                self.start_system()
+            if activation.available:
                 self._runtime_unavailable_notice = None
+            elif self._activation_is_disabled_setup(activation):
+                self._show_runtime_setup_required(activation.message)
             else:
-                self._show_runtime_unavailable(message)
+                self._show_runtime_unavailable(activation.message)
         elif self.chat_dock and self.chat_dock.isVisible():
             self.chat_dock.close()
         elif self.chat_dock:
             self.chat_dock.show()
-
-    @staticmethod
-    def _needs_local_runtime_first_run(config: LLMConfig) -> bool:
-        """Return whether local runtime consent should be shown before startup."""
-        if not hasattr(config, "model_name"):
-            return False
-        selection = LLMConfig.assistant_runtime_selection_from(config)
-        return (
-            selection.backend_mode == "local"
-            and bool(getattr(config, "local_model_enabled", True))
-            and not bool(
-                getattr(config, "local_runtime_notice_acknowledged", False),
-            )
-        )
 
     def _show_local_runtime_first_run_dialog(self, config: LLMConfig) -> str:
         """Show the local-runtime consent dialog and return the selected choice."""
@@ -412,118 +590,73 @@ class AgentManager(QObject):
             return dialog.choice
         return LocalRuntimeFirstRunDialog.LATER
 
-    def _handle_local_runtime_first_run_choice(
-        self,
-        config: LLMConfig,
-        choice: str,
-    ) -> bool:
-        """Apply a first-run runtime choice.
-
-        Returns ``True`` when startup may continue immediately, otherwise the
-        assistant dock remains open with a visible status message.
-        """
-        if choice in {
-            LocalRuntimeFirstRunDialog.ENABLE,
-            LocalRuntimeFirstRunDialog.USE_CACHE,
-        }:
-            config.local_model_enabled = True
-            config.local_runtime_notice_acknowledged = True
-            config.save_to_file()
-            return True
-
-        if choice == LocalRuntimeFirstRunDialog.DOWNLOAD:
-            config.local_runtime_notice_acknowledged = True
-            config.save_to_file()
-            self.open_settings_dialog()
-            updated_config = self._load_runtime_config()
-            ready, message = self._assistant_runtime_start_status(updated_config)
-            self.refresh_backend_status()
-            if ready:
-                return True
-            self._show_runtime_unavailable(message)
-            return False
-
-        if choice == LocalRuntimeFirstRunDialog.DISABLE:
-            config.local_model_enabled = False
-            config.local_runtime_notice_acknowledged = True
-            config.save_to_file()
-            self.refresh_backend_status()
-            self.chat_controller.add_agent_message(
-                "Assistant is disabled. Open assistant settings when you want "
-                "to enable it."
-            )
-            return False
-
-        self.chat_controller.add_agent_message(
-            "Assistant setup was deferred. Open assistant settings when you are "
-            "ready to continue."
-        )
-        return False
-
-    @staticmethod
-    def _load_runtime_config() -> LLMConfig:
-        """Load persisted assistant runtime config with a safe fallback."""
-        return LLMConfig.load_from_file() or LLMConfig()
-
-    @staticmethod
-    def _assistant_runtime_start_status(config: LLMConfig) -> tuple[bool, str]:
-        """Return whether the assistant runtime can start and why."""
-        selection = LLMConfig.assistant_runtime_selection_from(config)
-
-        if selection.backend_mode == "local":
-            if not config.local_model_enabled:
-                return (
-                    False,
-                    "Local assistant runtime is disabled. Enable it in assistant "
-                    "settings when you want to use the local model.",
-                )
-            model_id, message = config.available_local_model_id(selection.model_id)
-            return model_id is not None, message
-
-        return (
-            False,
-            "Assistant runtime is local-only. Open assistant settings to select "
-            "an approved local model.",
-        )
-
     def _show_runtime_unavailable(self, message: str) -> None:
         """Surface assistant startup blockers in the chat panel."""
-        if self._runtime_unavailable_notice == message:
+        safe_message = redact_public_text(message)
+        if self._runtime_unavailable_notice == safe_message:
             return
 
-        self._runtime_unavailable_notice = message
-        logger.info("Assistant runtime unavailable: %s", message)
-        self.chat_controller.add_agent_message(
-            self._runtime_unavailable_message(message),
+        self._runtime_unavailable_notice = safe_message
+        logger.info(
+            "Assistant runtime unavailable: %s",
+            redact_public_text(safe_message),
         )
+        if self.chat_panel and hasattr(self.chat_panel, "show_runtime_notice"):
+            self.chat_panel.show_runtime_notice(
+                self._presentation.runtime_unavailable_message(safe_message),
+            )
+
+    def _show_runtime_setup_required(self, message: str) -> None:
+        """Keep intentional setup deferral visible without presenting a crash."""
+        visible = self._presentation.runtime_setup_message(
+            redact_public_text(message),
+        )
+        self._runtime_unavailable_notice = None
+        if self.chat_panel:
+            self.chat_panel.set_runtime_state(
+                AssistantRuntimePhase.IDLE.value,
+                visible,
+            )
+        self._show_global_status(visible)
 
     @staticmethod
-    def _runtime_unavailable_message(message: str) -> str:
-        """Return a concise, user-facing assistant startup blocker."""
-        reason = " ".join(str(message or "").split())
-        lowered = reason.lower()
-        if "disabled" in lowered:
-            return (
-                "**Assistant unavailable**: Assistant is disabled. Open assistant "
-                "settings to enable it."
-            )
-        if "unavailable" in lowered or "not found" in lowered or "missing" in lowered:
-            return (
-                "**Assistant unavailable**: Required assistant files are unavailable. "
-                "Open assistant settings to finish setup."
-            )
-        if reason:
-            return f"**Assistant unavailable**: {reason}"
-        return "**Assistant unavailable**: Open assistant settings to finish setup."
+    def _activation_is_disabled_setup(
+        activation: RuntimeActivationResult,
+    ) -> bool:
+        failure = getattr(activation, "failure", None)
+        return bool(
+            failure is not None
+            and failure.code is AssistantRuntimeSelectionFailureCode.RUNTIME_DISABLED
+        )
 
     def open_settings_dialog(self):
-        """Open the model settings dialog and refresh the UI on accept."""
+        """Open settings and apply an accepted local runtime selection."""
         # Pass self to allow the dialog to request model unloading/switching
-        dialog = ModelSettingsDialog(self.main_window, agent_manager=self)
-        if dialog.exec() and self.chat_panel:
-            # Refresh UI based on new settings (e.g. enable/disable Local mode)
-            self.chat_panel.update_model_menu()
-            self.refresh_backend_status()
+        dialog = ModelSettingsDialog(
+            self.main_window,
+            agent_manager=self,
+            download_lifecycle=self._model_download_lifecycle,
+        )
+        if not dialog.exec():
+            return
+
+        activation = self._assistant_runtime.activate_persisted(
+            execution_mode=self._execution_mode,
+        )
+        self.refresh_backend_status()
+        if not activation.available:
+            if self._activation_is_disabled_setup(activation):
+                self._show_runtime_setup_required(activation.message)
+                return
+            self._show_runtime_unavailable(activation.message)
+            return
+
+        self._runtime_unavailable_notice = None
+        if (
+            activation.status is RuntimeActivationStatus.ALREADY_READY
+            and self.chat_panel
+        ):
+            self.chat_panel.set_runtime_state(AssistantRuntimePhase.READY.value)
 
     def prepare_model_deletion(self, model_name: str):
         """Prepare for model file deletion by switching away if active.
@@ -539,109 +672,106 @@ class AgentManager(QObject):
             ``True`` if it is safe to proceed with deletion.
 
         """
-        if not self.agent_controller:
+        if self.agent_controller is None:
             return True
-        snapshot = self.agent_controller.runtime_snapshot()
-        if not snapshot.get("initialized"):
-            return True  # Not initialized
-        current_mode = str(snapshot.get("backend_mode") or "")
-
-        # Heuristic: If we are in local mode, and the model name matches (roughly)
-        # Detailed check: verify if the deleting model is the one loaded.
-        # But for safety, if we are in local mode at all, we should switch out
-        # to release locks if the user is deleting the *local* model.
-
-        if current_mode == "local":
-            logger.info("Blocking deletion of active local model: %s", model_name)
+        if self._assistant_runtime.active_local_runtime_blocks_model_deletion():
+            logger.info(
+                "Blocking deletion of active local model: %s",
+                redact_public_text(model_name),
+            )
             QMessageBox.warning(
                 self.main_window,
-                "Local Model Active",
-                "The AI assistant is currently using the local backend.\n"
-                "Close the assistant or switch it away from Local before deleting "
-                "this model.",
+                "Assistant Model In Use",
+                "The AI assistant is currently using this local model.\n"
+                "Close the assistant or select a different model before deleting it.",
             )
             return False
 
         return True
 
     def start_system(self):
-        """Lazily initialize the Agent Controller."""
-        if self.agent_initialized:
-            return
-
+        """Start the runtime owner after the assistant UI is available."""
         if not self.chat_panel:
             return
+        if self._assistant_runtime.start(self._execution_mode):
+            self.refresh_backend_status()
 
-        self.agent_controller = LLMController(self.study)
+    def _create_assistant_controller(self, study: object) -> LLMController:
+        """Create a controller only when its product UI contract is complete."""
+        controller = LLMController(study)
+        try:
+            self._validate_assistant_controller_contract(controller)
+        except Exception:
+            close = getattr(controller, "close", None)
+            if callable(close):
+                close()
+            raise
+        return controller
 
-        # --- Connect LLMController Signals to ChatController ---
+    @staticmethod
+    def _validate_assistant_controller_contract(controller: object) -> None:
+        """Fail before wiring when a product controller lacks core signals."""
+        missing = [
+            signal_name
+            for signal_name in _ASSISTANT_CONTROLLER_UI_SIGNALS
+            if not callable(
+                getattr(getattr(controller, signal_name, None), "connect", None)
+            )
+        ]
+        if missing:
+            formatted = ", ".join(missing)
+            raise TypeError(
+                f"Assistant controller core signal contract is incomplete: {formatted}."
+            )
 
-        # 1. Response Ready -> Add to ChatController
-        # Note: 'sender' argument from LLMController is usually 'Assistant' or 'Tool'
-        self.agent_controller.response_ready.connect(self._handle_agent_response)
-
-        # 2. Status Updates -> Update UI Status.
-        self.agent_controller.status_update.connect(self.on_agent_status_update)
-
-        # 3. Error -> Add Error Message
-        self.agent_controller.error_occurred.connect(self.handle_agent_error)
-
-        # 4. Human Interaction
-        self.agent_controller.request_user_interaction.connect(
-            self.handle_user_interaction,
+    def _wire_assistant_controller(self, controller) -> None:
+        """Connect one newly created runtime controller to product UI slots."""
+        self._validate_assistant_controller_contract(controller)
+        controller.response_presentation_ready.connect(
+            self._handle_response_presentation
         )
-        command_completed = getattr(
-            self.agent_controller,
-            "application_command_completed",
-            None,
+        controller.status_update.connect(self.on_agent_status_update)
+        controller.activity_changed.connect(self.on_assistant_activity_changed)
+        controller.confirmation_requested.connect(self._show_action_confirmation)
+        controller.panel_navigation_requested.connect(self.handle_panel_navigation)
+        controller.workflow_ui_handoff_requested.connect(
+            self.handle_workflow_ui_handoff
         )
-        if command_completed is not None:
-            command_completed.connect(self._on_application_command_completed)
-        command_started = getattr(
-            self.agent_controller,
-            "application_command_started",
-            None,
+        controller.application_command_completed.connect(
+            self._on_application_command_completed
         )
-        if command_started is not None:
-            command_started.connect(self._on_application_command_started)
-
-        # 5. Generation Started -> Set Processing State AND Reset Bubble
-        self.agent_controller.generation_started.connect(self._on_generation_started)
-
-        # 6. Streaming: Chunk Received -> Forward to ChatPanel directly (for now)
-        # In M0 plan we kept streaming in UI for simplicity.
-        self.agent_controller.chunk_received.connect(self.chat_panel.on_chunk_received)
-
-        # 7. Remove Content (Tool Calls) -> Forward to ChatPanel
-        self.agent_controller.remove_content.connect(
-            self.chat_panel.collapse_agent_message,
+        controller.application_command_started.connect(
+            self._on_application_command_started
         )
-
-        # 8. M3.1 Debug Mode: direct UI -> agent tool flow for offline testing.
-        self.chat_panel.debug_tool_requested.connect(self._agent_dispatcher.debug)
-
-        # 8. Finished Signal (Robust)
-        self.agent_controller.processing_finished.connect(self.on_processing_finished)
-
-        # 9. Execution Mode Sync
-        self.agent_controller.execution_mode_changed.connect(
+        controller.execution_mode_changed.connect(
             self._sync_execution_mode_ui,
         )
 
-        self._agent_dispatcher.bind(self.agent_controller)
-        self._agent_dispatcher.initialize()
-        self._agent_dispatcher.set_mode(self._execution_mode)
-        self.agent_initialized = True
-        self.refresh_backend_status()
-
     def _on_application_command_started(self) -> None:
         """Suppress observer refresh until the agent command result arrives."""
+        self._application_command_in_flight = True
         begin_command_refresh_suppression(self.main_window)
+        if not self.chat_controller.is_processing:
+            self.chat_controller.set_processing(True)
+        if self.chat_panel:
+            if self._assistant_turn_state.phase is AssistantUiTurnPhase.STOPPING:
+                presentation = ChatTurnPresentation.stopping()
+            else:
+                activity = self._last_assistant_activity
+                presentation = (
+                    present_assistant_activity(
+                        activity,
+                        application_command_in_flight=True,
+                    )
+                    if isinstance(activity, AssistantTurnActivity)
+                    else ChatTurnPresentation.application_command()
+                )
+            self.chat_panel.set_turn_activity(presentation)
 
     def _on_application_command_completed(self, result) -> None:
         """Refresh product panels from the agent command result envelope."""
-        end_command_refresh_suppression(self.main_window)
-        refresh_after_serialized_command(
+        self._application_command_in_flight = False
+        complete_command_refresh_suppression(
             self.main_window,
             getattr(result, "changed_state", None),
         )
@@ -659,95 +789,418 @@ class AgentManager(QObject):
         text = text.strip()
         if not text:
             return
-
-        if (
-            self.agent_controller
-            and getattr(
-                self.agent_controller,
-                "is_processing",
-                False,
+        if self.agent_controller is None:
+            activation = self._assistant_runtime.activate_persisted(
+                execution_mode=self._execution_mode,
             )
-            is True
-        ):
-            self.chat_controller.add_agent_message(
-                "The assistant is still processing the previous request. "
-                "Use Stop or wait for the current response before sending again.",
+            if activation.available:
+                self._show_low_priority_notice(
+                    "Wait for the local assistant to finish loading."
+                )
+            else:
+                self._show_runtime_unavailable(activation.message)
+            return
+
+        if not self.chat_controller.can_accept_turn():
+            self._show_low_priority_notice(
+                "Chat history is full. Clear the conversation before sending "
+                "another request."
             )
             return
 
-        # 1. Add to ChatController (Update History)
+        # Reserve the runtime turn before changing the transcript. A rejected
+        # command must not leave an unanswered user bubble behind.
+        submission = self._begin_assistant_turn_submission()
+        self._deferred_submission_events = []
+        admission = self._assistant_runtime.submit(
+            text,
+            generation=submission.generation,
+        )
+        if not isinstance(admission, RuntimeCommandAdmissionResult):
+            self._finish_assistant_turn_submission(submission, accepted=False)
+            self._deferred_submission_events = None
+            logger.error("Assistant runtime returned an invalid admission result")
+            self._show_low_priority_notice(
+                "The assistant could not accept this request. Try again."
+            )
+            return
+        if not admission.accepted:
+            self._finish_assistant_turn_submission(submission, accepted=False)
+            self._deferred_submission_events = None
+            self._show_low_priority_notice(admission.message)
+            return
+
+        correlation = admission.correlation
+        if correlation is None:
+            self._finish_assistant_turn_submission(submission, accepted=False)
+            self._deferred_submission_events = None
+            logger.error("Assistant admission is missing exact turn correlation")
+            self._show_low_priority_notice(
+                "The assistant could not correlate this request. Try again."
+            )
+            return
+
+        deferred_events = self._deferred_submission_events
+        self._deferred_submission_events = None
+        if not self._finish_assistant_turn_submission(
+            submission,
+            accepted=True,
+            correlation=correlation,
+        ):
+            self._show_low_priority_notice(
+                "The assistant could not correlate this request. Try again."
+            )
+            return
+        if self.chat_panel and hasattr(self.chat_panel, "clear_response_actions"):
+            self.chat_panel.clear_response_actions()
         self.chat_controller.add_user_message(text)
         self._last_user_input = text
         self._set_retry_available(True)
+        self._replay_deferred_submission_events(deferred_events)
 
-        # 2. Forward to Agent
-        if self.agent_controller:
-            self.chat_controller.set_processing(True)
-            if self.chat_panel and self._execution_mode == "multi":
-                self.chat_panel.set_workflow_status("Checking data")
-            self._agent_dispatcher.submit(text)
-        else:
-            config = self._load_runtime_config()
-            _ready, message = self._assistant_runtime_start_status(config)
-            logger.info("Assistant unavailable on user request: %s", message)
-            self.chat_controller.add_agent_message(
-                self._runtime_unavailable_message(message),
+    def _handle_debug_tool_requested(
+        self,
+        tool_name: str,
+        params: dict[str, Any],
+        confirmed: bool = False,
+        authorization_text: str = "",
+    ) -> None:
+        """Admit one debug-script action through the normal correlated turn lease."""
+        if self.agent_controller is None:
+            self._show_low_priority_notice(
+                "The assistant runtime must be ready before running diagnostics."
             )
-
-    def _handle_agent_response(self, sender: str, text: str) -> None:
-        """Add assistant responses while keeping internal tool output out of chat."""
-        if self._looks_like_internal_tool_output(sender, text):
-            self._show_low_priority_notice(self._tool_output_notice(text))
             return
-        self.chat_controller.add_agent_message(text)
-
-    @staticmethod
-    def _looks_like_internal_tool_output(sender: str, text: str) -> bool:
-        """Return whether a response is an implementation detail, not chat copy."""
-        sender_key = str(sender or "").strip().lower()
-        if sender_key == "debug":
-            return True
-
-        normalized = " ".join(str(text or "").split()).lower()
-        internal_markers = (
-            "tool output:",
-            "tool call:",
-            "tool ",
-            "request:",
-            "```json",
-            '{"',
-            "[{",
-            "applicationservice",
-            "backendfacade",
+        submission = self._begin_assistant_turn_submission()
+        self._deferred_submission_events = []
+        debug_options: dict[str, Any] = {"generation": submission.generation}
+        if confirmed:
+            debug_options["confirmed"] = True
+        if authorization_text:
+            debug_options["authorization_text"] = authorization_text
+        admission = self._assistant_runtime.debug(
+            tool_name,
+            dict(params),
+            **debug_options,
         )
-        if sender_key == "tool":
-            return normalized.startswith(internal_markers)
-        return normalized.startswith(internal_markers)
+        if not isinstance(admission, RuntimeCommandAdmissionResult):
+            self._finish_assistant_turn_submission(submission, accepted=False)
+            self._deferred_submission_events = None
+            logger.error("Assistant debug runtime returned an invalid admission result")
+            self._show_low_priority_notice(
+                "The diagnostic action could not be started. Try again."
+            )
+            return
+        if not admission.accepted:
+            self._finish_assistant_turn_submission(submission, accepted=False)
+            self._deferred_submission_events = None
+            self._show_low_priority_notice(admission.message)
+            return
+        correlation = admission.correlation
+        deferred_events = self._deferred_submission_events
+        self._deferred_submission_events = None
+        if not self._finish_assistant_turn_submission(
+            submission,
+            accepted=True,
+            correlation=correlation,
+        ):
+            self._show_low_priority_notice(
+                "The diagnostic action could not be correlated. Try again."
+            )
+            return
+        if self.chat_panel and hasattr(self.chat_panel, "clear_response_actions"):
+            self.chat_panel.clear_response_actions()
+        self._replay_deferred_submission_events(deferred_events)
+
+    def _replay_deferred_submission_events(
+        self,
+        events: list[tuple[str, object]] | None,
+    ) -> None:
+        """Replay controller events emitted before UI admission was committed."""
+        for event_kind, event_payload in events or ():
+            if event_kind == "activity":
+                self.on_assistant_activity_changed(event_payload)
+            elif event_kind == "response":
+                self._handle_response_presentation(event_payload)
+            elif event_kind == "terminal":
+                self._on_assistant_turn_finished(event_payload)
+
+    def _begin_assistant_turn_submission(self) -> AssistantUiTurnSubmission:
+        """Create one UI generation before asking the runtime for admission."""
+        return self._assistant_turn_state.begin_submission()
+
+    def _finish_assistant_turn_submission(
+        self,
+        submission: AssistantUiTurnSubmission,
+        *,
+        accepted: bool,
+        correlation: AssistantTurnCorrelation | None = None,
+    ) -> bool:
+        """Commit or discard exactly the UI generation submitted to the runtime."""
+        if not accepted:
+            return self._assistant_turn_state.reject_admission(submission)
+        if correlation is None:
+            self._assistant_turn_state.reject_admission(submission)
+            logger.error("Assistant admission omitted its turn correlation")
+            return False
+        accepted_admission = self._assistant_turn_state.accept_admission(
+            submission,
+            correlation,
+        )
+        if not accepted_admission:
+            logger.error("Assistant admission did not match its UI submission")
+        return accepted_admission
+
+    def _render_visible_assistant_response(
+        self,
+        presentation: AssistantResponsePresentation,
+    ) -> None:
+        """Persist one response after mapping only its typed source state."""
+        if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
+            self.chat_panel.show_notice("")
+        kind = self._chat_presentation_kind(presentation)
+        actions = tuple(
+            self._chat_response_action(action) for action in presentation.actions
+        )
+        visible_text = self._presentation.assistant_transcript_message(
+            presentation.text
+        )
+        self.chat_controller.add_agent_message(
+            visible_text,
+            presentation_kind=kind,
+            presentation_id=presentation.presentation_id,
+            actions=actions,
+        )
+
+    def _chat_presentation_kind(
+        self,
+        presentation: AssistantResponsePresentation,
+    ) -> ChatMessagePresentationKind:
+        """Map only the response's authoritative typed display meaning."""
+        if presentation.kind is AssistantResponseKind.TOOL_RESULT:
+            return ChatMessagePresentationKind.TOOL_RESULT
+        if presentation.kind is AssistantResponseKind.CLARIFICATION:
+            return ChatMessagePresentationKind.CLARIFICATION
+        if presentation.kind is AssistantResponseKind.ERROR:
+            return ChatMessagePresentationKind.ERROR
+        if presentation.kind is AssistantResponseKind.BLOCKED:
+            return ChatMessagePresentationKind.ATTENTION
+        if presentation.kind is AssistantResponseKind.CANCELLED:
+            return ChatMessagePresentationKind.CANCELLED
+        return ChatMessagePresentationKind.ASSISTANT
 
     @staticmethod
-    def _tool_output_notice(text: str) -> str:
-        """Translate internal tool diagnostics to a low-noise product notice."""
-        normalized = " ".join(str(text or "").split()).lower()
-        if "error" in normalized or "required" in normalized:
-            return (
-                "The assistant could not complete that action. Check the request "
-                "and try again."
+    def _chat_response_action(
+        action: AssistantResponseAction,
+    ) -> ChatResponseAction:
+        """Convert one typed runtime action into the persisted UI contract."""
+        if action.kind is AssistantResponseActionKind.SEND_MESSAGE:
+            return ChatResponseAction(
+                action_id=action.action_id,
+                label=action.label,
+                kind=ChatResponseActionKind.SEND_MESSAGE,
+                prompt=action.prompt,
             )
-        return "The assistant completed a background action."
+        if action.panel is None:
+            raise ValueError("Open-panel assistant action is missing its target.")
+        return ChatResponseAction(
+            action_id=action.action_id,
+            label=action.label,
+            kind=ChatResponseActionKind.OPEN_PANEL,
+            panel=ChatHistoryPanelTarget(action.panel.value),
+        )
+
+    def _handle_response_presentation(self, payload: object) -> None:
+        """Render one typed response and its correlated next actions."""
+        if not isinstance(payload, AssistantResponsePresentation):
+            logger.error(
+                "Ignored invalid assistant response presentation: %s",
+                redact_public_text(payload),
+            )
+            return
+        if self._defer_provisional_turn_event(
+            "response",
+            payload,
+            payload.correlation,
+        ):
+            return
+        terminal_cancellation = bool(
+            payload.kind is AssistantResponseKind.CANCELLED and not payload.actions
+        )
+        if not self._assistant_turn_state.accepts_response(
+            payload.correlation,
+            terminal_cancellation=terminal_cancellation,
+        ):
+            logger.warning(
+                "Ignored stale assistant response presentation for %s",
+                redact_public_text(payload.correlation),
+            )
+            return
+        self._render_visible_assistant_response(payload)
+
+    def _on_active_response_presentation_changed(self, payload: object) -> None:
+        """Accept the ChatPanel's immutable active-action identity as authoritative."""
+        if payload is None:
+            self._active_response_presentation_id = None
+            return
+        if not isinstance(payload, str) or not payload:
+            logger.error(
+                "Ignored invalid active response presentation ID: %s",
+                redact_public_text(payload),
+            )
+            return
+        self._active_response_presentation_id = payload
+
+    def _clear_active_response_actions(self) -> None:
+        """Retire response actions when Stop/cancel closes their live turn."""
+        self._on_active_response_presentation_changed(None)
+        self.chat_controller.consume_all_response_actions()
+        if self.chat_panel and hasattr(self.chat_panel, "clear_response_actions"):
+            self.chat_panel.clear_response_actions()
+
+    def _handle_response_action_selection(self, payload: object) -> None:
+        """Route only an action belonging to the still-current presentation."""
+        if not isinstance(payload, ChatResponseActionSelectionView):
+            logger.error(
+                "Ignored invalid assistant response action: %s",
+                redact_public_text(payload),
+            )
+            return
+        if payload.presentation_id != self._active_response_presentation_id:
+            logger.warning("Ignored stale assistant response action selection")
+            return
+        view_action = payload.action
+        try:
+            selection = ChatResponseActionSelection(
+                presentation_id=payload.presentation_id,
+                action_id=view_action.action_id,
+                label=view_action.label,
+                kind=ChatResponseActionKind(view_action.kind.value),
+                prompt=view_action.prompt,
+                panel=(
+                    ChatHistoryPanelTarget(view_action.panel.value)
+                    if view_action.panel is not None
+                    else None
+                ),
+            )
+        except (TypeError, ValueError):
+            logger.warning("Ignored malformed assistant response action selection")
+            return
+        action = self.chat_controller.resolve_and_consume_response_action(selection)
+        if action is None:
+            logger.warning("Ignored forged, stale, or consumed response action")
+            return
+        self._on_active_response_presentation_changed(None)
+        if action.kind is ChatResponseActionKind.SEND_MESSAGE:
+            self.handle_user_input(action.prompt)
+            return
+        if action.panel is not None:
+            self._open_assistant_panel_target(AssistantPanelTarget(action.panel.value))
+
+    def _open_assistant_panel_target(
+        self,
+        target: AssistantPanelTarget,
+        *,
+        view_mode: str = "",
+    ) -> int:
+        """Open one typed existing main-window panel without mutating workflow."""
+        panel_index = {
+            AssistantPanelTarget.DATASET: PANEL_DATASET,
+            AssistantPanelTarget.PREPROCESS: PANEL_PREPROCESS,
+            AssistantPanelTarget.TRAINING: PANEL_TRAINING,
+            AssistantPanelTarget.EVALUATION: PANEL_EVALUATION,
+            AssistantPanelTarget.VISUALIZATION: PANEL_VISUALIZATION,
+        }[target]
+        status_bar = self.main_window.statusBar()
+
+        ready_callback_delivered = False
+
+        def _on_ready(_panel: object) -> None:
+            nonlocal ready_callback_delivered
+            ready_callback_delivered = True
+            if view_mode:
+                self._switch_sub_view(panel_index, view_mode)
+            if status_bar:
+                status_bar.showMessage(f"{target.value.title()} is open.")
+
+        if view_mode:
+            materialized = self.main_window.switch_page(
+                panel_index,
+                on_ready=_on_ready,
+            )
+            if materialized is not False and not ready_callback_delivered:
+                _on_ready(None)
+        else:
+            materialized = self.main_window.switch_page(panel_index)
+            if materialized is not False and status_bar:
+                status_bar.showMessage(f"{target.value.title()} is open.")
+
+        if materialized is False and status_bar:
+            status_bar.showMessage(f"Opening {target.value.title()}...")
+        return panel_index
 
     def retry_last_user_input(self):
         """Retry the most recent user request if the assistant is idle."""
-        if self.chat_controller.is_processing:
-            return
         if not self._last_user_input:
             self._show_low_priority_notice("Send a request before using Retry.")
             return
         self.handle_user_input(self._last_user_input)
 
+    def retry_local_assistant(self) -> None:
+        """Retry the persisted local runtime after a visible startup failure."""
+        if self._assistant_runtime.current.phase is AssistantRuntimePhase.LOADING:
+            return
+        activation = self._assistant_runtime.activate_persisted(
+            execution_mode=self._execution_mode,
+        )
+        self.refresh_backend_status()
+        if not activation.available:
+            if self._activation_is_disabled_setup(activation):
+                self._show_runtime_setup_required(activation.message)
+                return
+            self._runtime_unavailable_notice = None
+            self._show_runtime_unavailable(activation.message)
+            return
+        self._runtime_unavailable_notice = None
+
     def stop_generation(self):
         """Stop the currently running LLM generation."""
         if self.agent_controller:
-            self._agent_dispatcher.stop()
+            if self._assistant_turn_state.phase is AssistantUiTurnPhase.STOPPING:
+                return
+            if self._application_command_in_flight:
+                self._show_low_priority_notice(
+                    "This action has already started and cannot be stopped safely. "
+                    "Wait for it to finish."
+                )
+                return
+            active_before_stop = self._assistant_turn_state.lease
+            result = self._assistant_runtime.stop_generation()
+            accepted = self._surface_runtime_command_result(
+                result,
+                fallback="The assistant could not stop the current request.",
+            )
+            if accepted:
+                correlation = result.correlation
+                if correlation is None or correlation != active_before_stop:
+                    logger.error("Assistant Stop admission had no matching turn lease")
+                    self._show_low_priority_notice(
+                        "The assistant could not correlate the Stop request."
+                    )
+                    return
+                if self._assistant_turn_state.lease is None:
+                    return
+                if (
+                    self._assistant_turn_state.phase
+                    is not AssistantUiTurnPhase.STOPPING
+                    and not self._assistant_turn_state.latch_stop(correlation)
+                ):
+                    logger.error("Assistant Stop could not latch its active turn lease")
+                    return
+                self._workflow_ui_handoff_host.abandon_active()
+                self._clear_active_response_actions()
+                if self.chat_panel:
+                    self.chat_panel.set_turn_activity(ChatTurnPresentation.stopping())
 
     def set_model(self, model_name):
         """Switch the active LLM model and check for VRAM conflicts.
@@ -756,14 +1209,16 @@ class AgentManager(QObject):
             model_name: Runtime mode key or backend-specific identifier.
 
         """
-        normalized_mode = LLMConfig.normalize_backend_mode(model_name, fallback="")
-        if self.agent_controller:
-            self._agent_dispatcher.set_model(
-                normalized_mode if normalized_mode else model_name
-            )
+        activation = self._assistant_runtime.switch_model(model_name)
+        if not activation.available:
+            self._show_low_priority_notice(activation.message)
+            return
+        target = activation.model_id
+        if activation.fallback_used:
+            self._show_low_priority_notice(activation.message)
 
         # VRAM Check on Mode Switch
-        if normalized_mode == "local":
+        if target in set(LLMConfig.allowed_local_model_ids()):
             self.vram_checker.check(switching_to_local=True)
         self.refresh_backend_status()
 
@@ -805,9 +1260,7 @@ class AgentManager(QObject):
         self._update_title_action_buttons()
 
     def _set_retry_available(self, available: bool) -> None:
-        """Synchronize retry/clear affordances across the dock controls."""
-        if self.chat_panel and hasattr(self.chat_panel, "set_retry_available"):
-            self.chat_panel.set_retry_available(available)
+        """Synchronize retry/clear affordances in the dock title bar."""
         self._update_title_action_buttons()
 
     def _update_title_action_buttons(self) -> None:
@@ -837,7 +1290,14 @@ class AgentManager(QObject):
 
         """
         self._execution_mode = "multi" if mode == "multi" else "single"
-        self._agent_dispatcher.set_mode(self._execution_mode)
+        result = self._assistant_runtime.set_execution_mode(self._execution_mode)
+        if isinstance(result, RuntimeCommandAdmissionResult) and not result.accepted:
+            # The selected mode is still retained locally and will be applied
+            # during the next activation; no transient startup notice is needed.
+            logger.info(
+                "Assistant mode update deferred: %s",
+                redact_public_text(result.message),
+            )
 
     def _sync_execution_mode_ui(self, mode: str):
         """Sync execution mode button text from controller to ChatPanel.
@@ -851,58 +1311,79 @@ class AgentManager(QObject):
             sync_mode = getattr(self.chat_panel, "set_execution_mode", None)
             if callable(sync_mode):
                 sync_mode(self._execution_mode)
-            else:
-                self.chat_panel.mode_btn.setText(
-                    "Workflow" if self._execution_mode == "multi" else "Ask"
-                )
 
     def start_new_conversation(self):
-        """Clear the chat UI and reset the agent conversation state."""
-        logger.info("Starting new conversation - clearing UI and resetting agent state")
+        """Start a new chat without mutating the application workflow state."""
+        logger.info("Starting new chat - clearing assistant conversation state")
 
-        # 1. Clear UI / History
+        # Reset the runtime first so a busy turn cannot orphan visible output.
+        if self.agent_controller and not self._surface_runtime_command_result(
+            self._assistant_runtime.reset_conversation(),
+            fallback="The assistant conversation could not be reset.",
+        ):
+            return
+
+        # Clear the transcript only after the runtime accepts the boundary.
         self.chat_controller.clear_conversation()
         self._last_user_input = None
+        self._on_active_response_presentation_changed(None)
+        if not self._assistant_turn_state.reset_idle():
+            logger.error(
+                "Runtime reset accepted while an assistant turn still owned UI"
+            )
         self._set_retry_available(False)
         if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
             self.chat_panel.show_notice("")
 
-        # 2. Reset Agent State
         if self.agent_controller:
-            self._agent_dispatcher.reset()
-            logger.info("Agent conversation state reset successfully")
+            logger.info("Assistant conversation state reset successfully")
 
-        # 3. Do not add greeting, keep it empty as requested
-        # self.chat_controller.add_agent_message("Conversation cleared.")
+        # Keep a runtime blocker actionable after the transcript is cleared.
+        runtime = self._assistant_runtime.current
+        if runtime.phase is AssistantRuntimePhase.FAILED:
+            self._runtime_unavailable_notice = None
+            self._show_runtime_unavailable(runtime.error)
+
         self.refresh_backend_status()
 
     # Signal to notify Main Window (or other listeners) about status updates
     status_message_received = pyqtSignal(str)
 
     def _show_low_priority_notice(self, message: str) -> None:
-        """Surface notices in the dock footer/status bar without polluting chat."""
+        """Surface an assistant-owned notice without duplicating global status."""
+        safe_message = redact_public_text(message)
         if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
-            self.chat_panel.show_notice(message)
+            self.chat_panel.show_notice(safe_message)
+
+    def _surface_runtime_command_result(
+        self,
+        result: object,
+        *,
+        fallback: str,
+    ) -> bool:
+        """Surface a typed runtime transport rejection instead of dropping it."""
+        if not isinstance(result, RuntimeCommandAdmissionResult):
+            logger.error(
+                "Assistant runtime returned an invalid command result: %s",
+                redact_public_text(result),
+            )
+            self._show_low_priority_notice(fallback)
+            return False
+        if result.accepted:
+            return True
+        self._show_low_priority_notice(result.message or fallback)
+        return False
+
+    def _show_global_status(self, message: str) -> None:
+        """Publish a host-level status when the assistant surface is not visible."""
+        safe_message = redact_public_text(message)
         try:
-            self.status_message_received.emit(message)
+            self.status_message_received.emit(safe_message)
         except RuntimeError:
-            logger.debug("Status notice could not be emitted: %s", message)
-
-    def _on_generation_started(self):
-        """Handle the start of a new LLM response generation.
-
-        Resets the current agent bubble reference and sets processing
-        state to ``True``.
-        """
-        # Reset bubble reference so a new one will be created for this turn
-        if self.chat_panel:
-            self.chat_panel.current_agent_bubble = None
-        self.chat_controller.set_processing(True)
-
-    def on_processing_finished(self):
-        """Handle the end of LLM processing by resetting state."""
-        self.chat_controller.set_processing(False)
-        self.refresh_backend_status()
+            logger.debug(
+                "Status notice could not be emitted: %s",
+                redact_public_text(safe_message),
+            )
 
     def on_agent_status_update(self, msg):
         """Forward agent status messages and handle error states.
@@ -911,64 +1392,142 @@ class AgentManager(QObject):
             msg: The status message string from the agent.
 
         """
-        logger.debug("Assistant status update: %s", msg)
-        if self.chat_panel and self._execution_mode == "multi":
-            product_status = self._workflow_product_status(msg)
-            if product_status:
-                self.chat_panel.set_workflow_status(product_status)
-        if "Error" in msg:
-            self.chat_controller.set_processing(False)
-            if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
-                self.chat_panel.show_notice(
-                    "Assistant needs attention · Check the conversation",
-                )
-
-    @staticmethod
-    def _workflow_product_status(raw_status: str) -> str:
-        """Translate controller diagnostics into compact workflow copy."""
-        normalized = " ".join(str(raw_status or "").split()).lower()
-        if not normalized or normalized == "ready":
-            return ""
-        if (
-            "waiting" in normalized
-            or "decision" in normalized
-            or "confirm" in normalized
-        ):
-            return "Waiting for decision"
-        if "stopping" in normalized or "cancel" in normalized:
-            return "Stopping"
-        if "execut" in normalized or "running" in normalized:
-            return "Running step"
-        if "error" in normalized or "blocked" in normalized or "failed" in normalized:
-            return "Needs attention"
-        return "Checking data"
-
-    def handle_agent_error(self, error_msg):
-        """Handle an agent error by resetting state and showing the error.
-
-        Args:
-            error_msg: The error message string.
-
-        """
-        self.chat_controller.set_processing(False)
-        self.chat_controller.add_agent_message(
-            self._user_facing_error_message(error_msg),
+        diagnostic = self._presentation.raw_status_diagnostic(redact_public_text(msg))
+        logger.debug(
+            "Assistant status update: %s",
+            redact_public_text(diagnostic),
         )
-        logger.error("Agent Error: %s", error_msg)
+
+    def on_assistant_activity_changed(self, payload: object) -> None:
+        """Render one typed turn-local activity without inferring workflow state."""
+        if not isinstance(payload, AssistantTurnActivity):
+            logger.error(
+                "Ignored untyped assistant activity: %s",
+                redact_public_text(payload),
+            )
+            return
+        if self._defer_provisional_turn_event(
+            "activity",
+            payload,
+            payload.correlation,
+        ):
+            return
+        if not self._accept_assistant_activity(payload):
+            return
+        if payload.phase is AssistantTurnActivityPhase.STOPPING:
+            correlation = payload.correlation
+            if correlation is not None:
+                self._assistant_turn_state.latch_stop(correlation)
+        self._last_assistant_activity = payload
+        presentation = present_assistant_activity(
+            payload,
+            application_command_in_flight=self._application_command_in_flight,
+        )
+        processing = presentation.is_busy
+        if self.chat_controller.is_processing != processing:
+            self.chat_controller.set_processing(processing)
+        if self.chat_panel:
+            if processing and hasattr(self.chat_panel, "show_notice"):
+                self.chat_panel.show_notice("")
+            self.chat_panel.set_turn_activity(presentation)
+        if not processing:
+            self.refresh_backend_status()
+
+    def _accept_assistant_activity(self, payload: AssistantTurnActivity) -> bool:
+        """Accept activity only for the exact admitted UI/runtime lease."""
+        return self._assistant_turn_state.accepts_activity(
+            payload.correlation,
+            payload.phase,
+        )
+
+    def _on_assistant_turn_finished(self, payload: object) -> None:
+        """Release only the Stop/turn lease named by a typed terminal event."""
+        if not isinstance(payload, AssistantTurnTerminal):
+            logger.error(
+                "Ignored untyped assistant turn terminal: %s",
+                redact_public_text(payload),
+            )
+            return
+        if self._defer_provisional_turn_event(
+            "terminal",
+            payload,
+            payload.correlation,
+        ):
+            return
+        phase_before_terminal = self._assistant_turn_state.phase
+        if not self._assistant_turn_state.accept_terminal(payload):
+            logger.warning(
+                "Ignored stale assistant UI terminal for %s",
+                redact_public_text(payload.correlation),
+            )
+            return
+        self._render_delivery_terminal_error(payload)
+        cancelled_outcomes = {"cancelled", "shutdown_cancelled"}
+        if (
+            phase_before_terminal is AssistantUiTurnPhase.STOPPING
+            or payload.outcome in cancelled_outcomes
+        ):
+            self._clear_active_response_actions()
+        self._last_assistant_activity = None
+        if self.chat_controller.is_processing:
+            self.chat_controller.set_processing(False)
+        elif self.chat_panel:
+            self.chat_panel.set_turn_activity(ChatTurnPresentation.idle())
         self.refresh_backend_status()
 
-    @classmethod
-    def _user_facing_error_message(cls, error_msg: str) -> str:
-        """Return a concise error message without tool/debug internals."""
-        if cls._looks_like_internal_tool_output("", error_msg):
-            return (
-                "**Assistant needs input**: The requested action needs more "
-                "information. Check the request and try again."
+    def _render_delivery_terminal_error(
+        self,
+        terminal: AssistantTurnTerminal,
+    ) -> None:
+        """Persist one actionable error for a failed host-to-controller delivery."""
+        message = _DELIVERY_TERMINAL_MESSAGES.get(terminal.outcome)
+        if message is None:
+            return
+        self._render_visible_assistant_response(
+            AssistantResponsePresentation(
+                text=message,
+                correlation=terminal.correlation,
+                kind=AssistantResponseKind.ERROR,
             )
-        reason = " ".join(str(error_msg or "").split())
-        if not reason:
-            return "**Assistant needs input**: Try again with a little more detail."
-        return f"**Error**: {reason}"
+        )
+
+    def _defer_provisional_turn_event(
+        self,
+        event_kind: str,
+        payload: object,
+        correlation: AssistantTurnCorrelation | None,
+    ) -> bool:
+        """Preserve exact synchronous events until runtime admission commits."""
+        events = self._deferred_submission_events
+        submission = self._assistant_turn_state.submission
+        if (
+            events is None
+            or submission is None
+            or correlation is None
+            or correlation.generation != submission.generation
+        ):
+            return False
+        events.append((event_kind, payload))
+        return True
+
+    def _render_assistant_runtime(
+        self,
+        snapshot: AssistantRuntimeSnapshot,
+    ) -> None:
+        if snapshot.phase in {
+            AssistantRuntimePhase.LOADING,
+            AssistantRuntimePhase.READY,
+        }:
+            if self.chat_panel and hasattr(self.chat_panel, "clear_runtime_notice"):
+                self.chat_panel.clear_runtime_notice()
+            self._runtime_unavailable_notice = None
+        if self.chat_panel:
+            safe_error = (
+                self._presentation.runtime_status_message(snapshot.error)
+                if snapshot.phase is AssistantRuntimePhase.FAILED
+                else ""
+            )
+            self.chat_panel.set_runtime_state(snapshot.phase.value, safe_error)
 
     def refresh_backend_status(self):
         """Refresh the compact backend/model status shown in the chat panel."""
@@ -976,247 +1535,217 @@ class AgentManager(QObject):
             return
 
         try:
-            state = self.application_service.get_state()
-            capabilities = self.application_service.get_capabilities()
-            enabled = self._product_next_steps(state, capabilities)
-            stage = workflow_stage_label(state)
-            model_config = LLMConfig.load_from_file() or LLMConfig()
-            selection = LLMConfig.assistant_runtime_selection_from(model_config)
-            model_ready = model_config.local_backend_ready(selection.model_id)
-            model_status = "Ready" if model_ready else "Setup needed"
-
-            train_capability = capabilities.get("train")
-            train_reasons = list(getattr(train_capability, "reasons", []) or [])
-            tooltip_lines = [
-                f"Workflow stage: {stage}",
-                "Options hold setup details.",
-                "Suggested next actions: "
-                + (", ".join(command_labels(enabled)) if enabled else "none"),
-            ]
-            if train_reasons:
-                tooltip_lines.append(
-                    "Train blocked: " + "; ".join(train_reasons),
-                )
-            if state.last_error:
-                tooltip_lines.append(f"Last workflow error: {state.last_error.message}")
-
-            blocked_reason = None
-            if train_reasons:
-                blocked_reason = "; ".join(train_reasons)
+            publication = self.application_service.get_view_publication()
+            projection = build_assistant_status_projection(publication)
+            self._assistant_status_projection = projection
+            runtime = self._assistant_runtime.current
+            model_status = (
+                "Unknown"
+                if not projection.usable
+                else {
+                    AssistantRuntimePhase.READY: "Ready",
+                    AssistantRuntimePhase.LOADING: "Loading",
+                    AssistantRuntimePhase.IDLE: "Setup needed",
+                    AssistantRuntimePhase.FAILED: "Setup needed",
+                }[runtime.phase]
+            )
 
             if hasattr(self.chat_panel, "set_product_status"):
                 self.chat_panel.set_product_status(
-                    stage=stage,
+                    stage=projection.stage,
                     model_status=model_status,
-                    available_commands=enabled,
-                    tooltip="\n".join(tooltip_lines),
-                    blocked_reason=blocked_reason,
+                    available_commands=list(projection.available_commands),
+                    tooltip=projection.tooltip,
+                    blocked_reason=projection.blocked_reason,
                 )
             else:
-                self.chat_panel.set_status_summary(stage, "\n".join(tooltip_lines))
+                self.chat_panel.set_status_summary(
+                    projection.stage,
+                    projection.tooltip,
+                )
 
             self.status_message_received.emit(
-                self._workflow_footer_hint(stage, enabled, blocked_reason),
+                projection.footer_hint,
             )
         except Exception as exc:
-            logger.debug("Failed to refresh backend status", exc_info=True)
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="agent_manager",
+                operation="refresh_backend_status",
+            )
+            self._assistant_status_projection = None
             self.chat_panel.set_status_summary(
                 "Workflow status unavailable",
-                f"Status refresh failed: {exc}",
+                self._presentation.status_refresh_error(),
             )
             self.status_message_received.emit(
                 "Workflow status unavailable · Try again",
             )
 
-    @staticmethod
-    def _workflow_footer_hint(
-        stage: str,
-        command_names: list[str],
-        blocked_reason: str | None = None,
-    ) -> str:
-        """Return a user-facing status-bar hint with no runtime diagnostics."""
-        labels = command_labels(command_names)
-        if labels:
-            if stage == "No data loaded" and labels[0] == "Scan data source":
-                return "No EEG data open · Scan a data source to begin"
-            return f"{stage} · {labels[0]}"
-        if blocked_reason:
-            return f"{stage} · Ask what is blocking training"
-        if stage == "No data loaded":
-            return "No EEG data open · Scan a data source to begin"
-        return f"{stage} · Ask what is ready"
-
-    @staticmethod
-    def _product_next_steps(state, capabilities) -> list[str]:
-        """Return the same next-step truth used by Workflow execution policy."""
-        command_name = recommended_next_step(state, capabilities)
-        if not command_name:
-            return []
-        capability = capabilities.get(command_name)
-        return [command_name] if getattr(capability, "enabled", False) else []
-
     def close(self) -> bool:
         """Clean up the agent controller resources."""
-        if self._agent_closed:
-            return True
-        self._agent_closed = bool(self._agent_dispatcher.close())
-        return self._agent_closed
+        self._workflow_ui_handoff_host.abandon_active()
+        downloads_idle = self._model_download_lifecycle.request_shutdown()
+        runtime_closed = self._assistant_runtime.close()
+        if runtime_closed:
+            terminal = self._assistant_turn_state.shutdown_terminal()
+            if terminal is not None:
+                self._on_assistant_turn_finished(terminal)
+        return runtime_closed and downloads_idle
 
-    def handle_user_interaction(self, command, params):
-        """Dispatch human-in-the-loop interaction requests.
-
-        Args:
-            command: The interaction command (e.g., ``"confirm_montage"``,
-                ``"switch_panel"``, ``"confirm_action"``).
-            params: Dictionary of parameters for the command.
-
-        """
-        if self.chat_panel and self._execution_mode == "multi":
-            workflow_status = {
-                "confirm_montage": "Choose a montage in the open dialog",
-                "switch_panel": "Continue in the opened XBrainLab panel",
-                "decision_required": "Complete the open XBrainLab dialog",
-                "open_existing_ui_surface": "Complete the open XBrainLab dialog",
-                "confirm_action": "Review the requested action",
-            }.get(command, "Complete the open XBrainLab dialog")
-            self.chat_panel.set_workflow_status(workflow_status)
-
-        if command == "confirm_montage":
-            self.open_montage_picker_dialog(params)
-        elif command == "switch_panel":
-            self.switch_panel(params)
-            tool_name = str(params.get("tool_name") or params.get("command") or "")
-            if tool_name:
-                self._route_existing_workflow_surface(tool_name)
-        elif command in {"decision_required", "open_existing_ui_surface"}:
-            tool_name = str(params.get("tool_name") or params.get("command") or "")
-            if self._route_existing_workflow_surface(tool_name):
-                self._show_low_priority_notice(
-                    "Continue in the opened settings, then return to the assistant."
-                )
-        elif command == "confirm_action":
-            if self._decision_requires_existing_ui(params):
-                tool_name = str(params.get("tool_name") or "")
-                if self._route_existing_workflow_surface(tool_name):
-                    self._show_low_priority_notice(
-                        "Continue in the opened settings, then return to the assistant."
-                    )
-                    self._agent_dispatcher.confirm(False)
-                    return
-            self._show_action_confirmation(params)
-
-    @staticmethod
-    def _decision_requires_existing_ui(params: dict) -> bool:
-        """Return whether a paused action needs an existing settings surface."""
-        boundary = str(params.get("decision_boundary") or "").lower()
-        return boundary in {
-            "user_decision_required",
-            "needs_data_source",
-            "configuration_required",
-            "settings_required",
-        }
-
-    def _route_existing_workflow_surface(self, tool_name: str) -> bool:
-        """Open the existing product UI for a workflow decision."""
-        return self._workflow_surface_router.open(tool_name)
-
-    def switch_panel(self, params):
-        """Switch the main window to a specified panel and optional sub-view.
-
-        Args:
-            params: Dictionary with ``"panel"`` (panel name) and optional
-                ``"view_mode"`` (sub-tab identifier).
-
-        """
-        panel_name = params.get("panel", "").lower()
-        view_mode = params.get("view_mode")
-        target_index = -1
-
-        if "dataset" in panel_name:
-            target_index = PANEL_DATASET
-        elif "preprocess" in panel_name:
-            target_index = PANEL_PREPROCESS
-        elif "training" in panel_name:
-            target_index = PANEL_TRAINING
-        elif "eval" in panel_name:
-            target_index = PANEL_EVALUATION
-        elif "visual" in panel_name:
-            target_index = PANEL_VISUALIZATION
-
-        if target_index >= 0:
-            self.main_window.switch_page(target_index)
-
-            # Handle sub-view switching
-            if view_mode:
-                self._switch_sub_view(target_index, view_mode)
-
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(
-                    f"Switched to {panel_name} "
-                    f"(View: {view_mode if view_mode else 'Default'})",
-                )
+    def handle_panel_navigation(self, payload: object) -> None:
+        """Open one controller-validated panel request without guessing payloads."""
+        if not isinstance(payload, AssistantPanelNavigationRequest):
+            logger.error(
+                "Ignored invalid assistant panel navigation: %s",
+                redact_public_text(payload),
+            )
+            self._show_low_priority_notice(
+                "The requested XBrainLab view could not be opened."
+            )
+            return
+        if payload.view_mode:
+            self._open_assistant_panel_target(
+                payload.target,
+                view_mode=payload.view_mode,
+            )
         else:
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(f"Error: Unknown panel '{panel_name}'")
-            # Notify user via chat
-            self.chat_controller.add_agent_message(
-                f"Error: Could not switch to {panel_name}",
+            self._open_assistant_panel_target(payload.target)
+
+    def handle_workflow_ui_handoff(self, payload: object) -> None:
+        """Route one typed backend workflow decision to existing product UI."""
+        if not isinstance(payload, WorkflowUiHandoffRequest):
+            logger.error(
+                "Ignored invalid workflow UI handoff: %s",
+                redact_public_text(payload),
             )
-
-    def _show_action_confirmation(self, params):
-        """Show a confirmation dialog for dangerous tool actions.
-
-        Presents a ``QMessageBox`` asking the user to approve or reject
-        an irreversible operation such as clearing data or starting
-        training.
-
-        Args:
-            params: Dictionary with ``"tool_name"``, ``"params"``, and
-                ``"description"`` keys from the controller.
-
-        """
-        tool_name = params.get("tool_name", "unknown")
-        action_label = tool_action_label(tool_name)
-        description = params.get("description", "")
-        tool_params = params.get("params", {})
-
-        detail = ""
-        if tool_params:
-            detail = "\n".join(
-                f"  {str(k).replace('_', ' ').title()}: {v}"
-                for k, v in tool_params.items()
+            self._show_low_priority_notice(
+                "The requested XBrainLab settings could not be opened."
             )
+            return
+        try:
+            resolution = self._workflow_ui_handoff_host.open(
+                payload,
+                on_terminal=self._handle_workflow_ui_handoff_terminal,
+            )
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="agent_manager",
+                operation="open_workflow_ui_handoff",
+            )
+            resolution = WorkflowUiHandoffResolution.for_request(
+                payload,
+                status=WorkflowUiHandoffResolutionStatus.FAILED,
+                message="The requested XBrainLab settings could not be opened.",
+            )
+        if not resolution.matches(payload):
+            logger.error("Ignored mismatched workflow UI handoff resolution")
+            self._show_low_priority_notice(
+                "The requested XBrainLab settings did not return a valid result."
+            )
+            return
+        self._forward_workflow_ui_handoff_resolution(resolution)
+
+    def _handle_workflow_ui_handoff_terminal(self, payload: object) -> bool:
+        """Forward one host-validated terminal callback to the runtime owner."""
+        if not isinstance(payload, WorkflowUiHandoffResolution):
+            logger.error(
+                "Ignored invalid terminal workflow UI handoff: %s",
+                redact_public_text(payload),
+            )
+            self._show_low_priority_notice(
+                "The XBrainLab settings command returned an invalid result."
+            )
+            return False
+        if not payload.status.is_terminal:
+            logger.error(
+                "Ignored nonterminal workflow UI callback: %s",
+                redact_public_text(payload.status),
+            )
+            return False
+        return self._forward_workflow_ui_handoff_resolution(payload)
+
+    def _forward_workflow_ui_handoff_resolution(
+        self,
+        resolution: WorkflowUiHandoffResolution,
+    ) -> bool:
+        accepted = self._surface_runtime_command_result(
+            self._assistant_runtime.resolve_ui_handoff(resolution),
+            fallback=(
+                "The assistant could not receive the completed XBrainLab settings step."
+            ),
+        )
+        if not accepted and not resolution.status.is_terminal:
+            self._workflow_ui_handoff_host.abandon_active()
+        return accepted
+
+    def _show_action_confirmation(self, request: object) -> None:
+        """Resolve one exact assistant-proposed action through a product dialog."""
+        if not isinstance(request, AgentConfirmationRequest):
+            logger.error(
+                "Ignored untyped assistant confirmation request: %s",
+                redact_public_text(request),
+            )
+            return
+
+        detail = "\n".join(
+            f"  {label}: {value}" for label, value in request.parameter_rows
+        )
 
         msg = QMessageBox(self.main_window)
-        msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setWindowTitle("Confirm Action")
+        msg.setIcon(
+            QMessageBox.Icon.Warning
+            if request.destructive
+            else QMessageBox.Icon.Question
+        )
+        msg.setWindowTitle(
+            "Confirm destructive action" if request.destructive else "Confirm action"
+        )
+        intro = (
+            "This action can remove or replace workspace data. "
+            "Review it before continuing:"
+            if request.destructive
+            else "The assistant is ready to run this action:"
+        )
         msg.setText(
-            "The assistant wants to run an action that may change your workspace:\n\n"
-            f"  Action: {action_label}\n"
-            f"  Details: {description or action_label}"
+            f"{intro}\n\n"
+            f"  Action: {request.action_label}\n"
+            f"  Details: {request.description}"
         )
         if detail:
             msg.setDetailedText(detail)
-        msg.setStandardButtons(
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        approve_button = msg.addButton(
+            request.action_label,
+            QMessageBox.ButtonRole.AcceptRole,
         )
-        msg.setDefaultButton(QMessageBox.StandardButton.No)
+        cancel_button = msg.addButton(
+            "Cancel",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        if approve_button is None or cancel_button is None:
+            raise RuntimeError("Confirmation dialog buttons could not be created.")
+        approve_button.setStyleSheet(
+            Stylesheets.BTN_DANGER if request.destructive else Stylesheets.BTN_PRIMARY
+        )
+        cancel_button.setStyleSheet(Stylesheets.BTN_GHOST)
+        msg.setDefaultButton(cancel_button)
+        msg.setEscapeButton(cancel_button)
 
-        result = msg.exec()
-        approved = result == QMessageBox.StandardButton.Yes
-
-        if approved:
-            self.chat_controller.add_agent_message(
-                f"Confirmed: {action_label}.",
-            )
-        else:
-            self.chat_controller.add_agent_message(
-                f"Cancelled: {action_label}.",
-            )
-
-        self._agent_dispatcher.confirm(approved)
+        msg.exec()
+        status = (
+            AgentConfirmationResolutionStatus.APPROVED
+            if msg.clickedButton() is approve_button
+            else AgentConfirmationResolutionStatus.CANCELLED
+        )
+        self._surface_runtime_command_result(
+            self._assistant_runtime.confirm(
+                AgentConfirmationResolution.for_request(request, status=status)
+            ),
+            fallback="The assistant could not receive your confirmation.",
+        )
 
     def _switch_sub_view(self, panel_index, view_mode):
         """Switch to a specific tab or view within a panel.
@@ -1246,199 +1775,6 @@ class AgentManager(QObject):
                 target_panel.tabs.setCurrentIndex(target_tab_index)
                 logger.info(
                     "Switched sub-view to %s (Tab %d)",
-                    view_mode,
+                    redact_public_text(view_mode),
                     target_tab_index,
                 )
-
-    def open_montage_picker_dialog(self, params):
-        """Open the montage picker dialog for channel configuration.
-
-        Presents a ``PickMontageDialog`` pre-populated with an optional
-        montage suggestion from the agent. Real Study-backed paths use the
-        ApplicationService command layer; compatibility mock paths may fall back to
-        the preprocess controller for test compatibility.
-
-        Args:
-            params: Dictionary with optional ``"montage_name"`` key.
-
-        """
-        montage_name = params.get("montage_name")  # Pre-selected montage from Agent
-
-        capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
-        if capability is not None and not capability.enabled:
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(
-                    blocked_reason(
-                        capability,
-                        "Create epochs before applying a montage.",
-                    ),
-                )
-            return
-
-        chs = self._montage_channel_names_for_dialog()
-        if chs is None:
-            return
-        if not chs:
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(
-                    "No epoch channel names are available for montage setup."
-                )
-            return
-
-        dialog = PickMontageDialog(self.main_window, chs, default_montage=montage_name)
-
-        if dialog.exec():
-            chs, positions = dialog.get_result()
-            if chs and positions is not None:
-                try:
-                    normalized_positions = normalize_montage_positions(chs, positions)
-                except Exception as exc:
-                    sb = self.main_window.statusBar()
-                    if sb:
-                        sb.showMessage(f"Montage setup failed: {exc}")
-                    return
-
-                result = execute_application_command(
-                    self,
-                    ApplyMontageCommand(
-                        channels=list(chs),
-                        positions=normalized_positions,
-                        montage_name=montage_name,
-                    ),
-                )
-                if result is None:
-                    if not self._compatibility_apply_montage_selection(chs, positions):
-                        return
-                elif result.failed:
-                    sb = self.main_window.statusBar()
-                    if sb:
-                        sb.showMessage(f"Error: {result.message}")
-                    self.handle_user_input("Montage Selection Failed.")
-                    return
-                self.chat_controller.add_agent_message("Montage Confirmed.")
-
-                # If in Debug Mode, do NOT trigger LLM generation loop
-                # (avoids double tool execution)
-                is_debug = False
-                if (
-                    self.chat_panel
-                    and hasattr(self.chat_panel, "debug_mode")
-                    and self.chat_panel.debug_mode
-                ):
-                    is_debug = True
-
-                if is_debug:
-                    # Just add to history visually, don't trigger Agent
-                    self.chat_controller.add_user_message("Montage Confirmed.")
-                else:
-                    # Normal mode: Tell Agent user confirmed, enabling it to continue
-                    self.handle_user_input("Montage Confirmed.")
-            else:
-                sb = self.main_window.statusBar()
-                if sb:
-                    sb.showMessage("Error: No valid montage configuration")
-                self.handle_user_input("Montage Selection Failed.")
-        else:
-            self.chat_controller.add_agent_message("Operation Cancelled.")
-            self.handle_user_input("Montage Selection Cancelled by User.")
-
-    def _compatibility_apply_montage_selection(self, chs, positions) -> bool:
-        """Apply montage only for mock / compatibility UI contexts."""
-        controller = self.preprocess_controller
-        if controller is None:
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(
-                    "Montage setup blocked: controller compatibility unavailable.",
-                )
-            self.handle_user_input("Montage Selection Failed.")
-            return False
-        try:
-            run_controller_compatibility_call(
-                self,
-                lambda: controller.apply_montage(
-                    chs,
-                    positions,
-                ),
-            )
-        except ControllerCompatibilityUnavailableError as exc:
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(f"Montage setup blocked: {exc}")
-            self.handle_user_input("Montage Selection Failed.")
-            return False
-        return True
-
-    def _montage_channel_names_for_dialog(self) -> list[str] | None:
-        """Return montage channel names through the command spine when available."""
-        result = execute_application_command(
-            self,
-            QueryStateCommand(query="state"),
-            refresh=False,
-        )
-        if result is None:
-            return self._compatibility_montage_channel_names_for_dialog()
-        if result.failed:
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(f"Montage setup blocked: {result.message}")
-            self.handle_user_input("Montage Selection Failed.")
-            return None
-
-        diagnostics = getattr(result, "diagnostics", {}) or {}
-        state = diagnostics.get("state")
-        epoch = state.get("epoch") if isinstance(state, dict) else {}
-        channel_names = epoch.get("channel_names") if isinstance(epoch, dict) else None
-        if not isinstance(channel_names, list):
-            return []
-        return [str(name) for name in channel_names]
-
-    def _compatibility_montage_channel_names_for_dialog(self) -> list[str] | None:
-        """Return montage channel names only for mock / compatibility UI contexts."""
-        try:
-            return run_controller_compatibility_call(
-                self,
-                self._compatibility_montage_channel_names,
-            )
-        except ControllerCompatibilityUnavailableError as exc:
-            sb = self.main_window.statusBar()
-            if sb:
-                sb.showMessage(f"Montage setup blocked: {exc}")
-            self.handle_user_input("Montage Selection Failed.")
-            return None
-
-    def _compatibility_montage_channel_names(self) -> list[str]:
-        """Read montage channel names only for mock / compatibility UI contexts."""
-        epoch_data = self.study.epoch_data
-        if not epoch_data:
-            return []
-
-        getter = getattr(epoch_data, "get_channel_names", None)
-        if callable(getter):
-            try:
-                names = getter()
-                if isinstance(names, list | tuple):
-                    return [str(name) for name in names]
-            except Exception:
-                logger.debug(
-                    "Compatibility montage channel-name getter failed",
-                    exc_info=True,
-                )
-
-        try:
-            mne_obj = epoch_data.get_mne()
-        except Exception:
-            return []
-
-        names = getattr(mne_obj, "ch_names", None)
-        if isinstance(names, list | tuple):
-            return [str(name) for name in names]
-
-        info = getattr(mne_obj, "info", None)
-        if isinstance(info, dict):
-            info_names = info.get("ch_names")
-            if isinstance(info_names, list | tuple):
-                return [str(name) for name in info_names]
-        return []

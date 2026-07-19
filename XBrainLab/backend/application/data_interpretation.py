@@ -23,6 +23,7 @@ MetadataFieldResolution = _metadata.MetadataFieldResolution
 ScanResult = _scan.ScanResult
 ValidationDecision = _review.ValidationDecision
 build_interpretation_candidate = _candidate.build_interpretation_candidate
+resolve_interpretation_resource_scope = _candidate.resolve_interpretation_resource_scope
 build_import_recipe = _recipe.build_import_recipe
 choices_from_import_recipe = _recipe.choices_from_import_recipe
 build_interpretation_preview = _review.build_interpretation_preview

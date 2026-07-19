@@ -7,9 +7,12 @@ and enable independent testing.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QMessageBox
+
+from XBrainLab.llm.agent.runtime_state import AssistantRuntimeSnapshot
 
 if TYPE_CHECKING:
     from typing import Any
@@ -26,18 +29,18 @@ class VRAMConflictChecker:
 
     Attributes:
         main_window: The application main window (used to query viz state).
-        agent_controller_ref: Callable returning the current
-            :class:`LLMController`, or ``None``.
+        runtime_snapshot_ref: Callable returning the latest immutable UI-side
+            assistant runtime snapshot.
 
     """
 
     def __init__(
         self,
         main_window: Any,
-        agent_controller_ref: Any,
+        runtime_snapshot_ref: Callable[[], AssistantRuntimeSnapshot],
     ) -> None:
         self.main_window = main_window
-        self._get_controller = agent_controller_ref
+        self._get_runtime_snapshot = runtime_snapshot_ref
 
     # ------------------------------------------------------------------
     # Public API
@@ -87,19 +90,15 @@ class VRAMConflictChecker:
     def _is_local_mode(self, switching_to_local: bool) -> bool:
         if switching_to_local:
             return True
-        controller = self._get_controller()
-        if controller:
-            try:
-                snapshot = controller.runtime_snapshot()
-                return bool(snapshot.get("initialized")) and (
-                    snapshot.get("backend_mode") == "local"
-                )
-            except Exception:
-                logger.debug(
-                    "Assistant runtime state unavailable, skipping local mode check",
-                    exc_info=True,
-                )
-        return False
+        try:
+            snapshot = self._get_runtime_snapshot()
+        except Exception:
+            logger.debug(
+                "Assistant runtime state unavailable, skipping local mode check",
+                exc_info=True,
+            )
+            return False
+        return snapshot.initialized and snapshot.backend_mode == "local"
 
     def _is_3d_active(self, switching_to_3d: bool) -> bool:
         viz_panel = getattr(self.main_window, "visualization_panel", None)

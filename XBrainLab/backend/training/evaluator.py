@@ -12,16 +12,12 @@ from captum.attr import NoiseTunnel, Saliency
 from sklearn.metrics import roc_auc_score
 
 from .record import EvalRecord, RecordKey
+from .saliency_artifact_integrity import normalize_saliency_method_parameters
 
 
 class Evaluator:
     """Helper class for model evaluation, testing, and metric computation."""
 
-    _DEFAULT_NOISE_TUNNEL_PARAMS: ClassVar[dict[str, Any]] = {
-        "nt_samples": 5,
-        "nt_samples_batch_size": None,
-        "stdevs": 1.0,
-    }
     _ALL_SALIENCY_METHODS: ClassVar[tuple[str, ...]] = (
         "Gradient",
         "Gradient * Input",
@@ -61,11 +57,18 @@ class Evaluator:
         saliency_params: dict,
         method: str,
     ) -> dict[str, Any]:
-        params = dict(Evaluator._DEFAULT_NOISE_TUNNEL_PARAMS)
-        value = saliency_params.get(method)
-        if isinstance(value, dict):
-            params.update(value)
-        return params
+        return normalize_saliency_method_parameters(
+            method,
+            saliency_params.get(method),
+        )
+
+    @staticmethod
+    def _noise_seed(model: torch.nn.Module) -> int:
+        """Capture the active generator seed before NoiseTunnel attribution."""
+        device = Evaluator._model_device(model)
+        if getattr(device, "type", None) == "cuda":
+            return int(torch.cuda.initial_seed())
+        return int(torch.initial_seed())
 
     @staticmethod
     def _selected_saliency_methods(saliency_params: dict) -> set[str]:
@@ -293,6 +296,14 @@ class Evaluator:
             method in selected_methods for method in Evaluator._NOISE_TUNNEL_METHODS
         )
         compute_any_saliency = compute_any_gradient or compute_any_noise
+        effective_parameters = {
+            method: normalize_saliency_method_parameters(
+                method,
+                saliency_params.get(method),
+            )
+            for method in selected_methods
+        }
+        noise_seed = Evaluator._noise_seed(model) if compute_any_noise else None
 
         output_list = []
         label_list = []
@@ -345,6 +356,7 @@ class Evaluator:
                             batch_inputs,
                             target=target_labels,
                             nt_type="smoothgrad",
+                            abs=False,
                             **Evaluator._noise_tunnel_params(
                                 saliency_params,
                                 "SmoothGrad",
@@ -359,6 +371,7 @@ class Evaluator:
                             batch_inputs,
                             target=target_labels,
                             nt_type="smoothgrad_sq",
+                            abs=False,
                             **Evaluator._noise_tunnel_params(
                                 saliency_params,
                                 "SmoothGrad_Squared",
@@ -373,6 +386,7 @@ class Evaluator:
                             batch_inputs,
                             target=target_labels,
                             nt_type="vargrad",
+                            abs=False,
                             **Evaluator._noise_tunnel_params(
                                 saliency_params,
                                 "VarGrad",
@@ -411,4 +425,13 @@ class Evaluator:
             _by_class(smoothgrad_sq_values, label_list, num_classes),
             _by_class(vargrad_values, label_list, num_classes),
             evaluation_split=evaluation_split,
+            saliency_method_parameters=effective_parameters,
+            saliency_noise_seeds=(
+                {
+                    method: noise_seed
+                    for method in selected_methods
+                    if method in Evaluator._NOISE_TUNNEL_METHODS
+                    and noise_seed is not None
+                }
+            ),
         )

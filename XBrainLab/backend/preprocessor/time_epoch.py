@@ -5,6 +5,7 @@ import numpy as np
 
 from ..load_data import Raw
 from .base import PreprocessBase
+from .normalize import Normalize
 
 
 class TimeEpoch(PreprocessBase):
@@ -23,6 +24,24 @@ class TimeEpoch(PreprocessBase):
 
         """
         super().check_data()
+        sampling_frequencies = [
+            float(data.get_sfreq()) for data in self.preprocessed_data_list
+        ]
+        if sampling_frequencies and not np.allclose(
+            sampling_frequencies,
+            sampling_frequencies[0],
+            rtol=1e-9,
+            atol=1e-9,
+        ):
+            distinct_frequencies = sorted(set(sampling_frequencies))
+            frequencies = ", ".join(
+                f"{frequency:g} Hz" for frequency in distinct_frequencies
+            )
+            raise ValueError(
+                "Loaded EEG files use different sampling frequencies "
+                f"({frequencies}). Resample them to one shared rate before "
+                "creating epochs."
+            )
         for preprocessed_data in self.preprocessed_data_list:
             if not preprocessed_data.is_raw():
                 raise ValueError("Only raw data can be epoched, got epochs")
@@ -53,6 +72,24 @@ class TimeEpoch(PreprocessBase):
 
         """
         return f"Epoching {tmin} ~ {tmax} by event ({baseline} baseline)"
+
+    def data_preprocess(
+        self,
+        baseline: list | tuple | None,
+        selected_event_names: list | None,
+        tmin: float,
+        tmax: float,
+    ) -> list[Raw]:
+        """Create epochs, then apply any leakage-safe normalization request."""
+        result = super().data_preprocess(
+            baseline,
+            selected_event_names,
+            tmin,
+            tmax,
+        )
+        for preprocessed_data in result:
+            Normalize.apply_pending_epoch_normalization(preprocessed_data)
+        return result
 
     def _data_preprocess(
         self,
@@ -108,8 +145,23 @@ class TimeEpoch(PreprocessBase):
                 "Data is already epoched. Cannot perform TimeEpoch on epoched data.",
             )
 
+        mne_raw = preprocessed_data.get_mne()
+        boundary_drop_count = self._boundary_drop_count(
+            mne_raw,
+            selected_events,
+            tmin=tmin,
+            tmax=tmax,
+        )
+        if boundary_drop_count:
+            suffix = "" if boundary_drop_count == 1 else "s"
+            raise ValueError(
+                f"Epoch window {tmin} to {tmax} seconds exceeds recording "
+                f"bounds for {boundary_drop_count} selected event{suffix}. "
+                "Shorten the epoch window before creating epochs."
+            )
+
         data = mne.Epochs(
-            preprocessed_data.get_mne(),
+            mne_raw,
             selected_events,
             event_id=selected_event_id,
             tmin=tmin,
@@ -118,6 +170,12 @@ class TimeEpoch(PreprocessBase):
             preload=True,
             event_repeated="drop",
         )
+        if len(data) == 0:
+            raise ValueError(
+                "No usable epochs remain after MNE rejected the selected "
+                "events. Adjust the epoch window or review bad annotations "
+                "before creating epochs."
+            )
 
         # FIX: Clear raw events to prevent set_mne from overwriting the correct
         # epoch events with the original (larger) raw events list.
@@ -125,3 +183,23 @@ class TimeEpoch(PreprocessBase):
         preprocessed_data.raw_event_id = None
 
         preprocessed_data.set_mne(data)
+
+    @staticmethod
+    def _boundary_drop_count(
+        mne_raw,
+        selected_events: np.ndarray,
+        *,
+        tmin: float,
+        tmax: float,
+    ) -> int:
+        """Count selected events whose fixed window exceeds recording bounds."""
+        sfreq = float(mne_raw.info["sfreq"])
+        start_offset = round(float(tmin) * sfreq)
+        stop_offset = round(float(tmax) * sfreq)
+        first_sample = int(mne_raw.first_samp)
+        last_sample = int(mne_raw.last_samp)
+        event_samples = selected_events[:, 0].astype(int, copy=False)
+        outside = (event_samples + start_offset < first_sample) | (
+            event_samples + stop_offset > last_sample
+        )
+        return int(np.count_nonzero(outside))

@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from . import data_interpretation_internal_events as _internal_events
+from .data_interpretation_bids import review_strict_bids_event_runs
+from .data_interpretation_bids_channels import review_bids_channel_sidecars
+from .data_interpretation_bids_resources import (
+    BidsEventsJsonReader,
+    bids_events_json_resource_paths,
+)
+from .data_interpretation_content_identity import build_review_content_identity
+from .data_interpretation_event_values import derive_class_views
 from .data_interpretation_label_carriers import (
     build_label_carrier_plan as _build_label_carrier_plan,
-)
-from .data_interpretation_label_carriers import (
-    infer_class_map_from_label_carrier_plan as _infer_class_map_from_label_carrier_plan,
 )
 from .data_interpretation_label_carriers import (
     normalize_label_carrier_choices as _normalize_label_carrier_choices,
@@ -23,13 +28,22 @@ from .data_interpretation_metadata import (
     bids_scope_summary,
 )
 from .data_interpretation_pairing import resolve_label_file_pairing
+from .data_interpretation_path_identity import (
+    resolve_scan_path,
+    unresolved_scan_path_descriptions,
+)
 from .data_interpretation_placement import (
     annotate_label_carrier_placements as _annotate_label_carrier_placements,
 )
 from .data_interpretation_placement import (
     placement_confirmation_items as _placement_confirmation_items,
 )
+from .data_interpretation_resource_reader import AdmittedResourceReader
 from .data_interpretation_scan import ScanResult
+from .eeglab_set_preflight import eeglab_external_data_dependency
+from .errors import PreconditionError
+
+BRAINVISION_HEADER_MAX_BYTES = 1_048_576
 
 
 @dataclass(frozen=True)
@@ -59,19 +73,45 @@ class InterpretationCandidate:
     confirmation_items: list[str] = dc_field(default_factory=list)
     blocked_reasons: list[str] = dc_field(default_factory=list)
     choices: dict[str, Any] = dc_field(default_factory=dict)
+    content_identity: dict[str, Any] = dc_field(default_factory=dict)
     recipe_trace: list[str] = dc_field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
 
 
-def build_interpretation_candidate(
-    *,
-    candidate_id: str,
+@dataclass(frozen=True)
+class InterpretationResourceScope:
+    """EEG and external label paths that one preview may materialize."""
+
+    selected_eeg_files: list[str] = dc_field(default_factory=list)
+    materializable_eeg_files: list[str] = dc_field(default_factory=list)
+    eeg_dependency_files: list[str] = dc_field(default_factory=list)
+    eeg_dependencies_by_file: dict[str, list[str]] = dc_field(default_factory=dict)
+    label_carriers: list[str] = dc_field(default_factory=list)
+    bids_events_json_files: list[str] = dc_field(default_factory=list)
+    bids_channels_files: list[str] = dc_field(default_factory=list)
+
+    @property
+    def paths(self) -> list[str]:
+        result: list[str] = []
+        for path in [
+            *self.materializable_eeg_files,
+            *self.eeg_dependency_files,
+            *self.label_carriers,
+            *self.bids_events_json_files,
+            *self.bids_channels_files,
+        ]:
+            if path not in result:
+                result.append(path)
+        return result
+
+
+def resolve_interpretation_resource_scope(
     scan: ScanResult,
     choices: dict[str, Any] | None = None,
-) -> InterpretationCandidate:
-    """Build a candidate interpretation from a scan result and user choices."""
+) -> InterpretationResourceScope:
+    """Resolve preview paths without reading EEG or label payloads."""
     choices = dict(choices or {})
     eeg_file_remap = _string_mapping(choices.get("eeg_file_remap"))
     raw_selected_files = [
@@ -84,33 +124,18 @@ def build_interpretation_candidate(
         else list(scan.eeg_files)
     )
     selected_files = _resolve_selected_files_to_scan(selected_files, scan.eeg_files)
-    blocked_reasons = list(scan.blocked_reasons)
-    warnings = list(scan.warnings)
-    confirmation_items: list[str] = []
-    event_roles: dict[str, str] = {}
+    materializable_files = [
+        file_path for file_path in selected_files if file_path in set(scan.eeg_files)
+    ]
+    eeg_dependencies_by_file = _eeg_dependencies_by_file(materializable_files)
+    eeg_dependency_files = [
+        dependency
+        for dependencies in eeg_dependencies_by_file.values()
+        for dependency in dependencies
+    ]
     skip_labels = bool(choices.get("skip_labels"))
-    class_map: dict[str, str] = (
-        {} if skip_labels else _string_mapping(choices.get("class_map"))
-    )
-    run_event_mappings = (
-        {} if skip_labels else _nested_string_mapping(choices.get("run_event_mappings"))
-    )
-    class_map_source = "user_choices" if class_map else ""
-    metadata = _metadata_for_selected_files(
-        scan.metadata,
-        selected_files,
-        restrict=bool(raw_selected_files),
-    )
-    metadata = _apply_metadata_overrides(
-        metadata,
-        _remapped_metadata_overrides(
-            choices.get("metadata_overrides"),
-            eeg_file_remap,
-        ),
-    )
-    label_carrier_source = _label_carrier_source_choice(choices)
     use_external_label_carriers = (
-        label_carrier_source != "embedded_events" and not skip_labels
+        _label_carrier_source_choice(choices) != "embedded_events" and not skip_labels
     )
     excluded_label_carriers = (
         [] if skip_labels else _string_list(choices.get("excluded_label_carriers"))
@@ -126,6 +151,76 @@ def build_interpretation_candidate(
         scan.bids,
         bids,
     )
+    return InterpretationResourceScope(
+        selected_eeg_files=selected_files,
+        materializable_eeg_files=materializable_files,
+        eeg_dependency_files=eeg_dependency_files,
+        eeg_dependencies_by_file=eeg_dependencies_by_file,
+        label_carriers=active_label_carriers,
+        bids_events_json_files=bids_events_json_resource_paths(
+            active_label_carriers,
+        ),
+        bids_channels_files=_selected_bids_channels_files(bids),
+    )
+
+
+def build_interpretation_candidate(
+    *,
+    candidate_id: str,
+    scan: ScanResult,
+    choices: dict[str, Any] | None = None,
+    bids_events_json_reader: BidsEventsJsonReader | None = None,
+    resource_reader: AdmittedResourceReader | None = None,
+) -> InterpretationCandidate:
+    """Build a candidate interpretation from a scan result and user choices."""
+    choices = dict(choices or {})
+    resource_scope = resolve_interpretation_resource_scope(scan, choices)
+    if resource_reader is not None:
+        resource_reader = resource_reader.with_dependent_files(
+            resource_scope.eeg_dependencies_by_file,
+        )
+    sidecar_reader = bids_events_json_reader or BidsEventsJsonReader.from_paths(
+        resource_scope.bids_events_json_files,
+    )
+    eeg_file_remap = _string_mapping(choices.get("eeg_file_remap"))
+    raw_selected_files = [
+        str(item)
+        for item in choices.get("eeg_files", choices.get("selected_eeg_files", []))
+    ]
+    selected_files = list(resource_scope.selected_eeg_files)
+    materializable_files = list(resource_scope.materializable_eeg_files)
+    blocked_reasons = list(scan.blocked_reasons)
+    warnings = list(scan.warnings)
+    confirmation_items: list[str] = []
+    event_roles: dict[str, str] = {}
+    skip_labels = bool(choices.get("skip_labels"))
+    legacy_class_map = {} if skip_labels else _string_mapping(choices.get("class_map"))
+    class_map: dict[str, str] = {}
+    run_event_mappings = (
+        {} if skip_labels else _nested_string_mapping(choices.get("run_event_mappings"))
+    )
+    class_map_source = ""
+    metadata = _metadata_for_selected_files(
+        scan.metadata,
+        selected_files,
+        restrict=bool(raw_selected_files),
+    )
+    metadata = _apply_metadata_overrides(
+        metadata,
+        _remapped_metadata_overrides(
+            choices.get("metadata_overrides"),
+            eeg_file_remap,
+        ),
+    )
+    label_carrier_source = _label_carrier_source_choice(choices)
+    if label_carrier_source == "embedded_events" and legacy_class_map:
+        class_map = legacy_class_map
+        class_map_source = "user_choices"
+    use_external_label_carriers = (
+        label_carrier_source != "embedded_events" and not skip_labels
+    )
+    active_label_carriers = list(resource_scope.label_carriers)
+    bids = _bids_for_selected_scope(scan.bids, selected_files)
     if (
         scan.source_kind == "bids"
         and scan.bids.get("is_bids")
@@ -149,19 +244,35 @@ def build_interpretation_candidate(
         active_label_carriers,
         label_carrier_choices,
         carrier_sources=scan.label_carrier_sources,
+        sidecar_reader=sidecar_reader,
+        resource_reader=resource_reader,
     )
     warnings.extend(_label_carrier_plan_warnings(label_carrier_plan))
-    if not class_map and use_external_label_carriers:
-        class_map = _infer_class_map_from_label_carrier_plan(label_carrier_plan)
-        if class_map:
-            class_map_source = "label_carriers"
+    if use_external_label_carriers:
+        class_map, _run_class_maps = derive_class_views(label_carrier_plan)
+        if any(
+            isinstance(plan.get("run_class_map"), dict)
+            and bool(plan.get("run_class_map"))
+            for plan in label_carrier_plan
+        ):
+            class_map_source = "value_decisions"
+        for plan in label_carrier_plan:
+            unresolved = [
+                str(value)
+                for value in plan.get("unresolved_values", [])
+                if str(value).strip()
+            ]
+            if not unresolved:
+                continue
+            blocked_reasons.append(
+                "Observed event values require complete role/keep/class decisions "
+                f"for {Path(str(plan.get('path') or '')).name}: "
+                + ", ".join(unresolved)
+                + "."
+            )
 
     if active_label_carriers:
         event_roles["label_carrier"] = "external label or event source"
-        confirmation_items.append(
-            "Confirm label carrier alignment, anchor event, and class map "
-            "before applying.",
-        )
     internal_event_preview: dict[str, Any] = {}
     if skip_labels:
         internal_event_selection: dict[str, Any] = {}
@@ -189,19 +300,31 @@ def build_interpretation_candidate(
             else {}
         )
     else:
-        extensions = {Path(item).suffix.lower() for item in selected_files}
+        extensions = {Path(item).suffix.lower() for item in materializable_files}
         internal_event_preview = _internal_events.build_internal_event_preview(
-            selected_files
+            materializable_files,
+            resource_reader=resource_reader,
         )
         internal_event_warnings = internal_event_preview.get("scan_warnings", [])
         if isinstance(internal_event_warnings, list):
             warnings.extend(str(item) for item in internal_event_warnings)
         if internal_event_preview.get("run_dependent_semantics"):
             event_roles["run_dependent_events"] = "run/task mapping needs confirmation"
-            if not run_event_mappings:
+            run_mapping_review = _internal_events.review_run_dependent_event_mappings(
+                internal_event_preview,
+                materializable_files,
+                run_event_mappings,
+            )
+            internal_event_preview["run_event_mapping_review"] = run_mapping_review
+            if run_mapping_review["status"] == "needs_confirmation":
+                affected = [
+                    (f"{row['file']} missing {', '.join(row['missing_event_codes'])}")
+                    for row in run_mapping_review["files"]
+                    if row["missing_event_codes"]
+                ]
                 confirmation_items.append(
                     "Confirm run-dependent T1/T2 event mapping before supervised "
-                    "training.",
+                    "training: " + "; ".join(affected) + ".",
                 )
         has_internal_event_rows = bool(
             internal_event_preview.get("candidate_label_events")
@@ -240,11 +363,37 @@ def build_interpretation_candidate(
         label_carrier_plan,
         internal_event_preview,
     )
+    if (
+        scan.source_kind == "bids"
+        and bids.get("is_bids")
+        and use_external_label_carriers
+    ):
+        bids_review = review_strict_bids_event_runs(
+            bids=bids,
+            selected_eeg_files=selected_files,
+            label_carrier_plan=label_carrier_plan,
+            resource_reader=resource_reader,
+        )
+        label_carrier_plan = bids_review.label_carrier_plan
+        if bids_review.evidence:
+            bids["event_validation"] = bids_review.evidence
+        blocked_reasons.extend(bids_review.blocked_reasons)
+        confirmation_items.extend(bids_review.confirmation_items)
+        warnings.extend(bids_review.warnings)
+    if scan.source_kind == "bids" and bids.get("is_bids"):
+        channel_review = review_bids_channel_sidecars(
+            bids=bids,
+            selected_eeg_files=selected_files,
+            resource_reader=resource_reader,
+        )
+        bids["channel_review"] = channel_review.to_dict()
+        blocked_reasons.extend(channel_review.blocked_reasons)
+        warnings.extend(channel_review.warnings)
     blocked_reasons.extend(_blocked_placement_reasons(label_carrier_plan))
     confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
 
     for item in metadata:
-        fields = (item.subject, item.session, item.task, item.run)
+        fields = (item.subject, item.task)
         confirmation_items.extend(
             f"Confirm {field_value.field} metadata for {Path(item.file).name}."
             for field_value in fields
@@ -284,6 +433,29 @@ def build_interpretation_candidate(
         if not pairing.complete:
             blocked_reasons.append(pairing.blocking_reason())
 
+    identity_eeg_files = [
+        path for path in resource_scope.materializable_eeg_files if Path(path).is_file()
+    ]
+    content_identity = build_review_content_identity(
+        label_carrier_plan=label_carrier_plan,
+        selected_eeg_files=identity_eeg_files,
+        eeg_parser_dependencies=resource_scope.eeg_dependencies_by_file,
+        bids_events_json_files=resource_scope.bids_events_json_files,
+        bids_channels_files=resource_scope.bids_channels_files,
+        admitted_file_identities=sidecar_reader.content_identities(
+            resource_scope.bids_events_json_files,
+        ),
+        class_map=class_map,
+        event_roles=event_roles,
+        run_event_mappings=run_event_mappings,
+        resource_reader=resource_reader,
+    )
+    content_trace = (
+        [f"content:{content_identity['scope_sha256']}"]
+        if content_identity.get("files")
+        else []
+    )
+
     return InterpretationCandidate(
         candidate_id=candidate_id,
         scan_id=scan.scan_id,
@@ -310,10 +482,12 @@ def build_interpretation_candidate(
         confirmation_items=confirmation_items,
         blocked_reasons=sorted(set(blocked_reasons)),
         choices=choices,
+        content_identity=content_identity,
         recipe_trace=[
             f"scan:{scan.scan_id}",
             f"candidate:{candidate_id}",
             *_choice_recipe_trace(choices),
+            *content_trace,
         ],
     )
 
@@ -373,6 +547,192 @@ def _bids_for_selected_scope(
         rows = [dict(item) for item in layout if isinstance(item, dict)]
         result["selected_scope"] = bids_scope_summary(selected_files, rows)
     return result
+
+
+def _selected_bids_channels_files(bids: dict[str, Any]) -> list[str]:
+    selected_scope = bids.get("selected_scope")
+    if not isinstance(selected_scope, dict):
+        return []
+    return [
+        str(path)
+        for path in selected_scope.get("channels_files", [])
+        if str(path).strip() and Path(str(path)).is_file()
+    ]
+
+
+def _eeg_dependencies_by_file(eeg_files: list[str]) -> dict[str, list[str]]:
+    dependencies_by_file: dict[str, list[str]] = {}
+    for eeg_file in eeg_files:
+        eeg_path = Path(eeg_file)
+        if not eeg_path.is_file():
+            continue
+        suffix = eeg_path.suffix.casefold()
+        if suffix == ".set":
+            dependency = eeglab_external_data_dependency(eeg_file)
+            dependencies = [dependency] if dependency else []
+        elif suffix == ".vhdr":
+            dependencies = _brainvision_parser_dependencies(eeg_file)
+        else:
+            dependencies = []
+        if dependencies:
+            dependencies_by_file[str(Path(eeg_file).resolve(strict=False))] = list(
+                dict.fromkeys(dependencies)
+            )
+    return dependencies_by_file
+
+
+def _brainvision_parser_dependencies(vhdr_file: str) -> list[str]:
+    """Resolve BrainVision data/marker references from one bounded text header."""
+    path = Path(vhdr_file).expanduser()
+    try:
+        with path.open("rb") as handle:
+            payload = handle.read(BRAINVISION_HEADER_MAX_BYTES + 1)
+    except OSError as exc:
+        raise PreconditionError(
+            f"BrainVision header dependencies could not be inspected: {path}.",
+            diagnostics={
+                "code": "brainvision_dependency_header_unavailable",
+                "path": str(path.resolve(strict=False)),
+                "os_error": str(exc),
+            },
+        ) from exc
+    if len(payload) > BRAINVISION_HEADER_MAX_BYTES:
+        raise PreconditionError(
+            f"BrainVision header exceeds the bounded dependency read limit: {path}.",
+            diagnostics={
+                "code": "brainvision_dependency_header_too_large",
+                "path": str(path.resolve(strict=False)),
+                "max_bytes": BRAINVISION_HEADER_MAX_BYTES,
+            },
+        )
+    text = _decode_brainvision_header(payload)
+    references = _brainvision_common_info_references(text)
+    dependencies: list[str] = []
+    for key, expected_suffix in (("datafile", ".eeg"), ("markerfile", ".vmrk")):
+        reference = references.get(key)
+        if not reference:
+            continue
+        dependency = _resolve_brainvision_reference(
+            header_path=path,
+            reference=reference,
+            expected_suffix=expected_suffix,
+        )
+        dependencies.append(str(dependency))
+    return dependencies
+
+
+def _decode_brainvision_header(payload: bytes) -> str:
+    try:
+        return payload.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return payload.decode("cp1252", errors="replace")
+
+
+def _brainvision_common_info_references(text: str) -> dict[str, str]:
+    section = ""
+    references: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(";"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip().casefold()
+            continue
+        if section != "common infos" or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        normalized_key = key.strip().casefold()
+        if normalized_key in {"datafile", "markerfile"}:
+            references[normalized_key] = value.strip()
+    return references
+
+
+def _resolve_brainvision_reference(
+    *,
+    header_path: Path,
+    reference: str,
+    expected_suffix: str,
+) -> Path:
+    normalized = reference.strip().strip('"').strip("\x00").replace("\\", "/")
+    relative = Path(normalized)
+    windows_path = PureWindowsPath(normalized)
+    if (
+        not normalized
+        or windows_path.drive
+        or relative.is_absolute()
+        or any(part in {"", ".", ".."} for part in relative.parts)
+    ):
+        raise _brainvision_dependency_error(
+            header_path,
+            reference,
+            "The dependency reference must be a safe relative path.",
+        )
+    if relative.suffix.casefold() != expected_suffix:
+        raise _brainvision_dependency_error(
+            header_path,
+            reference,
+            f"The dependency reference must name a {expected_suffix} file.",
+        )
+
+    root = header_path.parent.resolve()
+    current = root
+    for part in relative.parts:
+        exact = current / part
+        if exact.exists():
+            current = exact
+            continue
+        try:
+            matches = [
+                child
+                for child in current.iterdir()
+                if child.name.casefold() == part.casefold()
+            ]
+        except OSError as exc:
+            raise _brainvision_dependency_error(
+                header_path,
+                reference,
+                "The dependency directory could not be inspected.",
+            ) from exc
+        if len(matches) != 1:
+            raise _brainvision_dependency_error(
+                header_path,
+                reference,
+                "The dependency file was not found uniquely.",
+            )
+        current = matches[0]
+    try:
+        resolved = current.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise _brainvision_dependency_error(
+            header_path,
+            reference,
+            "The dependency escapes the BrainVision header folder.",
+        ) from exc
+    if not resolved.is_file():
+        raise _brainvision_dependency_error(
+            header_path,
+            reference,
+            "The dependency is not a regular file.",
+        )
+    return resolved
+
+
+def _brainvision_dependency_error(
+    header_path: Path,
+    reference: str,
+    reason: str,
+) -> PreconditionError:
+    return PreconditionError(
+        f"BrainVision parser dependency could not be admitted for {header_path.name}: "
+        f"{reason}",
+        diagnostics={
+            "code": "brainvision_dependency_unavailable",
+            "path": str(header_path.resolve(strict=False)),
+            "reference": reference,
+            "reason": reason,
+        },
+    )
 
 
 def _filter_bids_label_carriers_for_selected_scope(
@@ -541,8 +901,10 @@ def _internal_event_selection(
         )
     selected = _sorted_event_codes(selected)
     not_label = [item for item in not_label if item not in selected]
+    event_counts = _internal_event_counts(internal_event_preview)
     result: dict[str, Any] = {
         "label_event_codes": selected,
+        "label_event_counts": {code: event_counts.get(code, 0) for code in selected},
         "not_label_event_codes": not_label,
     }
     if class_map:
@@ -550,6 +912,36 @@ def _internal_event_selection(
             key: class_map[key] for key in _sorted_event_codes(class_map)
         }
     return result
+
+
+def _internal_event_counts(internal_event_preview: dict[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row_key in (
+        "candidate_label_events",
+        "candidate_events",
+        "not_used_events",
+        "non_label_events",
+        "excluded_events",
+    ):
+        rows = internal_event_preview.get(row_key)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            code = _internal_event_code_from_row(row)
+            if not code:
+                continue
+            raw_count: Any = row.get(
+                "event_count",
+                row.get("total_count", row.get("count")),
+            )
+            try:
+                count = max(int(raw_count), 0)
+            except (TypeError, ValueError, OverflowError):
+                count = 0
+            counts[code] = max(counts.get(code, 0), count)
+    return counts
 
 
 def _internal_event_codes(rows: Any) -> list[str]:
@@ -648,20 +1040,11 @@ def _resolve_selected_files_to_scan(
     scanned_files: list[str],
 ) -> list[str]:
     """Map selected relative filenames to their scanned absolute file paths."""
-    scanned_exact = {str(item): str(item) for item in scanned_files}
-    scanned_by_name: dict[str, list[str]] = {}
-    for item in scanned_files:
-        text = str(item)
-        name = Path(text).name or text
-        scanned_by_name.setdefault(name, []).append(text)
-
     result: list[str] = []
     for selected in selected_files:
         text = str(selected)
-        mapped = scanned_exact.get(text)
-        if mapped is None:
-            matches = scanned_by_name.get(Path(text).name or text, [])
-            mapped = matches[0] if len(matches) == 1 else text
+        match = resolve_scan_path(text, scanned_files)
+        mapped = match.resolved if match.accepted else text
         if mapped not in result:
             result.append(mapped)
     return result
@@ -724,12 +1107,21 @@ def _exclude_paths(paths: list[str], excluded: list[str]) -> list[str]:
     if not excluded:
         return list(paths)
     excluded_exact = {str(item) for item in excluded}
-    excluded_names = {Path(str(item)).name or str(item) for item in excluded}
+    basename_counts: dict[str, int] = {}
+    for path in paths:
+        name = Path(str(path)).name or str(path)
+        basename_counts[name] = basename_counts.get(name, 0) + 1
+    compatible_unique_names = {
+        text
+        for item in excluded
+        if (text := str(item)) == (Path(text).name or text)
+        and basename_counts.get(text) == 1
+    }
     result: list[str] = []
     for path in paths:
         text = str(path)
         name = Path(text).name or text
-        if text in excluded_exact or name in excluded_names:
+        if text in excluded_exact or name in compatible_unique_names:
             continue
         result.append(text)
     return result
@@ -769,10 +1161,9 @@ def _mapped_path(path: str, remap: dict[str, str]) -> str:
         return ""
     if text in remap:
         return remap[text]
-    name = Path(text).name or text
-    for source, target in remap.items():
-        if Path(str(source)).name == name:
-            return str(target)
+    match = resolve_scan_path(text, list(remap))
+    if match.accepted and match.resolved:
+        return str(remap[match.resolved])
     return text
 
 
@@ -788,17 +1179,7 @@ def _string_list(payload: Any) -> list[str]:
 
 
 def _paths_missing_from_scan(required: list[str], scanned: list[str]) -> list[str]:
-    scanned_exact = {str(item) for item in scanned}
-    scanned_names = {Path(str(item)).name or str(item) for item in scanned}
-    missing: list[str] = []
-    for item in required:
-        text = str(item)
-        name = Path(text).name or text
-        if text in scanned_exact or name in scanned_names:
-            continue
-        if name not in missing:
-            missing.append(name)
-    return missing
+    return unresolved_scan_path_descriptions(required, scanned)
 
 
 def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:

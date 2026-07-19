@@ -1,3 +1,7 @@
+import json
+import threading
+import time
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -30,7 +34,9 @@ def test_get_similar_examples_success(mock_retriever):
     mock_point.score = 0.95
     mock_point.payload = {
         "page_content": "User input",
-        "metadata": {"tool_calls": '{"command": "test"}'},
+        "metadata": {
+            "tool_calls": ('[{"tool_name": "get_dataset_info", "parameters": {}}]')
+        },
     }
 
     mock_result = MagicMock()
@@ -41,7 +47,14 @@ def test_get_similar_examples_success(mock_retriever):
 
     assert "Example 1:" in result
     assert 'User: "User input"' in result
-    assert '{"command": "test"}' in result
+    assert 'Assistant:\n{"tool_name": "get_dataset_info", "parameters": {}}' in result
+    assert "Assistant action:" not in result
+    assert "```" not in result
+
+    assistant_payload = result.split("Assistant:\n", maxsplit=1)[1].splitlines()[0]
+    parsed_payload = json.loads(assistant_payload)
+    assert list(parsed_payload) == ["tool_name", "parameters"]
+    assert parsed_payload == {"tool_name": "get_dataset_info", "parameters": {}}
 
 
 def test_get_similar_examples_empty(mock_retriever):
@@ -53,3 +66,215 @@ def test_get_similar_examples_empty(mock_retriever):
     result = mock_retriever.get_similar_examples("query")
 
     assert result == ""
+
+
+def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
+    scan_point = MagicMock(
+        id="scan",
+        score=0.8,
+        payload={
+            "page_content": "Scan the source",
+            "metadata": {
+                "tool_calls": (
+                    '[{"tool_name":"scan_source","parameters":'
+                    '{"source_path":"/data/eeg"}}]'
+                )
+            },
+        },
+    )
+    browse_point = MagicMock(
+        id="browse",
+        score=0.95,
+        payload={
+            "page_content": "List the files",
+            "metadata": {
+                "tool_calls": (
+                    '[{"tool_name":"list_files","parameters":{"directory":"/data"}}]'
+                )
+            },
+        },
+    )
+    mock_retriever.client.query_points.return_value.points = [
+        browse_point,
+        scan_point,
+    ]
+
+    result = mock_retriever.get_similar_examples(
+        "Use the EEG recording at /data/eeg",
+        allowed_tool_names=frozenset({"scan_source"}),
+    )
+
+    assert "scan_source" in result
+    assert "list_files" not in result
+
+
+@pytest.mark.parametrize(
+    "query",
+    (
+        "Explain what an EEG epoch is.",
+        "Help me process the data.",
+    ),
+)
+def test_non_action_requests_do_not_retrieve_action_examples(query):
+    retriever = RAGRetriever()
+    retriever.embeddings = MagicMock()
+    retriever.client = MagicMock()
+
+    result = retriever.get_similar_examples(query)
+
+    assert result == ""
+    retriever.embeddings.embed_query.assert_not_called()
+    retriever.client.query_points.assert_not_called()
+
+
+def test_close_fences_in_flight_initialize_and_prevents_resource_republish():
+    """Closing during init must prevent late-published clients/vector stores."""
+    constructor_entered = threading.Event()
+    release_constructor = threading.Event()
+    created_clients = []
+
+    class _FakeClient:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.closed = False
+            created_clients.append(self)
+            constructor_entered.set()
+            assert release_constructor.wait(timeout=2)
+
+        def get_collections(self):
+            return type("Collections", (), {"collections": []})()
+
+        def close(self) -> None:
+            self.closed = True
+
+    retriever = RAGRetriever()
+
+    with (
+        patch("langchain_community.embeddings.HuggingFaceEmbeddings"),
+        patch("qdrant_client.QdrantClient", _FakeClient),
+        patch("langchain_community.vectorstores.Qdrant", return_value=object()),
+        patch.object(RAGRetriever, "_collection_exists", return_value=True),
+        patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
+    ):
+        init_thread = threading.Thread(target=retriever.initialize)
+        init_thread.start()
+        assert constructor_entered.wait(timeout=2)
+
+        retriever.close()
+        release_constructor.set()
+        init_thread.join(timeout=2)
+
+    assert not init_thread.is_alive()
+    assert created_clients
+    assert created_clients[0].closed
+    assert retriever.client is None
+    assert retriever.vectorstore is None
+    assert retriever.embeddings is None
+    assert retriever.is_initialized is False
+    assert retriever.get_similar_examples("query") == ""
+
+
+def test_concurrent_initialize_has_single_initializer():
+    """Only one thread may perform RAG initialization work."""
+    constructor_entered = threading.Event()
+    release_constructor = threading.Event()
+    embedding_constructor_count = 0
+    constructor_lock = threading.Lock()
+
+    def _fake_embeddings(*args, **kwargs):
+        nonlocal embedding_constructor_count
+        with constructor_lock:
+            embedding_constructor_count += 1
+        constructor_entered.set()
+        assert release_constructor.wait(timeout=2)
+        return MagicMock()
+
+    retriever = RAGRetriever()
+    threads = [threading.Thread(target=retriever.initialize) for _ in range(4)]
+
+    with (
+        patch("langchain_community.embeddings.HuggingFaceEmbeddings", _fake_embeddings),
+        patch("qdrant_client.QdrantClient") as mock_client_cls,
+        patch("langchain_community.vectorstores.Qdrant", return_value=object()),
+        patch.object(RAGRetriever, "_collection_exists", return_value=True),
+        patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
+    ):
+        mock_client_cls.return_value.get_collections.return_value.collections = []
+        for thread in threads:
+            thread.start()
+        assert constructor_entered.wait(timeout=2)
+        release_constructor.set()
+        for thread in threads:
+            thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert embedding_constructor_count == 1
+    assert retriever.is_initialized is True
+    retriever.close()
+
+
+def test_close_does_not_wait_for_in_flight_retrieval_or_deadlock():
+    """Close must fence quickly while a retrieval is blocked in embedding."""
+    embed_started = threading.Event()
+    release_embed = threading.Event()
+    result_box: dict[str, str | None] = {"result": None}
+
+    class _BlockingEmbeddings:
+        def embed_query(self, query: str) -> list[float]:
+            embed_started.set()
+            assert release_embed.wait(timeout=2)
+            return [0.1, 0.2]
+
+    class _Client:
+        def __init__(self) -> None:
+            self.closed = threading.Event()
+            self.query_calls = 0
+
+        def query_points(self, **kwargs):
+            self.query_calls += 1
+            return type("Result", (), {"points": []})()
+
+        def close(self) -> None:
+            self.closed.set()
+
+    retriever = RAGRetriever()
+    client = _Client()
+    test_retriever = cast(Any, retriever)
+    test_retriever.client = client
+    test_retriever.embeddings = _BlockingEmbeddings()
+    retriever.is_initialized = True
+
+    retrieval_thread = threading.Thread(
+        target=lambda: result_box.update(result=retriever.get_similar_examples("query"))
+    )
+    retrieval_thread.start()
+    assert embed_started.wait(timeout=2)
+
+    started = time.monotonic()
+    retriever.close()
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.5
+    assert retriever.client is None
+    assert retriever.get_similar_examples("after close") == ""
+    assert client.query_calls == 0
+
+    release_embed.set()
+    retrieval_thread.join(timeout=2)
+
+    assert not retrieval_thread.is_alive()
+    assert result_box["result"] == ""
+    assert client.closed.is_set()
+
+
+def test_close_rejects_new_retrieval_without_querying_detached_resources():
+    client = MagicMock()
+    retriever = RAGRetriever()
+    retriever.client = client
+    retriever.embeddings = MagicMock()
+    retriever.is_initialized = True
+
+    retriever.close()
+
+    assert retriever.get_similar_examples("query") == ""
+    client.query_points.assert_not_called()

@@ -5,25 +5,13 @@ actual dataset operations (file listing, loading, label attachment, etc.).
 """
 
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from XBrainLab.backend.application import (
-    ApplyInterpretationCommand,
-    AttachLabelsCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
-    PreviewInterpretationCommand,
-    QueryStateCommand,
-    ReloadInterpretationRecipeCommand,
-    ResetSessionCommand,
-    SaveInterpretationRecipeCommand,
-    ScanSourceCommand,
-    ValidateInterpretationCommand,
-    get_application_service,
-)
 from XBrainLab.backend.utils.logger import logger
 
+from .. import execute_real_application_tool
 from ..definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
@@ -39,18 +27,12 @@ from ..definitions.dataset_def import (
     BaseScanSourceTool,
     BaseValidateInterpretationTool,
 )
+from ..result_contract import ToolResult, redact_public_text, runtime_tool_failure
 
 
 def _existing_env_realpath(name: str) -> str | None:
     value = os.environ.get(name)
     return os.path.realpath(value) if value else None
-
-
-def _application_result_message(result: Any) -> str:
-    """Return a legacy-safe string for direct real-tool callers."""
-    if getattr(result, "ok", False):
-        return str(result.message)
-    return f"Failed: {result.message}"
 
 
 # Directories that should NEVER be exposed to the LLM agent. Windows paths are
@@ -89,7 +71,7 @@ class RealListFilesTool(BaseListFilesTool):
         directory: str | None = None,
         pattern: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """List files in the specified directory.
 
         Args:
@@ -104,7 +86,7 @@ class RealListFilesTool(BaseListFilesTool):
 
         """
         if not directory:
-            return "Error: directory is required"
+            return ToolResult(False, "A folder path is required.", error_type="input")
 
         # Resolve to absolute path and guard against directory traversal
         directory = os.path.realpath(directory)
@@ -116,12 +98,21 @@ class RealListFilesTool(BaseListFilesTool):
             if dir_path == sensitive_path or sensitive_path in dir_path.parents:
                 logger.warning(
                     "RealListFilesTool blocked access to sensitive path: %s",
-                    directory,
+                    redact_public_text(directory),
                 )
-                return "Error: Access to system directories is not allowed."
+                return ToolResult(
+                    False,
+                    "Protected system folders cannot be browsed.",
+                    error_type="permission",
+                    recoverable=False,
+                )
 
         if not os.path.isdir(directory):
-            return f"Error: Directory '{directory}' does not exist."
+            return ToolResult(
+                False,
+                "The selected folder does not exist.",
+                error_type="input",
+            )
 
         try:
             files = []
@@ -130,9 +121,17 @@ class RealListFilesTool(BaseListFilesTool):
                 if pattern and pattern.startswith("*") and not f.endswith(pattern[1:]):
                     continue
                 files.append(f)
-            return str(files)
-        except Exception as e:
-            return f"Error listing files: {e!s}"
+            return ToolResult(
+                True,
+                f"Found {len(files)} file(s).",
+                payload=files,
+            )
+        except Exception as error:
+            return runtime_tool_failure(
+                "list_files",
+                error,
+                developer_logger=logger,
+            )
 
 
 class RealLoadDataTool(BaseLoadDataTool):
@@ -142,7 +141,12 @@ class RealLoadDataTool(BaseLoadDataTool):
     expanding directory paths to individual files.
     """
 
-    def execute(self, study: Any, paths: list[str] | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        paths: list[str] | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Load EEG data from the given file or directory paths.
 
         Directories are auto-expanded to include all contained files.
@@ -157,42 +161,19 @@ class RealLoadDataTool(BaseLoadDataTool):
             error message on failure.
 
         """
-        if not paths:
-            return "Error: paths list cannot be empty."
-
-        # Auto-expand directories
-        expanded_paths = []
-        for p in paths:
-            if os.path.isdir(p):
-                # If directory, list all files
-                try:
-                    for f in os.listdir(p):
-                        full_path = os.path.join(p, f)
-                        if os.path.isfile(full_path):
-                            expanded_paths.append(full_path)
-                except Exception as e:
-                    return f"Error scanning directory {p}: {e}"
-            else:
-                expanded_paths.append(p)
-
-        if not expanded_paths:
-            return "Error: No valid files found in provided paths."
-
-        paths = expanded_paths
-
-        result = get_application_service(study).execute(LoadDataCommand(paths=paths))
-        if result.failed:
-            errors = result.diagnostics.get("errors") or [result.message]
-            return f"Failed to load any data. Errors: {list(errors)}"
-
-        count = int(result.diagnostics.get("success_count", 0))
-        errors = list(result.diagnostics.get("errors", []))
-
-        if count > 0:
-            if errors:
-                return f"Successfully loaded {count} files. Errors: {errors}"
-            return f"Successfully loaded {count} files."
-        return f"Failed to load any data. Errors: {errors}"
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "paths": paths,
+                "allow_append": kwargs.get("allow_append", True),
+                "resource_preflight_confirmed": kwargs.get(
+                    "resource_preflight_confirmed",
+                    False,
+                ),
+                "resource_preflight_token": kwargs.get("resource_preflight_token"),
+            },
+        )
 
 
 class RealScanSourceTool(BaseScanSourceTool):
@@ -205,17 +186,16 @@ class RealScanSourceTool(BaseScanSourceTool):
         source_hint: str = "auto",
         label_sources: list[str] | None = None,
         **kwargs,
-    ) -> str:
-        if not source_path:
-            return "Error: source_path is required"
-        result = get_application_service(study).execute(
-            ScanSourceCommand(
-                source_path=source_path,
-                source_hint=source_hint,
-                label_sources=label_sources or [],
-            ),
+    ) -> ToolResult:
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "source_path": source_path,
+                "source_hint": source_hint,
+                "label_sources": label_sources,
+            },
         )
-        return _application_result_message(result)
 
 
 class RealPreviewInterpretationTool(BasePreviewInterpretationTool):
@@ -227,11 +207,20 @@ class RealPreviewInterpretationTool(BasePreviewInterpretationTool):
         scan_id: str | None = None,
         choices: dict[str, Any] | None = None,
         **kwargs,
-    ) -> str:
-        result = get_application_service(study).execute(
-            PreviewInterpretationCommand(scan_id=scan_id, choices=dict(choices or {})),
+    ) -> ToolResult:
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "scan_id": scan_id,
+                "choices": choices,
+                "resource_preflight_confirmed": kwargs.get(
+                    "resource_preflight_confirmed",
+                    False,
+                ),
+                "resource_preflight_token": kwargs.get("resource_preflight_token"),
+            },
         )
-        return _application_result_message(result)
 
 
 class RealValidateInterpretationTool(BaseValidateInterpretationTool):
@@ -242,11 +231,12 @@ class RealValidateInterpretationTool(BaseValidateInterpretationTool):
         study: Any,
         candidate_id: str | None = None,
         **kwargs,
-    ) -> str:
-        result = get_application_service(study).execute(
-            ValidateInterpretationCommand(candidate_id=candidate_id),
+    ) -> ToolResult:
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"candidate_id": candidate_id},
         )
-        return _application_result_message(result)
 
 
 class RealApplyInterpretationTool(BaseApplyInterpretationTool):
@@ -258,11 +248,20 @@ class RealApplyInterpretationTool(BaseApplyInterpretationTool):
         candidate_id: str | None = None,
         confirmed: bool = False,
         **kwargs,
-    ) -> str:
-        result = get_application_service(study).execute(
-            ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=confirmed),
+    ) -> ToolResult:
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "candidate_id": candidate_id,
+                "confirmed": confirmed,
+                "resource_preflight_confirmed": kwargs.get(
+                    "resource_preflight_confirmed",
+                    False,
+                ),
+                "resource_preflight_token": kwargs.get("resource_preflight_token"),
+            },
         )
-        return _application_result_message(result)
 
 
 class RealSaveInterpretationRecipeTool(BaseSaveInterpretationRecipeTool):
@@ -273,11 +272,12 @@ class RealSaveInterpretationRecipeTool(BaseSaveInterpretationRecipeTool):
         study: Any,
         recipe_path: str | None = None,
         **kwargs,
-    ) -> str:
-        result = get_application_service(study).execute(
-            SaveInterpretationRecipeCommand(recipe_path=recipe_path),
+    ) -> ToolResult:
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"recipe_path": recipe_path},
         )
-        return _application_result_message(result)
 
 
 class RealReloadInterpretationRecipeTool(BaseReloadInterpretationRecipeTool):
@@ -288,13 +288,19 @@ class RealReloadInterpretationRecipeTool(BaseReloadInterpretationRecipeTool):
         study: Any,
         recipe_path: str | None = None,
         **kwargs,
-    ) -> str:
-        if not recipe_path:
-            return "Error: recipe_path is required"
-        result = get_application_service(study).execute(
-            ReloadInterpretationRecipeCommand(recipe_path=recipe_path),
+    ) -> ToolResult:
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "recipe_path": recipe_path,
+                "resource_preflight_confirmed": kwargs.get(
+                    "resource_preflight_confirmed",
+                    False,
+                ),
+                "resource_preflight_token": kwargs.get("resource_preflight_token"),
+            },
         )
-        return _application_result_message(result)
 
 
 class RealAttachLabelsTool(BaseAttachLabelsTool):
@@ -309,7 +315,7 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
         mapping: dict | None = None,
         label_format: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Attach label files to loaded data files.
 
         Args:
@@ -322,27 +328,25 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
             A message indicating how many files received labels.
 
         """
-        if mapping is None:
-            return "Error: mapping is required"
-
-        result = get_application_service(study).execute(
-            AttachLabelsCommand(
-                mapping={str(key): str(value) for key, value in mapping.items()},
-            ),
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "mapping": mapping,
+                "label_format": label_format,
+                "resource_preflight_confirmed": kwargs.get(
+                    "resource_preflight_confirmed",
+                    False,
+                ),
+                "resource_preflight_token": kwargs.get("resource_preflight_token"),
+            },
         )
-        if result.failed:
-            return f"Failed to attach labels: {result.message}"
-        success_count = int(result.diagnostics.get("success_count", 0))
-
-        if success_count > 0:
-            return f"Attached labels to {success_count} files."
-        return "No labels attached. Check file name mapping."
 
 
 class RealClearDatasetTool(BaseClearDatasetTool):
     """Real implementation of :class:`BaseClearDatasetTool`."""
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolResult:
         """Clear all loaded data and reset Study state.
 
         Args:
@@ -353,18 +357,17 @@ class RealClearDatasetTool(BaseClearDatasetTool):
             A confirmation message.
 
         """
-        result = get_application_service(study).execute(
-            ResetSessionCommand(confirmed=True),
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"confirmed": kwargs.get("confirmed", False)},
         )
-        if result.failed:
-            return f"Failed to clear dataset: {result.message}"
-        return "Dataset cleared."
 
 
 class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
     """Real implementation of :class:`BaseGetDatasetInfoTool`."""
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolResult:
         """Retrieve summary information about the loaded dataset.
 
         Args:
@@ -375,16 +378,29 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
             A newline-separated summary string.
 
         """
-        result = get_application_service(study).execute(
-            QueryStateCommand(query="data_summary"),
+        result = execute_real_application_tool(
+            study,
+            "query_state",
+            {"query": "data_summary"},
         )
-        summary = dict(result.diagnostics) if result.ok else {"count": 0, "files": []}
+        if not result.ok:
+            return result
+        summary = dict(result.diagnostics)
+        if (
+            not summary
+            and isinstance(result.payload, dict)
+            and "status" not in result.payload
+        ):
+            summary = dict(result.payload)
 
-        if summary["count"] == 0:
-            return "No data loaded."
+        if summary.get("count", 0) == 0:
+            return replace(
+                result,
+                message="No data is loaded.",
+            )
 
         info = [f"Loaded {summary['count']} files:"]
-        info.extend(summary["files"])
+        info.extend(str(item) for item in summary.get("files", []))
 
         if "total" in summary:
             info.append(
@@ -403,17 +419,18 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
                     f"{filename} (bases: {base_text})",
                 )
 
-        return "\n".join(info)
+        return replace(result, message="\n".join(info))
 
 
 class RealQueryStateTool(BaseQueryStateTool):
     """Real implementation of :class:`BaseQueryStateTool`."""
 
-    def execute(self, study: Any, **kwargs) -> str:
-        result = get_application_service(study).execute(
-            QueryStateCommand(query=str(kwargs.get("query", "state"))),
+    def execute(self, study: Any, **kwargs) -> ToolResult:
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"query": kwargs.get("query", "state")},
         )
-        return str(result.message)
 
 
 class RealGenerateDatasetTool(BaseGenerateDatasetTool):
@@ -430,7 +447,7 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
         split_strategy: str = "trial",
         training_mode: str = "individual",
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Generate a training dataset from epoched data.
 
         Args:
@@ -447,18 +464,13 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
             A success message with dataset count or an error message.
 
         """
-        result = get_application_service(study).execute(
-            GenerateDatasetCommand(
-                test_ratio=test_ratio,
-                val_ratio=val_ratio,
-                split_strategy=split_strategy,
-                training_mode=training_mode,
-            ),
-        )
-        if result.failed:
-            return f"Dataset generation failed: {result.message}"
-        count = int(result.diagnostics.get("dataset_count", 0))
-        return (
-            f"Dataset successfully generated. Count: {count} "
-            f"(Test: {test_ratio}, Val: {val_ratio})."
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "test_ratio": test_ratio,
+                "val_ratio": val_ratio,
+                "split_strategy": split_strategy,
+                "training_mode": training_mode,
+            },
         )

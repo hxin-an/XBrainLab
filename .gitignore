@@ -49,6 +49,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.test-tmp/
 cover/
 
 # Translations
@@ -80,6 +81,12 @@ artifacts/goal/*.jsonl
 artifacts/goal/*.pid
 artifacts/audit/
 artifacts/ui/human-like-walkthrough/
+artifacts/ui/human-like-walkthrough-runs/*/
+!artifacts/ui/human-like-walkthrough-runs/current/
+!artifacts/ui/human-like-walkthrough-runs/current/**
+artifacts/ui/human-like-walkthrough-runs/current/training-smoke-output/
+# The full machine trace is reproducible but too large for source control.
+artifacts/ui/human-like-walkthrough-runs/current/human-like-walkthrough.json
 
 # Jupyter Notebook
 .ipynb_checkpoints

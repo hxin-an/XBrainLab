@@ -71,6 +71,20 @@ def _checked_in_fixture_pair(stem: str) -> tuple[str, str]:
     )
 
 
+def _class_value_decisions(
+    class_names: dict[str, str],
+) -> dict[str, dict[str, object]]:
+    return {
+        raw_value: {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": class_name,
+        }
+        for raw_value, class_name in class_names.items()
+    }
+
+
 def test_real_gdf_internal_event_evidence_identifies_class_candidates():
     selected_files = [
         str(TEST_DATA_DIR / f"{stem}.gdf") for stem in CHECKED_IN_GDF_STEMS
@@ -159,7 +173,10 @@ def _build_label_attached_service(stem: str) -> ApplicationService:
     assert load_result.ok is True
     assert load_result.diagnostics["success_count"] == 1
     attach_result = service.execute(
-        AttachLabelsCommand(mapping={f"{stem}.gdf": label_path}),
+        AttachLabelsCommand(
+            mapping={f"{stem}.gdf": label_path},
+            label_paths=[label_path],
+        ),
     )
     assert attach_result.ok is True
     assert attach_result.diagnostics["success_count"] == 1
@@ -312,13 +329,15 @@ def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path):
                 "placement_method": "eeg_event",
                 "time_model": "trial_order",
                 "granularity": "trial",
+                "value_decisions": _class_value_decisions(
+                    {
+                        "1": "left hand",
+                        "2": "right hand",
+                        "3": "feet",
+                        "4": "tongue",
+                    }
+                ),
             }
-        },
-        "class_map": {
-            "1": "left hand",
-            "2": "right hand",
-            "3": "feet",
-            "4": "tongue",
         },
     }
 

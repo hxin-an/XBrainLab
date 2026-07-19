@@ -3,16 +3,54 @@
 from __future__ import annotations
 
 import contextlib
+import math
+import warnings
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any
 
 import mne
 import numpy as np
 
+from XBrainLab.backend.load_data.raw import Raw
+from XBrainLab.backend.utils import validate_type
 from XBrainLab.backend.utils.logger import logger
 
-from ..utils import validate_type
-from .raw import Raw
+_MNE_EXCLUDED_CLASS_PREFIXES = ("bad", "edge")
+
+
+def _require_equal_annotation_counts(
+    applied: mne.Annotations,
+    expected: mne.Annotations,
+) -> None:
+    if len(applied) != len(expected):
+        raise ValueError(
+            "MNE timestamp annotation commit produced a row-count mismatch.",
+        )
+
+
+@dataclass(frozen=True)
+class _TimestampRow:
+    """One normalized external timestamp row before MNE attachment."""
+
+    source_index: int
+    onset: float
+    duration: float
+    raw_label: str
+    description: str
+    ch_names: tuple[str, ...]
+    use_as_class: bool
+
+    def annotation_key(self) -> tuple[float, float, str, tuple[str, ...]]:
+        return _annotation_key(
+            onset=self.onset,
+            duration=self.duration,
+            description=self.description,
+            ch_names=self.ch_names,
+        )
+
+    def exact_key(self) -> tuple[float, float, str, tuple[str, ...], str, bool]:
+        return (*self.annotation_key(), self.raw_label, self.use_as_class)
 
 
 def _normalize_label_value(value: Any) -> Any:
@@ -42,6 +80,373 @@ def _coerce_event_code(value: Any) -> int | None:
                 return int(stripped)
 
     return None
+
+
+def _annotation_key(
+    *,
+    onset: float,
+    duration: float,
+    description: str,
+    ch_names: tuple[str, ...],
+) -> tuple[float, float, str, tuple[str, ...]]:
+    return (
+        round(float(onset), 12),
+        round(float(duration), 12),
+        str(description),
+        tuple(ch_names),
+    )
+
+
+def _merge_external_annotations(
+    *,
+    existing: mne.Annotations,
+    external: mne.Annotations,
+) -> mne.Annotations:
+    """Merge external labels with existing acquisition annotations.
+
+    External labels are authoritative for the generated event array, while all
+    existing annotations remain available as recording context. Exact duplicate
+    reviewed rows have already been removed before this boundary, so every
+    external annotation must remain even when two distinct source rows normalize
+    to the same MNE description. Existing acquisition annotations are de-duplicated
+    against those external annotation keys. Rows sort by onset with external
+    labels first, then duration, description, channel names, and original position.
+    """
+    rows: list[dict[str, Any]] = []
+    seen_keys: set[tuple[float, float, str, tuple[str, ...]]] = set()
+
+    for index, (onset, duration, description) in enumerate(
+        zip(external.onset, external.duration, external.description, strict=True)
+    ):
+        ch_names = tuple(str(item) for item in external.ch_names[index])
+        key = _annotation_key(
+            onset=float(onset),
+            duration=float(duration),
+            description=str(description),
+            ch_names=ch_names,
+        )
+        seen_keys.add(key)
+        rows.append(
+            {
+                "onset": float(onset),
+                "duration": float(duration),
+                "description": str(description),
+                "ch_names": ch_names,
+                "source_rank": 0,
+                "source_index": index,
+            }
+        )
+
+    for index, (onset, duration, description) in enumerate(
+        zip(existing.onset, existing.duration, existing.description, strict=True)
+    ):
+        ch_names = tuple(str(item) for item in existing.ch_names[index])
+        key = _annotation_key(
+            onset=float(onset),
+            duration=float(duration),
+            description=str(description),
+            ch_names=ch_names,
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        rows.append(
+            {
+                "onset": float(onset),
+                "duration": float(duration),
+                "description": str(description),
+                "ch_names": ch_names,
+                "source_rank": 1,
+                "source_index": index,
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            row["onset"],
+            row["source_rank"],
+            row["duration"],
+            row["description"],
+            row["ch_names"],
+            row["source_index"],
+        )
+    )
+    orig_time = existing.orig_time or external.orig_time
+    return mne.Annotations(
+        onset=[row["onset"] for row in rows],
+        duration=[row["duration"] for row in rows],
+        description=[row["description"] for row in rows],
+        orig_time=orig_time,
+        ch_names=[row["ch_names"] for row in rows],
+    )
+
+
+def _annotation_snapshot(
+    raw_mne: Any,
+    *,
+    fallback: mne.Annotations | None = None,
+) -> mne.Annotations:
+    """Copy attached MNE annotations, or a known-safe fallback for adapters."""
+    annotations = getattr(raw_mne, "annotations", None)
+    if isinstance(annotations, mne.Annotations):
+        return annotations.copy()
+    if fallback is not None:
+        return fallback.copy()
+    return mne.Annotations([], [], [])
+
+
+def _set_attached_annotations(raw_mne: Any, annotations: mne.Annotations) -> None:
+    """Attach an annotation snapshot without shifting first-sample onsets twice."""
+    payload = annotations
+    first_time = float(getattr(raw_mne, "first_time", 0.0) or 0.0)
+    if annotations.orig_time is None and first_time:
+        payload = mne.Annotations(
+            onset=np.asarray(annotations.onset, dtype=float) - first_time,
+            duration=annotations.duration,
+            description=annotations.description,
+            orig_time=None,
+            ch_names=annotations.ch_names,
+        )
+    raw_mne.set_annotations(payload)
+
+
+def _timestamp_description(
+    item: dict[str, Any],
+    *,
+    mapped_label: Any,
+) -> tuple[str, bool]:
+    raw_label = str(item.get("label") or "").strip()
+    use_as_class_value = item.get("use_as_class", True)
+    if not isinstance(use_as_class_value, bool):
+        raise ValueError("Timestamp label row has no explicit class-use decision.")
+    use_as_class = use_as_class_value
+    role = str(item.get("role") or "unknown").strip().casefold()
+    if use_as_class:
+        description = str(item.get("class_name") or mapped_label).strip()
+        if not description:
+            raise ValueError("Timestamp class description cannot be empty.")
+        if description.casefold().startswith(_MNE_EXCLUDED_CLASS_PREFIXES):
+            raise ValueError(
+                "MNE excludes class description prefixes Bad* and Edge*: "
+                f"{description}.",
+            )
+        return description, True
+    token = str(item.get("description") or raw_label or mapped_label).strip()
+    if not token:
+        raise ValueError("Timestamp annotation description cannot be empty.")
+    if role == "artifact":
+        return f"BAD_artifact/{token}", False
+    if role == "boundary":
+        return f"BAD_boundary/{token}", False
+    semantic_role = role if role not in {"", "unknown"} else "annotation"
+    return f"{semantic_role}/{token}", False
+
+
+def _timestamp_channel_names(item: dict[str, Any], raw_mne: Any) -> tuple[str, ...]:
+    raw_names = item.get("ch_names", ())
+    if raw_names in (None, ""):
+        return ()
+    if isinstance(raw_names, str):
+        names = (raw_names.strip(),) if raw_names.strip() else ()
+    elif isinstance(raw_names, (list, tuple, set)):
+        names = tuple(str(name).strip() for name in raw_names if str(name).strip())
+    else:
+        raise ValueError("Timestamp annotation channel names must be a string or list.")
+    available = {str(name) for name in getattr(raw_mne, "ch_names", [])}
+    missing = [name for name in names if name not in available]
+    if missing:
+        raise ValueError(
+            "Timestamp annotation references unknown EEG channel(s): "
+            + ", ".join(missing)
+            + ".",
+        )
+    return names
+
+
+def _finite_timestamp_number(value: Any, *, field: str, row: int) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Timestamp label row {row} has non-numeric {field}.") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"Timestamp label row {row} has non-finite {field}.")
+    return result
+
+
+def _normalize_timestamp_rows(
+    label_list: list[Any],
+    *,
+    event_name_map: dict[Any, str],
+    raw_mne: Any,
+) -> list[_TimestampRow]:
+    sfreq = float(raw_mne.info["sfreq"])
+    n_times = int(getattr(raw_mne, "n_times", 0) or 0)
+    if sfreq <= 0 or n_times <= 0:
+        raise ValueError(
+            "Stored EEG sample bounds are unavailable for timestamp labels."
+        )
+    recording_duration = n_times / sfreq
+    last_sample_time = (n_times - 1) / sfreq
+    tolerance = max(1e-12, 1.0 / sfreq * 1e-9)
+    rows: list[_TimestampRow] = []
+    for source_index, raw_item in enumerate(label_list, start=1):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"Timestamp label row {source_index} is not a row record.")
+        item = dict(raw_item)
+        onset = _finite_timestamp_number(
+            item.get("onset"),
+            field="onset",
+            row=source_index,
+        )
+        duration = _finite_timestamp_number(
+            item.get("duration", 0.0),
+            field="duration",
+            row=source_index,
+        )
+        if (
+            onset < 0
+            or duration < 0
+            or onset > last_sample_time + tolerance
+            or onset + duration > recording_duration + tolerance
+        ):
+            raise ValueError(
+                f"Timestamp label row {source_index} is outside the stored EEG range.",
+            )
+        raw_label_value = _normalize_label_value(item.get("label"))
+        raw_label = str(raw_label_value).strip()
+        if not raw_label:
+            raise ValueError(f"Timestamp label row {source_index} has no label value.")
+        mapped_label = event_name_map.get(
+            raw_label_value,
+            event_name_map.get(raw_label, raw_label_value),
+        )
+        description, use_as_class = _timestamp_description(
+            item,
+            mapped_label=mapped_label,
+        )
+        rows.append(
+            _TimestampRow(
+                source_index=source_index,
+                onset=onset,
+                duration=duration,
+                raw_label=raw_label,
+                description=description,
+                ch_names=_timestamp_channel_names(item, raw_mne),
+                use_as_class=use_as_class,
+            )
+        )
+
+    unique_rows: list[_TimestampRow] = []
+    seen: set[tuple[float, float, str, tuple[str, ...], str, bool]] = set()
+    for row in rows:
+        key = row.exact_key()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_rows.append(row)
+
+    class_rows_by_sample: dict[int, list[_TimestampRow]] = {}
+    for row in unique_rows:
+        if not row.use_as_class:
+            continue
+        relative_sample = int(raw_mne.time_as_index([row.onset], use_rounding=True)[0])
+        absolute_sample = int(raw_mne.first_samp) + relative_sample
+        if absolute_sample < int(raw_mne.first_samp) or absolute_sample > int(
+            raw_mne.last_samp
+        ):
+            raise ValueError(
+                f"Timestamp label row {row.source_index} is outside the stored EEG "
+                "range.",
+            )
+        class_rows_by_sample.setdefault(absolute_sample, []).append(row)
+    for sample, sample_rows in class_rows_by_sample.items():
+        if len(sample_rows) > 1:
+            sources = ", ".join(str(row.source_index) for row in sample_rows)
+            raise ValueError(
+                "Ambiguous class placement at EEG sample "
+                f"{sample}: timestamp rows {sources} resolve to the same sample.",
+            )
+    return unique_rows
+
+
+def _attached_relative_annotation_keys(
+    annotations: mne.Annotations,
+    *,
+    first_time: float,
+) -> list[tuple[float, float, str, tuple[str, ...]]]:
+    return sorted(
+        [
+            _annotation_key(
+                onset=float(onset) - first_time,
+                duration=float(duration),
+                description=str(description),
+                ch_names=tuple(str(name) for name in annotations.ch_names[index]),
+            )
+            for index, (onset, duration, description) in enumerate(
+                zip(
+                    annotations.onset,
+                    annotations.duration,
+                    annotations.description,
+                    strict=True,
+                )
+            )
+        ]
+    )
+
+
+def _prepare_external_annotations(
+    raw_mne: Any,
+    rows: list[_TimestampRow],
+) -> mne.Annotations:
+    existing = _annotation_snapshot(raw_mne)
+    external = mne.Annotations(
+        onset=[row.onset for row in rows],
+        duration=[row.duration for row in rows],
+        description=[row.description for row in rows],
+        ch_names=[row.ch_names for row in rows],
+    )
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            raw_mne.set_annotations(external)
+        applied = _annotation_snapshot(raw_mne, fallback=external)
+        expected_keys = sorted(row.annotation_key() for row in rows)
+        produced_keys = _attached_relative_annotation_keys(
+            applied,
+            first_time=float(getattr(raw_mne, "first_time", 0.0) or 0.0),
+        )
+        if produced_keys != expected_keys:
+            raise ValueError(
+                "MNE timestamp annotation output did not match every reviewed row.",
+            )
+        return applied
+    finally:
+        _set_attached_annotations(raw_mne, existing)
+
+
+def _events_from_timestamp_rows(
+    raw_mne: Any,
+    rows: list[_TimestampRow],
+) -> tuple[np.ndarray, dict[str, int]]:
+    class_rows = [row for row in rows if row.use_as_class]
+    descriptions = sorted({row.description for row in class_rows})
+    event_id = {description: index for index, description in enumerate(descriptions, 1)}
+    event_rows = [
+        [
+            int(raw_mne.first_samp)
+            + int(raw_mne.time_as_index([row.onset], use_rounding=True)[0]),
+            0,
+            event_id[row.description],
+        ]
+        for row in class_rows
+    ]
+    event_rows.sort(key=lambda row: (row[0], row[2]))
+    events = np.asarray(event_rows, dtype=int).reshape((-1, 3))
+    if len(events) != len(class_rows):
+        raise ValueError(
+            "MNE timestamp class event output did not match every reviewed class row.",
+        )
+    return events, event_id
 
 
 class EventLoader:
@@ -77,6 +482,7 @@ class EventLoader:
         self.events: np.ndarray | None = None
         self.event_id: dict[str, int] | None = None
         self.annotations: mne.Annotations | None = None
+        self._external_annotations: mne.Annotations | None = None
 
     def smart_filter(self, target_count: int) -> list[int]:
         """Suggest event IDs whose count best matches a target trial count.
@@ -241,36 +647,27 @@ class EventLoader:
             and len(self.label_list) > 0
             and isinstance(self.label_list[0], dict)
         ):
-            # List of dicts: {'onset': ..., 'label': ..., 'duration': ...}
-            onsets = []
-            durations = []
-            descriptions = []
-
-            for item in self.label_list:
-                onsets.append(item["onset"])
-                durations.append(item["duration"])
-                raw_label = item["label"]
-                mapped_label = event_name_map.get(
-                    raw_label,
-                    event_name_map.get(str(raw_label), raw_label),
-                )
-                descriptions.append(str(mapped_label))
-
-            # Create Annotations
-            self.annotations = mne.Annotations(
-                onset=onsets,
-                duration=durations,
-                description=descriptions,
+            raw_mne = self.raw.get_mne()
+            existing_annotations = _annotation_snapshot(raw_mne)
+            timestamp_rows = _normalize_timestamp_rows(
+                self.label_list,
+                event_name_map=event_name_map,
+                raw_mne=raw_mne,
             )
-            self.raw.get_mne().set_annotations(self.annotations)
+            applied_external_annotations = _prepare_external_annotations(
+                raw_mne,
+                timestamp_rows,
+            )
+            events, event_id = _events_from_timestamp_rows(raw_mne, timestamp_rows)
+            merged_annotations = _merge_external_annotations(
+                existing=existing_annotations,
+                external=applied_external_annotations,
+            )
 
-            try:
-                events, event_id = mne.events_from_annotations(self.raw.get_mne())
-                self.events = events
-                self.event_id = event_id
-            except Exception as e:
-                logger.warning("Could not convert annotations to events: %s", e)
-                return None, None
+            self.events = events
+            self.event_id = event_id
+            self.annotations = merged_annotations
+            self._external_annotations = applied_external_annotations
             return events, event_id
 
         # --- Sequence Mode ---
@@ -391,11 +788,47 @@ class EventLoader:
             ValueError: If no label has been loaded.
 
         """
-        if self.annotations:
-            self.raw.get_mne().set_annotations(self.annotations)
-            # Also set events if generated
-            if self.events is not None:
-                self.raw.set_event(self.events, self.event_id)
+        if self.annotations is not None:
+            raw_mne = self.raw.get_mne()
+            current_annotations = _annotation_snapshot(raw_mne)
+            previous_events = (
+                self.raw.raw_events.copy() if self.raw.raw_events is not None else None
+            )
+            previous_event_id = (
+                self.raw.raw_event_id.copy()
+                if self.raw.raw_event_id is not None
+                else None
+            )
+            external_annotations = (
+                self._external_annotations
+                if self._external_annotations is not None
+                else self.annotations
+            )
+            merged_annotations = _merge_external_annotations(
+                existing=current_annotations,
+                external=external_annotations,
+            )
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RuntimeWarning)
+                    _set_attached_annotations(raw_mne, merged_annotations)
+                applied_annotations = _annotation_snapshot(
+                    raw_mne,
+                    fallback=merged_annotations,
+                )
+                _require_equal_annotation_counts(
+                    applied_annotations,
+                    merged_annotations,
+                )
+                self.annotations = applied_annotations
+                if self.events is not None and self.event_id is not None:
+                    self.raw.set_event(self.events, self.event_id)
+            except Exception:
+                with contextlib.suppress(Exception):
+                    _set_attached_annotations(raw_mne, current_annotations)
+                self.raw.raw_events = previous_events
+                self.raw.raw_event_id = previous_event_id
+                raise
         elif self.events is not None and self.event_id is not None:
             self.raw.set_event(self.events, self.event_id)
         else:

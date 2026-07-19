@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
 from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
@@ -24,7 +26,7 @@ from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.llm.core.config import LLMConfig
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-workflow"
+DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-workflow" / "current"
 READY_SCREENSHOT = "chatpanel-workflow-ready.png"
 JSON_ARTIFACT = "chatpanel-local-workflow-walkthrough.json"
 MD_ARTIFACT = "chatpanel-local-workflow-walkthrough.md"
@@ -34,10 +36,7 @@ DEFAULT_PROMPTS = [
         "Check what is ready in the current XBrainLab workflow. Use the state "
         "query tool if needed, then answer in one short sentence."
     ),
-    (
-        "In one short sentence, explain what EEG preprocessing prepares for. "
-        "Do not use tools."
-    ),
+    ("Explain in one short sentence what EEG preprocessing prepares data for."),
 ]
 
 
@@ -99,6 +98,9 @@ def run_workflow(
     window = MainWindow(study)
     _set_baseline_window_geometry(window)
     window.show()
+    manager_ref: Any | None = None
+    runtime_ref: Any | None = None
+    cleanup_events: list[dict[str, Any]] = []
 
     started_at = time.monotonic()
     state: dict[str, Any] = {
@@ -124,35 +126,60 @@ def run_workflow(
     def finish() -> None:
         state["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         manager = window.agent_manager
-        panel = manager.chat_panel
-        controller = manager.agent_controller
-        if panel is not None:
-            state["visible_messages"] = [
-                message.__dict__ for message in collect_visible_messages(panel)
-            ]
-            state["send_button_text"] = panel.send_btn.text()
-            state["send_button_enabled"] = panel.send_btn.isEnabled()
-            state["input_enabled"] = panel.input_field.isEnabled()
-        if controller is not None:
-            state["executed_tools"] = collect_executed_tools(controller.metrics)
-        state["chat_processing"] = bool(manager.chat_controller.is_processing)
-        state["controller_processing"] = bool(
-            controller and getattr(controller, "is_processing", False)
-        )
-        if controller is not None:
-            controller.close()
+        if manager is not None:
+            panel = manager.chat_panel
+            controller = manager.agent_controller
+            if panel is not None:
+                state["visible_messages"] = [
+                    message.__dict__ for message in collect_visible_messages(panel)
+                ]
+                state["send_button_text"] = panel.send_btn.text()
+                state["send_button_enabled"] = panel.send_btn.isEnabled()
+                state["input_enabled"] = panel.input_field.isEnabled()
+            if controller is not None:
+                state["executed_tools"] = collect_executed_tools(controller.metrics)
+            state["chat_processing"] = bool(manager.chat_controller.is_processing)
+            state["controller_processing"] = bool(
+                controller and getattr(controller, "is_processing", False)
+            )
+        # MainWindow owns assistant teardown and keeps the event loop alive while
+        # its bounded shutdown retries release Qt/model resources.
         window.close()
-        app.quit()
 
     def open_assistant() -> None:
+        nonlocal manager_ref, runtime_ref
+        window.init_agent()
+        if window.agent_manager is None:
+            fail("Assistant manager was not initialized.")
+            return
+        manager_ref = window.agent_manager
+        runtime_ref = manager_ref.assistant_runtime
+        runtime_ref.cleanup_finished.connect(
+            lambda ok, message: cleanup_events.append(
+                {"ok": bool(ok), "message": str(message or "")}
+            )
+        )
+        _disable_first_run_dialog_for_unattended_capture(window)
         window.ai_btn.click()
-        QTimer.singleShot(2500, capture_ready)
+        QTimer.singleShot(250, wait_for_assistant_ready)
+
+    def wait_for_assistant_ready() -> None:
+        if time.monotonic() - started_at > timeout_seconds:
+            fail(f"Assistant did not become ready within {timeout_seconds} seconds.")
+            return
+        manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared during startup.")
+            return
+        if not _assistant_is_ready(manager):
+            QTimer.singleShot(250, wait_for_assistant_ready)
+            return
+        capture_ready()
 
     def capture_ready() -> None:
         manager = window.agent_manager
-        panel = manager.chat_panel
-        if panel is None or not manager.chat_dock or not manager.chat_dock.isVisible():
-            fail("Assistant dock did not open.")
+        if manager is None or manager.chat_panel is None:
+            fail("Assistant was not available for the ready capture.")
             return
         ready_path = output_dir / READY_SCREENSHOT
         if _capture_current_window(window, ready_path) != 0:
@@ -166,6 +193,9 @@ def run_workflow(
         panel = manager.chat_panel
         if panel is None:
             fail("ChatPanel disappeared during workflow.")
+            return
+        if not _assistant_is_ready(manager):
+            fail("Assistant controls were not ready before sending a prompt.")
             return
         before_messages = len(collect_visible_messages(panel))
         before_tools = len(
@@ -220,30 +250,29 @@ def run_workflow(
             if _has_runtime_error_text(assistant_texts):
                 fail("Visible assistant text reported a local runtime error.")
                 return
-            screenshot_name = f"chatpanel-workflow-turn-{index + 1}.png"
-            screenshot_path = output_dir / screenshot_name
-            if _capture_current_window(window, screenshot_path) != 0:
-                fail("Turn screenshot was blank or could not be saved.")
-                return
             executed_tools = (
                 collect_executed_tools(controller.metrics)
                 if controller is not None
                 else []
             )
-            state["turns"].append(
-                {
-                    "index": index + 1,
-                    "prompt": prompt,
-                    "assistant_text": assistant_texts[-1],
-                    "new_tool_count": max(0, len(executed_tools) - before_tools),
-                    "screenshot": str(screenshot_path),
-                }
+            new_tools = executed_tools[before_tools:]
+            contract_failure = _turn_contract_failure(
+                index,
+                assistant_texts[-1],
+                new_tools,
             )
-            if index + 1 < len(DEFAULT_PROMPTS):
-                QTimer.singleShot(500, lambda: send_prompt(index + 1))
-            else:
-                state["status"] = "passed"
-                finish()
+            if contract_failure is not None:
+                fail(contract_failure)
+                return
+            QTimer.singleShot(
+                350,
+                lambda: capture_completed_turn(
+                    index,
+                    prompt,
+                    assistant_texts[-1],
+                    new_tools,
+                ),
+            )
             return
 
         QTimer.singleShot(
@@ -251,8 +280,51 @@ def run_workflow(
             lambda: wait_for_turn(index, prompt, before_messages, before_tools),
         )
 
+    def capture_completed_turn(
+        index: int,
+        prompt: str,
+        assistant_text: str,
+        new_tools: list[dict[str, Any]],
+    ) -> None:
+        window.update()
+        window.repaint()
+        app.processEvents()
+        screenshot_name = f"chatpanel-workflow-turn-{index + 1}.png"
+        screenshot_path = output_dir / screenshot_name
+        if _capture_current_window(window, screenshot_path) != 0:
+            fail("Turn screenshot was blank or could not be saved.")
+            return
+        if _has_unpainted_main_surface(screenshot_path):
+            fail("Turn screenshot contained a large unpainted main-window region.")
+            return
+        state["turns"].append(
+            {
+                "index": index + 1,
+                "prompt": prompt,
+                "assistant_text": assistant_text,
+                "new_tool_count": len(new_tools),
+                "screenshot": str(screenshot_path),
+            }
+        )
+        if index + 1 < len(DEFAULT_PROMPTS):
+            QTimer.singleShot(500, lambda: send_prompt(index + 1))
+        else:
+            state["status"] = "passed"
+            finish()
+
     QTimer.singleShot(1500, open_assistant)
     app.exec()
+
+    state["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
+    post_close = _capture_post_close_evidence(
+        manager=manager_ref,
+        runtime=runtime_ref,
+        window=window,
+        cleanup_events=cleanup_events,
+    )
+    if state["status"] == "passed" and not post_close["passed"]:
+        state["status"] = "failed"
+        state["failure_reason"] = _post_close_failure_reason(post_close)
 
     config = LLMConfig.load_from_file() or LLMConfig()
     runtime = classify_runtime(config)
@@ -261,6 +333,7 @@ def run_workflow(
         "failure_reason": state["failure_reason"],
         "prompts": DEFAULT_PROMPTS,
         "runtime": _runtime_summary(runtime),
+        "capture_first_run_policy": "bypassed_without_persisting_settings",
         "hf_offline": {
             "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
             "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
@@ -276,6 +349,7 @@ def run_workflow(
             "chat_processing": state["chat_processing"],
             "controller_processing": state["controller_processing"],
         },
+        "post_close": post_close,
         "elapsed_seconds": state["elapsed_seconds"],
     }
 
@@ -290,6 +364,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- runtime classification: `{payload['runtime']['classification']}`",
         f"- model: `{payload['runtime']['model_id']}`",
         f"- cache usage: `{payload['runtime']['cache_usage']}`",
+        "- first-run policy: "
+        f"`{payload.get('capture_first_run_policy', 'not recorded')}`",
         f"- HF offline: `{payload['hf_offline']['HF_HUB_OFFLINE']}`",
         f"- Transformers offline: `{payload['hf_offline']['TRANSFORMERS_OFFLINE']}`",
         f"- ready screenshot: `{payload['screenshots']['ready']}`",
@@ -322,6 +398,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
     else:
         lines.append("- none")
     ui = payload["ui_state"]
+    post_close = payload.get("post_close", {})
     lines.extend(
         [
             "",
@@ -332,6 +409,20 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- input enabled: `{ui['input_enabled']}`",
             f"- chat processing: `{ui['chat_processing']}`",
             f"- controller processing: `{ui['controller_processing']}`",
+            "",
+            "## Post-close Lifecycle",
+            "",
+            f"- passed: `{post_close.get('passed', False)}`",
+            f"- runtime state: `{post_close.get('runtime_state', 'not reached')}`",
+            "- dispatcher state: "
+            f"`{post_close.get('dispatcher_state', 'not reached')}`",
+            f"- controller released: `{post_close.get('controller_released', False)}`",
+            "- cleanup signal observed: "
+            f"`{post_close.get('cleanup_signal_observed', False)}`",
+            "- registered generation threads: "
+            f"`{post_close.get('registered_generation_thread_count', 0)}`",
+            "- running generation threads: "
+            f"`{post_close.get('running_generation_thread_count', 0)}`",
         ]
     )
     return "\n".join(lines).rstrip() + "\n"
@@ -358,6 +449,7 @@ def _blocked_payload(
         "failure_reason": str(runtime.get("message") or "Local runtime not ready."),
         "prompts": DEFAULT_PROMPTS,
         "runtime": _runtime_summary(runtime),
+        "capture_first_run_policy": "not_reached",
         "hf_offline": {
             "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
             "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
@@ -372,6 +464,11 @@ def _blocked_payload(
             "input_enabled": False,
             "chat_processing": False,
             "controller_processing": False,
+        },
+        "post_close": {
+            "passed": False,
+            "not_reached": True,
+            "checks": {},
         },
         "elapsed_seconds": 0.0,
     }
@@ -402,6 +499,9 @@ def _write_artifacts(output_dir: Path, payload: dict[str, Any]) -> None:
 
 
 def _capture_current_window(window: Any, output_path: Path) -> int:
+    window.update()
+    window.repaint()
+    QApplication.processEvents()
     pixmap = window.grab()
     if pixmap.isNull():
         print("Failed to grab the main window pixmap.", file=sys.stderr)
@@ -417,6 +517,17 @@ def _capture_current_window(window: Any, output_path: Path) -> int:
         return 2
     print(f"Saved screenshot to {output_path}")
     return 0
+
+
+def _has_unpainted_main_surface(path: Path) -> bool:
+    """Detect the X11 capture failure that paints most of the main area black."""
+    with Image.open(path).convert("RGB") as image:
+        left_surface = image.crop((0, 0, max(1, int(image.width * 0.7)), image.height))
+        histogram = left_surface.convert("L").histogram()
+        pixel_count = left_surface.width * left_surface.height
+    if pixel_count == 0:
+        return True
+    return sum(histogram[:8]) / pixel_count > 0.9
 
 
 def _load_capture_config(model_id: str) -> LLMConfig:
@@ -443,6 +554,180 @@ def _set_baseline_window_geometry(window: Any) -> None:
     else:
         window.move(QPoint(0, 0))
     window.resize(BASELINE_WINDOW_SIZE)
+
+
+def _disable_first_run_dialog_for_unattended_capture(window: Any) -> None:
+    """Bypass only the modal consent prompt without persisting user settings."""
+    manager = getattr(window, "agent_manager", None)
+    if manager is None:
+        raise RuntimeError("Assistant manager must be initialized before capture setup")
+    runtime = manager._assistant_runtime
+    runtime.needs_first_run = lambda _config: False
+
+
+def _assistant_is_ready(manager: Any) -> bool:
+    panel = getattr(manager, "chat_panel", None)
+    dock = getattr(manager, "chat_dock", None)
+    chat_controller = getattr(manager, "chat_controller", None)
+    controller = getattr(manager, "agent_controller", None)
+    return bool(
+        panel is not None
+        and dock is not None
+        and dock.isVisible()
+        and panel.input_field.isEnabled()
+        and panel.send_btn.isEnabled()
+        and not bool(
+            chat_controller and getattr(chat_controller, "is_processing", False)
+        )
+        and not bool(controller and getattr(controller, "is_processing", False))
+    )
+
+
+def _capture_post_close_evidence(
+    *,
+    manager: Any | None,
+    runtime: Any | None,
+    window: Any,
+    cleanup_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Capture terminal ownership facts after the main Qt event loop exits."""
+    from XBrainLab.llm.agent.worker import ACTIVE_GENERATION_THREADS
+
+    registered_threads = list(ACTIVE_GENERATION_THREADS)
+    running_threads = 0
+    for thread in registered_threads:
+        try:
+            running_threads += int(bool(thread.isRunning()))
+        except RuntimeError:
+            running_threads += 1
+
+    runtime_state = _enum_value(getattr(runtime, "state", None))
+    dispatcher = getattr(runtime, "dispatcher", None)
+    dispatcher_state = _enum_value(getattr(dispatcher, "state", None))
+    controller_released = bool(
+        manager is not None and getattr(manager, "agent_controller", None) is None
+    )
+    try:
+        window_visible = bool(window.isVisible())
+    except RuntimeError:
+        window_visible = False
+
+    return _build_post_close_evidence(
+        cleanup_events=cleanup_events,
+        runtime_state=runtime_state,
+        dispatcher_state=dispatcher_state,
+        controller_released=controller_released,
+        window_visible=window_visible,
+        registered_generation_thread_count=len(registered_threads),
+        running_generation_thread_count=running_threads,
+    )
+
+
+def _build_post_close_evidence(
+    *,
+    cleanup_events: list[dict[str, Any]],
+    runtime_state: str,
+    dispatcher_state: str,
+    controller_released: bool,
+    window_visible: bool,
+    registered_generation_thread_count: int,
+    running_generation_thread_count: int,
+) -> dict[str, Any]:
+    """Build the machine-checkable assistant teardown contract."""
+    cleanup_result = cleanup_events[-1] if cleanup_events else {}
+    cleanup_succeeded = bool(
+        cleanup_result.get("ok") is True
+        or (not cleanup_events and runtime_state == "closed")
+    )
+    checks = {
+        "window_closed": not window_visible,
+        "runtime_cleanup_succeeded": cleanup_succeeded,
+        "runtime_closed": runtime_state == "closed",
+        "dispatcher_closed": dispatcher_state == "closed",
+        "controller_released": controller_released,
+        "no_registered_generation_threads": registered_generation_thread_count == 0,
+        "no_running_generation_threads": running_generation_thread_count == 0,
+    }
+    return {
+        "cleanup_signal_observed": bool(cleanup_events),
+        "cleanup_events": cleanup_events,
+        "runtime_state": runtime_state,
+        "dispatcher_state": dispatcher_state,
+        "controller_released": controller_released,
+        "window_visible": window_visible,
+        "registered_generation_thread_count": registered_generation_thread_count,
+        "running_generation_thread_count": running_generation_thread_count,
+        "checks": checks,
+        "passed": all(checks.values()),
+    }
+
+
+def _post_close_failure_reason(evidence: dict[str, Any]) -> str:
+    failures = [
+        name
+        for name, passed in evidence.get("checks", {}).items()
+        if passed is not True
+    ]
+    detail = ", ".join(failures) if failures else "unknown teardown state"
+    return f"Assistant teardown contract failed after window close: {detail}."
+
+
+def _enum_value(value: Any) -> str:
+    return str(getattr(value, "value", value) or "")
+
+
+def _turn_contract_failure(
+    index: int,
+    assistant_text: str,
+    new_tools: list[dict[str, Any]],
+) -> str | None:
+    if index == 0:
+        state_calls = [tool for tool in new_tools if tool.get("name") == "query_state"]
+        if not state_calls:
+            return (
+                "Turn 1 did not execute query_state for a workflow readiness request."
+            )
+        if len(state_calls) != 1:
+            return "Turn 1 must execute query_state exactly once."
+        if len(new_tools) != 1:
+            return "Turn 1 must not call other tools for a state-only request."
+        if not any(tool.get("success") is True for tool in state_calls):
+            return "Turn 1 query_state execution did not succeed."
+        return None
+
+    if index == 1:
+        if new_tools:
+            return "Turn 2 explanatory question must not call a workflow tool."
+        normalized = assistant_text.lower()
+        if "no workflow action is needed" in normalized:
+            return "Turn 2 returned the generic refusal instead of an EEG explanation."
+        if any(
+            marker in normalized
+            for marker in (
+                "workflow status",
+                "state query tool",
+                "current xbrainlab workflow",
+            )
+        ):
+            return "Turn 2 repeated the previous workflow request instead of answering."
+        sentence_endings = re.findall(r"[.!?](?=\s|$)", assistant_text.strip())
+        if len(sentence_endings) > 1 or "\n\n" in assistant_text:
+            return "Turn 2 did not follow the requested one short sentence format."
+        explanatory_terms = (
+            "eeg",
+            "signal",
+            "data",
+            "noise",
+            "artifact",
+            "epoch",
+            "training",
+            "analysis",
+            "filter",
+            "clean",
+        )
+        if not any(term in normalized for term in explanatory_terms):
+            return "Turn 2 response did not contain a recognizable EEG explanation."
+    return None
 
 
 def _force_offline_hf_runtime() -> None:

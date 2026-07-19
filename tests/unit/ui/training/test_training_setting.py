@@ -76,7 +76,7 @@ class TestTrainingSetting:
         window.repeat_entry.setText("1")
 
         # Mock Optimizer and Device setting (since they open dialogs)
-        window.optim = MagicMock()
+        window.optim = torch.optim.Adam
         window.optim_params = {}  # lr is separate parameter
         window.use_cpu = True
         window.gpu_idx = None

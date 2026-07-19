@@ -20,6 +20,8 @@ import re
 import shutil
 import sys
 import tempfile
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -39,12 +41,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
-    ApplicationService,
     ApplyInterpretationCommand,
     PreviewInterpretationCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
+    get_application_service,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
@@ -61,6 +64,7 @@ LABEL_PATH = SOURCE_DIR / "events.tsv"
 LABEL_SIDECAR_PATH = SOURCE_DIR / "events.json"
 WINDOW_SIZE = QSize(1280, 800)
 GEOMETRY_WIDTH_TOLERANCE_PX = 2
+WINDOW_CLOSE_TIMEOUT_MS = 8_000
 VISIBLE_INTERNAL_MARKERS = (
     "scan_source",
     "preview_interpretation",
@@ -182,6 +186,7 @@ def set_capture_geometry(window: QWidget) -> None:
 
 def capture_widget(widget: QWidget, output_path: Path) -> None:
     """Capture a widget pixmap and fail if the image is unusable."""
+    settle_widget_for_capture(widget)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pixmap = widget.grab()
     if pixmap.isNull():
@@ -190,6 +195,24 @@ def capture_widget(widget: QWidget, output_path: Path) -> None:
         raise RuntimeError(f"Could not save {output_path}.")
     if is_nearly_black(output_path):
         raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
+
+
+def settle_widget_for_capture(widget: QWidget, *, wait_ms: int = 500) -> None:
+    """Flush deferred layouts and child paints before recording evidence."""
+    app = QApplication.instance()
+    if app is None:
+        return
+    widget.updateGeometry()
+    widget.repaint()
+    for child in widget.findChildren(QWidget):
+        if child.isVisible():
+            child.update()
+    app.processEvents()
+    deadline = time.monotonic() + max(wait_ms, 0) / 1000
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
+    app.processEvents()
 
 
 def is_nearly_black(path: Path) -> bool:
@@ -371,6 +394,49 @@ def tree_state(tree: QTreeWidget) -> dict[str, Any]:
     }
 
 
+def pairing_rows(dialog: DataInterpretationPreviewDialog) -> list[list[str]]:
+    """Return the EEG-to-label rows that are actually visible to the user."""
+    rows: list[list[str]] = []
+    selectors = getattr(dialog, "_eeg_label_widgets", {})
+    badges = getattr(dialog, "_eeg_label_status_widgets", {})
+    for eeg_file, selector in selectors.items():
+        if not isinstance(selector, QComboBox):
+            continue
+        badge = badges.get(eeg_file)
+        status = badge.text() if isinstance(badge, QLabel) else ""
+        rows.append([eeg_file, selector.currentText(), status])
+    return rows
+
+
+def pairing_rows_state(dialog: DataInterpretationPreviewDialog) -> dict[str, Any]:
+    """Capture geometry and values from the visible file-pairing controls."""
+    widget = dialog.label_pairing_rows_widget
+    selectors = getattr(dialog, "_eeg_label_widgets", {})
+    badges = getattr(dialog, "_eeg_label_status_widgets", {})
+    overflowing_controls: list[str] = []
+    for eeg_file, control in [*selectors.items(), *badges.items()]:
+        if not isinstance(control, QWidget):
+            continue
+        top_left = control.mapTo(widget, QPoint(0, 0))
+        if top_left.x() < 0 or top_left.x() + control.width() > widget.width():
+            overflowing_controls.append(str(eeg_file))
+    width = max(widget.width(), 0)
+    return {
+        "headers": ["EEG file", "Label file", "Status"],
+        "rows": pairing_rows(dialog),
+        "visible": widget.isVisibleTo(dialog),
+        "header_length": width,
+        "viewport_width": width,
+        "widget_width": width,
+        "horizontal_scrollbar_max": 0,
+        "vertical_scrollbar_max": 0,
+        "partial_visible_rows": [],
+        "overflowing_controls": sorted(set(overflowing_controls)),
+        "text_elide_mode": "visible controls",
+        "alternating_row_colors": False,
+    }
+
+
 def build_replay_geometry_review(ui_state: dict[str, Any]) -> dict[str, Any]:
     """Check replay table/tree geometry for overflow, underfill, and clipped rows."""
     rows: list[dict[str, Any]] = []
@@ -383,6 +449,10 @@ def build_replay_geometry_review(ui_state: dict[str, Any]) -> dict[str, Any]:
         horizontal_scrollbar_max = geometry_int(state, "horizontal_scrollbar_max")
         width_gap = viewport_width - header_length
         partial_visible_rows = geometry_int_list(state, "partial_visible_rows")
+        visible = bool(state.get("visible", True))
+        overflowing_controls = [
+            str(value) for value in state.get("overflowing_controls", [])
+        ]
         has_right_boundary = "right_gap_to_boundary" in state
         right_gap_to_boundary = (
             geometry_int(state, "right_gap_to_boundary") if has_right_boundary else 0
@@ -412,6 +482,8 @@ def build_replay_geometry_review(ui_state: dict[str, Any]) -> dict[str, Any]:
             "horizontal_scrollbar_max": horizontal_scrollbar_max,
             "vertical_scrollbar_max": geometry_int(state, "vertical_scrollbar_max"),
             "partial_visible_rows": partial_visible_rows,
+            "visible": visible,
+            "overflowing_controls": overflowing_controls,
             "fits_viewport": fits_viewport,
             "fills_viewport": fills_viewport,
             "fills_content_boundary": fills_content_boundary,
@@ -427,6 +499,8 @@ def build_replay_geometry_review(ui_state: dict[str, Any]) -> dict[str, Any]:
             or not fills_viewport
             or not fills_content_boundary
             or not shows_only_complete_rows
+            or not visible
+            or bool(overflowing_controls)
         ):
             findings.append(row)
     return {
@@ -496,7 +570,7 @@ def iter_visible_text_values(
                 "visible_text",
                 "visible_panel_text",
                 "metadata_rows",
-                "label_carrier_rows",
+                "file_pairing_rows",
                 "event_rows",
                 "review_summary_rows",
                 "rows",
@@ -624,60 +698,69 @@ def apply_replay_review_choices(
         metadata_item.setText(2, "session-01")
         metadata_item.setText(3, "motor-imagery")
 
-    label_item = dialog.label_carrier_tree.topLevelItem(0)
-    if label_item is not None:
-        target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
-        pairing_selector = getattr(dialog, "_eeg_label_widgets", {}).get(
-            SECOND_SOURCE_PATH.name
-        )
-        if isinstance(pairing_selector, QComboBox):
-            pairing_combo = cast(QComboBox, pairing_selector)
-            carrier_key = ""
-            for item, original in getattr(dialog, "_label_carrier_items", []):
-                if item is label_item and isinstance(original, dict):
-                    carrier_key = str(
-                        original.get("path") or original.get("name") or item.text(0)
-                    )
-                    break
-            pairing_index = pairing_combo.findData(carrier_key)
-            if pairing_index >= 0:
-                pairing_combo.setCurrentIndex(pairing_index)
-        if isinstance(target_selector, QComboBox):
-            target_index = target_selector.findData(SECOND_SOURCE_PATH.name)
-            if target_index >= 0:
-                target_selector.setCurrentIndex(target_index)
-            else:
-                target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
-        else:
-            visible_selector = getattr(dialog, "_eeg_label_widgets", {}).get(
-                SECOND_SOURCE_PATH.name
-            )
-            if isinstance(visible_selector, QComboBox):
-                next_index = 1 if visible_selector.count() > 1 else 0
-                visible_selector.setCurrentIndex(next_index)
-            else:
-                label_item.setText(1, SECOND_SOURCE_PATH.name)
-        set_tree_cell(dialog.label_carrier_tree, label_item, 2, "trial_type")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 3, "onset")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 4, "Trial")
-        set_tree_cell(
-            dialog.label_carrier_tree,
-            label_item,
-            5,
-            "Class cue labels",
-        )
+    app = QApplication.instance()
+    if app is not None:
+        show_dialog_step(dialog, "Match Labels", app)
+    pairing_selector = getattr(dialog, "_eeg_label_widgets", {}).get(
+        SECOND_SOURCE_PATH.name
+    )
+    if not isinstance(pairing_selector, QComboBox):
+        selectors = list(getattr(dialog, "_eeg_label_widgets", {}).values())
+        pairing_selector = selectors[-1] if selectors else None
+    if isinstance(pairing_selector, QComboBox):
+        desired_index = pairing_selector.findData(str(LABEL_PATH))
+        if desired_index < 0:
+            desired_index = 1 if pairing_selector.count() > 1 else 0
+        pairing_selector.setCurrentIndex(desired_index)
+
+    for selector_name, value in (
+        ("rule_label_field_combo", "trial_type"),
+        ("rule_use_as_combo", "class cue labels"),
+    ):
+        selector = getattr(dialog, selector_name, None)
+        if isinstance(selector, QComboBox):
+            index = selector.findData(value)
+            if index >= 0:
+                selector.setCurrentIndex(index)
 
     for index in range(dialog.event_tree.topLevelItemCount()):
         event_item = dialog.event_tree.topLevelItem(index)
-        if event_item is not None and source_event_field_matches(
-            event_item,
-            "trial_type",
+        if (
+            event_item is not None
+            and dialog.event_tree.isVisibleTo(dialog)
+            and source_event_field_matches(
+                event_item,
+                "trial_type",
+            )
         ):
             set_tree_cell(dialog.event_tree, event_item, 2, "Class cue")
 
     dialog_result = dialog.get_result()
     choices = dialog_result.get("choices", {})
-    return choices if isinstance(choices, dict) else {}
+    if not isinstance(choices, dict):
+        return {}
+    selected_eeg_files = dialog.preview.get("selected_eeg_files")
+    if isinstance(selected_eeg_files, list) and selected_eeg_files:
+        choices["selected_eeg_files"] = [
+            str(path) for path in selected_eeg_files if str(path).strip()
+        ]
+    return choices
+
+
+def ensure_confirmed_apply_succeeded(command_result: Any) -> None:
+    """Fail replay evidence unless the confirmed product command succeeded."""
+    typed_ok = getattr(command_result, "ok", None)
+    if typed_ok is True:
+        return
+    to_dict = getattr(command_result, "to_dict", None)
+    payload = to_dict() if callable(to_dict) else command_result
+    if not isinstance(payload, dict):
+        raise RuntimeError("Confirmed apply failed: command result is unavailable.")
+    status = str(payload.get("status") or "").strip().casefold()
+    if payload.get("ok") is True or status in {"ok", "success"}:
+        return
+    message = str(payload.get("message") or "Unknown apply failure.").strip()
+    raise RuntimeError(f"Confirmed apply failed: {message}")
 
 
 def source_event_field_matches(item: QTreeWidgetItem, source_field: str) -> bool:
@@ -690,13 +773,19 @@ def source_event_field_matches(item: QTreeWidgetItem, source_field: str) -> bool
 def show_dialog_step(
     dialog: DataInterpretationPreviewDialog,
     step_title: str,
-    app: QApplication,
+    app: Any,
 ) -> None:
     """Show one wizard step before screenshot or geometry capture."""
     step_titles = getattr(dialog, "_step_titles", [])
     if step_title in step_titles:
         dialog._go_to_step(step_titles.index(step_title))
-    app.processEvents()
+    process_events = getattr(app, "processEvents", None)
+    if callable(process_events):
+        process_events()
+        return
+    qt_app = QApplication.instance()
+    if qt_app is not None:
+        qt_app.processEvents()
 
 
 def tree_state_for_step(
@@ -712,40 +801,62 @@ def tree_state_for_step(
     return tree_state(tree)
 
 
+def pairing_rows_state_for_step(
+    dialog: DataInterpretationPreviewDialog,
+    step_title: str,
+    app: Any,
+) -> dict[str, Any]:
+    """Capture the user-facing pairing grid while its wizard step is visible."""
+    show_dialog_step(dialog, step_title, app)
+    process_events = getattr(app, "processEvents", None)
+    if callable(process_events):
+        process_events()
+    else:
+        qt_app = QApplication.instance()
+        if qt_app is not None:
+            qt_app.processEvents()
+    return pairing_rows_state(dialog)
+
+
 def capture_replay(app: QApplication) -> int:
     """Run the replay and write JSON / screenshot artifacts."""
     result: dict[str, int] = {"code": 1}
     ARTIFACT_PATHS.directory.mkdir(parents=True, exist_ok=True)
     source_path = write_synthetic_raw_fif()
     study = Study()
-    service = ApplicationService(study)
+    service = get_application_service(study)
     window = MainWindow(study)
+    dataset_panel = cast(Any, window).dataset_panel
     set_capture_geometry(window)
     window.show()
 
     def run_steps() -> None:
         try:
-            window.dataset_panel.sidebar.update_sidebar()
-            empty_sidebar_buttons = dataset_sidebar_state(window.dataset_panel.sidebar)
+            dataset_panel.sidebar.update_sidebar()
+            empty_sidebar_buttons = dataset_sidebar_state(dataset_panel.sidebar)
             empty_sidebar_state = {
                 "buttons": empty_sidebar_buttons,
                 "import_label_button_text": (
-                    window.dataset_panel.sidebar.import_label_btn.text()
+                    dataset_panel.sidebar.import_label_btn.text()
                 ),
                 "import_label_button_enabled": (
-                    window.dataset_panel.sidebar.import_label_btn.isEnabled()
+                    dataset_panel.sidebar.import_label_btn.isEnabled()
                 ),
                 "import_label_button_tooltip": (
-                    window.dataset_panel.sidebar.import_label_btn.toolTip()
+                    dataset_panel.sidebar.import_label_btn.toolTip()
                 ),
             }
             scan = service.execute(
                 ScanSourceCommand(source_path=str(source_path.parent))
             )
-            preview = service.execute(PreviewInterpretationCommand())
+            preview = service.execute(
+                PreviewInterpretationCommand(
+                    choices={"selected_eeg_files": [str(SECOND_SOURCE_PATH)]},
+                )
+            )
             validation = service.execute(ValidateInterpretationCommand())
             dialog = DataInterpretationPreviewDialog(
-                window.dataset_panel,
+                dataset_panel,
                 scan_result=scan.diagnostics["scan_result"],
                 preview=preview.diagnostics["preview"],
                 validation_decision=validation.diagnostics["validation_decision"],
@@ -773,7 +884,7 @@ def capture_replay(app: QApplication) -> int:
                 },
                 "visible_text": visible_texts(dialog),
                 "metadata_rows": tree_rows(dialog.file_tree),
-                "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
+                "file_pairing_rows": pairing_rows(dialog),
                 "event_rows": tree_rows(dialog.event_tree),
                 "review_summary_rows": sanitized(tree_rows(dialog.review_tree)),
                 "tables": sanitized(
@@ -784,10 +895,9 @@ def capture_replay(app: QApplication) -> int:
                             dialog.file_tree,
                             app,
                         ),
-                        "label_carriers": tree_state_for_step(
+                        "file_pairing": pairing_rows_state_for_step(
                             dialog,
                             "Match Labels",
-                            dialog.label_carrier_tree,
                             app,
                         ),
                         "events": tree_state_for_step(
@@ -817,7 +927,7 @@ def capture_replay(app: QApplication) -> int:
             dialog.close()
 
             remap_dialog = DataInterpretationPreviewDialog(
-                window.dataset_panel,
+                dataset_panel,
                 scan_result={
                     "source_path": str(source_path.parent),
                     "source_kind": "folder",
@@ -897,10 +1007,9 @@ def capture_replay(app: QApplication) -> int:
                             remap_dialog.file_tree,
                             app,
                         ),
-                        "label_carriers": tree_state_for_step(
+                        "file_pairing": pairing_rows_state_for_step(
                             remap_dialog,
                             "Match Labels",
-                            remap_dialog.label_carrier_tree,
                             app,
                         ),
                         "events": tree_state_for_step(
@@ -940,8 +1049,9 @@ def capture_replay(app: QApplication) -> int:
             apply_confirmed = service.execute(
                 ApplyInterpretationCommand(confirmed=True),
             )
-            window.dataset_panel.update_panel()
-            window.switch_page(0)
+            ensure_confirmed_apply_succeeded(apply_confirmed)
+            dataset_panel.update_panel()
+            open_workflow_panel(window, 0)
             set_capture_geometry(window)
             app.processEvents()
             window.repaint()
@@ -955,7 +1065,8 @@ def capture_replay(app: QApplication) -> int:
                     "Selected folder source for interpretation.",
                     "Scanned source and previewed metadata plus label carrier "
                     "interpretation.",
-                    "Mapped generic events.tsv to the second EEG file in the wizard.",
+                    "Selected one EEG file from the scanned folder scope.",
+                    "Mapped generic events.tsv to the selected EEG file in the wizard.",
                     "Reviewed label column, anchor, time model, granularity, and role.",
                     "Confirmed trial_type as the class cue event role.",
                     "Validation required confirmation for missing metadata.",
@@ -978,30 +1089,28 @@ def capture_replay(app: QApplication) -> int:
                     "remap_dialog": remap_dialog_state,
                     "dataset_panel": {
                         "sidebar_buttons": dataset_sidebar_state(
-                            window.dataset_panel.sidebar,
+                            dataset_panel.sidebar,
                         ),
-                        "import_button_text": (
-                            window.dataset_panel.sidebar.import_btn.text()
-                        ),
+                        "import_button_text": (dataset_panel.sidebar.import_btn.text()),
                         "import_button_enabled": (
-                            window.dataset_panel.sidebar.import_btn.isEnabled()
+                            dataset_panel.sidebar.import_btn.isEnabled()
                         ),
                         "import_label_button_text": (
-                            window.dataset_panel.sidebar.import_label_btn.text()
+                            dataset_panel.sidebar.import_label_btn.text()
                         ),
                         "import_label_button_enabled": (
-                            window.dataset_panel.sidebar.import_label_btn.isEnabled()
+                            dataset_panel.sidebar.import_label_btn.isEnabled()
                         ),
                         "import_label_button_tooltip": (
-                            window.dataset_panel.sidebar.import_label_btn.toolTip()
+                            dataset_panel.sidebar.import_label_btn.toolTip()
                         ),
-                        "table_rows": window.dataset_panel.table.rowCount(),
+                        "table_rows": dataset_panel.table.rowCount(),
                         "table": table_state(
-                            window.dataset_panel.table,
-                            panel=window.dataset_panel,
-                            right_boundary=window.dataset_panel.sidebar,
+                            dataset_panel.table,
+                            panel=dataset_panel,
+                            right_boundary=dataset_panel.sidebar,
                         ),
-                        "visible_panel_text": visible_texts(window.dataset_panel),
+                        "visible_panel_text": visible_texts(dataset_panel),
                         "screenshot": ARTIFACT_PATHS.applied_screenshot.name,
                     },
                     "empty_dataset_sidebar": empty_sidebar_state,
@@ -1029,12 +1138,53 @@ def capture_replay(app: QApplication) -> int:
             print(f"Replay capture failed: {exc}", file=sys.stderr)
             result["code"] = 1
         finally:
-            window.close()
-            app.quit()
+            request_window_close(
+                window,
+                on_closed=app.quit,
+                on_timeout=lambda: _handle_capture_close_timeout(app, result),
+            )
 
     QTimer.singleShot(1500, run_steps)
     app.exec()
     return result["code"]
+
+
+def request_window_close(
+    window: QWidget,
+    *,
+    on_closed: Callable[[], None],
+    on_timeout: Callable[[], None],
+    timeout_ms: int = WINDOW_CLOSE_TIMEOUT_MS,
+) -> None:
+    """Wait for the product's asynchronous close protocol before finishing."""
+    started_at = time.monotonic()
+
+    def poll() -> None:
+        if not window.isVisible():
+            on_closed()
+            return
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        if elapsed_ms >= max(timeout_ms, 0):
+            on_timeout()
+            return
+        QTimer.singleShot(25, poll)
+
+    window.close()
+    QTimer.singleShot(0, poll)
+
+
+def _handle_capture_close_timeout(
+    app: QApplication,
+    result: dict[str, int],
+) -> None:
+    """Fail a replay that cannot complete the real MainWindow shutdown path."""
+    print(
+        "Replay capture failed: MainWindow did not finish shutdown within "
+        f"{WINDOW_CLOSE_TIMEOUT_MS} ms.",
+        file=sys.stderr,
+    )
+    result["code"] = 1
+    app.exit(1)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

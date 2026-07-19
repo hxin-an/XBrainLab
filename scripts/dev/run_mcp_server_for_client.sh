@@ -17,4 +17,5 @@ if [[ -z "${POETRY_BIN}" ]]; then
 fi
 
 cd "${REPO_ROOT}"
+export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 exec "${POETRY_BIN}" run python scripts/dev/run_mcp_server.py

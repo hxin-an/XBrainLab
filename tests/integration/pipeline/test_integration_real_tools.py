@@ -1,11 +1,23 @@
 import os
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from XBrainLab.backend.application import QueryStateCommand, get_application_service
+from XBrainLab.backend.application import (
+    ChangedState,
+    CommandName,
+    CommandResult,
+    ErrorType,
+    QueryStateCommand,
+    get_application_service,
+)
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.tools import application_surface
+from XBrainLab.llm.tools.application_surface import (
+    ToolAvailability,
+    ToolAvailabilityContext,
+)
 from XBrainLab.llm.tools.real.dataset_real import (
     RealGenerateDatasetTool,
     RealLoadDataTool,
@@ -19,12 +31,14 @@ from XBrainLab.llm.tools.real.training_real import (
     RealSetModelTool,
     RealStartTrainingTool,
 )
+from XBrainLab.llm.tools.result_contract import ToolResult
 
 
 def _query_result(study, query: str, *, include_objects: bool = False):
     result = get_application_service(study).execute(
         QueryStateCommand(query=query, include_objects=include_objects),
     )
+    assert isinstance(result, CommandResult)
     assert result.ok, result.message
     return result
 
@@ -45,61 +59,146 @@ def _first_preprocessed_data(study):
 
 def _command_result(
     *,
+    command_name: str = CommandName.QUERY_STATE.value,
     failed: bool = False,
+    message: str = "ok",
     diagnostics: dict[str, object] | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        failed=failed,
-        ok=not failed,
-        message="ok",
+) -> CommandResult:
+    state = ApplicationStateSnapshot.empty()
+    if failed:
+        return CommandResult.failure_result(
+            command_name=command_name,
+            message=message,
+            state=state,
+            changed_state=ChangedState(),
+            error_type=ErrorType.RUNTIME,
+            recoverable=True,
+            diagnostics=diagnostics or {},
+        )
+    return CommandResult.success_result(
+        command_name=command_name,
+        message=message,
+        state=state,
+        changed_state=ChangedState(),
         diagnostics=diagnostics or {},
     )
 
 
-def test_epoch_data_tool_execution():
-    """Verify RealEpochDataTool passes event names to the command spine."""
-    tool = RealEpochDataTool()
-    mock_study = MagicMock()
-
-    service = MagicMock()
-    service.execute.return_value = _command_result()
-
-    with patch(
-        "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-        return_value=service,
-    ):
-        # Execute tool with list of strings
-        result = tool.execute(
-            mock_study, t_min=-0.1, t_max=0.5, event_id=["Target", "Standard"]
-        )
-
-        command = service.execute.call_args.args[0]
-        assert command.t_min == -0.1
-        assert command.t_max == 0.5
-        assert command.baseline is None
-        assert command.event_ids == ["Target", "Standard"]
-        assert "Data epoched" in result
+def _assert_tool_result(result, *, ok: bool = True) -> ToolResult:
+    assert isinstance(result, ToolResult)
+    assert result.ok is ok
+    if ok:
+        assert result.error_type == ErrorType.NONE.value
+    else:
+        assert result.error_type != ErrorType.NONE.value
+    return result
 
 
-def test_load_data_tool_execution():
-    """Verify RealLoadDataTool calls LoadDataCommand."""
-    tool = RealLoadDataTool()
-    mock_study = MagicMock()
+def _install_canonical_runtime(
+    monkeypatch,
+    tool_name: str,
+    result: CommandResult,
+) -> tuple[MagicMock, MagicMock, MagicMock]:
+    availability = ToolAvailability(
+        tool_name=tool_name,
+        enabled=True,
+        command_name=application_surface.TOOL_TO_COMMAND[tool_name].value,
+    )
+    context = ToolAvailabilityContext(
+        availability=availability,
+        state={"canonical_snapshot": True},
+        generation=17,
+    )
+    get_context = MagicMock(return_value=context)
+    runtime = MagicMock()
+    runtime.execute.return_value = result
+    runtime_provider = MagicMock(return_value=runtime)
+    monkeypatch.setattr(application_surface, "get_application_context", get_context)
+    monkeypatch.setattr(
+        application_surface,
+        "application_tool_runtime",
+        runtime_provider,
+    )
+    return runtime, get_context, runtime_provider
 
-    service = MagicMock()
-    service.execute.return_value = _command_result(
-        diagnostics={"success_count": 1, "errors": []},
+
+def test_epoch_data_tool_execution(monkeypatch):
+    """Verify the Real tool reaches canonical epoch command translation."""
+    command_result = _command_result(
+        command_name=CommandName.CREATE_EPOCH.value,
+        message="Created epochs from -0.1s to 0.5s.",
+    )
+    runtime, get_context, runtime_provider = _install_canonical_runtime(
+        monkeypatch,
+        "epoch_data",
+        command_result,
+    )
+    study = object()
+
+    result = RealEpochDataTool().execute(
+        study,
+        t_min=-0.1,
+        t_max=0.5,
+        event_id=["Target", "Standard"],
     )
 
-    with patch(
-        "XBrainLab.llm.tools.real.dataset_real.get_application_service",
-        return_value=service,
-    ):
-        result = tool.execute(mock_study, paths=["C:/data/test.edf"])
+    command = runtime.execute.call_args.args[0]
+    assert command.t_min == -0.1
+    assert command.t_max == 0.5
+    assert command.baseline is None
+    assert command.event_ids == ["Target", "Standard"]
+    assert result.ok is True
+    assert result.message == "Created epochs from -0.1s to 0.5s."
+    assert result.payload["status"] == "ok"
+    assert result.payload["command_name"] == CommandName.CREATE_EPOCH.value
+    assert isinstance(result.payload["state"], dict)
+    assert isinstance(result.payload["changed_state"], dict)
+    assert result.payload["diagnostics"] == {}
+    assert result.error_type == "none"
+    assert result.recoverable is True
+    assert result.command_name == CommandName.CREATE_EPOCH.value
+    assert result.capability is not None
+    assert result.capability["tool_name"] == "epoch_data"
+    assert isinstance(result.changed_state, dict)
+    get_context.assert_called_once_with(study, "epoch_data", runtime=runtime)
+    runtime_provider.assert_called_once_with(study)
 
-        command = service.execute.call_args.args[0]
-        assert command.paths == ["C:/data/test.edf"]
-        assert "Successfully loaded 1 files" in result
+
+def test_load_data_tool_execution(monkeypatch):
+    """Verify the Real tool reaches canonical load-data command translation."""
+    command_result = _command_result(
+        command_name=CommandName.LOAD_DATA.value,
+        message="Loaded 1 file(s).",
+        diagnostics={"success_count": 1, "errors": []},
+    )
+    runtime, get_context, runtime_provider = _install_canonical_runtime(
+        monkeypatch,
+        "load_data",
+        command_result,
+    )
+    study = object()
+
+    result = RealLoadDataTool().execute(study, paths=["C:/data/test.edf"])
+
+    command = runtime.execute.call_args.args[0]
+    assert command.paths == ["C:/data/test.edf"]
+    assert command.allow_append is True
+    assert result.ok is True
+    assert result.message == "Loaded 1 file(s)."
+    assert result.payload["status"] == "ok"
+    assert result.payload["command_name"] == CommandName.LOAD_DATA.value
+    assert isinstance(result.payload["state"], dict)
+    assert isinstance(result.payload["changed_state"], dict)
+    assert result.payload["diagnostics"] == {"success_count": 1, "errors": []}
+    assert result.error_type == "none"
+    assert result.recoverable is True
+    assert result.command_name == CommandName.LOAD_DATA.value
+    assert result.capability is not None
+    assert result.capability["tool_name"] == "load_data"
+    assert result.diagnostics == {"success_count": 1, "errors": []}
+    assert isinstance(result.changed_state, dict)
+    get_context.assert_called_once_with(study, "load_data", runtime=runtime)
+    runtime_provider.assert_called_once_with(study)
 
 
 # Integration Tests with Real Backend (No Mocks)
@@ -139,14 +238,20 @@ class TestRealToolChain:
         load_tool = RealLoadDataTool()
         res_load = load_tool.execute(study, paths=[GDF_FILE])
 
-        assert "Successfully loaded 1 files" in res_load
+        res_load = _assert_tool_result(res_load)
+        assert res_load.message == "Loaded 1 file(s)."
+        assert res_load.payload["status"] == "ok"
+        assert res_load.payload["command_name"] == CommandName.LOAD_DATA.value
+        assert res_load.payload["diagnostics"]["success_count"] == 1
+        assert res_load.payload["diagnostics"]["errors"] == []
         assert _state(study)["raw"]["count"] == 1
 
         # 2. Filter Data (8-12Hz)
         filter_tool = RealBandPassFilterTool()
         res_filter = filter_tool.execute(study, low_freq=8, high_freq=12)
 
-        assert "Applied Bandpass Filter" in res_filter
+        res_filter = _assert_tool_result(res_filter)
+        assert res_filter.message == "Applied bandpass filter (8.0-12.0 Hz)."
 
         hist = _first_preprocessed_data(study).get_preprocess_history()
         assert any("Filtering" in h for h in hist)
@@ -159,7 +264,8 @@ class TestRealToolChain:
             t_max=2.0,
             event_id=["769", "770", "771", "772"],
         )
-        assert "Data epoched" in res_epoch
+        res_epoch = _assert_tool_result(res_epoch)
+        assert res_epoch.message == "Created epochs from 0.0s to 2.0s."
         epoch_state = _state(study)["epoch"]
         assert epoch_state["exists"] is True
         assert epoch_state["epoch_count"] == 288
@@ -172,9 +278,9 @@ class TestRealToolChain:
         res_gen = gen_tool.execute(
             study, split_strategy="trial"
         )  # trial strategy default
-        assert (
-            res_gen == "Dataset successfully generated. Count: 1 (Test: 0.2, Val: 0.2)."
-        )
+        res_gen = _assert_tool_result(res_gen)
+        assert res_gen.message == "Generated 1 dataset(s)."
+        assert res_gen.payload["diagnostics"]["dataset_count"] == 1
         state = _state(study)
         assert (
             state["dataset"]["count"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY["count"]
@@ -188,13 +294,22 @@ class TestRealToolChain:
         # Set Model (Optional default is often set, but let's be explicit)
         model_tool = RealSetModelTool()
         res_model = model_tool.execute(study, model_name="EEGNet")
-        assert "successfully set" in res_model
+        res_model = _assert_tool_result(res_model)
+        assert res_model.message == "Model configured: EEGNet."
         assert _state(study)["training"]["model_name"] == "EEGNet"
 
         # Configure
         config_tool = RealConfigureTrainingTool()
-        res_config = config_tool.execute(study, epoch=1, batch_size=4)
-        assert "Training configured" in res_config
+        res_config = config_tool.execute(
+            study,
+            epoch=1,
+            batch_size=4,
+            learning_rate=0.001,
+        )
+        res_config = _assert_tool_result(res_config)
+        assert res_config.message == "Training configured."
+        assert res_config.payload["diagnostics"]["training_option"]["epoch"] == 1
+        assert res_config.payload["diagnostics"]["training_option"]["batch_size"] == 4
         training_state = _state(study)["training"]
         assert training_state["training_option"]["epoch"] == 1
         assert training_state["training_option"]["batch_size"] == 4
@@ -208,7 +323,10 @@ class TestRealToolChain:
             interactive=False,
         )
 
-        assert "started success" in res_start
+        res_start = _assert_tool_result(res_start)
+        assert res_start.message == "Training completed."
+        assert res_start.payload["diagnostics"]["append"] is False
+        assert res_start.payload["diagnostics"]["interactive"] is False
         training_state = _state(study)["training"]
         assert training_state["has_trainer"] is True
         assert training_state["plan_count"] == 1
@@ -221,5 +339,6 @@ class TestRealToolChain:
 
         # Try loading non-existent file
         res = load_tool.execute(study, paths=["non_existent.gdf"])
-        assert "Failed" in res or "Error" in res
+        res = _assert_tool_result(res, ok=False)
+        assert "Failed" in res.message or "Error" in res.message
         assert _state(study)["raw"]["count"] == 0

@@ -3,6 +3,7 @@
 from typing import Any
 
 from ..base import BaseTool
+from ..result_contract import ToolExecutionResult
 
 
 class BaseEvaluateTool(BaseTool):
@@ -28,7 +29,7 @@ class BaseEvaluateTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -57,7 +58,7 @@ class BaseVisualizeTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -89,5 +90,5 @@ class BaseSaliencyTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError

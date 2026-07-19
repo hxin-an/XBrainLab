@@ -9,16 +9,33 @@ the agent history.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.tool_attempt_coordinator import (
+    ToolAttemptAction,
+    ToolAttemptRequest,
+)
+from XBrainLab.llm.agent.turn import (
+    AssistantGenerationDispatchAcknowledgement,
+    AssistantGenerationDispatchPhase,
+    AssistantGenerationEvent,
+    AssistantGenerationEventPhase,
+    AssistantGenerationRequest,
+    AssistantGenerationStopAcknowledgement,
+    AssistantGenerationStopRequest,
+    AssistantTurnCorrelation,
+    AssistantTurnRequest,
+)
 from XBrainLab.llm.agent.worker import AgentWorker
 
 
@@ -28,14 +45,30 @@ class _NoopWorker(AgentWorker):
     def initialize_agent(self) -> None:
         return None
 
-    def generate_from_messages(self, _messages: list[dict]) -> None:
-        return None
+    def generate_from_messages(self, _request: AssistantGenerationRequest) -> None:
+        self.generation_dispatch_acknowledged.emit(
+            AssistantGenerationDispatchAcknowledgement(
+                generation_id=_request.generation_id,
+                phase=AssistantGenerationDispatchPhase.ACCEPTED,
+            )
+        )
+        self.generation_dispatch_acknowledged.emit(
+            AssistantGenerationDispatchAcknowledgement(
+                generation_id=_request.generation_id,
+                phase=AssistantGenerationDispatchPhase.STARTED,
+            )
+        )
 
     def reinitialize_agent(self, _mode: str) -> None:
         return None
 
-    def cancel_generation(self) -> None:
-        self.generation_stop_finished.emit(True)
+    def cancel_generation(self, request: AssistantGenerationStopRequest) -> None:
+        self.generation_stop_finished.emit(
+            AssistantGenerationStopAcknowledgement(
+                generation_id=request.generation_id,
+                stopped=True,
+            )
+        )
 
     def shutdown(self, wait_ms: int = 0) -> bool:
         del wait_ms
@@ -47,11 +80,51 @@ class _NoopRag:
     def initialize(self) -> None:
         return None
 
-    def get_similar_examples(self, _text: str) -> list:
-        return []
+    def get_similar_examples(
+        self,
+        _text: str,
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> str:
+        del allowed_tool_names
+        return ""
 
     def close(self) -> None:
         return None
+
+
+class _ImmediateRagLifecycle:
+    """Deterministic lifecycle seam without bypassing controller RAG behavior."""
+
+    def __init__(self, retriever: _NoopRag) -> None:
+        self.retriever = retriever
+
+    def start(self) -> bool:
+        self.retriever.initialize()
+        return True
+
+    def retrieve(
+        self,
+        turn_id: int,
+        query: str,
+        callback,
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> bool:
+        callback(
+            turn_id,
+            query,
+            self.retriever.get_similar_examples(
+                query,
+                allowed_tool_names=allowed_tool_names,
+            ),
+            "",
+        )
+        return True
+
+    def close(self) -> bool:
+        self.retriever.close()
+        return True
 
 
 @dataclass
@@ -59,6 +132,9 @@ class ProductHarness:
     controller: LLMController
     chat: ChatController
     statuses: list[str]
+    generation_events: list[AssistantGenerationEvent]
+    wait_for_generation_start: Callable[[], None]
+    turn_sequence: int = 0
 
     @property
     def visible_transcript(self) -> list[str]:
@@ -73,36 +149,70 @@ class ProductHarness:
         )
 
     def send(self, user_text: str, model_text: str | None = None) -> None:
+        self.turn_sequence += 1
         self.chat.add_user_message(user_text)
-        self.controller.handle_user_input(user_text)
+        self.controller.handle_user_turn(
+            AssistantTurnRequest(
+                correlation=AssistantTurnCorrelation(
+                    generation=self.turn_sequence,
+                    turn_id=self.turn_sequence,
+                ),
+                text=user_text,
+            )
+        )
         if model_text is not None:
+            self.wait_for_generation_start()
+            generation_id = self.controller._active_generation_id
+            assert isinstance(generation_id, int)
+            assert not isinstance(generation_id, bool)
+            assert generation_id > 0
             self.controller.current_response = model_text
-            self.controller._on_generation_finished()
+            self.controller._on_generation_finished(generation_id, [])
 
 
 @pytest.fixture
 def product_harness(qtbot) -> Iterator[ProductHarness]:
     statuses: list[str] = []
+    generation_events: list[AssistantGenerationEvent] = []
     with (
         patch("XBrainLab.llm.agent.controller.AgentWorker", _NoopWorker),
         patch("XBrainLab.llm.agent.controller.RAGRetriever", _NoopRag),
-        patch("XBrainLab.llm.agent.controller.threading.Thread") as MockThread,
+        patch(
+            "XBrainLab.llm.agent.controller.RAGRetrieverLifecycle",
+            _ImmediateRagLifecycle,
+        ),
     ):
-        MockThread.return_value.start = MagicMock()
         controller = LLMController(Study())
         chat = ChatController()
 
-        controller.response_ready.connect(
-            lambda _sender, text: chat.add_agent_message(text)
+        controller.response_presentation_ready.connect(
+            lambda presentation: chat.add_agent_message(presentation.text)
         )
-        controller.chunk_received.connect(lambda text: chat.add_agent_message(text))
-        controller.generation_started.connect(lambda: chat.set_processing(True))
+        controller.generation_event.connect(generation_events.append)
+        controller.generation_event.connect(
+            lambda event: chat.set_processing(True)
+            if isinstance(event, AssistantGenerationEvent)
+            and event.phase is AssistantGenerationEventPhase.STARTED
+            else None
+        )
         controller.processing_finished.connect(lambda: chat.set_processing(False))
         controller.status_update.connect(statuses.append)
 
-        yield ProductHarness(controller=controller, chat=chat, statuses=statuses)
+        yield ProductHarness(
+            controller=controller,
+            chat=chat,
+            statuses=statuses,
+            generation_events=generation_events,
+            wait_for_generation_start=lambda: qtbot.waitUntil(
+                lambda: (
+                    controller._active_generation_dispatch_phase
+                    is AssistantGenerationDispatchPhase.STARTED
+                ),
+                timeout=2_000,
+            ),
+        )
 
-        controller.close()
+        close_controller_and_wait(controller, qtbot)
 
 
 def _tool_json(name: str, parameters: dict) -> str:
@@ -143,6 +253,16 @@ def test_greeting_flow_is_friendly_and_does_not_call_tools(product_harness):
 def test_missing_argument_flow_asks_for_folder_without_schema_error(product_harness):
     product_harness.send("list files", _tool_json("list_files", {}))
 
+    events = product_harness.generation_events
+    assert len(events) == 2
+    assert all(isinstance(event, AssistantGenerationEvent) for event in events)
+    assert events[0].generation_id > 0
+    assert events[1].generation_id == events[0].generation_id
+    assert [event.phase for event in events] == [
+        AssistantGenerationEventPhase.STARTED,
+        AssistantGenerationEventPhase.FINISHED,
+    ]
+
     visible = product_harness.visible_assistant_text
     assert "folder path" in visible
     assert "paste the path" in visible
@@ -160,7 +280,7 @@ def test_empty_tool_result_flow_uses_user_empty_state(
     product_harness,
 ):
     product_harness.send(
-        "show files",
+        f"show files in {tmp_path}",
         _tool_json("list_files", {"directory": str(tmp_path)}),
     )
 
@@ -170,12 +290,133 @@ def test_empty_tool_result_flow_uses_user_empty_state(
     _assert_no_raw_tool_language(visible)
 
 
-def test_state_gated_command_flow_uses_backend_reason(product_harness):
-    product_harness.send("start training", _tool_json("start_training", {}))
+def test_model_invented_existing_path_is_rejected_before_file_access(
+    tmp_path: Path,
+    product_harness,
+):
+    not_selected = tmp_path / "not-selected"
+    not_selected.mkdir()
+    (not_selected / "private.txt").write_text("private", encoding="utf-8")
+
+    product_harness.send(
+        "Show my EEG files",
+        _tool_json("list_files", {"directory": str(not_selected)}),
+    )
 
     visible = product_harness.visible_assistant_text
-    assert "Training is not available yet" in visible
+    assert "Choose a file or folder in the app" in visible
+    assert "private.txt" not in visible
+    _assert_no_raw_tool_language(visible)
+
+
+def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
+    qtbot,
+    tmp_path: Path,
+):
+    from XBrainLab.ui.chat.message_bubble import MessageBubble
+    from XBrainLab.ui.chat.panel import ChatPanel
+
+    with (
+        patch("XBrainLab.llm.agent.controller.AgentWorker", _NoopWorker),
+        patch("XBrainLab.llm.agent.controller.RAGRetriever", _NoopRag),
+        patch(
+            "XBrainLab.llm.agent.controller.RAGRetrieverLifecycle",
+            _ImmediateRagLifecycle,
+        ),
+    ):
+        controller = LLMController(Study())
+        panel = ChatPanel()
+        qtbot.addWidget(panel)
+        controller.response_presentation_ready.connect(
+            lambda presentation: panel.append_message(
+                "assistant",
+                presentation.text,
+            )
+        )
+        generation_events: list[AssistantGenerationEvent] = []
+        controller.generation_event.connect(generation_events.append)
+
+        controller.handle_user_turn(
+            AssistantTurnRequest(
+                correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+                text=f"Show files in {tmp_path}",
+            )
+        )
+        qtbot.waitUntil(
+            lambda: (
+                controller._active_generation_dispatch_phase
+                is AssistantGenerationDispatchPhase.STARTED
+            ),
+            timeout=2_000,
+        )
+        controller._generate_response = MagicMock()
+        controller._process_tool_calls = MagicMock()
+        generation_id = controller._active_generation_id
+        assert isinstance(generation_id, int)
+        assert not isinstance(generation_id, bool)
+        assert generation_id > 0
+        controller._on_chunk_received(generation_id, "Sure, I will check.\n")
+        controller._on_chunk_received(generation_id, '{"tool_name":"list_')
+        controller._on_chunk_received(
+            generation_id, f'files","parameters":{{"directory":"{tmp_path}"}}}}'
+        )
+
+        assert not any(
+            bubble.isVisible() for bubble in panel.findChildren(MessageBubble)
+        )
+
+        controller._on_generation_finished(generation_id, [])
+        assert generation_events == [
+            AssistantGenerationEvent(
+                generation_id=generation_id,
+                phase=AssistantGenerationEventPhase.STARTED,
+            ),
+            AssistantGenerationEvent(
+                generation_id=generation_id,
+                phase=AssistantGenerationEventPhase.CHUNK,
+                text="Sure, I will check.\n",
+            ),
+            AssistantGenerationEvent(
+                generation_id=generation_id,
+                phase=AssistantGenerationEventPhase.CHUNK,
+                text='{"tool_name":"list_',
+            ),
+            AssistantGenerationEvent(
+                generation_id=generation_id,
+                phase=AssistantGenerationEventPhase.CHUNK,
+                text=f'files","parameters":{{"directory":"{tmp_path}"}}}}',
+            ),
+            AssistantGenerationEvent(
+                generation_id=generation_id,
+                phase=AssistantGenerationEventPhase.FINISHED,
+            ),
+        ]
+        response_after_finish = controller.current_response
+        controller._on_chunk_received(generation_id, "stale chunk")
+        controller._on_generation_finished(generation_id, [])
+        controller._on_generation_error(generation_id, "stale error")
+        assert controller.current_response == response_after_finish
+        assert len(generation_events) == 5
+        bubbles = panel.findChildren(MessageBubble)
+        visible_text = "\n".join(
+            bubble.get_text() for bubble in bubbles if not bubble.isHidden()
+        )
+
+        controller._process_tool_calls.assert_not_called()
+        controller._generate_response.assert_called_once_with()
+        assert "Sure, I will check" not in visible_text
+        assert "did not find files" not in visible_text
+        _assert_no_raw_tool_language(visible_text)
+        close_controller_and_wait(controller, qtbot)
+
+
+def test_state_gated_command_flow_uses_backend_reason(product_harness):
+    product_harness.send("start training")
+
+    visible = product_harness.visible_assistant_text
+    assert "Start training is not available yet" in visible
     assert "Generate datasets before training" in visible
+    assert product_harness.generation_events == []
     _assert_no_raw_tool_language(visible)
 
 
@@ -191,6 +432,34 @@ def test_successful_command_result_summary_flow(product_harness):
     _assert_no_raw_tool_language(visible)
 
 
+def test_workflow_scan_continuation_authorizes_fresh_preview_candidate(
+    product_harness,
+):
+    source = Path("tests/fixtures/data/A01T.gdf").resolve()
+    request_text = f"Load {source} and continue until a decision is needed."
+    product_harness.controller.set_execution_mode(LLMController.MODE_MULTI)
+
+    product_harness.send(
+        request_text,
+        _tool_json("scan_source", {"source_path": str(source)}),
+    )
+
+    publication = product_harness.controller._active_tool_publication
+    assert publication.authorized_command == "preview_interpretation"
+    assert publication.tool_names == frozenset({"preview_interpretation"})
+    decision = product_harness.controller._tool_attempt_coordinator.evaluate(
+        ToolAttemptRequest(
+            command_name="preview_interpretation",
+            params={},
+            confidence=0.9,
+            publication=publication,
+            latest_user_text=request_text,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.EXECUTE
+
+
 def test_local_runtime_disabled_flow_is_user_visible(qtbot):
     from PyQt6.QtWidgets import QMainWindow
 
@@ -198,7 +467,7 @@ def test_local_runtime_disabled_flow_is_user_visible(qtbot):
     from XBrainLab.ui.components.agent_manager import AgentManager
 
     main_window = QMainWindow()
-    main_window.ai_btn = MagicMock()
+    cast(Any, main_window).ai_btn = MagicMock()
     qtbot.addWidget(main_window)
 
     manager = AgentManager(main_window, Study())
@@ -207,17 +476,19 @@ def test_local_runtime_disabled_flow_is_user_visible(qtbot):
     config.local_model_enabled = False
     config.local_runtime_notice_acknowledged = True
 
-    with (
-        patch.object(manager, "_load_runtime_config", return_value=config),
-        patch.object(manager, "_needs_local_runtime_first_run", return_value=False),
+    with patch.object(
+        manager.assistant_runtime,
+        "load_config",
+        return_value=config,
     ):
         manager.toggle()
 
-    visible = "\n".join(
-        str(message["content"])
-        for message in manager.chat_controller.messages
-        if message["role"] == "assistant"
-    )
-    assert "Assistant unavailable" in visible
-    assert "disabled" in visible
-    _assert_no_raw_tool_language(visible)
+    try:
+        assert manager.chat_controller.messages == []
+        title = manager.chat_panel.runtime_state_title.text()
+        detail = manager.chat_panel.runtime_state_detail.text()
+        assert title == "Assistant setup required"
+        assert "disabled" in detail
+        _assert_no_raw_tool_language(f"{title}\n{detail}")
+    finally:
+        assert manager.close()

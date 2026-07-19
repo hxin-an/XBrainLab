@@ -2,8 +2,25 @@
 
 from collections.abc import Callable
 from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from threading import Lock
+from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
+
+_MAX_RETAINED_BATCH_DELIVERIES = 2048
+
+
+@dataclass(slots=True)
+class _NotificationBatchState:
+    """Context-owned deferred events for one outer notification batch."""
+
+    generation: int
+    depth: int = 1
+    pending_events: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = field(
+        default_factory=dict
+    )
 
 
 class Observable:
@@ -23,8 +40,54 @@ class Observable:
     def __init__(self):
         """Initialize the observable with an empty subscriber registry."""
         self._observers: dict[str, list[Callable]] = {}
-        self._batch_depth: int = 0
-        self._pending_events: dict[str, tuple[tuple, dict]] = {}
+        self._observer_lock = Lock()
+        self._batch_state: ContextVar[_NotificationBatchState | None] = ContextVar(
+            f"xbrainlab_observer_batch_{id(self)}",
+            default=None,
+        )
+        self._batch_ledger_lock = Lock()
+        self._batch_sequence: int = 0
+        self._active_batch_generations: set[int] = set()
+        self._batch_delivery_results: dict[tuple[int, str], bool] = {}
+
+    @property
+    def _batch_depth(self) -> int:
+        """Compatibility view of the current execution context's nesting depth."""
+        state = self._batch_state.get()
+        return state.depth if state is not None else 0
+
+    @property
+    def _pending_events(
+        self,
+    ) -> dict[str, tuple[tuple[Any, ...], dict[str, Any]]]:
+        """Compatibility view of events deferred by the current context."""
+        state = self._batch_state.get()
+        return state.pending_events if state is not None else {}
+
+    @property
+    def notifications_deferred(self) -> bool:
+        """Return whether callbacks are currently held by an outer batch."""
+        return self._batch_state.get() is not None
+
+    @property
+    def notification_batch_generation(self) -> int | None:
+        """Return the exact outer batch currently holding notifications."""
+        state = self._batch_state.get()
+        return state.generation if state is not None else None
+
+    def consume_batched_delivery(
+        self,
+        event_name: str,
+        generation: int,
+    ) -> bool | None:
+        """Consume one exact batch callback result, if that event was emitted."""
+        with self._batch_ledger_lock:
+            return self._batch_delivery_results.pop((generation, event_name), None)
+
+    def is_notification_batch_active(self, generation: int) -> bool:
+        """Return whether one exact outer batch still owns deferred delivery."""
+        with self._batch_ledger_lock:
+            return generation in self._active_batch_generations
 
     def subscribe(self, event_name: str, callback: Callable) -> None:
         """Subscribe a callback function to an event.
@@ -34,10 +97,11 @@ class Observable:
             callback: The function to call when the event is notified.
 
         """
-        if event_name not in self._observers:
-            self._observers[event_name] = []
-        if callback not in self._observers[event_name]:
-            self._observers[event_name].append(callback)
+        with self._observer_lock:
+            if event_name not in self._observers:
+                self._observers[event_name] = []
+            if callback not in self._observers[event_name]:
+                self._observers[event_name].append(callback)
 
     def unsubscribe(self, event_name: str, callback: Callable) -> None:
         """Unsubscribe a callback function from an event.
@@ -47,15 +111,20 @@ class Observable:
             callback: The function to remove.
 
         """
-        if event_name in self._observers and callback in self._observers[event_name]:
-            self._observers[event_name].remove(callback)
+        with self._observer_lock:
+            if (
+                event_name in self._observers
+                and callback in self._observers[event_name]
+            ):
+                self._observers[event_name].remove(callback)
 
-    def notify(self, event_name: str, *args, **kwargs):
+    def notify(self, event_name: str, *args, **kwargs) -> bool:
         """Notify all subscribers of an event, passing along any arguments.
 
         When called inside a :meth:`batch_notifications` context, the
         notification is deferred and only emitted once after the outermost
-        context exits.
+        context exits. The return value reports whether every immediate
+        subscriber completed successfully; exceptions remain isolated.
 
         Args:
             event_name: The name of the event to notify.
@@ -63,14 +132,18 @@ class Observable:
             **kwargs: Keyword arguments to pass to each callback.
 
         """
-        if self._batch_depth > 0:
+        batch = self._batch_state.get()
+        if batch is not None:
             # Defer — keep last args/kwargs per event
-            self._pending_events[event_name] = (args, kwargs)
-            return
+            batch.pending_events[event_name] = (args, kwargs)
+            return True
 
-        if event_name in self._observers:
-            for callback in list(self._observers[event_name]):
-                self._safe_call(event_name, callback, *args, **kwargs)
+        delivered = True
+        for callback in self._observer_snapshot(event_name):
+            delivered = (
+                self._safe_call(event_name, callback, *args, **kwargs) and delivered
+            )
+        return delivered
 
     @contextmanager
     def batch_notifications(self):
@@ -90,25 +163,74 @@ class Observable:
             # ``preprocess_changed`` is emitted only once here.
 
         """
-        self._batch_depth += 1
+        active = self._batch_state.get()
+        if active is not None:
+            active.depth += 1
+            try:
+                yield
+            finally:
+                active.depth -= 1
+            return
+
+        with self._batch_ledger_lock:
+            self._batch_sequence += 1
+            generation = self._batch_sequence
+            self._active_batch_generations.add(generation)
+        batch = _NotificationBatchState(generation=generation)
+        token = self._batch_state.set(batch)
         try:
             yield
         finally:
-            self._batch_depth -= 1
-            if self._batch_depth == 0:
-                pending = dict(self._pending_events)
-                self._pending_events.clear()
+            self._batch_state.reset(token)
+            try:
+                pending = dict(batch.pending_events)
+                batch.pending_events.clear()
                 for evt_name, (evt_args, evt_kwargs) in pending.items():
-                    if evt_name in self._observers:
-                        for callback in list(self._observers[evt_name]):
+                    delivered = True
+                    for callback in self._observer_snapshot(evt_name):
+                        delivered = (
                             self._safe_call(
                                 evt_name,
                                 callback,
                                 *evt_args,
                                 **evt_kwargs,
                             )
+                            and delivered
+                        )
+                    self._remember_batched_delivery(
+                        generation,
+                        evt_name,
+                        delivered,
+                    )
+            finally:
+                with self._batch_ledger_lock:
+                    self._active_batch_generations.discard(generation)
 
-    def _safe_call(self, event_name: str, callback: Callable, *args, **kwargs):
+    def _observer_snapshot(self, event_name: str) -> tuple[Callable, ...]:
+        """Copy subscribers without holding the registry lock during callbacks."""
+        with self._observer_lock:
+            return tuple(self._observers.get(event_name, ()))
+
+    def _remember_batched_delivery(
+        self,
+        generation: int,
+        event_name: str,
+        delivered: bool,
+    ) -> None:
+        """Retain exact callback acknowledgement without cross-command clearing."""
+        with self._batch_ledger_lock:
+            self._batch_delivery_results[(generation, event_name)] = delivered
+            while len(self._batch_delivery_results) > _MAX_RETAINED_BATCH_DELIVERIES:
+                oldest = next(iter(self._batch_delivery_results))
+                self._batch_delivery_results.pop(oldest, None)
+
+    def _safe_call(
+        self,
+        event_name: str,
+        callback: Callable,
+        *args,
+        **kwargs,
+    ) -> bool:
         """Invoke a callback safely, logging errors without propagating them.
 
         Args:
@@ -119,8 +241,11 @@ class Observable:
 
         """
         try:
-            callback(*args, **kwargs)
+            result = callback(*args, **kwargs)
         except Exception as e:
             # Prevent one subscriber's error from breaking others
 
             logger.error("Error in subscriber for %s: %s", event_name, e, exc_info=True)
+            return False
+        else:
+            return result is not False

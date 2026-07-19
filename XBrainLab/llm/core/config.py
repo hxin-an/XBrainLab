@@ -5,20 +5,29 @@ Legacy remote selections from old settings are accepted only as migration
 input and are normalized back to the local runtime.
 """
 
+from __future__ import annotations
+
 import importlib.util
 import json
 import logging
 import os
+import tempfile
 import warnings
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, cast
 
+from XBrainLab.llm.core.config_paths import (
+    legacy_repo_settings_path,
+    user_settings_path,
+)
 from XBrainLab.llm.core.model_catalog import (
     allowed_local_model_ids,
     default_local_model_id,
     fallback_local_model_id,
     local_model_policy_error,
     model_cache_candidates,
+    model_cache_complete,
 )
 
 
@@ -232,58 +241,10 @@ class LLMConfig:
         """Return the supported cache layouts for a local Hugging Face model."""
         return list(self._local_cache_candidates(model_name))
 
-    @staticmethod
-    def _dir_entries(path: str) -> list[str]:
-        """Return directory entries, or an empty list when unavailable."""
-        if not os.path.exists(path):
-            return []
-
-        try:
-            return os.listdir(path)
-        except OSError:
-            return []
-
-    @classmethod
-    def _cache_layout_complete(cls, path: str) -> bool:
-        """Return ``True`` when a cache path looks usable for local startup."""
-        entries = set(cls._dir_entries(path))
-        if not entries:
-            return False
-
-        has_config = {"config.json", "tokenizer_config.json"}.issubset(entries)
-        has_weights = "model.safetensors.index.json" in entries or any(
-            name.endswith((".safetensors", ".bin")) for name in entries
-        )
-        if has_config and has_weights:
-            return True
-
-        snapshots_dir = os.path.join(path, "snapshots")
-        for snapshot_name in cls._dir_entries(snapshots_dir):
-            snapshot_path = os.path.join(snapshots_dir, snapshot_name)
-            snapshot_entries = set(cls._dir_entries(snapshot_path))
-            if not snapshot_entries:
-                continue
-
-            has_snapshot_config = {"config.json", "tokenizer_config.json"}.issubset(
-                snapshot_entries
-            )
-            has_snapshot_weights = (
-                "model.safetensors.index.json" in snapshot_entries
-                or any(
-                    name.endswith((".safetensors", ".bin")) for name in snapshot_entries
-                )
-            )
-            if has_snapshot_config and has_snapshot_weights:
-                return True
-
-        return False
-
     def has_local_model_cache(self, model_name: str | None = None) -> bool:
-        """Return ``True`` when the local model cache looks complete enough."""
-        return any(
-            self._cache_layout_complete(path)
-            for path in self._local_cache_candidates(model_name)
-        )
+        """Return ``True`` only for a complete startup-usable model cache."""
+        repo_id = model_name or self.model_name
+        return model_cache_complete(self.cache_dir, repo_id)
 
     def local_backend_cpu_fallback_reason(self) -> str | None:
         """Return a reason when local startup must fall back from CUDA to CPU."""
@@ -352,49 +313,6 @@ class LLMConfig:
             f"{packages}. Install the Poetry llm group to enable local startup."
         )
 
-    def available_local_model_id(
-        self,
-        preferred_model: str | None = None,
-    ) -> tuple[str | None, str]:
-        """Return the first ready local model and a user-facing status message.
-
-        The current model is tried first, then the product primary and fallback
-        models. This gives the desktop assistant a deterministic fallback path
-        while still enforcing the non-Chinese model catalog and cache limits.
-        """
-        preferred = (preferred_model or self.model_name or "").strip()
-        candidates: list[str] = []
-        for model_id in (
-            preferred,
-            self.default_local_model_id(),
-            self.fallback_local_model_id(),
-        ):
-            if model_id and model_id not in candidates:
-                candidates.append(model_id)
-
-        first_failure = ""
-        for model_id in candidates:
-            if self.local_backend_ready(model_id):
-                if model_id == preferred:
-                    return model_id, self.local_backend_status_message(model_id)
-
-                if preferred:
-                    preferred_message = (
-                        first_failure or self.local_backend_status_message(preferred)
-                    )
-                else:
-                    preferred_message = "No preferred local model is configured."
-                return (
-                    model_id,
-                    f"{preferred_message} Falling back to supported local model "
-                    f"{model_id}.",
-                )
-
-            if not first_failure:
-                first_failure = self.local_backend_status_message(model_id)
-
-        return None, first_failure or "No supported local model is ready."
-
     @staticmethod
     def allowed_local_model_ids() -> list[str]:
         """Return supported local model IDs for product UI surfaces."""
@@ -412,16 +330,15 @@ class LLMConfig:
 
     @staticmethod
     def _default_settings_path() -> str:
-        """Return the default path for settings.json relative to the project root."""
-        # Import here to avoid circular dependency at module level
-        try:
-            from XBrainLab.config import AppConfig
+        """Return the OS per-user path for mutable assistant settings."""
+        return str(user_settings_path())
 
-            return str(AppConfig.BASE_DIR / "settings.json")
-        except ImportError:
-            return "settings.json"
+    @staticmethod
+    def _legacy_settings_path() -> str:
+        """Return the old repo path used only for one-time migration."""
+        return str(legacy_repo_settings_path())
 
-    def save_to_file(self, filepath: str | None = None):
+    def save_to_file(self, filepath: str | None = None) -> bool:
         """Saves non-sensitive configuration to a JSON file.
 
         Persists the local model, enabled flag, the active mode, and
@@ -430,11 +347,15 @@ class LLMConfig:
 
         Args:
             filepath: Path to the output JSON file.  Defaults to
-                ``settings.json`` in the project root.
+                the current OS user's XBrainLab config directory.
+
+        Returns:
+            ``True`` when the settings were persisted, otherwise ``False``.
 
         """
         if filepath is None:
             filepath = self._default_settings_path()
+        target_path = Path(filepath)
         data = {
             "local": {
                 "model_name": self.model_name,
@@ -449,34 +370,38 @@ class LLMConfig:
                 "max_new_tokens": self.max_new_tokens,
             },
         }
+        temporary_path: Path | None = None
         try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=target_path.parent,
+                prefix=f".{target_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary_path = Path(handle.name)
+                json.dump(data, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, target_path)
         except Exception as e:
             logging.getLogger(__name__).error("Error saving settings: %s", e)
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    logging.getLogger(__name__).warning(
+                        "Could not remove incomplete settings file %s",
+                        temporary_path,
+                    )
+            return False
+        return True
 
     @classmethod
-    def load_from_file(cls, filepath: str | None = None):
-        """Loads configuration from a JSON file.
-
-        Creates a new ``LLMConfig`` instance populated with values from
-        the file.  API keys are always loaded from environment variables
-        for security.
-
-        Args:
-            filepath: Path to the JSON settings file.  Defaults to
-                ``settings.json`` in the project root.
-
-        Returns:
-            A new ``LLMConfig`` instance, or ``None`` if the file does
-            not exist or cannot be parsed.
-
-        """
-        if filepath is None:
-            filepath = cls._default_settings_path()
-        if not os.path.exists(filepath):
-            return None
-
+    def _load_existing_file(cls, filepath: Path) -> LLMConfig | None:
+        """Parse one existing settings file without applying path fallback."""
         try:
             with open(filepath, encoding="utf-8") as f:
                 data = json.load(f)
@@ -495,7 +420,6 @@ class LLMConfig:
             config.inference_mode = data.get("inference_mode", config.active_mode)
             config._force_local_runtime_selection()
 
-            # Restore generation parameters
             if "generation" in data:
                 gen = data["generation"]
                 config.temperature = float(gen.get("temperature", config.temperature))
@@ -503,9 +427,77 @@ class LLMConfig:
                 config.max_new_tokens = int(
                     gen.get("max_new_tokens", config.max_new_tokens)
                 )
-
         except Exception as e:
-            logging.getLogger(__name__).error("Error loading settings: %s", e)
+            logging.getLogger(__name__).error(
+                "Error loading settings from %s: %s",
+                filepath,
+                e,
+            )
             return None
 
         return config
+
+    @classmethod
+    def load_from_file(cls, filepath: str | None = None) -> LLMConfig | None:
+        """Loads configuration from a JSON file.
+
+        Creates a new ``LLMConfig`` instance populated with values from the
+        file and normalizes legacy remote-runtime fields to the local runtime.
+
+        Args:
+            filepath: Path to the JSON settings file.  Defaults to
+                the current OS user's XBrainLab config directory. Explicit
+                paths never participate in legacy migration.
+
+        Returns:
+            A loaded or first-run default ``LLMConfig``. Returns ``None`` for
+            an explicitly selected missing file or any selected file that
+            cannot be parsed.
+
+        """
+        using_default_path = filepath is None
+        target_path = Path(filepath or cls._default_settings_path())
+        if target_path.exists():
+            return cls._load_existing_file(target_path)
+
+        if not using_default_path:
+            return None
+
+        legacy_path = Path(cls._legacy_settings_path())
+        if legacy_path != target_path and legacy_path.is_file():
+            migrated_config = cls._load_existing_file(legacy_path)
+            if migrated_config is not None:
+                if migrated_config.save_to_file(str(target_path)):
+                    logging.getLogger(__name__).info(
+                        "Migrated local LLM settings from %s to %s",
+                        legacy_path,
+                        target_path,
+                    )
+                    return migrated_config
+
+                logging.getLogger(__name__).error(
+                    "Legacy local LLM settings were readable but could not be "
+                    "persisted to %s; legacy values will not be used",
+                    target_path,
+                )
+                return cls()
+
+            logging.getLogger(__name__).warning(
+                "Legacy local LLM settings at %s were invalid; creating per-user "
+                "defaults instead",
+                legacy_path,
+            )
+
+        default_config = cls()
+        if default_config.save_to_file(str(target_path)):
+            logging.getLogger(__name__).info(
+                "Created default local LLM settings at %s",
+                target_path,
+            )
+        else:
+            logging.getLogger(__name__).warning(
+                "Default local LLM settings could not be persisted to %s; using "
+                "in-memory defaults for this session",
+                target_path,
+            )
+        return default_config

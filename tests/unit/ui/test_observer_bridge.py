@@ -1,3 +1,4 @@
+from inspect import getsource
 from unittest.mock import MagicMock
 
 from PyQt6 import sip
@@ -8,6 +9,10 @@ from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 class MockObservable(Observable):
     pass
+
+
+def test_observer_bridge_has_no_blocking_queued_connection() -> None:
+    assert "BlockingQueuedConnection" not in getsource(QtObserverBridge)
 
 
 def test_observer_bridge_emission(qtbot):

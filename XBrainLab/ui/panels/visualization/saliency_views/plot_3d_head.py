@@ -1,8 +1,9 @@
 import contextlib
 
-import matplotlib.pyplot as plt
 import pyvista as pv
+from matplotlib import colormaps
 
+from XBrainLab.backend.application.saliency_render import SaliencyRenderData
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization.saliency_3d_engine import Saliency3DEngine
 from XBrainLab.ui.core.utils import CheckboxObj  # Moved here
@@ -23,8 +24,7 @@ CHECKBOX_TEXT_KWARGS = {"color": Theme.TEXT_PRIMARY, "shadow": True, "font_size"
 class Saliency3D:
     def __init__(
         self,
-        eval_record,
-        epoch_data,
+        render_data: SaliencyRenderData,
         selected_event_name,
         *,
         method="Gradient",
@@ -38,7 +38,7 @@ class Saliency3D:
         self.save = False
         self.showChannel = True
         self.showHead = True
-        self.cmap = plt.cm.get_cmap("coolwarm")
+        self.cmap = colormaps["coolwarm"]
         self.init_error = ""
 
         # Initialize Backend Engine
@@ -48,8 +48,7 @@ class Saliency3D:
         else:
             try:
                 self.engine, self.channel_count = self.prepare_engine(
-                    eval_record,
-                    epoch_data,
+                    render_data,
                     selected_event_name,
                     method=method,
                     absolute=absolute,
@@ -60,8 +59,11 @@ class Saliency3D:
                 self.engine = None
                 self.channel_count = 0
 
+        if self.engine is not None:
+            self.cmap = colormaps[getattr(self.engine, "cmap_name", "coolwarm")]
+
         self.param = {
-            "timestamp": 1,
+            "sample_index": 0,
             "save": self.save,
         }
 
@@ -90,8 +92,7 @@ class Saliency3D:
 
     @staticmethod
     def prepare_engine(
-        eval_record,
-        epoch_data,
+        render_data: SaliencyRenderData,
         selected_event_name,
         *,
         method="Gradient",
@@ -99,8 +100,8 @@ class Saliency3D:
     ) -> tuple[Saliency3DEngine, int]:
         engine = Saliency3DEngine(mesh_scale_scalar=mesh_scale_scalar)
         channel_count = engine.process_data(
-            eval_record,
-            epoch_data,
+            render_data,
+            render_data,
             selected_event_name,
             method=method,
             absolute=absolute,
@@ -136,7 +137,7 @@ class Saliency3D:
             return
 
         # Update scalars via engine
-        scalars = self.engine.update_scalars(self.param["timestamp"] - 1)
+        scalars = self.engine.update_scalars(self.param["sample_index"])
 
         if scalars is not None:
             try:
@@ -180,14 +181,12 @@ class Saliency3D:
 
         self.plotter.add_camera_orientation_widget()
 
-        saliency_shape_1 = 1
-        if self.engine and self.engine.saliency is not None:
-            saliency_shape_1 = self.engine.saliency.shape[1]
         self.plotter.add_slider_widget(
-            callback=lambda val: self("timestamp", int(val)),
-            rng=(1, saliency_shape_1),  # Use engine's saliency shape
-            value=1,
-            title="Timestamp",
+            callback=self._set_time_seconds,
+            rng=self.engine.time_range_seconds,
+            value=self.engine.initial_time_seconds,
+            title="Time (s)",
+            fmt="%.3f",
             color="white",
             pointa=(0.025, 0.08),
             pointb=(0.31, 0.08),
@@ -239,6 +238,13 @@ class Saliency3D:
         self._center_scene_camera()
 
         return self.plotter
+
+    def _set_time_seconds(self, time_seconds: float) -> None:
+        """Convert a slider time in seconds to one explicit saliency sample."""
+        if self.engine is None:
+            return
+        sample_index = self.engine.sample_index_for_time(float(time_seconds))
+        self("sample_index", sample_index)
 
     def _center_scene_camera(self) -> None:
         """Center the 3-D saliency model after all actors are in the scene."""

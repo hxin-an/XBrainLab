@@ -48,6 +48,7 @@ from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.parser import CommandParser
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.core.model_catalog import (
     FALLBACK_LOCAL_MODEL_ID,
     PRIMARY_LOCAL_MODEL_ID,
@@ -620,7 +621,10 @@ def run_benchmark(
 
         def _infer():
             chunks = []
-            for chunk in _engine.generate_stream(msgs):
+            for chunk in _engine.generate_stream(
+                msgs,
+                profile=GenerationProfile.STRUCTURED_DECISION,
+            ):
                 chunks.append(chunk)
             return "".join(chunks)
 
@@ -987,8 +991,8 @@ def run_benchmark(
                 try:
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"Warning: CUDA cache cleanup failed: {exc}")
 
     except KeyboardInterrupt:
         print("\n\nInterrupted! Saving partial results...")

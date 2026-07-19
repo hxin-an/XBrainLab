@@ -1,0 +1,150 @@
+{
+  "command": [
+    "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python",
+    "/mnt/d/workspace_v2/projects/lab/xbrainlab/scripts/dev/calibrate_resource_guard.py",
+    "--strict",
+    "--output",
+    "artifacts/resource_guard/calibration.json"
+  ],
+  "cuda_probe": {
+    "all_estimates_cover_observed_peak": true,
+    "models": [
+      {
+        "estimate_covers_observed_peak": true,
+        "estimate_to_observed_allocated_ratio": 4.032309565875066,
+        "estimated_vram_bytes": 86326780,
+        "fold_count": 3,
+        "formula": "(parameters + gradients + optimizer_states + evaluation_model + peak_batch + activations + logits + runtime_workspace) * safety_margin",
+        "loss": 1.3347351551055908,
+        "model": "EEGNet",
+        "observed_peak_allocated_delta_bytes": 21408768,
+        "observed_peak_reserved_delta_bytes": 27262976,
+        "peak_execution_scope": "one_fold_one_repeat_one_batch",
+        "repeat_count": 5,
+        "status": "measured"
+      },
+      {
+        "estimate_covers_observed_peak": true,
+        "estimate_to_observed_allocated_ratio": 46.93242995689655,
+        "estimated_vram_bytes": 87106590,
+        "fold_count": 3,
+        "formula": "(parameters + gradients + optimizer_states + evaluation_model + peak_batch + activations + logits + runtime_workspace) * safety_margin",
+        "loss": 1.3607767820358276,
+        "model": "SCCNet",
+        "observed_peak_allocated_delta_bytes": 1856000,
+        "observed_peak_reserved_delta_bytes": 2097152,
+        "peak_execution_scope": "one_fold_one_repeat_one_batch",
+        "repeat_count": 5,
+        "status": "measured"
+      },
+      {
+        "estimate_covers_observed_peak": true,
+        "estimate_to_observed_allocated_ratio": 3.5198478193656335,
+        "estimated_vram_bytes": 86703820,
+        "fold_count": 3,
+        "formula": "(parameters + gradients + optimizer_states + evaluation_model + peak_batch + activations + logits + runtime_workspace) * safety_margin",
+        "loss": 1.3765840530395508,
+        "model": "ShallowConvNet",
+        "observed_peak_allocated_delta_bytes": 24632832,
+        "observed_peak_reserved_delta_bytes": 44040192,
+        "peak_execution_scope": "one_fold_one_repeat_one_batch",
+        "repeat_count": 5,
+        "status": "measured"
+      }
+    ],
+    "probe_budget_bytes": 268435456,
+    "status": "measured"
+  },
+  "environment": {
+    "cuda_available": true,
+    "cudnn": 91900,
+    "driver_version": "591.86",
+    "gpu_index": 0,
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti",
+    "python": "3.12.3",
+    "python_executable": "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python",
+    "torch": "2.11.0+cu130",
+    "torch_cuda": "13.0"
+  },
+  "expected_models": [
+    "EEGNet",
+    "SCCNet",
+    "ShallowConvNet"
+  ],
+  "generated_at_utc": "2026-07-19T11:01:45.131030+00:00",
+  "gpu": {
+    "allocated_bytes": 0,
+    "available_bytes": 15738077184,
+    "device_count": 1,
+    "gpu_index": 0,
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti",
+    "query_error_type": null,
+    "reason": null,
+    "reserved_bytes": 0,
+    "total_bytes": 17094475776,
+    "used_bytes": 1356398592
+  },
+  "gpu_after_probe": {
+    "allocated_bytes": 18087936,
+    "available_bytes": 15647899648,
+    "device_count": 1,
+    "gpu_index": 0,
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti",
+    "query_error_type": null,
+    "reason": null,
+    "reserved_bytes": 23068672,
+    "total_bytes": 17094475776,
+    "used_bytes": 1446576128
+  },
+  "probe_scope": {
+    "batch_size": 8,
+    "channels": 22,
+    "classes": 4,
+    "epochs": 32,
+    "folds": 3,
+    "maximum_available_vram_ratio": 0.1,
+    "maximum_estimated_vram_bytes": 268435456,
+    "repeats": 5,
+    "samples": 301
+  },
+  "ram": {
+    "available_bytes": 31539175424,
+    "total_bytes": 33185521664,
+    "used_bytes": 1293914112
+  },
+  "schema_version": 2,
+  "source_identity": {
+    "branch": "fix/nonblocking-state-shutdown-lifecycle",
+    "commit_sha": "faabfe388e3f21434796aafed1cde3f09535063f",
+    "dirty": true,
+    "dirty_count": 1065,
+    "relevant_dirty_paths": [
+      "XBrainLab/backend/application/resource_guard.py",
+      "XBrainLab/backend/training/input_contract.py",
+      "XBrainLab/backend/training/model_holder.py",
+      "pyproject.toml",
+      "scripts/dev/calibrate_resource_guard.py",
+      "scripts/dev/resource_calibration_contract.py"
+    ],
+    "source_digest": "05c1f7ab95ffc66849318294d8381041a8b8a411dcba798ab74cf686ebbaa194",
+    "source_paths": [
+      "scripts/dev/calibrate_resource_guard.py",
+      "scripts/dev/resource_calibration_contract.py",
+      "XBrainLab/backend/application/resource_guard.py",
+      "XBrainLab/backend/training/model_holder.py",
+      "XBrainLab/backend/training/input_contract.py",
+      "XBrainLab/backend/model_base/EEGNet.py",
+      "XBrainLab/backend/model_base/SCCNet.py",
+      "XBrainLab/backend/model_base/ShallowConvNet.py",
+      "pyproject.toml",
+      "poetry.lock"
+    ],
+    "tree_sha": "70235e544d00830accd1c8009a65707461053c45"
+  },
+  "thresholds": {
+    "ram_blocking_ratio": 0.8,
+    "ram_warning_ratio": 0.6,
+    "vram_blocking_ratio": 0.9,
+    "vram_warning_ratio": 0.75
+  }
+}

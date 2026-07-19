@@ -16,6 +16,49 @@ _STRING_MAP_SCHEMA: dict[str, Any] = {
     "additionalProperties": {"type": "string"},
 }
 
+_VALUE_DECISION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "role": {
+            "type": "string",
+            "enum": [
+                "stimulus",
+                "response",
+                "artifact",
+                "boundary",
+                "system",
+                "annotation",
+                "unknown",
+            ],
+            "description": "Scientific event role, independent of class use.",
+        },
+        "keep_event": {
+            "type": "boolean",
+            "description": "Whether rows with this raw value remain as events.",
+        },
+        "use_as_class": {
+            "type": "boolean",
+            "description": "Whether this kept event is a supervised class target.",
+        },
+        "class_name": {
+            "type": "string",
+            "description": "Required non-empty class name when use_as_class is true.",
+        },
+        "suggested_name": {
+            "type": "string",
+            "description": "Non-authoritative display suggestion for the raw value.",
+        },
+        "decision": {
+            "type": "string",
+            "enum": ["resolved", "unresolved"],
+        },
+        "decision_source": {"type": "string"},
+        "provenance": {"type": "string"},
+        "count": {"type": "integer", "minimum": 0},
+    },
+}
+
 _LABEL_CARRIER_CHOICE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -48,6 +91,23 @@ _LABEL_CARRIER_CHOICE_SCHEMA: dict[str, Any] = {
             ],
             "description": "How carrier timing should be interpreted.",
         },
+        "sample_index_base": {
+            "type": "string",
+            "enum": ["zero_based", "one_based"],
+            "description": (
+                "Required for sample_index timing: whether the first index in "
+                "the selected origin is 0 or 1."
+            ),
+        },
+        "sample_index_origin": {
+            "type": "string",
+            "enum": ["recording_relative", "absolute"],
+            "description": (
+                "Required for sample_index timing: recording_relative indexes "
+                "start at this Raw segment; absolute indexes use MNE sample "
+                "coordinates and therefore include first_samp."
+            ),
+        },
         "placement_method": {
             "type": "string",
             "enum": ["eeg_event", "time_field", "interval", "event_code"],
@@ -76,6 +136,21 @@ _LABEL_CARRIER_CHOICE_SCHEMA: dict[str, Any] = {
         "target_file": {
             "type": "string",
             "description": "EEG file path/name this carrier should align with.",
+        },
+        "target_files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "EEG file paths/names reviewed against one shared label carrier."
+            ),
+        },
+        "value_decisions": {
+            "type": "object",
+            "additionalProperties": _VALUE_DECISION_SCHEMA,
+            "description": (
+                "Per-observed-value event role, retention, and independent "
+                "supervised-class decision keyed by raw value."
+            ),
         },
     },
 }
@@ -170,8 +245,8 @@ _CHOICES_SCHEMA: dict[str, Any] = {
                 "additionalProperties": {"type": "string"},
             },
             "description": (
-                "Per-run event-code meaning overrides keyed by EEG file path or "
-                "run identifier."
+                "Legacy/embedded-event per-run meanings keyed by EEG file path or "
+                "run identifier; external carriers use value_decisions."
             ),
         },
         "event_roles": {
@@ -205,7 +280,10 @@ _CHOICES_SCHEMA: dict[str, Any] = {
         },
         "class_map": {
             **_STRING_MAP_SCHEMA,
-            "description": "Map raw event or label values to class names.",
+            "description": (
+                "Legacy/embedded-event class map; external carrier classes are "
+                "derived only from per-carrier value_decisions."
+            ),
         },
         "anchor": {
             "type": "string",

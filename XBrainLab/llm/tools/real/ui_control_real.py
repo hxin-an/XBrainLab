@@ -1,20 +1,16 @@
-"""Real implementation of UI control tools.
-
-Returns specially formatted request strings that the agent controller
-parses to trigger UI panel switches via Qt signals.
-"""
+"""Real implementation of typed UI control requests."""
 
 from typing import Any
 
 from ..definitions.ui_control_def import BaseSwitchPanelTool
+from ..result_contract import ToolResult, UiRequest, UiRequestKind
 
 
 class RealSwitchPanelTool(BaseSwitchPanelTool):
     """Real implementation of :class:`BaseSwitchPanelTool`.
 
-    Since tools execute in a worker thread and cannot manipulate the
-    GUI directly, this tool returns a formatted request string that
-    the ``AgentController`` parses to emit the appropriate UI signal.
+    Tools execute away from the GUI thread, so this returns a typed request
+    that the controller validates before publishing to the UI host.
     """
 
     def execute(
@@ -23,7 +19,7 @@ class RealSwitchPanelTool(BaseSwitchPanelTool):
         panel_name: str | None = None,
         view_mode: str | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult | UiRequest:
         """Request a UI panel switch.
 
         Args:
@@ -33,17 +29,16 @@ class RealSwitchPanelTool(BaseSwitchPanelTool):
             **kwargs: Additional keyword arguments.
 
         Returns:
-            A formatted request string for the controller to parse.
+            A typed request for the controller to validate and publish.
 
         """
         if panel_name is None:
-            return "Error: panel_name is required"
-        # Since tools cannot directly control UI here (running in worker thread),
-        # we return a special formatted string that the Controller parses to trigger
-        # UI signals.
-        # This is the architectural contract described in agent_architecture.md
-
-        msg = f"Request: Switch UI to '{panel_name}'"
-        if view_mode:
-            msg += f" (View: {view_mode})"
-        return msg
+            return ToolResult(
+                ok=False,
+                message="A panel name is required.",
+                error_type="input",
+            )
+        return UiRequest(
+            kind=UiRequestKind.SWITCH_PANEL,
+            params={"panel": panel_name, "view_mode": view_mode},
+        )

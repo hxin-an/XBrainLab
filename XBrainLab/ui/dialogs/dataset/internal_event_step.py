@@ -584,17 +584,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                     "No BIDS events.tsv carrier is available in this preview."
                 )
             )
-        class_rows = self._bids_class_review_rows()
-        if class_rows:
-            class_title = QLabel("Class labels from events.tsv")
-            class_title.setObjectName("DataImportSubsectionTitle")
-            layout.addWidget(class_title)
-            layout.addWidget(
-                self._event_rules_table(
-                    ["Label value", "Class name", "Rows", "Coverage"],
-                    class_rows,
-                )
-            )
         self._bids_event_review_intro_label = intro
 
     def _bids_event_review_intro_text(self) -> str:
@@ -684,45 +673,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 )
             )
         return rows
-
-    def _bids_class_review_rows(self) -> list[tuple[str, str, str, str]]:
-        carriers = self._bids_event_carriers()
-        if not carriers:
-            return []
-        class_map = self._class_map_for_current_label_source()
-        totals: dict[str, int] = {}
-        coverage: dict[str, int] = {}
-        for carrier in carriers:
-            counts = carrier.get("label_value_counts") or {}
-            if not isinstance(counts, dict):
-                continue
-            for raw_value, raw_count in counts.items():
-                value = str(raw_value).strip()
-                count = self._safe_count(raw_count)
-                if not value or count <= 0:
-                    continue
-                totals[value] = totals.get(value, 0) + count
-                coverage[value] = coverage.get(value, 0) + 1
-        rows: list[tuple[str, str, str, str]] = []
-        total_carriers = max(len(carriers), 1)
-        for value in sorted(totals, key=str.casefold):
-            class_name = class_map.get(value, value)
-            rows.append(
-                (
-                    value,
-                    class_name,
-                    f"{totals[value]} rows",
-                    f"{coverage.get(value, 0)}/{total_carriers} files",
-                )
-            )
-        return rows
-
-    @staticmethod
-    def _safe_count(value: Any) -> int:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return 0
 
     @staticmethod
     def _unique_values(values: Iterable[str]) -> list[str]:
@@ -1087,6 +1037,12 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
     ) -> None:
         if self._class_map_items:
             return
+        # Replacing the event tree destroys its embedded role selectors. Clear
+        # the matching Python registries first so later review serialization
+        # cannot retain deleted Qt wrappers.
+        self._event_role_items.clear()
+        self._event_role_widgets.clear()
+        self._class_map_widgets.clear()
         self.event_tree.clear()
         for row in rows:
             code = str(row.get("code") or "").strip()

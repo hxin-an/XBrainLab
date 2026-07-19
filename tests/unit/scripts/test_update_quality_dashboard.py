@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from PIL import Image
 
@@ -11,12 +14,81 @@ from scripts.dev.update_quality_dashboard import (
     GitState,
     compare_ui_images,
     compute_overall_status,
+    configure_headless_env,
     latest_is_fresh,
     render_markdown,
+    resource_calibration_evidence_check,
     validate_pytest_like,
     validate_ui_artifacts,
     workspace_traceability_check,
 )
+
+
+def test_ui_checks_force_offscreen_even_when_parent_runtime_selected_xcb(
+    monkeypatch,
+):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
+
+    env = configure_headless_env(ui=True)
+
+    assert env["QT_QPA_PLATFORM"] == "offscreen"
+
+
+def test_native_xvfb_checks_explicitly_restore_xcb_platform(monkeypatch):
+    commands: dict[str, str] = {}
+
+    def record_check(**kwargs):
+        commands[str(kwargs["key"])] = str(kwargs["command"])
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(dashboard, "run_check", record_check)
+
+    dashboard.build_checks()
+
+    assert "xvfb-run -a env QT_QPA_PLATFORM=xcb" in commands["startup_smoke"]
+    assert "xvfb-run -a env QT_QPA_PLATFORM=xcb" in commands["ui_baseline_capture"]
+
+
+def test_dashboard_registers_public_bids_visible_ui_wizard_format_matrix(
+    monkeypatch,
+):
+    checks: dict[str, dict[str, object]] = {}
+
+    def record_check(**kwargs):
+        checks[str(kwargs["key"])] = kwargs
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(dashboard, "run_check", record_check)
+
+    dashboard.build_checks()
+
+    matrix = checks["public_bids_visible_ui_wizard_format_matrix"]
+    assert matrix["command"] == (
+        f"{dashboard.POETRY} run pytest --capture=sys "
+        "tests/integration/ui/test_data_import_wizard_format_matrix.py -q"
+    )
+    assert matrix["ui"] is True
+    assert matrix["validator"] is dashboard.validate_required_pytest_matrix
+
+
+def test_required_pytest_matrix_passes_only_when_every_case_ran():
+    status, summary = dashboard.validate_required_pytest_matrix(
+        0,
+        "======================= 10 passed in 1.25s =======================",
+    )
+
+    assert status == "pass"
+    assert "10 passed" in summary
+
+
+def test_required_pytest_matrix_fails_instead_of_passing_with_skips():
+    status, summary = dashboard.validate_required_pytest_matrix(
+        0,
+        "================== 9 passed, 1 skipped in 1.25s ==================",
+    )
+
+    assert status == "fail"
+    assert "skipped" in summary.lower()
 
 
 def _check(status: str) -> dict[str, object]:
@@ -51,6 +123,7 @@ def test_render_markdown_lists_checks_and_artifacts():
             "dirty_count": 2,
             "status_truncated": False,
             "status_summary": ["M app.py", "?? new.py"],
+            "worktree_fingerprint": "abc123",
         },
         "overall_status": "warn",
         "checks": [_check("pass"), _check("warn")],
@@ -140,6 +213,7 @@ def test_latest_is_fresh_uses_timestamp(monkeypatch, tmp_path: Path):
                     "dirty_count": 0,
                     "status_summary": [],
                     "status_truncated": False,
+                    "worktree_fingerprint": "clean-fingerprint",
                 },
             }
         ),
@@ -158,6 +232,7 @@ def test_latest_is_fresh_uses_timestamp(monkeypatch, tmp_path: Path):
                 status_summary=[],
                 dirty_count=0,
                 status_truncated=False,
+                worktree_fingerprint="clean-fingerprint",
             ),
         )
         is True
@@ -313,6 +388,8 @@ def test_git_state_serializes_dirty_status_summary():
         status_summary=["M file.py", "?? extra.py"],
         dirty_count=2,
         status_truncated=False,
+        worktree_fingerprint="dirty-fingerprint",
+        protected_local_changes=("settings.json",),
     )
 
     assert state.as_report_dict() == {
@@ -322,6 +399,9 @@ def test_git_state_serializes_dirty_status_summary():
         "status_summary": ["M file.py", "?? extra.py"],
         "dirty_count": 2,
         "status_truncated": False,
+        "worktree_fingerprint": "dirty-fingerprint",
+        "protected_local_changes": ["settings.json"],
+        "unprotected_dirty_count": 1,
     }
 
 
@@ -334,8 +414,205 @@ def test_workspace_traceability_warns_for_dirty_tree():
             status_summary=["M file.py"],
             dirty_count=1,
             status_truncated=False,
+            worktree_fingerprint="dirty-fingerprint",
         )
     )
 
     assert result.status == "warn"
-    assert "Dirty worktree has 1 changed path" in result.summary
+    assert "Dirty worktree has 1 unprotected changed path" in result.summary
+
+
+def test_workspace_traceability_passes_for_only_declared_local_settings():
+    result = workspace_traceability_check(
+        GitState(
+            branch="feature/test",
+            commit="abcdef1",
+            dirty=True,
+            status_summary=[" M settings.json"],
+            dirty_count=1,
+            status_truncated=False,
+            worktree_fingerprint="source-clean-fingerprint",
+            protected_local_changes=("settings.json",),
+        )
+    )
+
+    assert result.status == "pass"
+    assert "Tracked source is clean" in result.summary
+    assert "settings.json" in result.summary
+
+
+def test_workspace_traceability_warns_when_source_is_dirty_beside_local_settings():
+    result = workspace_traceability_check(
+        GitState(
+            branch="feature/test",
+            commit="abcdef1",
+            dirty=True,
+            status_summary=[" M settings.json", " M XBrainLab/app.py"],
+            dirty_count=2,
+            status_truncated=False,
+            worktree_fingerprint="dirty-source-fingerprint",
+            protected_local_changes=("settings.json",),
+        )
+    )
+
+    assert result.status == "warn"
+    assert "1 unprotected changed path" in result.summary
+
+
+def test_resource_calibration_dashboard_check_fails_when_artifact_is_stale(
+    monkeypatch,
+    tmp_path: Path,
+):
+    artifact = tmp_path / "calibration.json"
+    artifact.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(dashboard, "RESOURCE_CALIBRATION_PATH", artifact)
+    monkeypatch.setattr(
+        dashboard,
+        "strict_calibration_failure_reasons",
+        lambda _payload, **_kwargs: ["source digest is stale"],
+    )
+
+    result = resource_calibration_evidence_check()
+
+    assert result.status == "fail"
+    assert "source digest is stale" in result.summary
+
+
+def test_resource_calibration_dashboard_check_accepts_fresh_strict_artifact(
+    monkeypatch,
+    tmp_path: Path,
+):
+    artifact = tmp_path / "calibration.json"
+    artifact.write_text('{"schema_version": 2}\n', encoding="utf-8")
+    monkeypatch.setattr(dashboard, "RESOURCE_CALIBRATION_PATH", artifact)
+    monkeypatch.setattr(
+        dashboard,
+        "strict_calibration_failure_reasons",
+        lambda _payload, **_kwargs: [],
+    )
+
+    result = resource_calibration_evidence_check()
+
+    assert result.status == "pass"
+    assert "strict calibration evidence is current" in result.summary
+
+
+def test_worktree_fingerprint_changes_when_dirty_content_changes_with_same_status(
+    tmp_path: Path,
+):
+    git = shutil.which("git")
+    assert git is not None
+    subprocess.run(  # noqa: S603 - resolved git binary with fixed test arguments.
+        [git, "init", "-q"], cwd=tmp_path, check=True
+    )
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("baseline\n", encoding="utf-8")
+    subprocess.run(  # noqa: S603 - resolved git binary with fixed test arguments.
+        [git, "add", "tracked.txt"], cwd=tmp_path, check=True
+    )
+    subprocess.run(  # noqa: S603 - resolved git binary with fixed test arguments.
+        [
+            git,
+            "-c",
+            "user.name=XBrainLab Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    tracked.write_text("first dirty value\n", encoding="utf-8")
+    first = dashboard._worktree_fingerprint(tmp_path)
+    tracked.write_text("second dirty value\n", encoding="utf-8")
+    second = dashboard._worktree_fingerprint(tmp_path)
+
+    assert first not in {"", "unavailable"}
+    assert second not in {"", "unavailable"}
+    assert first != second
+
+
+def test_worktree_fingerprint_ignores_declared_local_settings_content(
+    tmp_path: Path,
+):
+    git = shutil.which("git")
+    assert git is not None
+    subprocess.run(  # noqa: S603 - resolved git binary with fixed test arguments.
+        [git, "init", "-q"], cwd=tmp_path, check=True
+    )
+    settings = tmp_path / "settings.json"
+    tracked = tmp_path / "tracked.txt"
+    settings.write_text('{"model": "baseline"}\n', encoding="utf-8")
+    tracked.write_text("baseline\n", encoding="utf-8")
+    subprocess.run(  # noqa: S603 - resolved git binary with fixed test arguments.
+        [git, "add", "settings.json", "tracked.txt"], cwd=tmp_path, check=True
+    )
+    subprocess.run(  # noqa: S603 - resolved git binary with fixed test arguments.
+        [
+            git,
+            "-c",
+            "user.name=XBrainLab Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    baseline = dashboard._worktree_fingerprint(tmp_path)
+    settings.write_text('{"model": "local-phi4"}\n', encoding="utf-8")
+    local_override = dashboard._worktree_fingerprint(tmp_path)
+    tracked.write_text("source changed\n", encoding="utf-8")
+    source_changed = dashboard._worktree_fingerprint(tmp_path)
+
+    assert baseline not in {"", "unavailable"}
+    assert local_override == baseline
+    assert source_changed != baseline
+
+
+def test_latest_is_fresh_rejects_changed_worktree_fingerprint(
+    monkeypatch,
+    tmp_path: Path,
+):
+    latest_json = tmp_path / "latest.json"
+    latest_json.write_text(
+        json.dumps(
+            {
+                "generated_at": "2999-01-01T00:00:00+00:00",
+                "workspace": str(dashboard.ROOT),
+                "profile": "fast",
+                "git": {
+                    "branch": "main",
+                    "commit": "abcdef1",
+                    "dirty": True,
+                    "dirty_count": 1,
+                    "status_summary": ["M app.py"],
+                    "status_truncated": False,
+                    "worktree_fingerprint": "old-content",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard, "LATEST_JSON", latest_json)
+
+    assert (
+        latest_is_fresh(
+            60,
+            git_state=GitState(
+                branch="main",
+                commit="abcdef1",
+                dirty=True,
+                status_summary=["M app.py"],
+                dirty_count=1,
+                status_truncated=False,
+                worktree_fingerprint="new-content",
+            ),
+        )
+        is False
+    )

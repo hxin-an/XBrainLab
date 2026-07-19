@@ -2,13 +2,89 @@
 
 import re
 from collections import Counter
-from typing import Any
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any, Literal, TypeAlias
 
 import numpy as np
+from numpy.typing import NDArray
 
 from XBrainLab.backend.event_semantics import mark_gdf_rejected_trials
-from XBrainLab.backend.load_data import EventLoader
+from XBrainLab.backend.load_data import EventLoader, Raw
 from XBrainLab.backend.utils.logger import logger
+
+LabelPayload: TypeAlias = Sequence[Any] | NDArray[Any]
+LabelOperation: TypeAlias = tuple[
+    Any,
+    LabelPayload,
+    dict[Any, str],
+    set[str] | None,
+    bool,
+]
+TimestampLabelOperation: TypeAlias = tuple[Raw, LabelPayload, dict[Any, str]]
+AtomicLabelFailurePhase: TypeAlias = Literal["preparation", "commit"]
+
+
+@dataclass(frozen=True)
+class AtomicLabelRollbackFailure:
+    """One failed compensation after an atomic label commit error."""
+
+    target_path: str
+    exception_type: str
+    message: str
+
+
+class AtomicLabelStateUnknownError(RuntimeError):
+    """Raised when a failed label commit cannot restore every live target."""
+
+    state_unknown = True
+    recoverable = False
+
+    def __init__(
+        self,
+        *,
+        operation_name: str,
+        commit_error: Exception,
+        rollback_failures: list[AtomicLabelRollbackFailure],
+    ) -> None:
+        self.operation_name = operation_name
+        self.commit_error = commit_error
+        self.rollback_failures = tuple(rollback_failures)
+        rollback_summary = "; ".join(
+            f"{failure.target_path}: {failure.message}" for failure in rollback_failures
+        )
+        super().__init__(
+            f"Atomic {operation_name} commit failed ({commit_error}) and rollback "
+            f"was incomplete ({rollback_summary}). Active label state is unknown; "
+            "do not retry automatically."
+        )
+
+
+class AtomicLabelApplyError(RuntimeError):
+    """Recoverable atomic failure with a bounded user-facing explanation."""
+
+    state_unknown = False
+    recoverable = True
+
+    def __init__(
+        self,
+        *,
+        operation_name: str,
+        phase: AtomicLabelFailurePhase,
+        cause: Exception,
+    ) -> None:
+        self.operation_name = operation_name
+        self.phase = phase
+        self.cause = cause
+        if isinstance(cause, ValueError) and str(cause).strip():
+            self.error_code = "label_validation_failed"
+            self.user_message = str(cause).strip()
+        else:
+            self.error_code = "label_application_failed"
+            self.user_message = (
+                "Reviewed labels could not be applied safely; no labels were changed."
+            )
+        super().__init__(f"Atomic label {phase} failed.")
 
 
 class LabelImportService:
@@ -26,7 +102,7 @@ class LabelImportService:
     def apply_labels_batch(
         self,
         target_files: list[Any],
-        label_map: dict[str, list[Any]],
+        label_map: dict[str, LabelPayload],
         file_mapping: dict[str, str],
         mapping: dict[Any, str],
         selected_event_names: set[str] | None = None,
@@ -44,30 +120,232 @@ class LabelImportService:
             Number of files successfully updated.
 
         """
-        matched_count = 0
+        matched = self._mapped_label_targets(target_files, label_map, file_mapping)
+        if len(matched) != len(target_files):
+            logger.error(
+                "Atomic label batches require one valid label mapping for every "
+                "target; no labels were applied."
+            )
+            return 0
+        timestamp_matches = [
+            item for item in matched if self._is_timestamp_labels(item[2])
+        ]
+        if timestamp_matches and (
+            len(timestamp_matches) != len(matched)
+            or not all(isinstance(data, Raw) for data, _name, _labels in matched)
+        ):
+            logger.error(
+                "Timestamp label batches cannot mix placement modes or non-Raw "
+                "targets; no labels were applied."
+            )
+            return 0
+        mode = "timestamp" if timestamp_matches else "sequence"
+        operations = [
+            (target, labels, mapping, selected_event_names, False)
+            for target, _label_name, labels in matched
+        ]
+        try:
+            return self._apply_label_operations_atomically(
+                operations,
+                operation_name=f"{mode} label batch",
+                success_count=len(matched),
+            )
+        except AtomicLabelApplyError:
+            return 0
 
+    @staticmethod
+    def _mapped_label_targets(
+        target_files: list[Any],
+        label_map: dict[str, LabelPayload],
+        file_mapping: dict[str, str],
+    ) -> list[tuple[Any, str, LabelPayload]]:
+        matched: list[tuple[Any, str, LabelPayload]] = []
         for data in target_files:
             data_path = data.get_filepath()
-            if data_path in file_mapping:
-                label_fname = file_mapping[data_path]
-                if label_fname in label_map:
-                    matched_labels = label_map[label_fname]
-                    try:
-                        self.apply_labels_to_single_file(
-                            data,
-                            matched_labels,
-                            mapping,
-                            selected_event_names,
-                        )
-                        matched_count += 1
-                    except Exception as e:
-                        logger.error(
-                            f"Error applying labels to {data_path}: {e}",
-                            exc_info=True,
-                        )
-                        # Log error and continue to process remaining files.
+            label_name = file_mapping.get(data_path)
+            if label_name is None or label_name not in label_map:
+                continue
+            matched.append((data, label_name, label_map[label_name]))
+        return matched
 
-        return matched_count
+    @staticmethod
+    def _is_timestamp_labels(labels: LabelPayload) -> bool:
+        try:
+            return len(labels) > 0 and isinstance(labels[0], dict)
+        except (KeyError, TypeError):
+            return False
+
+    def apply_timestamp_labels_atomically(
+        self,
+        operations: Sequence[TimestampLabelOperation],
+        *,
+        operation_name: str = "reviewed timestamp label batch",
+    ) -> int:
+        """Stage every timestamp target, then commit through one strict path."""
+        if not operations:
+            return 0
+        unsupported = [
+            type(target).__name__
+            for target, _labels, _mapping in operations
+            if not isinstance(target, Raw)
+        ]
+        if unsupported:
+            target_types = ", ".join(sorted(set(unsupported)))
+            raise TypeError(
+                "Atomic timestamp label application requires Raw targets; "
+                f"received: {target_types}."
+            )
+        prepared: list[LabelOperation] = [
+            (target, labels, mapping, None, False)
+            for target, labels, mapping in operations
+        ]
+        return self._apply_label_operations_atomically(
+            prepared,
+            operation_name=operation_name,
+            success_count=len(prepared),
+        )
+
+    def _apply_label_operations_atomically(
+        self,
+        operations: list[LabelOperation],
+        *,
+        operation_name: str,
+        success_count: int,
+    ) -> int:
+        staged: list[tuple[Any, Any]] = []
+        try:
+            for (
+                target,
+                labels,
+                mapping,
+                selected_event_names,
+                force_import,
+            ) in operations:
+                staged_target = self._copy_label_target(target)
+                if force_import:
+                    self._force_apply_single(
+                        staged_target,
+                        list(labels),
+                        mapping,
+                        selected_event_names,
+                    )
+                else:
+                    self.apply_labels_to_single_file(
+                        staged_target,
+                        labels,
+                        mapping,
+                        selected_event_names,
+                    )
+                staged.append((target, staged_target))
+            snapshots = [
+                (target, self._copy_label_target(target))
+                for target, _staged_target in staged
+            ]
+        except Exception as exc:
+            logger.error(
+                "Atomic %s preparation failed: %s",
+                operation_name,
+                exc,
+                exc_info=True,
+            )
+            raise AtomicLabelApplyError(
+                operation_name=operation_name,
+                phase="preparation",
+                cause=exc,
+            ) from exc
+
+        try:
+            self._commit_staged_label_states_atomically(
+                staged,
+                snapshots,
+                operation_name=operation_name,
+            )
+        except AtomicLabelStateUnknownError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "Atomic %s commit failed: %s",
+                operation_name,
+                exc,
+                exc_info=True,
+            )
+            raise AtomicLabelApplyError(
+                operation_name=operation_name,
+                phase="commit",
+                cause=exc,
+            ) from exc
+        return success_count
+
+    def _commit_staged_label_states_atomically(
+        self,
+        staged: list[tuple[Any, Any]],
+        snapshots: list[tuple[Any, Any]],
+        *,
+        operation_name: str,
+    ) -> None:
+        try:
+            for target, staged_target in staged:
+                self._replace_raw_label_state(target, staged_target)
+        except Exception as commit_error:
+            rollback_failures = self._rollback_label_states(snapshots)
+            if rollback_failures:
+                raise AtomicLabelStateUnknownError(
+                    operation_name=operation_name,
+                    commit_error=commit_error,
+                    rollback_failures=rollback_failures,
+                ) from commit_error
+            raise
+
+    @staticmethod
+    def _copy_label_target(target: Any) -> Any:
+        staged_target = target.copy()
+        if staged_target is target:
+            raise RuntimeError("Label target copy returned the original object.")
+        return staged_target
+
+    def _rollback_label_states(
+        self,
+        snapshots: list[tuple[Any, Any]],
+    ) -> list[AtomicLabelRollbackFailure]:
+        failures: list[AtomicLabelRollbackFailure] = []
+        for target, snapshot in snapshots:
+            try:
+                self._replace_raw_label_state(target, snapshot)
+            except Exception as rollback_error:  # noqa: PERF203
+                failure = AtomicLabelRollbackFailure(
+                    target_path=self._label_target_path(target),
+                    exception_type=type(rollback_error).__name__,
+                    message=str(rollback_error),
+                )
+                failures.append(failure)
+                logger.error(
+                    "Failed to restore atomic label state for %s: %s",
+                    failure.target_path,
+                    rollback_error,
+                    exc_info=True,
+                )
+        return failures
+
+    @staticmethod
+    def _label_target_path(target: Any) -> str:
+        getter = getattr(target, "get_filepath", None)
+        if callable(getter):
+            try:
+                return str(getter())
+            except Exception:
+                return f"<{type(target).__name__}>"
+        return f"<{type(target).__name__}>"
+
+    @staticmethod
+    def _replace_raw_label_state(target: Any, source: Any) -> None:
+        target.set_mne(source.get_mne().copy())
+        target.raw_events = (
+            source.raw_events.copy() if source.raw_events is not None else None
+        )
+        target.raw_event_id = (
+            source.raw_event_id.copy() if source.raw_event_id is not None else None
+        )
+        target.set_labels_imported(source.is_labels_imported())
 
     def apply_labels_sequence(
         self,
@@ -102,24 +380,35 @@ class LabelImportService:
 
         if label_count == total_epochs and total_epochs > 0:
             current_idx = 0
+            operations: list[LabelOperation] = []
             for data in target_files:
                 n = self.get_epoch_count_for_file(data, selected_event_names)
                 file_labels = labels[current_idx : current_idx + n]
                 current_idx += n
 
                 if n > 0:
-                    self.apply_labels_to_single_file(
-                        data,
-                        file_labels,
-                        mapping,
-                        selected_event_names,
+                    operations.append(
+                        (
+                            data,
+                            file_labels,
+                            mapping,
+                            selected_event_names,
+                            False,
+                        )
                     )
-            return len(target_files)
+            try:
+                return self._apply_label_operations_atomically(
+                    operations,
+                    operation_name="distributed sequence label batch",
+                    success_count=len(target_files),
+                )
+            except AtomicLabelApplyError:
+                return 0
 
         if force_import:
             # Force Import Logic
             current_idx = 0
-            applied_count = 0
+            operations = []
             for data in target_files:
                 # In force mode, we might not trust the filter, but let's try to
                 # estimate size or just take chunks. The original UI logic used
@@ -131,15 +420,29 @@ class LabelImportService:
                 if current_idx + n <= len(labels):
                     file_labels = labels[current_idx : current_idx + n]
                     current_idx += n
-
-                    self._force_apply_single(
-                        data,
-                        file_labels,
-                        mapping,
-                        selected_event_names,
+                    operations.append(
+                        (
+                            data,
+                            file_labels,
+                            mapping,
+                            selected_event_names,
+                            True,
+                        )
                     )
-                    applied_count += 1
-            return applied_count
+                    continue
+                logger.warning(
+                    "Forced sequence label import cannot cover every target; "
+                    "no labels were applied."
+                )
+                return 0
+            try:
+                return self._apply_label_operations_atomically(
+                    operations,
+                    operation_name="forced sequence label batch",
+                    success_count=len(target_files),
+                )
+            except AtomicLabelApplyError:
+                return 0
 
         # Mismatch and not forced
         logger.warning(
@@ -155,7 +458,7 @@ class LabelImportService:
     def apply_labels_to_single_file(
         self,
         data: Any,
-        labels: list[Any],
+        labels: LabelPayload,
         mapping: dict[Any, str],
         selected_event_names: set[str] | None = None,
     ):

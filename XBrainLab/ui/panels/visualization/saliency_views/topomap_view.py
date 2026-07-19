@@ -1,8 +1,18 @@
+from functools import partial
+
+from XBrainLab.backend.application.saliency_render import (
+    SaliencyRenderData,
+    SaliencyRenderPublication,
+)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import VisualizerType
 from XBrainLab.ui.styles.theme import Theme
 
-from .base_saliency_view import BaseSaliencyView
+from .base_saliency_view import (
+    SALIENCY_PREPARATION_FAILED_TEXT,
+    BaseSaliencyView,
+    SaliencyViewUnavailableError,
+)
 
 
 class SaliencyTopographicMapWidget(BaseSaliencyView):
@@ -15,9 +25,9 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
         # Add initial text to the default canvas
         if self.fig is None:
             raise RuntimeError("Base saliency view figure was not initialized")
-        self.ax = self.fig.add_subplot(111)
-        Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
-        self.ax.text(
+        axis = self.fig.add_subplot(111)
+        Theme.apply_matplotlib_dark_theme(self.fig, ax=axis)
+        axis.text(
             0.5,
             0.5,
             "Select a plan and method to visualize",
@@ -25,7 +35,7 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
             ha="center",
             va="center",
         )
-        self.ax.axis("off")
+        axis.axis("off")
 
     def show_warning(self, msg):
         """Show a warning message (yellow/orange)."""
@@ -38,19 +48,23 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
         )
         self.error_label.show()
 
-    def update_plot(self, plan, trainer, method, absolute, eval_record):
-        if eval_record is None:
-            eval_record = plan.get_eval_record()
-
-        if not eval_record:
-            self.show_error("No evaluation record found.")
+    def update_plot(
+        self,
+        publication: SaliencyRenderPublication,
+        absolute: bool,
+    ) -> None:
+        if not isinstance(publication, SaliencyRenderPublication):
+            message = "saliency render publication is invalid"
+            logger.error("Error preparing topomap: %s", message)
+            self.show_error(message)
             return
-
         try:
-            epoch_data = trainer.get_dataset().get_epoch_data()
+            data = publication.data
+            method = data.method
+            self.require_complete_saliency_coverage(method)
 
             # Montage Check
-            positions = epoch_data.get_montage_position()
+            positions = data.channel_positions
             if positions is None or len(positions) == 0:
                 self.show_warning(
                     "Please Set Montage First\n(Go to Configuration -> Set Montage)",
@@ -58,15 +72,18 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
                 return
 
             self._render_figure_async(
-                lambda: self._render_plot(eval_record, epoch_data, method, absolute),
+                partial(SaliencyTopographicMapWidget._render_plot, data, absolute),
                 error_context="topographic saliency map",
+                publication_generation=publication.generation,
             )
 
+        except SaliencyViewUnavailableError as exc:
+            self.show_error(str(exc))
         except Exception as e:
             logger.error("Error preparing topomap: %s", e, exc_info=True)
-            self.show_error(str(e))
+            self.show_error(SALIENCY_PREPARATION_FAILED_TEXT)
 
     @staticmethod
-    def _render_plot(eval_record, epoch_data, method, absolute):
-        visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epoch_data)
-        return visualizer.get_plt(method=method, absolute=absolute)
+    def _render_plot(data: SaliencyRenderData, absolute: bool):
+        visualizer = VisualizerType.SaliencyTopoMap.value(data)
+        return visualizer.get_plt(method=data.method, absolute=absolute)

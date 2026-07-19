@@ -1,5 +1,4 @@
 import json
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,7 +19,10 @@ def debug_script_file(tmp_path):
     }
     p = tmp_path / "test_debug.json"
     p.write_text(json.dumps(script_content), encoding="utf-8")
-    return str(p)
+    yield str(p)
+    app = QApplication.instance()
+    if isinstance(app, QApplication):
+        app.setProperty("tool_debug_script", None)
 
 
 def test_debug_mode_ui_flow(qtbot, debug_script_file):
@@ -34,6 +36,7 @@ def test_debug_mode_ui_flow(qtbot, debug_script_file):
 
     # 1. Set Property on QApplication instance
     app = QApplication.instance()
+    assert isinstance(app, QApplication)
     app.setProperty("tool_debug_script", debug_script_file)
 
     # 2. Init ChatPanel
@@ -52,7 +55,12 @@ def test_debug_mode_ui_flow(qtbot, debug_script_file):
     qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
 
     # 4. Verify Signal
-    mock_receiver.assert_called_once_with("switch_panel", {"panel_name": "training"})
+    mock_receiver.assert_called_once_with(
+        "switch_panel",
+        {"panel_name": "training"},
+        False,
+        "",
+    )
 
     # Verify State Update
     assert panel.debug_mode.index == 1
@@ -72,17 +80,16 @@ def test_debug_script_parsing(debug_script_file):
     debugger = ToolDebugMode(debug_script_file)
     assert len(debugger.calls) == 1
     call = debugger.next_call()
+    assert call is not None
     assert call.tool == "switch_panel"
     assert call.params["panel_name"] == "training"
 
 
 def test_debug_mode_execution_integration(qtbot, debug_script_file):
-    """
-    Test that the signal actually triggers tool execution in MainWindow.
-    M3.1 Verification.
-    """
+    """Debug requests have one Agent owner instead of a MainWindow bypass."""
     # 1. Setup MainWindow with property
     app = QApplication.instance()
+    assert isinstance(app, QApplication)
     app.setProperty("tool_debug_script", debug_script_file)
 
     # Mock specific return values if any called during init
@@ -134,9 +141,8 @@ def test_debug_mode_execution_integration(qtbot, debug_script_file):
         qtbot.addWidget(window)
         window.init_agent()
 
-        # Mock the ToolExecutor to verify call
-        execute = MagicMock(return_value="Success")
-        window.debug_executor = SimpleNamespace(execute=execute)
+        dispatcher_debug = MagicMock()
+        real_chat_panel.debug_tool_requested.connect(dispatcher_debug)
 
         # 3. Trigger Debug Step
         # Provide the script execution manually if needed, or rely on Signal?
@@ -147,25 +153,16 @@ def test_debug_mode_execution_integration(qtbot, debug_script_file):
         # Wait, `real_chat_panel` was created inside the `with patch` block?
         # No, I created it explicitly. It should work.
 
-        # Ensure the signal from `real_chat_panel` is connected to `window._on_debug_tool_requested`
-        # MainWindow init connects it:
-        # `if self.agent_manager.chat_panel: ... connect(...)`
-        # So it should work.
-
         qtbot.addWidget(real_chat_panel)  # Just to be safe regarding events
         qtbot.mouseClick(real_chat_panel.send_btn, Qt.MouseButton.LeftButton)
 
-        # 4. Verify Execution
-        # Script has switch_panel to training
-        execute.assert_called_once_with("switch_panel", {"panel_name": "training"})
-
-        # 5. Verify Feedback
-        # DebugExecutor returns "Success"
-        # MainWindow calls `agent_manager.chat_panel.append_message`
-        # Check `real_chat_panel` content
-        last_idx = real_chat_panel.chat_layout.count() - 2
-        bubble = real_chat_panel.chat_layout.itemAt(last_idx).widget()
-        assert "Diagnostic action completed" in bubble.get_text()
-        assert "saved to logs" in bubble.get_text()
+        dispatcher_debug.assert_called_once_with(
+            "switch_panel",
+            {"panel_name": "training"},
+            False,
+            "",
+        )
+        assert not hasattr(window, "debug_executor")
+        assert not hasattr(window, "_on_debug_tool_requested")
 
     app.setProperty("tool_debug_script", None)

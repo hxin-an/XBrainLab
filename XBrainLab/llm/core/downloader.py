@@ -4,15 +4,25 @@ Provides a multi-process download mechanism for HuggingFace models,
 with Qt signal integration for progress reporting and cancellation.
 """
 
+from __future__ import annotations
+
 import contextlib
 import multiprocessing
 import os
 import queue  # Standard library queue for Empty exception
 import time
+from dataclasses import dataclass, replace
+from enum import Enum
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
-from XBrainLab.llm.core.model_catalog import plan_model_download
+from XBrainLab.backend.utils.logger import logger
+from XBrainLab.llm.core.model_catalog import (
+    local_model_spec,
+    model_cache_candidates,
+    plan_model_download,
+    validate_downloaded_model_cache,
+)
 
 try:
     from huggingface_hub import snapshot_download
@@ -23,7 +33,77 @@ except ImportError:
 PROCESS_JOIN_TIMEOUT_SEC = 2.0
 PROCESS_TERMINATE_JOIN_TIMEOUT_SEC = 5.0
 PROCESS_KILL_JOIN_TIMEOUT_SEC = 1.0
-THREAD_SHUTDOWN_WAIT_MS = 2000
+PROCESS_CLEANUP_MAX_ATTEMPTS = 3
+PROCESS_CLEANUP_RETRY_DELAY_SEC = 0.05
+DOWNLOAD_PROCESS_START_METHOD = "spawn"
+
+
+class ModelDownloadStatus(str, Enum):
+    """Terminal result of one immutable model download request."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class ModelDownloadTarget:
+    """Immutable repository and cache identity captured at admission."""
+
+    repo_id: str
+    cache_dir: str
+    cache_candidates: tuple[str, ...]
+
+    @classmethod
+    def create(cls, repo_id: str, cache_dir: str) -> ModelDownloadTarget:
+        normalized_cache = os.path.abspath(os.path.expanduser(cache_dir))
+        return cls(
+            repo_id=str(repo_id),
+            cache_dir=normalized_cache,
+            cache_candidates=tuple(
+                model_cache_candidates(normalized_cache, str(repo_id))
+            ),
+        )
+
+
+class ProcessCleanupPhase(str, Enum):
+    """Observable child-process cleanup phase."""
+
+    IDLE = "idle"
+    CLEANING = "cleaning"
+    RETRY_PENDING = "retry_pending"
+    RECOVERY_REQUIRED = "recovery_required"
+    REAPED = "reaped"
+
+
+@dataclass(frozen=True)
+class ProcessCleanupSnapshot:
+    """One bounded child-process cleanup attempt."""
+
+    phase: ProcessCleanupPhase
+    attempt: int = 0
+    message: str = ""
+    diagnostic_message: str = ""
+
+
+@dataclass(frozen=True)
+class ModelDownloadOutcome:
+    """Target-aware outcome published only after native resources are terminal."""
+
+    target: ModelDownloadTarget
+    status: ModelDownloadStatus
+    message: str
+    model_path: str | None = None
+    process_cleanup: ProcessCleanupSnapshot | None = None
+    diagnostic_message: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status is ModelDownloadStatus.SUCCEEDED
+
+    @property
+    def cancelled(self) -> bool:
+        return self.status is ModelDownloadStatus.CANCELLED
 
 
 # -----------------------------------------------------------------------------
@@ -55,6 +135,10 @@ def run_download_task(repo_id, cache_dir, result_queue):
         if not preflight.ok:
             result_queue.put(("error", preflight.message))
             return
+        spec = local_model_spec(repo_id)
+        if spec is None:
+            result_queue.put(("error", f"Unsupported local model: {repo_id}."))
+            return
 
         # Disable HF Hub progress bars to prevent messy terminal output
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
@@ -65,11 +149,21 @@ def run_download_task(repo_id, cache_dir, result_queue):
         model_path = snapshot_download(
             repo_id=repo_id,
             cache_dir=cache_dir,
+            revision=spec.revision,
             resume_download=True,
         )
 
+        validation = validate_downloaded_model_cache(
+            repo_id,
+            cache_dir,
+            str(model_path),
+        )
+        if not validation.ok:
+            result_queue.put(("error", validation.message))
+            return
+
         result_queue.put(("progress", (100, "Download Complete")))
-        result_queue.put(("finished", model_path))
+        result_queue.put(("finished", validation.snapshot_path or str(model_path)))
 
     except Exception as e:
         result_queue.put(("error", str(e)))
@@ -93,6 +187,7 @@ class DownloadWorker(QObject):
     progress_update = pyqtSignal(int, str)  # progress (%), status message
     download_finished = pyqtSignal(str)  # path to model
     download_failed = pyqtSignal(str)  # error message
+    cleanup_state_changed = pyqtSignal(object)
 
     def __init__(self, repo_id, cache_dir):
         """Initializes the DownloadWorker.
@@ -108,6 +203,12 @@ class DownloadWorker(QObject):
         self._is_cancelled = False
         self._process = None
         self._queue = None
+        self._cleanup_attempts = 0
+        self._cleanup_snapshot = ProcessCleanupSnapshot(ProcessCleanupPhase.IDLE)
+        self._child_start_confirmed = False
+        self._pending_terminal_kind: str | None = None
+        self._pending_terminal_payload = ""
+        self._terminal_emitted = False
 
     def run(self):
         """Starts the download subprocess and polls its status queue.
@@ -117,48 +218,53 @@ class DownloadWorker(QObject):
         fails.
         """
         try:
-            # Create Queue
-            self._queue = multiprocessing.Queue()
-
-            # Start Process
-            self._process = multiprocessing.Process(
+            process_context = multiprocessing.get_context(DOWNLOAD_PROCESS_START_METHOD)
+            self._queue = process_context.Queue()
+            process = process_context.Process(
                 target=run_download_task,
                 args=(self.repo_id, self.cache_dir, self._queue),
                 daemon=True,
             )
-            self._process.start()
+            # Ownership starts before Process.start(). A spawn implementation may
+            # create the child and then raise while finalizing the parent handle.
+            self._process = process
+            try:
+                process.start()
+                self._child_start_confirmed = True
+            except Exception as exc:
+                self._child_start_confirmed = self._started_child_may_exist(process)
+                self._record_pending_failure(f"Model download could not start: {exc}")
+                self._finish_or_defer_terminal()
+                return
 
-            # Monitor Loop
-            while True:
-                # Check cancellation first
+            while self._pending_terminal_kind is None:
                 if self._is_cancelled:
-                    self._terminate_process()
-                    self.download_failed.emit("Cancelled by user")
-                    return
-
-                # Check if process died unexpectedly
-                if not self._process.is_alive():
-                    # Process finished, but we should have received a message.
-                    # Check queue one last time
-                    if not self._check_queue():
-                        # Queue empty and process dead -> crashed
-                        exit_code = self._process.exitcode
-                        self.download_failed.emit(
-                            f"Download process terminated unexpectedly "
-                            f"(exit code: {exit_code})"
-                        )
+                    self._record_pending_failure("Cancelled by user")
                     break
 
-                # Check queue (non-blocking)
+                alive = self._query_process_alive(
+                    process,
+                    operation="monitor is_alive",
+                )
+                if alive is None:
+                    self._record_pending_failure(
+                        "Model download process state could not be verified."
+                    )
+                    break
+                if not alive:
+                    if not self._check_queue():
+                        self._record_pending_failure(
+                            "Download process terminated unexpectedly "
+                            f"(exit code: {self._safe_exit_code(process)})"
+                        )
+                    break
                 if self._check_queue():
-                    return  # Finished or Error happened
-
-                # Sleep briefly to avoid busy loop
-                # We are in a background QThread, so sleep is fine.
+                    break
                 time.sleep(0.1)
-        finally:
-            self._reap_process()
-            self._close_queue()
+        except Exception as exc:
+            self._record_pending_failure(f"Model download failed: {exc}")
+
+        self._finish_or_defer_terminal()
 
     def _check_queue(self):
         """Reads and processes messages from the download queue.
@@ -180,11 +286,11 @@ class DownloadWorker(QObject):
                     self.progress_update.emit(pct, msg)
 
                 elif msg_type == "finished":
-                    self.download_finished.emit(data)
+                    self._record_pending_success(str(data))
                     return True
 
                 elif msg_type == "error":
-                    self.download_failed.emit(data)
+                    self._record_pending_failure(str(data))
                     return True
 
         except queue.Empty:
@@ -192,49 +298,277 @@ class DownloadWorker(QObject):
 
         return False
 
-    def _terminate_process(self):
-        """Terminates the download subprocess and waits for cleanup."""
+    def _record_pending_success(self, path: str) -> None:
+        if self._pending_terminal_kind is None:
+            self._pending_terminal_kind = "finished"
+            self._pending_terminal_payload = path
+
+    def _record_pending_failure(self, error: str) -> None:
+        if self._pending_terminal_kind is None:
+            self._pending_terminal_kind = "failed"
+            self._pending_terminal_payload = error
+
+    @staticmethod
+    def _safe_exit_code(process) -> object:
+        try:
+            return process.exitcode
+        except Exception:
+            return "unknown"
+
+    @staticmethod
+    def _started_child_may_exist(process) -> bool:
+        """Conservatively detect whether a failed start may own a child."""
+        try:
+            if bool(process.is_alive()):
+                return True
+        except Exception:
+            return True
+        try:
+            pid = getattr(process, "pid", None)
+            popen = getattr(process, "_popen", None)
+        except Exception:
+            return True
+        return pid is not None or popen is not None
+
+    def _finish_or_defer_terminal(self) -> bool:
+        """Publish terminal only after all native process ownership is released."""
+        if not self._reap_process():
+            return False
+        self._close_queue()
+        self._emit_pending_terminal()
+        return True
+
+    def _emit_pending_terminal(self) -> None:
+        if self._terminal_emitted:
+            return
+        self._terminal_emitted = True
+        kind = self._pending_terminal_kind or "failed"
+        payload = self._pending_terminal_payload or (
+            "Download worker stopped without a terminal result."
+        )
+        if kind == "finished":
+            self.download_finished.emit(payload)
+        else:
+            self.download_failed.emit(payload)
+
+    def retry_cleanup(self) -> None:
+        """Run one bounded recovery cycle in the worker QThread."""
+        if self._terminal_emitted:
+            return
+        self._finish_or_defer_terminal()
+
+    def _terminate_process(self) -> bool:
+        """Run one bounded terminate/kill attempt on the owned child."""
         process = self._process
         if not process:
-            return
+            return True
 
+        self._begin_cleanup_attempt()
+        alive = self._query_process_alive(process, operation="is_alive")
+        if alive is None:
+            return False
+
+        if not alive:
+            if not self._child_start_confirmed:
+                return self._release_unstarted_process(process)
+            if not self._join_process(
+                process,
+                PROCESS_JOIN_TIMEOUT_SEC,
+                operation="join",
+            ):
+                return False
+            alive = self._query_process_alive(process, operation="is_alive after join")
+            if alive is None:
+                return False
+            if alive:
+                self._publish_cleanup_retry("Child process revived after join.")
+                return False
+            return self._release_reaped_process(process)
+
+        self._child_start_confirmed = True
         try:
-            alive = process.is_alive()
-        except (OSError, RuntimeError, ValueError):
-            alive = False
-
-        if alive:
             process.terminate()
-            process.join(PROCESS_TERMINATE_JOIN_TIMEOUT_SEC)
-            try:
-                alive = process.is_alive()
-            except (OSError, RuntimeError, ValueError):
-                alive = False
-            if alive and hasattr(process, "kill"):
-                process.kill()
-                process.join(PROCESS_KILL_JOIN_TIMEOUT_SEC)
-        else:
-            process.join(PROCESS_JOIN_TIMEOUT_SEC)
+        except Exception as exc:
+            self._publish_cleanup_exception("terminate", exc)
+            return False
+        if not self._join_process(
+            process,
+            PROCESS_TERMINATE_JOIN_TIMEOUT_SEC,
+            operation="join after terminate",
+        ):
+            return False
+        alive = self._query_process_alive(
+            process,
+            operation="is_alive after terminate",
+        )
+        if alive is None:
+            return False
+        if not alive:
+            return self._release_reaped_process(process)
 
+        if not hasattr(process, "kill"):
+            self._publish_cleanup_retry(
+                "Child process is still alive and kill() is unavailable."
+            )
+            return False
+        try:
+            process.kill()
+        except Exception as exc:
+            self._publish_cleanup_exception("kill", exc)
+            return False
+        if not self._join_process(
+            process,
+            PROCESS_KILL_JOIN_TIMEOUT_SEC,
+            operation="join after kill",
+        ):
+            return False
+        alive = self._query_process_alive(
+            process,
+            operation="is_alive after kill",
+        )
+        if alive is None:
+            return False
+        if alive:
+            self._publish_cleanup_retry("Child process is still alive after kill().")
+            return False
+        return self._release_reaped_process(process)
+
+    def _begin_cleanup_attempt(self) -> None:
+        self._cleanup_attempts = int(getattr(self, "_cleanup_attempts", 0)) + 1
+        self._publish_cleanup_state(
+            ProcessCleanupPhase.CLEANING,
+            "Stopping model download subprocess.",
+        )
+
+    def _query_process_alive(self, process, *, operation: str) -> bool | None:
+        try:
+            return bool(process.is_alive())
+        except Exception as exc:
+            self._publish_cleanup_exception(operation, exc)
+            return None
+
+    def _join_process(
+        self,
+        process,
+        timeout_sec: float,
+        *,
+        operation: str,
+    ) -> bool:
+        try:
+            process.join(timeout_sec)
+        except Exception as exc:
+            self._publish_cleanup_exception(operation, exc)
+            return False
+        return True
+
+    def _release_reaped_process(self, process) -> bool:
+        """Release ownership only after join and a reliable dead observation."""
+        if self._process is not process:
+            return self._process is None
+        try:
+            process.close()
+        except Exception as exc:
+            self._publish_cleanup_exception("close reaped handle", exc)
+            return False
         self._process = None
+        self._publish_cleanup_state(
+            ProcessCleanupPhase.REAPED,
+            "Model download subprocess cleanup completed.",
+        )
+        return True
 
-    def _reap_process(self):
-        """Join the subprocess after terminal queue messages to avoid zombies."""
+    def _release_unstarted_process(self, process) -> bool:
+        """Release a Process object only when no child was ever observed."""
+        if self._process is not process:
+            return self._process is None
+        try:
+            process.close()
+        except Exception as exc:
+            self._publish_cleanup_exception("close unstarted handle", exc)
+            return False
+        self._process = None
+        self._publish_cleanup_state(
+            ProcessCleanupPhase.REAPED,
+            "Model download process handle cleanup completed.",
+        )
+        return True
+
+    def _publish_cleanup_exception(self, operation: str, exc: Exception) -> None:
+        self._publish_cleanup_retry(
+            "Model download cleanup needs another attempt.",
+            diagnostic_message=(
+                f"Model download subprocess cleanup {operation} failed: "
+                f"{type(exc).__name__}: {exc}"
+            ),
+        )
+
+    def _publish_cleanup_retry(
+        self,
+        message: str,
+        *,
+        diagnostic_message: str = "",
+    ) -> None:
+        self._publish_cleanup_state(
+            ProcessCleanupPhase.RETRY_PENDING,
+            message,
+            diagnostic_message=diagnostic_message,
+        )
+
+    def _publish_cleanup_state(
+        self,
+        phase: ProcessCleanupPhase,
+        message: str,
+        *,
+        diagnostic_message: str = "",
+    ) -> None:
+        snapshot = ProcessCleanupSnapshot(
+            phase=phase,
+            attempt=int(getattr(self, "_cleanup_attempts", 0)),
+            message=message,
+            diagnostic_message=diagnostic_message,
+        )
+        self._cleanup_snapshot = snapshot
+        signal = getattr(self, "cleanup_state_changed", None)
+        emit = getattr(signal, "emit", None)
+        if callable(emit):
+            emit(snapshot)
+
+    @property
+    def cleanup_snapshot(self) -> ProcessCleanupSnapshot:
+        return getattr(
+            self,
+            "_cleanup_snapshot",
+            ProcessCleanupSnapshot(ProcessCleanupPhase.IDLE),
+        )
+
+    def _reap_process(
+        self,
+        max_attempts: int = PROCESS_CLEANUP_MAX_ATTEMPTS,
+    ) -> bool:
+        """Run a bounded cleanup cycle while retaining unresolved ownership."""
         process = self._process
         if not process:
-            return
+            return True
 
-        try:
-            process.join(PROCESS_JOIN_TIMEOUT_SEC)
-            alive = process.is_alive()
-        except (OSError, RuntimeError, ValueError):
-            self._process = None
-            return
+        attempt_limit = max(1, int(max_attempts))
+        for attempt_index in range(attempt_limit):
+            if self._terminate_process():
+                return True
+            if self._process is not process:
+                return self._process is None
+            if attempt_index + 1 < attempt_limit:
+                time.sleep(PROCESS_CLEANUP_RETRY_DELAY_SEC)
 
-        if alive:
-            self._terminate_process()
-        else:
-            self._process = None
+        last_diagnostic = self._cleanup_snapshot.diagnostic_message
+        self._publish_cleanup_state(
+            ProcessCleanupPhase.RECOVERY_REQUIRED,
+            (
+                "Model download cleanup is still pending. XBrainLab will keep "
+                "ownership and retry during safe shutdown."
+            ),
+            diagnostic_message=last_diagnostic,
+        )
+        return False
 
     def _close_queue(self):
         """Close the multiprocessing queue after the worker loop exits."""
@@ -257,80 +591,138 @@ class DownloadWorker(QObject):
         # The run loop will pick this up and terminate the process
 
 
-# Global set to keep references to running threads, preventing them from being
-# garbage collected (and crashing) if the parent ModelDownloader is destroyed.
-ACTIVE_THREADS = set()
-
-
 class ModelDownloader(QObject):
     """High-level manager for model downloads with Qt threading.
 
     Handles QThread lifecycle, signal wiring, and ensures only one
-    download runs at a time.  Active threads are tracked globally to
-    prevent premature garbage collection.
+    download runs at a time. The owning application lifecycle must retain this
+    object until ``terminal`` reports that the QThread and subprocess are gone.
 
     Attributes:
         progress: Signal emitting ``(percent, status_message)``.
         finished: Signal emitting the downloaded model path.
         failed: Signal emitting an error message.
+        terminal: Signal emitted after all native download resources are reaped.
         worker: The active ``DownloadWorker``, if any.
 
     """
 
-    # ... (signals same)
     progress = pyqtSignal(int, str)
-    finished = pyqtSignal(str)
-    failed = pyqtSignal(str)
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(object)
+    terminal = pyqtSignal(object)
+    cleanup_state_changed = pyqtSignal(object)
+    cleanup_retry_requested = pyqtSignal()
 
-    def __init__(self):
+    def __init__(self, parent: QObject | None = None):
         """Initializes the ModelDownloader."""
-        super().__init__()
-        self.worker = None
-        self._thread = None
+        super().__init__(parent)
+        self.worker: DownloadWorker | None = None
+        self._thread: QThread | None = None
+        self._active_target: ModelDownloadTarget | None = None
+        self._pending_outcome: ModelDownloadOutcome | None = None
+        self._last_cleanup_snapshot = ProcessCleanupSnapshot(ProcessCleanupPhase.IDLE)
 
-    def start_download(self, repo_id, cache_dir):
+    def start_download(self, repo_id: str, cache_dir: str) -> bool:
         """Starts a model download in a background thread.
 
-        If a download is already running, this call is ignored.
+        If a download is already running, this call is rejected.
 
         Args:
             repo_id: HuggingFace repository identifier to download.
             cache_dir: Local directory for storing downloaded files.
 
-        """
-        if self._thread:
-            try:
-                if self._thread.isRunning():
-                    return
-            except RuntimeError:
-                # The C++ object is deleted, but Python wrapper exists.
-                # Treat as not running.
-                self._thread = None
+        Returns:
+            ``True`` when a new worker was started, otherwise ``False``.
 
-        self._thread = QThread()
-        self.worker = DownloadWorker(repo_id, cache_dir)
+        """
+        if not self.is_idle():
+            return False
+
+        self._active_target = ModelDownloadTarget.create(repo_id, cache_dir)
+        self._pending_outcome = None
+        self._last_cleanup_snapshot = ProcessCleanupSnapshot(ProcessCleanupPhase.IDLE)
+        self._thread = QThread(self)
+        self.worker = DownloadWorker(
+            self._active_target.repo_id,
+            self._active_target.cache_dir,
+        )
         self.worker.moveToThread(self._thread)
 
         # Connect signals
         self._thread.started.connect(self.worker.run)
         self.worker.progress_update.connect(self.progress.emit)
-        self.worker.download_finished.connect(self._on_finished)
-        self.worker.download_failed.connect(self._on_failed)
+        self.worker.download_finished.connect(self._record_success)
+        self.worker.download_failed.connect(self._record_failure)
+        self.worker.cleanup_state_changed.connect(self._record_cleanup_state)
+        self.cleanup_retry_requested.connect(self.worker.retry_cleanup)
 
         # Cleanup
         self.worker.download_finished.connect(self._thread.quit)
         self.worker.download_failed.connect(self._thread.quit)
         self.worker.download_finished.connect(self.worker.deleteLater)
         self.worker.download_failed.connect(self.worker.deleteLater)
+        self._thread.finished.connect(self._on_thread_finished)
         self._thread.finished.connect(self._thread.deleteLater)
 
-        self._thread.start()
+        thread = self._thread
+        worker = self.worker
+        try:
+            thread.start()
+        except Exception as exc:
+            self._publish_thread_start_failure(
+                target=self._active_target,
+                thread=thread,
+                worker=worker,
+                exc=exc,
+            )
+            return False
+        return True
 
-        # Keep thread alive globally until it finishes
-        ACTIVE_THREADS.add(self._thread)
-        # Use a captured variable to avoid binding to 'self'
-        t = self._thread
-        t.finished.connect(lambda: ACTIVE_THREADS.discard(t))
+    def _publish_thread_start_failure(
+        self,
+        *,
+        target: ModelDownloadTarget,
+        thread: QThread,
+        worker: DownloadWorker,
+        exc: Exception,
+    ) -> None:
+        """Release startup ownership and publish one safe terminal failure."""
+        diagnostic = f"Download QThread could not start: {type(exc).__name__}: {exc}"
+        logger.error(
+            "Model download thread start failed for %s: %s",
+            target.repo_id,
+            exc,
+        )
+        with contextlib.suppress(RuntimeError, TypeError):
+            self.cleanup_retry_requested.disconnect(worker.retry_cleanup)
+        with contextlib.suppress(RuntimeError):
+            worker.deleteLater()
+        with contextlib.suppress(RuntimeError):
+            thread.deleteLater()
+
+        self._thread = None
+        self.worker = None
+        self._active_target = None
+        self._pending_outcome = None
+        cleanup = ProcessCleanupSnapshot(
+            phase=ProcessCleanupPhase.REAPED,
+            message="Model download thread startup was released.",
+            diagnostic_message=diagnostic,
+        )
+        self._last_cleanup_snapshot = cleanup
+        outcome = ModelDownloadOutcome(
+            target=target,
+            status=ModelDownloadStatus.FAILED,
+            message=(
+                "Model download could not start. "
+                "Check the application log and try again."
+            ),
+            process_cleanup=cleanup,
+            diagnostic_message=diagnostic,
+        )
+        self.terminal.emit(outcome)
+        self.failed.emit(outcome)
 
     def cancel_download(self):
         """Cancels the active download, if any.
@@ -347,56 +739,118 @@ class ModelDownloader(QObject):
         # This ensures the process is consistently terminated.
         # Cleanup signals will handle the rest.
 
-    def shutdown(self, wait_ms=THREAD_SHUTDOWN_WAIT_MS):
-        """Cancel the active download and wait briefly for thread cleanup.
+    def shutdown(self, wait_ms: int | None = None) -> bool:
+        """Request cancellation without blocking the Qt GUI thread.
+
+        ``wait_ms`` remains accepted for compatibility but is deliberately
+        ignored. Callers must retry from the event loop or observe ``terminal``.
 
         Returns:
-            ``True`` when no active thread remains or the thread stops within
-            the timeout, otherwise ``False``.
+            ``True`` only when no active thread ownership remains.
 
         """
+        del wait_ms
         self.cancel_download()
+        self.request_cleanup_retry()
+        return self.is_idle()
+
+    def request_cleanup_retry(self) -> bool:
+        """Queue one bounded cleanup recovery cycle without blocking the GUI."""
+        if self.worker is None:
+            return self.is_idle()
+        self.cleanup_retry_requested.emit()
+        return False
+
+    def is_idle(self) -> bool:
+        """Return whether this owner has released all QThread ownership."""
         thread = self._thread
         if thread is None:
             return True
-
         try:
-            running = thread.isRunning()
+            thread.isRunning()
         except RuntimeError:
-            self._thread = None
-            return True
+            snapshot = ProcessCleanupSnapshot(
+                phase=ProcessCleanupPhase.RETRY_PENDING,
+                attempt=self._last_cleanup_snapshot.attempt,
+                message=(
+                    "Download QThread state is unavailable; ownership is retained "
+                    "until a terminal callback arrives."
+                ),
+            )
+            self._record_cleanup_state(snapshot)
+            return False
+        return False
 
-        if not running:
-            self._thread = None
-            return True
+    def _record_success(self, path: str) -> None:
+        """Store a worker outcome until QThread terminal cleanup finishes."""
+        self._pending_outcome = ModelDownloadOutcome(
+            target=self._require_active_target(),
+            status=ModelDownloadStatus.SUCCEEDED,
+            message="Model downloaded successfully.",
+            model_path=path,
+        )
 
-        try:
-            thread.quit()
-            stopped = bool(thread.wait(max(0, int(wait_ms))))
-        except RuntimeError:
-            self._thread = None
-            return True
+    def _record_failure(self, error: str) -> None:
+        """Store a worker failure until QThread terminal cleanup finishes."""
+        status = (
+            ModelDownloadStatus.CANCELLED
+            if error == "Cancelled by user"
+            else ModelDownloadStatus.FAILED
+        )
+        self._pending_outcome = ModelDownloadOutcome(
+            target=self._require_active_target(),
+            status=status,
+            message=(
+                "Model download cancelled."
+                if status is ModelDownloadStatus.CANCELLED
+                else ("Model download failed. Check the application log and try again.")
+            ),
+            diagnostic_message=error,
+        )
+        if status is not ModelDownloadStatus.CANCELLED:
+            logger.error(
+                "Model download failed for %s: %s",
+                self._require_active_target().repo_id,
+                error,
+            )
 
-        if stopped:
-            self._thread = None
-        return stopped
+    def _record_cleanup_state(self, snapshot: ProcessCleanupSnapshot) -> None:
+        self._last_cleanup_snapshot = snapshot
+        if snapshot.phase is ProcessCleanupPhase.RECOVERY_REQUIRED:
+            logger.error(
+                "Model download process ownership retained for recovery: %s",
+                snapshot.diagnostic_message or snapshot.message,
+            )
+        self.cleanup_state_changed.emit(snapshot)
 
-    def _on_finished(self, path):
-        """Handles successful download completion.
+    def _require_active_target(self) -> ModelDownloadTarget:
+        target = self._active_target
+        if target is None:
+            return ModelDownloadTarget.create("unknown/model", os.curdir)
+        return target
 
-        Args:
-            path: Local filesystem path to the downloaded model.
+    @property
+    def active_target(self) -> ModelDownloadTarget | None:
+        return self._active_target
 
-        """
+    def _on_thread_finished(self) -> None:
+        """Publish one outcome only after the worker reaped its subprocess."""
         self._thread = None
-        self.finished.emit(path)
-
-    def _on_failed(self, error):
-        """Handles download failure.
-
-        Args:
-            error: Error message describing the failure.
-
-        """
-        self._thread = None
-        self.failed.emit(error)
+        self.worker = None
+        outcome = self._pending_outcome or ModelDownloadOutcome(
+            target=self._require_active_target(),
+            status=ModelDownloadStatus.FAILED,
+            message="Model download stopped unexpectedly. Try again.",
+            diagnostic_message="Download worker stopped without a terminal result.",
+        )
+        outcome = replace(
+            outcome,
+            process_cleanup=self._last_cleanup_snapshot,
+        )
+        self._pending_outcome = None
+        self._active_target = None
+        self.terminal.emit(outcome)
+        if outcome.ok:
+            self.finished.emit(outcome)
+        else:
+            self.failed.emit(outcome)

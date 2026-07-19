@@ -21,7 +21,7 @@
 4. `docs/planning/roadmap.md`
 5. `docs/planning/now.md`
 6. `docs/validation/README.md`
-7. `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+7. `artifacts/ui/human-like-walkthrough-runs/current/human-like-walkthrough.md`
 8. `artifacts/agent_evals/dashboard.md`
 
 輸出 brief，至少包含：

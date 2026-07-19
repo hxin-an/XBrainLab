@@ -149,6 +149,42 @@ class TestModelSelection:
         assert scrollbar is not None
         assert scrollbar.maximum() == 0
 
+    def test_realistic_parameters_use_product_labels_and_preserve_raw_keys(
+        self,
+        qtbot,
+    ):
+        with patch("inspect.getmembers") as mock_getmembers:
+            mock_getmembers.return_value = [("FiveParamModel", FiveParamModel)]
+            dialog = ModelSelectionDialog(None, MagicMock())
+            qtbot.addWidget(dialog)
+
+        labels_by_key = {
+            dialog.params_table.item(row, 0).data(
+                Qt.ItemDataRole.UserRole
+            ): dialog.params_table.item(
+                row,
+                0,
+            )
+            for row in range(dialog.params_table.rowCount())
+        }
+        assert labels_by_key["f1"].text() == "Temporal filters"
+        assert labels_by_key["f2"].text() == "Pointwise filters"
+        assert labels_by_key["d"].text() == "Depth multiplier"
+        assert labels_by_key["pool_1"].text() == "First pooling size"
+        assert labels_by_key["pool_2"].text() == "Second pooling size"
+        assert all(item.toolTip() for item in labels_by_key.values())
+
+        dialog.accept()
+        holder = dialog.get_result()
+        assert holder is not None
+        assert holder.model_params_map == {
+            "f1": 8,
+            "f2": 16,
+            "d": 2,
+            "pool_1": 4,
+            "pool_2": 8,
+        }
+
     def test_params_table_height_fits_visible_rows(self, dialog):
         assert dialog.params_table is not None
         header = dialog.params_table.horizontalHeader()

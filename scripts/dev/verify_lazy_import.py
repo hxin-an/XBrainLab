@@ -44,8 +44,9 @@ conf_local = LLMConfig(inference_mode="local")
 try:
     _engine_local = LLMEngine(conf_local)
     print("DEBUG: Initialized Local Engine")
-except Exception:
-    pass  # Expected as model not found etc.
+except Exception as exc:
+    # Model availability is intentionally outside this import-boundary check.
+    print(f"DEBUG: Local engine initialization unavailable: {exc}")
 
 if "XBrainLab.llm.core.backends.local" in sys.modules:
     print("FAILURE: LocalBackend was imported during lazy local engine init!")

@@ -6,15 +6,28 @@ HuggingFace ``transformers`` with optional 4-bit quantization.
 
 import gc
 import logging
-from threading import Event, Thread
+from dataclasses import dataclass
+from threading import Event, Lock, Thread
 from typing import Any, TypedDict, cast
 
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 from XBrainLab.llm.core.model_catalog import local_model_policy_error, local_model_spec
 
 from .base import BaseBackend
 
 logger = logging.getLogger("XBrainLab.LLM.Local")
+
+
+@dataclass(slots=True)
+class _GenerationLease:
+    """Own one model generation until its native generation thread exits."""
+
+    cancel_event: Event
+    model: Any
+    tokenizer: Any
+    streamer: Any = None
+    thread: Thread | None = None
 
 
 class LocalBackend(BaseBackend):
@@ -45,9 +58,9 @@ class LocalBackend(BaseBackend):
         self.model: Any = None
         self.tokenizer: Any = None
         self.is_loaded = False
-        self._generation_cancel_event = Event()
-        self._active_generation_thread: Thread | None = None
-        self._active_streamer: Any = None
+        self._generation_lock = Lock()
+        self._active_generation: _GenerationLease | None = None
+        self._unloading = False
 
     def _normalize_runtime_device(self, torch_module) -> None:
         """Fallback from unusable CUDA setups to CPU before model load."""
@@ -148,6 +161,12 @@ class LocalBackend(BaseBackend):
         policy_error = local_model_policy_error(self.config.model_name)
         if policy_error is not None:
             raise RuntimeError(policy_error)
+        spec = local_model_spec(self.config.model_name)
+        if spec is None:
+            raise RuntimeError(
+                "Configured local model has no runtime specification: "
+                f"{self.config.model_name}."
+            )
 
         import torch
         from transformers import (
@@ -165,17 +184,17 @@ class LocalBackend(BaseBackend):
         )
         try:
             self._patch_remote_code_compat()
-            spec = local_model_spec(self.config.model_name)
             trust_remote_code = bool(
                 getattr(
                     self.config,
                     "trust_remote_code",
-                    spec.trust_remote_code if spec else False,
+                    spec.trust_remote_code,
                 )
             )
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.config.model_name,
                 cache_dir=self.config.cache_dir,
+                revision=spec.revision,
                 trust_remote_code=trust_remote_code,
                 local_files_only=True,
             )
@@ -183,10 +202,11 @@ class LocalBackend(BaseBackend):
             # Load model with optional quantization
             model_kwargs = {
                 "cache_dir": self.config.cache_dir,
+                "revision": spec.revision,
                 "trust_remote_code": trust_remote_code,
                 "local_files_only": True,
             }
-            if spec and spec.attn_implementation:
+            if spec.attn_implementation:
                 model_kwargs["attn_implementation"] = spec.attn_implementation
 
             if self.config.load_in_4bit:
@@ -215,27 +235,45 @@ class LocalBackend(BaseBackend):
             logger.error("Failed to load model: %s", e)
             raise
 
-    def unload(self) -> None:
-        """Release loaded model resources and clear CUDA cache when available."""
-        self.cancel_generation()
-        self.model = None
-        self.tokenizer = None
-        self.is_loaded = False
-        gc.collect()
+    def unload(self) -> bool:
+        """Release model resources only after active generation has stopped."""
+        with self._generation_lock:
+            if self._unloading:
+                return False
+            self._unloading = True
 
         try:
-            import torch
-        except ModuleNotFoundError:
-            return
+            if not self.cancel_generation():
+                logger.warning(
+                    "Local model unload deferred because generation is still running."
+                )
+                return False
 
-        cuda = getattr(torch, "cuda", None)
-        if cuda is None:
-            return
-        try:
-            if cuda.is_available():
-                cuda.empty_cache()
-        except Exception:  # pragma: no cover - defensive cleanup path
-            logger.debug("CUDA cache cleanup failed during local model unload.")
+            with self._generation_lock:
+                if self._active_generation is not None:
+                    return False
+                self.model = None
+                self.tokenizer = None
+                self.is_loaded = False
+            gc.collect()
+
+            try:
+                import torch
+            except ModuleNotFoundError:
+                return True
+
+            cuda = getattr(torch, "cuda", None)
+            if cuda is None:
+                return True
+            try:
+                if cuda.is_available():
+                    cuda.empty_cache()
+            except Exception:  # pragma: no cover - defensive cleanup path
+                logger.debug("CUDA cache cleanup failed during local model unload.")
+            return True
+        finally:
+            with self._generation_lock:
+                self._unloading = False
 
     def _process_messages_for_template(self, messages: list) -> list:
         """Processes messages for models with strict chat template rules.
@@ -307,7 +345,35 @@ class LocalBackend(BaseBackend):
 
         return result
 
-    def generate_stream(self, messages: list):
+    def _acquire_generation_lease(self) -> _GenerationLease:
+        """Reserve the loaded model for exactly one generation."""
+        with self._generation_lock:
+            if self._unloading:
+                raise RuntimeError("Local model unload is in progress.")
+            if self._active_generation is not None:
+                raise RuntimeError("A local generation is still running.")
+            if not self.is_loaded or self.tokenizer is None or self.model is None:
+                raise RuntimeError("Model/Tokenizer not loaded")
+            lease = _GenerationLease(
+                cancel_event=Event(),
+                model=self.model,
+                tokenizer=self.tokenizer,
+            )
+            self._active_generation = lease
+            return lease
+
+    def _release_generation_lease(self, lease: _GenerationLease) -> None:
+        """Release only the exact generation lease owned by the caller."""
+        with self._generation_lock:
+            if self._active_generation is lease:
+                self._active_generation = None
+
+    def generate_stream(
+        self,
+        messages: list,
+        *,
+        options: ResolvedGenerationOptions,
+    ):
         """Streams generated text from the local model.
 
         Applies the tokenizer's chat template, spawns a generation
@@ -315,6 +381,7 @@ class LocalBackend(BaseBackend):
 
         Args:
             messages: List of message dicts with ``role`` and ``content``.
+            options: Fully resolved decoding options from ``LLMEngine``.
 
         Yields:
             Text chunks produced by the model.
@@ -325,83 +392,96 @@ class LocalBackend(BaseBackend):
         """
         if not self.is_loaded:
             self.load()
-        if self.tokenizer is None or self.model is None:
-            raise RuntimeError("Model/Tokenizer not loaded")
-
-        import transformers
-
-        text_iterator_streamer_cls = transformers.TextIteratorStreamer
-
-        # Handle models that don't support system role (e.g., Gemma)
-        processed_messages = self._process_messages_for_template(messages)
-
-        # Apply chat template
-        prompt = self.tokenizer.apply_chat_template(
-            processed_messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-
-        if self.model is None:
-            raise RuntimeError("Model did not load correctly")
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-
-        self._generation_cancel_event.clear()
-        streamer = text_iterator_streamer_cls(
-            self.tokenizer,
-            skip_prompt=True,
-            skip_special_tokens=True,
-        )
-        self._active_streamer = streamer
-
-        generation_kwargs = dict(
-            inputs,
-            streamer=streamer,
-            max_new_tokens=self.config.max_new_tokens,
-            do_sample=self.config.do_sample,
-        )
-        if self.config.do_sample:
-            generation_kwargs["temperature"] = self.config.temperature
-            generation_kwargs["top_p"] = self.config.top_p
-        stopping_criteria = self._build_stopping_criteria(transformers)
-        if stopping_criteria is not None:
-            generation_kwargs["stopping_criteria"] = stopping_criteria
-
-        errors: list[BaseException] = []
-
-        def _generate() -> None:
-            try:
-                self.model.generate(**generation_kwargs)
-            except BaseException as exc:  # pragma: no cover - exercised by runtime
-                logger.error("Local generation failed: %s", exc, exc_info=True)
-                errors.append(exc)
-                if hasattr(streamer, "end"):
-                    streamer.end()
-
-        thread = Thread(target=_generate, daemon=True)
-        self._active_generation_thread = thread
-        thread.start()
-
+        lease = self._acquire_generation_lease()
+        thread_started = False
         try:
-            for chunk in streamer:
-                if self._generation_cancel_event.is_set():
-                    break
-                yield chunk
-        finally:
-            thread.join(timeout=0.25)
-            if not thread.is_alive():
-                self._active_generation_thread = None
-                self._active_streamer = None
-        if errors and not self._generation_cancel_event.is_set():
-            raise RuntimeError(f"Local generation failed: {errors[0]}")
+            import transformers
 
-    def _build_stopping_criteria(self, transformers_module: Any) -> Any | None:
+            text_iterator_streamer_cls = transformers.TextIteratorStreamer
+
+            processed_messages = self._process_messages_for_template(messages)
+            prompt = lease.tokenizer.apply_chat_template(
+                processed_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            inputs = lease.tokenizer(
+                prompt,
+                return_tensors="pt",
+            ).to(lease.model.device)
+
+            streamer = text_iterator_streamer_cls(
+                lease.tokenizer,
+                skip_prompt=True,
+                skip_special_tokens=True,
+            )
+            with self._generation_lock:
+                if self._active_generation is not lease:
+                    raise RuntimeError("Local generation lease was lost.")
+                lease.streamer = streamer
+
+            generation_kwargs = dict(
+                inputs,
+                streamer=streamer,
+                max_new_tokens=options.max_new_tokens,
+                do_sample=options.do_sample,
+            )
+            if options.do_sample:
+                generation_kwargs["temperature"] = options.temperature
+                generation_kwargs["top_p"] = options.top_p
+            stopping_criteria = self._build_stopping_criteria(
+                transformers,
+                lease.cancel_event,
+            )
+            if stopping_criteria is not None:
+                generation_kwargs["stopping_criteria"] = stopping_criteria
+
+            errors: list[BaseException] = []
+
+            def _generate() -> None:
+                try:
+                    lease.model.generate(**generation_kwargs)
+                except BaseException as exc:  # pragma: no cover - runtime path
+                    logger.error("Local generation failed: %s", exc, exc_info=True)
+                    errors.append(exc)
+                    if hasattr(streamer, "end"):
+                        streamer.end()
+                finally:
+                    self._release_generation_lease(lease)
+
+            thread = Thread(target=_generate, daemon=True)
+            with self._generation_lock:
+                if self._active_generation is not lease:
+                    raise RuntimeError("Local generation lease was lost.")
+                if lease.cancel_event.is_set():
+                    return
+                lease.thread = thread
+            thread.start()
+            thread_started = True
+
+            try:
+                for chunk in streamer:
+                    if lease.cancel_event.is_set():
+                        break
+                    yield chunk
+            finally:
+                thread.join()
+            if errors and not lease.cancel_event.is_set():
+                raise RuntimeError(f"Local generation failed: {errors[0]}")
+        finally:
+            if not thread_started:
+                self._release_generation_lease(lease)
+
+    def _build_stopping_criteria(
+        self,
+        transformers_module: Any,
+        cancel_event: Event,
+    ) -> Any | None:
         """Return a HuggingFace stopping criterion tied to backend cancellation."""
         stopping_base = getattr(transformers_module, "StoppingCriteria", None)
         stopping_list = getattr(transformers_module, "StoppingCriteriaList", None)
         if not isinstance(stopping_base, type) or stopping_list is None:
             return None
-        cancel_event = self._generation_cancel_event
 
         class _CancelStoppingCriteria(stopping_base):
             def __call__(self, input_ids, scores, **kwargs):
@@ -411,19 +491,23 @@ class LocalBackend(BaseBackend):
         return stopping_list([_CancelStoppingCriteria()])
 
     def cancel_generation(self, wait_timeout: float = 0.25) -> bool:
-        """Request cancellation for any active local generation thread."""
-        self._generation_cancel_event.set()
-        streamer = self._active_streamer
+        """Request cancellation without releasing a live generation lease."""
+        with self._generation_lock:
+            lease = self._active_generation
+            if lease is None:
+                return True
+            lease.cancel_event.set()
+            streamer = lease.streamer
+            thread = lease.thread
+
         if hasattr(streamer, "end"):
             try:
                 streamer.end()
             except Exception:
                 logger.debug("Failed to end local generation streamer", exc_info=True)
-        thread = self._active_generation_thread
+
+        if thread is None:
+            return False
         if thread is not None and thread.is_alive():
             thread.join(timeout=max(0.0, float(wait_timeout)))
-        stopped = thread is None or not thread.is_alive()
-        if stopped:
-            self._active_generation_thread = None
-            self._active_streamer = None
-        return stopped
+        return not thread.is_alive()

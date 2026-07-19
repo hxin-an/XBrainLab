@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.application.commands import LabelImportPlan
@@ -9,7 +11,14 @@ from XBrainLab.backend.application.data_interpretation import AppliedInterpretat
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
 )
-from XBrainLab.backend.application.data_interpretation_recipe import ImportRecipe
+from XBrainLab.backend.application.data_interpretation_pairing import (
+    resolve_label_file_pairing,
+)
+from XBrainLab.backend.application.data_interpretation_recipe import (
+    ImportRecipe,
+    choices_from_import_recipe,
+    load_import_recipe,
+)
 from XBrainLab.backend.application.data_interpretation_review import (
     InterpretationPreview,
     ValidationDecision,
@@ -181,6 +190,25 @@ def test_session_state_owns_lifecycle_snapshot_and_clear() -> None:
     assert cleared.has_recipe is False
 
 
+def test_legacy_raw_mutation_invalidation_clears_the_whole_lifecycle() -> None:
+    state = _state()
+    scan = _scan(state.next_id("scan"))
+    candidate = _candidate(scan, state.next_id("candidate"))
+    applied = _applied(state, candidate)
+    state.record_scan(scan)
+    state.record_preview(candidate, _preview(candidate, state.next_id("preview")))
+    state.record_validation(candidate.candidate_id, _decision(candidate))
+    state.record_applied(applied)
+    state.record_recipe(_recipe(state, applied), recipe_path="/tmp/recipe.json")
+
+    invalidated = state.invalidate_for_legacy_raw_mutation()
+
+    assert invalidated is True
+    assert state.snapshot().epoch_handoff == {}
+    assert state.snapshot().has_applied_interpretation is False
+    assert state.invalidate_for_legacy_raw_mutation() is False
+
+
 def test_discard_failed_replacement_restores_previous_applied_interpretation() -> None:
     state = _state()
     old_scan = _scan(state.next_id("scan"))
@@ -239,7 +267,7 @@ def test_new_label_import_does_not_mutate_previous_recipe() -> None:
     state.record_label_import_for_recipe(
         plan=LabelImportPlan(
             target_indices=[0],
-            label_map={carrier: ["left"]},
+            label_paths=[carrier],
             mapping={"left": "left hand"},
             file_mapping={target.filepath: carrier},
             mode="sequence",
@@ -301,7 +329,7 @@ def test_label_import_record_updates_applied_and_recipe_state() -> None:
     state.record_recipe(recipe, recipe_path=None)
     plan = LabelImportPlan(
         target_indices=[0],
-        label_map={"/tmp/xbrainlab/source/events.tsv": [{"label": "left"}]},
+        label_paths=["/tmp/xbrainlab/source/events.tsv"],
         mapping={"left": "left hand"},
         file_mapping={
             "/tmp/xbrainlab/source/sub-01_raw.fif": (
@@ -334,6 +362,344 @@ def test_label_import_record_updates_applied_and_recipe_state() -> None:
     assert snapshot.label_imports == [record]
     assert latest_recipe.label_imports == [record]
     assert latest_recipe.recipe_trace[-1] == "label_import:timestamp:1"
+
+
+def test_external_label_import_supersedes_a_saved_skip_labels_decision() -> None:
+    state = _state()
+    scan = _scan(state.next_id("scan"))
+    candidate = _candidate(scan, state.next_id("candidate"))
+    applied = replace(
+        _applied(state, candidate),
+        skip_labels=True,
+        label_carriers=[],
+        label_carrier_plan=[],
+    )
+    recipe = replace(
+        _recipe(state, applied),
+        skip_labels=True,
+        label_carriers=[],
+        label_carrier_plan=[],
+    )
+    state.record_applied(applied)
+    state.record_recipe(recipe, recipe_path=None)
+    label_path = "/tmp/xbrainlab/source/external-labels.tsv"
+    target_path = "/tmp/xbrainlab/source/sub-01_raw.fif"
+
+    record = state.record_label_import_for_recipe(
+        plan=LabelImportPlan(
+            target_indices=[0],
+            label_paths=[label_path],
+            label_configs={
+                label_path: {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "duration_field": "duration",
+                }
+            },
+            mapping={1: "left hand", 2: "right hand"},
+            file_mapping={
+                target_path: label_path,
+            },
+            mode="sequence",
+        ),
+        mode="sequence",
+        target_files=[_LoadedData(target_path)],
+        file_mapping={
+            target_path: label_path,
+        },
+        selected_event_names=None,
+        success_count=1,
+    )
+
+    assert record is not None
+    assert record["label_configs"] == {
+        label_path: {
+            "label_field": "trial_type",
+            "anchor": "onset",
+            "duration_field": "duration",
+        }
+    }
+    updated_applied = state.resolve_applied_interpretation()
+    assert updated_applied.skip_labels is False
+    assert updated_applied.label_sources == [label_path]
+    assert updated_applied.label_carriers == [label_path]
+    assert updated_applied.class_map == {"1": "left hand", "2": "right hand"}
+    assert updated_applied.confirmations == applied.confirmations
+    [applied_carrier] = updated_applied.label_carrier_plan
+    assert applied_carrier["path"] == label_path
+    assert applied_carrier["selected_label_field"] == "trial_type"
+    assert applied_carrier["selected_anchor"] == "onset"
+    assert applied_carrier["selected_duration_field"] == "duration"
+    assert applied_carrier["selected_target_file"] == target_path
+
+    updated_recipe = state.resolve_recipe(None)
+    assert updated_recipe.skip_labels is False
+    assert updated_recipe.label_sources == [label_path]
+    assert updated_recipe.label_carriers == [label_path]
+    assert updated_recipe.validation_decision == updated_applied.validation_decision
+    assert updated_recipe.confirmations == updated_applied.confirmations
+    assert updated_recipe.label_imports == [record]
+    choices = choices_from_import_recipe(updated_recipe)
+    assert choices["label_sources"] == [label_path]
+    assert choices["required_label_carriers"] == [label_path]
+    carrier_choices = choices["label_carrier_choices"][label_path]
+    assert carrier_choices["label_field"] == "trial_type"
+    assert carrier_choices["anchor"] == "onset"
+    assert carrier_choices["duration_field"] == "duration"
+    assert carrier_choices["target_file"] == target_path
+    assert {
+        raw_value: decision["class_name"]
+        for raw_value, decision in carrier_choices["value_decisions"].items()
+    } == {"1": "left hand", "2": "right hand"}
+
+
+def test_post_load_state_keeps_unproven_placement_blocked_across_projections() -> None:
+    state = _state()
+    scan = _scan(state.next_id("scan"))
+    candidate = replace(
+        _candidate(scan, state.next_id("candidate")),
+        label_sources=[],
+        label_carriers=[],
+        label_carrier_plan=[],
+        class_map={},
+        internal_event_preview={},
+        confirmation_items=[],
+        choices={"skip_labels": True},
+    )
+    preview = InterpretationPreview(
+        preview_id=state.next_id("preview"),
+        candidate_id=candidate.candidate_id,
+        summary="Labels skipped.",
+        file_count=1,
+        label_carrier_count=0,
+    )
+    applied = replace(
+        _applied(state, candidate),
+        skip_labels=True,
+        label_carriers=[],
+        label_carrier_plan=[],
+        confirmations=[],
+    )
+    recipe = replace(
+        _recipe(state, applied),
+        skip_labels=True,
+        label_carriers=[],
+        label_carrier_plan=[],
+        confirmations=[],
+    )
+    state.record_scan(scan)
+    state.record_preview(candidate, preview)
+    state.record_validation(
+        candidate.candidate_id,
+        ValidationDecision(candidate_id=candidate.candidate_id, decision="safe"),
+    )
+    state.record_applied(applied)
+    state.record_recipe(recipe, recipe_path=None)
+    target_path = candidate.selected_eeg_files[0]
+    label_path = "/tmp/xbrainlab/source/external-labels.tsv"
+
+    state.record_label_import_for_recipe(
+        plan=LabelImportPlan(
+            target_indices=[0],
+            label_paths=[label_path],
+            label_configs={label_path: {"label_field": "trial_type"}},
+            mapping={1: "left", 2: "right"},
+            file_mapping={target_path: label_path},
+            selected_event_names=["769", "770"],
+            mode="sequence",
+        ),
+        mode="sequence",
+        target_files=[_LoadedData(target_path)],
+        file_mapping={target_path: label_path},
+        selected_event_names={"769", "770"},
+        success_count=1,
+    )
+
+    updated_candidate = state.resolve_candidate(candidate.candidate_id)
+    updated_preview = state.current_review()["preview"]
+    updated_decision = state.resolve_validation_decision(candidate.candidate_id)
+    updated_applied = state.resolve_applied_interpretation()
+    updated_recipe = state.resolve_recipe(None)
+    [carrier] = updated_candidate.label_carrier_plan
+    assert carrier["placement_review"]["status"] == "blocked"
+    assert (
+        updated_preview["label_carrier_preview"] == updated_candidate.label_carrier_plan
+    )
+    assert updated_decision is not None
+    assert updated_decision.decision == "blocked"
+    assert set(updated_candidate.blocked_reasons).issubset(
+        updated_decision.blocked_reasons
+    )
+    assert updated_applied.label_carrier_plan == updated_candidate.label_carrier_plan
+    assert updated_applied.validation_decision == "blocked"
+    assert updated_recipe.label_carrier_plan == updated_candidate.label_carrier_plan
+    assert updated_recipe.validation_decision == "blocked"
+
+
+def test_post_load_anchor_preserves_explicit_cue_onset_and_only_defaults_when_omitted() -> (
+    None
+):
+    target_path = "/tmp/xbrainlab/source/sub-01_raw.fif"
+    label_path = "/tmp/xbrainlab/source/external-labels.mat"
+
+    explicit = DataInterpretationSessionState._label_import_carrier_plan(
+        label_carriers=[label_path],
+        label_configs={
+            label_path: {
+                "label_field": "classlabel",
+                "anchor": "cue_onset",
+            }
+        },
+        file_mapping={target_path: label_path},
+        class_map={"1": "left", "2": "right"},
+        mode="sequence",
+        selected_event_names=None,
+        target_files=[_LoadedData(target_path)],
+    )
+    omitted = DataInterpretationSessionState._label_import_carrier_plan(
+        label_carriers=[label_path],
+        label_configs={label_path: {"label_field": "classlabel"}},
+        file_mapping={target_path: label_path},
+        class_map={"1": "left", "2": "right"},
+        mode="sequence",
+        selected_event_names=None,
+        target_files=[_LoadedData(target_path)],
+    )
+
+    assert explicit[0]["selected_anchor"] == "cue_onset"
+    assert omitted[0]["selected_anchor"] == "trial order"
+    merged = DataInterpretationSessionState._merge_label_carrier_plans(
+        [{"path": label_path, "selected_anchor": "cue_onset"}],
+        omitted,
+    )
+    assert merged[0]["selected_anchor"] == "cue_onset"
+
+
+def test_external_label_recipe_round_trip_preserves_multi_target_pairing_and_events(
+    tmp_path: Path,
+) -> None:
+    state = _state()
+    shared_labels = "/tmp/xbrainlab/source/shared.mat"
+    target_paths = [
+        "/tmp/xbrainlab/source/sub01.gdf",
+        "/tmp/xbrainlab/source/sub02.gdf",
+    ]
+    scan = replace(
+        _scan(state.next_id("scan")),
+        eeg_files=target_paths,
+        label_carriers=[shared_labels],
+    )
+    candidate = replace(
+        _candidate(scan, state.next_id("candidate")),
+        selected_eeg_files=target_paths,
+        label_carriers=[shared_labels],
+        label_carrier_plan=[
+            {
+                "path": shared_labels,
+                "selected_label_field": "classlabel",
+            }
+        ],
+    )
+    applied = _applied(state, candidate)
+    state.record_applied(applied)
+    state.record_recipe(_recipe(state, applied), recipe_path=None)
+    file_mapping = dict.fromkeys(target_paths, shared_labels)
+
+    record = state.record_label_import_for_recipe(
+        plan=LabelImportPlan(
+            target_indices=[0, 1],
+            label_paths=[shared_labels],
+            label_configs={
+                shared_labels: {
+                    "label_field": "classlabel",
+                    "sequence_only": True,
+                }
+            },
+            mapping={1: "left", 2: "right"},
+            file_mapping=file_mapping,
+            selected_event_names=["769", "770"],
+            mode="sequence",
+        ),
+        mode="sequence",
+        target_files=[_LoadedData(path) for path in target_paths],
+        file_mapping=file_mapping,
+        selected_event_names={"769", "770"},
+        success_count=2,
+    )
+
+    assert record is not None
+    assert record["file_mapping"] == file_mapping
+    assert record["selected_event_names"] == ["769", "770"]
+    recipe = state.resolve_recipe(None)
+    recipe_path = tmp_path / "multi-target-recipe.json"
+    recipe.write_json(str(recipe_path))
+    reloaded = load_import_recipe(str(recipe_path))
+
+    assert choices_from_import_recipe(reloaded) == choices_from_import_recipe(recipe)
+    [carrier] = reloaded.label_carrier_plan
+    assert carrier["selected_target_files"] == target_paths
+    assert carrier["selected_target_event_codes"] == ["769", "770"]
+    carrier_choices = choices_from_import_recipe(reloaded)["label_carrier_choices"][
+        shared_labels
+    ]
+    assert carrier_choices["target_files"] == target_paths
+    assert carrier_choices["target_event_codes"] == ["769", "770"]
+    pairing = resolve_label_file_pairing(
+        reloaded.label_carrier_plan,
+        target_paths,
+    )
+    assert pairing.complete is True
+    assert pairing.file_mapping == file_mapping
+
+    audit_only_recipe = replace(
+        reloaded,
+        label_carrier_plan=[
+            {
+                "path": shared_labels,
+                "selected_label_field": "",
+                "selected_target_file": "",
+            }
+        ],
+    )
+    audit_choices = choices_from_import_recipe(audit_only_recipe)[
+        "label_carrier_choices"
+    ][shared_labels]
+    assert audit_choices["label_field"] == "classlabel"
+    assert audit_choices["target_files"] == target_paths
+    assert audit_choices["target_event_codes"] == ["769", "770"]
+
+
+def test_partial_label_import_count_cannot_update_recipe_truth() -> None:
+    state = _state()
+    scan = _scan(state.next_id("scan"))
+    candidate = _candidate(scan, state.next_id("candidate"))
+    applied = _applied(state, candidate)
+    recipe = _recipe(state, applied)
+    state.record_applied(applied)
+    state.record_recipe(recipe, recipe_path=None)
+    targets = [
+        _LoadedData("/tmp/xbrainlab/source/sub-01_raw.fif"),
+        _LoadedData("/tmp/xbrainlab/source/sub-02_raw.fif"),
+    ]
+
+    record = state.record_label_import_for_recipe(
+        plan=LabelImportPlan(
+            label_paths=["/tmp/xbrainlab/source/events.tsv"],
+            mapping={"left": "left hand", "right": "right hand"},
+            mode="sequence",
+        ),
+        mode="sequence",
+        target_files=targets,
+        file_mapping={
+            target.filepath: "/tmp/xbrainlab/source/events.tsv" for target in targets
+        },
+        selected_event_names=None,
+        success_count=1,
+    )
+
+    assert record is None
+    assert state.snapshot().label_import_count == 0
+    assert state.resolve_recipe(None).label_imports == []
 
 
 def test_internal_event_epoch_handoff_keeps_raw_event_codes_with_aliases() -> None:
@@ -480,3 +846,47 @@ def test_pending_recipe_review_does_not_replace_active_epoch_handoff() -> None:
     assert snapshot.epoch_handoff["ready"] is True
     assert snapshot.epoch_handoff["supervised_ready"] is True
     assert snapshot.epoch_handoff["default_epoch_events"] == ["769", "770"]
+
+
+def test_internal_event_handoff_requires_two_distinct_selected_classes() -> None:
+    applied = AppliedInterpretation(
+        interpretation_id="interpretation-one-class",
+        candidate_id="candidate-one-class",
+        source_path="/tmp/xbrainlab/source",
+        source_kind="file",
+        loaded_files=["/tmp/xbrainlab/source/run.gdf"],
+        label_carrier="embedded_events",
+        class_map={"769": "Left hand"},
+        internal_event_selection={
+            "label_event_codes": ["769"],
+            "class_map": {"769": "Left hand"},
+        },
+    )
+
+    handoff = DataInterpretationSessionState._epoch_handoff(None, applied)
+
+    assert handoff["supervised_ready"] is False
+    assert handoff["supervised_blocker_codes"] == ["insufficient_usable_classes"]
+
+
+def test_internal_event_handoff_requires_trials_for_each_selected_class() -> None:
+    applied = AppliedInterpretation(
+        interpretation_id="interpretation-one-usable-class",
+        candidate_id="candidate-one-usable-class",
+        source_path="/tmp/xbrainlab/source",
+        source_kind="file",
+        loaded_files=["/tmp/xbrainlab/source/run.gdf"],
+        label_carrier="embedded_events",
+        class_map={"769": "Left hand", "770": "Right hand"},
+        internal_event_selection={
+            "label_event_codes": ["769", "770"],
+            "label_event_counts": {"769": 12, "770": 0},
+            "class_map": {"769": "Left hand", "770": "Right hand"},
+        },
+    )
+
+    handoff = DataInterpretationSessionState._epoch_handoff(None, applied)
+
+    assert handoff["usable_class_labels"] == ["Left hand"]
+    assert handoff["supervised_ready"] is False
+    assert handoff["supervised_blocker_codes"] == ["insufficient_usable_classes"]

@@ -1,12 +1,54 @@
-"""Coverage tests for AgentManager ??UI component interactions."""
+"""Coverage tests for AgentManager UI component interactions."""
 
-from types import SimpleNamespace
+from dataclasses import replace
+from pathlib import Path
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
+import pytest
 from PyQt6.QtWidgets import QMainWindow
 
+from XBrainLab.backend.application.capabilities import (
+    CapabilityPolicy,
+    CommandCapability,
+)
+from XBrainLab.backend.application.state import (
+    ActiveDatasetSnapshot,
+    ApplicationStateSnapshot,
+)
+from XBrainLab.backend.application.view_publication import (
+    PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
+    ApplicationViewPublication,
+)
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.confirmation import (
+    AgentConfirmationRequest,
+    AgentConfirmationResolution,
+    AgentConfirmationResolutionStatus,
+)
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
+)
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
+from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+    AssistantRuntimeLifecycle,
+    RuntimeCommandAdmissionResult,
+    RuntimeCommandAdmissionStatus,
+)
+from XBrainLab.ui.components.assistant_status_projection import (
+    build_assistant_status_projection,
+)
+from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+
+@pytest.fixture(autouse=True)
+def _require_qapplication(qapp):
+    """Keep QWidget-based coverage tests runnable in isolation."""
+    return qapp
 
 
 def _make_manager() -> Any:
@@ -18,26 +60,39 @@ def _make_manager() -> Any:
     main_window.statusBar = MagicMock(return_value=MagicMock())
     study = MagicMock()
     application_service = MagicMock()
-    with (
-        patch(
-            "XBrainLab.ui.components.agent_manager.get_application_service",
-            return_value=application_service,
-        ),
-        patch(
-            "XBrainLab.ui.components.agent_manager."
-            "get_controller_for_compatibility_context",
-            return_value=MagicMock(),
-        ),
+    runtime = MagicMock(spec=AssistantRuntimeLifecycle)
+    runtime.controller = MagicMock()
+    runtime.initialized = True
+    runtime.current = AssistantRuntimeSnapshot(
+        phase=AssistantRuntimePhase.IDLE,
+        initialized=False,
+    )
+    runtime.active_local_runtime_blocks_model_deletion.return_value = False
+    runtime.close.return_value = True
+    runtime.submit.return_value = RuntimeCommandAdmissionResult(
+        command_name="submit",
+        status=RuntimeCommandAdmissionStatus.ACCEPTED,
+    )
+    with patch(
+        "XBrainLab.ui.components.agent_manager.get_application_service",
+        return_value=application_service,
     ):
-        m = cast(Any, AgentManager(main_window, study))
+        m = cast(
+            Any,
+            AgentManager(main_window, study, runtime_lifecycle=runtime),
+        )
     m.chat_panel = MagicMock()
     m.chat_controller = MagicMock()
     m.application_service = application_service
     m.application_service.get_state.return_value = _empty_workflow_state()
     m.application_service.get_capabilities.return_value = {}
-    m.agent_controller = MagicMock()
-    m._agent_dispatcher.bind(m.agent_controller)
-    m.agent_initialized = True
+    m.application_service.get_view_publication.return_value = (
+        ApplicationViewPublication(
+            generation=1,
+            state=cast(Any, _empty_workflow_state()),
+            capabilities=CapabilityPolicy(capabilities={}),
+        )
+    )
     m.vram_checker = MagicMock()
     epoch_data = MagicMock()
     epoch_data.get_channel_names.return_value = ["Cz", "Fz"]
@@ -47,46 +102,7 @@ def _make_manager() -> Any:
 
 
 def _empty_workflow_state():
-    return SimpleNamespace(
-        active_dataset=SimpleNamespace(
-            has_raw_data=False,
-            has_preprocessed_data=False,
-            has_epoch_data=False,
-            has_datasets=False,
-        ),
-        active_training=SimpleNamespace(is_running=False),
-        training=SimpleNamespace(
-            is_running=False,
-            has_model=False,
-            has_training_option=False,
-        ),
-        evaluation=SimpleNamespace(finished_runs=0, metrics_available=False),
-        pipeline_stage="empty",
-        last_error=None,
-    )
-
-
-def _montage_query_result(channel_names: list[str]):
-    from XBrainLab.backend.application import ChangedState, CommandResult
-
-    return CommandResult.success_result(
-        "query_state",
-        "Application state snapshot ready.",
-        state={},
-        changed_state=ChangedState(),
-        diagnostics={"state": {"epoch": {"channel_names": channel_names}}},
-    )
-
-
-def _montage_apply_result():
-    from XBrainLab.backend.application import ChangedState, CommandResult
-
-    return CommandResult.success_result(
-        "apply_montage",
-        "Applied montage.",
-        state={},
-        changed_state=ChangedState(visualization_changed=True),
-    )
+    return ApplicationStateSnapshot.empty()
 
 
 def test_agent_manager_does_not_fetch_preprocess_controller_from_real_study(qtbot):
@@ -106,7 +122,20 @@ def test_agent_manager_does_not_fetch_preprocess_controller_from_real_study(qtbo
         manager = AgentManager(main_window, study)
 
     study.get_controller.assert_not_called()
-    assert manager.preprocess_controller is None
+    assert not hasattr(manager, "preprocess_controller")
+
+
+def test_agent_manager_delegates_atomic_workflow_status_projection() -> None:
+    source = Path("XBrainLab/ui/components/agent_manager.py").read_text(
+        encoding="utf-8",
+    )
+
+    assert "build_assistant_status_projection(publication)" in source
+    assert "build_workflow_projection" not in source
+    assert "_product_next_steps" not in source
+    assert 'capabilities.get("train")' not in source
+    assert "get_state()" not in source
+    assert "get_capabilities()" not in source
 
 
 class TestAgentManagerPrepareModelDeletion:
@@ -115,32 +144,28 @@ class TestAgentManagerPrepareModelDeletion:
     def test_no_controller(self):
         """L231-235: Returns True when no controller."""
         m = _make_manager()
-        m.agent_controller = None
+        m._assistant_runtime.controller = None
         assert m.prepare_model_deletion("test") is True
 
     def test_no_engine(self):
         """L235: Returns True when engine not initialized."""
         m = _make_manager()
-        m.agent_controller.runtime_snapshot.return_value = {"initialized": False}
         assert m.prepare_model_deletion("test") is True
 
     def test_active_local_model_blocks_deletion(self):
         """Deletion should fail closed instead of auto-switching to Gemini."""
         m = _make_manager()
-        m.agent_controller.runtime_snapshot.return_value = {
-            "initialized": True,
-            "backend_mode": "local",
-        }
+        m._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = (
+            True
+        )
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert m.prepare_model_deletion("test") is False
-        m.agent_controller.set_model.assert_not_called()
 
     def test_inference_mode_truth_blocks_deletion_even_if_active_mode_stale(self):
         m = _make_manager()
-        m.agent_controller.runtime_snapshot.return_value = {
-            "initialized": True,
-            "backend_mode": "local",
-        }
+        m._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = (
+            True
+        )
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert m.prepare_model_deletion("test") is False
 
@@ -151,38 +176,68 @@ class TestAgentManagerStartSystem:
     def test_already_initialized(self):
         """Returns early when already initialized."""
         m = _make_manager()
-        m.agent_initialized = True
+        m._assistant_runtime.initialized = True
         m.start_system()  # should return early
 
     def test_no_chat_panel(self):
         """L263: Returns early when no chat panel."""
         m = _make_manager()
-        m.agent_initialized = False
+        m._assistant_runtime.initialized = False
         m.chat_panel = None
         m.start_system()
 
 
 class TestAgentManagerBackendStatus:
+    def test_refresh_backend_status_hides_commands_when_publication_is_stale(self):
+        m = _make_manager()
+        status_messages: list[str] = []
+        m.status_message_received.connect(status_messages.append)
+        m.application_service.get_view_publication.return_value = (
+            ApplicationViewPublication(
+                generation=1,
+                state=cast(Any, _empty_workflow_state()),
+                capabilities=CapabilityPolicy(
+                    capabilities={
+                        "scan_source": CommandCapability(
+                            command_name="scan_source",
+                            enabled=True,
+                        ),
+                    }
+                ),
+                verified=True,
+                stale=True,
+                refresh_error="training state changed during snapshot",
+            )
+        )
+
+        m.refresh_backend_status()
+
+        m.chat_panel.set_product_status.assert_called_once_with(
+            stage="Workflow status unavailable",
+            model_status="Unknown",
+            available_commands=[],
+            tooltip=PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
+            blocked_reason=PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
+        )
+        assert status_messages == ["Workflow status unavailable · Try again"]
+
     def test_refresh_backend_status_handles_missing_train_capability(self):
         m = _make_manager()
-        m.application_service.get_state.return_value = _empty_workflow_state()
-        m.application_service.get_capabilities.return_value = {
-            "scan_source": SimpleNamespace(enabled=True, reasons=[]),
-        }
-        model_config = MagicMock()
-        model_config.local_backend_ready.return_value = True
-
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.LLMConfig.load_from_file",
-                return_value=model_config,
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.LLMConfig.assistant_runtime_selection_from",
-                return_value=SimpleNamespace(model_id="local-model"),
-            ),
-        ):
-            m.refresh_backend_status()
+        m.application_service.get_view_publication.return_value = (
+            ApplicationViewPublication(
+                generation=1,
+                state=cast(Any, _empty_workflow_state()),
+                capabilities=CapabilityPolicy(
+                    capabilities={
+                        "scan_source": CommandCapability(
+                            command_name="scan_source",
+                            enabled=True,
+                        ),
+                    }
+                ),
+            )
+        )
+        m.refresh_backend_status()
 
         m.chat_panel.set_product_status.assert_called_once()
         kwargs = m.chat_panel.set_product_status.call_args.kwargs
@@ -192,20 +247,32 @@ class TestAgentManagerBackendStatus:
         m.chat_panel.set_status_summary.assert_not_called()
 
     def test_product_next_steps_ignores_missing_candidate_capabilities(self):
-        from XBrainLab.ui.components.agent_manager import AgentManager
+        state = replace(
+            _empty_workflow_state(),
+            active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+        )
 
-        state = _empty_workflow_state()
-        state.active_dataset.has_raw_data = True
+        projection = build_assistant_status_projection(
+            ApplicationViewPublication(
+                generation=1,
+                state=state,
+                capabilities=CapabilityPolicy(capabilities={}),
+            )
+        )
 
-        assert AgentManager._product_next_steps(state, {}) == []
+        assert projection.available_commands == ()
 
     def test_footer_hint_uses_data_interpretation_language_without_commands(self):
-        from XBrainLab.ui.components.agent_manager import AgentManager
-
-        assert (
-            AgentManager._workflow_footer_hint("No data loaded", [])
-            == "No EEG data open · Scan a data source to begin"
+        state = _empty_workflow_state()
+        projection = build_assistant_status_projection(
+            ApplicationViewPublication(
+                generation=1,
+                state=state,
+                capabilities=CapabilityPolicy(capabilities={}),
+            )
         )
+
+        assert projection.footer_hint == "No EEG data open"
 
 
 class TestAgentManagerRetry:
@@ -237,7 +304,7 @@ class TestAgentManagerExecutionMode:
         """L398-399: Forwards mode to controller."""
         m = _make_manager()
         m._on_execution_mode_changed("multi")
-        m.agent_controller.set_execution_mode.assert_called_with("multi")
+        m._assistant_runtime.set_execution_mode.assert_called_with("multi")
 
     def test_sync_execution_mode_ui(self):
         """Execution mode sync updates the visible Ask/Workflow selector."""
@@ -251,22 +318,22 @@ class TestAgentManagerExecutionMode:
         m.chat_panel.set_execution_mode.assert_called_with("multi")
 
 
-class TestAgentManagerHandleUICommand:
-    """Cover handle_user_interaction dispatch."""
+class TestAgentManagerHandlePanelNavigation:
+    """Cover typed panel navigation dispatch."""
 
     def test_switch_panel(self):
-        """L485: switch_panel dispatch."""
         m = _make_manager()
-        with patch.object(m, "switch_panel") as mock_sp:
-            m.handle_user_interaction("switch_panel", {"panel": "training"})
-        mock_sp.assert_called_once()
+        with patch.object(m, "_open_assistant_panel_target") as open_panel:
+            m.handle_panel_navigation(
+                AssistantPanelNavigationRequest(AssistantPanelTarget.TRAINING)
+            )
+        open_panel.assert_called_once_with(AssistantPanelTarget.TRAINING)
 
-    def test_confirm_action(self):
-        """L488-489: confirm_action dispatch."""
+    def test_untyped_payload_is_not_dispatched(self):
         m = _make_manager()
-        with patch.object(m, "_show_action_confirmation") as mock_sa:
-            m.handle_user_interaction("confirm_action", {"tool_name": "start_training"})
-        mock_sa.assert_called_once()
+        with patch.object(m, "_open_assistant_panel_target") as open_panel:
+            m.handle_panel_navigation({"panel": "training"})
+        open_panel.assert_not_called()
 
 
 class TestShowActionConfirmation:
@@ -275,372 +342,89 @@ class TestShowActionConfirmation:
     def test_approved(self):
         """User approves action."""
         m = _make_manager()
-        params = {
-            "tool_name": "start_training",
-            "description": "Start training",
-            "params": {"lr": 0.01},
-        }
+        request = AgentConfirmationRequest.for_action(
+            command_name="start_training",
+            params={"lr": 0.01},
+            action_label="Start training",
+            description="Start training",
+            destructive=False,
+            publication_generation=4,
+        )
         from PyQt6.QtWidgets import QMessageBox
 
+        approve_button = MagicMock()
+        cancel_button = MagicMock()
         mock_box = MagicMock()
-        mock_box.exec.return_value = QMessageBox.StandardButton.Yes
+        mock_box.addButton.side_effect = [approve_button, cancel_button]
+        mock_box.clickedButton.return_value = approve_button
         mock_cls = MagicMock(return_value=mock_box)
         # Preserve real Icon and StandardButton so comparisons work
         mock_cls.Icon = QMessageBox.Icon
+        mock_cls.ButtonRole = QMessageBox.ButtonRole
         mock_cls.StandardButton = QMessageBox.StandardButton
         with patch(
             "XBrainLab.ui.components.agent_manager.QMessageBox",
             mock_cls,
         ):
-            m._show_action_confirmation(params)
-        m.agent_controller.on_user_confirmed.assert_called_with(True)
+            m._show_action_confirmation(request)
+        resolution = m._assistant_runtime.confirm.call_args.args[0]
+        assert isinstance(resolution, AgentConfirmationResolution)
+        assert resolution.matches(request)
+        assert resolution.status is AgentConfirmationResolutionStatus.APPROVED
         visible_text = mock_box.setText.call_args.args[0]
         assert "Action: Start training" in visible_text
         assert "start_training" not in visible_text
         assert "Tool:" not in visible_text
-        assert (
-            "Confirmed: Start training."
-            in (m.chat_controller.add_agent_message.call_args.args[0])
-        )
+        assert mock_box.addButton.call_args_list == [
+            call("Start training", QMessageBox.ButtonRole.AcceptRole),
+            call("Cancel", QMessageBox.ButtonRole.RejectRole),
+        ]
+        mock_box.setDefaultButton.assert_called_once_with(cancel_button)
+        mock_box.setEscapeButton.assert_called_once_with(cancel_button)
+        mock_box.setStandardButtons.assert_not_called()
+        m.chat_controller.add_agent_message.assert_not_called()
 
     def test_rejected(self):
         """User rejects action."""
         m = _make_manager()
-        params = {
-            "tool_name": "clear_dataset",
-            "description": "Clear the current dataset",
-            "params": {},
-        }
+        request = AgentConfirmationRequest.for_action(
+            command_name="clear_dataset",
+            params={},
+            action_label="Clear dataset",
+            description="Clear the current dataset",
+            destructive=True,
+            publication_generation=5,
+        )
         from PyQt6.QtWidgets import QMessageBox
 
+        approve_button = MagicMock()
+        cancel_button = MagicMock()
         mock_box = MagicMock()
-        mock_box.exec.return_value = QMessageBox.StandardButton.No
+        mock_box.addButton.side_effect = [approve_button, cancel_button]
+        mock_box.clickedButton.return_value = cancel_button
         mock_cls = MagicMock(return_value=mock_box)
         mock_cls.Icon = QMessageBox.Icon
+        mock_cls.ButtonRole = QMessageBox.ButtonRole
         mock_cls.StandardButton = QMessageBox.StandardButton
         with patch(
             "XBrainLab.ui.components.agent_manager.QMessageBox",
             mock_cls,
         ):
-            m._show_action_confirmation(params)
-        m.agent_controller.on_user_confirmed.assert_called_with(False)
+            m._show_action_confirmation(request)
+        resolution = m._assistant_runtime.confirm.call_args.args[0]
+        assert isinstance(resolution, AgentConfirmationResolution)
+        assert resolution.matches(request)
+        assert resolution.status is AgentConfirmationResolutionStatus.CANCELLED
         visible_text = mock_box.setText.call_args.args[0]
         assert "Action: Clear dataset" in visible_text
         assert "clear_dataset" not in visible_text
         assert "Tool:" not in visible_text
-        assert (
-            "Cancelled: Clear dataset."
-            in (m.chat_controller.add_agent_message.call_args.args[0])
-        )
-
-
-class TestMontagePicker:
-    """Cover montage picker dialog paths."""
-
-    def test_montage_cancel(self):
-        """L668-670: Dialog cancelled."""
-        m = _make_manager()
-        with patch.object(m, "handle_user_input") as mock_hui:
-            mock_dialog = MagicMock()
-            mock_dialog.exec.return_value = False
-            with patch(
-                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-                return_value=mock_dialog,
-            ):
-                m.open_montage_picker_dialog({})
-
-        m.chat_controller.add_agent_message.assert_called_with("Operation Cancelled.")
-        mock_hui.assert_called_with("Montage Selection Cancelled by User.")
-
-    def test_montage_no_valid_config(self):
-        """L664-667: Confirmed dialog returned no montage configuration."""
-        m = _make_manager()
-        mock_dialog = MagicMock()
-        mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (None, None)
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-                return_value=mock_dialog,
-            ),
-            patch.object(m, "handle_user_input") as mock_hui,
-        ):
-            m.open_montage_picker_dialog({})
-
-        mock_hui.assert_called_with("Montage Selection Failed.")
-
-    def test_montage_success_debug_mode(self):
-        """L655, L659: Debug mode path after confirmed montage."""
-        m = _make_manager()
-        m.chat_panel.debug_mode = True
-        mock_dialog = MagicMock()
-        mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (
-            ["Cz", "Fz"],
-            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
-        )
-        with patch(
-            "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-            return_value=mock_dialog,
-        ):
-            m.open_montage_picker_dialog({})
-        m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
-
-    def test_real_study_montage_blocked_by_backend_capability(self):
-        """Real Study UI paths must use the shared capability policy."""
-        from XBrainLab.backend.study import Study
-
-        m = _make_manager()
-        m.study = Study()
-        status_bar = MagicMock()
-        m.main_window.statusBar.return_value = status_bar
-
-        with patch(
-            "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-        ) as mock_dialog:
-            m.open_montage_picker_dialog({})
-
-        mock_dialog.assert_not_called()
-        status_bar.showMessage.assert_called_with(
-            "Create epochs before applying a montage.",
-        )
-
-    def test_real_study_montage_success_uses_application_service(self):
-        """Real Study acceptance applies montage through the command service."""
-        from XBrainLab.backend.application import ApplyMontageCommand, QueryStateCommand
-        from XBrainLab.backend.study import Study
-
-        m = _make_manager()
-        m.study = Study()
-        m.preprocess_controller = MagicMock()
-        m.chat_panel.debug_mode = True
-        mock_dialog = MagicMock()
-        mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (
-            ["C3", "C4"],
-            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
-        )
-
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-                return_value=mock_dialog,
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.execute_application_command",
-                side_effect=[
-                    _montage_query_result(["C3", "C4"]),
-                    _montage_apply_result(),
-                ],
-            ) as execute,
-        ):
-            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
-
-        commands = [call.args[1] for call in execute.call_args_list]
-        assert isinstance(commands[0], QueryStateCommand)
-        assert commands[0].query == "state"
-        assert isinstance(commands[1], ApplyMontageCommand)
-        assert commands[1].channels == ["C3", "C4"]
-        assert commands[1].positions == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
-        assert commands[1].montage_name == "standard_1020"
-        m.preprocess_controller.apply_montage.assert_not_called()
-        m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
-
-    def test_real_study_montage_uses_state_query_for_channel_names(self):
-        """Agent montage picker should not read Study epoch objects for UI choices."""
-        from XBrainLab.backend.application import (
-            ApplyMontageCommand,
-            QueryStateCommand,
-        )
-        from XBrainLab.backend.study import Study
-
-        m = _make_manager()
-        m.study = Study()
-        m.preprocess_controller = MagicMock()
-        m.chat_panel.debug_mode = True
-        epoch_data = MagicMock()
-        epoch_data.get_mne.side_effect = AssertionError("stale epoch object read")
-        m.study.epoch_data = epoch_data
-        mock_dialog = MagicMock()
-        mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (
-            ["C3", "C4"],
-            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
-        )
-
-        def execute_side_effect(_context, command, **_kwargs):
-            if isinstance(command, QueryStateCommand):
-                return _montage_query_result(["C3", "C4"])
-            if isinstance(command, ApplyMontageCommand):
-                return _montage_apply_result()
-            raise AssertionError(f"Unexpected command: {command!r}")
-
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.execute_application_command",
-                side_effect=execute_side_effect,
-            ) as execute,
-            patch(
-                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-                return_value=mock_dialog,
-            ) as dialog_cls,
-        ):
-            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
-
-        assert isinstance(execute.call_args_list[0].args[1], QueryStateCommand)
-        dialog_cls.assert_called_once()
-        assert dialog_cls.call_args.args[1] == ["C3", "C4"]
-        assert dialog_cls.call_args.kwargs["default_montage"] == "standard_1020"
-        epoch_data.get_mne.assert_not_called()
-        m.preprocess_controller.apply_montage.assert_not_called()
-        m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
-
-    def test_real_study_montage_normalizes_dialog_position_lists(self):
-        """Agent montage path should share the sidebar's command argument shape."""
-        from XBrainLab.backend.application import ApplyMontageCommand, QueryStateCommand
-        from XBrainLab.backend.study import Study
-
-        m = _make_manager()
-        m.study = Study()
-        m.preprocess_controller = MagicMock()
-        m.chat_panel.debug_mode = True
-        mock_dialog = MagicMock()
-        mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (
-            ["C3", "C4"],
-            [[0, 0, 0], [1, 0, 0]],
-        )
-
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-                return_value=mock_dialog,
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.execute_application_command",
-                side_effect=[
-                    _montage_query_result(["C3", "C4"]),
-                    _montage_apply_result(),
-                ],
-            ) as execute,
-        ):
-            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
-
-        commands = [call.args[1] for call in execute.call_args_list]
-        assert isinstance(commands[0], QueryStateCommand)
-        assert isinstance(commands[1], ApplyMontageCommand)
-        assert commands[1].channels == ["C3", "C4"]
-        assert commands[1].positions == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
-        m.preprocess_controller.apply_montage.assert_not_called()
-
-    def test_real_study_montage_rejects_malformed_position_vectors(self):
-        """Malformed dialog output should not reach ApplicationService."""
-        from XBrainLab.backend.application import (
-            ApplyMontageCommand,
-            QueryStateCommand,
-        )
-        from XBrainLab.backend.study import Study
-
-        m = _make_manager()
-        m.study = Study()
-        status_bar = MagicMock()
-        m.main_window.statusBar.return_value = status_bar
-        epoch_data = MagicMock()
-        epoch_data.get_channel_names.return_value = ["C3"]
-        epoch_data.get_mne.return_value.info = {"ch_names": ["C3"]}
-        m.study.epoch_data = epoch_data
-        mock_dialog = MagicMock()
-        mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (["C3"], [[0.0, 0.0]])
-
-        def execute_side_effect(_context, command, **_kwargs):
-            if isinstance(command, QueryStateCommand):
-                return _montage_query_result(["C3"])
-            if isinstance(command, ApplyMontageCommand):
-                raise AssertionError("Malformed positions must not apply montage")
-            raise AssertionError(f"Unexpected command: {command!r}")
-
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-                return_value=mock_dialog,
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.execute_application_command",
-                side_effect=execute_side_effect,
-            ) as mock_execute,
-        ):
-            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
-
-        assert len(mock_execute.call_args_list) == 1
-        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
-        epoch_data.set_channels.assert_not_called()
-        status_bar.showMessage.assert_called_once_with(
-            "Montage setup failed: Each montage position must contain x, y, z values."
-        )
-
-    def test_real_study_montage_refuses_controller_fallback(self):
-        """Real Study montage must show a blocked message instead of fallback."""
-        from XBrainLab.backend.study import Study
-
-        m = _make_manager()
-        m.study = Study()
-        m.preprocess_controller = MagicMock()
-        status_bar = MagicMock()
-        m.main_window.statusBar.return_value = status_bar
-        epoch_data = MagicMock()
-        epoch_data.get_channel_names.return_value = ["C3", "C4"]
-        epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
-        m.study.epoch_data = epoch_data
-        mock_dialog = MagicMock()
-        mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (
-            ["C3", "C4"],
-            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
-        )
-
-        from XBrainLab.backend.application import (
-            ApplyMontageCommand,
-            QueryStateCommand,
-        )
-
-        def execute_side_effect(_context, command, **_kwargs):
-            if isinstance(command, QueryStateCommand):
-                return _montage_query_result(["C3", "C4"])
-            if isinstance(command, ApplyMontageCommand):
-                return None
-            raise AssertionError(f"Unexpected command: {command!r}")
-
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
-                return_value=mock_dialog,
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager.execute_application_command",
-                side_effect=execute_side_effect,
-            ),
-            patch.object(m, "handle_user_input") as mock_hui,
-        ):
-            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
-
-        m.preprocess_controller.apply_montage.assert_not_called()
-        mock_hui.assert_called_once_with("Montage Selection Failed.")
-        status_bar.showMessage.assert_called_once_with(
-            "Montage setup blocked: XBrainLab could not safely complete this "
-            "action from the current window state. Refresh the workflow and "
-            "try again."
-        )
+        assert mock_box.addButton.call_args_list == [
+            call("Clear dataset", QMessageBox.ButtonRole.AcceptRole),
+            call("Cancel", QMessageBox.ButtonRole.RejectRole),
+        ]
+        mock_box.setDefaultButton.assert_called_once_with(cancel_button)
+        mock_box.setEscapeButton.assert_called_once_with(cancel_button)
+        mock_box.setStandardButtons.assert_not_called()
+        approve_button.setStyleSheet.assert_called_once_with(Stylesheets.BTN_DANGER)
         m.chat_controller.add_agent_message.assert_not_called()

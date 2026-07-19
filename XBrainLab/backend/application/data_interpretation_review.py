@@ -7,6 +7,14 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
+from .data_interpretation_content_identity import assert_review_content_unchanged
+from .data_interpretation_path_identity import (
+    normalized_path_identity,
+    path_basename,
+    resolve_scan_path,
+)
+from .errors import PreconditionError
+
 
 @dataclass(frozen=True)
 class InterpretationPreview:
@@ -33,6 +41,8 @@ class InterpretationPreview:
     class_map_source: str = ""
     internal_event_preview: dict[str, Any] = dc_field(default_factory=dict)
     recipe_reload_summary: dict[str, Any] = dc_field(default_factory=dict)
+    resource_preflight: dict[str, Any] = dc_field(default_factory=dict)
+    content_identity: dict[str, Any] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
@@ -61,6 +71,7 @@ def build_interpretation_preview(
     candidate: Any,
     scan: Any | None = None,
     recipe: Any | None = None,
+    resource_preflight: dict[str, Any] | None = None,
 ) -> InterpretationPreview:
     """Create a UI/agent-friendly preview for a candidate interpretation."""
     file_count = len(candidate.selected_eeg_files)
@@ -113,6 +124,8 @@ def build_interpretation_preview(
             recipe=recipe,
             candidate=candidate,
         ),
+        resource_preflight=dict(resource_preflight or {}),
+        content_identity=dict(getattr(candidate, "content_identity", {}) or {}),
     )
 
 
@@ -135,19 +148,44 @@ def _source_selection_text(candidate: Any) -> str:
     return source_kind or "Source"
 
 
-def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
+def validate_interpretation_candidate(
+    candidate: Any,
+    *,
+    recheck_content_identity: bool = True,
+) -> ValidationDecision:
     """Validate a candidate using reviewable safe/confirm/blocked decisions."""
-    if candidate.blocked_reasons:
+    identity_error = (
+        _review_content_identity_error(candidate) if recheck_content_identity else None
+    )
+    identity_reasons = [str(identity_error)] if identity_error is not None else []
+    if candidate.blocked_reasons or identity_reasons:
+        blocked_reasons = [*candidate.blocked_reasons, *identity_reasons]
+        action_items = _build_action_items(candidate)
+        if identity_error is not None:
+            action_items.append(
+                _action_item(
+                    issue=str(identity_error),
+                    impact=(
+                        "The reviewed label/event content is no longer the content "
+                        "that would be imported."
+                    ),
+                    next_action=(
+                        "Preview and review the label source again before import."
+                    ),
+                    target_step="Load Labels",
+                    severity="blocked",
+                )
+            )
         return ValidationDecision(
             candidate_id=candidate.candidate_id,
             decision="blocked",
             reasons=["Interpretation cannot be applied until blockers are resolved."],
             warnings=list(candidate.warnings),
-            blocked_reasons=list(candidate.blocked_reasons),
+            blocked_reasons=list(dict.fromkeys(blocked_reasons)),
             downstream_impacts=[
                 "Preprocess, epoch, dataset, and training remain blocked.",
             ],
-            action_items=_build_action_items(candidate),
+            action_items=_dedupe_action_items(action_items),
         )
     if candidate.confirmation_items:
         return ValidationDecision(
@@ -175,10 +213,44 @@ def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
     )
 
 
+def _review_content_identity_error(candidate: Any) -> PreconditionError | None:
+    has_identity_contract = hasattr(candidate, "content_identity")
+    expected = getattr(candidate, "content_identity", {}) or {}
+    selected_eeg_files = list(getattr(candidate, "selected_eeg_files", []) or [])
+    if not expected and (not has_identity_contract or not selected_eeg_files):
+        return None
+    try:
+        assert_review_content_unchanged(
+            expected=expected,
+            label_carrier_plan=list(getattr(candidate, "label_carrier_plan", []) or []),
+            selected_eeg_files=selected_eeg_files,
+            class_map=getattr(candidate, "class_map", {}) or {},
+            event_roles=getattr(candidate, "event_roles", {}) or {},
+            run_event_mappings=getattr(candidate, "run_event_mappings", {}) or {},
+            candidate_id=str(getattr(candidate, "candidate_id", "") or "") or None,
+        )
+    except PreconditionError as exc:
+        return exc
+    return None
+
+
 def _build_action_items(candidate: Any) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     choices = getattr(candidate, "choices", {}) or {}
     skip_labels = bool(isinstance(choices, dict) and choices.get("skip_labels"))
+    event_value_items = _event_value_decision_action_items(candidate)
+    items.extend(event_value_items)
+    blocked_reasons = _unique_strings(getattr(candidate, "blocked_reasons", []))
+    confirmation_items = _unique_strings(getattr(candidate, "confirmation_items", []))
+    if event_value_items:
+        blocked_reasons = [
+            reason
+            for reason in blocked_reasons
+            if not _is_event_value_consequence(reason)
+        ]
+        confirmation_items = [
+            item for item in confirmation_items if not _is_event_value_consequence(item)
+        ]
 
     items.extend(
         [
@@ -189,25 +261,11 @@ def _build_action_items(candidate: Any) -> list[dict[str, str]]:
                 target_step=_target_step_for_text(reason),
                 severity="blocked",
             )
-            for reason in _unique_strings(getattr(candidate, "blocked_reasons", []))
+            for reason in blocked_reasons
         ]
     )
     items.extend(
-        [
-            _action_item(
-                issue=confirmation,
-                impact=(
-                    "This choice affects imported metadata, labels, or downstream "
-                    "training readiness."
-                ),
-                next_action="Review the target step and confirm the choice.",
-                target_step=_target_step_for_text(confirmation),
-                severity="needs_confirmation",
-            )
-            for confirmation in _unique_strings(
-                getattr(candidate, "confirmation_items", [])
-            )
-        ]
+        [_confirmation_action_item(confirmation) for confirmation in confirmation_items]
     )
     items.extend(
         [
@@ -264,6 +322,126 @@ def _build_action_items(candidate: Any) -> list[dict[str, str]]:
     return _dedupe_action_items(items)
 
 
+def _confirmation_action_item(confirmation: str) -> dict[str, str]:
+    """Describe one review choice in terms of its concrete workflow consequence."""
+    target_step = _target_step_for_text(confirmation)
+    impact, next_action = _confirmation_guidance(
+        confirmation,
+        target_step=target_step,
+    )
+    return _action_item(
+        issue=confirmation,
+        impact=impact,
+        next_action=next_action,
+        target_step=target_step,
+        severity="needs_confirmation",
+    )
+
+
+def _confirmation_guidance(
+    confirmation: str,
+    *,
+    target_step: str,
+) -> tuple[str, str]:
+    lowered = confirmation.casefold()
+    if target_step == "Review Metadata":
+        return (
+            "Files may be grouped under the wrong subject, session, task, or run "
+            "in the import recipe.",
+            "Set or confirm the missing values in Review Metadata.",
+        )
+    if target_step == "Match Labels" and any(
+        marker in lowered
+        for marker in (
+            "which events",
+            "event role",
+            "trial anchor",
+            "artifact",
+            "boundary",
+        )
+    ):
+        return (
+            "Class, timing, artifact, or system events could be mistaken for "
+            "training labels or omitted from the import.",
+            "Assign each event role in Match Labels.",
+        )
+    if target_step == "Match Labels" and any(
+        marker in lowered for marker in ("align", "pair", "placement", "follows")
+    ):
+        return (
+            "Labels could be paired with the wrong EEG recording or event sequence.",
+            "Review EEG-to-label pairing and alignment in Match Labels.",
+        )
+    if target_step == "Match Labels":
+        return (
+            "XBrainLab cannot safely associate the selected labels with EEG events "
+            "until this mapping is reviewed.",
+            "Review the label source, placement, and class mapping in Match Labels.",
+        )
+    if target_step == "Load Labels":
+        return (
+            "A missing or ambiguous label source limits supervised epoching and "
+            "training.",
+            "Choose the label files used by this import in Load Labels.",
+        )
+    if target_step == "Choose EEG Data":
+        return (
+            "The import scope may include the wrong recordings or omit selected EEG "
+            "files.",
+            "Review the selected EEG files and scan location in Choose EEG Data.",
+        )
+    return (
+        "The import recipe is not ready to apply until this choice is reviewed.",
+        "Resolve this item in Review and Import.",
+    )
+
+
+def _event_value_decision_action_items(candidate: Any) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    plans = getattr(candidate, "label_carrier_plan", []) or []
+    if not isinstance(plans, list):
+        return items
+    for plan in plans:
+        if not isinstance(plan, dict):
+            continue
+        unresolved = _unique_strings(plan.get("unresolved_values", []))
+        if not unresolved:
+            continue
+        carrier_name = str(
+            plan.get("name") or Path(str(plan.get("path") or "")).name
+        ).strip()
+        display_name = carrier_name or "the selected label file"
+        preview = ", ".join(unresolved[:5])
+        if len(unresolved) > 5:
+            preview += f" +{len(unresolved) - 5} more"
+        items.append(
+            _action_item(
+                issue=f"Event value decisions are incomplete for {display_name}.",
+                impact=(
+                    f"{len(unresolved)} observed values cannot be placed yet: "
+                    f"{preview}."
+                ),
+                next_action=("Choose a role and use for each value in Match Labels."),
+                target_step="Match Labels",
+                severity="blocked",
+            )
+        )
+    return items
+
+
+def _is_event_value_consequence(text: str) -> bool:
+    lowered = str(text).casefold()
+    return any(
+        marker in lowered
+        for marker in (
+            "complete role/keep/class decisions",
+            "no complete semantic decision",
+            "no selected-label bids event rows are approved",
+            "no usable selected-label bids events remain",
+        )
+    )
+
+
 def _uses_internal_event_labels(candidate: Any) -> bool:
     choices = getattr(candidate, "choices", {}) or {}
     if isinstance(choices, dict) and str(choices.get("label_carrier") or "") == (
@@ -298,13 +476,16 @@ def target_step_for_interpretation_text(text: str) -> str:
     """Return the wizard step that should resolve an interpretation review item."""
     lowered = text.lower()
     if any(token in lowered for token in ("label", "event", "carrier")):
-        if (
-            "no " in lowered
-            or "missing" in lowered
-            or "did not contain" in lowered
-            or "not contain" in lowered
-            or "empty" in lowered
-        ):
+        load_label_markers = (
+            "no external label file",
+            "no label file",
+            "no events.tsv carrier",
+            "label source did not contain",
+            "label source is empty",
+            "label carrier was not found",
+            "missing label carrier",
+        )
+        if any(marker in lowered for marker in load_label_markers):
             return "Load Labels"
         return "Match Labels"
     if any(token in lowered for token in ("eeg file", "source", "scan")):
@@ -429,19 +610,23 @@ def _replacement_options(
 ) -> list[dict[str, Any]]:
     if not saved or not current:
         return []
-    current_exact = set(current)
-    current_names = {Path(item).name or item for item in current}
-    candidates = [{"path": item, "name": Path(item).name or item} for item in current]
+    all_candidates = [{"path": item, "name": path_basename(item)} for item in current]
     options: list[dict[str, Any]] = []
     for saved_path in saved:
-        saved_name = Path(saved_path).name or saved_path
-        if saved_path in current_exact or saved_name in current_names:
+        match = resolve_scan_path(saved_path, current)
+        if match.accepted:
             continue
+        candidate_paths = (
+            list(match.candidates) if match.status == "ambiguous" else list(current)
+        )
+        candidates = [
+            {"path": item, "name": path_basename(item)} for item in candidate_paths
+        ]
         options.append(
             {
                 "saved": saved_path,
-                "saved_name": saved_name,
-                "candidates": candidates,
+                "saved_name": path_basename(saved_path),
+                "candidates": candidates or all_candidates,
             }
         )
     return options
@@ -525,6 +710,27 @@ def _recipe_reload_diff_rows(
                 "detail": ", ".join(reapplied_choice_types) + ".",
             }
         )
+    saved_identity = (
+        getattr(recipe, "content_identity", {}) if recipe is not None else {}
+    )
+    current_identity = (
+        getattr(candidate, "content_identity", {}) if candidate is not None else {}
+    )
+    if saved_identity and current_identity:
+        matched = saved_identity.get("scope_sha256") == current_identity.get(
+            "scope_sha256"
+        )
+        rows.append(
+            {
+                "item": "Reviewed label content",
+                "status": "Matched" if matched else "Changed",
+                "detail": (
+                    "Label/event carrier content matches the saved recipe."
+                    if matched
+                    else "Label/event carrier content changed and requires review."
+                ),
+            }
+        )
     return rows
 
 
@@ -535,17 +741,49 @@ def _path_diff_row(
     current: list[str],
     saved_label: str,
 ) -> dict[str, str]:
-    matched = [name for name in saved if name in set(current)]
-    missing = [name for name in saved if name not in set(current)]
-    new = [name for name in current if name not in set(saved)]
-    if missing or new:
+    matches = [resolve_scan_path(path, current) for path in saved]
+    matched = [match for match in matches if match.accepted]
+    unresolved = [match for match in matches if not match.accepted]
+    consumed = {
+        normalized_path_identity(match.resolved) for match in matched if match.resolved
+    }
+    new = [path for path in current if normalized_path_identity(path) not in consumed]
+    moved = [
+        match
+        for match in matched
+        if match.status == "unique_basename"
+        and normalized_path_identity(match.requested)
+        != normalized_path_identity(match.resolved)
+    ]
+    if unresolved or new or moved:
         detail_parts = [
             f"Matched {len(matched)} {saved_label}(s).",
         ]
+        missing = [match for match in unresolved if match.status == "missing"]
+        ambiguous = [match for match in unresolved if match.status == "ambiguous"]
         if missing:
-            detail_parts.append("Missing from scan: " + ", ".join(missing) + ".")
+            detail_parts.append(
+                "Missing from scan: "
+                + ", ".join(_display_paths([match.requested])[0] for match in missing)
+                + "."
+            )
+        if ambiguous:
+            detail_parts.append(
+                "Ambiguous in scan: "
+                + "; ".join(
+                    f"{match.requested} matches " + ", ".join(match.candidates)
+                    for match in ambiguous
+                )
+                + "."
+            )
+        if moved:
+            detail_parts.append(
+                "Unique-name relocation: "
+                + "; ".join(f"{match.requested} -> {match.resolved}" for match in moved)
+                + "."
+            )
         if new:
-            detail_parts.append("New in scan: " + ", ".join(new) + ".")
+            detail_parts.append("New in scan: " + ", ".join(_display_paths(new)) + ".")
         return {
             "item": item,
             "status": "Changed",
@@ -569,10 +807,23 @@ def _path_values(values: Any) -> list[str]:
         text = str(value or "").strip()
         if not text:
             continue
-        name = Path(text).name or text
-        if name not in result:
-            result.append(name)
+        if text not in result:
+            result.append(text)
     return result
+
+
+def _display_paths(values: list[str]) -> list[str]:
+    """Use compact names unless duplicate names require full identities."""
+    counts: dict[str, int] = {}
+    for value in values:
+        name = path_basename(value)
+        counts[name.casefold()] = counts.get(name.casefold(), 0) + 1
+    return [
+        value
+        if counts.get(path_basename(value).casefold(), 0) > 1
+        else path_basename(value)
+        for value in values
+    ]
 
 
 def _serialize(value: Any) -> Any:

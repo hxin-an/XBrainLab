@@ -63,8 +63,11 @@ def test_training_evaluation_exposes_validation_only_selection() -> None:
     "kwargs, has_error",
     [
         ({"output_dir": None}, True),
+        ({"output_dir": 123}, True),
         ({"optim": None}, True),
+        ({"optim": int}, True),
         ({"optim_params": None}, True),
+        ({"optim_params": []}, True),
         ({"use_cpu": None, "gpu_idx": None}, True),
         ({"use_cpu": None, "gpu_idx": 1}, True),
         ({"use_cpu": False, "gpu_idx": None}, True),
@@ -72,7 +75,9 @@ def test_training_evaluation_exposes_validation_only_selection() -> None:
         ({"use_cpu": False, "gpu_idx": "cuda:0"}, True),
         ({"use_cpu": True, "gpu_idx": None}, False),
         ({"use_cpu": True, "gpu_idx": 1}, False),
-        ({"epoch": 10.5}, False),
+        ({"use_cpu": 1, "gpu_idx": 0}, True),
+        ({"use_cpu": "true", "gpu_idx": 0}, True),
+        ({"epoch": 10.5}, True),
         ({"epoch": 10}, False),
         ({"epoch": -5}, True),
         ({"epoch": "error"}, True),
@@ -81,19 +86,23 @@ def test_training_evaluation_exposes_validation_only_selection() -> None:
         ({"bs": "error"}, True),
         ({"lr": None}, True),
         ({"lr": "error"}, True),
+        ({"lr": float("nan")}, True),
         ({"checkpoint_epoch": None}, True),
         ({"checkpoint_epoch": 0}, False),
         ({"checkpoint_epoch": "error"}, True),
+        ({"checkpoint_epoch": 2.5}, True),
         ({"evaluation_option": None}, True),
+        ({"evaluation_option": "mystery"}, True),
         ({"repeat_num": None}, True),
         ({"repeat_num": "error"}, True),
+        ({"repeat_num": 1.5}, True),
     ],
 )
 def test_option(kwargs, has_error):
     args = {
         "output_dir": "ok",
-        "optim": FakeOptim,
-        "optim_params": {"a": 1, "b": 2},
+        "optim": torch.optim.Adam,
+        "optim_params": {"weight_decay": 0.01},
         "use_cpu": False,
         "gpu_idx": 0,
         "epoch": 10,
@@ -134,33 +143,23 @@ def test_option(kwargs, has_error):
         else:
             assert option.get_device() == "cuda:" + str(args["gpu_idx"])
 
-        assert option.get_optimizer_name_repr() == "FakeOptim"
+        assert option.get_optimizer_name_repr() == "Adam"
         assert option.get_optim_desc_str() == parse_optim_name(
-            FakeOptim, args["optim_params"]
+            torch.optim.Adam, args["optim_params"]
         )
 
         model = FakeModel()
         optim_instance = option.get_optim(model)
-        assert isinstance(optim_instance, FakeOptim)
-
-        for k in args["optim_params"]:
-            assert (
-                k in optim_instance.kwargs
-                and optim_instance.kwargs[k] == args["optim_params"][k]
-            )
-        assert optim_instance.kwargs["lr"] == args["lr"]
-
-        model_params = optim_instance.kwargs["params"]
-        expected_model_params = model.parameters()
-        for p, e in zip(model_params, expected_model_params, strict=True):
-            torch.testing.assert_close(p, e)
+        assert isinstance(optim_instance, torch.optim.Adam)
+        assert optim_instance.param_groups[0]["lr"] == args["lr"]
+        assert optim_instance.param_groups[0]["weight_decay"] == 0.01
 
 
 def test_training_option_falls_back_to_cpu_when_cuda_probe_fails():
     args = {
         "output_dir": "ok",
-        "optim": FakeOptim,
-        "optim_params": {"a": 1},
+        "optim": torch.optim.Adam,
+        "optim_params": {"weight_decay": 0.01},
         "use_cpu": False,
         "gpu_idx": 0,
         "epoch": 10,
@@ -192,6 +191,7 @@ def test_training_option_falls_back_to_cpu_when_cuda_probe_fails():
     "kwargs, has_error",
     [
         ({"output_dir": None}, True),
+        ({"output_dir": 123}, True),
         ({"use_cpu": None, "gpu_idx": None}, True),
         ({"use_cpu": None, "gpu_idx": 1}, True),
         ({"use_cpu": False, "gpu_idx": None}, True),
@@ -199,8 +199,10 @@ def test_training_option_falls_back_to_cpu_when_cuda_probe_fails():
         ({"use_cpu": False, "gpu_idx": "cuda:0"}, True),
         ({"use_cpu": True, "gpu_idx": None}, False),
         ({"use_cpu": True, "gpu_idx": 1}, False),
+        ({"use_cpu": True, "gpu_idx": 1.5}, True),
         ({"bs": None}, True),
         ({"bs": "error"}, True),
+        ({"bs": 2.5}, True),
     ],
 )
 def test_test_only_option(kwargs, has_error):
@@ -238,6 +240,30 @@ def test_test_only_option(kwargs, has_error):
             assert option.get_device() == "cuda:" + str(args["gpu_idx"])
 
         assert option.get_optimizer_name_repr() == "-"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("epoch", 0.5),
+        ("epoch", 1),
+        ("lr", float("nan")),
+        ("lr", 0.1),
+        ("checkpoint_epoch", 0.5),
+        ("checkpoint_epoch", 1),
+        ("repeat_num", 1.5),
+        ("repeat_num", 2),
+    ],
+)
+def test_test_only_option_rejects_mutated_fixed_runtime_fields(
+    field,
+    invalid_value,
+):
+    option = TestOnlyOption("./output", True, 0, 20)
+    setattr(option, field, invalid_value)
+
+    with pytest.raises(ValueError):
+        option.validate()
         assert option.get_optim_desc_str() == "-"
 
         assert option.get_optim(None) is None

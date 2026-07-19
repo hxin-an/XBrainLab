@@ -60,6 +60,30 @@
         "expected_tool_calls": [{"tool_name": "list_files", "parameters": {"directory": "/home/alice/bci_comp4/"}}]
     },
     {
+        "id": "scan_source_01",
+        "category": "data_interpretation",
+        "input": "Scan the BIDS EEG dataset at /data/bids/motor-imagery before importing it.",
+        "expected_tool_calls": [{"tool_name": "scan_source", "parameters": {"source_path": "/data/bids/motor-imagery", "source_hint": "bids"}}]
+    },
+    {
+        "id": "preview_interpretation_01",
+        "category": "data_interpretation",
+        "input": "Preview the latest source scan and show how its labels and events will be interpreted.",
+        "expected_tool_calls": [{"tool_name": "preview_interpretation", "parameters": {}}]
+    },
+    {
+        "id": "validate_interpretation_01",
+        "category": "data_interpretation",
+        "input": "Validate the latest data interpretation before importing it.",
+        "expected_tool_calls": [{"tool_name": "validate_interpretation", "parameters": {}}]
+    },
+    {
+        "id": "apply_interpretation_01",
+        "category": "data_interpretation",
+        "input": "I reviewed the interpretation and confirm it. Apply the latest validated candidate.",
+        "expected_tool_calls": [{"tool_name": "apply_interpretation", "parameters": {"confirmed": true}}]
+    },
+    {
         "id": "load_data_01",
         "category": "dataset",
         "input": "Load the file /data/eeg/subject1.gdf",
@@ -1101,7 +1125,7 @@
         "id": "switch_panel_04",
         "category": "ui",
         "input": "Display model evaluation metrics.",
-        "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "evaluation", "view_mode": "metrics"}}]
+        "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "evaluation"}}]
     },
     {
         "id": "switch_panel_05",
@@ -1119,7 +1143,7 @@
         "id": "switch_panel_07",
         "category": "ui",
         "input": "Show the confusion matrix.",
-        "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "evaluation", "view_mode": "metrics"}}]
+        "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "evaluation"}}]
     },
     {
         "id": "switch_panel_08",
@@ -1130,8 +1154,8 @@
     {
         "id": "switch_panel_09",
         "category": "ui",
-        "input": "Open the dashboard.",
-        "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "dashboard"}}]
+        "input": "Show the topographic saliency map.",
+        "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "topographic_map"}}]
     },
     {
         "id": "switch_panel_10",

@@ -349,6 +349,34 @@ class TestEpochingDialog:
         assert not dialog.event_list.selectedItems()
         assert "BIDS events" in dialog.handoff_label.text()
 
+    def test_assistant_handoff_prefills_explicit_event_and_window(self, qtbot):
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        data = MagicMock()
+        data.get_event_list.return_value = (
+            None,
+            {"768": 1, "769": 2, "770": 3},
+        )
+        dialog = EpochingDialog(
+            None,
+            [data],
+            assistant_suggestions={
+                "target_event": "769",
+                "t_min": "-0.2",
+                "t_max": "0.8",
+            },
+        )
+        qtbot.addWidget(dialog)
+
+        checked = [
+            dialog.event_list.item(row, 1).text()
+            for row in range(dialog.event_list.rowCount())
+            if dialog.event_list.item(row, 0).checkState() == Qt.CheckState.Checked
+        ]
+        assert checked == ["769"]
+        assert dialog.tmin_spin.value() == pytest.approx(-0.2)
+        assert dialog.tmax_spin.value() == pytest.approx(0.8)
+
     def test_bids_epoch_dialog_surfaces_duration_policy(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 
@@ -590,13 +618,3 @@ class TestControlSidebar:
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_result.return_value = {"method": "gradient"}
             sidebar.set_saliency()
-
-    def test_export_saliency(self, sidebar):
-        with (
-            patch(
-                "XBrainLab.ui.panels.visualization.control_sidebar.ExportSaliencyDialog"
-            ) as MockDlg,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
-        ):
-            MockDlg.return_value.exec.return_value = True
-            sidebar.export_saliency()

@@ -4,6 +4,8 @@ Provides controls for selecting events, specifying the time window
 (tmin/tmax), and optionally applying baseline correction.
 """
 
+from contextlib import suppress
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -26,7 +28,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application.epoch_context import build_epoching_context
+from XBrainLab.backend.application.epoch_context import (
+    build_epoch_confirmation_requirement,
+    build_epoching_context,
+)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.components.presentation import fit_table_to_all_rows
 from XBrainLab.ui.core.base_dialog import BaseDialog
@@ -87,14 +92,18 @@ class EpochingDialog(BaseDialog):
         epoch_context: dict | None = None,
         *,
         epoch_handoff: dict | None = None,
+        assistant_suggestions: dict[str, str] | None = None,
     ):
         self.data_list = data_list
         self.epoch_context = self._normalized_epoch_context(
             data_list,
             epoch_context,
             epoch_handoff,
+            assistant_suggestions,
         )
         self.params: tuple | None = None
+        self.confirmation_requirement: dict | None = None
+        self.confirmation_receipt: str | None = None
 
         # UI Elements
         self.event_list: QTableWidget | None = None
@@ -103,6 +112,7 @@ class EpochingDialog(BaseDialog):
         self.tmax_spin: QDoubleSpinBox | None = None
         self.duration_label: QLabel | None = None
         self.warning_label: QLabel | None = None
+        self.confirmation_check: QCheckBox | None = None
         self.baseline_check: QCheckBox | None = None
         self.b_min_spin: QDoubleSpinBox | None = None
         self.b_max_spin: QDoubleSpinBox | None = None
@@ -225,6 +235,7 @@ class EpochingDialog(BaseDialog):
             header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
             header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         fit_table_to_all_rows(self.event_list)
+        self.event_list.itemChanged.connect(self._confirmation_scope_changed)
         event_layout.addWidget(self.event_list)
         content_layout.addWidget(event_group)
 
@@ -243,13 +254,24 @@ class EpochingDialog(BaseDialog):
         self.tmin_spin.setSingleStep(0.1)
         self._configure_compact_spinbox(self.tmin_spin)
         self.tmin_spin.valueChanged.connect(self.update_duration_info)
+        self.tmin_spin.valueChanged.connect(self._confirmation_scope_changed)
 
         self.tmax_spin = QDoubleSpinBox()
         self.tmax_spin.setRange(-300, 300)
+        self.tmax_spin.setDecimals(
+            max(
+                2,
+                min(
+                    int(self.epoch_context.get("suggested_t_max_decimals", 2)),
+                    9,
+                ),
+            )
+        )
         self.tmax_spin.setValue(float(self.epoch_context.get("suggested_t_max", 1.0)))
         self.tmax_spin.setSingleStep(0.1)
         self._configure_compact_spinbox(self.tmax_spin)
         self.tmax_spin.valueChanged.connect(self.update_duration_info)
+        self.tmax_spin.valueChanged.connect(self._confirmation_scope_changed)
 
         window_grid = QGridLayout()
         window_grid.setContentsMargins(0, 2, 0, 0)
@@ -280,11 +302,17 @@ class EpochingDialog(BaseDialog):
         self.warning_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
         self.warning_label.setWordWrap(True)
         window_grid.addWidget(self.warning_label, 3, 0, 1, 4)
+
+        self.confirmation_check = QCheckBox()
+        self.confirmation_check.setObjectName("EpochConfirmationCheck")
+        self.confirmation_check.hide()
+        window_grid.addWidget(self.confirmation_check, 4, 0, 1, 4)
         window_grid.setColumnStretch(4, 1)
         param_layout.addLayout(window_grid)
 
         # Now update duration info (which uses warning_label)
         self.update_duration_info()
+        self._refresh_confirmation_requirement()
 
         # Baseline
         suggested_baseline = self.epoch_context.get("suggested_baseline")
@@ -505,38 +533,94 @@ class EpochingDialog(BaseDialog):
         data_list: list,
         epoch_context: dict | None,
         epoch_handoff: dict | None,
+        assistant_suggestions: dict[str, str] | None,
     ) -> dict:
         if epoch_context is not None:
-            return dict(epoch_context)
-        context = build_epoching_context(data_list)
-        if not epoch_handoff:
-            return dict(context)
-        handoff = dict(epoch_handoff)
-        blockers = [str(item) for item in handoff.get("supervised_blockers", [])]
-        ready = bool(handoff.get("ready")) and not blockers
-        placement_modes = [
-            str(item).strip()
-            for item in handoff.get("placement_modes", []) or []
-            if str(item).strip()
-        ]
-        default_events = [
-            str(item).strip()
-            for item in handoff.get("default_epoch_events", []) or []
-            if str(item).strip()
-        ]
-        context.update(
-            {
-                "source": _label_source_display(handoff.get("label_source")),
-                "placement_method": placement_modes[0] if placement_modes else "manual",
-                "placement_label": _placement_mode_display(placement_modes),
-                "recommended_events": default_events if ready else [],
-                "has_import_hint": True,
-                "epoch_handoff": handoff,
-                "handoff_ready": ready,
-                "handoff_blockers": blockers,
-            }
-        )
+            context = dict(epoch_context)
+        else:
+            handoff = dict(epoch_handoff or {})
+            context = dict(
+                build_epoching_context(
+                    data_list,
+                    epoch_handoff=handoff,
+                )
+            )
+            if handoff:
+                blockers = [
+                    str(item) for item in handoff.get("supervised_blockers", [])
+                ]
+                ready = bool(handoff.get("ready")) and not blockers
+                placement_modes = [
+                    str(item).strip()
+                    for item in handoff.get("placement_modes", []) or []
+                    if str(item).strip()
+                ]
+                default_events = [
+                    str(item).strip()
+                    for item in handoff.get("default_epoch_events", []) or []
+                    if str(item).strip()
+                ]
+                context.update(
+                    {
+                        "source": _label_source_display(handoff.get("label_source")),
+                        "placement_method": (
+                            placement_modes[0] if placement_modes else "manual"
+                        ),
+                        "placement_label": _placement_mode_display(placement_modes),
+                        "recommended_events": default_events if ready else [],
+                        "has_import_hint": True,
+                        "epoch_handoff": handoff,
+                        "handoff_ready": ready,
+                        "handoff_blockers": blockers,
+                    }
+                )
+
+        suggestions = dict(assistant_suggestions or {})
+        target_event = str(suggestions.get("target_event") or "").strip()
+        if target_event:
+            context["recommended_events"] = [target_event]
+        with suppress(KeyError, TypeError, ValueError):
+            context["suggested_t_min"] = float(suggestions["t_min"])
+        with suppress(KeyError, TypeError, ValueError):
+            context["suggested_t_max"] = float(suggestions["t_max"])
+        if suggestions:
+            context["assistant_suggestions"] = suggestions
         return context
+
+    def _confirmation_scope_changed(self, *_args: object) -> None:
+        self._refresh_confirmation_requirement()
+
+    def _refresh_confirmation_requirement(self) -> None:
+        if self.tmin_spin is None or self.tmax_spin is None or self.event_list is None:
+            return
+        requirement = build_epoch_confirmation_requirement(
+            self.epoch_context,
+            t_min=self.tmin_spin.value(),
+            t_max=self.tmax_spin.value(),
+            event_ids=self._selected_event_names(),
+        )
+        previous_receipt = (
+            str(self.confirmation_requirement.get("receipt") or "")
+            if isinstance(self.confirmation_requirement, dict)
+            else ""
+        )
+        current_receipt = (
+            str(requirement.get("receipt") or "")
+            if isinstance(requirement, dict)
+            else ""
+        )
+        self.confirmation_requirement = requirement
+        self.confirmation_receipt = None
+        if self.confirmation_check is None:
+            return
+        if requirement is None:
+            self.confirmation_check.setChecked(False)
+            self.confirmation_check.hide()
+            return
+        if current_receipt != previous_receipt:
+            self.confirmation_check.setChecked(False)
+        self.confirmation_check.setText(str(requirement["confirmation_label"]))
+        self.confirmation_check.show()
 
     def _handoff_summary_text(self) -> str:
         handoff = self.epoch_context.get("epoch_handoff")
@@ -751,28 +835,7 @@ class EpochingDialog(BaseDialog):
         ):
             return
 
-        checked_events: list[str] = []
-        has_checkable_items = False
-        for row in range(self.event_list.rowCount()):
-            check_item = self.event_list.item(row, 0)
-            event_item = self.event_list.item(row, 1)
-            if check_item is None or event_item is None:
-                continue
-            if check_item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
-                has_checkable_items = True
-            if check_item.checkState() == Qt.CheckState.Checked:
-                checked_events.append(event_item.text())
-        recommended_events = set(self.epoch_context.get("recommended_events") or [])
-        if checked_events:
-            selected_events = checked_events
-        elif has_checkable_items and recommended_events:
-            selected_events = []
-        else:
-            selected_events = []
-            for row in range(self.event_list.rowCount()):
-                event_item = self.event_list.item(row, 1)
-                if event_item is not None:
-                    selected_events.append(event_item.text())
+        selected_events = self._selected_event_names()
         if not selected_events:
             QMessageBox.warning(self, "Warning", "Please select at least one event.")
             return
@@ -816,8 +879,47 @@ class EpochingDialog(BaseDialog):
                 return
             baseline = (baseline_min, baseline_max)
 
+        self._refresh_confirmation_requirement()
+        if self.confirmation_requirement is not None and (
+            self.confirmation_check is None or not self.confirmation_check.isChecked()
+        ):
+            QMessageBox.warning(
+                self,
+                str(self.confirmation_requirement["title"]),
+                str(self.confirmation_requirement["message"]),
+            )
+            return
+        self.confirmation_receipt = (
+            str(self.confirmation_requirement["receipt"])
+            if self.confirmation_requirement is not None
+            else None
+        )
         self.params = (baseline, selected_events, tmin, tmax)
         super().accept()
+
+    def _selected_event_names(self) -> list[str]:
+        if self.event_list is None:
+            return []
+        checked_events: list[str] = []
+        has_checkable_items = False
+        for row in range(self.event_list.rowCount()):
+            check_item = self.event_list.item(row, 0)
+            event_item = self.event_list.item(row, 1)
+            if check_item is None or event_item is None:
+                continue
+            if check_item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+                has_checkable_items = True
+            if check_item.checkState() == Qt.CheckState.Checked:
+                checked_events.append(event_item.text())
+        if checked_events:
+            return checked_events
+        if has_checkable_items and self.epoch_context.get("recommended_events"):
+            return []
+        return [
+            event_item.text()
+            for row in range(self.event_list.rowCount())
+            if (event_item := self.event_list.item(row, 1)) is not None
+        ]
 
     def get_params(self):
         """Return the configured epoching parameters.
@@ -836,6 +938,10 @@ class EpochingDialog(BaseDialog):
 
         """
         return self.get_params()
+
+    def get_confirmation_receipt(self) -> str | None:
+        """Return the backend-issued receipt accepted for the current parameters."""
+        return self.confirmation_receipt
 
     def _extract_events_safely(self, data, events):
         """Safely extract event names from a data object.

@@ -8,10 +8,12 @@ import hashlib
 import ssl
 import urllib.request
 from pathlib import Path
+from typing import TypedDict
 from urllib.parse import quote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
+CI_REQUIRED_MAX_BYTES = 20 * 1024 * 1024
 MNE_BIDS_TINY_NAME = "mne-bids-tiny-eeg"
 MNE_BIDS_TINY_REVISION = (
     "9dc7b5b8bdfb8bbdb72983900e2df7be484f2b0c"  # pragma: allowlist secret
@@ -24,13 +26,35 @@ MNE_BIDS_TINY_RAW_BASE_URL = (
 MNE_BIDS_TINY_ENTRYPOINT = (
     "mne-bids-tiny-eeg/sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vhdr"
 )
+MNE_TESTING_DATA_REVISION = (
+    "f9dc9fc10d35e817e45136d9a3932f2ee0d7053c"  # pragma: allowlist secret
+)
+
+
+class FixtureFile(TypedDict):
+    """One pinned public fixture file."""
+
+    filename: str
+    url: str
+    sha256: str
+    size_bytes: int
+
+
+class FixtureGroup(TypedDict):
+    """One source-level public fixture group."""
+
+    name: str
+    description: str
+    source: str
+    entrypoint: str
+    files: list[FixtureFile]
 
 
 def _sha256(*segments: str) -> str:
     return "".join(segments)
 
 
-MNE_BIDS_TINY_FILES = (
+MNE_BIDS_TINY_FILES: tuple[tuple[str, str, int], ...] = (
     (
         "README",
         _sha256(
@@ -39,6 +63,7 @@ MNE_BIDS_TINY_FILES = (
             "b3ab2aa956d41cd5",  # pragma: allowlist secret
             "78a84ad79599b586",  # pragma: allowlist secret
         ),
+        693,
     ),
     (
         "dataset_description.json",
@@ -48,6 +73,7 @@ MNE_BIDS_TINY_FILES = (
             "a5c962c709efe578",  # pragma: allowlist secret
             "ba7c5d9ce3e8b041",  # pragma: allowlist secret
         ),
+        190,
     ),
     (
         "participants.json",
@@ -57,6 +83,7 @@ MNE_BIDS_TINY_FILES = (
             "7e36ca42393607bf",  # pragma: allowlist secret
             "cafcaff7f4edc2fd",  # pragma: allowlist secret
         ),
+        771,
     ),
     (
         "participants.tsv",
@@ -66,6 +93,7 @@ MNE_BIDS_TINY_FILES = (
             "df16ccbb8167d233",  # pragma: allowlist secret
             "33def6abb2d88fda",  # pragma: allowlist secret
         ),
+        67,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_coordsystem.json",
@@ -75,6 +103,7 @@ MNE_BIDS_TINY_FILES = (
             "5b79f9f91e533b4c",  # pragma: allowlist secret
             "7f5c9490b848b0c8",  # pragma: allowlist secret
         ),
+        1040,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_electrodes.tsv",
@@ -84,6 +113,7 @@ MNE_BIDS_TINY_FILES = (
             "0fe90aa89f1204bf",  # pragma: allowlist secret
             "0e41415d78083d3e",  # pragma: allowlist secret
         ),
+        4443,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_space-CapTrak_coordsystem.json",
@@ -93,6 +123,7 @@ MNE_BIDS_TINY_FILES = (
             "5b79f9f91e533b4c",  # pragma: allowlist secret
             "7f5c9490b848b0c8",  # pragma: allowlist secret
         ),
+        1040,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_space-CapTrak_electrodes.tsv",
@@ -102,6 +133,7 @@ MNE_BIDS_TINY_FILES = (
             "15d85c3b842b0677",  # pragma: allowlist secret
             "2a6b4e7130d71949",  # pragma: allowlist secret
         ),
+        4553,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_channels.tsv",
@@ -111,6 +143,7 @@ MNE_BIDS_TINY_FILES = (
             "a3fd09b3b24f11d3",  # pragma: allowlist secret
             "cef62f84df6e89c5",  # pragma: allowlist secret
         ),
+        5447,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.eeg",
@@ -120,6 +153,7 @@ MNE_BIDS_TINY_FILES = (
             "3b5fb508755c56b3",  # pragma: allowlist secret
             "214c90f3fe1e8212",  # pragma: allowlist secret
         ),
+        1380000,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.json",
@@ -129,6 +163,7 @@ MNE_BIDS_TINY_FILES = (
             "7ff824f448fd44bf",  # pragma: allowlist secret
             "42c84b582c124cd5",  # pragma: allowlist secret
         ),
+        503,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vhdr",
@@ -138,6 +173,7 @@ MNE_BIDS_TINY_FILES = (
             "4f7cbe1e96fea2a2",  # pragma: allowlist secret
             "6334645ef9b468af",  # pragma: allowlist secret
         ),
+        11078,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vmrk",
@@ -147,6 +183,7 @@ MNE_BIDS_TINY_FILES = (
             "79d68bbb9fa2594a",  # pragma: allowlist secret
             "d10b94f60048287e",  # pragma: allowlist secret
         ),
+        529,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_events.json",
@@ -156,6 +193,7 @@ MNE_BIDS_TINY_FILES = (
             "30da76217cdeda0c",  # pragma: allowlist secret
             "19efc31de11b9cb0",  # pragma: allowlist secret
         ),
+        476,
     ),
     (
         "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_events.tsv",
@@ -165,6 +203,7 @@ MNE_BIDS_TINY_FILES = (
             "d747bc34556f3d8b",  # pragma: allowlist secret
             "325df80b2aaba7c5",  # pragma: allowlist secret
         ),
+        100,
     ),
     (
         "sub-01/ses-eeg/sub-01_ses-eeg_scans.tsv",
@@ -174,6 +213,7 @@ MNE_BIDS_TINY_FILES = (
             "fb3fd4b34cfaef50",  # pragma: allowlist secret
             "f843bd813c6c8728",  # pragma: allowlist secret
         ),
+        87,
     ),
     (
         "sub-01/sub-01_sessions.json",
@@ -183,6 +223,7 @@ MNE_BIDS_TINY_FILES = (
             "627e534cec534ce6",  # pragma: allowlist secret
             "a4157ae46e100e04",  # pragma: allowlist secret
         ),
+        261,
     ),
     (
         "sub-01/sub-01_sessions.tsv",
@@ -192,22 +233,24 @@ MNE_BIDS_TINY_FILES = (
             "7503c1baed42df61",  # pragma: allowlist secret
             "944f754b62c8afd1",  # pragma: allowlist secret
         ),
+        86,
     ),
 )
 
 
-def _mne_bids_tiny_downloads() -> list[dict[str, str]]:
+def _mne_bids_tiny_downloads() -> list[FixtureFile]:
     return [
         {
             "filename": f"{MNE_BIDS_TINY_NAME}/{relative_path}",
             "url": f"{MNE_BIDS_TINY_RAW_BASE_URL}/{quote(relative_path, safe='/')}",
             "sha256": sha256,
+            "size_bytes": size_bytes,
         }
-        for relative_path, sha256 in MNE_BIDS_TINY_FILES
+        for relative_path, sha256, size_bytes in MNE_BIDS_TINY_FILES
     ]
 
 
-FIXTURE_GROUPS = [
+FIXTURE_GROUPS: list[FixtureGroup] = [
     {
         "name": "physionet-edf-rest",
         "description": "PhysioNet EEG Motor Movement/Imagery dataset, EDF, baseline/rest run kept for import-only EDF coverage.",
@@ -218,6 +261,7 @@ FIXTURE_GROUPS = [
                 "filename": "physionet-eegmmidb-S008R01.edf",
                 "url": "https://physionet.org/files/eegmmidb/1.0.0/S008/S008R01.edf?download=",
                 "sha256": "678e47541d9903c300ba7811554ad1f8bfbe2bff086407cb4ff489d2d0e507bc",  # pragma: allowlist secret
+                "size_bytes": 1275936,
             },
         ],
     },
@@ -231,6 +275,7 @@ FIXTURE_GROUPS = [
                 "filename": "physionet-eegmmidb-S008R04.edf",
                 "url": "https://physionet.org/files/eegmmidb/1.0.0/S008/S008R04.edf?download=",
                 "sha256": "034a26131e1425e6374a459e5887b1f831f7bfdb101a3658d2cd07620cf2c06b",  # pragma: allowlist secret
+                "size_bytes": 2555616,
             },
         ],
     },
@@ -244,6 +289,7 @@ FIXTURE_GROUPS = [
                 "filename": "bbci-competition-iii-O3VR.gdf",
                 "url": "https://www.bbci.de/competition/download/competition_iii/graz/O3VR.gdf",
                 "sha256": "947636fada6b7ab8d6d9d6e047fb900c0f3fe00d62abe6250ad76d9c5940043e",  # pragma: allowlist secret
+                "size_bytes": 2949728,
             },
         ],
     },
@@ -257,6 +303,7 @@ FIXTURE_GROUPS = [
                 "filename": "sccn-eeglab_data.set",
                 "url": "https://sccn.ucsd.edu/eeglab/download/eeglab_data.set",
                 "sha256": "b4bf70cd5db2d0636ea773d8542a56179acf2927b1079a20a8c0d500fd40debc",  # pragma: allowlist secret
+                "size_bytes": 3986216,
             },
         ],
     },
@@ -268,8 +315,12 @@ FIXTURE_GROUPS = [
         "files": [
             {
                 "filename": "scan41_short.cnt",
-                "url": "https://raw.githubusercontent.com/mne-tools/mne-testing-data/master/CNT/scan41_short.cnt",
+                "url": (
+                    "https://raw.githubusercontent.com/mne-tools/mne-testing-data/"
+                    f"{MNE_TESTING_DATA_REVISION}/CNT/scan41_short.cnt"
+                ),
                 "sha256": "f58b7182f6be670159a79090fb666d3f1ed6645f5b488d0016940fd2b8b7e5b6",  # pragma: allowlist secret
+                "size_bytes": 2033263,
             },
         ],
     },
@@ -281,18 +332,30 @@ FIXTURE_GROUPS = [
         "files": [
             {
                 "filename": "test_NO.vhdr",
-                "url": "https://raw.githubusercontent.com/mne-tools/mne-testing-data/master/Brainvision/test_NO.vhdr",
+                "url": (
+                    "https://raw.githubusercontent.com/mne-tools/mne-testing-data/"
+                    f"{MNE_TESTING_DATA_REVISION}/Brainvision/test_NO.vhdr"
+                ),
                 "sha256": "aa3f2d42a1ad3897e702c27d09abdd261f01ccdeb0dae2e674af25fe7be72261",  # pragma: allowlist secret
+                "size_bytes": 1451,
             },
             {
                 "filename": "test_NO.eeg",
-                "url": "https://raw.githubusercontent.com/mne-tools/mne-testing-data/master/Brainvision/test_NO.eeg",
+                "url": (
+                    "https://raw.githubusercontent.com/mne-tools/mne-testing-data/"
+                    f"{MNE_TESTING_DATA_REVISION}/Brainvision/test_NO.eeg"
+                ),
                 "sha256": "894099d7ea0db262bd2dd84918ff96e5c81e39f7677f0405746faaed1623604b",  # pragma: allowlist secret
+                "size_bytes": 581880,
             },
             {
                 "filename": "test_NO.vmrk",
-                "url": "https://raw.githubusercontent.com/mne-tools/mne-testing-data/master/Brainvision/test_NO.vmrk",
+                "url": (
+                    "https://raw.githubusercontent.com/mne-tools/mne-testing-data/"
+                    f"{MNE_TESTING_DATA_REVISION}/Brainvision/test_NO.vmrk"
+                ),
                 "sha256": "fc02236e72a90124ea04f171a065ae94784ec707bbd96632a86a44499bf7cf27",  # pragma: allowlist secret
+                "size_bytes": 267,
             },
         ],
     },
@@ -304,6 +367,18 @@ FIXTURE_GROUPS = [
         "files": _mne_bids_tiny_downloads(),
     },
 ]
+
+CI_REQUIRED_GROUP_NAMES = frozenset(
+    {
+        "physionet-edf-rest",
+        "physionet-edf-motor",
+        "bbci-gdf",
+        "sccn-eeglab",
+        "mne-testing-cnt",
+        "mne-testing-brainvision",
+        MNE_BIDS_TINY_NAME,
+    }
+)
 
 _ALLOWED_DOWNLOAD_HOSTS = {
     "physionet.org",
@@ -322,8 +397,38 @@ def _validate_download_url(url: str) -> None:
         raise ValueError(f"Unexpected download host: {parsed.netloc}")
 
 
-def download_file(url: str, destination: Path) -> None:
-    """Download one fixture into ``destination``."""
+def fixture_groups_for_profile(profile: str) -> list[FixtureGroup]:
+    """Return the pinned groups selected by a download profile."""
+    if profile == "all":
+        return list(FIXTURE_GROUPS)
+    if profile == "required-ci":
+        selected = [
+            group
+            for group in FIXTURE_GROUPS
+            if group["name"] in CI_REQUIRED_GROUP_NAMES
+        ]
+        selected_names = {group["name"] for group in selected}
+        missing_groups = CI_REQUIRED_GROUP_NAMES - selected_names
+        if missing_groups:
+            raise RuntimeError(
+                "Required CI fixture groups are not defined: "
+                + ", ".join(sorted(missing_groups))
+            )
+        return selected
+    raise ValueError(f"Unknown fixture profile: {profile}")
+
+
+def fixture_profile_size_bytes(groups: list[FixtureGroup]) -> int:
+    """Return the exact manifest size for a fixture profile."""
+    return sum(
+        fixture_file["size_bytes"]
+        for group in groups
+        for fixture_file in group["files"]
+    )
+
+
+def download_file(url: str, destination: Path, *, max_bytes: int) -> None:
+    """Download one fixture without allowing its pinned size boundary to grow."""
     _validate_download_url(url)
     request = urllib.request.Request(  # noqa: S310 - validated by _validate_download_url
         url,
@@ -338,10 +443,16 @@ def download_file(url: str, destination: Path) -> None:
         ) as response,
         destination.open("wb") as handle,
     ):
+        downloaded_bytes = 0
         while True:
             chunk = response.read(1024 * 1024)
             if not chunk:
                 break
+            downloaded_bytes += len(chunk)
+            if downloaded_bytes > max_bytes:
+                raise ValueError(
+                    f"Fixture download exceeds pinned size boundary ({max_bytes} bytes)"
+                )
             handle.write(chunk)
 
 
@@ -357,19 +468,34 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def fixture_file_is_valid(path: Path, expected_sha256: str) -> bool:
+def fixture_file_is_valid(
+    path: Path,
+    expected_sha256: str,
+    expected_size_bytes: int | None = None,
+) -> bool:
     """Return whether a downloaded fixture exists, is non-empty, and matches hash."""
     if not path.exists() or path.stat().st_size <= 0:
+        return False
+    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
         return False
     return sha256_file(path) == expected_sha256
 
 
-def validate_fixture_file(path: Path, expected_sha256: str) -> None:
+def validate_fixture_file(
+    path: Path,
+    expected_sha256: str,
+    expected_size_bytes: int | None = None,
+) -> None:
     """Raise if a downloaded fixture is missing, empty, or hash-mismatched."""
     if not path.exists():
         raise FileNotFoundError(f"Downloaded fixture is missing: {path}")
     if path.stat().st_size <= 0:
         raise ValueError(f"Downloaded fixture is empty: {path}")
+    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
+        raise ValueError(
+            f"Downloaded fixture size mismatch for {path.name}: "
+            f"expected {expected_size_bytes}, got {path.stat().st_size}"
+        )
     actual = sha256_file(path)
     if actual != expected_sha256:
         raise ValueError(
@@ -378,8 +504,39 @@ def validate_fixture_file(path: Path, expected_sha256: str) -> None:
         )
 
 
+def download_fixture_file(fixture_file: FixtureFile, destination: Path) -> None:
+    """Download, validate, then atomically install one fixture file."""
+    temporary_path = destination.with_name(f"{destination.name}.part")
+    temporary_path.unlink(missing_ok=True)
+    try:
+        download_file(
+            fixture_file["url"],
+            temporary_path,
+            max_bytes=fixture_file["size_bytes"],
+        )
+        validate_fixture_file(
+            temporary_path,
+            fixture_file["sha256"],
+            fixture_file["size_bytes"],
+        )
+        temporary_path.replace(destination)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def validate_fixture_set(public_dir: Path, groups: list[FixtureGroup]) -> None:
+    """Validate every file in a selected profile against its pinned manifest."""
+    for group in groups:
+        for fixture_file in group["files"]:
+            validate_fixture_file(
+                public_dir / fixture_file["filename"],
+                fixture_file["sha256"],
+                fixture_file["size_bytes"],
+            )
+
+
 def main() -> int:
-    """Download all configured fixtures unless they already exist."""
+    """Download or verify a controlled public-fixture profile."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--force",
@@ -391,10 +548,28 @@ def main() -> int:
         action="store_true",
         help="List fixture metadata without downloading.",
     )
+    parser.add_argument(
+        "--profile",
+        choices=("all", "required-ci"),
+        default="all",
+        help="Select all fixtures or the size-bounded required CI profile.",
+    )
+    parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Validate the selected fixture profile without downloading.",
+    )
     args = parser.parse_args()
+    groups = fixture_groups_for_profile(args.profile)
+    profile_size_bytes = fixture_profile_size_bytes(groups)
+    if args.profile == "required-ci" and profile_size_bytes > CI_REQUIRED_MAX_BYTES:
+        raise ValueError(
+            "Required CI fixture profile exceeds its download boundary: "
+            f"{profile_size_bytes} > {CI_REQUIRED_MAX_BYTES} bytes"
+        )
 
     if args.list:
-        for fixture_group in FIXTURE_GROUPS:
+        for fixture_group in groups:
             print(
                 f"{fixture_group['name']}: {fixture_group['description']}"
                 f" [{fixture_group['source']}]",
@@ -404,23 +579,35 @@ def main() -> int:
                 print(f"  - {fixture_file['filename']}")
                 print(f"    {fixture_file['url']}")
                 print(f"    sha256: {fixture_file['sha256']}")
+                print(f"    size: {fixture_file['size_bytes']} bytes")
+        print(f"Profile total: {profile_size_bytes} bytes")
         return 0
 
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    if args.verify_only:
+        validate_fixture_set(PUBLIC_DIR, groups)
+        print(
+            f"Verified {args.profile} public EEG fixture profile "
+            f"({profile_size_bytes} bytes)."
+        )
+        return 0
 
-    for fixture_group in FIXTURE_GROUPS:
+    for fixture_group in groups:
         print(
             f"Preparing {fixture_group['name']} "
             f"({fixture_group['source']}, entrypoint {fixture_group['entrypoint']})...",
         )
         for fixture_file in fixture_group["files"]:
             destination = PUBLIC_DIR / fixture_file["filename"]
-            expected_sha256 = str(fixture_file["sha256"])
             destination.parent.mkdir(parents=True, exist_ok=True)
             if (
                 destination.exists()
                 and not args.force
-                and fixture_file_is_valid(destination, expected_sha256)
+                and fixture_file_is_valid(
+                    destination,
+                    fixture_file["sha256"],
+                    fixture_file["size_bytes"],
+                )
             ):
                 print(f"  Using existing fixture: {destination}")
                 continue
@@ -430,10 +617,14 @@ def main() -> int:
                 )
 
             print(f"  Downloading {fixture_file['filename']}...")
-            download_file(fixture_file["url"], destination)
-            validate_fixture_file(destination, expected_sha256)
+            download_fixture_file(fixture_file, destination)
             print(f"  Saved {destination}")
 
+    validate_fixture_set(PUBLIC_DIR, groups)
+    print(
+        f"Verified {args.profile} public EEG fixture profile "
+        f"({profile_size_bytes} bytes)."
+    )
     return 0
 
 

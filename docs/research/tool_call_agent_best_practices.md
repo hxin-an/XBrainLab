@@ -104,13 +104,20 @@ Sources:
 
 ## Latest Evidence Boundary
 
-`2026-05-04` local eval runs:
+There is currently no accepted local-model accuracy claim. The historical
+`2026-05-04` primary and fallback `117 / 117` runs used an older evaluator
+condition that exposed inferred intent, a direct command, and a case-specific
+blocked reason to the model. They also predate the schema that separates raw
+model decisions from host normalization and capability blocking. Those
+artifacts are historical engineering records only; they are not valid raw
+tool-call accuracy or thesis-candidate evidence.
 
-- primary `microsoft/Phi-4-mini-instruct`: `117 / 117`, repeat count `3`
-- fallback `microsoft/Phi-3.5-mini-instruct`: `117 / 117`, repeat count `3`
-- runtime: local-only, GPU-ready, existing cache `15.34 GB`, no new download
-
-This supports a thesis-candidate tool-call benchmark claim for this benchmark
-slice only. It does not prove UI usability, Windows launcher behavior,
-dual-monitor/DPI behavior, long desktop sessions, EEG model training quality,
-or product completion.
+The current primary condition is `state_capability_unassisted`. It exposes only
+the user conversation, compact backend workflow state, and enabled tool
+contracts. Artifacts identify this condition in top-level schema metadata and
+provenance, while raw model and host-assisted product scores remain separate.
+Before restoring a thesis-candidate claim, the primary and fallback local models
+must each be rerun on a clean checkpoint with at least `100` cases and `3`
+repeats, complete attempt trajectories, source fingerprints, and failure
+taxonomy. Until then, tests support the strict-envelope implementation contract
+only, not a model-accuracy percentage.

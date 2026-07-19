@@ -2,7 +2,12 @@ import mne
 import numpy as np
 import pytest
 
-from XBrainLab.backend.application import QueryStateCommand, get_application_service
+from XBrainLab.backend.application import (
+    CommandResult,
+    ErrorType,
+    QueryStateCommand,
+    get_application_service,
+)
 from XBrainLab.llm.tools.real.dataset_real import (
     RealGetDatasetInfoTool,
     RealListFilesTool,
@@ -16,12 +21,14 @@ from XBrainLab.llm.tools.real.training_real import (
     RealSetModelTool,
 )
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
 
 
 def _query_result(study, query: str, *, include_objects: bool = False):
     result = get_application_service(study).execute(
         QueryStateCommand(query=query, include_objects=include_objects),
     )
+    assert isinstance(result, CommandResult)
     assert result.ok, result.message
     return result
 
@@ -51,6 +58,16 @@ def create_dummy_eeg_file(tmp_path):
     return str(fpath)
 
 
+def _assert_tool_result(result, *, ok: bool = True) -> ToolResult:
+    assert isinstance(result, ToolResult)
+    assert result.ok is ok
+    if ok:
+        assert result.error_type == ErrorType.NONE.value
+    else:
+        assert result.error_type != ErrorType.NONE.value
+    return result
+
+
 def test_real_tools_e2e_flow(test_app, tmp_path):
     """
     End-to-End test using Real Tools against the Headless App.
@@ -66,12 +83,17 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     # List Files
     tool_list = RealListFilesTool()
     res_list = tool_list.execute(study, directory=dummy_dir, pattern="*.fif")
-    assert res_list == "['test_data_raw.fif']"
+    res_list = _assert_tool_result(res_list)
+    assert res_list.message == "Found 1 file(s)."
+    assert res_list.payload == ["test_data_raw.fif"]
 
     # Load Data
     tool_load = RealLoadDataTool()
     res_load = tool_load.execute(study, paths=[dummy_file])
-    assert res_load == "Successfully loaded 1 files."
+    res_load = _assert_tool_result(res_load)
+    assert res_load.message == "Loaded 1 file(s)."
+    assert res_load.payload["diagnostics"]["success_count"] == 1
+    assert res_load.payload["diagnostics"]["errors"] == []
     raw_state = _state(study)["raw"]
     assert raw_state == {
         "loaded": True,
@@ -100,7 +122,8 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     # Get Info
     tool_info = RealGetDatasetInfoTool()
     res_info = tool_info.execute(study)
-    assert res_info == "\n".join(
+    res_info = _assert_tool_result(res_info)
+    assert res_info.message == "\n".join(
         [
             "Loaded 1 files:",
             "test_data_raw.fif",
@@ -109,11 +132,8 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     )
 
     # 2. Preprocess Tools
-    # Standard Preprocess (Filter + Epoch)
-    # Note: Requires events? RawArray usually has empty annotations.
-    # Let's add annotations if needed for epoching, or use fixed length epoching if tool supports it?
-    # RealEpochDataTool usually splits by events.
-    # Let's try simple filtering first which is safer.
+    # Standard preprocessing transforms continuous raw data. Epoch creation is
+    # intentionally a separate workflow step.
 
     tool_prep = RealStandardPreprocessTool()
     # Apply filter 1-40Hz
@@ -125,7 +145,11 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
         resample_rate=None,
         normalize_method="z-score",
     )
-    assert res_prep == "Standard preprocessing applied successfully."
+    res_prep = _assert_tool_result(res_prep)
+    assert res_prep.message == (
+        "Standard preprocessing applied. Normalization using z-score is queued "
+        "for per-epoch application during epoch creation."
+    )
 
     data_lists_result = _data_lists(study)
     assert data_lists_result.diagnostics == {
@@ -147,7 +171,8 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     # Set Model
     tool_model = RealSetModelTool()
     res_model = tool_model.execute(study, model_name="EEGNet")
-    assert res_model == "Model successfully set to EEGNet."
+    res_model = _assert_tool_result(res_model)
+    assert res_model.message == "Model configured: EEGNet."
     training_state = _state(study)["training"]
     assert training_state["has_model"] is True
     assert training_state["model_name"] == "EEGNet"
@@ -163,9 +188,11 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     res_config = tool_config.execute(
         study, epoch=5, batch_size=4, optimizer="adam", learning_rate=0.01
     )
-    assert (
-        res_config == "Training configured: adam on cpu, Epochs: 5, Batch: 4, LR: 0.01"
-    )
+    res_config = _assert_tool_result(res_config)
+    assert res_config.message == "Training configured."
+    assert res_config.payload["diagnostics"]["training_option"]["epoch"] == 5
+    assert res_config.payload["diagnostics"]["training_option"]["batch_size"] == 4
+    assert res_config.payload["diagnostics"]["training_option"]["learning_rate"] == 0.01
 
     training_state = _state(study)["training"]
     assert training_state["has_training_option"] is True
@@ -176,7 +203,9 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
         "repeat": 1,
         "device": "cpu",
         "optimizer": "Adam",
+        "optimizer_params": {},
         "checkpoint_epoch": 0,
+        "evaluation_option": "Last Epoch",
         "output_dir": "./output",
     }
     assert training_state["missing_requirements"] == ["Data Splitting"]
@@ -184,4 +213,6 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     # 4. UI Control
     tool_ui = RealSwitchPanelTool()
     res_ui = tool_ui.execute(study, panel_name="Training")
-    assert res_ui == "Request: Switch UI to 'Training'"
+    assert isinstance(res_ui, UiRequest)
+    assert res_ui.kind is UiRequestKind.SWITCH_PANEL
+    assert res_ui.params == {"panel": "Training", "view_mode": None}

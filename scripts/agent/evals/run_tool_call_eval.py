@@ -17,6 +17,7 @@ from typing import Any
 
 from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.pipeline_stage import derive_pipeline_stage
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -30,7 +31,10 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
-from XBrainLab.llm.agent.intent import infer_user_intent
+from XBrainLab.llm.agent.intent import (
+    infer_user_intent,
+    resolve_blocked_explanation_intent,
+)
 
 METHOD_REFERENCES = [
     {
@@ -51,6 +55,62 @@ METHOD_REFERENCES = [
 ]
 
 DETERMINISTIC_RELEASE_GATES = {"release", "thesis"}
+
+RAW_MODEL_DECISION_SCORE_SCOPE = "raw_model_decision"
+HOST_ASSISTED_DECISION_SCORE_SCOPE = "host_assisted_decision"
+FULL_COMPARISON_SCORE_SCOPE = "deterministic_full_comparison"
+
+SCORE_DIMENSION_GROUPS: dict[str, tuple[str, ...]] = {
+    "raw_model_decision": (
+        "intent",
+        "tool_selection",
+        "argument_correctness",
+        "state_aware",
+        "blocked_command",
+        "recovery",
+        "trajectory_quality",
+        "local_llm_reliability",
+        "tool_or_no_tool_decision",
+        "clarification_behavior",
+        "missing_input_fields",
+        "visible_response_quality",
+        "output_format",
+    ),
+    "host_assisted_decision": (
+        "verification_result",
+        "runtime_safety",
+        "confirmation_boundary",
+    ),
+    "backend_outcome": (
+        "state_delta",
+        "tool_result_interpretation",
+    ),
+}
+
+SCORE_SCOPE_DIMENSIONS: dict[str, frozenset[str]] = {
+    RAW_MODEL_DECISION_SCORE_SCOPE: frozenset(
+        SCORE_DIMENSION_GROUPS["raw_model_decision"]
+    ),
+    HOST_ASSISTED_DECISION_SCORE_SCOPE: frozenset(
+        SCORE_DIMENSION_GROUPS["raw_model_decision"]
+        + SCORE_DIMENSION_GROUPS["host_assisted_decision"]
+    ),
+    FULL_COMPARISON_SCORE_SCOPE: frozenset(
+        dimension
+        for dimensions in SCORE_DIMENSION_GROUPS.values()
+        for dimension in dimensions
+    ),
+}
+
+SCORE_DIMENSION_ATTRIBUTES: dict[str, str] = {
+    "verification_result": "verification_result_match",
+    **{
+        dimension: dimension
+        for dimensions in SCORE_DIMENSION_GROUPS.values()
+        for dimension in dimensions
+        if dimension != "verification_result"
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -76,10 +136,12 @@ class EvalCase:
     expected_blocked: bool = False
     expected_confirmation_required: bool = False
     expected_reason_terms: list[str] = field(default_factory=list)
+    expected_missing_inputs: tuple[str, ...] = ()
     expected_recovery: bool = False
     expected_result_interpretation: str | None = None
     expected_runtime_safe: bool = True
     families: tuple[str, ...] = ()
+    workflow_mode: str = "step_by_step"
 
 
 @dataclass(frozen=True)
@@ -100,9 +162,14 @@ class Prediction:
     confirmation_required: bool = False
     blocked_reason: str = ""
     asks_clarification: bool = False
+    ui_handoff: bool = False
+    response_decision: str | None = None
+    missing_inputs: tuple[str, ...] = ()
     final_message: str = ""
     result_interpretation: str | None = None
     state_delta: dict[str, bool] = field(default_factory=dict)
+    format_valid: bool = True
+    format_error: str = ""
 
     def trajectory_signature(self) -> dict[str, Any]:
         """Return stable fields used for reliability comparison."""
@@ -113,9 +180,14 @@ class Prediction:
             "confirmation_required": self.confirmation_required,
             "blocked_reason": self.blocked_reason,
             "asks_clarification": self.asks_clarification,
+            "ui_handoff": self.ui_handoff,
+            "response_decision": self.response_decision,
+            "missing_inputs": self.missing_inputs,
             "final_message": self.final_message,
             "result_interpretation": self.result_interpretation,
             "state_delta": self.state_delta,
+            "format_valid": self.format_valid,
+            "format_error": self.format_error,
         }
 
 
@@ -129,29 +201,37 @@ class CaseScore:
     initial_state: str
     available_command_summary: dict[str, Any]
     expected_verification_result: str
+    expected_missing_inputs: tuple[str, ...]
     expected_state_delta: dict[str, bool]
+    expected_result_interpretation: str | None
     actual_model_output: str
     parsed_tool_calls: list[dict[str, Any]]
     verification_result: str
     backend_result: dict[str, Any]
     visible_response: str
-    score_breakdown: dict[str, bool]
-    intent: bool
-    tool_selection: bool
-    argument_correctness: bool
-    state_aware: bool
-    verification_result_match: bool
-    state_delta: bool
-    blocked_command: bool
-    recovery: bool
-    tool_result_interpretation: bool
-    trajectory_quality: bool
-    runtime_safety: bool
-    local_llm_reliability: bool
-    tool_or_no_tool_decision: bool
-    clarification_behavior: bool
-    confirmation_boundary: bool
-    visible_response_quality: bool
+    score_scope: str
+    dimension_groups: dict[str, list[str]]
+    dimension_applicability: dict[str, bool]
+    excluded_dimensions: list[str]
+    score_breakdown: dict[str, bool | None]
+    intent: bool | None
+    tool_selection: bool | None
+    argument_correctness: bool | None
+    state_aware: bool | None
+    verification_result_match: bool | None
+    state_delta: bool | None
+    blocked_command: bool | None
+    recovery: bool | None
+    tool_result_interpretation: bool | None
+    trajectory_quality: bool | None
+    runtime_safety: bool | None
+    local_llm_reliability: bool | None
+    tool_or_no_tool_decision: bool | None
+    clarification_behavior: bool | None
+    missing_input_fields: bool | None
+    confirmation_boundary: bool | None
+    visible_response_quality: bool | None
+    output_format: bool | None
     families: list[str]
     prediction: dict[str, Any]
     failures: list[str] = field(default_factory=list)
@@ -167,11 +247,7 @@ def build_eval_cases() -> list[EvalCase]:
             ["Train an EEGNet model now."],
             "train",
             expected_blocked=True,
-            expected_reason_terms=[
-                "Generate datasets before training",
-                "Select a model before training",
-                "Configure training options before training",
-            ],
+            expected_reason_terms=["load", "training"],
         ),
         EvalCase(
             "empty-load-path",
@@ -190,6 +266,7 @@ def build_eval_cases() -> list[EvalCase]:
             "scan_source",
             expected_blocked=True,
             expected_reason_terms=["source path"],
+            expected_missing_inputs=("source_path",),
             expected_recovery=True,
             families=("data_interpretation", "missing_input"),
         ),
@@ -251,15 +328,15 @@ def build_eval_cases() -> list[EvalCase]:
             "epoched-generate-dataset",
             "Epoched data can generate dataset",
             "epoched",
-            ["Generate an individual training dataset with 20% test split."],
+            ["Generate an individual trial-wise training dataset with 20% test split."],
             "generate_dataset",
             [
                 ExpectedToolCall(
                     "generate_dataset",
                     {
                         "test_ratio": 0.2,
-                        "val_ratio": 0.2,
                         "training_mode": "individual",
+                        "split_strategy": "trial",
                     },
                 )
             ],
@@ -292,6 +369,95 @@ def build_eval_cases() -> list[EvalCase]:
             ["Use EEGNet as the model."],
             "configure_training",
             [ExpectedToolCall("set_model", {"model_name": "EEGNet"})],
+        ),
+        EvalCase(
+            "workflow-continue-empty-scan",
+            "Continue mode starts the explicit source at the safe first step",
+            "empty",
+            [
+                "Load /data/S04.edf and continue preparing it until a decision "
+                "is needed."
+            ],
+            "scan_source",
+            [ExpectedToolCall("scan_source", {"source_path": "/data/S04.edf"})],
+            families=(
+                "workflow_mode",
+                "continue_until_decision",
+                "data_interpretation",
+            ),
+            workflow_mode="continue_until_decision",
+        ),
+        EvalCase(
+            "empty-preprocess-block-paraphrase",
+            "Bandpass paraphrase does not substitute a source scan",
+            "empty",
+            ["Run a 2 to 35 Hz bandpass on the EEG now."],
+            "preprocess",
+            expected_blocked=True,
+            expected_reason_terms=["Load raw data before preprocessing"],
+            families=("blocked_command", "paraphrase", "wrong_tool_temptation"),
+        ),
+        EvalCase(
+            "loaded-create-epoch-block-paraphrase",
+            "Epoch paraphrase does not substitute preprocessing",
+            "loaded",
+            ["Create epoch windows from -0.25 to 0.75 seconds now."],
+            "create_epoch",
+            expected_blocked=True,
+            expected_reason_terms=["Preprocess data before creating epochs"],
+            families=("blocked_command", "paraphrase", "wrong_tool_temptation"),
+        ),
+        EvalCase(
+            "workflow-continue-loaded-epoch-block",
+            "Continue mode keeps an explicit blocked epoch request stopped",
+            "loaded",
+            ["Create epochs from -0.2 to 0.8 seconds now."],
+            "create_epoch",
+            expected_blocked=True,
+            expected_reason_terms=["Preprocess data before creating epochs"],
+            families=(
+                "blocked_command",
+                "workflow_mode",
+                "continue_until_decision",
+                "wrong_tool_temptation",
+            ),
+            workflow_mode="continue_until_decision",
+        ),
+        EvalCase(
+            "epoched-generate-dataset-missing-strategy",
+            "Dataset generation waits for an explicit split strategy",
+            "epoched",
+            ["Generate an individual training dataset with 20% test split."],
+            "generate_dataset",
+            expected_verification_result="missing_input",
+            expected_blocked=True,
+            expected_reason_terms=["split strategy"],
+            expected_missing_inputs=("split_strategy",),
+            expected_recovery=True,
+            families=("missing_input", "dataset_split", "negative"),
+        ),
+        EvalCase(
+            "loaded-generate-dataset-block-paraphrase",
+            "Dataset paraphrase does not substitute preprocessing",
+            "loaded",
+            ["Generate train/test dataset splits from the loaded EEG now."],
+            "generate_dataset",
+            expected_blocked=True,
+            expected_reason_terms=["Create epochs before generating datasets"],
+            families=("blocked_command", "paraphrase", "wrong_tool_temptation"),
+        ),
+        EvalCase(
+            "dataset-train-missing-config-paraphrase",
+            "Training paraphrase waits for model and training decisions",
+            "dataset_without_training_config",
+            ["Start training on the current data split now."],
+            "train",
+            expected_blocked=True,
+            expected_reason_terms=[
+                "Select a model before training",
+                "Configure training options before training",
+            ],
+            families=("blocked_command", "paraphrase", "decision_boundary"),
         ),
         EvalCase(
             "dataset-configure-training",
@@ -342,6 +508,7 @@ def build_eval_cases() -> list[EvalCase]:
             "dataset_without_training_config",
             ["Show saliency map for the model."],
             "saliency",
+            [ExpectedToolCall("saliency", {})],
             expected_result_interpretation="service_query_summary",
         ),
         EvalCase(
@@ -350,6 +517,7 @@ def build_eval_cases() -> list[EvalCase]:
             "dataset_without_training_config",
             ["Visualize the trained result."],
             "visualize",
+            [ExpectedToolCall("visualize", {})],
             expected_result_interpretation="service_query_summary",
         ),
         EvalCase(
@@ -424,6 +592,7 @@ def build_eval_cases() -> list[EvalCase]:
             "scan_source",
             expected_blocked=True,
             expected_reason_terms=["source path"],
+            expected_missing_inputs=("source_path",),
             expected_recovery=True,
         ),
         EvalCase(
@@ -608,6 +777,7 @@ def build_eval_cases() -> list[EvalCase]:
             "reload_interpretation_recipe",
             expected_blocked=True,
             expected_reason_terms=["recipe path"],
+            expected_missing_inputs=("recipe_path",),
             expected_recovery=True,
         ),
         EvalCase(
@@ -682,6 +852,7 @@ def build_eval_cases() -> list[EvalCase]:
             expected_verification_result="missing_input",
             expected_blocked=True,
             expected_reason_terms=["remap target"],
+            expected_missing_inputs=("eeg_file_remap",),
             expected_recovery=True,
             families=("recipe_reload", "missing_input", "data_interpretation"),
         ),
@@ -1034,6 +1205,7 @@ def build_eval_cases() -> list[EvalCase]:
             "scan_source",
             expected_blocked=True,
             expected_reason_terms=["source path"],
+            expected_missing_inputs=("source_path",),
             expected_recovery=True,
         ),
         EvalCase(
@@ -1044,6 +1216,7 @@ def build_eval_cases() -> list[EvalCase]:
             "reload_interpretation_recipe",
             expected_blocked=True,
             expected_reason_terms=["recipe path"],
+            expected_missing_inputs=("recipe_path",),
             expected_recovery=True,
         ),
         EvalCase(
@@ -1130,17 +1303,16 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "preprocessed-epoch-default-window",
-            "Epoch request without explicit window uses safe default",
+            "Epoch request without explicit window waits for the user",
             "preprocessed",
             ["Create epochs for event 770."],
             "create_epoch",
-            [
-                ExpectedToolCall(
-                    "epoch_data",
-                    {"t_min": -0.1, "t_max": 1.0, "event_id": ["770"]},
-                )
-            ],
-            expected_state_delta={"epoch_changed": True},
+            expected_verification_result="missing_input",
+            expected_blocked=True,
+            expected_reason_terms=["epoch window"],
+            expected_missing_inputs=("epoch_window",),
+            expected_recovery=True,
+            families=("missing_input", "epoch"),
         ),
         EvalCase(
             "preprocessed-epoch-event-770-window",
@@ -1160,12 +1332,16 @@ def build_eval_cases() -> list[EvalCase]:
             "epoched-generate-group-dataset",
             "Group dataset request preserves training mode",
             "epoched",
-            ["Generate a group training dataset with 20% test split."],
+            ["Generate a group trial-wise training dataset with 20% test split."],
             "generate_dataset",
             [
                 ExpectedToolCall(
                     "generate_dataset",
-                    {"training_mode": "group", "test_ratio": 0.2},
+                    {
+                        "training_mode": "group",
+                        "split_strategy": "trial",
+                        "test_ratio": 0.2,
+                    },
                 )
             ],
             expected_state_delta={"dataset_changed": True},
@@ -1245,6 +1421,7 @@ def build_eval_cases() -> list[EvalCase]:
             "trained",
             ["Visualize the trained result."],
             "visualize",
+            [ExpectedToolCall("visualize", {})],
             expected_result_interpretation="service_query_summary",
         ),
         EvalCase(
@@ -1253,6 +1430,7 @@ def build_eval_cases() -> list[EvalCase]:
             "trained",
             ["Show saliency map for the trained model."],
             "saliency",
+            [ExpectedToolCall("saliency", {})],
             expected_result_interpretation="service_query_summary",
         ),
         EvalCase(
@@ -1261,24 +1439,26 @@ def build_eval_cases() -> list[EvalCase]:
             "dataset_without_training_config",
             ["Show saliency readiness."],
             "saliency",
+            [ExpectedToolCall("saliency", {})],
             expected_result_interpretation="service_query_summary",
         ),
         EvalCase(
             "query-state-trained",
-            "Trained state query remains read-only",
+            "Trained state query is answered from the published state snapshot",
             "trained",
             ["What is the current workflow state?"],
-            "query_state",
-            [ExpectedToolCall("query_state", {"query": "state"})],
+            "no_tool",
+            expected_verification_result="no_tool",
+            families=("no_call", "state_query"),
         ),
         EvalCase(
             "multi-turn-query-after-training-ready",
-            "State query after training setup remains read-only",
+            "State query after training setup is answered from the state snapshot",
             "training_ready",
             ["Configure training.", "What changed in the state?"],
-            "query_state",
-            [ExpectedToolCall("query_state", {"query": "state"})],
-            expected_recovery=True,
+            "no_tool",
+            expected_verification_result="no_tool",
+            families=("no_call", "state_query", "multi_turn"),
         ),
         EvalCase(
             "multi-turn-loaded-standard-preprocess",
@@ -1292,18 +1472,16 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "multi-turn-preprocessed-create-epoch",
-            "Preprocessed state creates epochs in second turn",
+            "Preprocessed state still requires an explicit epoch window",
             "preprocessed",
             ["The data is preprocessed.", "Create epochs for event 769."],
             "create_epoch",
-            [
-                ExpectedToolCall(
-                    "epoch_data",
-                    {"t_min": -0.1, "t_max": 1.0, "event_id": ["769"]},
-                )
-            ],
+            expected_verification_result="missing_input",
+            expected_blocked=True,
+            expected_reason_terms=["epoch window"],
+            expected_missing_inputs=("epoch_window",),
             expected_recovery=True,
-            expected_state_delta={"epoch_changed": True},
+            families=("missing_input", "epoch", "multi_turn"),
         ),
         EvalCase(
             "multi-turn-epoched-generate-session-dataset",
@@ -1341,20 +1519,21 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "query-state-empty",
-            "State query is read-only",
+            "Empty-state query is answered from the published state snapshot",
             "empty",
             ["What is the current workflow state?"],
-            "query_state",
-            [ExpectedToolCall("query_state", {"query": "state"})],
+            "no_tool",
+            expected_verification_result="no_tool",
+            families=("no_call", "state_query"),
         ),
         EvalCase(
             "multi-turn-query-after-apply",
-            "State query after apply remains read-only",
+            "State query after apply is answered from the state snapshot",
             "applied_interpretation",
             ["Apply the interpretation.", "What changed in the state?"],
-            "query_state",
-            [ExpectedToolCall("query_state", {"query": "state"})],
-            expected_recovery=True,
+            "no_tool",
+            expected_verification_result="no_tool",
+            families=("no_call", "state_query", "multi_turn"),
         ),
         EvalCase(
             "zh-scan-brainwave-file",
@@ -1389,6 +1568,7 @@ def build_eval_cases() -> list[EvalCase]:
             "scan_source",
             expected_blocked=True,
             expected_reason_terms=["source path"],
+            expected_missing_inputs=("source_path",),
             expected_recovery=True,
             families=("chinese", "missing_input", "data_interpretation"),
         ),
@@ -1401,20 +1581,20 @@ def build_eval_cases() -> list[EvalCase]:
             expected_verification_result="missing_input",
             expected_blocked=True,
             expected_reason_terms=["which workflow step"],
+            expected_missing_inputs=("workflow_step",),
             expected_recovery=True,
             families=("chinese", "ambiguous_request", "missing_input"),
         ),
         EvalCase(
             "zh-label-action-missing-input",
-            "Chinese label action without carrier asks clarification",
+            "Chinese legacy label action is blocked by the product surface",
             "loaded",
             ["幫我貼標籤"],
             "ask_clarification",
-            expected_verification_result="missing_input",
+            expected_verification_result="blocked",
             expected_blocked=True,
-            expected_reason_terms=["which workflow step"],
-            expected_recovery=True,
-            families=("chinese", "missing_input", "label_ambiguity"),
+            expected_reason_terms=[],
+            families=("chinese", "blocked_command", "label_ambiguity"),
         ),
         EvalCase(
             "no-tool-why-train-blocked",
@@ -1568,18 +1748,16 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "zh-epoch-domain-phrasing",
-            "Chinese epoch phrasing maps to epoch creation",
+            "Chinese epoch phrasing without bounds requests the window",
             "preprocessed",
             ["幫我切 epoch event 769"],
             "create_epoch",
-            [
-                ExpectedToolCall(
-                    "epoch_data",
-                    {"t_min": -0.1, "t_max": 1.0, "event_id": ["769"]},
-                )
-            ],
-            expected_state_delta={"epoch_changed": True},
-            families=("chinese", "domain_phrasing"),
+            expected_verification_result="missing_input",
+            expected_blocked=True,
+            expected_reason_terms=["epoch window"],
+            expected_missing_inputs=("epoch_window",),
+            expected_recovery=True,
+            families=("chinese", "domain_phrasing", "missing_input", "epoch"),
         ),
         EvalCase(
             "zh-saliency-domain-phrasing",
@@ -1587,8 +1765,9 @@ def build_eval_cases() -> list[EvalCase]:
             "trained",
             ["看 saliency"],
             "saliency",
+            [ExpectedToolCall("saliency", {})],
             expected_result_interpretation="service_query_summary",
-            families=("chinese", "domain_phrasing", "no_call"),
+            families=("chinese", "domain_phrasing", "visualization"),
         ),
     ]
 
@@ -1796,6 +1975,38 @@ def predict_case(case: EvalCase) -> Prediction:
     policy = build_capability_policy(state)
     last_turn = case.user_turns[-1]
     text = " ".join(case.user_turns).lower()
+    blocked_explanation = resolve_blocked_explanation_intent(last_turn)
+    if blocked_explanation is not None:
+        command = blocked_explanation.target_command
+        if command is None:
+            return Prediction(
+                intent="ask_clarification",
+                tool_calls=[],
+                blocked=True,
+                asks_clarification=True,
+                response_decision="missing_input",
+                missing_inputs=case.expected_missing_inputs,
+                blocked_reason="Missing the workflow step whose readiness should be checked.",
+                final_message="Please tell me which workflow step you want to check.",
+            )
+
+        capability = policy.get(command)
+        reason = "; ".join(capability.reasons)
+        message = (
+            f"{command.value.replace('_', ' ').capitalize()} is not ready yet: {reason}"
+            if not capability.enabled and reason
+            else (
+                f"{command.value.replace('_', ' ').capitalize()} is available "
+                "in the current workflow."
+            )
+        )
+        return Prediction(
+            intent="no_tool",
+            tool_calls=[],
+            response_decision="answer",
+            final_message=message,
+        )
+
     intent = infer_intent(last_turn.lower())
     if intent == "unknown":
         intent = infer_intent(text)
@@ -1804,15 +2015,27 @@ def predict_case(case: EvalCase) -> Prediction:
         return Prediction(
             intent=intent,
             tool_calls=[],
+            response_decision="answer",
             final_message="No workflow action is needed for this explanation.",
         )
 
     if intent == "ask_clarification":
+        if expected_decision_verification_result_for(case) == "blocked":
+            return Prediction(
+                intent=intent,
+                tool_calls=[],
+                blocked=True,
+                response_decision="blocked",
+                blocked_reason="The requested action is unavailable in this state.",
+                final_message="The requested action is unavailable in this state.",
+            )
         return Prediction(
             intent=intent,
             tool_calls=[],
             blocked=True,
             asks_clarification=True,
+            response_decision="missing_input",
+            missing_inputs=case.expected_missing_inputs,
             blocked_reason=(
                 "Missing required workflow detail; ask which workflow step or "
                 "input the user wants to use."
@@ -1831,6 +2054,8 @@ def predict_case(case: EvalCase) -> Prediction:
                 tool_calls=[],
                 blocked=True,
                 asks_clarification=True,
+                response_decision="missing_input",
+                missing_inputs=case.expected_missing_inputs,
                 blocked_reason=(
                     "Missing required source path; ask the user for a source path."
                 ),
@@ -1860,6 +2085,8 @@ def predict_case(case: EvalCase) -> Prediction:
                 tool_calls=[],
                 blocked=True,
                 asks_clarification=True,
+                response_decision="missing_input",
+                missing_inputs=case.expected_missing_inputs,
                 blocked_reason=(
                     "Missing recipe remap target; ask which saved file maps to "
                     "which current replacement file."
@@ -1938,6 +2165,8 @@ def predict_case(case: EvalCase) -> Prediction:
                 tool_calls=[],
                 blocked=True,
                 asks_clarification=True,
+                response_decision="missing_input",
+                missing_inputs=case.expected_missing_inputs,
                 blocked_reason=(
                     "Missing required recipe path; ask the user for a recipe path."
                 ),
@@ -1960,8 +2189,9 @@ def predict_case(case: EvalCase) -> Prediction:
 
     if intent == "query_state":
         return Prediction(
-            intent=intent,
-            tool_calls=[PredictedToolCall("query_state", {"query": "state"})],
+            intent="no_tool",
+            tool_calls=[],
+            response_decision="answer",
             final_message="Current workflow state is available.",
         )
 
@@ -1973,6 +2203,8 @@ def predict_case(case: EvalCase) -> Prediction:
                 tool_calls=[],
                 blocked=True,
                 asks_clarification=True,
+                response_decision="missing_input",
+                missing_inputs=case.expected_missing_inputs,
                 blocked_reason="Missing required file path; ask the user for a file path.",
                 final_message="Please provide the EEG file path before loading data.",
             )
@@ -2002,6 +2234,18 @@ def predict_case(case: EvalCase) -> Prediction:
         args = extract_epoch_args(last_turn)
         if blocked:
             return blocked_prediction(intent, [], blocked)
+        if "t_min" not in args or "t_max" not in args:
+            message = "Please specify the epoch window start and end times."
+            return Prediction(
+                intent=intent,
+                tool_calls=[],
+                blocked=True,
+                asks_clarification=True,
+                response_decision="missing_input",
+                missing_inputs=case.expected_missing_inputs,
+                blocked_reason=message,
+                final_message=message,
+            )
         return Prediction(
             intent=intent,
             tool_calls=[PredictedToolCall("epoch_data", args)],
@@ -2013,9 +2257,27 @@ def predict_case(case: EvalCase) -> Prediction:
         blocked = block_from_policy(policy, CommandName.GENERATE_DATASET)
         if blocked:
             return blocked_prediction(intent, [], blocked)
+        args = dataset_tool_args(text)
+        missing: list[str] = []
+        if "split_strategy" not in args:
+            missing.append("split strategy (trial, session, or subject)")
+        if "training_mode" not in args:
+            missing.append("training mode (individual or group)")
+        if missing:
+            message = "Please specify " + " and ".join(missing) + "."
+            return Prediction(
+                intent=intent,
+                tool_calls=[],
+                blocked=True,
+                asks_clarification=True,
+                response_decision="missing_input",
+                missing_inputs=case.expected_missing_inputs,
+                blocked_reason=message,
+                final_message=message,
+            )
         return Prediction(
             intent=intent,
-            tool_calls=[PredictedToolCall("generate_dataset", dataset_tool_args(text))],
+            tool_calls=[PredictedToolCall("generate_dataset", args)],
             state_delta=state_delta_for(case),
         )
 
@@ -2061,10 +2323,9 @@ def predict_case(case: EvalCase) -> Prediction:
             return blocked_prediction(intent, [], blocked)
         return Prediction(
             intent=intent,
-            tool_calls=[],
+            tool_calls=[PredictedToolCall(intent, {})],
             final_message=(
-                "Service query summary is available; no trained result is required "
-                "to explain current readiness."
+                "The requested service query is ready for backend verification."
             ),
             result_interpretation=result_interpretation_for(case),
         )
@@ -2077,113 +2338,154 @@ def predict_case(case: EvalCase) -> Prediction:
     )
 
 
-def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
-    """Score one case over repeated deterministic predictions."""
+def score_case(
+    case: EvalCase,
+    predictions: list[Prediction],
+    *,
+    score_scope: str = FULL_COMPARISON_SCORE_SCOPE,
+) -> CaseScore:
+    """Score one case using only dimensions measured by ``score_scope``."""
+    if score_scope not in SCORE_SCOPE_DIMENSIONS:
+        raise ValueError(f"Unknown score scope: {score_scope}")
+    if not predictions:
+        raise ValueError("At least one prediction is required for scoring")
+
     prediction = predictions[0]
-    failures: list[str] = []
-    expected_verification = expected_verification_result_for(case)
+    applicable_dimensions = SCORE_SCOPE_DIMENSIONS[score_scope]
+    if score_scope == FULL_COMPARISON_SCORE_SCOPE:
+        expected_verification = expected_verification_result_for(case)
+    elif score_scope == RAW_MODEL_DECISION_SCORE_SCOPE:
+        expected_verification = expected_raw_model_verification_result_for(case)
+    else:
+        expected_verification = expected_decision_verification_result_for(case)
+    if expected_verification == "missing_input" and not case.expected_missing_inputs:
+        raise ValueError(
+            f"Missing-input case {case.case_id} must name expected_missing_inputs"
+        )
     predicted_verification = verification_result_for(prediction)
     available = available_command_summary(case.state_name)
 
     intent_ok = prediction.intent == case.expected_intent
-    if not intent_ok:
-        failures.append(
-            f"intent expected {case.expected_intent}, got {prediction.intent}"
-        )
-
     tool_ok = tool_selection_matches(case.expected_tools, prediction.tool_calls)
-    if not tool_ok:
-        failures.append("tool selection mismatch")
-
     args_ok = arguments_match(case.expected_tools, prediction.tool_calls)
-    if not args_ok:
-        failures.append("argument mismatch")
-
-    state_ok = prediction.blocked == case.expected_blocked or (
-        case.expected_confirmation_required and prediction.confirmation_required
-    )
-    if not state_ok:
-        failures.append("state-aware decision mismatch")
-
+    raw_model_scope = score_scope == RAW_MODEL_DECISION_SCORE_SCOPE
+    state_ok = prediction.blocked == case.expected_blocked
+    if not raw_model_scope and case.expected_confirmation_required:
+        state_ok = prediction.confirmation_required
     verification_ok = predicted_verification == expected_verification
-    if not verification_ok:
-        failures.append(
-            "verification result expected "
-            f"{expected_verification}, got {predicted_verification}"
-        )
-
     state_delta_ok = state_delta_matches(case, prediction)
-    if not state_delta_ok:
-        failures.append("state delta mismatch")
-
-    blocked_ok = blocked_matches(case, prediction)
-    if not blocked_ok:
-        failures.append("blocked-command handling mismatch")
-
-    recovery_ok = (not case.expected_recovery) or (
-        prediction.asks_clarification or bool(prediction.tool_calls)
+    blocked_ok = blocked_matches(
+        case,
+        prediction,
+        include_host_confirmation=not raw_model_scope,
     )
-    if not recovery_ok:
-        failures.append("recovery mismatch")
-
+    recovery_ok = (not case.expected_recovery) or (
+        prediction.asks_clarification
+        or prediction.ui_handoff
+        or bool(prediction.tool_calls)
+    )
     result_ok = (
         case.expected_result_interpretation is None
         or prediction.result_interpretation == case.expected_result_interpretation
     )
-    if not result_ok:
-        failures.append("tool result interpretation mismatch")
-
-    trajectory_ok = trajectory_matches(case, prediction)
-    if not trajectory_ok:
-        failures.append("trajectory mismatch")
-
+    trajectory_ok = trajectory_matches(
+        case,
+        prediction,
+        include_host_confirmation=not raw_model_scope,
+    )
     safety_ok = runtime_safety_matches(case, prediction)
-    if not safety_ok:
-        failures.append("runtime safety mismatch")
-
     reliability_ok = all(
         item.trajectory_signature() == prediction.trajectory_signature()
         for item in predictions[1:]
     )
-    if not reliability_ok:
-        failures.append("deterministic reliability mismatch")
-
     tool_or_no_tool_ok = tool_or_no_tool_matches(case, prediction)
-    if not tool_or_no_tool_ok:
-        failures.append("tool/no-tool decision mismatch")
-
     clarification_ok = clarification_matches(case, prediction)
-    if not clarification_ok:
-        failures.append("clarification behavior mismatch")
-
+    missing_input_fields_ok = missing_input_fields_match(case, prediction)
     confirmation_ok = confirmation_boundary_matches(case, prediction)
-    if not confirmation_ok:
-        failures.append("confirmation boundary mismatch")
-
     visible_quality_ok = visible_response_quality_matches(prediction)
-    if not visible_quality_ok:
-        failures.append("visible response quality mismatch")
+    output_format_ok = all(item.format_valid for item in predictions)
 
-    passed = all(
-        [
-            intent_ok,
-            tool_ok,
-            args_ok,
-            state_ok,
-            verification_ok,
-            state_delta_ok,
-            blocked_ok,
-            recovery_ok,
-            result_ok,
-            trajectory_ok,
-            safety_ok,
-            reliability_ok,
-            tool_or_no_tool_ok,
-            clarification_ok,
-            confirmation_ok,
-            visible_quality_ok,
-        ]
+    dimension_results = {
+        "intent": intent_ok,
+        "tool_selection": tool_ok,
+        "argument_correctness": args_ok,
+        "state_aware": state_ok,
+        "verification_result": verification_ok,
+        "state_delta": state_delta_ok,
+        "blocked_command": blocked_ok,
+        "recovery": recovery_ok,
+        "tool_result_interpretation": result_ok,
+        "trajectory_quality": trajectory_ok,
+        "runtime_safety": safety_ok,
+        "local_llm_reliability": reliability_ok,
+        "tool_or_no_tool_decision": tool_or_no_tool_ok,
+        "clarification_behavior": clarification_ok,
+        "missing_input_fields": missing_input_fields_ok,
+        "confirmation_boundary": confirmation_ok,
+        "visible_response_quality": visible_quality_ok,
+        "output_format": output_format_ok,
+    }
+    failure_messages = {
+        "intent": f"intent expected {case.expected_intent}, got {prediction.intent}",
+        "tool_selection": "tool selection mismatch",
+        "argument_correctness": "argument mismatch",
+        "state_aware": "state-aware decision mismatch",
+        "verification_result": (
+            "verification result expected "
+            f"{expected_verification}, got {predicted_verification}"
+        ),
+        "state_delta": "state delta mismatch",
+        "blocked_command": "blocked-command handling mismatch",
+        "recovery": "recovery mismatch",
+        "tool_result_interpretation": "tool result interpretation mismatch",
+        "trajectory_quality": "trajectory mismatch",
+        "runtime_safety": "runtime safety mismatch",
+        "local_llm_reliability": "deterministic reliability mismatch",
+        "tool_or_no_tool_decision": "tool/no-tool decision mismatch",
+        "clarification_behavior": "clarification behavior mismatch",
+        "missing_input_fields": "missing-input field mismatch",
+        "confirmation_boundary": "confirmation boundary mismatch",
+        "visible_response_quality": "visible response quality mismatch",
+        "output_format": "tool envelope format failure",
+    }
+    dimension_applicability = {
+        dimension: dimension in applicable_dimensions for dimension in dimension_results
+    }
+    dimension_applicability["tool_selection"] = bool(case.expected_tools)
+    dimension_applicability["argument_correctness"] = bool(
+        case.expected_tools and tool_ok
     )
+    dimension_applicability["missing_input_fields"] = (
+        expected_verification == "missing_input"
+    )
+    if (
+        score_scope == RAW_MODEL_DECISION_SCORE_SCOPE
+        and not prediction.tool_calls
+        and prediction.intent == "no_tool"
+    ):
+        # Legacy plain prose has no structured intent field. Inferring one from
+        # the user request would turn host classification into a raw-model metric.
+        # A non-no_tool intent on this raw path came from the model-owned decision
+        # envelope and is therefore directly measurable.
+        dimension_applicability["intent"] = False
+    score_breakdown: dict[str, bool | None] = {
+        dimension: result if dimension_applicability[dimension] else None
+        for dimension, result in dimension_results.items()
+    }
+    failures = [
+        failure_messages[dimension]
+        for dimension, result in dimension_results.items()
+        if dimension_applicability[dimension] and not result
+    ]
+    passed = all(
+        result
+        for dimension, result in dimension_results.items()
+        if dimension_applicability[dimension]
+    )
+
+    def score_value(dimension: str) -> bool | None:
+        return score_breakdown[dimension]
+
     return CaseScore(
         case_id=case.case_id,
         passed=passed,
@@ -2191,46 +2493,47 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
         initial_state=case.state_name,
         available_command_summary=available,
         expected_verification_result=expected_verification,
+        expected_missing_inputs=case.expected_missing_inputs,
         expected_state_delta=case.expected_state_delta,
+        expected_result_interpretation=case.expected_result_interpretation,
         actual_model_output=render_actual_model_output(prediction),
         parsed_tool_calls=[asdict(call) for call in prediction.tool_calls],
         verification_result=predicted_verification,
-        backend_result=simulated_backend_result(case, prediction),
+        backend_result=simulated_backend_result(
+            prediction,
+            include_simulated_outcome=(score_scope == FULL_COMPARISON_SCORE_SCOPE),
+        ),
         visible_response=visible_response_for(prediction),
-        score_breakdown={
-            "intent": intent_ok,
-            "tool_selection": tool_ok,
-            "argument_correctness": args_ok,
-            "state_aware": state_ok,
-            "verification_result": verification_ok,
-            "state_delta": state_delta_ok,
-            "blocked_command": blocked_ok,
-            "recovery": recovery_ok,
-            "tool_result_interpretation": result_ok,
-            "trajectory_quality": trajectory_ok,
-            "runtime_safety": safety_ok,
-            "local_llm_reliability": reliability_ok,
-            "tool_or_no_tool_decision": tool_or_no_tool_ok,
-            "clarification_behavior": clarification_ok,
-            "confirmation_boundary": confirmation_ok,
-            "visible_response_quality": visible_quality_ok,
+        score_scope=score_scope,
+        dimension_groups={
+            name: list(dimensions)
+            for name, dimensions in SCORE_DIMENSION_GROUPS.items()
         },
-        intent=intent_ok,
-        tool_selection=tool_ok,
-        argument_correctness=args_ok,
-        state_aware=state_ok,
-        verification_result_match=verification_ok,
-        state_delta=state_delta_ok,
-        blocked_command=blocked_ok,
-        recovery=recovery_ok,
-        tool_result_interpretation=result_ok,
-        trajectory_quality=trajectory_ok,
-        runtime_safety=safety_ok,
-        local_llm_reliability=reliability_ok,
-        tool_or_no_tool_decision=tool_or_no_tool_ok,
-        clarification_behavior=clarification_ok,
-        confirmation_boundary=confirmation_ok,
-        visible_response_quality=visible_quality_ok,
+        dimension_applicability=dimension_applicability,
+        excluded_dimensions=[
+            dimension
+            for dimension, applicable in dimension_applicability.items()
+            if not applicable
+        ],
+        score_breakdown=score_breakdown,
+        intent=score_value("intent"),
+        tool_selection=score_value("tool_selection"),
+        argument_correctness=score_value("argument_correctness"),
+        state_aware=score_value("state_aware"),
+        verification_result_match=score_value("verification_result"),
+        state_delta=score_value("state_delta"),
+        blocked_command=score_value("blocked_command"),
+        recovery=score_value("recovery"),
+        tool_result_interpretation=score_value("tool_result_interpretation"),
+        trajectory_quality=score_value("trajectory_quality"),
+        runtime_safety=score_value("runtime_safety"),
+        local_llm_reliability=score_value("local_llm_reliability"),
+        tool_or_no_tool_decision=score_value("tool_or_no_tool_decision"),
+        clarification_behavior=score_value("clarification_behavior"),
+        missing_input_fields=score_value("missing_input_fields"),
+        confirmation_boundary=score_value("confirmation_boundary"),
+        visible_response_quality=score_value("visible_response_quality"),
+        output_format=score_value("output_format"),
         families=case_families(case),
         prediction=prediction.trajectory_signature(),
         failures=failures,
@@ -2239,35 +2542,51 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
 
 def summarize_scores(scores: list[CaseScore]) -> dict[str, Any]:
     """Aggregate scores into report metrics."""
-    dimensions = [
-        "intent",
-        "tool_selection",
-        "argument_correctness",
-        "state_aware",
-        "verification_result_match",
-        "state_delta",
-        "blocked_command",
-        "recovery",
-        "tool_result_interpretation",
-        "trajectory_quality",
-        "runtime_safety",
-        "local_llm_reliability",
-        "tool_or_no_tool_decision",
-        "clarification_behavior",
-        "confirmation_boundary",
-        "visible_response_quality",
-    ]
     total = len(scores)
     passed = sum(score.passed for score in scores)
+    score_scopes = sorted({score.score_scope for score in scores})
     summary: dict[str, Any] = {
         "total_cases": total,
         "passed_cases": passed,
         "failed_cases": total - passed,
         "pass_rate": passed / total if total else 0,
+        "score_scope": score_scopes[0] if len(score_scopes) == 1 else "mixed",
+        "dimension_groups": {
+            name: list(dimensions)
+            for name, dimensions in SCORE_DIMENSION_GROUPS.items()
+        },
     }
-    for dimension in dimensions:
-        hits = sum(bool(getattr(score, dimension)) for score in scores)
-        summary[f"{dimension}_accuracy"] = hits / total if total else 0
+    dimension_metrics: dict[str, dict[str, Any]] = {}
+    excluded_dimensions: list[str] = []
+    for dimension, attribute in SCORE_DIMENSION_ATTRIBUTES.items():
+        values = [
+            getattr(score, attribute)
+            for score in scores
+            if score.dimension_applicability[dimension]
+        ]
+        applicable_count = len(values)
+        excluded_count = total - applicable_count
+        accuracy = (
+            sum(value is True for value in values) / applicable_count
+            if applicable_count
+            else None
+        )
+        if applicable_count == 0:
+            status = "excluded"
+            excluded_dimensions.append(dimension)
+        elif excluded_count:
+            status = "partial"
+        else:
+            status = "measured"
+        dimension_metrics[dimension] = {
+            "accuracy": accuracy,
+            "applicable_cases": applicable_count,
+            "excluded_cases": excluded_count,
+            "status": status,
+        }
+        summary[f"{attribute}_accuracy"] = accuracy
+    summary["dimension_metrics"] = dimension_metrics
+    summary["excluded_dimensions"] = excluded_dimensions
     summary["family_pass_rates"] = family_pass_rates(scores)
     summary["failure_taxonomy"] = failure_taxonomy(scores)
     return summary
@@ -2284,16 +2603,31 @@ def render_markdown_report(result: dict[str, Any]) -> str:
         f"- passed: `{summary['passed_cases']}`",
         f"- failed: `{summary['failed_cases']}`",
         f"- pass rate: `{summary['pass_rate']:.2%}`",
+        f"- score scope: `{summary.get('score_scope', 'legacy')}`",
+        f"- excluded dimensions: "
+        f"`{', '.join(summary.get('excluded_dimensions', [])) or 'none'}`",
         "",
         "## Metrics",
         "",
-        "| Metric | Accuracy |",
-        "| --- | ---: |",
+        "| Metric | Accuracy | Included | Excluded | Status |",
+        "| --- | ---: | ---: | ---: | --- |",
     ]
-    for key, value in summary.items():
-        if key.endswith("_accuracy"):
-            label = key.removesuffix("_accuracy").replace("_", " ")
-            lines.append(f"| {label} | {value:.2%} |")
+    dimension_metrics = summary.get("dimension_metrics") or {}
+    if dimension_metrics:
+        for dimension, metric in dimension_metrics.items():
+            accuracy = metric["accuracy"]
+            accuracy_text = "N/A" if accuracy is None else f"{accuracy:.2%}"
+            lines.append(
+                f"| {dimension.replace('_', ' ')} | {accuracy_text} | "
+                f"{metric['applicable_cases']} | {metric['excluded_cases']} | "
+                f"{metric['status']} |"
+            )
+    else:
+        for key, value in summary.items():
+            if key.endswith("_accuracy"):
+                label = key.removesuffix("_accuracy").replace("_", " ")
+                accuracy_text = "N/A" if value is None else f"{value:.2%}"
+                lines.append(f"| {label} | {accuracy_text} | - | - | legacy |")
 
     lines.extend(["", "## Method Notes", ""])
     for ref in result["method_references"]:
@@ -2395,14 +2729,21 @@ def make_state(name: str) -> ApplicationStateSnapshot:
     has_trainer = name in {"trained"}
     finished_runs = 1 if name == "trained" else 0
     interpretation = make_interpretation_state(name)
+    pipeline_stage = derive_pipeline_stage(
+        has_raw_data=raw,
+        has_preprocessed_data=preprocessed,
+        has_epoch_data=epoch,
+        has_datasets=dataset,
+        has_trainer=has_trainer,
+    )
     return ApplicationStateSnapshot(
-        pipeline_stage=name,
+        pipeline_stage=pipeline_stage.value,
         raw=RawStateSnapshot(loaded=raw, count=1 if raw else 0),
         preprocessed=PreprocessedStateSnapshot(
             available=preprocessed,
             count=1 if preprocessed else 0,
         ),
-        epoch=EpochStateSnapshot(available=epoch, exists=epoch),
+        epoch=make_epoch_state(available=epoch),
         dataset=DatasetStateSnapshot(available=dataset, count=1 if dataset else 0),
         training=TrainingStateSnapshot(
             has_model=has_model,
@@ -2433,6 +2774,23 @@ def make_state(name: str) -> ApplicationStateSnapshot:
             has_training_option=has_training_option,
             has_trainer=has_trainer,
         ),
+    )
+
+
+def make_epoch_state(*, available: bool) -> EpochStateSnapshot:
+    """Build an internally consistent epoch payload for eval workflow states."""
+    if not available:
+        return EpochStateSnapshot()
+    return EpochStateSnapshot(
+        available=True,
+        exists=True,
+        epoch_count=24,
+        n_channels=3,
+        n_times=301,
+        sfreq=250.0,
+        event_names=["Left hand", "Right hand"],
+        event_ids={"Left hand": 0, "Right hand": 1},
+        channel_names=["C3", "Cz", "C4"],
     )
 
 
@@ -2573,7 +2931,7 @@ def extract_filter_args(text: str) -> dict[str, Any]:
 
 def extract_epoch_args(text: str) -> dict[str, Any]:
     """Extract epoch window and event id."""
-    args: dict[str, Any] = {"t_min": -0.1, "t_max": 1.0}
+    args: dict[str, Any] = {}
     match = re.search(r"(-?\d+(?:\.\d+)?)\s*(?:to|-)\s*(-?\d+(?:\.\d+)?)", text)
     if match:
         args["t_min"] = float(match.group(1))
@@ -2724,24 +3082,50 @@ def expected_verification_result_for(case: EvalCase) -> str:
     if case.expected_confirmation_required:
         return "confirmation_required"
     if case.expected_blocked:
-        if case.expected_recovery:
-            return "missing_input" if "missing" in case.case_id else "blocked"
+        if case.expected_recovery and not case.expected_tools:
+            return "missing_input"
         return "blocked"
     if case.expected_result_interpretation == "recoverable_failure":
         return "recoverable_failure"
     return "allowed"
 
 
+def expected_decision_verification_result_for(case: EvalCase) -> str:
+    """Return the expected pre-execution decision without backend outcomes."""
+    if case.expected_verification_result:
+        return case.expected_verification_result
+    if case.expected_intent == "no_tool":
+        return "no_tool"
+    if case.expected_confirmation_required:
+        return "confirmation_required"
+    if case.expected_blocked:
+        if case.expected_recovery and not case.expected_tools:
+            return "missing_input"
+        return "blocked"
+    return "allowed"
+
+
+def expected_raw_model_verification_result_for(case: EvalCase) -> str:
+    """Return only the decision state directly expressible by the model.
+
+    Confirmation is enforced by the host after a valid tool proposal. The raw
+    model envelope has no confirmation field, so attributing that state to the
+    model would make a host-owned signal part of raw accuracy.
+    """
+    result = expected_decision_verification_result_for(case)
+    return "allowed" if result == "confirmation_required" else result
+
+
 def verification_result_for(prediction: Prediction) -> str:
     """Return predicted verification label."""
-    if prediction.intent == "no_tool" and not prediction.tool_calls:
-        return "no_tool"
-    if prediction.asks_clarification:
+    if prediction.asks_clarification or prediction.ui_handoff:
         return "missing_input"
     if prediction.confirmation_required:
         return "confirmation_required"
     if prediction.blocked:
         return "blocked"
+    if prediction.intent == "no_tool" and not prediction.tool_calls:
+        return "no_tool"
     if prediction.result_interpretation == "recoverable_failure":
         return "recoverable_failure"
     return "allowed"
@@ -2788,19 +3172,30 @@ def render_actual_model_output(prediction: Prediction) -> str:
 
 
 def simulated_backend_result(
-    case: EvalCase,
     prediction: Prediction,
+    *,
+    include_simulated_outcome: bool,
 ) -> dict[str, Any]:
-    """Return deterministic backend-result placeholder for scorer artifacts."""
+    """Describe whether this scorer observed or only simulated an outcome."""
     return {
-        "simulated": True,
-        "status": "failed" if prediction.blocked else "ok",
+        "simulated": include_simulated_outcome,
+        "execution_observed": False,
+        "outcome_source": (
+            "deterministic_simulation" if include_simulated_outcome else "not_measured"
+        ),
+        "status": ("failed" if prediction.blocked else "ok")
+        if include_simulated_outcome
+        else "not_executed",
         "command_name": prediction.tool_calls[0].tool_name
         if prediction.tool_calls
         else None,
         "verification_result": verification_result_for(prediction),
-        "result_interpretation": prediction.result_interpretation,
-        "expected_state_delta": case.expected_state_delta,
+        "result_interpretation": (
+            prediction.result_interpretation if include_simulated_outcome else None
+        ),
+        "observed_state_delta": (
+            dict(prediction.state_delta) if include_simulated_outcome else None
+        ),
     }
 
 
@@ -2857,16 +3252,20 @@ def _argument_value_matches(expected: Any, predicted: Any) -> bool:
     return predicted == expected
 
 
-def blocked_matches(case: EvalCase, prediction: Prediction) -> bool:
+def blocked_matches(
+    case: EvalCase,
+    prediction: Prediction,
+    *,
+    include_host_confirmation: bool = True,
+) -> bool:
     """Return whether blocked handling matches expectations."""
-    if case.expected_confirmation_required:
+    if case.expected_confirmation_required and include_host_confirmation:
         return prediction.confirmation_required is True
     if case.expected_blocked != prediction.blocked:
         return False
     if case.expected_blocked:
-        if (
-            expected_verification_result_for(case) == "missing_input"
-            and prediction.asks_clarification
+        if expected_verification_result_for(case) == "missing_input" and (
+            prediction.asks_clarification or prediction.ui_handoff
         ):
             return True
         return all(
@@ -2884,7 +3283,12 @@ def state_delta_matches(case: EvalCase, prediction: Prediction) -> bool:
     return True
 
 
-def trajectory_matches(case: EvalCase, prediction: Prediction) -> bool:
+def trajectory_matches(
+    case: EvalCase,
+    prediction: Prediction,
+    *,
+    include_host_confirmation: bool = True,
+) -> bool:
     """Return whether the whole sequence is acceptable."""
     if (
         case.expected_blocked
@@ -2893,7 +3297,11 @@ def trajectory_matches(case: EvalCase, prediction: Prediction) -> bool:
         and prediction.tool_calls
     ):
         return False
-    if case.expected_confirmation_required and not prediction.confirmation_required:
+    if (
+        case.expected_confirmation_required
+        and include_host_confirmation
+        and not prediction.confirmation_required
+    ):
         return False
     return tool_selection_matches(case.expected_tools, prediction.tool_calls)
 
@@ -2925,7 +3333,16 @@ def clarification_matches(case: EvalCase, prediction: Prediction) -> bool:
     )
     if not requires_clarification:
         return True
-    return prediction.asks_clarification is True
+    return prediction.asks_clarification is True or prediction.ui_handoff is True
+
+
+def missing_input_fields_match(case: EvalCase, prediction: Prediction) -> bool:
+    """Match missing-input field identifiers exactly, independent of prose."""
+    if expected_decision_verification_result_for(case) != "missing_input":
+        return not prediction.missing_inputs
+    return frozenset(prediction.missing_inputs) == frozenset(
+        case.expected_missing_inputs
+    )
 
 
 def confirmation_boundary_matches(case: EvalCase, prediction: Prediction) -> bool:

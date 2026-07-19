@@ -18,6 +18,11 @@ def test_init(metric_tab):
     assert len(metric_tab.epochs) == 0
     assert len(metric_tab.train_vals) == 0
     assert len(metric_tab.val_vals) == 0
+    assert metric_tab.empty_state_label.text() == (
+        "Training metrics will appear after the first epoch."
+    )
+    assert metric_tab.empty_state_label.isVisibleTo(metric_tab)
+    assert metric_tab.canvas.isHidden()
 
 
 def test_update_plot(metric_tab):
@@ -29,11 +34,13 @@ def test_update_plot(metric_tab):
 
     # Check if lines were plotted (2 lines: train + val)
     assert len(metric_tab.ax.lines) == 2
+    assert metric_tab.empty_state_label.isHidden()
+    assert not metric_tab.canvas.isHidden()
 
 
 def test_set_series_draws_full_history_once(metric_tab, monkeypatch):
     draw_calls = []
-    monkeypatch.setattr(metric_tab.canvas, "draw_idle", lambda: draw_calls.append(True))
+    monkeypatch.setattr(metric_tab.canvas, "draw", lambda: draw_calls.append(True))
 
     metric_tab.set_series([1, 2, 3], [0.4, 0.5, 0.6], [0.3, 0.4, 0.5])
 
@@ -61,6 +68,8 @@ def test_clear(metric_tab):
     assert metric_tab.ax.title.get_color() == Theme.TEXT_MUTED
     assert metric_tab.ax.xaxis.label.get_color() == Theme.TEXT_MUTED
     assert metric_tab.ax.yaxis.label.get_color() == Theme.TEXT_MUTED
+    assert metric_tab.empty_state_label.isVisibleTo(metric_tab)
+    assert metric_tab.canvas.isHidden()
 
 
 def test_close_releases_canvas_and_cancels_pending_draw(metric_tab, qtbot):
@@ -74,3 +83,32 @@ def test_close_releases_canvas_and_cancels_pending_draw(metric_tab, qtbot):
     assert metric_tab.canvas is None
     assert old_canvas.parent() is None
     assert old_canvas._draw_pending is False
+
+
+def test_parent_teardown_leaves_no_pending_canvas_callback(qtbot):
+    import gc
+
+    from PyQt6 import sip
+    from PyQt6.QtCore import QCoreApplication, QEvent
+    from PyQt6.QtWidgets import QWidget
+
+    for _index in range(5):
+        parent = QWidget()
+        qtbot.addWidget(parent)
+        tab = MetricTab("Accuracy", parent=parent)
+        canvas = tab.canvas
+        tab.set_series([1], [0.5], [0.4])
+
+        parent.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QCoreApplication.processEvents()
+
+        assert sip.isdeleted(canvas)
+        del tab
+        del canvas
+        del parent
+
+    gc.collect()
+    QCoreApplication.processEvents()
+    # pytest-qt fails on uncaught Qt callbacks; explicit fd capture is redundant
+    # and is not portable to every Windows-mounted test temp root.

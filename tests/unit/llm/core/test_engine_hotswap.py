@@ -4,6 +4,10 @@ import pytest
 
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.generation import (
+    GenerationProfile,
+    ResolvedGenerationOptions,
+)
 
 
 class TestLLMEngineHotSwap:
@@ -54,9 +58,44 @@ class TestLLMEngineHotSwap:
 
         engine.switch_backend("local")
 
-        result = list(engine.generate_stream(["msg"]))
+        result = list(
+            engine.generate_stream(
+                ["msg"],
+                profile=GenerationProfile.INFORMATIONAL_TEXT,
+            )
+        )
         assert result == ["chunk1", "chunk2"]
-        mock_backend_instance.generate_stream.assert_called_with(["msg"])
+        mock_backend_instance.generate_stream.assert_called_with(
+            ["msg"],
+            options=ResolvedGenerationOptions(
+                max_new_tokens=engine.config.max_new_tokens,
+                do_sample=True,
+                temperature=engine.config.temperature,
+                top_p=engine.config.top_p,
+            ),
+        )
+
+    @patch("XBrainLab.llm.core.backends.local.LocalBackend")
+    def test_generate_stream_forwards_generation_profile(self, mock_local, engine):
+        mock_backend_instance = mock_local.return_value
+        mock_backend_instance.generate_stream.return_value = iter(["chunk"])
+        engine.switch_backend("local")
+
+        result = list(
+            engine.generate_stream(
+                ["msg"],
+                profile=GenerationProfile.STRUCTURED_DECISION,
+            )
+        )
+
+        assert result == ["chunk"]
+        mock_backend_instance.generate_stream.assert_called_once_with(
+            ["msg"],
+            options=ResolvedGenerationOptions(
+                max_new_tokens=512,
+                do_sample=False,
+            ),
+        )
 
     @patch("XBrainLab.llm.core.backends.local.LocalBackend")
     def test_failed_hot_swap_restores_previous_backend(self, mock_local, engine):

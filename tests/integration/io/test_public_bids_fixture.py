@@ -50,6 +50,20 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
                         "duration_field": "duration",
                         "time_model": "seconds",
                         "placement_method": "interval",
+                        "value_decisions": {
+                            "show_stimulus": {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "show_stimulus",
+                            },
+                            "start_experiment": {
+                                "role": "system",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "start_experiment",
+                            },
+                        },
                     }
                 },
             }
@@ -64,8 +78,20 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
 
     assert scan_result.ok is True
     assert scan_result.state.interpretation.bids["is_bids"] is True
-    assert scan_result.state.interpretation.bids["dataset"]["Name"] == "tiny_bids"
-    assert scan_result.state.interpretation.bids["participants"] == [
+    assert scan_result.state.interpretation.bids["metadata_materialized"] is False
+    assert scan_result.state.interpretation.bids["dataset"] == {}
+    assert scan_result.state.interpretation.bids["participants"] == []
+    assert scan_result.state.interpretation.label_carriers == [
+        str(MNE_BIDS_EVENTS.resolve())
+    ]
+    assert scan_result.state.interpretation.bids["channels_files"] == [
+        str(MNE_BIDS_CHANNELS.resolve())
+    ]
+    assert preview_result.ok is True
+    preview = preview_result.diagnostics["preview"]
+    assert preview["bids"]["metadata_materialized"] is True
+    assert preview["bids"]["dataset"]["Name"] == "tiny_bids"
+    assert preview["bids"]["participants"] == [
         {
             "participant_id": "sub-01",
             "age": "29",
@@ -75,14 +101,6 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
             "height": "n/a",
         }
     ]
-    assert scan_result.state.interpretation.label_carriers == [
-        str(MNE_BIDS_EVENTS.resolve())
-    ]
-    assert scan_result.state.interpretation.bids["channels_files"] == [
-        str(MNE_BIDS_CHANNELS.resolve())
-    ]
-    assert preview_result.ok is True
-    preview = preview_result.diagnostics["preview"]
     assert preview["bids"]["selected_scope"]["eeg_files"] == [
         str(MNE_BIDS_EEG.resolve())
     ]
@@ -92,6 +110,23 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
         "show_stimulus": "show_stimulus",
         "start_experiment": "start_experiment",
     }
+    event_validation = preview["bids"]["event_validation"]
+    assert event_validation["status"] == "safe"
+    assert event_validation["file_mapping"] == {
+        str(MNE_BIDS_EEG.resolve()): str(MNE_BIDS_EVENTS.resolve())
+    }
+    assert event_validation["pairing_issues"] == []
+    assert event_validation["mapping_conflicts"] == []
+    assert event_validation["runs"][0]["eeg_file"] == str(MNE_BIDS_EEG.resolve())
+    assert event_validation["runs"][0]["events_file"] == str(MNE_BIDS_EVENTS.resolve())
+    assert event_validation["runs"][0]["sampling_frequency_hz"] > 0
+    assert event_validation["runs"][0]["sample_count"] > 0
+    assert event_validation["runs"][0]["recording_duration_seconds"] > 0
+    assert event_validation["runs"][0]["bids_schema"]["status"] == "valid"
+    assert event_validation["runs"][0]["placement"]["status"] == "ready"
+    assert event_validation["runs"][0]["placement"]["usable_event_count"] == 2
+    assert event_validation["runs"][0]["placement"]["excluded_event_count"] == 0
+    assert event_validation["runs"][0]["issues"] == []
     label_preview = preview["label_carrier_preview"][0]
     assert label_preview["bids_event_columns"] == [
         "onset",
@@ -106,11 +141,26 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
         {"time": "0.2", "label": "show_stimulus"},
     ]
     assert validation_result.ok is True
-    assert validation_result.diagnostics["validation_decision"]["decision"] == (
-        "needs_confirmation"
-    )
-    assert validation_result.diagnostics["validation_decision"]["blocked_reasons"] == []
+    validation_decision = validation_result.diagnostics["validation_decision"]
+    assert validation_decision["decision"] == "safe"
+    assert validation_decision["blocked_reasons"] == []
+    assert validation_decision["required_confirmations"] == []
+    assert validation_decision["action_items"] == []
     assert apply_result.ok is True
+    assert apply_result.diagnostics["channels_apply"][0]["bad_channels"] == ["PO10"]
+    assert service.study.loaded_data_list[0].get_mne().info["bads"] == ["PO10"]
+    assert apply_result.diagnostics["label_apply"]["bids_placement"] == [
+        {
+            "eeg_file": str(MNE_BIDS_EEG.resolve()),
+            "events_file": str(MNE_BIDS_EVENTS.resolve()),
+            "source_event_count": 2,
+            "usable_event_count": 2,
+            "excluded_event_count": 0,
+            "excluded_reasons": {},
+            "unknown_duration_count": 0,
+            "unknown_duration_rows": [],
+        }
+    ]
     assert apply_result.state.raw.files == [MNE_BIDS_EEG.name]
     handoff = apply_result.state.interpretation.epoch_handoff
     assert handoff["label_source"] == "bids_events"
@@ -118,16 +168,18 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
         "show_stimulus",
         "start_experiment",
     ]
-    assert handoff["label_carrier_plan"] == [
-        {
-            "path": str(MNE_BIDS_EVENTS.resolve()),
-            "selected_label_field": "trial_type",
-            "selected_anchor": "onset",
-            "selected_duration_field": "duration",
-            "time_model": "seconds",
-            "placement_method": "interval",
-        }
-    ]
+    handoff_plan = handoff["label_carrier_plan"][0]
+    assert handoff_plan["path"] == str(MNE_BIDS_EVENTS.resolve())
+    assert handoff_plan["selected_target_file"] == str(MNE_BIDS_EEG.resolve())
+    assert handoff_plan["selected_label_field"] == "trial_type"
+    assert handoff_plan["selected_anchor"] == "onset"
+    assert handoff_plan["selected_duration_field"] == "duration"
+    assert handoff_plan["time_model"] == "seconds"
+    assert handoff_plan["placement_method"] == "interval"
+    assert handoff_plan["run_class_map"] == {
+        "show_stimulus": "show_stimulus",
+        "start_experiment": "start_experiment",
+    }
     assert recipe_result.ok is True
     assert recipe_result.diagnostics["recipe"]["bids"]["root"] == str(
         MNE_BIDS_ROOT.resolve()

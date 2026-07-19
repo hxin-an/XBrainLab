@@ -7,6 +7,8 @@ and implement its abstract interface.
 from abc import ABC, abstractmethod
 from typing import Any
 
+from .result_contract import ToolExecutionResult
+
 
 class BaseTool(ABC):
     """Abstract base class for all LLM tools.
@@ -50,7 +52,7 @@ class BaseTool(ABC):
         return False
 
     @abstractmethod
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         """Executes the tool action.
 
         Args:
@@ -58,6 +60,6 @@ class BaseTool(ABC):
             **kwargs: Parameters passed by the LLM.
 
         Returns:
-            str: A message describing the result of the execution.
+            A typed tool result or a request for an existing GUI surface.
 
         """

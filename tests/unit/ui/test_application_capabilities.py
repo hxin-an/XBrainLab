@@ -3,32 +3,127 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 from PyQt6 import sip
+from PyQt6.QtCore import QCoreApplication, QThread
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import (
+    ApplicationViewPublication,
     ChangedState,
+    Command,
     CommandName,
     CommandResult,
     QueryStateCommand,
+    ResetSessionCommand,
     get_application_service,
 )
+from XBrainLab.backend.application.epoch_context import EpochDialogContext
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.view_publication import (
+    PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
+)
 from XBrainLab.backend.study import Study
-from XBrainLab.ui import application_capabilities, refresh_coordinator
+from XBrainLab.ui import (
+    application_capabilities,
+    async_command_runner,
+    refresh_coordinator,
+)
 from XBrainLab.ui.application_capabilities import (
+    application_background_tasks_idle,
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
+    get_command_review_context,
+    get_epoch_dialog_context,
+    get_interpretation_review,
     release_application_shutdown_fence,
     request_application_shutdown_fence,
     run_controller_compatibility_call,
 )
+from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.interaction_outcome import (
+    InteractionCompletionSession,
+    InteractionCompletionStatus,
+    bind_interaction_completion,
+)
 from XBrainLab.ui.refresh_coordinator import refresh_after_observer
+
+
+class _ApplicationRuntimeFake:
+    def __init__(
+        self,
+        *,
+        publication: ApplicationViewPublication | None = None,
+        execute: Callable[[Command], CommandResult] | None = None,
+    ) -> None:
+        self._publication = publication
+        self._execute = execute
+        self.commands: list[Command] = []
+        self.publication_reads = 0
+        self.shutdown_requests = 0
+        self.shutdown_releases = 0
+        self.shutdown_release_succeeds = True
+        self.background_waits: list[float | None] = []
+        self.background_idle = True
+        self.interpretation_review: dict[str, Any] = {}
+        self.expected_publication_generations: list[int | None] = []
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        self.publication_reads += 1
+        if self._publication is None:
+            raise AssertionError("publication was not configured for this fake")
+        return self._publication
+
+    def execute(
+        self,
+        command: Command,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        self.commands.append(command)
+        self.expected_publication_generations.append(
+            expected_publication_generation,
+        )
+        if self._execute is None:
+            raise AssertionError("command execution was not configured for this fake")
+        return self._execute(command)
+
+    def get_interpretation_review(
+        self,
+        *,
+        expected_identity=None,
+    ) -> dict[str, Any]:
+        return dict(self.interpretation_review)
+
+    def get_saliency_render(self, request: Any) -> Any:
+        raise AssertionError(
+            f"saliency render was not configured for this fake: {request!r}",
+        )
+
+    def request_shutdown_fence(self) -> None:
+        self.shutdown_requests += 1
+
+    def release_shutdown_fence(self) -> bool:
+        self.shutdown_releases += 1
+        return self.shutdown_release_succeeds
+
+    def wait_for_background_tasks(self, timeout: float | None = None) -> bool:
+        self.background_waits.append(timeout)
+        return self.background_idle
+
+
+def _unexpected_execution(message: str) -> Callable[[Command], CommandResult]:
+    def fail(_command: Command) -> CommandResult:
+        raise AssertionError(message)
+
+    return fail
 
 
 def test_ui_capability_helper_returns_application_policy(qtbot):
@@ -53,14 +148,288 @@ def test_ui_capability_helper_returns_application_policy(qtbot):
     assert ui_capability.reasons == backend_capability.reasons
 
 
-def test_ui_capability_helper_ignores_mock_study(qtbot):
+def test_ui_publication_helper_returns_one_full_application_publication(qtbot):
     widget = QWidget()
-    main_window = MagicMock()
-    main_window.study = MagicMock()
-    cast(Any, widget).main_window = main_window
+    qtbot.addWidget(widget)
+    publication = get_application_service(Study()).get_view_publication()
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    observed = application_capabilities.get_application_view_publication(
+        widget,
+        runtime=runtime,
+    )
+
+    assert observed is publication
+    assert runtime.publication_reads == 1
+
+
+def test_command_review_context_binds_capability_to_one_publication(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    publication = get_application_service(Study()).get_view_publication()
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    context = get_command_review_context(
+        widget,
+        CommandName.REMOVE_FILES,
+        runtime=runtime,
+    )
+
+    assert context is not None
+    assert context.publication_generation == publication.generation
+    assert context.capability == publication.effective_capabilities.get(
+        CommandName.REMOVE_FILES,
+    )
+    assert runtime.publication_reads == 1
+
+
+def test_interpretation_review_helper_reads_application_runtime(qtbot) -> None:
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    runtime = _ApplicationRuntimeFake()
+    runtime.interpretation_review = {
+        "candidate": {"candidate_id": "candidate-1"},
+        "validation_decision": {"decision": "needs_confirmation"},
+    }
+
+    assert get_interpretation_review(widget, runtime=runtime) == (
+        runtime.interpretation_review
+    )
+
+
+def test_background_task_idle_helper_uses_runtime_lifecycle_boundary(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    runtime = _ApplicationRuntimeFake()
+    runtime.background_idle = False
+
+    assert (
+        application_background_tasks_idle(widget, runtime=runtime, timeout=0.0) is False
+    )
+    assert runtime.background_waits == [0.0]
+
+
+def test_ui_capability_helper_fails_closed_for_stale_publication(qtbot):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    publication = get_application_service(study).get_view_publication()
+    stale_publication = replace(
+        publication,
+        stale=True,
+        refresh_error="backend refresh failed",
+    )
+    runtime = _ApplicationRuntimeFake(publication=stale_publication)
+
+    capability = get_command_capability(
+        widget,
+        CommandName.TRAIN,
+        runtime=runtime,
+    )
+
+    assert capability is not None
+    assert capability.enabled is False
+    assert capability.can_auto_execute is False
+    assert capability.reasons == [PUBLIC_VIEW_UNAVAILABLE_MESSAGE]
+    assert "backend refresh failed" not in capability.reasons
+
+
+def test_ui_capability_helper_ignores_non_product_study(qtbot):
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=object())
     qtbot.addWidget(widget)
 
     assert get_command_capability(widget, CommandName.TRAIN) is None
+
+
+def test_epoch_dialog_context_reads_one_application_view_publication(qtbot):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    expected = {
+        "ready": True,
+        "default_epoch_events": ["Left hand", "Right hand"],
+    }
+    publication = get_application_service(study).get_view_publication()
+    publication = replace(
+        publication,
+        state=replace(
+            publication.state,
+            interpretation=replace(
+                publication.state.interpretation,
+                epoch_handoff=expected,
+            ),
+        ),
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    assert publication.usable is True
+    assert publication.refresh_error is None
+    context = get_epoch_dialog_context(widget, runtime=runtime)
+
+    assert isinstance(context, EpochDialogContext)
+    assert context.capability == publication.capabilities.get(CommandName.CREATE_EPOCH)
+    assert context.epoch_handoff == expected
+    assert context.epoch_handoff is not expected
+    assert context.publication_generation == publication.generation
+    assert context.usable is True
+    assert context.unavailable_reason is None
+    assert runtime.publication_reads == 1
+    assert runtime.commands == []
+
+
+@pytest.mark.parametrize(
+    "publication_health",
+    [
+        {"stale": True},
+        {"verified": False},
+        {"refresh_error": "backend refresh failed"},
+    ],
+    ids=["stale", "unverified", "refresh-error"],
+)
+def test_epoch_dialog_context_fails_closed_for_untrusted_publication(
+    qtbot,
+    publication_health: dict[str, bool | str],
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    expected = {
+        "ready": True,
+        "default_epoch_events": ["Left hand", "Right hand"],
+    }
+    publication = get_application_service(Study()).get_view_publication()
+    publication = replace(
+        publication,
+        state=replace(
+            publication.state,
+            interpretation=replace(
+                publication.state.interpretation,
+                epoch_handoff=expected,
+            ),
+        ),
+        **publication_health,
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    context = get_epoch_dialog_context(widget, runtime=runtime)
+
+    assert isinstance(context, EpochDialogContext)
+    assert context.usable is False
+    assert context.epoch_handoff is None
+    assert context.publication_generation == publication.generation
+    assert context.unavailable_reason == PUBLIC_VIEW_UNAVAILABLE_MESSAGE
+    with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
+        context.require_usable()
+    assert runtime.publication_reads == 1
+    assert runtime.commands == []
+
+
+def test_epoch_dialog_context_returns_typed_unavailable_on_publication_read_error(
+    qtbot,
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    runtime = _ApplicationRuntimeFake()
+    runtime.get_view_publication = MagicMock(
+        side_effect=RuntimeError("authoritative publication read failed")
+    )
+
+    context = get_epoch_dialog_context(widget, runtime=runtime)
+
+    assert isinstance(context, EpochDialogContext)
+    assert context.capability is None
+    assert context.epoch_handoff is None
+    assert context.publication_generation is None
+    assert context.usable is False
+    assert context.unavailable_reason == PUBLIC_VIEW_UNAVAILABLE_MESSAGE
+    with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
+        context.require_usable()
+    runtime.get_view_publication.assert_called_once_with()
+
+
+def test_epoch_dialog_context_rejects_invalid_handoff_payload(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    publication = get_application_service(Study()).get_view_publication()
+    publication = replace(
+        publication,
+        state=replace(
+            publication.state,
+            interpretation=replace(
+                publication.state.interpretation,
+                epoch_handoff=cast(Any, {"default_epoch_events": "left"}),
+            ),
+        ),
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    context = get_epoch_dialog_context(widget, runtime=runtime)
+
+    assert context.usable is False
+    assert context.epoch_handoff is None
+    assert context.publication_generation == publication.generation
+    assert context.unavailable_reason == PUBLIC_VIEW_UNAVAILABLE_MESSAGE
+    with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
+        context.require_usable()
+    assert runtime.publication_reads == 1
+
+
+def test_epoch_dialog_context_rejects_invalid_publication_health_shape(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    publication = replace(
+        get_application_service(Study()).get_view_publication(),
+        verified=cast(bool, "verified"),
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    context = get_epoch_dialog_context(widget, runtime=runtime)
+
+    assert context.usable is False
+    assert context.epoch_handoff is None
+    assert context.publication_generation == publication.generation
+    with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
+        context.require_usable()
+    assert runtime.publication_reads == 1
+
+
+def test_epoch_dialog_context_resolves_runtime_before_service_is_cached(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import runtime as application_runtime
+
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    expected = {"ready": True, "label_source": "bids_events"}
+    baseline = get_application_service(Study()).get_view_publication()
+    publication = replace(
+        baseline,
+        state=replace(
+            baseline.state,
+            interpretation=replace(
+                baseline.state.interpretation,
+                epoch_handoff=expected,
+            ),
+        ),
+    )
+    service = SimpleNamespace(
+        get_view_publication=MagicMock(return_value=publication),
+    )
+    locate_service = MagicMock(return_value=service)
+    monkeypatch.setattr(application_runtime, "get_application_service", locate_service)
+
+    context = get_epoch_dialog_context(widget)
+
+    assert context.usable is True
+    assert context.epoch_handoff == expected
+    assert context.publication_generation == publication.generation
+    locate_service.assert_called_once_with(study)
+    service.get_view_publication.assert_called_once_with()
 
 
 def test_execute_application_command_triggers_changed_state_refresh(
@@ -84,15 +453,7 @@ def test_execute_application_command_triggers_changed_state_refresh(
             assert isinstance(command, QueryStateCommand)
             return result
 
-    def _service_for(provided_study):
-        assert provided_study is study
-        return _Service()
-
-    monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        _service_for,
-    )
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
     monkeypatch.setattr(
         application_capabilities,
         "refresh_after_command",
@@ -101,10 +462,95 @@ def test_execute_application_command_triggers_changed_state_refresh(
         ),
     )
 
-    command_result = execute_application_command(widget, QueryStateCommand())
+    command_result = execute_application_command(
+        widget,
+        QueryStateCommand(),
+        runtime=runtime,
+    )
 
     assert command_result is result
     assert refresh_calls == [(widget, result)]
+
+
+def test_execute_application_command_forwards_expected_publication_generation(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import runtime as application_runtime
+
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    command = QueryStateCommand()
+    result = CommandResult.success_result(
+        command_name=command.name.value,
+        message="ok",
+        state=None,
+        changed_state=ChangedState(),
+    )
+    service = SimpleNamespace(execute=MagicMock(return_value=result))
+    monkeypatch.setattr(
+        application_runtime,
+        "get_application_service",
+        MagicMock(return_value=service),
+    )
+
+    observed = execute_application_command(
+        widget,
+        command,
+        expected_publication_generation=37,
+        refresh=False,
+    )
+
+    assert observed is result
+    service.execute.assert_called_once_with(
+        command,
+        expected_publication_generation=37,
+    )
+
+
+def test_ui_stale_publication_rejection_does_not_execute_handler(qtbot):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    service = get_application_service(study)
+    reviewed_publication = service.get_view_publication()
+    changed_state = replace(
+        reviewed_publication.state,
+        pipeline_stage="raw_loaded",
+        raw=replace(reviewed_publication.state.raw, loaded=True, count=1),
+        active_dataset=replace(
+            reviewed_publication.state.active_dataset,
+            has_raw_data=True,
+        ),
+    )
+    cast(Any, service).state_snapshot.build = MagicMock(
+        return_value=changed_state,
+    )
+    handler = MagicMock(return_value="Session reset.")
+    cast(Any, service)._command_handlers[CommandName.RESET_SESSION] = handler
+    service.get_state()
+    current_publication = service.get_view_publication()
+
+    result = execute_application_command(
+        widget,
+        ResetSessionCommand(confirmed=True),
+        expected_publication_generation=reviewed_publication.generation,
+        refresh=False,
+    )
+
+    assert result is not None
+    assert result.failed is True
+    assert result.diagnostics["stale_publication"] is True
+    assert result.diagnostics["expected_publication_generation"] == (
+        reviewed_publication.generation
+    )
+    assert result.diagnostics["current_publication_generation"] == (
+        current_publication.generation
+    )
+    handler.assert_not_called()
 
 
 def test_execute_application_command_suppresses_observer_refresh_until_result_refresh(
@@ -159,13 +605,13 @@ def test_execute_application_command_suppresses_observer_refresh_until_result_re
             assert refresh_after_observer(widget, event_name="data_changed") is False
             return result
 
-    monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda provided_study: _Service(),
-    )
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
 
-    command_result = execute_application_command(widget, QueryStateCommand())
+    command_result = execute_application_command(
+        widget,
+        QueryStateCommand(),
+        runtime=runtime,
+    )
 
     assert command_result is result
     assert main_window.dataset_panel.update_calls == 1
@@ -195,15 +641,7 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
             assert isinstance(command, QueryStateCommand)
             return result
 
-    def _service_for(provided_study):
-        assert provided_study is study
-        return _Service()
-
-    monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        _service_for,
-    )
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
     monkeypatch.setattr(
         application_capabilities,
         "refresh_after_command",
@@ -216,10 +654,44 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
         widget,
         QueryStateCommand(),
         refresh=False,
+        runtime=runtime,
     )
 
     assert command_result is result
     assert refresh_calls == []
+
+
+def test_ui_state_query_uses_unified_application_command_surface(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="published",
+        state=None,
+        changed_state=ChangedState(),
+    )
+
+    class _Service:
+        def execute(self, command):
+            assert isinstance(command, QueryStateCommand)
+            assert command.query == "state"
+            return result
+
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
+
+    command_result = execute_application_command(
+        widget,
+        QueryStateCommand(query="state"),
+        refresh=False,
+        runtime=runtime,
+    )
+
+    assert command_result is result
 
 
 def test_execute_application_command_async_runs_service_off_gui_call_stack(
@@ -253,18 +725,14 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
         def start(self, worker):
             started_workers.append(worker)
 
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
     monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda provided_study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities.QThreadPool,
+        async_command_runner.QThreadPool,
         "globalInstance",
         lambda: _ThreadPool(),
     )
     monkeypatch.setattr(
-        application_capabilities,
+        async_command_runner,
         "refresh_after_command",
         lambda context, command_result: refresh_calls.append(
             (context, command_result),
@@ -275,13 +743,14 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
         widget,
         QueryStateCommand(),
         on_result=callbacks.append,
+        runtime=runtime,
     )
 
     assert started is True
     assert busy_states == [True]
     assert executed == []
     assert len(started_workers) == 1
-    assert cast(Any, widget)._xbrainlab_active_application_workers == started_workers
+    assert application_command_registry().active_count(widget) == 1
 
     started_workers[0].run()
 
@@ -289,7 +758,372 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
     assert callbacks == [result]
     assert refresh_calls == [(widget, result)]
     assert busy_states == [True, False]
-    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+    assert application_command_registry().active_count(widget) == 0
+
+
+def test_execute_application_command_async_forwards_expected_publication_generation(
+    qtbot,
+    monkeypatch,
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    command = QueryStateCommand()
+    result = CommandResult.success_result(
+        command_name=command.name.value,
+        message="ok",
+        state=None,
+        changed_state=ChangedState(),
+    )
+    received_generations: list[int | None] = []
+    started_workers = []
+
+    class _Runtime:
+        def execute(
+            self,
+            received_command: Command,
+            *,
+            expected_publication_generation: int | None = None,
+        ) -> CommandResult:
+            assert received_command is command
+            received_generations.append(expected_publication_generation)
+            return result
+
+    class _ThreadPool:
+        def start(self, worker) -> None:
+            started_workers.append(worker)
+
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        command,
+        expected_publication_generation=41,
+        on_result=lambda _result: None,
+        runtime=cast(Any, _Runtime()),
+    )
+
+    assert started is True
+    assert received_generations == []
+    started_workers[0].run()
+    assert received_generations == [41]
+
+
+def test_async_application_command_reports_correlated_handoff_terminal_callback(
+    qtbot,
+    monkeypatch,
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    workers = []
+    terminal = []
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="State read completed.",
+        state={},
+        changed_state=ChangedState(),
+    )
+    runtime = _ApplicationRuntimeFake(execute=lambda _command: result)
+
+    class _ThreadPool:
+        def start(self, worker):
+            workers.append(worker)
+
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+    completion = InteractionCompletionSession(
+        request_id="handoff-1",
+        command_name="query_state",
+        on_terminal=terminal.append,
+    )
+
+    with bind_interaction_completion(completion):
+        started = execute_application_command_async(
+            widget,
+            QueryStateCommand(),
+            on_result=lambda _result: None,
+            runtime=runtime,
+        )
+
+    assert started is True
+    assert completion.has_scheduled_command is True
+    assert terminal == []
+
+    workers[0].run()
+
+    assert len(terminal) == 1
+    assert terminal[0].request_id == "handoff-1"
+    assert terminal[0].status is InteractionCompletionStatus.COMPLETED
+
+
+def test_async_application_command_finished_without_outcome_fails_handoff(
+    qtbot,
+    monkeypatch,
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    workers = []
+    terminal = []
+    runtime = _ApplicationRuntimeFake(
+        execute=_unexpected_execution(
+            "runtime execution is not needed for a finished-only signal",
+        ),
+    )
+
+    class _ThreadPool:
+        def start(self, worker):
+            workers.append(worker)
+
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+    completion = InteractionCompletionSession(
+        request_id="handoff-finished-only",
+        command_name="query_state",
+        on_terminal=terminal.append,
+    )
+
+    with bind_interaction_completion(completion):
+        started = execute_application_command_async(
+            widget,
+            QueryStateCommand(),
+            on_result=lambda _result: None,
+            runtime=runtime,
+        )
+
+    assert started is True
+    assert terminal == []
+
+    workers[0].signals.finished.emit()
+
+    assert len(terminal) == 1
+    assert terminal[0].status is InteractionCompletionStatus.FAILED
+    assert terminal[0].message == (
+        "The asynchronous UI command finished without returning a result."
+    )
+
+
+def test_real_worker_command_mismatch_fails_handoff_once(qtbot) -> None:
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    terminal = []
+    screen_callback = MagicMock()
+    mismatched = CommandResult.success_result(
+        command_name="generate_dataset",
+        message="Unexpected dataset result.",
+        state={},
+        changed_state=ChangedState(datasets_changed=True),
+    )
+    runtime = _ApplicationRuntimeFake(execute=lambda _command: mismatched)
+    completion = InteractionCompletionSession(
+        request_id="handoff-mismatch",
+        command_name="query_state",
+        on_terminal=terminal.append,
+    )
+
+    with bind_interaction_completion(completion):
+        started = execute_application_command_async(
+            widget,
+            QueryStateCommand(),
+            on_result=screen_callback,
+            refresh=False,
+            runtime=runtime,
+        )
+
+    assert started is True
+    qtbot.waitUntil(lambda: bool(terminal), timeout=2_000)
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(widget) == 0,
+        timeout=2_000,
+    )
+
+    assert len(terminal) == 1
+    assert terminal[0].status is InteractionCompletionStatus.FAILED
+    screen_callback.assert_not_called()
+
+
+def test_async_worker_ownership_is_released_only_after_finished(qtbot, monkeypatch):
+    study = Study()
+    widget = QWidget()
+    main_window = SimpleNamespace(study=study)
+    cast(Any, widget).main_window = main_window
+    qtbot.addWidget(widget)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+    callbacks: list[CommandResult] = []
+    workers = []
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="ok",
+        state=None,
+        changed_state=ChangedState(),
+    )
+
+    class _Service:
+        def execute(self, _command):
+            return result
+
+    class _ThreadPool:
+        def start(self, worker):
+            workers.append(worker)
+
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+
+    assert execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=callbacks.append,
+        runtime=runtime,
+    )
+    worker = workers[0]
+    owner_id = id(main_window)
+
+    worker.signals.result.emit(result)
+
+    assert callbacks == [result]
+    assert application_command_registry().active_count(widget) == 1
+    assert busy_states == [True]
+    assert refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS[owner_id] == 1
+
+    worker.signals.finished.emit()
+
+    assert application_command_registry().active_count(widget) == 0
+    assert busy_states == [True, False]
+    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
+
+
+def test_async_command_refuses_non_gui_thread_without_side_effects(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+    results: list[bool] = []
+    runtime = _ApplicationRuntimeFake(
+        execute=_unexpected_execution(
+            "runtime must not execute off the GUI thread",
+        ),
+    )
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: None,
+    )
+
+    caller = threading.Thread(
+        target=lambda: results.append(
+            execute_application_command_async(
+                widget,
+                QueryStateCommand(),
+                on_result=lambda _result: None,
+                runtime=runtime,
+            )
+        )
+    )
+    caller.start()
+    caller.join(timeout=1.0)
+
+    assert not caller.is_alive()
+    assert results == [False]
+    assert busy_states == []
+    assert runtime.commands == []
+    assert application_command_registry().active_count(widget) == 0
+
+
+def test_async_terminal_cleanup_survives_busy_callback_failure(qtbot, monkeypatch):
+    study = Study()
+    widget = QWidget()
+    main_window = SimpleNamespace(study=study)
+    cast(Any, widget).main_window = main_window
+    qtbot.addWidget(widget)
+    workers = []
+    busy_states: list[bool] = []
+
+    def set_busy(busy: bool) -> None:
+        busy_states.append(bool(busy))
+        if not busy:
+            raise RuntimeError("busy target was already torn down")
+
+    cast(Any, widget).set_busy = set_busy
+
+    class _Service:
+        def execute(self, _command):
+            raise AssertionError("worker execution is not needed for this test")
+
+    class _ThreadPool:
+        def start(self, worker):
+            workers.append(worker)
+
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+
+    assert execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=lambda _result: None,
+        runtime=runtime,
+    )
+    worker = workers[0]
+
+    worker.signals.finished.emit()
+
+    assert application_command_registry().active_count(widget) == 0
+    assert busy_states == [True, False]
+    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
+
+
+def test_async_pool_lookup_failure_releases_all_ui_ownership(qtbot, monkeypatch):
+    study = Study()
+    widget = QWidget()
+    main_window = SimpleNamespace(study=study)
+    cast(Any, widget).main_window = main_window
+    qtbot.addWidget(widget)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+    runtime = _ApplicationRuntimeFake(
+        execute=_unexpected_execution(
+            "runtime must not execute when pool lookup fails",
+        ),
+    )
+
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        MagicMock(side_effect=RuntimeError("Qt pool is unavailable")),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=lambda _result: None,
+        runtime=runtime,
+    )
+
+    assert started is False
+    assert busy_states == [True, False]
+    assert application_command_registry().active_count(widget) == 0
+    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 def test_execute_application_command_async_ignores_result_after_widget_deleted(
@@ -320,18 +1154,14 @@ def test_execute_application_command_async_ignores_result_after_widget_deleted(
         def start(self, worker):
             started_workers.append(worker)
 
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
     monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda provided_study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities.QThreadPool,
+        async_command_runner.QThreadPool,
         "globalInstance",
         lambda: _ThreadPool(),
     )
     monkeypatch.setattr(
-        application_capabilities,
+        async_command_runner,
         "refresh_after_command",
         lambda context, command_result: refresh_calls.append(
             (context, command_result),
@@ -342,6 +1172,7 @@ def test_execute_application_command_async_ignores_result_after_widget_deleted(
         widget,
         QueryStateCommand(),
         on_result=callbacks.append,
+        runtime=runtime,
     )
     assert started is True
 
@@ -352,7 +1183,7 @@ def test_execute_application_command_async_ignores_result_after_widget_deleted(
     assert busy_states == [True]
     assert callbacks == []
     assert refresh_calls == []
-    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+    assert application_command_registry().active_count(widget) == 0
 
 
 def test_real_threadpool_cleanup_does_not_dereference_deleted_widget(
@@ -379,29 +1210,102 @@ def test_real_threadpool_cleanup_does_not_dereference_deleted_widget(
             assert worker_release.wait(timeout=2.0)
             return result
 
-    monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda _study: _Service(),
-    )
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
 
     assert execute_application_command_async(
         widget,
         QueryStateCommand(),
         on_result=callbacks.append,
+        runtime=runtime,
     )
     assert worker_started.wait(timeout=1.0)
-    active_workers = cast(Any, widget)._xbrainlab_active_application_workers
     owner_id = id(main_window)
+    assert application_command_registry().active_count(widget) == 1
     assert refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS[owner_id] == 1
 
     widget.deleteLater()
     qtbot.waitUntil(lambda: sip.isdeleted(widget), timeout=1_000)
     worker_release.set()
-    qtbot.waitUntil(lambda: active_workers == [], timeout=1_000)
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(widget) == 0,
+        timeout=1_000,
+    )
 
     assert callbacks == []
     assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
+
+
+@pytest.mark.parametrize("outcome", ["success", "error"])
+def test_real_threadpool_delivers_terminal_callback_on_gui_thread(
+    qtbot,
+    monkeypatch,
+    outcome,
+):
+    study = Study()
+    widget = QWidget()
+    main_window = SimpleNamespace(study=study)
+    cast(Any, widget).main_window = main_window
+    qtbot.addWidget(widget)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+    worker_started = threading.Event()
+    worker_release = threading.Event()
+    callback_threads: list[bool] = []
+    results: list[CommandResult] = []
+    errors: list[tuple] = []
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="ok",
+        state=None,
+        changed_state=ChangedState(),
+    )
+
+    class _Service:
+        def execute(self, _command):
+            worker_started.set()
+            assert worker_release.wait(timeout=2.0)
+            if outcome == "error":
+                raise RuntimeError("worker failed")
+            return result
+
+    def on_result(value: CommandResult) -> None:
+        application = QCoreApplication.instance()
+        callback_threads.append(
+            application is not None and QThread.currentThread() == application.thread()
+        )
+        results.append(value)
+
+    def on_error(value: tuple) -> None:
+        application = QCoreApplication.instance()
+        callback_threads.append(
+            application is not None and QThread.currentThread() == application.thread()
+        )
+        errors.append(value)
+
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
+
+    assert execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=on_result,
+        on_error=on_error,
+        refresh=False,
+        runtime=runtime,
+    )
+    assert worker_started.wait(timeout=1.0)
+    assert application_command_registry().active_count(widget) == 1
+
+    worker_release.set()
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(widget) == 0,
+        timeout=2_000,
+    )
+
+    assert callback_threads == [True]
+    assert (results == [result]) is (outcome == "success")
+    assert (len(errors) == 1) is (outcome == "error")
+    assert busy_states == [True, False]
+    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 def test_async_result_is_suppressed_after_main_window_starts_closing(
@@ -430,13 +1334,9 @@ def test_async_result_is_suppressed_after_main_window_starts_closing(
             assert worker_release.wait(timeout=2.0)
             return result
 
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
     monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda _study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities,
+        async_command_runner,
         "refresh_after_command",
         lambda *_args: refreshes.append(True),
     )
@@ -445,24 +1345,28 @@ def test_async_result_is_suppressed_after_main_window_starts_closing(
         widget,
         QueryStateCommand(),
         on_result=callbacks.append,
+        runtime=runtime,
     )
     assert worker_started.wait(timeout=1.0)
-    active_workers = cast(Any, widget)._xbrainlab_active_application_workers
+    assert application_command_registry().active_count(widget) == 1
 
     main_window._closing_in_progress = True
     worker_release.set()
-    qtbot.waitUntil(lambda: active_workers == [], timeout=1_000)
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(widget) == 0,
+        timeout=1_000,
+    )
 
     assert callbacks == []
     assert refreshes == []
 
 
-def test_execute_application_command_async_returns_false_for_mock_study(
+def test_execute_application_command_async_returns_false_for_non_product_study(
     qtbot,
     monkeypatch,
 ):
     widget = QWidget()
-    cast(Any, widget).main_window = SimpleNamespace(study=MagicMock())
+    cast(Any, widget).main_window = SimpleNamespace(study=object())
     qtbot.addWidget(widget)
     started_workers = []
 
@@ -471,7 +1375,7 @@ def test_execute_application_command_async_returns_false_for_mock_study(
             started_workers.append(worker)
 
     monkeypatch.setattr(
-        application_capabilities.QThreadPool,
+        async_command_runner.QThreadPool,
         "globalInstance",
         lambda: _ThreadPool(),
     )
@@ -491,22 +1395,29 @@ def test_shutdown_fence_request_uses_immediate_service_admission(qtbot, monkeypa
     widget = QWidget()
     cast(Any, widget).study = study
     qtbot.addWidget(widget)
-    service = MagicMock()
-    monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda _study: service,
-    )
+    runtime = _ApplicationRuntimeFake()
 
-    installed = request_application_shutdown_fence(widget)
+    installed = request_application_shutdown_fence(widget, runtime=runtime)
 
     assert installed is True
-    service.request_shutdown_fence.assert_called_once_with()
+    assert runtime.shutdown_requests == 1
 
-    released = release_application_shutdown_fence(widget)
+    released = release_application_shutdown_fence(widget, runtime=runtime)
 
     assert released is True
-    service.release_shutdown_fence.assert_called_once_with()
+    assert runtime.shutdown_releases == 1
+
+
+def test_shutdown_fence_release_propagates_runtime_retry_state(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    runtime = _ApplicationRuntimeFake()
+    runtime.shutdown_release_succeeds = False
+
+    released = release_application_shutdown_fence(widget, runtime=runtime)
+
+    assert released is False
+    assert runtime.shutdown_releases == 1
 
 
 def test_execute_application_command_async_returns_false_without_thread_pool(
@@ -524,13 +1435,9 @@ def test_execute_application_command_async_returns_false_without_thread_pool(
         def execute(self, command):
             raise AssertionError("service should not run without a thread pool")
 
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
     monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda provided_study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities.QThreadPool,
+        async_command_runner.QThreadPool,
         "globalInstance",
         lambda: None,
     )
@@ -539,11 +1446,12 @@ def test_execute_application_command_async_returns_false_without_thread_pool(
         widget,
         QueryStateCommand(),
         on_result=lambda _result: None,
+        runtime=runtime,
     )
 
     assert started is False
     assert busy_states == [True, False]
-    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+    assert application_command_registry().active_count(widget) == 0
 
 
 def test_execute_application_command_async_returns_false_when_worker_start_fails(
@@ -565,13 +1473,9 @@ def test_execute_application_command_async_returns_false_when_worker_start_fails
         def start(self, worker):
             raise RuntimeError("thread pool rejected worker")
 
+    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
     monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda provided_study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities.QThreadPool,
+        async_command_runner.QThreadPool,
         "globalInstance",
         lambda: _ThreadPool(),
     )
@@ -580,11 +1484,12 @@ def test_execute_application_command_async_returns_false_when_worker_start_fails
         widget,
         QueryStateCommand(),
         on_result=lambda _result: None,
+        runtime=runtime,
     )
 
     assert started is False
     assert busy_states == [True, False]
-    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+    assert application_command_registry().active_count(widget) == 0
 
 
 def test_legacy_controller_fallback_refuses_real_study(qtbot):

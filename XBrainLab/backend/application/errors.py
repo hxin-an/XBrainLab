@@ -8,6 +8,9 @@ from typing import Any
 from XBrainLab.backend.exceptions import (
     DataMismatchError,
     FileCorruptedError,
+    SaliencyCancellationTimeoutError,
+    SaliencyRecomputationResourceError,
+    StaleSaliencyUpdateError,
     UnsupportedFormatError,
 )
 
@@ -76,6 +79,40 @@ def map_exception(exc: Exception) -> ApplicationError:
             message=str(exc),
             error_type=ErrorType.DATA_MISMATCH,
             recoverable=True,
+        )
+    if isinstance(exc, StaleSaliencyUpdateError):
+        return ApplicationError(
+            message=str(exc),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            diagnostics={
+                "retryable": True,
+                "stale_saliency_update": True,
+                "state_preserved": True,
+            },
+        )
+    if isinstance(exc, SaliencyRecomputationResourceError):
+        return ApplicationError(
+            message=str(exc),
+            error_type=ErrorType.VISUALIZATION,
+            recoverable=True,
+            diagnostics={
+                "retryable": True,
+                "resource": "cuda_memory",
+                "operation": "saliency_recomputation",
+                "state_preserved": True,
+            },
+        )
+    if isinstance(exc, SaliencyCancellationTimeoutError):
+        return ApplicationError(
+            message=str(exc),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            diagnostics={
+                "retryable": True,
+                "operation": "saliency_cancellation",
+                "state_preserved": True,
+            },
         )
     if isinstance(exc, (TypeError, ValueError)):
         message = str(exc)

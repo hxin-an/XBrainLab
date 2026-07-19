@@ -3,6 +3,7 @@
 import pytest
 
 from XBrainLab.llm.core.backends.base import BaseBackend
+from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 
 
 class TestBaseBackend:
@@ -12,7 +13,8 @@ class TestBaseBackend:
 
     def test_subclass_must_implement_load(self):
         class Incomplete(BaseBackend):
-            def generate_stream(self, messages):
+            def generate_stream(self, messages, *, options):
+                del messages, options
                 yield "test"
 
         with pytest.raises(TypeError):
@@ -31,11 +33,20 @@ class TestBaseBackend:
             def load(self):
                 self.loaded = True
 
-            def generate_stream(self, messages):
+            def generate_stream(self, messages, *, options):
+                del messages, options
                 yield "chunk"
 
         backend = Complete()
         backend.load()
         assert backend.loaded is True
-        chunks = list(backend.generate_stream([]))
+        chunks = list(
+            backend.generate_stream(
+                [],
+                options=ResolvedGenerationOptions(
+                    max_new_tokens=32,
+                    do_sample=False,
+                ),
+            )
+        )
         assert chunks == ["chunk"]

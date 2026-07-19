@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
@@ -48,6 +49,7 @@ class ChangedState:
     visualization_changed: bool = False
     interpretation_changed: bool = False
     error_changed: bool = False
+    state_unknown: bool = False
 
     def any_changed(self) -> bool:
         """Return whether any tracked state area changed."""
@@ -73,6 +75,7 @@ class CommandResult:
     runtime: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "state", deepcopy(self.state))
         safe_diagnostics, extracted_runtime = split_runtime_fields(self.diagnostics)
         object.__setattr__(self, "diagnostics", safe_diagnostics)
         object.__setattr__(

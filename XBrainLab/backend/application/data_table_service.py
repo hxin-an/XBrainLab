@@ -37,21 +37,19 @@ class DataTableCommandService:
             raise PreconditionError("subject or session is required.")
 
         loaded_count = len(self.dataset.get_loaded_data_list())
-        updated = 0
+        selected: list[tuple[int, str | None, str | None]] = []
         skipped: list[int] = []
         for update in updates:
             if 0 <= update.index < loaded_count:
-                self.dataset.update_metadata(
-                    update.index,
-                    subject=update.subject,
-                    session=update.session,
+                selected.append(
+                    (update.index, update.subject, update.session),
                 )
-                updated += 1
             else:
                 skipped.append(update.index)
 
-        if updated == 0:
+        if not selected:
             raise PreconditionError("No valid metadata rows were selected.")
+        updated = int(self.dataset.update_metadata_batch(selected))
         return (
             f"Updated metadata for {updated} file(s).",
             {"success_count": updated, "skipped_indices": skipped},

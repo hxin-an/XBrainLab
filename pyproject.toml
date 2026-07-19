@@ -105,7 +105,6 @@ exclude = [
 ignore = [
     "PLR09",
     "PLR2004",
-    "S110",
     "N999"  # Ignore module naming for XBrainLab
 ]
 select = [
@@ -207,6 +206,7 @@ omit = [
 concurrency = ["multiprocessing"]
 
 [tool.coverage.report]
+fail_under = 50
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
@@ -230,13 +230,13 @@ quality-dashboard = "python scripts/dev/update_quality_dashboard.py"
 quality-dashboard-full = "python scripts/dev/update_quality_dashboard.py --include-slow-checks"
 
 # Testing
-test-unit = "pytest tests/unit -v"
-test-integration = "pytest tests/integration -v"
+test-unit = "python scripts/dev/run_tests.py unit"
+test-integration = "python scripts/dev/run_tests.py integration"
 test-backend = "pytest tests/unit/backend tests/integration -v"
 test-ui = "pytest tests/unit/ui -v"
 test-llm = "pytest tests/unit/llm -v"
 test-real = "pytest tests/unit/llm/tools/real"
-test-all = "pytest"
+test-all = "python scripts/dev/run_tests.py all"
 test-cov = "pytest --cov=XBrainLab --cov-report=html --cov-report=term-missing"
 
 # Code Quality

@@ -5,8 +5,109 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.downloader import (
+    ModelDownloadOutcome,
+    ModelDownloadStatus,
+    ModelDownloadTarget,
+)
+from XBrainLab.llm.core.model_download_lifecycle import (
+    ModelCacheCleanupReason,
+    ModelCacheCleanupRequest,
+    ModelCacheCleanupResult,
+    ModelStatusInspectionRequest,
+    ModelStatusInspectionResult,
+)
+
+
+class _FakeDownloadLifecycle(QObject):
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(object)
+    terminal = pyqtSignal(bool, str)
+    cache_cleanup_finished = pyqtSignal(object)
+    inspection_finished = pyqtSignal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.idle = True
+        self.cancel_requests = 0
+        self.start_requests: list[tuple[str, str]] = []
+        self.removal_requests: list[tuple[str, str, ModelCacheCleanupReason]] = []
+        self.inspection_requests: list[ModelStatusInspectionRequest] = []
+        self.active_target: ModelDownloadTarget | None = None
+
+    def start_download(self, repo_id: str, cache_dir: str) -> bool:
+        if not self.idle:
+            return False
+        self.idle = False
+        self.start_requests.append((repo_id, cache_dir))
+        self.active_target = ModelDownloadTarget.create(repo_id, cache_dir)
+        return True
+
+    def request_cancel(self) -> bool:
+        self.cancel_requests += 1
+        return self.idle
+
+    def request_shutdown(self) -> bool:
+        return self.request_cancel()
+
+    def request_cache_removal(
+        self,
+        repo_id: str,
+        cache_dir: str,
+        *,
+        reason: ModelCacheCleanupReason,
+    ) -> bool:
+        if not self.idle:
+            return False
+        self.idle = False
+        self.removal_requests.append((repo_id, cache_dir, reason))
+        return True
+
+    def is_idle(self) -> bool:
+        return self.idle
+
+    def request_model_inspection(
+        self,
+        request: ModelStatusInspectionRequest,
+    ) -> bool:
+        self.inspection_requests.append(request)
+        return True
+
+    def complete_inspection(
+        self,
+        *,
+        installed: bool,
+        runtime_ready: bool,
+        runtime_message: str,
+        current_cache_bytes: int = 0,
+        estimated_download_bytes: int = 8_000_000_000,
+        projected_cache_bytes: int = 8_000_000_000,
+        available_disk_bytes: int = 100_000_000_000,
+        preflight_ok: bool = True,
+        preflight_message: str = "Ready",
+        cleanup_candidates: tuple[str, ...] = (),
+    ) -> ModelStatusInspectionResult:
+        request = self.inspection_requests[-1]
+        result = ModelStatusInspectionResult(
+            request=request,
+            installed=installed,
+            runtime_ready=runtime_ready,
+            runtime_message=runtime_message,
+            estimated_download_bytes=estimated_download_bytes,
+            current_cache_bytes=current_cache_bytes,
+            projected_cache_bytes=projected_cache_bytes,
+            available_disk_bytes=available_disk_bytes,
+            preflight_ok=preflight_ok,
+            preflight_message=preflight_message,
+            cleanup_candidates=cleanup_candidates,
+        )
+        self.inspection_finished.emit(result)
+        return result
 
 
 @pytest.fixture
@@ -22,23 +123,20 @@ def config():
 
 @pytest.fixture
 def dialog(qtbot, config):
+    lifecycle = _FakeDownloadLifecycle()
     with (
         patch.object(LLMConfig, "load_from_file", return_value=config),
-        patch("XBrainLab.ui.dialogs.model_settings_dialog.ModelDownloader") as MockDL,
         patch("os.path.exists", return_value=False),
         patch("os.listdir", return_value=[]),
     ):
-        dl = MockDL.return_value
-        dl.progress = MagicMock()
-        dl.finished = MagicMock()
-        dl.failed = MagicMock()
-        dl.progress.connect = MagicMock()
-        dl.finished.connect = MagicMock()
-        dl.failed.connect = MagicMock()
-
         from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 
-        dlg = ModelSettingsDialog(parent=None, config=config, agent_manager=MagicMock())
+        dlg = ModelSettingsDialog(
+            parent=None,
+            config=config,
+            agent_manager=MagicMock(),
+            download_lifecycle=lifecycle,
+        )
         qtbot.addWidget(dlg)
         yield dlg
 
@@ -47,6 +145,67 @@ class TestModelSettingsInit:
     def test_creates_dialog(self, dialog):
         assert dialog.windowTitle() == "AI Assistant Settings"
         assert dialog.isVisible() is False
+
+    def test_constructor_defers_cache_scan_and_runtime_probe(
+        self,
+        qtbot,
+        config,
+    ):
+        lifecycle = _FakeDownloadLifecycle()
+        with (
+            patch.object(LLMConfig, "load_from_file", return_value=config),
+            patch(
+                "XBrainLab.llm.core.model_download_lifecycle.plan_model_download",
+                side_effect=AssertionError("cache scan ran in constructor"),
+            ),
+            patch.object(
+                config,
+                "has_local_model_cache",
+                side_effect=AssertionError("cache probe ran in constructor"),
+            ),
+            patch.object(
+                config,
+                "local_backend_ready",
+                side_effect=AssertionError("runtime probe ran in constructor"),
+            ),
+            patch.object(
+                config,
+                "local_backend_status_message",
+                side_effect=AssertionError("runtime status ran in constructor"),
+            ),
+        ):
+            from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+            created = ModelSettingsDialog(
+                parent=None,
+                config=config,
+                download_lifecycle=lifecycle,
+            )
+            qtbot.addWidget(created)
+
+        assert lifecycle.inspection_requests == []
+        assert created.local_status_label.text() == "Model: Checking..."
+        qtbot.waitUntil(lambda: len(lifecycle.inspection_requests) == 1, timeout=1000)
+
+    def test_constructor_defers_persisted_config_and_torch_defaults(self, qtbot):
+        lifecycle = _FakeDownloadLifecycle()
+        with patch.object(
+            LLMConfig,
+            "load_from_file",
+            side_effect=AssertionError("persisted config loaded in constructor"),
+        ):
+            from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+            created = ModelSettingsDialog(
+                parent=None,
+                config=None,
+                download_lifecycle=lifecycle,
+            )
+            qtbot.addWidget(created)
+
+        assert lifecycle.inspection_requests == []
+        qtbot.waitUntil(lambda: len(lifecycle.inspection_requests) == 1, timeout=1000)
+        assert lifecycle.inspection_requests[0].load_persisted_config is True
 
     def test_combo_has_only_approved_local_models(self, dialog):
         model_ids = [
@@ -63,6 +222,38 @@ class TestModelSettingsInit:
         assert not hasattr(dialog, "gemini_group")
         assert not hasattr(dialog, "gemini_model_combo")
 
+    def test_uses_one_enable_setting_and_a_save_action(self, dialog):
+        assert dialog.local_enable_chk.text() == "Use local assistant"
+        assert dialog.btn_activate.text() == "Save"
+        assert not any(
+            button.text() == "Activate" for button in dialog.findChildren(QPushButton)
+        )
+
+    def test_dialog_supports_reasonable_resize_without_fixed_geometry(
+        self,
+        dialog,
+        qtbot,
+    ):
+        dialog.show()
+        qtbot.wait(0)
+        minimum = dialog.minimumSize()
+
+        dialog.resize(minimum.width() + 180, minimum.height() + 120)
+        qtbot.wait(0)
+
+        assert dialog.width() >= minimum.width() + 180
+        assert dialog.height() >= minimum.height() + 120
+        assert dialog.maximumWidth() > dialog.minimumWidth()
+        assert dialog.maximumHeight() > dialog.minimumHeight()
+        for widget in (
+            dialog.local_status_label,
+            dialog.local_runtime_label,
+            dialog.local_resource_label,
+            dialog.btn_activate,
+            dialog.btn_cancel,
+        ):
+            assert dialog.rect().contains(widget.geometry().center())
+
     def test_legacy_remote_config_loads_as_local_only(self, qtbot, config):
         config.inference_mode = "gemini"
         config.active_mode = "gemini"
@@ -70,25 +261,18 @@ class TestModelSettingsInit:
 
         with (
             patch.object(LLMConfig, "load_from_file", return_value=config),
-            patch(
-                "XBrainLab.ui.dialogs.model_settings_dialog.ModelDownloader"
-            ) as MockDL,
             patch("os.path.exists", return_value=False),
             patch("os.listdir", return_value=[]),
         ):
-            dl = MockDL.return_value
-            dl.progress = MagicMock()
-            dl.finished = MagicMock()
-            dl.failed = MagicMock()
-            dl.progress.connect = MagicMock()
-            dl.finished.connect = MagicMock()
-            dl.failed.connect = MagicMock()
-
             from XBrainLab.ui.dialogs.model_settings_dialog import (
                 ModelSettingsDialog,
             )
 
-            dlg = ModelSettingsDialog(parent=None, config=config)
+            dlg = ModelSettingsDialog(
+                parent=None,
+                config=config,
+                download_lifecycle=_FakeDownloadLifecycle(),
+            )
             qtbot.addWidget(dlg)
 
         assert dlg.config.assistant_runtime_selection().backend_mode == "local"
@@ -98,8 +282,12 @@ class TestModelSettingsInit:
 
 class TestLocalModelSection:
     def test_check_local_model_status_not_downloaded(self, dialog):
-        with patch("os.path.exists", return_value=False):
-            dialog.check_local_model_status()
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+        )
 
         assert (
             "not downloaded" in dialog.local_status_label.text().lower()
@@ -107,69 +295,218 @@ class TestLocalModelSection:
         )
 
     def test_check_local_model_status_downloaded(self, dialog):
-        with (
-            patch("os.path.exists", return_value=True),
-            patch(
-                "os.listdir",
-                return_value=[
-                    "config.json",
-                    "tokenizer_config.json",
-                    "model.safetensors.index.json",
-                ],
-            ),
-        ):
-            dialog.check_local_model_status()
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
 
         assert dialog.local_downloaded is True
-        assert "downloaded" in dialog.local_status_label.text().lower()
+        assert dialog.local_status_label.text() == "Model: Installed"
+
+    def test_status_runtime_and_cache_are_rendered_from_one_snapshot(self, dialog):
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+            estimated_download_bytes=7_690_000_000,
+            current_cache_bytes=3_250_000_000,
+            projected_cache_bytes=10_940_000_000,
+        )
+
+        assert dialog.local_status_label.text() == "Model: Installed"
+        assert dialog.local_runtime_label.text() == "Runtime: Available"
+        assert "3.25 GB" in dialog.local_resource_label.text()
+        assert "[+]" not in dialog.local_status_label.text()
+
+    def test_status_summary_never_exposes_the_local_cache_path(self, dialog):
+        sensitive_cache = dialog.config.cache_dir
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+            current_cache_bytes=3_000_000_000,
+            projected_cache_bytes=10_000_000_000,
+        )
+
+        visible = " ".join(
+            (
+                dialog.local_status_label.text(),
+                dialog.local_runtime_label.text(),
+                dialog.local_resource_label.text(),
+            )
+        )
+        assert sensitive_cache not in visible
 
     def test_start_download(self, dialog):
         dialog.is_downloading = False
-        with patch(
-            "XBrainLab.ui.dialogs.model_settings_dialog.plan_model_download",
-        ) as mock_plan:
-            mock_plan.return_value.ok = True
-            mock_plan.return_value.message = "Download allowed"
-            dialog._start_download()
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+            preflight_ok=True,
+            preflight_message="Download allowed",
+        )
+
+        dialog._start_download()
 
         assert dialog.is_downloading is True
         assert "cancel" in dialog.local_action_btn.text().lower()
 
+    def test_start_failure_is_not_misreported_as_an_active_download(self, dialog):
+        dialog.is_downloading = False
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+        )
+        with patch.object(
+            dialog.download_lifecycle,
+            "start_download",
+            return_value=False,
+        ):
+            dialog.download_lifecycle.idle = True
+            dialog._start_download()
+
+        assert dialog.is_downloading is False
+        assert dialog.local_status_label.text() == "Download could not start."
+        assert "another" not in dialog.local_status_label.text().lower()
+
     def test_start_download_blocks_failed_preflight(self, dialog):
         dialog.is_downloading = False
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.model_settings_dialog.plan_model_download",
-            ) as mock_plan,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-        ):
-            mock_plan.return_value.ok = False
-            mock_plan.return_value.message = "cache too large"
-            mock_plan.return_value.current_cache_bytes = 15_000_000_000
-            mock_plan.return_value.estimated_download_bytes = 8_000_000_000
-            mock_plan.return_value.available_disk_bytes = 100_000_000_000
-            mock_plan.return_value.projected_cache_bytes = 23_000_000_000
-            mock_plan.return_value.cache_dir = "/models"
-            mock_plan.return_value.cleanup_candidates = ("/models/blocked",)
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+            preflight_ok=False,
+            preflight_message="cache too large",
+            current_cache_bytes=15_000_000_000,
+            estimated_download_bytes=8_000_000_000,
+            available_disk_bytes=100_000_000_000,
+            projected_cache_bytes=23_000_000_000,
+            cleanup_candidates=("/models/blocked",),
+        )
+        with patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning:
             dialog._start_download()
 
         assert dialog.is_downloading is False
         mock_warning.assert_called_once()
+        rendered = str(mock_warning.call_args.args[2])
+        assert "/models" not in rendered
+        assert "/models/blocked" not in rendered
+
+    @pytest.mark.parametrize(
+        "sensitive",
+        (
+            "/home/alice/.cache/huggingface/private-model",
+            r"C:\Users\alice\.cache\huggingface\private-model",
+            r"\\server\private\model-cache",
+            "PermissionError: token=hf_super_secret",
+        ),
+    )
+    def test_download_failure_dialog_never_exposes_diagnostics(
+        self,
+        dialog,
+        sensitive,
+    ):
+        target = ModelDownloadTarget.create(
+            dialog.local_model_combo.currentText(),
+            dialog.config.cache_dir,
+        )
+        outcome = ModelDownloadOutcome(
+            target=target,
+            status=ModelDownloadStatus.FAILED,
+            message=sensitive,
+        )
+        dialog.download_lifecycle.idle = True
+
+        with patch("PyQt6.QtWidgets.QMessageBox.critical") as critical:
+            dialog.on_download_failed(outcome)
+
+        rendered = " ".join(str(value) for value in critical.call_args.args)
+        assert sensitive not in rendered
+        assert "Check the application log" in rendered
+
+    @pytest.mark.parametrize(
+        "sensitive",
+        (
+            "/home/alice/.cache/huggingface/private-model",
+            r"C:\Users\alice\.cache\huggingface\private-model",
+            r"\\server\private\model-cache",
+            "RuntimeError: token=hf_super_secret",
+        ),
+    )
+    def test_cache_cleanup_dialog_uses_public_message_only(
+        self,
+        dialog,
+        sensitive,
+    ):
+        target = ModelDownloadTarget.create(
+            dialog.local_model_combo.currentText(),
+            dialog.config.cache_dir,
+        )
+        result = ModelCacheCleanupResult(
+            request=ModelCacheCleanupRequest(
+                target=target,
+                reason=ModelCacheCleanupReason.USER_DELETE,
+            ),
+            errors=(sensitive,),
+        )
+        dialog.download_lifecycle.idle = True
+
+        with patch("PyQt6.QtWidgets.QMessageBox.warning") as warning:
+            dialog.on_cache_cleanup_finished(result)
+
+        rendered = " ".join(str(value) for value in warning.call_args.args)
+        assert sensitive not in rendered
+        assert result.public_message in rendered
 
     def test_on_download_finished(self, dialog):
         dialog.is_downloading = True
+        target = ModelDownloadTarget.create(
+            dialog.local_model_combo.currentText(),
+            dialog.config.cache_dir,
+        )
+        outcome = ModelDownloadOutcome(
+            target=target,
+            status=ModelDownloadStatus.SUCCEEDED,
+            message="/path/to/model",
+            model_path="/path/to/model",
+        )
+        dialog.download_lifecycle.idle = True
         with patch("PyQt6.QtWidgets.QMessageBox.information"):
-            dialog.on_download_finished("/path/to/model")
+            dialog.on_download_finished(outcome)
 
         assert dialog.is_downloading is False
 
-    def test_on_download_failed_cancelled_cleans_partial_files(self, dialog):
+    def test_cancel_outcome_uses_original_target_after_selection_change(
+        self,
+        dialog,
+    ):
+        original_repo = dialog.local_model_combo.itemText(0)
+        other_repo = dialog.local_model_combo.itemText(1)
+        target = ModelDownloadTarget.create(original_repo, dialog.config.cache_dir)
+        outcome = ModelDownloadOutcome(
+            target=target,
+            status=ModelDownloadStatus.CANCELLED,
+            message="Cancelled by user",
+        )
         dialog.is_downloading = True
-        with patch.object(dialog, "_cleanup_partial_files") as cleanup:
-            dialog.on_download_failed("Cancelled by user")
+        dialog.download_lifecycle.idle = True
+        dialog.local_model_combo.setCurrentText(other_repo)
 
+        dialog.on_download_failed(outcome)
+
+        assert outcome.target.repo_id == original_repo
+        assert dialog.local_model_combo.currentText() == other_repo
         assert dialog.is_downloading is False
-        cleanup.assert_called_once()
+        assert not hasattr(dialog, "_cleanup_partial_files")
 
     def test_delete_model_aborts_when_agent_manager_blocks(self, dialog):
         from PyQt6.QtWidgets import QMessageBox
@@ -188,14 +525,52 @@ class TestLocalModelSection:
 
         mock_rmtree.assert_not_called()
 
+    def test_delete_model_delegates_recursive_cleanup_to_app_lifecycle(
+        self,
+        dialog,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        repo_id = dialog.local_model_combo.currentText()
+        dialog.local_downloaded = True
+        dialog.agent_manager.prepare_model_deletion.return_value = True
+        with (
+            patch.object(
+                QMessageBox,
+                "warning",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch("shutil.rmtree") as mock_rmtree,
+        ):
+            dialog._delete_model()
+
+        assert dialog.download_lifecycle.removal_requests == [
+            (
+                repo_id,
+                dialog.config.cache_dir,
+                ModelCacheCleanupReason.USER_DELETE,
+            )
+        ]
+        assert dialog.is_downloading is True
+        mock_rmtree.assert_not_called()
+
     def test_on_local_enable_toggled(self, dialog):
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+        )
+        dialog.local_enable_chk.setChecked(False)
         with (
             patch("os.path.exists", return_value=False),
             patch("os.listdir", return_value=[]),
         ):
             dialog._on_local_enable_toggled(False)
 
-        assert not dialog.local_model_combo.isEnabled()
+        assert dialog.local_model_combo.isEnabled()
+        assert dialog.local_action_btn.isEnabled()
+        assert dialog.btn_activate.isEnabled()
 
 
 class TestActivateAndSave:
@@ -206,46 +581,62 @@ class TestActivateAndSave:
 
         assert not dialog.btn_activate.isEnabled()
 
-    def test_update_validation_state_ready(self, dialog):
-        dialog.local_downloaded = True
+    def test_update_validation_state_allows_saving_disabled_assistant(self, dialog):
+        dialog.local_enable_chk.setChecked(False)
+        dialog.local_downloaded = False
         dialog.is_downloading = False
-        with patch.object(dialog.config, "local_backend_ready", return_value=True):
-            dialog.update_validation_state()
+
+        dialog.update_validation_state()
+
+        assert dialog.btn_activate.isEnabled()
+
+    def test_update_validation_state_ready(self, dialog):
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+        dialog.is_downloading = False
+        dialog.update_validation_state()
 
         assert dialog.btn_activate.isEnabled()
 
     def test_update_validation_state_blocks_missing_local_runtime(self, dialog):
-        dialog.local_downloaded = True
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Missing accelerate.",
+        )
         dialog.is_downloading = False
         dialog.local_enable_chk.setChecked(True)
-        with patch.object(dialog.config, "local_backend_ready", return_value=False):
-            dialog.update_validation_state()
+        dialog.update_validation_state()
 
         assert not dialog.btn_activate.isEnabled()
 
-    def test_refresh_local_runtime_status_shows_cpu_fallback(self, dialog):
-        with (
-            patch.object(dialog.config, "local_backend_ready", return_value=True),
-            patch.object(
-                dialog.config,
-                "local_backend_status_message",
-                return_value=(
-                    "Local runtime ready. GPU execution is unavailable in this "
-                    "environment, so startup will fall back to CPU and disable "
-                    "4-bit loading."
-                ),
+    def test_model_status_shows_cpu_fallback(self, dialog):
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message=(
+                "Local runtime ready. GPU execution is unavailable in this "
+                "environment, so startup will fall back to CPU and disable "
+                "4-bit loading."
             ),
-        ):
-            dialog._refresh_local_runtime_status()
+        )
 
         assert "fall back to CPU" in dialog.local_runtime_label.text()
 
     def test_on_activate_clicked(self, dialog):
-        dialog.local_downloaded = True
-        with (
-            patch.object(dialog.config, "local_backend_ready", return_value=True),
-            patch.object(LLMConfig, "save_to_file") as save,
-        ):
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+        with patch.object(LLMConfig, "save_to_file") as save:
             dialog.on_activate_clicked()
 
         save.assert_called_once()
@@ -254,15 +645,14 @@ class TestActivateAndSave:
         assert not hasattr(dialog.config, "gemini_enabled")
 
     def test_on_activate_clicked_blocks_local_runtime_gap(self, dialog):
-        dialog.local_downloaded = True
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=False,
+            runtime_message="Missing accelerate",
+        )
         dialog.local_enable_chk.setChecked(True)
         with (
-            patch.object(dialog.config, "local_backend_ready", return_value=False),
-            patch.object(
-                dialog.config,
-                "local_backend_status_message",
-                return_value="Missing accelerate",
-            ),
             patch.object(LLMConfig, "save_to_file") as mock_save,
             patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
         ):
@@ -273,18 +663,37 @@ class TestActivateAndSave:
 
 
 class TestRejectAndClose:
+    def test_accept_detaches_download_observers(self, dialog):
+        dialog.local_status_label.setText("Before accept")
+
+        dialog.accept()
+        dialog.download_lifecycle.progress.emit(10, "Hidden callback")
+
+        assert dialog.local_status_label.text() == "Before accept"
+
     def test_reject_while_downloading(self, dialog):
         dialog.is_downloading = True
+        dialog.local_status_label.setText("Before reject")
         dialog.reject()
-        dialog.downloader.shutdown.assert_called_once()
+        dialog.download_lifecycle.progress.emit(10, "Hidden callback")
+
+        assert dialog.download_lifecycle.cancel_requests == 1
+        assert dialog.is_downloading is True
+        assert dialog.local_status_label.text() == "Before reject"
 
     def test_close_event(self, dialog):
         dialog.is_downloading = True
+        dialog.local_status_label.setText("Before close")
         from PyQt6.QtGui import QCloseEvent
 
         event = QCloseEvent()
         dialog.closeEvent(event)
-        dialog.downloader.shutdown.assert_called_once()
+        dialog.download_lifecycle.progress.emit(10, "Hidden callback")
+
+        assert dialog.download_lifecycle.cancel_requests == 1
+        assert dialog.is_downloading is True
+        assert event.isAccepted() is True
+        assert dialog.local_status_label.text() == "Before close"
 
     def test_get_config(self, dialog):
         cfg = dialog.get_config()

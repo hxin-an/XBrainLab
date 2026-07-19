@@ -34,6 +34,10 @@ from XBrainLab.backend.application.data_interpretation_pairing import (
     resolve_label_file_pairing,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import icon_path
+from XBrainLab.ui.dialogs.dataset.event_value_decision_editor import (
+    EventValueDecisionEditor,
+)
 from XBrainLab.ui.dialogs.dataset.internal_event_step import InternalEventStepMixin
 from XBrainLab.ui.dialogs.dataset.label_placement_step import LabelPlacementStepMixin
 from XBrainLab.ui.dialogs.dataset.load_labels_step import LoadLabelsStepMixin
@@ -307,10 +311,12 @@ class DataInterpretationPreviewDialog(
         preview: dict[str, Any] | None = None,
         validation_decision: dict[str, Any] | None = None,
         initial_step: str | None = None,
+        choices: dict[str, Any] | None = None,
     ):
         self.scan_result = dict(scan_result or {})
         self.preview = dict(preview or {})
         self.validation_decision = dict(validation_decision or {})
+        self._initial_choices = dict(choices or {})
         self._initial_step = str(initial_step or "")
         self._resume_step_after_accept = ""
         self.workflow_steps_label: QLabel
@@ -364,6 +370,7 @@ class DataInterpretationPreviewDialog(
         self.target_event_buttons: dict[str, QCheckBox]
         self.target_event_option_frames: dict[str, QFrame]
         self.class_map_rows_widget: QWidget | None = None
+        self.event_value_editor: EventValueDecisionEditor | None = None
         self.save_recipe_check: QCheckBox
         self.file_tree: QTreeWidget
         self.label_carrier_tree: QTreeWidget
@@ -418,11 +425,18 @@ class DataInterpretationPreviewDialog(
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
         self._label_rule_controls_changed = False
+        self._save_recipe_preference: bool | None = None
         initial_label_sources = self._clean_label_sources(
             self.scan_result.get("label_sources")
         )
         self._wizard_state = DataImportWizardState.from_label_sources(
             initial_label_sources
+        )
+        self._wizard_state.label_sources.excluded_carriers = self._clean_label_sources(
+            self._initial_choices.get("excluded_label_carriers")
+        )
+        self._wizard_state.label_sources.skip_labels = bool(
+            self._initial_choices.get("skip_labels")
         )
         super().__init__(
             parent=parent,
@@ -768,6 +782,14 @@ class DataInterpretationPreviewDialog(
             "DataImportCardTitle",
         )
         self._build_label_values_card(label_values_layout)
+        self.event_value_editor = EventValueDecisionEditor(
+            self._event_value_carrier_plans(),
+            self.label_values_card,
+        )
+        self.event_value_editor.decisions_changed.connect(
+            self._handle_event_value_decisions_changed
+        )
+        label_values_layout.addWidget(self.event_value_editor)
         self._build_placement_card(label_values_layout)
         label_panel_layout.addWidget(self.label_values_card)
 
@@ -802,9 +824,10 @@ class DataInterpretationPreviewDialog(
         self.confirmation_label.setWordWrap(True)
         self.save_recipe_check = QCheckBox("Save recipe")
         self.save_recipe_check.setObjectName("DataImportSaveRecipeCheck")
-        apply_allowed = self._apply_allowed()
-        self.save_recipe_check.setChecked(apply_allowed)
-        self.save_recipe_check.setEnabled(apply_allowed)
+        can_submit = self.can_submit_for_backend_review()
+        self.save_recipe_check.setChecked(can_submit)
+        self.save_recipe_check.setEnabled(can_submit)
+        self.save_recipe_check.clicked.connect(self._remember_save_recipe_preference)
         self.save_recipe_check.setToolTip(
             "Save the selected source, metadata, label source, and label placement."
         )
@@ -838,7 +861,7 @@ class DataInterpretationPreviewDialog(
         )
         self.review_tree.setRootIsDecorated(False)
         self.review_tree.setAlternatingRowColors(True)
-        self.review_tree.setUniformRowHeights(True)
+        self.review_tree.setUniformRowHeights(False)
         self.review_tree.setMinimumHeight(132)
         self.review_tree.setMaximumHeight(220)
         self._fit_tree_columns(
@@ -846,6 +869,8 @@ class DataInterpretationPreviewDialog(
             (135, 220, 315, 245),
             stretch_column=3,
         )
+        self.review_tree.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self.review_tree.setWordWrap(True)
         self._populate_review_tree()
         self._fit_review_tree_height()
         self.import_report_card, import_report_layout = self._card(
@@ -904,13 +929,13 @@ class DataInterpretationPreviewDialog(
         self.apply_button = QPushButton(
             "Apply Remap"
             if self.decision == "blocked" and self._has_remap_options()
-            else "Confirm and Apply"
+            else "Confirm and Import"
             if self.decision == "needs_confirmation"
-            else "Apply Interpretation"
+            else "Import EEG Data"
         )
         self.apply_button.setObjectName("DataImportPrimaryButton")
         self.apply_button.setStyleSheet(self._primary_button_style())
-        self.apply_button.setEnabled(self._apply_allowed())
+        self.apply_button.setEnabled(self.can_submit_for_backend_review())
         self.apply_button.clicked.connect(self.accept)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setObjectName("DataImportSecondaryButton")
@@ -1046,6 +1071,10 @@ class DataInterpretationPreviewDialog(
         return choices
 
     def _default_label_source_mode(self) -> str:
+        if str(self._initial_choices.get("label_carrier") or "").strip() == (
+            "embedded_events"
+        ):
+            return "internal_events"
         return "loaded_label_files" if self._label_carrier_items else "internal_events"
 
     def _label_source_mode(self) -> str:
@@ -1122,6 +1151,12 @@ class DataInterpretationPreviewDialog(
             )
         if hasattr(self, "label_values_card"):
             self.label_values_card.setVisible(use_loaded and not fallback_visible)
+        if self.event_value_editor is not None:
+            self.event_value_editor.setVisible(
+                use_loaded
+                and not fallback_visible
+                and self.event_value_editor.has_rows()
+            )
         if hasattr(self, "placement_card"):
             self.placement_card.setVisible(
                 use_loaded and not fallback_visible and not is_bids_source
@@ -1167,12 +1202,21 @@ class DataInterpretationPreviewDialog(
         if not hasattr(self, "event_tree") or not hasattr(self, "event_layout"):
             return
         self._clear_event_detail_widgets()
-        self.event_tree.clear()
         self._event_role_items.clear()
         self._event_role_widgets.clear()
         self._class_map_items.clear()
         self._class_map_widgets.clear()
-        self._populate_event_tree()
+        # QTreeWidget.clear() destroys embedded editors synchronously and can emit
+        # callbacks. Drop Python-side ownership first so those callbacks cannot
+        # observe deleted Qt wrappers.
+        self.event_tree.clear()
+        uses_external_value_editor = (
+            self._label_source_mode() == "loaded_label_files"
+            and self.event_value_editor is not None
+            and self.event_value_editor.has_rows()
+        )
+        if not uses_external_value_editor:
+            self._populate_event_tree()
         self._fit_tree_columns(self.event_tree, (220, 150, 420), stretch_column=2)
         self._fit_event_tree_height()
         if self._label_source_mode() == "internal_events":
@@ -1238,9 +1282,9 @@ class DataInterpretationPreviewDialog(
         layout.addWidget(self.label_pairing_rows_widget)
 
     def _populate_pairing_rows(self) -> None:
-        self._clear_layout(self.label_pairing_rows_layout)
         self._eeg_label_widgets.clear()
         self._eeg_label_status_widgets.clear()
+        self._clear_layout(self.label_pairing_rows_layout)
         self._ensure_label_target_widgets()
         if not self._label_carrier_items:
             self.label_pairing_rows_layout.addWidget(
@@ -1641,9 +1685,14 @@ class DataInterpretationPreviewDialog(
         self._fit_label_carrier_tree_height()
         self._fit_all_tree_columns_to_viewport()
         self._fit_event_tree_height()
-        self._fit_review_tree_height()
         if final_step:
+            self._refresh_review_action_cards()
             self._refresh_review_import_summary()
+            if not self.import_report_card.isHidden():
+                self._refresh_review_tree()
+                self._fit_tree_columns_to_viewport(self.review_tree)
+            self._sync_apply_state()
+        self._fit_review_tree_height()
         self._sync_scroll_policy()
 
     def _sync_step_labels(self, current: int) -> None:
@@ -1739,12 +1788,12 @@ class DataInterpretationPreviewDialog(
                 scrollbar.setValue(0)
 
     def get_result(self) -> dict[str, Any]:
+        submission = self._submission_projection()
         choices = self._edited_choices()
         if self._skip_labels:
             choices["skip_labels"] = True
         result: dict[str, Any] = {
-            "confirmed": self.decision in {"safe", "needs_confirmation"}
-            or (self.decision == "blocked" and self._has_complete_remap_choices()),
+            "confirmed": submission.confirmed_on_accept,
             "save_recipe": self.save_recipe_check.isChecked(),
             "choices": choices,
         }
@@ -1787,8 +1836,9 @@ class DataInterpretationPreviewDialog(
                 "No events.tsv is attached for the selected BIDS runs. Add the "
                 "missing BIDS sidecar or use Import folder for non-BIDS labels."
             )
-        carriers = self.preview.get("label_carrier_preview") or []
-        if not isinstance(carriers, list) or not carriers:
+        if "label_carrier_preview" in self.preview:
+            carriers = self.preview.get("label_carrier_preview")
+        else:
             carriers = self.scan_result.get("label_carriers") or []
         count = len(carriers) if isinstance(carriers, list) else 0
         if count:
@@ -2188,6 +2238,7 @@ class DataInterpretationPreviewDialog(
         return dict(zip(("subject", "session", "task", "run"), values, strict=False))
 
     def _apply_product_tree_style(self) -> None:
+        checkmark_icon = icon_path("checkmark.svg")
         self.setStyleSheet(
             f"""
             QDialog#DataImportWizardDialog,
@@ -2397,6 +2448,7 @@ class DataInterpretationPreviewDialog(
             QFrame#DataImportTimeCheckPanel,
             QFrame#DataImportEventRulesTable,
             QFrame#DataImportClassMapTable,
+            QFrame#DataImportValueDecisionTable,
             QFrame#DataImportInternalLabelsTable,
             QFrame#DataImportInternalOtherEventsTable {{
                 background-color: #202020;
@@ -2508,6 +2560,39 @@ class DataInterpretationPreviewDialog(
                 color: #eeeeee;
                 font-size: 13px;
                 font-weight: 600;
+            }}
+            QLabel#DataImportValueDecisionValue {{
+                color: #eeeeee;
+                background-color: transparent;
+                border: none;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QLabel#DataImportValueDecisionCoverage {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                font-size: 11px;
+            }}
+            QWidget#EventValueDecisionEditor {{
+                background-color: transparent;
+                border: none;
+            }}
+            QLineEdit#EventValueClassNameEditor {{
+                color: #eeeeee;
+                background-color: #2a2a2a;
+                border: 1px solid #454545;
+                border-radius: 4px;
+                padding: 4px 7px;
+                min-height: 20px;
+            }}
+            QLineEdit#EventValueClassNameEditor:focus {{
+                border-color: {Theme.ACCENT_PRIMARY};
+            }}
+            QLineEdit#EventValueClassNameEditor:read-only {{
+                color: {Theme.TEXT_MUTED};
+                background-color: #1f1f1f;
+                border-color: #343434;
             }}
             QLabel#DataImportTimePreviewTime {{
                 color: #eeeeee;
@@ -2810,7 +2895,8 @@ class DataInterpretationPreviewDialog(
             }}
             QCheckBox#DataImportTargetEventCheckbox::indicator:checked {{
                 border: 1px solid #2d8fc3;
-                background-color: #0b6ea8;
+                background-color: {Theme.METRICS_TABLE_BG};
+                image: url("{checkmark_icon}");
             }}
             QTreeWidget {{
                 background-color: #1f1f1f;
@@ -2985,7 +3071,20 @@ class DataInterpretationPreviewDialog(
     def _fit_review_tree_height(self) -> None:
         if not hasattr(self, "review_tree"):
             return
-        self._fit_compact_tree_height(self.review_tree, min_height=92, max_height=180)
+        tree = self.review_tree
+        self._fit_review_report_rows()
+        tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        row_heights = [
+            max(tree.sizeHintForRow(row), 0) for row in range(tree.topLevelItemCount())
+        ]
+        if not row_heights:
+            row_heights = [tree.fontMetrics().height() + 12]
+        header = tree.header()
+        header_height = header.height() if header is not None else 28
+        target_height = header_height + sum(row_heights) + (tree.frameWidth() * 2) + 4
+        bounded_height = max(target_height, 92)
+        tree.setMinimumHeight(bounded_height)
+        tree.setMaximumHeight(bounded_height)
 
     def _fit_metadata_tree_height(self) -> None:
         if not hasattr(self, "file_tree"):
@@ -3344,7 +3443,7 @@ class DataInterpretationPreviewDialog(
         if (
             hasattr(self, "label_source_mode_combo")
             and self._label_source_mode() == "internal_events"
-            and class_map_source == "label_carriers"
+            and class_map_source in {"label_carriers", "value_decisions"}
         ):
             return {}
         return {
@@ -3513,7 +3612,14 @@ class DataInterpretationPreviewDialog(
         label_carrier_source = self._label_carrier_source_choice()
         if label_carrier_source:
             choices["label_carrier"] = label_carrier_source
+            for key in ("internal_event_selection", "run_event_mappings"):
+                value = self._initial_choices.get(key)
+                if isinstance(value, dict) and value:
+                    choices[key] = dict(value)
         if label_carrier_source != "embedded_events":
+            required = self._initial_choices.get("required_label_carriers")
+            if isinstance(required, list) and required:
+                choices["required_label_carriers"] = list(required)
             label_carriers = self._label_carrier_choices()
             if label_carriers:
                 choices["label_carrier_choices"] = label_carriers
@@ -3691,6 +3797,11 @@ class DataInterpretationPreviewDialog(
 
     def _label_carrier_choices(self) -> dict[str, dict[str, Any]]:
         choices: dict[str, dict[str, Any]] = {}
+        value_decisions = (
+            self.event_value_editor.changed_decisions_by_carrier()
+            if self.event_value_editor is not None
+            else {}
+        )
         fields = (
             ("target_file", "_matched_eeg_text", 1),
             ("label_field", "selected_label_field", 2),
@@ -3713,6 +3824,8 @@ class DataInterpretationPreviewDialog(
             if self._is_label_carrier_excluded(carrier_key):
                 continue
             changed: dict[str, Any] = {}
+            if carrier_key in value_decisions:
+                changed["value_decisions"] = value_decisions[carrier_key]
             for choice_key, original_key, column in fields:
                 current = self._label_carrier_choice_text(
                     choice_key,
@@ -3866,15 +3979,31 @@ class DataInterpretationPreviewDialog(
             self._has_label_carrier_remap_options()
         )
 
-    def _apply_allowed(self) -> bool:
-        if (
-            hasattr(self, "_resource_check_blocks_import")
-            and self._resource_check_blocks_import()
-        ):
-            return False
-        if self.decision == "blocked":
-            return self._has_complete_remap_choices()
-        return not self._has_unresolved_required_decisions()
+    def _event_value_decisions_ready_for_recheck(self) -> bool:
+        editor = self.event_value_editor
+        return bool(
+            editor is not None
+            and editor.has_rows()
+            and editor.is_complete()
+            and editor.changed_decisions_by_carrier()
+        )
+
+    def _event_value_carrier_plans(self) -> list[dict[str, Any]]:
+        plans: list[dict[str, Any]] = []
+        for _item, original in self._label_carrier_items:
+            carrier_key = str(
+                original.get("path") or original.get("name") or ""
+            ).strip()
+            if carrier_key and not self._is_label_carrier_excluded(carrier_key):
+                plans.append(dict(original))
+        return plans
+
+    def _handle_event_value_decisions_changed(self) -> None:
+        self._sync_apply_state()
+        self._sync_review_status_copy()
+        if hasattr(self, "review_actions_layout"):
+            self._refresh_review_action_cards()
+        self._refresh_review_import_summary()
 
     def _has_complete_remap_choices(self) -> bool:
         option_count = len(self._eeg_file_remap_options()) + len(
@@ -3890,15 +4019,18 @@ class DataInterpretationPreviewDialog(
     def _sync_apply_state(self, *_args: Any) -> None:
         if not hasattr(self, "apply_button"):
             return
-        apply_allowed = self._apply_allowed()
-        self.apply_button.setEnabled(apply_allowed)
+        can_submit = self.can_submit_for_backend_review()
+        self.apply_button.setEnabled(can_submit)
         if hasattr(self, "save_recipe_check"):
-            was_checked = self.save_recipe_check.isChecked()
-            self.save_recipe_check.setEnabled(apply_allowed)
-            if not apply_allowed:
-                self.save_recipe_check.setChecked(False)
-            elif self.decision == "blocked" and not was_checked:
-                self.save_recipe_check.setChecked(True)
+            self.save_recipe_check.setEnabled(can_submit)
+            preferred = self._save_recipe_preference
+            checked = can_submit and (preferred if preferred is not None else True)
+            was_blocked = self.save_recipe_check.blockSignals(True)
+            self.save_recipe_check.setChecked(checked)
+            self.save_recipe_check.blockSignals(was_blocked)
+
+    def _remember_save_recipe_preference(self, checked: bool) -> None:
+        self._save_recipe_preference = bool(checked)
 
     def _has_eeg_file_remap_options(self) -> bool:
         return bool(self._eeg_file_remap_options())

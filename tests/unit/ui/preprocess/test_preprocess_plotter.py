@@ -1,10 +1,22 @@
+import ast
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from scipy.signal import welch
 
+from XBrainLab.ui.panels.preprocess.data_query import (
+    PreprocessRenderDataUnavailableError,
+)
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
+
+
+def _plot_controller_data(plotter, controller) -> None:
+    plotter.plot_sample_data(
+        data_list=controller.get_preprocessed_data_list(),
+        original_data_list=[],
+    )
 
 
 @pytest.fixture
@@ -78,7 +90,7 @@ def test_plotter_init(mock_widget, mock_controller):
 def test_plot_sample_data_time_domain(mock_widget, mock_controller):
     plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-    plotter.plot_sample_data()
+    _plot_controller_data(plotter, mock_controller)
 
     mock_widget.clear_plot_data.assert_called_once()
 
@@ -93,7 +105,7 @@ def test_plot_sample_data_calculates_psd_on_ui_thread(mock_widget, mock_controll
     mock_widget.plot_tabs.currentIndex.return_value = 1
 
     with patch.object(plotter, "_calc_psd_task", wraps=plotter._calc_psd_task) as calc:
-        plotter.plot_sample_data()
+        _plot_controller_data(plotter, mock_controller)
 
     calc.assert_called_once()
     mock_widget.freq_current_curve.setData.assert_called_once()
@@ -118,7 +130,7 @@ def test_plot_sample_data_defers_psd_until_frequency_tab(mock_widget, mock_contr
     mock_widget.plot_tabs.currentIndex.return_value = 0
 
     with patch.object(plotter, "_calc_psd_task") as calc:
-        plotter.plot_sample_data()
+        _plot_controller_data(plotter, mock_controller)
 
     mock_widget.time_current_curve.setData.assert_called_once()
     calc.assert_not_called()
@@ -135,7 +147,7 @@ def test_plot_sample_data_does_not_create_psd_workers(
         "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.welch",
         wraps=welch,
     ) as wrapped_welch:
-        plotter.plot_sample_data()
+        _plot_controller_data(plotter, mock_controller)
 
     assert wrapped_welch.called
 
@@ -151,7 +163,7 @@ def test_plot_sample_data_ignores_reentrant_refresh(mock_widget, mock_controller
 
     mock_widget.clear_plot_data.side_effect = reenter_once
 
-    plotter.plot_sample_data()
+    _plot_controller_data(plotter, mock_controller)
 
     assert calls == 1
     mock_widget.clear_plot_data.assert_called_once()
@@ -159,13 +171,22 @@ def test_plot_sample_data_ignores_reentrant_refresh(mock_widget, mock_controller
 
 
 def test_plot_no_data(mock_widget, mock_controller):
-    mock_controller.has_data.return_value = False
+    mock_controller.has_data.side_effect = AssertionError("controller fallback used")
+    mock_controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "controller fallback used"
+    )
     plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-    plotter.plot_sample_data()
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+        return_value=([], []),
+    ) as query:
+        plotter.plot_sample_data()
 
     # Should clear transient data but not plot
+    query.assert_called_once_with(plotter, require_available=True)
     mock_widget.clear_plot_data.assert_called_once()
+    mock_widget.show_locked_message.assert_not_called()
     mock_widget.time_current_curve.setData.assert_not_called()
 
 
@@ -187,7 +208,7 @@ def test_plot_sample_data_uses_service_query_before_controller(
     ) as execute:
         plotter.plot_sample_data()
 
-    execute.assert_called_once_with(plotter)
+    execute.assert_called_once_with(plotter, require_available=True)
     mock_controller.has_data.assert_not_called()
     mock_widget.time_current_curve.setData.assert_called_once()
 
@@ -213,10 +234,40 @@ def test_plot_sample_data_refuses_real_study_query_none_controller_fallback(
     ) as query:
         plotter.plot_sample_data()
 
-    query.assert_called_once_with(plotter)
+    query.assert_called_once_with(plotter, require_available=True)
     mock_controller.has_data.assert_not_called()
     mock_controller.get_preprocessed_data_list.assert_not_called()
     mock_widget.time_current_curve.setData.assert_not_called()
+    mock_widget.show_locked_message.assert_called_once_with(
+        "Preprocess preview is unavailable because application state could not be read."
+    )
+
+
+def test_plot_sample_data_surfaces_application_query_failure(
+    mock_widget,
+    mock_controller,
+):
+    mock_controller.has_data.side_effect = AssertionError("controller fallback used")
+    mock_controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "controller fallback used"
+    )
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+        side_effect=PreprocessRenderDataUnavailableError(
+            "Published preprocess objects are stale."
+        ),
+    ) as query:
+        plotter.plot_sample_data()
+
+    query.assert_called_once_with(plotter, require_available=True)
+    mock_controller.has_data.assert_not_called()
+    mock_controller.get_preprocessed_data_list.assert_not_called()
+    mock_widget.time_current_curve.setData.assert_not_called()
+    mock_widget.show_locked_message.assert_called_once_with(
+        "Published preprocess objects are stale."
+    )
 
 
 def test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay(
@@ -241,7 +292,7 @@ def test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay(
     ) as query:
         plotter.plot_sample_data(data_list=[current])
 
-    query.assert_called_once_with(plotter)
+    query.assert_called_once_with(plotter, require_available=True)
     stale_original.get_sfreq.assert_not_called()
     mock_widget.time_current_curve.setData.assert_called_once()
 
@@ -418,20 +469,29 @@ class TestPlotSampleDataEdgeCases:
 
     def test_no_controller(self, mock_widget):
         plotter = PreprocessPlotter(mock_widget, None)
-        plotter.plot_sample_data()
+        with patch(
+            "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+            side_effect=PreprocessRenderDataUnavailableError(
+                "Preprocess application state is unavailable."
+            ),
+        ):
+            plotter.plot_sample_data()
         mock_widget.time_current_curve.setData.assert_not_called()
+        mock_widget.show_locked_message.assert_called_once_with(
+            "Preprocess application state is unavailable."
+        )
 
     def test_empty_data_list(self, mock_widget, mock_controller):
         mock_controller.get_preprocessed_data_list.return_value = []
         plotter = PreprocessPlotter(mock_widget, mock_controller)
-        plotter.plot_sample_data()
+        plotter.plot_sample_data(data_list=[], original_data_list=[])
         mock_widget.time_current_curve.setData.assert_not_called()
 
     def test_negative_chan_idx(self, mock_widget, mock_controller):
         mock_widget.chan_combo.currentIndex.return_value = -1
         plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-        plotter.plot_sample_data()
+        _plot_controller_data(plotter, mock_controller)
         # Should return early since chan_idx < 0
         mock_widget.time_current_curve.setData.assert_not_called()
 
@@ -448,7 +508,7 @@ class TestPlotSampleDataEdgeCases:
         data = np.random.rand(1, 500)
         mne.get_data.return_value = data
 
-        plotter.plot_sample_data()
+        _plot_controller_data(plotter, mock_controller)
         mock_widget.plot_time.enableAutoRange.assert_called_once()
 
     def test_plot_exception(self, mock_widget, mock_controller):
@@ -457,5 +517,33 @@ class TestPlotSampleDataEdgeCases:
         raw_obj.get_sfreq.side_effect = RuntimeError("broken")
         plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-        plotter.plot_sample_data()
+        _plot_controller_data(plotter, mock_controller)
         mock_widget.plot_time.setTitle.assert_called_with("Plot Error")
+
+
+def test_preprocess_plotter_has_no_direct_study_or_controller_data_reads() -> None:
+    source_path = (
+        Path(__file__).parents[4]
+        / "XBrainLab"
+        / "ui"
+        / "panels"
+        / "preprocess"
+        / "plotters"
+        / "preprocess_plotter.py"
+    )
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+
+    forbidden_attributes = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr
+        in {
+            "study",
+            "loaded_data_list",
+            "get_preprocessed_data_list",
+            "has_data",
+        }
+    }
+
+    assert forbidden_attributes == set()

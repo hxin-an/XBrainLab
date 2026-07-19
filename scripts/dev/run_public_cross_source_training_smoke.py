@@ -50,27 +50,46 @@ PUBLIC_TRAINING_FIXTURES = (
         "tmax": 2,
         "split_ratio": 0.2,
     },
-    {
-        "name": "sccn-eeglab",
-        "filename": "sccn-eeglab_data.set",
-        "source_family": "SCCN / EEGLAB",
-        "event_ids": ["rt", "square"],
-        "tmin": 0,
-        "tmax": 2,
-        "split_ratio": 0.2,
-    },
 )
 
 PUBLIC_EPOCH_ONLY_FIXTURES = (
     {
+        "name": "sccn-eeglab",
+        "filename": "sccn-eeglab_data.set",
+        "source_family": "SCCN / EEGLAB",
+        # The public tutorial file exposes these annotation values, but the
+        # fixture does not carry a protocol ground truth that defines them as
+        # supervised classes.
+        "event_ids": ["rt", "square"],
+        "tmin": 0,
+        "tmax": 1.5,
+        "boundary_reason": (
+            "public fixture lacks protocol ground truth for supervised classes"
+        ),
+    },
+    {
         "name": "mne-cnt",
         "filename": "scan41_short.cnt",
         "source_family": "MNE testing-data",
-        "event_ids": ["0", "109", "7"],
+        # Marker 0 is exactly at the recording boundary and 109 has a
+        # near-terminal occurrence. The interior task marker proves epoch
+        # support without bypassing the product's boundary protection.
+        "event_ids": ["7"],
         "tmin": 0,
-        "tmax": 2,
+        "tmax": 1.5,
+        "boundary_reason": (
+            "fixture is too small for class-balanced training evidence"
+        ),
     },
 )
+
+REQUIRED_PUBLIC_SMOKE_PROTOCOLS = {
+    "physionet-edf": "training",
+    "bbci-gdf": "training",
+    "sccn-eeglab": "epoch-only",
+    "mne-cnt": "epoch-only",
+}
+REQUIRED_PUBLIC_SMOKE_CASE_IDS = frozenset(REQUIRED_PUBLIC_SMOKE_PROTOCOLS)
 
 
 @dataclass
@@ -323,7 +342,7 @@ def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
             dataset_count=0,
             message=(
                 f"load/preprocess/epoch smoke passed with {epoch_count} epochs; "
-                "fixture is too small for class-balanced training evidence"
+                f"{fixture['boundary_reason']}"
             ),
             protocol="epoch-only",
         )
@@ -351,6 +370,40 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
     passed = sum(1 for result in results if result["status"] == "passed")
     missing = sum(1 for result in results if result["status"] == "missing")
     failed = sum(1 for result in results if result["status"] == "failed")
+    results_by_id = {str(result["name"]): result for result in results}
+    missing_required_case_ids = sorted(
+        REQUIRED_PUBLIC_SMOKE_CASE_IDS - results_by_id.keys()
+    )
+    wrong_protocol_case_ids = sorted(
+        case_id
+        for case_id, required_protocol in REQUIRED_PUBLIC_SMOKE_PROTOCOLS.items()
+        if case_id in results_by_id
+        and results_by_id[case_id]["protocol"] != required_protocol
+    )
+    failed_required_case_ids = sorted(
+        case_id
+        for case_id in REQUIRED_PUBLIC_SMOKE_CASE_IDS
+        if case_id in results_by_id and results_by_id[case_id]["status"] == "failed"
+    )
+    missing_fixture_case_ids = sorted(
+        case_id
+        for case_id in REQUIRED_PUBLIC_SMOKE_CASE_IDS
+        if case_id in results_by_id and results_by_id[case_id]["status"] == "missing"
+    )
+    passed_required_case_ids = sorted(
+        case_id
+        for case_id, required_protocol in REQUIRED_PUBLIC_SMOKE_PROTOCOLS.items()
+        if case_id in results_by_id
+        and results_by_id[case_id]["status"] == "passed"
+        and results_by_id[case_id]["protocol"] == required_protocol
+    )
+    all_required_passed = (
+        len(passed_required_case_ids) == len(REQUIRED_PUBLIC_SMOKE_CASE_IDS)
+        and not missing_required_case_ids
+        and not wrong_protocol_case_ids
+        and not failed_required_case_ids
+        and not missing_fixture_case_ids
+    )
     return {
         "repo_root": str(repo_root),
         "public_data_dir": str(repo_root / "tests" / "fixtures" / "data" / "public"),
@@ -359,10 +412,19 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
             "passed": passed,
             "missing": missing,
             "failed": failed,
+            "required_case_count": len(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
+            "required_case_ids": sorted(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
+            "passed_required_case_count": len(passed_required_case_ids),
+            "passed_required_case_ids": passed_required_case_ids,
+            "missing_required_case_ids": missing_required_case_ids,
+            "missing_fixture_case_ids": missing_fixture_case_ids,
+            "failed_required_case_ids": failed_required_case_ids,
+            "wrong_protocol_case_ids": wrong_protocol_case_ids,
+            "all_required_passed": all_required_passed,
             "message": (
-                "Event-rich public local-only fixtures provide repeatable training "
-                "smoke where class-balanced splits are viable, with tiny CNT kept as "
-                "explicit load/preprocess/epoch-only evidence."
+                "PhysioNet EDF and BBCI GDF provide class-grounded training smoke. "
+                "SCCN EEGLAB and MNE CNT provide load/preprocess/epoch-only evidence; "
+                "their annotation values are not claimed as supervised classes."
             ),
         },
     }
@@ -391,6 +453,10 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
             f"- passed: `{summary['passed']}`",
             f"- missing: `{summary['missing']}`",
             f"- failed: `{summary['failed']}`",
+            "- fixed required cases passed: "
+            f"`{summary['passed_required_case_count']} / "
+            f"{summary['required_case_count']}`",
+            f"- strict result: `{summary['all_required_passed']}`",
             f"- {summary['message']}",
         ]
     )
@@ -447,7 +513,7 @@ def main() -> int:
         print(render_markdown(snapshot))
 
     summary = snapshot["summary"]
-    if args.strict and (summary["missing"] or summary["failed"]):
+    if args.strict and not summary["all_required_passed"]:
         return 1
     return 0
 

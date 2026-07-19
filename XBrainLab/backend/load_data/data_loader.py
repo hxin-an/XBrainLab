@@ -89,6 +89,24 @@ class RawDataLoader(list):
                 f"expected {reference.get_nchan()} from {reference.get_filename()}, "
                 f"got {raw.get_nchan()} from {raw.get_filename()}.",
             )
+        reference_mne = reference.get_mne()
+        candidate_mne = raw.get_mne()
+        reference_channels = list(reference_mne.info["ch_names"])
+        candidate_channels = list(candidate_mne.info["ch_names"])
+        if reference_channels != candidate_channels:
+            raise DataMismatchError(
+                "Dataset channel names or order inconsistent: "
+                f"expected {reference_channels} from {reference.get_filename()}, "
+                f"got {candidate_channels} from {raw.get_filename()}.",
+            )
+        reference_types = list(reference_mne.get_channel_types())
+        candidate_types = list(candidate_mne.get_channel_types())
+        if reference_types != candidate_types:
+            raise DataMismatchError(
+                "Dataset channel types inconsistent: "
+                f"expected {reference_types} from {reference.get_filename()}, "
+                f"got {candidate_types} from {raw.get_filename()}.",
+            )
         # check sfreq
         if reference.get_sfreq() != raw.get_sfreq():
             raise DataMismatchError(

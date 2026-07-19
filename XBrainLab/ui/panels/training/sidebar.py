@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
@@ -14,10 +14,11 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
-    ClearDatasetsCommand,
     ClearTrainingHistoryCommand,
     CommandName,
     ConfigureTrainingCommand,
+    DatasetGenerationMode,
+    ErrorType,
     GenerateDatasetCommand,
     QueryStateCommand,
     StopTrainingCommand,
@@ -25,9 +26,14 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.resource_guard import (
     RISK_BLOCKING,
+    RISK_SAFE,
     RISK_UNKNOWN,
     RISK_WARNING,
     ResourceChecker,
+)
+from XBrainLab.backend.application.resource_preflight import (
+    ResourcePreflightContractError,
+    ResourcePreflightView,
 )
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -35,12 +41,19 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     execute_application_command_async,
+    get_application_view_publication,
     get_command_capability,
+    get_command_review_context,
     has_real_application_context,
+    is_stale_publication_result,
     local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 
 # Dialog imports will be local to avoid circular deps if needed,
 # or top level if no circular dep.
@@ -48,12 +61,19 @@ from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScroll
 # Dialogs don't import Panel/Sidebar.
 from XBrainLab.ui.dialogs.dataset import DataSplittingDialog
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog, TrainingSettingDialog
+from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
-_DATASET_REPLACEMENT_REASON = (
-    "Reset the session or start a new session before generating a new "
-    "dataset from an existing active dataset."
+_TRAINING_SETTING_SUGGESTION_KEYS = frozenset(
+    {
+        "epoch",
+        "batch_size",
+        "learning_rate",
+        "repeat",
+        "optimizer",
+        "device",
+    }
 )
 
 
@@ -86,11 +106,6 @@ class TrainingSidebar(QWidget):
         """
         super().__init__()
         self.panel = panel
-        self._latest_resource_check_result = None
-        self._resource_check_timer = QTimer(self)
-        self._resource_check_timer.setSingleShot(True)
-        self._resource_check_timer.setInterval(350)
-        self._resource_check_timer.timeout.connect(self._update_cached_resource_check)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.init_ui()
 
@@ -176,7 +191,7 @@ class TrainingSidebar(QWidget):
         exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.btn_start = QPushButton("Start Training")
-        self.btn_start.setStyleSheet(Stylesheets.BTN_SUCCESS)
+        self.btn_start.setStyleSheet(Stylesheets.BTN_PRIMARY)
         self.btn_start.clicked.connect(self.start_training_ui_action)
         self.btn_start.setEnabled(False)
         exec_layout.addWidget(self.btn_start)
@@ -250,7 +265,6 @@ class TrainingSidebar(QWidget):
                 )
         else:
             self.btn_start.setToolTip("Start Training")
-        self._schedule_resource_check()
 
     def _compatibility_missing_training_config(self) -> list[str]:
         missing = []
@@ -262,80 +276,16 @@ class TrainingSidebar(QWidget):
             missing.append("Training Settings")
         return missing
 
-    def _training_resource_context(self) -> dict[str, Any]:
-        if self.controller is None:
-            return {}
-        getter = getattr(self.controller, "get_resource_preflight_context", None)
-        if not callable(getter):
-            return {}
-        return self._compatibility_training_resource_context(getter)
-
-    def _compatibility_training_resource_context(
-        self,
-        getter: Callable[[], Any],
-    ) -> dict[str, Any]:
+    @staticmethod
+    def _resource_preflight_from_command_result(
+        result: Any,
+    ) -> ResourcePreflightView | None:
+        """Read the sole typed UI view from backend-owned diagnostics."""
+        diagnostics = getattr(result, "diagnostics", {}) or {}
         try:
-            value = run_controller_compatibility_call(
-                self,
-                getter,
-            )
-        except ControllerCompatibilityUnavailableError:
-            return {}
-        return dict(value) if isinstance(value, dict) else {}
-
-    def _training_resource_check_result(self, context: dict[str, Any] | None = None):
-        if context is None:
-            context = self._training_resource_context()
-        return ResourceChecker.check_training_config_safe(
-            context.get("datasets", []),
-            context.get("training_option"),
-            context.get("model_holder"),
-        )
-
-    def _schedule_resource_check(self) -> None:
-        timer = getattr(self, "_resource_check_timer", None)
-        if timer is not None:
-            timer.start()
-
-    def _update_cached_resource_check(self) -> None:
-        try:
-            self._latest_resource_check_result = self._training_resource_check_result()
-        except Exception:
-            self._latest_resource_check_result = None
-
-    def _refresh_resource_check_summary(self) -> None:
-        self._schedule_resource_check()
-
-    def _confirm_training_resource_preflight(self) -> bool:
-        context = self._training_resource_context()
-        result = self._training_resource_check_result(context)
-        if (
-            result.risk_level == RISK_UNKNOWN
-            and result.details.get("reason") != "missing_training_option"
-        ):
-            context = self._training_resource_context()
-            result = self._training_resource_check_result(context)
-        if result.risk_level == RISK_BLOCKING:
-            self._show_training_resource_blocking_dialog(
-                self._training_resource_dialog_message(result, context),
-            )
-            return False
-        if (
-            result.risk_level == RISK_UNKNOWN
-            and result.details.get("reason") == "missing_training_option"
-        ):
-            return True
-        if result.risk_level in {RISK_WARNING, RISK_UNKNOWN}:
-            reply = QMessageBox.question(
-                self,
-                "Training Resource Check",
-                self._training_resource_dialog_message(result, context)
-                + "\n\nContinue starting training?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            return reply == QMessageBox.StandardButton.Yes
-        return True
+            return ResourcePreflightView.from_diagnostics(diagnostics)
+        except ResourcePreflightContractError:
+            return None
 
     def _show_training_resource_blocking_dialog(self, message: str) -> None:
         dialog = QMessageBox(self)
@@ -355,21 +305,23 @@ class TrainingSidebar(QWidget):
 
     def _training_resource_dialog_message(
         self,
-        result,
-        context: dict[str, Any],
+        result: ResourcePreflightView,
     ) -> str:
-        details = dict(getattr(result, "details", {}) or {})
-        option = context.get("training_option")
-        model_holder = context.get("model_holder")
-        model_name = self._training_model_name(model_holder)
-        batch_size = details.get("batch_size") or getattr(option, "bs", None)
-        gpu_name = details.get("gpu_name")
+        model_name = result.model_name or "Unknown"
+        batch_size = result.batch_size
+        gpu_name = result.vram.gpu_name
+        risk_level = self._training_resource_risk_level(result)
         risk_label = {
             RISK_BLOCKING: "Too large",
             RISK_WARNING: "Warning",
             RISK_UNKNOWN: "Unknown",
-        }.get(result.risk_level, "Safe")
-        message_title = str(getattr(result, "message", "") or "Training resource check")
+        }.get(risk_level, "Safe")
+        message_title = str(
+            next(iter(result.issues or result.warnings or result.unknowns), "")
+            or result.message
+            or result.vram.message
+            or "Training resource check"
+        )
         message_title = message_title.splitlines()[0]
 
         lines = [
@@ -382,20 +334,50 @@ class TrainingSidebar(QWidget):
             lines.append(f"GPU: {gpu_name}")
         lines.extend(
             [
-                "Estimated VRAM required: "
-                f"{ResourceChecker.format_memory_size(result.required_memory_bytes)}",
-                "Available VRAM: "
-                f"{ResourceChecker.format_memory_size(result.available_memory_bytes)}",
                 f"Risk level: {risk_label}",
+                "",
+                "RAM",
+                "Estimated RAM required: "
+                f"{ResourceChecker.format_memory_size(result.dataset_ram.required_memory_bytes)}",
+                "Available RAM: "
+                f"{ResourceChecker.format_memory_size(result.dataset_ram.available_memory_bytes)}",
+                "RAM risk level: "
+                f"{self._training_resource_risk_label(result.dataset_ram.risk_level)}",
+                "",
+                "GPU memory",
+                "Estimated VRAM required: "
+                f"{ResourceChecker.format_memory_size(result.vram.required_memory_bytes)}",
+                "Available VRAM: "
+                f"{ResourceChecker.format_memory_size(result.vram.available_memory_bytes)}",
+                "VRAM risk level: "
+                f"{self._training_resource_risk_label(result.vram.risk_level)}",
             ]
         )
-        reason = self._training_resource_unknown_reason(result)
-        if reason:
-            lines.extend(["", f"Reason: {reason}"])
-        if result.suggestions:
+        reasons = self._training_resource_unknown_reasons(result)
+        if reasons:
+            lines.extend(["", "Why the estimate is unknown:"])
+            lines.extend(f"- {reason}" for reason in reasons)
+        suggestions = list(result.suggestions)
+        suggestions.extend(result.dataset_ram.suggestions)
+        suggestions.extend(result.vram.suggestions)
+        unique_suggestions = list(dict.fromkeys(str(item) for item in suggestions))
+        if unique_suggestions:
             lines.extend(["", "Suggestions:"])
-            lines.extend(f"- {suggestion}" for suggestion in result.suggestions)
+            lines.extend(f"- {suggestion}" for suggestion in unique_suggestions)
         return "\n".join(lines)
+
+    @staticmethod
+    def _training_resource_risk_level(result: ResourcePreflightView) -> str:
+        return result.risk_level
+
+    @staticmethod
+    def _training_resource_risk_label(risk_level: Any) -> str:
+        return {
+            RISK_BLOCKING: "Too large",
+            RISK_WARNING: "Warning",
+            RISK_UNKNOWN: "Unknown",
+            RISK_SAFE: "Safe",
+        }.get(str(risk_level), "Unknown")
 
     @staticmethod
     def _training_model_name(model_holder: Any | None) -> str:
@@ -412,17 +394,27 @@ class TrainingSidebar(QWidget):
         return "Unknown"
 
     @staticmethod
-    def _training_resource_unknown_reason(result) -> str:
-        if result.risk_level != RISK_UNKNOWN:
-            return ""
-        reason = result.details.get("reason")
-        if reason == "missing_training_option":
-            return "Training settings have not been saved."
-        if result.details.get("uses_cpu"):
-            return "Selected device is CPU; GPU memory check is not required."
-        if result.details.get("gpu_index") is not None:
-            return "Failed to query GPU memory for the selected device."
-        return "CUDA is unavailable or did not report free GPU memory."
+    def _training_resource_unknown_reasons(
+        result: ResourcePreflightView,
+    ) -> list[str]:
+        reasons: list[str] = []
+        if result.dataset_ram.risk_level == RISK_UNKNOWN:
+            reasons.append("Available system RAM could not be read.")
+
+        reason = result.vram.reason or result.reason
+        if reason == "application_preflight_unavailable":
+            reasons.append(
+                "The current ApplicationService configuration could not be read "
+                "after one retry."
+            )
+        elif reason == "missing_training_option":
+            reasons.append("Training settings have not been saved.")
+        elif result.vram.risk_level == RISK_UNKNOWN:
+            if result.vram.gpu_index is not None:
+                reasons.append("GPU memory could not be read for the selected device.")
+            else:
+                reasons.append("CUDA did not report available GPU memory.")
+        return list(dict.fromkeys(reasons))
 
     def update_info(self):
         """Refresh the aggregate info panel (delegated to InfoPanelService)."""
@@ -439,11 +431,21 @@ class TrainingSidebar(QWidget):
 
     # --- Actions ---
 
-    def _configuration_blocked(self, fallback_message: str) -> bool:
+    def _configuration_blocked(
+        self,
+        fallback_message: str,
+        *,
+        review_context: Any | None = None,
+        context_resolved: bool = False,
+    ) -> bool:
         """Return whether training configuration edits should be blocked."""
-        configure_capability = get_command_capability(
-            self,
-            CommandName.CONFIGURE_TRAINING,
+        configure_capability = (
+            getattr(review_context, "capability", None)
+            if context_resolved
+            else get_command_capability(
+                self,
+                CommandName.CONFIGURE_TRAINING,
+            )
         )
         if configure_capability is not None and not configure_capability.enabled:
             QMessageBox.warning(
@@ -469,118 +471,151 @@ class TrainingSidebar(QWidget):
             return True
         return False
 
-    def split_data(self):
+    def split_data(
+        self,
+        *,
+        suggested_values: dict[str, str] | None = None,
+    ) -> InteractionOutcome:
         """Open the data-splitting dialog and apply the configuration.
 
         Validates that epoched data exists and training is not running.
         Warns if existing datasets/history will be cleared.
         """
-        if self._data_splitting_blocked():
-            return
-
-        generate_capability = get_command_capability(
-            self,
-            CommandName.GENERATE_DATASET,
+        publication = get_application_view_publication(self)
+        generate_capability = (
+            publication.effective_capabilities.get(CommandName.GENERATE_DATASET)
+            if publication is not None
+            else None
         )
+        if self._data_splitting_blocked(
+            generate_capability,
+            capability_resolved=True,
+        ):
+            return InteractionOutcome.blocked("Data splitting is not available.")
+
         if (
             generate_capability is None
             and self._compatibility_data_splitting_preflight_blocked()
         ):
-            return
+            return InteractionOutcome.blocked(
+                "Data splitting prerequisites could not be verified."
+            )
 
-        dialog_context = self._data_splitting_dialog_context()
+        dialog_context = self._data_splitting_dialog_context(
+            expected_publication_generation=(
+                publication.generation if publication is not None else None
+            ),
+        )
         if dialog_context is None:
-            return
+            return InteractionOutcome.blocked(
+                "Epoch data is unavailable for data splitting."
+            )
 
-        win = DataSplittingDialog(self, self.controller, **dialog_context)
-        if win.exec():
-            if self._should_clear_datasets_before_split():
-                reply = QMessageBox.question(
-                    self,
-                    "Reset Training Data",
-                    "Applying new data splitting will clear existing datasets "
-                    "and training history. Continue?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
+        dialog_kwargs = dict(dialog_context)
+        if suggested_values:
+            dialog_kwargs["initial_values"] = dict(suggested_values)
+        win = DataSplittingDialog(self, self.controller, **dialog_kwargs)
+        if not win.exec():
+            return InteractionOutcome.cancelled("Data splitting was cancelled.")
+
+        replacement_required = self._requires_dataset_replacement_confirmation(
+            generate_capability,
+        )
+        if replacement_required:
+            reply = QMessageBox.question(
+                self,
+                "Reset Training Data",
+                "Applying new data splitting will clear existing datasets "
+                "and training history. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return InteractionOutcome.cancelled(
+                    "Data splitting was cancelled before replacing training data."
                 )
-                if reply == QMessageBox.StandardButton.No:
-                    return
-                clear_result = execute_application_command(
-                    self,
-                    ClearDatasetsCommand(confirmed=True),
+
+        split_config = win.get_result()
+        if not split_config:
+            return InteractionOutcome.accepted(
+                "The data splitting dialog was accepted without a saved change."
+            )
+        command = GenerateDatasetCommand(
+            split_config=dict(split_config),
+            replacement_mode=(
+                DatasetGenerationMode.REPLACE_EXISTING
+                if replacement_required
+                else DatasetGenerationMode.CREATE
+            ),
+            confirmed=replacement_required,
+        )
+
+        def _handle_generate_result(result) -> InteractionOutcome:
+            if is_stale_publication_result(result):
+                self._show_message_box(
+                    QMessageBox.Icon.Warning,
+                    "Review Data Splitting Again",
+                    result.message,
                 )
-                if clear_result is None:
-                    QMessageBox.warning(
-                        self,
-                        "Reset Training Data Blocked",
-                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                    )
-                    return
-                elif clear_result.failed:
-                    QMessageBox.critical(
-                        self,
-                        "Reset Training Data Failed",
-                        clear_result.message,
-                    )
-                    return
+                return InteractionOutcome.blocked(result.message)
+            if result.failed:
+                self._show_message_box(
+                    QMessageBox.Icon.Critical,
+                    "Data Splitting Failed",
+                    result.message,
+                )
+                return self._interaction_failure_outcome(result)
+            self._show_status("Data splitting configuration saved")
+            self._check_ready_after_command_result(result)
+            return InteractionOutcome.completed(result.message)
 
-            split_config = win.get_result()
-            if split_config:
-                command = GenerateDatasetCommand(split_config=dict(split_config))
+        def _handle_generate_error(error: tuple) -> None:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_DATA_SPLITTING,
+                error_info=error,
+                message_box=QMessageBox,
+            )
 
-                def _handle_generate_result(result) -> None:
-                    if result.failed:
-                        self._show_message_box(
-                            QMessageBox.Icon.Critical,
-                            "Data Splitting Failed",
-                            result.message,
-                        )
-                        return
-                    self._show_status("Data splitting configuration saved")
-                    self._check_ready_after_command_result(result)
+        if execute_application_command_async(
+            self,
+            command,
+            on_result=_handle_generate_result,
+            on_error=_handle_generate_error,
+            busy_target=self.panel,
+            expected_publication_generation=(
+                publication.generation if publication is not None else None
+            ),
+        ):
+            return InteractionOutcome.accepted("Dataset generation was scheduled.")
 
-                def _handle_generate_error(error: tuple) -> None:
-                    message = error[1] if len(error) > 1 else error
-                    self._show_message_box(
-                        QMessageBox.Icon.Critical,
-                        "Data Splitting Failed",
-                        str(message),
-                    )
+        if has_real_application_context(self):
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
 
-                if execute_application_command_async(
-                    self,
-                    command,
-                    on_result=_handle_generate_result,
-                    on_error=_handle_generate_error,
-                    busy_target=self.panel,
-                ):
-                    return
-
-                if has_real_application_context(self):
-                    QMessageBox.warning(
-                        self,
-                        "Data Splitting Blocked",
-                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                    )
-                    return
-
-                result = execute_application_command(self, command)
-                if result is None:
-                    QMessageBox.warning(
-                        self,
-                        "Data Splitting Blocked",
-                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                    )
-                    return
-                elif result.failed:
-                    self._show_message_box(
-                        QMessageBox.Icon.Critical,
-                        "Data Splitting Failed",
-                        result.message,
-                    )
-                    return
-                self._show_status("Data splitting configuration saved")
-                self._check_ready_after_command_result(result)
+        result = execute_application_command(
+            self,
+            command,
+            expected_publication_generation=(
+                publication.generation if publication is not None else None
+            ),
+        )
+        if result is None:
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+        return _handle_generate_result(result)
 
     def _show_message_box(
         self,
@@ -643,15 +678,18 @@ class TrainingSidebar(QWidget):
             return True
         return False
 
-    def _data_splitting_blocked(self) -> bool:
-        generate_capability = get_command_capability(
-            self,
-            CommandName.GENERATE_DATASET,
-        )
+    def _data_splitting_blocked(
+        self,
+        generate_capability=None,
+        *,
+        capability_resolved: bool = False,
+    ) -> bool:
+        if not capability_resolved:
+            generate_capability = get_command_capability(
+                self,
+                CommandName.GENERATE_DATASET,
+            )
         if generate_capability is None or generate_capability.enabled:
-            return False
-
-        if self._can_replace_existing_dataset(generate_capability.reasons):
             return False
 
         QMessageBox.warning(
@@ -664,22 +702,23 @@ class TrainingSidebar(QWidget):
         )
         return True
 
-    def _can_replace_existing_dataset(self, generate_reasons: list[str]) -> bool:
-        clear_capability = get_command_capability(self, CommandName.CLEAR_DATASETS)
-        return (
-            generate_reasons == [_DATASET_REPLACEMENT_REASON]
-            and clear_capability is not None
-            and clear_capability.enabled
-        )
-
-    def _data_splitting_dialog_context(self) -> dict | None:
+    def _data_splitting_dialog_context(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> dict | None:
+        command_kwargs: dict[str, Any] = {"refresh": False}
+        if expected_publication_generation is not None:
+            command_kwargs["expected_publication_generation"] = (
+                expected_publication_generation
+            )
         result = execute_application_command(
             self,
             QueryStateCommand(
                 query="dataset_generation_context",
                 include_objects=True,
             ),
-            refresh=False,
+            **command_kwargs,
         )
         if result is None:
             if get_command_capability(self, CommandName.GENERATE_DATASET) is not None:
@@ -691,9 +730,14 @@ class TrainingSidebar(QWidget):
                 return None
             return {}
         if result.failed:
+            title = (
+                "Review Data Splitting Again"
+                if is_stale_publication_result(result)
+                else "Data Splitting Blocked"
+            )
             QMessageBox.warning(
                 self,
-                "Data Splitting Blocked",
+                title,
                 result.message,
             )
             return None
@@ -706,134 +750,367 @@ class TrainingSidebar(QWidget):
             "dataset_generator": payload.get("dataset_generator"),
         }
 
-    def _should_clear_datasets_before_split(self) -> bool:
-        """Return whether applying a new split must clear existing training data."""
-        generate_capability = get_command_capability(
-            self,
-            CommandName.GENERATE_DATASET,
-        )
+    def _requires_dataset_replacement_confirmation(
+        self,
+        generate_capability=None,
+    ) -> bool:
+        """Read replacement intent from capability policy, never display text."""
+        if generate_capability is None:
+            generate_capability = get_command_capability(
+                self,
+                CommandName.GENERATE_DATASET,
+            )
         if generate_capability is None:
             available, should_clear = self._compatibility_controller_value(
                 lambda: self.controller.has_datasets() or self.controller.get_trainer(),
             )
             return bool(should_clear) if available else False
-        return self._can_replace_existing_dataset(generate_capability.reasons)
+        return bool(
+            generate_capability.enabled
+            and getattr(generate_capability, "requires_confirmation", False)
+        )
 
     def _check_ready_after_command_result(self, result) -> None:
+        """Reconcile the Start button from authoritative post-command state."""
         if result is None:
             self.check_ready_to_train()
 
-    def select_model(self):
+    def select_model(
+        self,
+        suggested_model: str | None = None,
+    ) -> InteractionOutcome:
         """Open the model-selection dialog and store the chosen model.
 
         Blocked while training is running.
         """
+        if not isinstance(suggested_model, str):
+            suggested_model = None
+        review_context = get_command_review_context(
+            self,
+            CommandName.CONFIGURE_TRAINING,
+        )
         if self._configuration_blocked(
             "Cannot change model while training is running.",
+            review_context=review_context,
+            context_resolved=True,
         ):
-            return
-
-        win = ModelSelectionDialog(self, self.controller)
-        if win.exec():
-            model_holder = win.get_result()
-            if model_holder is None:
-                QMessageBox.warning(self, "Model Selection", "No model was selected.")
-                return
-            selected_model_name = model_holder.target_model.__name__
-            result = execute_application_command(
-                self,
-                ConfigureTrainingCommand(
-                    model_name=selected_model_name,
-                    model_params=dict(model_holder.model_params_map),
-                    pretrained_weight_path=model_holder.pretrained_weight_path,
-                ),
+            return InteractionOutcome.blocked(
+                "The model cannot be changed while training is running."
             )
-            if result is None:
-                QMessageBox.warning(
-                    self,
-                    "Model Selection Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return
-            elif result.failed:
-                QMessageBox.critical(self, "Model Selection Failed", result.message)
-                return
-            self._show_status(f"Model selected: {selected_model_name}")
-            self._check_ready_after_command_result(result)
 
-    def training_setting(self):
+        model_holder = self._collect_model_selection(suggested_model)
+        if isinstance(model_holder, InteractionOutcome):
+            return model_holder
+        command = self._configure_training_command(model_holder=model_holder)
+        return self._apply_training_configuration(
+            command,
+            blocked_title="Model Selection Blocked",
+            failed_title="Model Selection Failed",
+            success_status=f"Model selected: {command.model_name}",
+            expected_publication_generation=(
+                review_context.publication_generation
+                if review_context is not None
+                else None
+            ),
+        )
+
+    def configure_training(
+        self,
+        *,
+        suggested_model: str | None = None,
+        suggested_values: dict[str, str] | None = None,
+    ) -> InteractionOutcome:
+        """Collect model and option choices, then commit one atomic command."""
+        if not isinstance(suggested_model, str):
+            suggested_model = None
+        if not isinstance(suggested_values, dict):
+            suggested_values = None
+        review_context = get_command_review_context(
+            self,
+            CommandName.CONFIGURE_TRAINING,
+        )
+        expected_generation = (
+            review_context.publication_generation
+            if review_context is not None
+            else None
+        )
+        if self._configuration_blocked(
+            "Cannot change training configuration while training is running.",
+            review_context=review_context,
+            context_resolved=True,
+        ):
+            return InteractionOutcome.blocked(
+                "Training configuration cannot be changed while training is running."
+            )
+
+        initial_option = self._training_setting_initial_option(
+            suggested_values,
+            expected_publication_generation=expected_generation,
+        )
+        if isinstance(initial_option, InteractionOutcome):
+            return initial_option
+        model_holder = self._collect_model_selection(suggested_model)
+        if isinstance(model_holder, InteractionOutcome):
+            return model_holder
+        option = self._collect_training_option(initial_option)
+        if isinstance(option, InteractionOutcome):
+            return option
+
+        return self._apply_training_configuration(
+            self._configure_training_command(
+                model_holder=model_holder,
+                training_option=option,
+            ),
+            blocked_title="Training Configuration Blocked",
+            failed_title="Training Configuration Failed",
+            success_status="Training configuration saved",
+            expected_publication_generation=expected_generation,
+        )
+
+    def _collect_model_selection(
+        self,
+        suggested_model: str | None,
+    ) -> Any | InteractionOutcome:
+        win = ModelSelectionDialog(
+            self,
+            self.controller,
+            initial_model_name=suggested_model,
+        )
+        if not win.exec():
+            return InteractionOutcome.cancelled("Model selection was cancelled.")
+
+        model_holder = win.get_result()
+        if model_holder is None:
+            message = "No model was selected."
+            QMessageBox.warning(self, "Model Selection", message)
+            return InteractionOutcome.failed(message)
+        return model_holder
+
+    def training_setting(
+        self,
+        suggested_values: dict[str, str] | None = None,
+    ) -> InteractionOutcome:
         """Open the training-settings dialog and store the configuration.
 
         Blocked while training is running.
         """
+        if not isinstance(suggested_values, dict):
+            suggested_values = None
+        review_context = get_command_review_context(
+            self,
+            CommandName.CONFIGURE_TRAINING,
+        )
+        expected_generation = (
+            review_context.publication_generation
+            if review_context is not None
+            else None
+        )
         if self._configuration_blocked(
             "Cannot change training settings while training is running.",
+            review_context=review_context,
+            context_resolved=True,
         ):
-            return
+            return InteractionOutcome.blocked(
+                "Training settings cannot be changed while training is running."
+            )
 
+        initial_option = self._training_setting_initial_option(
+            suggested_values,
+            expected_publication_generation=expected_generation,
+        )
+        if isinstance(initial_option, InteractionOutcome):
+            return initial_option
+        option = self._collect_training_option(initial_option)
+        if isinstance(option, InteractionOutcome):
+            return option
+        return self._apply_training_configuration(
+            self._configure_training_command(training_option=option),
+            blocked_title="Training Settings Blocked",
+            failed_title="Training Settings Failed",
+            success_status="Training settings saved",
+            expected_publication_generation=expected_generation,
+        )
+
+    def _training_setting_initial_option(
+        self,
+        suggested_values: dict[str, str] | None,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> dict[str, Any] | InteractionOutcome:
+        snapshot = (
+            self._training_option_snapshot(
+                expected_publication_generation=expected_publication_generation,
+            )
+            if expected_publication_generation is not None
+            else self._training_option_snapshot()
+        )
+        if isinstance(snapshot, InteractionOutcome):
+            return snapshot
+        initial_option: dict[str, Any] = dict(snapshot)
+        if suggested_values:
+            initial_option.update(
+                {
+                    key: suggested_values[key]
+                    for key in _TRAINING_SETTING_SUGGESTION_KEYS
+                    if key in suggested_values
+                    and isinstance(suggested_values[key], str)
+                }
+            )
+        return initial_option
+
+    def _collect_training_option(
+        self,
+        initial_option: dict[str, Any],
+    ) -> Any | InteractionOutcome:
         win = TrainingSettingDialog(
             self,
             self.controller,
-            initial_option=self._training_option_snapshot(),
+            initial_option=initial_option,
         )
-        if win.exec():
-            option = win.get_result()
-            optimizer_name = getattr(getattr(option, "optim", None), "__name__", "adam")
+        if not win.exec():
+            return InteractionOutcome.cancelled("Training settings were cancelled.")
+        option = win.get_result()
+        if option is None:
+            message = "No training settings were selected."
+            QMessageBox.warning(self, "Training Settings", message)
+            return InteractionOutcome.failed(message)
+        return option
+
+    @staticmethod
+    def _configure_training_command(
+        *,
+        model_holder: Any | None = None,
+        training_option: Any | None = None,
+    ) -> ConfigureTrainingCommand:
+        fields: dict[str, Any] = {}
+        if model_holder is not None:
+            fields.update(
+                model_name=model_holder.target_model.__name__,
+                model_params=dict(model_holder.model_params_map),
+                pretrained_weight_path=model_holder.pretrained_weight_path,
+            )
+        if training_option is not None:
+            option = training_option
+            optimizer_name = getattr(
+                getattr(option, "optim", None),
+                "__name__",
+                "adam",
+            )
             use_cpu = bool(getattr(option, "use_cpu", True))
             gpu_idx = getattr(option, "gpu_idx", None)
-            result = execute_application_command(
-                self,
-                ConfigureTrainingCommand(
-                    epoch=getattr(option, "epoch", None),
-                    batch_size=getattr(option, "bs", None),
-                    learning_rate=getattr(option, "lr", None),
-                    repeat=getattr(option, "repeat_num", 1),
-                    device=("cpu" if use_cpu else f"cuda:{gpu_idx or 0}"),
-                    optimizer=optimizer_name,
-                    optimizer_params=dict(getattr(option, "optim_params", {}) or {}),
-                    save_checkpoints_every=getattr(option, "checkpoint_epoch", 0),
-                    output_dir=getattr(option, "output_dir", "./output"),
-                    evaluation_option=getattr(
-                        getattr(option, "evaluation_option", None),
-                        "value",
-                        None,
-                    ),
+            fields.update(
+                epoch=getattr(option, "epoch", None),
+                batch_size=getattr(option, "bs", None),
+                learning_rate=getattr(option, "lr", None),
+                repeat=getattr(option, "repeat_num", 1),
+                device=("cpu" if use_cpu else f"cuda:{gpu_idx or 0}"),
+                optimizer=optimizer_name,
+                optimizer_params=dict(getattr(option, "optim_params", {}) or {}),
+                save_checkpoints_every=getattr(option, "checkpoint_epoch", 0),
+                output_dir=getattr(option, "output_dir", "./output"),
+                evaluation_option=getattr(
+                    getattr(option, "evaluation_option", None),
+                    "value",
+                    None,
                 ),
             )
-            if result is None:
-                QMessageBox.warning(
-                    self,
-                    "Training Settings Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return
-            elif result.failed:
-                QMessageBox.critical(
-                    self,
-                    "Training Settings Failed",
-                    result.message,
-                )
-                return
-            self._show_status("Training settings saved")
-            self._check_ready_after_command_result(result)
+        return ConfigureTrainingCommand(**fields)
 
-    def _training_option_snapshot(self) -> dict | None:
+    def _apply_training_configuration(
+        self,
+        command: ConfigureTrainingCommand,
+        *,
+        blocked_title: str,
+        failed_title: str,
+        success_status: str,
+        expected_publication_generation: int | None = None,
+    ) -> InteractionOutcome:
+        command_kwargs: dict[str, Any] = {}
+        if expected_publication_generation is not None:
+            command_kwargs["expected_publication_generation"] = (
+                expected_publication_generation
+            )
+        result = execute_application_command(
+            self,
+            command,
+            **command_kwargs,
+        )
+        if result is None:
+            QMessageBox.warning(
+                self,
+                blocked_title,
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+        if is_stale_publication_result(result):
+            QMessageBox.warning(
+                self,
+                "Review Training Configuration Again",
+                result.message,
+            )
+            return InteractionOutcome.blocked(result.message)
+        if result.failed:
+            QMessageBox.critical(
+                self,
+                failed_title,
+                result.message,
+            )
+            return self._interaction_failure_outcome(result)
+        self._show_status(success_status)
+        self._check_ready_after_command_result(result)
+        return InteractionOutcome.completed(result.message)
+
+    @staticmethod
+    def _interaction_failure_outcome(result) -> InteractionOutcome:
+        if bool(getattr(result, "recoverable", False)):
+            return InteractionOutcome.blocked(result.message)
+        return InteractionOutcome.failed(result.message)
+
+    def _training_option_snapshot(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> dict | InteractionOutcome:
+        command_kwargs: dict[str, Any] = {"refresh": False}
+        if expected_publication_generation is not None:
+            command_kwargs["expected_publication_generation"] = (
+                expected_publication_generation
+            )
         result = execute_application_command(
             self,
             QueryStateCommand(query="state"),
-            refresh=False,
+            **command_kwargs,
         )
         if result is None:
-            return None
-        if result.failed:
             QMessageBox.warning(
                 self,
-                "Training Settings Blocked"
-                if result.recoverable
-                else "Training Settings Failed",
+                "Training Settings Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+        if is_stale_publication_result(result):
+            QMessageBox.warning(
+                self,
+                "Review Training Configuration Again",
                 result.message,
             )
-            return {}
+            return InteractionOutcome.blocked(result.message)
+        if result.failed:
+            title = (
+                "Training Settings Blocked"
+                if result.recoverable
+                else "Training Settings Failed"
+            )
+            QMessageBox.warning(
+                self,
+                title,
+                result.message,
+            )
+            return self._interaction_failure_outcome(result)
         diagnostics = getattr(result, "diagnostics", {}) or {}
         state = diagnostics.get("state")
         training = state.get("training") if isinstance(state, dict) else {}
@@ -841,15 +1118,17 @@ class TrainingSidebar(QWidget):
         return dict(option) if isinstance(option, dict) else {}
 
     def start_training_ui_action(self):
-        """Start training via the application command spine and enable stop.
-
-        Raises:
-            Exception: Propagated from the controller on failure, shown
-                in a critical message box.
-
-        """
+        """Schedule resource validation and plan construction off the GUI thread."""
         try:
-            train_capability = get_command_capability(self, CommandName.TRAIN)
+            review_context = get_command_review_context(
+                self,
+                CommandName.TRAIN,
+            )
+            train_capability = (
+                review_context.capability
+                if review_context is not None
+                else get_command_capability(self, CommandName.TRAIN)
+            )
             if train_capability is not None and not train_capability.enabled:
                 QMessageBox.warning(
                     self,
@@ -861,33 +1140,167 @@ class TrainingSidebar(QWidget):
                 )
                 return
             if self._should_start_training(train_capability):
-                if not self._confirm_training_resource_preflight():
-                    return
-                # A direct button click is the user's confirmation for the
-                # desktop UI. The backend command remains confirmed so agent
-                # and headless paths still honor the command policy boundary.
-                result = execute_application_command(self, TrainCommand(confirmed=True))
-                if result is None:
-                    QMessageBox.warning(
-                        self,
-                        "Start Training Blocked",
-                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                    )
-                    return
-                elif result.failed:
+                self._dispatch_start_training(
+                    expected_publication_generation=(
+                        review_context.publication_generation
+                        if review_context is not None
+                        else None
+                    ),
+                )
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_START,
+                message_box=QMessageBox,
+            )
+
+    def _dispatch_start_training(
+        self,
+        *,
+        resource_preflight_confirmed: bool = False,
+        resource_preflight_token: str | None = None,
+        unknown_retried: bool = False,
+        expected_publication_generation: int | None = None,
+    ) -> bool:
+        """Dispatch one backend-owned training attempt through QThreadPool."""
+        command = TrainCommand(
+            confirmed=True,
+            resource_preflight_confirmed=resource_preflight_confirmed,
+            resource_preflight_token=resource_preflight_token,
+        )
+
+        def _handle_result(result) -> None:
+            self._handle_start_training_result(
+                result,
+                unknown_retried=unknown_retried,
+                expected_publication_generation=(expected_publication_generation),
+            )
+
+        def _handle_error(error: tuple) -> None:
+            self._show_status("Training could not start · Check settings")
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_START,
+                error_info=error,
+                message_box=QMessageBox,
+            )
+
+        self._show_status("Checking resources and preparing training...")
+        if expected_publication_generation is None:
+            started = execute_application_command_async(
+                self,
+                command,
+                on_result=_handle_result,
+                on_error=_handle_error,
+                busy_target=self.panel,
+            )
+        else:
+            started = execute_application_command_async(
+                self,
+                command,
+                on_result=_handle_result,
+                on_error=_handle_error,
+                busy_target=self.panel,
+                expected_publication_generation=expected_publication_generation,
+            )
+        if started:
+            return True
+        QMessageBox.warning(
+            self,
+            "Start Training Blocked",
+            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+        )
+        return False
+
+    def _handle_start_training_result(
+        self,
+        result: Any,
+        *,
+        unknown_retried: bool,
+        expected_publication_generation: int | None = None,
+    ) -> None:
+        """Resolve backend resource outcomes on the GUI thread."""
+        if not result.failed:
+            reconcile = getattr(
+                self.panel,
+                "reconcile_training_terminal_outcome",
+                None,
+            )
+            if callable(reconcile) and reconcile() is True:
+                self._check_ready_after_command_result(result)
+                return
+            self.btn_stop.setEnabled(True)
+            self._show_status("Training started")
+            self._check_ready_after_command_result(result)
+            return
+
+        if is_stale_publication_result(result):
+            self._show_status("Training start changed · Review settings again")
+            QMessageBox.warning(
+                self,
+                "Review Training Again",
+                result.message,
+            )
+            return
+
+        preflight = self._resource_preflight_from_command_result(result)
+        risk_level = (
+            self._training_resource_risk_level(preflight)
+            if preflight is not None
+            else None
+        )
+        confirmation_required = result.error_type is ErrorType.CONFIRMATION_REQUIRED
+
+        if confirmation_required and preflight is not None:
+            if risk_level == RISK_UNKNOWN and not unknown_retried:
+                self._show_status("Rechecking training resources...")
+                self._dispatch_start_training(
+                    unknown_retried=True,
+                    expected_publication_generation=(expected_publication_generation),
+                )
+                return
+            reply = QMessageBox.question(
+                self,
+                "Training Resource Check",
+                self._training_resource_dialog_message(preflight)
+                + "\n\nContinue starting training?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                challenge = preflight.challenge
+                if challenge is None:
+                    self._show_status("Training could not start · Recheck resources")
                     QMessageBox.critical(
                         self,
-                        "Error",
-                        f"Failed to start training: {result.message}",
+                        "Training Resource Check",
+                        "XBrainLab could not verify this resource warning. "
+                        "Run the training check again before continuing.",
                     )
                     return
-                self.btn_stop.setEnabled(True)
-                self._show_status("Training started")
-                self._check_ready_after_command_result(result)
-                # Panel should know training started to update log?
-                # Observer in Panel handles "training_started" event.
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start training: {e}")
+                self._dispatch_start_training(
+                    resource_preflight_confirmed=True,
+                    resource_preflight_token=challenge.challenge_id,
+                    unknown_retried=True,
+                    expected_publication_generation=(expected_publication_generation),
+                )
+            else:
+                self._show_status("Training start cancelled")
+            return
+
+        if risk_level == RISK_BLOCKING and preflight is not None:
+            self._show_training_resource_blocking_dialog(
+                self._training_resource_dialog_message(preflight),
+            )
+            self._show_status("Training blocked · Adjust settings")
+            return
+
+        self._show_status("Training could not start · Check settings")
+        QMessageBox.critical(
+            self,
+            "Error",
+            f"Failed to start training: {result.message}",
+        )
 
     def _should_start_training(self, train_capability) -> bool:
         if train_capability is None:
@@ -942,9 +1355,16 @@ class TrainingSidebar(QWidget):
         Blocked while training is running.
         """
         try:
-            clear_capability = get_command_capability(
-                self,
-                CommandName.CLEAR_TRAINING_HISTORY,
+            publication = get_application_view_publication(self)
+            clear_capability = (
+                publication.effective_capabilities.get(
+                    CommandName.CLEAR_TRAINING_HISTORY,
+                )
+                if publication is not None
+                else get_command_capability(
+                    self,
+                    CommandName.CLEAR_TRAINING_HISTORY,
+                )
             )
             if clear_capability is not None and not clear_capability.enabled:
                 QMessageBox.warning(
@@ -982,6 +1402,9 @@ class TrainingSidebar(QWidget):
             result = execute_application_command(
                 self,
                 ClearTrainingHistoryCommand(confirmed=True),
+                expected_publication_generation=(
+                    publication.generation if publication is not None else None
+                ),
             )
             if result is None:
                 QMessageBox.warning(
@@ -990,14 +1413,25 @@ class TrainingSidebar(QWidget):
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
+            elif is_stale_publication_result(result):
+                QMessageBox.warning(
+                    self,
+                    "Review Clear History Again",
+                    result.message,
+                )
+                return
             elif result.failed:
                 QMessageBox.warning(self, "Warning", result.message)
                 return
 
             self._check_ready_after_command_result(result)
             self._show_status("Training history cleared")
-        except Exception as e:
-            QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_HISTORY_CLEAR,
+                message_box=QMessageBox,
+            )
 
     def on_training_started(self, *, refresh_ready: bool = True):
         """Update button states when training begins."""

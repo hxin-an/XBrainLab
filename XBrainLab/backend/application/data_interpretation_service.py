@@ -7,7 +7,12 @@ the command/result envelope and capability gate.
 
 from __future__ import annotations
 
+import hashlib
+import os
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
@@ -33,18 +38,74 @@ from .data_interpretation import (
     build_interpretation_preview,
     choices_from_import_recipe,
     load_import_recipe,
+    resolve_interpretation_resource_scope,
     scan_source_path,
     validate_interpretation_candidate,
 )
 from .data_interpretation_apply import DataInterpretationApplyService
+from .data_interpretation_bids_resources import BidsEventsJsonReader
+from .data_interpretation_content_identity import (
+    assert_review_content_unchanged,
+    identity_paths,
+)
+from .data_interpretation_recipe import (
+    IMPORT_RECIPE_MAX_BYTES,
+    ImportRecipeTooLargeError,
+)
+from .data_interpretation_resource_reader import AdmittedResourceReader
+from .data_interpretation_resource_receipt import (
+    DataInterpretationResourceReceiptAuthority,
+)
+from .data_interpretation_scan import discover_source_preflight_scope
 from .data_interpretation_state import DataInterpretationSessionState
 from .errors import ApplicationError, ConfirmationRequiredError, PreconditionError
+from .label_resource_admission import (
+    AdmittedLabelResourceSession,
+    LabelResourceSpec,
+    session_from_resource_preflight,
+)
 from .pipeline_transaction import PipelineStateSnapshot, PipelineStateTransaction
-from .resource_guard import check_import_resource_preflight
+from .resource_guard import (
+    ResourceConfirmationRequiredError,
+    ResourcePreflightResult,
+    check_import_resource_preflight,
+    enforce_resource_preflight,
+)
+from .resource_receipt import (
+    DEFAULT_RESOURCE_RECEIPT_LIMIT,
+    DEFAULT_RESOURCE_RECEIPT_TTL_SECONDS,
+    ResourceReceiptAuthority,
+    ResourceReceiptRecord,
+    fingerprint_resource_preflight,
+    fingerprint_resource_scope,
+)
 from .results import ErrorType
 from .state import InterpretationStateSnapshot
 
 HandlerResult = str | tuple[str, dict[str, Any]]
+
+IMPORT_PREFLIGHT_RECEIPT_TTL_SECONDS = DEFAULT_RESOURCE_RECEIPT_TTL_SECONDS
+IMPORT_PREFLIGHT_RECEIPT_LIMIT = DEFAULT_RESOURCE_RECEIPT_LIMIT
+
+
+_ImportPreflightReceipt = ResourceReceiptRecord[ResourcePreflightResult]
+
+
+@dataclass(frozen=True)
+class _PreviewResourceAdmission:
+    """Authoritative preview preflight plus its bounded sidecar reader."""
+
+    preflight: ResourcePreflightResult
+    resource_reader: AdmittedResourceReader
+    bids_events_json_reader: BidsEventsJsonReader
+    confirmation_receipt_reused: bool = False
+
+    def to_diagnostics(self) -> dict[str, Any]:
+        diagnostics = self.preflight.to_diagnostics()
+        diagnostics["parser_admission"] = self.resource_reader.diagnostics()
+        diagnostics["bids_events_json"] = self.bids_events_json_reader.diagnostics()
+        diagnostics["confirmation_receipt_reused"] = self.confirmation_receipt_reused
+        return diagnostics
 
 
 class DataInterpretationCommandService:
@@ -71,6 +132,23 @@ class DataInterpretationCommandService:
             data_filepath=self._data_filepath,
             record_label_import=self.state.record_label_import_for_recipe,
         )
+        self._import_preflight_receipts = ResourceReceiptAuthority[
+            ResourcePreflightResult
+        ](
+            command_name="apply_interpretation",
+            ttl_seconds=IMPORT_PREFLIGHT_RECEIPT_TTL_SECONDS,
+            max_receipts=IMPORT_PREFLIGHT_RECEIPT_LIMIT,
+            clock=lambda: time.monotonic(),
+        )
+        self._preview_preflight_receipts = DataInterpretationResourceReceiptAuthority(
+            command_name="preview_interpretation",
+        )
+        self._review_preflight_receipts = DataInterpretationResourceReceiptAuthority(
+            command_name="review_interpretation",
+        )
+        self._reload_preflight_receipts = DataInterpretationResourceReceiptAuthority(
+            command_name="reload_interpretation_recipe",
+        )
 
     def handle_scan_source(self, command: Command) -> HandlerResult:
         """Scan a file, folder, BIDS root, device export, or recipe source."""
@@ -82,6 +160,7 @@ class DataInterpretationCommandService:
             source_path=command.source_path,
             source_hint=command.source_hint,
             label_sources=command.label_sources,
+            materialize_metadata=False,
         )
         self.state.record_scan(scan)
         return (
@@ -96,30 +175,41 @@ class DataInterpretationCommandService:
         """Scan, preview, and validate one Data Interpretation candidate."""
         if not isinstance(command, ReviewInterpretationCommand):
             raise TypeError("Invalid command for review_interpretation")
-        scan_id = self.state.next_id("scan")
-        scan = scan_source_path(
-            scan_id=scan_id,
+        scan, admission = self._scan_after_resource_preflight(
+            scan_id=None,
             source_path=command.source_path,
             source_hint=command.source_hint,
             label_sources=command.label_sources,
+            choices=command.choices,
+            confirmed=command.resource_preflight_confirmed,
+            token=command.resource_preflight_token,
+            receipt_authority=self._review_preflight_receipts,
+            configuration_scope={"choices": command.choices},
         )
-        self.state.record_scan(scan)
-
         candidate_id = self.state.next_id("candidate")
         preview_id = self.state.next_id("preview")
         candidate = build_interpretation_candidate(
             candidate_id=candidate_id,
             scan=scan,
             choices=command.choices,
+            bids_events_json_reader=admission.bids_events_json_reader,
+            resource_reader=admission.resource_reader,
         )
         preview = build_interpretation_preview(
             preview_id=preview_id,
             candidate=candidate,
             scan=scan,
+            resource_preflight=admission.to_diagnostics(),
         )
+        self.state.record_scan(scan)
         self.state.record_preview(candidate, preview)
 
-        decision = validate_interpretation_candidate(candidate)
+        # Candidate construction just bound the exact admitted carrier content.
+        # Explicit Validate and Apply commands perform the later freshness checks.
+        decision = validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        )
         self.state.record_validation(candidate.candidate_id, decision)
         return (
             f"Interpretation review: {decision.decision}.",
@@ -129,6 +219,7 @@ class DataInterpretationCommandService:
                 "candidate": candidate.to_dict(),
                 "preview": preview.to_dict(),
                 "validation_decision": decision.to_dict(),
+                "resource_preflight": admission.to_diagnostics(),
             },
         )
 
@@ -137,18 +228,47 @@ class DataInterpretationCommandService:
         if not isinstance(command, PreviewInterpretationCommand):
             raise TypeError("Invalid command for preview_interpretation")
         scan = self.state.resolve_scan(command.scan_id)
+        replace_scan = False
+        if not bool(scan.bids.get("metadata_materialized")):
+            scan, admission = self._scan_after_resource_preflight(
+                scan_id=scan.scan_id,
+                source_path=scan.source_path,
+                source_hint=scan.source_hint,
+                label_sources=list(scan.label_sources),
+                choices=command.choices,
+                confirmed=command.resource_preflight_confirmed,
+                token=command.resource_preflight_token,
+                receipt_authority=self._preview_preflight_receipts,
+                configuration_scope={"choices": command.choices},
+            )
+            replace_scan = True
+        else:
+            admission = self._resolve_preview_resource_preflight(
+                scan=scan,
+                choices=command.choices,
+                confirmed=command.resource_preflight_confirmed,
+                token=command.resource_preflight_token,
+                receipt_authority=self._preview_preflight_receipts,
+                configuration_scope={"choices": command.choices},
+                receipt_candidate_id=scan.scan_id,
+            )
         candidate_id = self.state.next_id("candidate")
         preview_id = self.state.next_id("preview")
         candidate = build_interpretation_candidate(
             candidate_id=candidate_id,
             scan=scan,
             choices=command.choices,
+            bids_events_json_reader=admission.bids_events_json_reader,
+            resource_reader=admission.resource_reader,
         )
         preview = build_interpretation_preview(
             preview_id=preview_id,
             candidate=candidate,
             scan=scan,
+            resource_preflight=admission.to_diagnostics(),
         )
+        if replace_scan:
+            self.state.record_scan(scan)
         self.state.record_preview(candidate, preview)
         return (
             "Interpretation preview ready.",
@@ -156,6 +276,7 @@ class DataInterpretationCommandService:
                 "payload_type": "interpretation_preview",
                 "candidate": candidate.to_dict(),
                 "preview": preview.to_dict(),
+                "resource_preflight": admission.to_diagnostics(),
             },
         )
 
@@ -183,6 +304,18 @@ class DataInterpretationCommandService:
         if decision is None:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, decision)
+        preflight, _preflight_receipt, receipt_reused = (
+            self._resolve_apply_resource_preflight(
+                command=command,
+                candidate=candidate,
+            )
+        )
+        self._ensure_reviewed_label_content_is_current(candidate)
+        training_boundary = (
+            self._pipeline_transaction.begin_raw_replacement()
+            if self._pipeline_transaction is not None
+            else None
+        )
         snapshot = self._snapshot_raw_state()
         state_checkpoint = self.state.checkpoint_apply_state()
         try:
@@ -192,6 +325,10 @@ class DataInterpretationCommandService:
             loaded_files = self._loaded_filepaths() or list(
                 candidate.selected_eeg_files
             )
+            source_identity_apply = self.apply_service.bind_source_content_identity(
+                candidate,
+            )
+            channels_apply = self.apply_service.apply_bids_channels(candidate)
             interpretation_id = self.state.next_id("interpretation")
             applied = self._build_applied_interpretation(
                 interpretation_id=interpretation_id,
@@ -203,11 +340,29 @@ class DataInterpretationCommandService:
             metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
                 candidate,
             )
-            label_apply = self.apply_service.apply_label_carriers(candidate)
+            label_resources = self._admitted_reviewed_label_resources(
+                candidate,
+                preflight,
+            )
+            label_apply = self.apply_service.apply_label_carriers(
+                candidate,
+                label_resources,
+            )
             internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
                 candidate,
             )
+            # Recheck inside the transaction so a carrier changed while raw/labels
+            # were being loaded cannot become applied workflow truth.
+            self._ensure_reviewed_label_content_is_current(candidate)
             self._ensure_label_apply_succeeded(candidate, label_apply)
+            trainer_retired = (
+                self._pipeline_transaction.commit_pipeline_invalidation(
+                    training_boundary,
+                )
+                if self._pipeline_transaction is not None
+                and training_boundary is not None
+                else False
+            )
         except Exception:
             self.state.restore_apply_state(state_checkpoint)
             self._restore_raw_state(snapshot)
@@ -237,11 +392,440 @@ class DataInterpretationCommandService:
                 "errors": errors,
                 "applied_interpretation": applied_payload,
                 "metadata_apply": metadata_apply,
+                "source_identity_apply": source_identity_apply,
+                "channels_apply": channels_apply,
                 "label_carriers_pending": list(candidate.label_carriers),
                 "label_apply": label_apply,
                 "internal_epoch_hints": internal_epoch_hints,
+                "trainer_retired": trainer_retired,
+                "resource_preflight": {
+                    **preflight.to_diagnostics(),
+                    "confirmation_receipt_reused": receipt_reused,
+                },
             },
         )
+
+    @staticmethod
+    def _ensure_reviewed_label_content_is_current(
+        candidate: InterpretationCandidate,
+    ) -> None:
+        assert_review_content_unchanged(
+            expected=candidate.content_identity,
+            label_carrier_plan=candidate.label_carrier_plan,
+            selected_eeg_files=candidate.selected_eeg_files,
+            class_map=candidate.class_map,
+            event_roles=candidate.event_roles,
+            run_event_mappings=candidate.run_event_mappings,
+            candidate_id=candidate.candidate_id,
+        )
+
+    @staticmethod
+    def _admitted_reviewed_label_resources(
+        candidate: InterpretationCandidate,
+        preflight: ResourcePreflightResult,
+    ) -> AdmittedLabelResourceSession | None:
+        specs: list[LabelResourceSpec] = []
+        for plan in candidate.label_carrier_plan:
+            path = str(plan.get("path") or "").strip()
+            if not path:
+                continue
+            time_model = str(plan.get("time_model") or "").strip().lower()
+            placement = str(plan.get("placement_method") or "").strip().lower()
+            sequence_only = time_model == "trial_order"
+            uses_anchor = not sequence_only and bool(
+                str(plan.get("selected_anchor") or "").strip()
+            )
+            uses_duration = placement != "event_code" and uses_anchor
+            specs.append(
+                LabelResourceSpec(
+                    path=path,
+                    label_field=str(plan.get("selected_label_field") or "").strip()
+                    or None,
+                    anchor=(
+                        str(plan.get("selected_anchor") or "").strip()
+                        if uses_anchor
+                        else None
+                    ),
+                    duration_field=(
+                        str(plan.get("selected_duration_field") or "").strip() or None
+                        if uses_duration
+                        else None
+                    ),
+                    sequence_only=sequence_only,
+                )
+            )
+        if not specs:
+            return None
+        return session_from_resource_preflight(specs, preflight)
+
+    def _resolve_apply_resource_preflight(
+        self,
+        *,
+        command: ApplyInterpretationCommand,
+        candidate: InterpretationCandidate,
+    ) -> tuple[
+        ResourcePreflightResult,
+        _ImportPreflightReceipt | None,
+        bool,
+    ]:
+        """Return one current preflight without trusting stale UI confirmation."""
+        resource_paths = self._candidate_resource_paths(candidate)
+        fingerprint = self._resource_scope_fingerprint(resource_paths)
+        preflight = check_import_resource_preflight(resource_paths)
+        preflight_fingerprint = fingerprint_resource_preflight(preflight)
+        receipt = self._matching_import_preflight_receipt(
+            command=command,
+            candidate_id=candidate.candidate_id,
+            scope_fingerprint=fingerprint,
+            preflight_fingerprint=preflight_fingerprint,
+        )
+        if receipt is not None:
+            if receipt.payload.requires_confirmation and not (
+                command.resource_preflight_confirmed
+            ):
+                raise self._resource_confirmation_error(receipt)
+            enforce_resource_preflight(
+                preflight,
+                confirmed=command.resource_preflight_confirmed,
+            )
+            consumed = self._import_preflight_receipts.consume(
+                receipt.challenge.challenge_id,
+                scope_fingerprint=receipt.challenge.scope_fingerprint,
+                candidate_id=receipt.challenge.candidate_id,
+                preflight_fingerprint=receipt.challenge.preflight_fingerprint,
+            )
+            if consumed is None:
+                refreshed = self._store_import_preflight_receipt(
+                    candidate_id=candidate.candidate_id,
+                    scope_fingerprint=fingerprint,
+                    preflight=check_import_resource_preflight(resource_paths),
+                )
+                raise self._resource_confirmation_error(refreshed)
+            # Consume before the import mutation so one consent cannot authorize
+            # multiple attempts after a downstream loader failure.
+            return preflight, consumed, True
+
+        pending_receipt = self._pending_import_preflight_receipt(
+            candidate_id=candidate.candidate_id,
+            scope_fingerprint=fingerprint,
+            preflight_fingerprint=preflight_fingerprint,
+        )
+        if pending_receipt is not None and not command.resource_preflight_token:
+            raise self._resource_confirmation_error(pending_receipt)
+
+        if preflight.requires_confirmation:
+            receipt = self._store_import_preflight_receipt(
+                candidate_id=candidate.candidate_id,
+                scope_fingerprint=fingerprint,
+                preflight=preflight,
+            )
+            raise self._resource_confirmation_error(receipt)
+        enforce_resource_preflight(
+            preflight,
+            confirmed=False,
+        )
+        return preflight, None, False
+
+    def _resolve_preview_resource_preflight(
+        self,
+        *,
+        scan: Any,
+        choices: dict[str, Any],
+        confirmed: bool,
+        token: str | None,
+        receipt_authority: DataInterpretationResourceReceiptAuthority,
+        configuration_scope: dict[str, Any],
+        receipt_candidate_id: str | None = None,
+        additional_paths: list[str] | None = None,
+    ) -> _PreviewResourceAdmission:
+        """Check all payloads before candidate preview may materialize labels."""
+        scope = resolve_interpretation_resource_scope(scan, choices)
+        resource_paths: list[str] = []
+        for path in [*scope.paths, *(additional_paths or [])]:
+            if path not in resource_paths:
+                resource_paths.append(path)
+        preflight = check_import_resource_preflight(resource_paths)
+        configuration_fingerprint = fingerprint_resource_scope(
+            configuration_scope,
+        )
+        preflight_fingerprint = fingerprint_resource_preflight(preflight)
+        scope_fingerprint = self._interpretation_command_scope_fingerprint(
+            command_name=receipt_authority.command_name,
+            paths=resource_paths,
+            context={
+                "scan_id": str(getattr(scan, "scan_id", "") or ""),
+                "source_path": str(getattr(scan, "source_path", "") or ""),
+                "source_hint": str(getattr(scan, "source_hint", "") or ""),
+                "source_kind": str(getattr(scan, "source_kind", "") or ""),
+                "label_sources": list(getattr(scan, "label_sources", []) or []),
+            },
+        )
+        receipt_reused = receipt_authority.authorize(
+            confirmed=confirmed,
+            token=token,
+            preflight=preflight,
+            scope_fingerprint=scope_fingerprint,
+            configuration_fingerprint=configuration_fingerprint,
+            preflight_fingerprint=preflight_fingerprint,
+            candidate_id=receipt_candidate_id,
+        )
+        bids_events_json_reader = BidsEventsJsonReader.from_resource_preflight(
+            scope.bids_events_json_files,
+            preflight,
+        )
+        sidecar_paths = {
+            Path(path).expanduser().resolve(strict=False)
+            for path in scope.bids_events_json_files
+        }
+        resource_reader = AdmittedResourceReader.from_resource_preflight(
+            [
+                path
+                for path in resource_paths
+                if Path(path).expanduser().resolve(strict=False) not in sidecar_paths
+            ],
+            preflight,
+            dependent_files=scope.eeg_dependencies_by_file,
+        )
+        return _PreviewResourceAdmission(
+            preflight=preflight,
+            resource_reader=resource_reader,
+            bids_events_json_reader=bids_events_json_reader,
+            confirmation_receipt_reused=receipt_reused,
+        )
+
+    def _scan_after_resource_preflight(
+        self,
+        *,
+        scan_id: str | None,
+        source_path: str,
+        source_hint: str,
+        label_sources: list[str],
+        choices: dict[str, Any],
+        confirmed: bool,
+        token: str | None,
+        receipt_authority: DataInterpretationResourceReceiptAuthority,
+        configuration_scope: dict[str, Any],
+        receipt_candidate_id: str | None = None,
+        additional_admission_paths: list[str] | None = None,
+    ) -> tuple[Any, _PreviewResourceAdmission]:
+        """Admit scan payloads and metadata before BIDS tables are parsed."""
+        scope = discover_source_preflight_scope(
+            source_path=source_path,
+            source_hint=source_hint,
+            label_sources=label_sources,
+        )
+        provisional_scan_id = scan_id or "resource-preflight"
+        admission = self._resolve_preview_resource_preflight(
+            scan=scope.selection_scan_result(scan_id=provisional_scan_id),
+            choices=choices,
+            confirmed=confirmed,
+            token=token,
+            receipt_authority=receipt_authority,
+            configuration_scope=configuration_scope,
+            receipt_candidate_id=receipt_candidate_id or scan_id,
+            additional_paths=[
+                *scope.metadata_files,
+                *(additional_admission_paths or []),
+            ],
+        )
+        admitted_scan_id = scan_id or self.state.next_id("scan")
+        scan = scan_source_path(
+            scan_id=admitted_scan_id,
+            source_path=source_path,
+            source_hint=source_hint,
+            label_sources=label_sources,
+            preflight_scope=scope,
+            materialize_metadata=True,
+            resource_reader=admission.resource_reader,
+        )
+        return scan, admission
+
+    @staticmethod
+    def _candidate_resource_paths(candidate: InterpretationCandidate) -> list[str]:
+        """Return the deduplicated EEG and external-label apply scope."""
+        result: list[str] = []
+        for path in [
+            *candidate.selected_eeg_files,
+            *candidate.label_carriers,
+            *identity_paths(candidate.content_identity),
+        ]:
+            if path not in result:
+                result.append(path)
+        return result
+
+    def _matching_import_preflight_receipt(
+        self,
+        *,
+        command: ApplyInterpretationCommand,
+        candidate_id: str,
+        scope_fingerprint: str,
+        preflight_fingerprint: str,
+    ) -> _ImportPreflightReceipt | None:
+        token = str(command.resource_preflight_token or "").strip()
+        if not token:
+            return None
+        return self._import_preflight_receipts.peek(
+            token,
+            scope_fingerprint=scope_fingerprint,
+            candidate_id=candidate_id,
+            preflight_fingerprint=preflight_fingerprint,
+        )
+
+    def _pending_import_preflight_receipt(
+        self,
+        *,
+        candidate_id: str,
+        scope_fingerprint: str,
+        preflight_fingerprint: str,
+    ) -> _ImportPreflightReceipt | None:
+        return self._import_preflight_receipts.pending(
+            scope_fingerprint=scope_fingerprint,
+            candidate_id=candidate_id,
+            preflight_fingerprint=preflight_fingerprint,
+        )
+
+    def _store_import_preflight_receipt(
+        self,
+        *,
+        candidate_id: str,
+        scope_fingerprint: str,
+        preflight: ResourcePreflightResult,
+    ) -> _ImportPreflightReceipt:
+        preflight_fingerprint = fingerprint_resource_preflight(preflight)
+        challenge = self._import_preflight_receipts.issue(
+            payload=preflight,
+            candidate_id=candidate_id,
+            scope_fingerprint=scope_fingerprint,
+            preflight_fingerprint=preflight_fingerprint,
+        )
+        receipt = self._import_preflight_receipts.peek(
+            challenge.challenge_id,
+            candidate_id=candidate_id,
+            scope_fingerprint=scope_fingerprint,
+            preflight_fingerprint=preflight_fingerprint,
+        )
+        if receipt is None:  # pragma: no cover - issue and lookup share one authority
+            raise RuntimeError("Issued import resource challenge was not stored.")
+        return receipt
+
+    @staticmethod
+    def _resource_confirmation_error(
+        receipt: _ImportPreflightReceipt,
+    ) -> ResourceConfirmationRequiredError:
+        return ResourceConfirmationRequiredError(
+            receipt.payload,
+            challenge=receipt.challenge,
+        )
+
+    @staticmethod
+    def _resource_scope_fingerprint(paths: list[str]) -> str:
+        """Fingerprint selected files without reading their EEG sample payload."""
+        return fingerprint_resource_scope(
+            DataInterpretationCommandService._resource_scope_entries(paths),
+        )
+
+    @staticmethod
+    def _interpretation_command_scope_fingerprint(
+        *,
+        command_name: str,
+        paths: list[str],
+        context: dict[str, Any],
+    ) -> str:
+        """Bind a receipt to one command, source context, and exact file scope."""
+        return fingerprint_resource_scope(
+            {
+                "command": command_name,
+                "context": context,
+                "resources": DataInterpretationCommandService._resource_scope_entries(
+                    paths,
+                ),
+            },
+        )
+
+    @staticmethod
+    def _resource_scope_entries(paths: list[str]) -> list[dict[str, Any]]:
+        """Return deterministic file identities without reading EEG payloads."""
+        entries: list[dict[str, Any]] = []
+        normalized_paths = sorted(
+            {
+                str(Path(raw_path).expanduser().resolve(strict=False))
+                for raw_path in paths
+            },
+        )
+        for raw_path in normalized_paths:
+            path = Path(raw_path).expanduser()
+            resolved = str(path.resolve(strict=False))
+            try:
+                stat = path.stat()
+            except OSError as exc:
+                entries.append(
+                    {
+                        "path": resolved,
+                        "status": "unavailable",
+                        "error": exc.__class__.__name__,
+                    },
+                )
+                continue
+            entries.append(
+                {
+                    "path": resolved,
+                    "status": "available",
+                    "size": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns,
+                    "ctime_ns": stat.st_ctime_ns,
+                    "device": stat.st_dev,
+                    "inode": stat.st_ino,
+                },
+            )
+        return entries
+
+    @staticmethod
+    def _bounded_recipe_content_fingerprint(recipe_path: str) -> str:
+        """Hash one bounded recipe so a path alone never authorizes reload."""
+        path = Path(recipe_path)
+        digest = hashlib.sha256()
+        total = 0
+        try:
+            with path.open("rb") as handle:
+                opened = os.fstat(handle.fileno())
+                while chunk := handle.read(65_536):
+                    total += len(chunk)
+                    if total > IMPORT_RECIPE_MAX_BYTES:
+                        raise DataInterpretationCommandService._oversized_recipe_error(
+                            path=path,
+                            file_bytes=total,
+                            file_bytes_is_lower_bound=True,
+                        )
+                    digest.update(chunk)
+                finished = os.fstat(handle.fileno())
+            current = path.stat()
+        except PreconditionError:
+            raise
+        except OSError as exc:
+            raise PreconditionError(
+                f"Import recipe is unavailable: {path}.",
+                diagnostics={
+                    "recipe_input": {
+                        "risk_level": "blocking",
+                        "path": str(path),
+                        "message": str(exc),
+                    },
+                },
+            ) from exc
+        identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if any(
+            getattr(opened, field) != getattr(finished, field)
+            or getattr(opened, field) != getattr(current, field)
+            for field in identity_fields
+        ):
+            raise PreconditionError(
+                f"Import recipe changed while it was being identified: {path}.",
+                diagnostics={
+                    "code": "interpretation_recipe_changed_during_fingerprint",
+                    "path": str(path),
+                },
+            )
+        return digest.hexdigest()
 
     def _ensure_candidate_can_apply(
         self,
@@ -272,12 +856,6 @@ class DataInterpretationCommandService:
     ) -> tuple[int, list[str]]:
         """Replace active raw data before importing reviewed interpretation files."""
         expected_count = len(paths)
-        preflight = check_import_resource_preflight(paths)
-        if not preflight.ok:
-            raise PreconditionError(
-                preflight.message,
-                diagnostics={"resource_preflight": preflight.diagnostics},
-            )
         loaded_files = list(self.dataset.get_loaded_data_list() or [])
         if self._pipeline_transaction is not None:
             self._pipeline_transaction.prepare_raw_replacement()
@@ -436,6 +1014,7 @@ class DataInterpretationCommandService:
             recipe_id=recipe_id,
             applied=applied,
             warnings=list(candidate.warnings),
+            content_identity=candidate.content_identity,
         )
         if command.recipe_path:
             recipe.write_json(command.recipe_path)
@@ -455,19 +1034,58 @@ class DataInterpretationCommandService:
             raise TypeError("Invalid command for reload_interpretation_recipe")
         if not command.recipe_path:
             raise PreconditionError("recipe_path is required.")
-        recipe = load_import_recipe(command.recipe_path)
-        scan_id = self.state.next_id("scan")
-        scan = scan_source_path(
-            scan_id=scan_id,
+        recipe_path = self._validate_recipe_input(command.recipe_path)
+        recipe_content_fingerprint = self._bounded_recipe_content_fingerprint(
+            recipe_path,
+        )
+        recipe_preflight = check_import_resource_preflight([recipe_path])
+        # Recipe JSON is hard-capped at 1 MiB. Enforce a blocking result before
+        # parsing, then include the recipe in the one authoritative combined
+        # preview check below so one UI consent never has to cross two challenges.
+        if recipe_preflight.blocking:
+            enforce_resource_preflight(recipe_preflight, confirmed=False)
+        recipe_reader = AdmittedResourceReader.from_resource_preflight(
+            [recipe_path],
+            recipe_preflight,
+        )
+        try:
+            with recipe_reader.guard(
+                [recipe_path],
+                purpose="import recipe reload",
+            ):
+                recipe = load_import_recipe(recipe_path)
+        except ImportRecipeTooLargeError as exc:
+            raise self._oversized_recipe_error(
+                path=Path(recipe_path),
+                file_bytes=exc.file_bytes_at_least,
+                file_bytes_is_lower_bound=True,
+            ) from exc
+        choices = choices_from_import_recipe(recipe)
+        scan, admission = self._scan_after_resource_preflight(
+            scan_id=None,
             source_path=recipe.source_path,
             source_hint=recipe.source_kind or "recipe",
             label_sources=recipe.label_sources,
+            choices=choices,
+            confirmed=command.resource_preflight_confirmed,
+            token=command.resource_preflight_token,
+            receipt_authority=self._reload_preflight_receipts,
+            configuration_scope={
+                "stage": "source_preview",
+                "recipe_content_sha256": recipe_content_fingerprint,
+                "recipe": recipe.to_dict(),
+                "choices": choices,
+            },
+            receipt_candidate_id=recipe.recipe_id,
+            additional_admission_paths=[recipe_path],
         )
         candidate_id = self.state.next_id("candidate")
         candidate = build_interpretation_candidate(
             candidate_id=candidate_id,
             scan=scan,
-            choices=choices_from_import_recipe(recipe),
+            choices=choices,
+            bids_events_json_reader=admission.bids_events_json_reader,
+            resource_reader=admission.resource_reader,
         )
         preview_id = self.state.next_id("preview")
         preview = build_interpretation_preview(
@@ -475,8 +1093,14 @@ class DataInterpretationCommandService:
             candidate=candidate,
             scan=scan,
             recipe=recipe,
+            resource_preflight=admission.to_diagnostics(),
         )
-        decision = validate_interpretation_candidate(candidate)
+        # Reload built a fresh candidate from newly admitted content. The saved
+        # recipe diff remains reviewable; a later Validate/Apply rechecks bytes.
+        decision = validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        )
         self.state.record_recipe_reload(
             recipe=recipe,
             scan=scan,
@@ -494,16 +1118,97 @@ class DataInterpretationCommandService:
                 "candidate": candidate.to_dict(),
                 "preview": preview.to_dict(),
                 "validation_decision": decision.to_dict(),
+                "resource_preflight": admission.to_diagnostics(),
             },
+        )
+
+    @staticmethod
+    def _validate_recipe_input(recipe_path: str) -> str:
+        """Resolve a recipe whose size is safe for the existing JSON loader."""
+        path = Path(recipe_path).expanduser()
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            raise PreconditionError(
+                f"Import recipe is unavailable: {path}.",
+                diagnostics={
+                    "recipe_input": {
+                        "risk_level": "blocking",
+                        "path": str(path),
+                        "message": str(exc),
+                    },
+                },
+            ) from exc
+        if not path.is_file():
+            raise PreconditionError(
+                f"Import recipe must be a JSON file: {path}.",
+                diagnostics={
+                    "recipe_input": {
+                        "risk_level": "blocking",
+                        "path": str(path),
+                        "message": "The selected recipe path is not a file.",
+                    },
+                },
+            )
+        resolved = path.resolve()
+        file_bytes = max(int(stat.st_size), 0)
+        if file_bytes > IMPORT_RECIPE_MAX_BYTES:
+            raise DataInterpretationCommandService._oversized_recipe_error(
+                path=resolved,
+                file_bytes=file_bytes,
+            )
+        return str(resolved)
+
+    @staticmethod
+    def _oversized_recipe_error(
+        *,
+        path: Path,
+        file_bytes: int,
+        file_bytes_is_lower_bound: bool = False,
+    ) -> PreconditionError:
+        qualifier = "at least " if file_bytes_is_lower_bound else ""
+        message = (
+            f"Import recipe is {qualifier}{file_bytes} bytes, above the bounded "
+            f"{IMPORT_RECIPE_MAX_BYTES}-byte input limit. Choose a smaller recipe "
+            "JSON file."
+        )
+        diagnostics: dict[str, Any] = {
+            "risk_level": "blocking",
+            "path": str(path),
+            "max_bytes": IMPORT_RECIPE_MAX_BYTES,
+            "message": message,
+        }
+        size_key = "file_bytes_at_least" if file_bytes_is_lower_bound else "file_bytes"
+        diagnostics[size_key] = file_bytes
+        return PreconditionError(
+            message,
+            diagnostics={"recipe_input": diagnostics},
         )
 
     def snapshot(self) -> InterpretationStateSnapshot:
         """Return the current Data Interpretation state snapshot."""
         return self.state.snapshot()
 
+    def current_review(self) -> dict[str, Any]:
+        """Return the exact pending review without rescanning its resources."""
+        return self.state.current_review()
+
     def clear(self) -> None:
         """Clear Data Interpretation lifecycle state."""
         self.state.clear()
+        self._clear_resource_receipts()
+
+    def invalidate_for_legacy_raw_mutation(self) -> bool:
+        """Invalidate reviewed import truth after a compatibility raw edit."""
+        invalidated = self.state.invalidate_for_legacy_raw_mutation()
+        self._clear_resource_receipts()
+        return invalidated
+
+    def _clear_resource_receipts(self) -> None:
+        self._import_preflight_receipts.clear()
+        self._preview_preflight_receipts.clear()
+        self._review_preflight_receipts.clear()
+        self._reload_preflight_receipts.clear()
 
     def record_label_import_for_recipe(
         self,

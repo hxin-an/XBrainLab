@@ -6,9 +6,80 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.llm.agent.request_admission import (
+    UserRequestAdmission,
+    UserRequestAdmissionAction,
+)
+from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionOutcome
+from XBrainLab.llm.agent.turn import (
+    AssistantDebugToolRequest,
+    AssistantGenerationEvent,
+    AssistantGenerationEventPhase,
+    AssistantGenerationStopAcknowledgement,
+    AssistantGenerationStopRequest,
+    AssistantResponseContract,
+    AssistantTurnCorrelation,
+    AssistantTurnRequest,
+)
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchResolver
+from XBrainLab.llm.tools.application_surface import ToolCommandResult
+from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
+
+
+def _tool_outcome(
+    message: str,
+    *,
+    ok: bool = True,
+    tool_name: str = "cmd",
+    state: dict[str, object] | None = None,
+) -> ToolExecutionOutcome:
+    return ToolExecutionOutcome(
+        ok,
+        ToolCommandResult(
+            ok=ok,
+            tool_name=tool_name,
+            message=message,
+            error_type="none" if ok else "runtime",
+            state=state,
+        ),
+    )
+
+
+def _submit_user_turn(ctrl, text: str) -> AssistantTurnCorrelation:
+    sequence = getattr(ctrl, "_test_host_turn_sequence", 0) + 1
+    ctrl._test_host_turn_sequence = sequence
+    correlation = AssistantTurnCorrelation(
+        generation=sequence,
+        turn_id=sequence,
+    )
+    ctrl.handle_user_turn(AssistantTurnRequest(correlation=correlation, text=text))
+    return correlation
+
 
 def _allow_prompt_tools(ctrl):
-    ctrl._check_tool_availability = MagicMock(return_value=None)
+    from XBrainLab.llm.agent.assembler import PromptToolPublication
+    from XBrainLab.llm.tools.application_surface import (
+        READ_ONLY_TOOLS,
+        TOOL_TO_COMMAND,
+        ToolAvailability,
+        ToolAvailabilityContext,
+    )
+
+    source = MagicMock()
+    source.get_context.side_effect = lambda tool_name: ToolAvailabilityContext(
+        availability=ToolAvailability(tool_name=tool_name, enabled=True),
+        state={"pipeline_stage": "empty"},
+        generation=1,
+    )
+    ctrl._tool_attempt_coordinator._context_source = source
+    ctrl._active_tool_publication = PromptToolPublication(
+        tool_names=frozenset(
+            set(TOOL_TO_COMMAND) | set(READ_ONLY_TOOLS) | {"cmd", "first"}
+        ),
+        backend_generation=1,
+    )
 
 
 @pytest.fixture
@@ -28,14 +99,10 @@ def _mock_qt():
 def ctrl():
     """Build an LLMController with all heavy deps mocked.
 
-    Instead of ``__new__`` + manual attribute assignment, we pre-mock
-    the Qt signals on the raw instance and then let ``__init__`` run
-    (with ``QObject.__init__`` patched to a no-op).  This ensures all
-    attributes are set through the real constructor so the fixture
-    stays in sync with production code automatically.
+    Use the real QObject constructor while mocking heavyweight runtime
+    collaborators. This keeps Qt's signal host valid and still exercises the
+    product constructor.
     """
-    from PyQt6.QtCore import QObject
-
     with (
         patch("XBrainLab.llm.agent.controller.ToolRegistry"),
         patch("XBrainLab.llm.agent.controller.ContextAssembler"),
@@ -44,34 +111,53 @@ def ctrl():
         patch("XBrainLab.llm.agent.controller.QThread"),
         patch("XBrainLab.llm.agent.controller.AgentWorker"),
         patch("XBrainLab.llm.agent.controller.AVAILABLE_TOOLS", []),
-        patch.object(QObject, "__init__", lambda self: None),
     ):
         from XBrainLab.llm.agent.controller import LLMController
+        from XBrainLab.llm.agent.tool_attempt_coordinator import (
+            ToolAttemptCoordinator,
+        )
+        from XBrainLab.llm.agent.tool_execution_coordinator import (
+            ToolExecutionCoordinator,
+        )
 
         study = MagicMock()
 
-        # Pre-set signal mocks on the class so __init__ can .connect() them
+        # Construct through PyQt's normal QObject path before replacing signals.
+        # ``__new__``-only fixtures do not establish a valid typed turn/signal host.
         signal_names = [
-            "response_ready",
-            "chunk_received",
-            "generation_started",
+            "response_presentation_ready",
+            "generation_event",
             "processing_finished",
             "status_update",
             "error_occurred",
-            "request_user_interaction",
-            "remove_content",
+            "panel_navigation_requested",
             "sig_initialize",
             "sig_generate",
             "sig_reinit",
             "sig_cancel_generation",
             "sig_shutdown_worker",
+            "sig_rag_context_ready",
+            "execution_mode_changed",
             "application_command_completed",
             "application_command_started",
+            "runtime_state_changed",
+            "interaction_resolved",
+            "confirmation_requested",
+            "workflow_ui_handoff_requested",
+            "activity_changed",
         ]
-        c = LLMController.__new__(LLMController)
+        c = LLMController(study)
         for name in signal_names:
             setattr(c, name, MagicMock())
-        LLMController.__init__(c, study)
+        c._active_tool_publication = MagicMock()
+        c._active_tool_publication.permits.return_value = True
+        c._request_admission.evaluate = MagicMock(
+            return_value=UserRequestAdmission(
+                UserRequestAdmissionAction.GENERATE,
+            )
+        )
+        assert isinstance(c._tool_attempt_coordinator, ToolAttemptCoordinator)
+        assert isinstance(c._tool_execution_coordinator, ToolExecutionCoordinator)
         yield c
 
 
@@ -93,81 +179,124 @@ class TestAppendHistory:
 # --- handle_user_input ---
 class TestHandleUserInput:
     def test_ignores_empty(self, ctrl):
-        ctrl.handle_user_input("   ")
+        with pytest.raises(ValueError, match="must not be empty"):
+            AssistantTurnRequest(
+                correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+                text="   ",
+            )
         assert not ctrl.is_processing
 
     def test_ignores_when_busy(self, ctrl):
         ctrl.is_processing = True
-        ctrl.handle_user_input("hi")
+        _submit_user_turn(ctrl, "hi")
         assert len(ctrl.history) == 0
 
     def test_normal_flow(self, ctrl):
-        ctrl.rag_retriever.get_similar_examples.return_value = []
+        ctrl.sig_rag_context_ready.emit.side_effect = ctrl._on_rag_context_ready
+        ctrl._rag_lifecycle.retrieve = MagicMock(
+            side_effect=lambda turn_id, text, callback, *, allowed_tool_names: (
+                callback(turn_id, text, "", ""),
+                True,
+            )[1]
+        )
         ctrl._generate_response = MagicMock()
-        ctrl.handle_user_input("do something")
+        _submit_user_turn(ctrl, "do something")
         assert ctrl.is_processing
         assert len(ctrl.history) == 1
         ctrl._generate_response.assert_called_once()
 
-    def test_exception_emits_error(self, ctrl):
-        ctrl.rag_retriever.get_similar_examples.side_effect = RuntimeError("boom")
-        ctrl.handle_user_input("run analysis")
-        ctrl.error_occurred.emit.assert_called()
-        assert not ctrl.is_processing
+    def test_rag_error_continues_generation_without_user_visible_error(self, ctrl):
+        ctrl.sig_rag_context_ready.emit.side_effect = ctrl._on_rag_context_ready
+        ctrl._rag_lifecycle.retrieve = MagicMock(
+            side_effect=lambda turn_id, text, callback, *, allowed_tool_names: (
+                callback(turn_id, text, "", "Qdrant exploded"),
+                True,
+            )[1]
+        )
+        ctrl._generate_response = MagicMock()
+        _submit_user_turn(ctrl, "run analysis")
+        ctrl._generate_response.assert_called_once()
+        ctrl.error_occurred.emit.assert_not_called()
+        assert ctrl.is_processing
 
 
 # --- _on_chunk_received ---
 class TestOnChunkReceived:
     def test_buffers_short_response(self, ctrl):
-        ctrl._on_chunk_received("hi")
+        ctrl.is_processing = True
+        ctrl._active_generation_id = 11
+        ctrl._on_chunk_received(11, "hi")
         assert ctrl.current_response == "hi"
+        ctrl.generation_event.emit.assert_called_once_with(
+            AssistantGenerationEvent(
+                generation_id=11,
+                phase=AssistantGenerationEventPhase.CHUNK,
+                text="hi",
+            )
+        )
 
-    def test_streams_non_tool(self, ctrl):
+    def test_buffers_non_tool_until_generation_is_classified(self, ctrl):
+        ctrl.is_processing = True
+        ctrl._active_generation_id = 12
         ctrl.current_response = "a" * 10
-        ctrl._emitted_len = 10
-        ctrl._on_chunk_received(" more text")
-        ctrl.chunk_received.emit.assert_called_once_with(" more text")
+        ctrl._on_chunk_received(12, " more text")
+        assert ctrl.current_response.endswith(" more text")
 
     def test_buffers_tool_json(self, ctrl):
-        ctrl.current_response = '{"tool": "x"}'
-        ctrl._emitted_len = 0
-        ctrl._on_chunk_received("")
-        assert ctrl._is_buffering
+        ctrl.is_processing = True
+        ctrl._active_generation_id = 13
+        ctrl.current_response = '{"tool": "x"'
+        ctrl._on_chunk_received(13, "}")
+        assert ctrl.current_response == '{"tool": "x"}'
+
+    def test_ignores_chunk_from_stale_generation(self, ctrl):
+        ctrl.is_processing = True
+        ctrl._active_generation_id = 14
+        ctrl._on_chunk_received(13, "stale")
+        assert ctrl.current_response == ""
+        assert ctrl._active_generation_id == 14
+        ctrl.generation_event.emit.assert_not_called()
 
 
 # --- _on_generation_finished ---
 class TestOnGenerationFinished:
     def test_no_command_finalizes(self, ctrl):
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
         ctrl.current_response = "Just a regular reply, nothing special"
-        ctrl._emitted_len = 0
-        with patch("XBrainLab.llm.agent.controller.CommandParser") as MockParser:
-            MockParser.parse.return_value = None
-            ctrl._on_generation_finished()
+        ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
+        ctrl.is_processing = True
+        ctrl._active_generation_id = 21
+        ctrl._on_generation_finished(21, [])
         assert not ctrl.is_processing
+        ctrl.generation_event.emit.assert_called_once_with(
+            AssistantGenerationEvent(
+                generation_id=21,
+                phase=AssistantGenerationEventPhase.FINISHED,
+            )
+        )
 
     def test_broken_json_retries(self, ctrl):
         ctrl.current_response = '```json\n{"broken'
-        ctrl._emitted_len = 0
         ctrl._retry_count = 0
         ctrl.is_processing = True
+        ctrl._active_generation_id = 22
         ctrl._generate_response = MagicMock()
-        with patch("XBrainLab.llm.agent.controller.CommandParser") as MockParser:
-            MockParser.parse.return_value = None
-            ctrl._on_generation_finished()
+        ctrl._on_generation_finished(22, [])
         ctrl._generate_response.assert_called_once()
         assert ctrl._retry_count == 1
 
+    def test_stale_finish_does_not_close_active_generation(self, ctrl):
+        ctrl.current_response = "active"
+        ctrl.is_processing = True
+        ctrl._active_generation_id = 24
 
-# --- _detect_loop ---
-class TestDetectLoop:
-    def test_no_loop(self, ctrl):
-        assert not ctrl._detect_loop(("cmd", "{}"))
+        ctrl._on_generation_finished(23, [])
 
-    def test_detects_loop(self, ctrl):
-        sig = ("cmd", "{}")
-        for _ in range(3):
-            ctrl._recent_tool_calls.append(sig)
-        assert ctrl._detect_loop(sig)
+        assert ctrl.current_response == "active"
+        assert ctrl._active_generation_id == 24
+        assert ctrl.is_processing is True
+        ctrl.generation_event.emit.assert_not_called()
 
 
 # --- _handle_loop_detected ---
@@ -179,6 +308,8 @@ class TestHandleLoopDetected:
         ctrl._generate_response.assert_called_once()
 
     def test_aborts_after_max(self, ctrl):
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
         ctrl._loop_break_count = 3
         ctrl._handle_loop_detected("test_tool")
         assert not ctrl.is_processing
@@ -189,58 +320,68 @@ class TestHandleLoopDetected:
 class TestExecuteToolNoLoop:
     def test_unknown_tool(self, ctrl):
         ctrl.registry.get_tool.return_value = None
-        success, result = ctrl._execute_tool_no_loop("bogus", {})
-        assert not success
-        assert "Unknown" in result
+        outcome = ctrl._execute_tool_no_loop("bogus", {})
+        assert not outcome.success
+        assert "unavailable" in outcome.result.message
 
     def test_success(self, ctrl):
         mock_tool = MagicMock()
-        mock_tool.execute.return_value = "ok"
+        mock_tool.execute.return_value = ToolResult(True, "ok")
         ctrl.registry.get_tool.return_value = mock_tool
-        ctrl._check_tool_availability = MagicMock(return_value=None)
-        success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
-        assert success
-        assert result == "ok"
+        _allow_prompt_tools(ctrl)
+        outcome = ctrl._execute_tool_no_loop("get_dataset_info", {"a": 1})
+        assert outcome.success
+        assert outcome.result.message == "ok"
 
     def test_exception(self, ctrl):
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = RuntimeError("fail")
         ctrl.registry.get_tool.return_value = mock_tool
-        ctrl._check_tool_availability = MagicMock(return_value=None)
-        success, result = ctrl._execute_tool_no_loop("test", {})
-        assert not success
-        assert "fail" in result
+        _allow_prompt_tools(ctrl)
+        outcome = ctrl._execute_tool_no_loop("get_dataset_info", {})
+        assert not outcome.success
+        assert outcome.result.raw_result is None
+        assert outcome.result.error_code == "unexpected_tool_failure"
+        assert outcome.result.diagnostics["incident_id"]
 
 
 # --- _handle_tool_result_logic ---
 class TestHandleToolResultLogic:
     def test_switch_panel(self, ctrl):
         result = ctrl._handle_tool_result_logic(
-            "Request: Switch UI to 'visualization' (View: 3d_plot)"
+            UiRequest(
+                UiRequestKind.SWITCH_PANEL,
+                {"panel": "visualization", "view_mode": "3d_plot"},
+            )
         )
         assert result
-        ctrl.request_user_interaction.emit.assert_called()
+        ctrl.panel_navigation_requested.emit.assert_called()
 
     def test_confirm_montage(self, ctrl):
         result = ctrl._handle_tool_result_logic(
-            "Request: confirm_montage 'standard_1020'"
+            UiRequest(
+                UiRequestKind.CONFIRM_MONTAGE,
+                {"montage_name": "standard_1020"},
+            )
         )
         assert result
 
-    def test_failure_emits_error(self, ctrl):
-        result = ctrl._handle_tool_result_logic("some error", success=False)
+    def test_failure_waits_for_host_retry_policy(self, ctrl):
+        result = ctrl._handle_tool_result_logic(
+            ToolCommandResult.failure("test", "some error"),
+            success=False,
+        )
         assert not result
-        ctrl.response_ready.emit.assert_called()
+        ctrl.response_presentation_ready.emit.assert_not_called()
 
 
 # --- _process_tool_calls ---
 class TestProcessToolCalls:
     def test_success_finalizes(self, ctrl):
         _allow_prompt_tools(ctrl)
-        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
+        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
@@ -252,10 +393,15 @@ class TestProcessToolCalls:
 
         _allow_prompt_tools(ctrl)
         ctrl._execution_mode = LLMController.MODE_MULTI
-        ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
+        ctrl._execute_tool_no_loop = MagicMock(
+            return_value=_tool_outcome(
+                "err",
+                ok=False,
+                state=ApplicationStateSnapshot.empty().to_dict(),
+            )
+        )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()
-        ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
@@ -265,10 +411,15 @@ class TestProcessToolCalls:
     def test_max_failures_stops(self, ctrl):
         _allow_prompt_tools(ctrl)
         ctrl._tool_failure_count = 2
-        ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
+        ctrl._execute_tool_no_loop = MagicMock(
+            return_value=_tool_outcome(
+                "err",
+                ok=False,
+                state={"state_reliable": True},
+            )
+        )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
@@ -276,14 +427,16 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_verification_rejected(self, ctrl):
-        ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(
             is_valid=False, error_message="bad call"
         )
         ctrl._generate_response = MagicMock()
-        ctrl._handle_verification_failure = MagicMock()
+        ctrl._handle_tool_attempt_blocked = MagicMock()
         ctrl._process_tool_calls([("cmd", {})], "json")
-        ctrl._handle_verification_failure.assert_called_once_with("cmd", "bad call")
+        ctrl._handle_tool_attempt_blocked.assert_called_once()
+        command_name, result = ctrl._handle_tool_attempt_blocked.call_args.args
+        assert command_name == "cmd"
+        assert result.message == "bad call"
         ctrl._generate_response.assert_not_called()
 
 
@@ -293,7 +446,7 @@ class TestClose:
         ctrl.worker_thread.isRunning.return_value = True
         ctrl.close()
         ctrl.worker_thread.quit.assert_called_once()
-        ctrl.worker_thread.wait.assert_called_once()
+        ctrl.worker_thread.wait.assert_not_called()
 
     def test_close_rag_error_ignored(self, ctrl):
         worker = ctrl.worker
@@ -303,18 +456,29 @@ class TestClose:
 
         ctrl.rag_retriever.close.assert_called_once()
         worker.shutdown.assert_called_once()
-        ctrl.worker_thread.quit.assert_not_called()
+        ctrl.worker_thread.quit.assert_called_once()
+        ctrl.worker_thread.wait.assert_not_called()
 
 
 # --- stop_generation ---
 class TestStopGeneration:
     def test_stops_when_processing(self, ctrl):
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
+        ctrl._active_generation_id = 1
         ctrl.is_processing = True
         ctrl.stop_generation()
         assert ctrl.is_processing
-        ctrl.worker.cancel_generation.assert_called_once()
+        ctrl.worker.cancel_generation.assert_called_once_with(
+            AssistantGenerationStopRequest(generation_id=1)
+        )
 
-        ctrl._on_generation_stop_finished(True)
+        ctrl._on_generation_stop_finished(
+            AssistantGenerationStopAcknowledgement(
+                generation_id=1,
+                stopped=True,
+            )
+        )
 
         assert not ctrl.is_processing
 
@@ -322,8 +486,17 @@ class TestStopGeneration:
 # --- set_model ---
 class TestSetModel:
     def test_emits_reinit(self, ctrl):
-        ctrl.set_model("Gemini")
-        ctrl.sig_reinit.emit.assert_called_once_with("local")
+        config = LLMConfig()
+        config.local_backend_ready = lambda candidate=None: True  # type: ignore[method-assign]
+        config.local_backend_status_message = (  # type: ignore[method-assign]
+            lambda candidate=None: "Local runtime ready."
+        )
+        spec = AssistantRuntimeLaunchResolver().resolve(config).launch_spec
+        assert spec is not None
+
+        ctrl.set_model(spec)
+
+        ctrl.sig_reinit.emit.assert_called_once_with(spec)
 
 
 # --- reset_conversation ---
@@ -340,9 +513,14 @@ class TestResetConversation:
 # --- execute_debug_tool ---
 class TestExecuteDebugTool:
     def test_records_and_executes(self, ctrl):
-        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "done"))
+        request = AssistantDebugToolRequest.from_params(
+            correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+            tool_name="test",
+            params={"k": "v"},
+        )
+        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("done"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-        ctrl.execute_debug_tool("test", {"k": "v"})
+        ctrl.execute_debug_tool(request)
         assert not ctrl.is_processing
         assert len(ctrl.history) == 2
-        ctrl.response_ready.emit.assert_called()
+        assert ctrl.response_presentation_ready.emit.call_count == 2

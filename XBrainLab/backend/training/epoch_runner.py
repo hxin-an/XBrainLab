@@ -111,9 +111,6 @@ class EpochRunner:
         ):
             train_record.export_checkpoint()
 
-        # Free VRAM to prevent linear growth
-        torch.cuda.empty_cache()
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

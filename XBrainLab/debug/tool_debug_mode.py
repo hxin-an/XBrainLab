@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.llm.tools.result_contract import safe_unexpected_failure
 
 
-@dataclass
+@dataclass(frozen=True)
 class DebugToolCall:
     """Immutable representation of a single debug tool invocation.
 
@@ -26,6 +27,8 @@ class DebugToolCall:
 
     tool: str
     params: dict[str, Any]
+    confirmed: bool = False
+    authorization_text: str = ""
 
 
 class ToolDebugMode:
@@ -63,20 +66,21 @@ class ToolDebugMode:
         and ``self.calls`` remains empty.
         """
         if not os.path.exists(self.script_path):
-            logger.error("Debug script not found: %s", self.script_path)
+            logger.error("Debug script was not found.")
             return
 
         try:
             with open(self.script_path, encoding="utf-8") as f:
                 data = json.load(f)
                 self.calls = data.get("calls", [])
-                msg = (
-                    f"Loaded debug script with {len(self.calls)} "
-                    f"calls from {self.script_path}"
-                )
-                logger.info(msg)
-        except Exception as e:
-            logger.error("Failed to load debug script: %s", e)
+                logger.info("Loaded debug script with %d calls.", len(self.calls))
+        except Exception as error:
+            safe_unexpected_failure(
+                logger,
+                error,
+                boundary="tool_debug_script_loader",
+                operation="load_script",
+            )
 
     def next_call(self) -> DebugToolCall | None:
         """Return the next tool call in the sequence.
@@ -94,15 +98,34 @@ class ToolDebugMode:
         call_data = self.calls[self.index]
         self.index += 1
 
-        if not isinstance(call_data, dict) or "tool" not in call_data:
+        if not isinstance(call_data, dict) or not isinstance(
+            call_data.get("tool"),
+            str,
+        ):
             logger.error(
-                "Invalid call entry at index %d: %s",
+                "Invalid debug call entry at index %d.",
                 self.index - 1,
-                call_data,
             )
             return None
-
-        return DebugToolCall(tool=call_data["tool"], params=call_data.get("params", {}))
+        params = call_data.get("params", {})
+        confirmed = call_data.get("confirmed", False)
+        authorization_text = call_data.get("authorization_text", "")
+        if (
+            not isinstance(params, dict)
+            or type(confirmed) is not bool
+            or not isinstance(authorization_text, str)
+        ):
+            logger.error(
+                "Invalid debug call contract at index %d.",
+                self.index - 1,
+            )
+            return None
+        return DebugToolCall(
+            tool=call_data["tool"],
+            params=dict(params),
+            confirmed=confirmed,
+            authorization_text=authorization_text,
+        )
 
     @property
     def is_complete(self) -> bool:

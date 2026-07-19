@@ -3,11 +3,13 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+import XBrainLab.backend.dataset.epochs as epochs_module
 from XBrainLab.backend.dataset import (
     Dataset,
     DatasetGenerator,
     DataSplitter,
     DataSplittingConfig,
+    Epochs,
     SplitByType,
     SplitUnit,
     TrainingType,
@@ -651,8 +653,11 @@ def test_dataset_generator_handle_full_cross_validation(
 
 
 def test_dataset_generator_trial_kfold_cross_validation_is_non_leaking(
-    epochs,  # noqa: F811
+    preprocessed_data_list,  # noqa: F811
 ):
+    for preprocessed_data in preprocessed_data_list:
+        epochs_module.mark_xbrainlab_raw_event_source_epochs(preprocessed_data)
+    trusted_epochs = Epochs(preprocessed_data_list)
     config = DataSplittingConfig(
         TrainingType.FULL,
         True,
@@ -660,7 +665,7 @@ def test_dataset_generator_trial_kfold_cross_validation_is_non_leaking(
         [DataSplitter(SplitByType.TRIAL, "5", SplitUnit.KFOLD)],
     )
 
-    datasets = DatasetGenerator(epochs, config).generate()
+    datasets = DatasetGenerator(trusted_epochs, config).generate()
     audit = audit_dataset_splits(datasets, protocol="trial-wise")
 
     assert len(datasets) == 5

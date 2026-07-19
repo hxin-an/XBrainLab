@@ -22,6 +22,10 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.model_base import SCCNet
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingStateToken,
+)
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
@@ -30,6 +34,22 @@ from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 def _ui_text(value: str) -> Any:
     """Represent text-field values passed through runtime validation."""
     return cast(Any, value)
+
+
+class _StableMockTrainer(MagicMock):
+    """Trainer double with an explicit, non-fabricated snapshot contract."""
+
+    def get_state_snapshot_identity(self) -> str:
+        return "e2e-stable-mock-trainer"
+
+    def get_state_snapshot_token(self) -> TrainingStateToken:
+        return TrainingStateToken(generation=0, stable=True)
+
+
+def _stable_mock_trainer() -> MagicMock:
+    trainer = _StableMockTrainer()
+    trainer.get_current_index.return_value = 0
+    return trainer
 
 
 @pytest.fixture
@@ -79,7 +99,14 @@ class TestTrainingPanelRealUsage:
         panel.training_completed_shown = False
 
         # Simulate multiple calls to training_finished (like update_loop does)
-        with patch("PyQt6.QtWidgets.QMessageBox.information") as mock_msg:
+        with (
+            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_msg,
+            patch.object(
+                panel,
+                "_training_terminal_outcome",
+                return_value=(TrainingOutcomeState.COMPLETED, None),
+            ),
+        ):
             panel.training_finished()
             assert mock_msg.call_count == 0, "Completion should use the status bar"
             assert parent.statusBar().currentMessage() == (
@@ -104,11 +131,8 @@ class TestTrainingPanelRealUsage:
         parent = cast(Any, QWidget())
         parent.study = study
 
-        panel = TrainingPanel(parent=parent)
-        qtbot.addWidget(panel)
-
+        mock_trainer = _stable_mock_trainer()
         # Mock trainer and plan
-        mock_trainer = MagicMock()
         mock_plan = MagicMock()
 
         # Simulate get_training_epoch returning int
@@ -148,7 +172,8 @@ class TestTrainingPanelRealUsage:
         mock_plan.option.epoch = 10
 
         study.trainer = mock_trainer
-
+        panel = TrainingPanel(parent=parent)
+        qtbot.addWidget(panel)
         panel.update_loop()
 
         assert panel.history_table.rowCount() == 1
@@ -214,7 +239,7 @@ class TestEvaluationPanelIntegration:
         study = Study()
 
         # Mock trainer with plan holders that have proper methods
-        mock_trainer = MagicMock()
+        mock_trainer = _stable_mock_trainer()
         mock_plan = MagicMock()
         mock_plan.get_name.return_value = "TestPlan"
 
@@ -241,15 +266,21 @@ class TestEvaluationPanelIntegration:
 
         panel.update_panel()
         assert panel.last_application_query is not None
-        assert panel.last_application_query.ok
-        diagnostics = panel.last_application_query.diagnostics
-        assert diagnostics.get("payload_type") == "evaluation_summary"
-        assert diagnostics.get("available") is False
-        assert diagnostics.get("plan_count") == 1
-        assert diagnostics.get("finished_run_count") == 0
+        assert panel.last_application_query.failed
+        assert (
+            panel.last_application_query.message
+            == "Complete at least one training run before evaluating results."
+        )
+        assert (
+            panel.last_application_query.diagnostics.get("exception_type")
+            == "PreconditionError"
+        )
         assert panel.model_combo.count() == 0
         assert panel.model_combo.isEnabled() is False
-        assert panel.no_data_label.text() == "No evaluation results available yet."
+        assert (
+            panel.no_data_label.text()
+            == "Complete at least one training run before evaluating results."
+        )
         assert panel.run_combo.count() == 0
 
 
@@ -289,7 +320,7 @@ class TestVisualizationPanelIntegration:
         assert current_widget.error_label.isHidden() is False
         assert (
             current_widget.error_label.text()
-            == "Error: Create epochs, complete training, or configure saliency "
+            == "Create epochs, complete training, or configure saliency "
             "before opening visualization views."
         )
 
@@ -323,15 +354,13 @@ class TestTrainingWorkflowWithUI:
         ]
         assert isinstance(training_option["epoch"], int)
         assert training_option["epoch"] == 10
+        service.close()
 
         # Create panel
         parent = cast(Any, QWidget())
         parent.study = study
-        panel = TrainingPanel(parent=parent)
-        qtbot.addWidget(panel)
-
+        mock_trainer = _stable_mock_trainer()
         # Simulate update with epoch from trainer
-        mock_trainer = MagicMock()
         mock_plan = MagicMock()
         mock_plan.get_training_epoch.return_value = 5
         mock_plan.get_training_status.return_value = "Running"
@@ -366,8 +395,10 @@ class TestTrainingWorkflowWithUI:
         mock_record.val = {"loss": [0.6], "accuracy": [0.75], "auc": [0.85]}
         mock_plan.get_plans.return_value = [mock_record]
         mock_plan.option.epoch = 10
-        study.trainer = mock_trainer
 
+        study.trainer = mock_trainer
+        panel = TrainingPanel(parent=parent)
+        qtbot.addWidget(panel)
         # Update should work without type errors
         panel.update_loop()
 
@@ -419,11 +450,8 @@ class TestTrainingWorkflowWithUI:
         parent = cast(Any, QWidget())
         parent.study = study
 
-        panel = TrainingPanel(parent=parent)
-        qtbot.addWidget(panel)
-
+        mock_trainer = _stable_mock_trainer()
         # Mock trainer with STRING metrics (this was the bug)
-        mock_trainer = MagicMock()
         mock_plan = MagicMock()
         mock_plan.get_training_epoch.return_value = 1
         mock_plan.get_training_status.return_value = "Running"
@@ -462,8 +490,10 @@ class TestTrainingWorkflowWithUI:
         mock_record.val = {"loss": ["0.6"], "accuracy": ["0.75"], "auc": ["0.85"]}
         mock_plan.get_plans.return_value = [mock_record]
         mock_plan.option.epoch = 10
-        study.trainer = mock_trainer
 
+        study.trainer = mock_trainer
+        panel = TrainingPanel(parent=parent)
+        qtbot.addWidget(panel)
         panel.update_loop()
 
         assert panel.tab_acc.epochs == [1]

@@ -10,11 +10,11 @@ import numpy as np
 from scipy.signal import welch
 
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.application_capabilities import (
-    ControllerCompatibilityUnavailableError,
-    run_controller_compatibility_call,
+from XBrainLab.ui.panels.preprocess.data_query import (
+    PREPROCESS_RENDER_DATA_UNAVAILABLE_MESSAGE,
+    PreprocessRenderDataUnavailableError,
+    query_preprocess_render_lists,
 )
-from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 
 if TYPE_CHECKING:
     from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
@@ -145,32 +145,30 @@ class PreprocessPlotter:
             return False
         return int(value) == 1
 
-    def _compatibility_data_lists_for_render(
-        self,
-    ) -> tuple[list[Any], list[Any]] | None:
-        def fallback() -> tuple[list[Any], list[Any]] | None:
-            if not self.controller or not self.controller.has_data():
-                return None
-            data_list = self.controller.get_preprocessed_data_list()
-            orig_list: list[Any] = []
-            if hasattr(self.controller, "study"):
-                orig_list = list(self.controller.study.loaded_data_list)
-            return data_list, orig_list
-
+    def _query_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
+        """Read one authoritative object publication or expose unavailability."""
         try:
-            return run_controller_compatibility_call(self, fallback)
-        except ControllerCompatibilityUnavailableError:
+            queried_lists = query_preprocess_render_lists(
+                self,
+                require_available=True,
+            )
+        except PreprocessRenderDataUnavailableError as error:
+            self._show_preview_unavailable(str(error))
             return None
+        if queried_lists is None:
+            self._show_preview_unavailable(
+                PREPROCESS_RENDER_DATA_UNAVAILABLE_MESSAGE,
+            )
+        return queried_lists
 
-    def _original_data_list_for_render(self) -> list[Any]:
-        queried_lists = query_preprocess_render_lists(self)
-        if queried_lists is not None:
-            return queried_lists[1]
-
-        compatibility_lists = self._compatibility_data_lists_for_render()
-        if compatibility_lists is None:
-            return []
-        return compatibility_lists[1]
+    def _show_preview_unavailable(self, message: str) -> None:
+        logger.warning("Preprocess preview data unavailable: %s", message)
+        show_locked_message = getattr(self.widget, "show_locked_message", None)
+        if callable(show_locked_message):
+            show_locked_message(message)
+            return
+        self.widget.plot_time.setTitle("Preview unavailable")
+        self.widget.plot_freq.setTitle("Preview unavailable")
 
     def plot_sample_data(
         self,
@@ -203,17 +201,11 @@ class PreprocessPlotter:
         self.widget.clear_plot_data()
 
         orig_list = original_data_list or []
-        if data_list is None:
-            queried_lists = query_preprocess_render_lists(self)
-            if queried_lists is not None:
-                data_list, orig_list = queried_lists
-            else:
-                compatibility_lists = self._compatibility_data_lists_for_render()
-                if compatibility_lists is None:
-                    return
-                data_list, orig_list = compatibility_lists
-        elif original_data_list is None:
-            orig_list = self._original_data_list_for_render()
+        if data_list is None or original_data_list is None:
+            queried_lists = self._query_data_lists_for_render()
+            if queried_lists is None:
+                return
+            data_list, orig_list = queried_lists
 
         if not data_list:
             return

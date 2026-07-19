@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -13,6 +14,48 @@ from typing import Any, cast
 
 SAFE = "safe"
 NEEDS_CONFIRMATION = "needs_confirmation"
+BIDS_METADATA_READ_BUDGET_BYTES = 1_048_576
+DATASET_DESCRIPTION_MAX_BYTES = BIDS_METADATA_READ_BUDGET_BYTES
+
+
+@dataclass
+class BidsMetadataReadBudget:
+    """Bound aggregate dataset-description reads after resource admission."""
+
+    limit_bytes: int = BIDS_METADATA_READ_BUDGET_BYTES
+    bytes_read: int = 0
+    exhausted: bool = False
+
+    @property
+    def remaining_bytes(self) -> int:
+        return max(self.limit_bytes - self.bytes_read, 0)
+
+    def read(self, path: Path) -> tuple[bytes | None, str]:
+        """Read one admitted file without exceeding the aggregate byte cap."""
+        try:
+            with path.open("rb") as handle:
+                file_bytes = max(int(os.fstat(handle.fileno()).st_size), 0)
+                if file_bytes > self.remaining_bytes:
+                    self.exhausted = True
+                    return None, (
+                        f"{path.name} exceeds the bounded discovery limit of "
+                        f"{self.limit_bytes} bytes (the shared BIDS metadata byte "
+                        "budget)."
+                    )
+                encoded = handle.read(file_bytes)
+        except OSError:
+            return None, f"{path.name} could not be read."
+        self.bytes_read += len(encoded)
+        if len(encoded) != file_bytes:
+            return None, f"{path.name} could not be read completely."
+        return encoded, ""
+
+    def to_diagnostics(self) -> dict[str, Any]:
+        return {
+            "budget_bytes": self.limit_bytes,
+            "bytes_read": self.bytes_read,
+            "budget_exhausted": self.exhausted,
+        }
 
 
 @dataclass(frozen=True)
@@ -117,6 +160,11 @@ def bids_summary(
     source_kind: str,
     eeg_files: list[str],
     label_carriers: list[str],
+    *,
+    materialize: bool = True,
+    layout: list[dict[str, Any]] | None = None,
+    admitted_metadata_files: Iterable[str] | None = None,
+    metadata_read_budget: BidsMetadataReadBudget | None = None,
 ) -> dict[str, Any]:
     """Summarize BIDS entities discovered during source scan."""
     bids_root = resolve_bids_root(scan_root)
@@ -124,16 +172,43 @@ def bids_summary(
         item for item in label_carriers if item.endswith(("_events.tsv", "events.tsv"))
     ]
     dataset_description = bids_root / "dataset_description.json"
-    layout = bids_eeg_layout(
-        bids_root=bids_root,
-        eeg_files=eeg_files,
-        events_files=events_files,
+    layout = (
+        [dict(row) for row in layout]
+        if layout is not None
+        else bids_eeg_layout(
+            bids_root=bids_root,
+            eeg_files=eeg_files,
+            events_files=events_files,
+        )
     )
     participants_file = bids_root / "participants.tsv"
-    participants = _read_tsv_rows(participants_file)
     channels_files = _unique_paths(
         row.get("channels_file") for row in layout if row.get("channels_file")
     )
+    admitted = (
+        None
+        if admitted_metadata_files is None
+        else {str(Path(item).resolve()) for item in admitted_metadata_files}
+    )
+
+    def _is_admitted(path: Path) -> bool:
+        return admitted is None or str(path.resolve()) in admitted
+
+    participants = (
+        _read_tsv_rows(participants_file)
+        if materialize and _is_admitted(participants_file)
+        else []
+    )
+    admitted_channels = [item for item in channels_files if _is_admitted(Path(item))]
+    read_budget = metadata_read_budget or BidsMetadataReadBudget()
+    if materialize and _is_admitted(dataset_description):
+        dataset, root_validation_issue = _read_bids_dataset_description(
+            dataset_description,
+            read_budget,
+        )
+    else:
+        dataset = {}
+        root_validation_issue = ""
     return {
         "is_bids": source_kind == "bids",
         "root": str(bids_root),
@@ -151,14 +226,32 @@ def bids_summary(
         ),
         "participant_count": len(participants),
         "participants": participants,
-        "channel_status_summary": _channel_status_summary(channels_files),
+        "metadata_materialized": materialize,
+        "channel_status_summary": (
+            _channel_status_summary(admitted_channels)
+            if materialize
+            else {"total": 0, "good": 0, "bad": 0, "other": 0}
+        ),
         "layout": layout,
         "selected_scope": bids_scope_summary(eeg_files, layout),
         "dataset_description": str(dataset_description)
         if dataset_description.exists()
         else None,
-        "dataset": _read_json_object(dataset_description),
+        "dataset": dataset,
+        "root_validation_issue": root_validation_issue,
+        "metadata_read_budget": read_budget.to_diagnostics(),
     }
+
+
+def bids_metadata_resource_paths(summary: dict[str, Any]) -> list[str]:
+    """Return files that ``bids_summary`` may fully materialize."""
+    return _unique_paths(
+        [
+            summary.get("dataset_description"),
+            summary.get("participants_file"),
+            *(summary.get("channels_files") or []),
+        ],
+    )
 
 
 def resolve_bids_root(scan_root: Path) -> Path:
@@ -284,14 +377,43 @@ def _read_tsv_rows(path: Path) -> list[dict[str, str]]:
         return []
 
 
-def _read_json_object(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
+def _read_bids_dataset_description(
+    path: Path,
+    budget: BidsMetadataReadBudget,
+) -> tuple[dict[str, Any], str]:
+    if not path.is_file():
+        return {}, "dataset_description.json is missing from the selected BIDS root."
+    encoded, read_issue = budget.read(path)
+    if encoded is None:
+        return {}, read_issue
     try:
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        payload = json.loads(encoded.decode("utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+        return {}, "dataset_description.json is not valid JSON."
+    if not isinstance(payload, dict):
+        return {}, "dataset_description.json must contain a JSON object."
+    missing_fields = [
+        field_name
+        for field_name in ("Name", "BIDSVersion")
+        if not str(payload.get(field_name) or "").strip()
+    ]
+    if missing_fields:
+        return (
+            payload,
+            "dataset_description.json is missing required field(s): "
+            + ", ".join(missing_fields)
+            + ".",
+        )
+    return payload, ""
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    """Compatibility wrapper for one bounded dataset-description read."""
+    payload, _issue = _read_bids_dataset_description(
+        path,
+        BidsMetadataReadBudget(),
+    )
+    return payload
 
 
 def _channel_status_summary(channels_files: list[str]) -> dict[str, int]:

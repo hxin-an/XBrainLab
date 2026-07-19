@@ -39,6 +39,40 @@ from XBrainLab.ui.dialogs.common import (
 from XBrainLab.ui.styles.theme import Theme
 
 ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
+_MODEL_PARAMETER_PRESENTATION = {
+    "f1": (
+        "Temporal filters",
+        "f1: number of temporal filters in the first EEGNet convolution.",
+    ),
+    "f2": (
+        "Pointwise filters",
+        "f2: number of pointwise filters in the EEGNet separable convolution.",
+    ),
+    "d": (
+        "Depth multiplier",
+        "d: number of spatial filters learned for each temporal filter.",
+    ),
+    "pool_1": (
+        "First pooling size",
+        "pool_1: first average-pooling window, measured in samples.",
+    ),
+    "pool_2": (
+        "Second pooling size",
+        "pool_2: second average-pooling window, measured in samples.",
+    ),
+    "ns": (
+        "Spatial filters",
+        "ns: number of spatial filters used by SCCNet.",
+    ),
+    "pool_len": (
+        "Pooling window",
+        "pool_len: average-pooling window, measured in samples.",
+    ),
+    "pool_stride": (
+        "Pooling stride",
+        "pool_stride: distance between pooling windows, measured in samples.",
+    ),
+}
 _CHEVRON_DOWN_ICON = (
     Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
 ).as_posix()
@@ -61,7 +95,12 @@ class ModelSelectionDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, controller):
+    def __init__(
+        self,
+        parent,
+        controller,
+        initial_model_name: str | None = None,
+    ):
         self.controller = controller
 
         self.pretrained_weight_path = None
@@ -81,14 +120,33 @@ class ModelSelectionDialog(BaseDialog):
             m[0]: m[1] for m in inspect.getmembers(model_base, inspect.isclass)
         }
         self.model_list = list(self.model_map.keys())
+        self.initial_model_name = self._canonical_model_name(initial_model_name)
 
         super().__init__(parent, title="Model Selection")
         self.setMinimumSize(600, 360)
 
         # Init with first model
         if self.model_list:
-            self.on_model_select(self.model_list[0])
+            selected_model_name = (
+                self.model_combo.currentText()
+                if self.model_combo is not None
+                else self.model_list[0]
+            )
+            self.on_model_select(selected_model_name)
         self.resize(640, min(max(self.sizeHint().height(), 440), 620))
+
+    def _canonical_model_name(self, model_name: str | None) -> str | None:
+        if not isinstance(model_name, str):
+            return None
+        requested_name = model_name.casefold()
+        return next(
+            (
+                available_name
+                for available_name in self.model_list
+                if available_name.casefold() == requested_name
+            ),
+            None,
+        )
 
     def init_ui(self):
         """Initialize the dialog UI with model combo, parameter table, and buttons."""
@@ -136,6 +194,8 @@ class ModelSelectionDialog(BaseDialog):
         setup_layout.addWidget(QLabel("Model"), 1, 0)
         self.model_combo = QComboBox()
         self.model_combo.addItems(self.model_list)
+        if self.initial_model_name is not None:
+            self.model_combo.setCurrentText(self.initial_model_name)
         self.model_combo.currentTextChanged.connect(self.on_model_select)
         setup_layout.addWidget(self.model_combo, 1, 1)
 
@@ -342,10 +402,18 @@ class ModelSelectionDialog(BaseDialog):
 
             self.params_table.setRowCount(len(rows))
             for i, (param, val) in enumerate(rows):
-                item_param = QTableWidgetItem(param)
+                label, tooltip = _MODEL_PARAMETER_PRESENTATION.get(
+                    param,
+                    (param, f"Model constructor parameter: {param}"),
+                )
+                item_param = QTableWidgetItem(label)
+                item_param.setData(Qt.ItemDataRole.UserRole, param)
+                item_param.setToolTip(tooltip)
                 item_param.setFlags(item_param.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.params_table.setItem(i, 0, item_param)
-                self.params_table.setItem(i, 1, QTableWidgetItem(val))
+                value_item = QTableWidgetItem(val)
+                value_item.setToolTip(tooltip)
+                self.params_table.setItem(i, 1, value_item)
 
             if not rows:
                 self._show_no_editable_params()
@@ -435,7 +503,11 @@ class ModelSelectionDialog(BaseDialog):
         try:
             for row in range(self.params_table.rowCount()):
                 item0 = self.params_table.item(row, 0)
-                param = item0.text() if item0 else ""
+                param = (
+                    item0.data(Qt.ItemDataRole.UserRole) if item0 is not None else None
+                )
+                if not isinstance(param, str) or not param:
+                    continue
 
                 item1 = self.params_table.item(row, 1)
                 value_text = item1.text() if item1 else ""

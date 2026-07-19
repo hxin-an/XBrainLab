@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.preprocessor.normalize import Normalize
 from XBrainLab.backend.preprocessor.window_epoch import WindowEpoch
 
 
@@ -129,3 +130,15 @@ class TestWindowEpochDataPreprocess:
         mne_data = raw.get_mne()
         assert isinstance(mne_data, mne.BaseEpochs)
         assert "rest" in mne_data.event_id
+
+    def test_pending_normalization_is_applied_per_window(self):
+        raw = _make_raw_with_single_event(duration=10.0)
+        queued = Normalize([raw]).data_preprocess("z-score")
+
+        result = WindowEpoch(queued).data_preprocess(duration=2.0, overlap=0.0)[0]
+
+        data = result.get_mne().get_data()
+        assert np.allclose(data.mean(axis=-1), 0.0, atol=1e-7)
+        assert np.allclose(data.std(axis=-1), 1.0, atol=1e-7)
+        assert result.get_runtime_detail("normalization")["status"] == "applied"
+        assert result.get_runtime_detail("normalization")["requested_on"] == "raw"

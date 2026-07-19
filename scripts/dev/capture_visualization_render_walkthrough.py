@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
+import logging
+import math
+import os
 import random
 import shutil
 import sys
@@ -15,11 +19,15 @@ import traceback
 from pathlib import Path
 from typing import Any, cast
 
+from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+
+configure_qt_platform_for_runtime()
+
 from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
-    _capture_current_window,
     _clear_saved_main_window_geometry,
     _set_baseline_window_geometry,
 )
@@ -28,6 +36,7 @@ from scripts.dev.capture_chatpanel_local_training_completion_walkthrough import 
     write_synthetic_training_raw_fif,
 )
 from scripts.dev.capture_chatpanel_local_walkthrough import is_nearly_black
+from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
     ApplyMontageCommand,
     ConfigureTrainingCommand,
@@ -48,26 +57,129 @@ RENDER_TAB_SPECS: list[dict[str, str]] = [
     {
         "tab": "Saliency Map",
         "screenshot": "visualization-render-saliency-map.png",
+        "expected_context": (
+            "Grouped by true class label · Mean across evaluated epochs"
+        ),
     },
     {
         "tab": "Spectrogram",
         "screenshot": "visualization-render-spectrogram.png",
+        "expected_context": (
+            "Grouped by true class label · Mean magnitude across evaluated "
+            "epochs and channels"
+        ),
     },
     {
         "tab": "Topographic Map",
         "screenshot": "visualization-render-topographic-map.png",
+        "expected_context": (
+            "Grouped by true class label · Mean across evaluated epochs and time"
+        ),
     },
 ]
-BLOCKED_TAB_SPECS: list[dict[str, str]] = [
+THREE_D_TAB_SPECS: list[dict[str, str]] = [
     {
         "tab": "3D Plot",
         "screenshot": "visualization-render-3d-blocked.png",
+        "interactive_screenshot": "visualization-render-3d-interactive.png",
         "expected_reason": "Saliency Map, Spectrogram, or Topographic Map",
     },
 ]
 UNCAUGHT_EXCEPTIONS: list[str] = []
 DETERMINISTIC_CAPTURE_SEED = 1729
 _RUNTIME_DEPENDENT = "<runtime-dependent>"
+_UNPAINTED_CAPTURE_SENTINEL = QColor(255, 0, 255)
+SALIENCY_RENDER_TIMEOUT_MS = 15_000
+THREE_D_CAPTURE_TIMEOUT_MS = 12_000
+TOPOGRAPHIC_COLORBAR_MIN_MARGIN_PX = 6.0
+LOGGER = logging.getLogger(__name__)
+
+
+def _three_d_runtime_contract(
+    *,
+    platform_name: str | None = None,
+    environment: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Describe the 3-D outcome this Qt runtime must prove."""
+    source = os.environ if environment is None else environment
+    configured_platform = str(source.get("QT_QPA_PLATFORM", "")).strip().lower()
+    if platform_name is None:
+        app = QApplication.instance()
+        platform_name = str(app.platformName()) if app is not None else ""
+    active_platform = str(platform_name or configured_platform).strip().lower()
+    pyvista_off_screen = str(source.get("PYVISTA_OFF_SCREEN", "")).strip().lower()
+    off_screen_requested = pyvista_off_screen in {"1", "true", "yes", "on"}
+    noninteractive_platform = active_platform in {"offscreen", "minimal"}
+    expected_outcome = (
+        "blocked" if noninteractive_platform or off_screen_requested else "rendered"
+    )
+    return {
+        "qt_platform": active_platform or "unknown",
+        "configured_qt_platform": configured_platform,
+        "pyvista_off_screen": off_screen_requested,
+        "display": str(source.get("DISPLAY", "")),
+        "interactive_display": expected_outcome == "rendered",
+        "expected_outcome": expected_outcome,
+        "capture_method": (
+            "xcb_screen_grab"
+            if expected_outcome == "rendered" and active_platform == "xcb"
+            else "screen_grab"
+            if expected_outcome == "rendered"
+            else "qt_widget_render"
+        ),
+    }
+
+
+def _artifact_metadata_for_runtime(contract: dict[str, Any]) -> dict[str, str]:
+    platform = str(contract.get("qt_platform") or "unknown")
+    if contract.get("expected_outcome") == "rendered":
+        return {
+            "status": "current release-candidate visualization evidence",
+            "generator": "scripts/dev/capture_visualization_render_walkthrough.py",
+            "environment": f"Qt {platform} interactive VisualizationPanel capture",
+            "supports": (
+                "MainWindow VisualizationPanel 2D saliency renders and an "
+                f"interactive 3D render under Qt {platform}"
+            ),
+            "does_not_support": "human Windows click-through acceptance",
+            "next_human_or_runtime_gate": (
+                "manual desktop visualization click-through on the target Windows PC"
+            ),
+        }
+    return {
+        "status": "current release-candidate visualization evidence",
+        "generator": "scripts/dev/capture_visualization_render_walkthrough.py",
+        "environment": f"Qt {platform} noninteractive VisualizationPanel capture",
+        "supports": (
+            "MainWindow VisualizationPanel 2D saliency renders and the user-facing "
+            "3D blocked state"
+        ),
+        "does_not_support": "interactive 3D render or human Windows click-through acceptance",
+        "next_human_or_runtime_gate": (
+            "repeat this walkthrough in an interactive XCB/OpenGL runtime"
+        ),
+    }
+
+
+def _claim_boundary_for_runtime(contract: dict[str, Any]) -> dict[str, list[str]]:
+    if contract.get("expected_outcome") == "rendered":
+        return {
+            "supports": [
+                "true MainWindow VisualizationPanel Matplotlib saliency renders",
+                "interactive 3D rendering with visible framebuffer evidence in the current XCB/OpenGL runtime",
+            ],
+            "does_not_support": ["Windows human click-through"],
+        }
+    return {
+        "supports": [
+            "true MainWindow VisualizationPanel Matplotlib saliency renders",
+            "user-facing 3D blocked reason in headless/offscreen runtime",
+        ],
+        "does_not_support": [
+            "interactive 3D render",
+            "Windows human click-through",
+        ],
+    }
 
 
 def _install_uncaught_exception_capture() -> None:
@@ -134,6 +246,7 @@ def run_visualization_render_walkthrough(
     from XBrainLab.ui.main_window import MainWindow
 
     UNCAUGHT_EXCEPTIONS.clear()
+    _remove_previous_visualization_screenshots(output_dir)
     _install_uncaught_exception_capture()
     _set_deterministic_capture_seed()
     started_at = time.monotonic()
@@ -142,17 +255,11 @@ def run_visualization_render_walkthrough(
     study = Study()
     service = get_application_service(study)
     dataset_preparation = prepare_training_dataset_ready_state(study, source_path)
+    three_d_runtime = _three_d_runtime_contract()
     payload: dict[str, Any] = {
         "status": "running",
         "failure_reason": "",
-        "artifact_metadata": {
-            "status": "current release-candidate visualization evidence",
-            "generator": "scripts/dev/capture_visualization_render_walkthrough.py",
-            "environment": "Qt offscreen VisualizationPanel capture with PYVISTA_OFF_SCREEN",
-            "supports": "MainWindow VisualizationPanel 2D saliency renders and headless 3D blocked state",
-            "does_not_support": "interactive 3D render or human Windows click-through acceptance",
-            "next_human_or_runtime_gate": "manual desktop visualization click-through with an interactive OpenGL session",
-        },
+        "artifact_metadata": _artifact_metadata_for_runtime(three_d_runtime),
         "source_path": str(source_path),
         "training_output_dir": str(training_output_dir),
         "dataset_preparation": dataset_preparation,
@@ -164,18 +271,11 @@ def run_visualization_render_walkthrough(
         },
         "application_evaluate": {},
         "application_visualize": {},
+        "three_d_runtime": three_d_runtime,
         "renders": [],
         "blocked_renders": [],
-        "claim_boundary": {
-            "supports": [
-                "true MainWindow VisualizationPanel Matplotlib saliency renders",
-                "user-facing 3D blocked reason in headless/offscreen runtime",
-            ],
-            "does_not_support": [
-                "interactive 3D render",
-                "Windows human click-through",
-            ],
-        },
+        "interactive_renders": [],
+        "claim_boundary": _claim_boundary_for_runtime(three_d_runtime),
         "dismissed_dialogs": [],
         "screenshots": {"ready": ""},
         "final_state": {},
@@ -213,10 +313,12 @@ def run_visualization_render_walkthrough(
     _schedule_message_box_dismissal(payload)
     window.show()
     _process_events(app, 300)
-    window.switch_page(4)
+    panel = cast(
+        Any,
+        open_workflow_panel(window, 4, timeout_ms=int(timeout_seconds * 1_000)),
+    )
     _process_events(app, 800)
 
-    panel = cast(Any, window).visualization_panel
     payload["ui_state"] = {
         "current_panel": "Visualization",
         "plan": panel.plan_combo.currentText(),
@@ -239,10 +341,15 @@ def run_visualization_render_walkthrough(
     if payload["renders"]:
         payload["screenshots"]["ready"] = payload["renders"][0]["screenshot"]
     if all(render.get("ok") for render in payload["renders"]):
-        for spec in BLOCKED_TAB_SPECS:
-            payload["blocked_renders"].append(
-                _capture_blocked_tab(app, window, output_dir, spec),
-            )
+        for spec in THREE_D_TAB_SPECS:
+            if three_d_runtime["expected_outcome"] == "blocked":
+                payload["blocked_renders"].append(
+                    _capture_blocked_tab(app, window, output_dir, spec),
+                )
+            else:
+                payload["interactive_renders"].append(
+                    _capture_interactive_tab(app, window, output_dir, spec),
+                )
 
     payload["final_state"] = service.get_state().to_dict()
     payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
@@ -337,28 +444,251 @@ def _capture_render_tab(
             "canvas_visible": False,
         }
 
+    widget = panel.tabs.widget(tab_index)
+    previous_generation = int(getattr(widget, "_plot_generation", 0) or 0)
+    tabs_were_blocked = panel.tabs.blockSignals(True)
     panel.tabs.setCurrentIndex(tab_index)
+    panel.tabs.blockSignals(tabs_were_blocked)
+    method_was_blocked = panel.method_combo.blockSignals(True)
     panel.method_combo.setCurrentText("Gradient")
-    panel.on_update()
-    _process_events(app, 500)
-    widget = panel.tabs.currentWidget()
-    evidence = _render_evidence(widget)
+    panel.method_combo.blockSignals(method_was_blocked)
+    _process_events(app, 50)
+    panel.on_tab_changed(tab_index)
+    render_settled = _wait_for_saliency_render(
+        app,
+        widget,
+        minimum_generation=previous_generation + 1,
+        require_visible_result=True,
+    )
+    canvas = getattr(widget, "canvas", None)
+    draw = getattr(canvas, "draw", None)
+    if callable(draw):
+        draw()
+        _process_events(app, 100)
+    evidence = _render_evidence(widget, window)
+    explanation_context = str(panel.explanation_context.text())
+    expected_context = spec["expected_context"]
     screenshot_path = output_dir / spec["screenshot"]
-    capture_code = _capture_current_window(window, screenshot_path)
+    capture_code = _capture_fully_rendered_window(window, screenshot_path)
+    screenshot_sha256 = ""
+    if capture_code == 0:
+        screenshot_path, screenshot_sha256 = _content_addressed_screenshot_path(
+            screenshot_path
+        )
+    screenshot_region = _screenshot_region_evidence(
+        screenshot_path,
+        evidence["canvas_geometry"],
+        window_size=evidence["window_size"],
+        require_chromatic_content=True,
+    )
+    render_evidence = {
+        **evidence,
+        "render_settled": render_settled,
+        "screenshot_region": screenshot_region,
+    }
+    colorbar_margin_ok = (
+        tab_name != "Topographic Map"
+        or float(evidence["artist_layout"].get("right_margin_pixels") or 0.0)
+        >= TOPOGRAPHIC_COLORBAR_MIN_MARGIN_PX
+    )
+    render_evidence["colorbar_margin_ok"] = colorbar_margin_ok
     ok = (
         capture_code == 0
+        and render_settled
         and not evidence["error_visible"]
         and evidence["canvas_visible"]
+        and evidence["canvas_geometry"]["ok"]
+        and evidence["artist_layout"]["ok"]
+        and colorbar_margin_ok
         and evidence["axes_count"] > 0
         and evidence["image_count"] > 0
+        and screenshot_region["ok"]
+        and explanation_context == expected_context
     )
     return {
         "tab": tab_name,
         "screenshot": _artifact_path(screenshot_path),
+        "screenshot_sha256": screenshot_sha256,
         "ok": ok,
-        "failure_reason": "" if ok else _render_failure_reason(tab_name, evidence),
+        "failure_reason": ""
+        if ok
+        else _render_failure_reason(tab_name, render_evidence),
+        "render_settled": render_settled,
+        "colorbar_margin_ok": colorbar_margin_ok,
+        "screenshot_region": screenshot_region,
+        "explanation_context": explanation_context,
         **evidence,
     }
+
+
+def _wait_for_saliency_render(
+    app: QApplication,
+    widget: Any,
+    *,
+    timeout_ms: int = SALIENCY_RENDER_TIMEOUT_MS,
+    minimum_generation: int | None = None,
+    require_visible_result: bool = False,
+) -> bool:
+    """Wait for the observable render job instead of assuming a fixed delay."""
+    deadline = time.monotonic() + max(0, timeout_ms) / 1000.0
+    while time.monotonic() <= deadline:
+        app.processEvents()
+        workers = getattr(widget, "_render_workers", None)
+        label = getattr(widget, "error_label", None)
+        label_text = label.text() if isinstance(label, QLabel) else ""
+        loading_message_visible = bool(
+            isinstance(label, QLabel)
+            and not label.isHidden()
+            and label_text == "Rendering saliency..."
+        )
+        generation_ready = (
+            minimum_generation is None
+            or int(getattr(widget, "_plot_generation", 0) or 0) >= minimum_generation
+        )
+        canvas = getattr(widget, "canvas", None)
+        canvas_visible = bool(canvas is not None and canvas.isVisible())
+        terminal_message_visible = bool(
+            isinstance(label, QLabel)
+            and label.isVisible()
+            and label_text
+            and not loading_message_visible
+        )
+        result_visible = (
+            not require_visible_result or canvas_visible or terminal_message_visible
+        )
+        if (
+            generation_ready
+            and not workers
+            and not loading_message_visible
+            and result_visible
+        ):
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def _wait_for_3d_capture_terminal_state(
+    app: QApplication,
+    widget: Any,
+    *,
+    expected_outcome: str,
+    expected_reason: str,
+    window: Any | None = None,
+    timeout_ms: int = THREE_D_CAPTURE_TIMEOUT_MS,
+) -> dict[str, Any]:
+    """Wait for the runtime probe or 3-D engine to publish a terminal UI state."""
+    deadline = time.monotonic() + max(0, timeout_ms) / 1000.0
+    last_render_evidence: dict[str, Any] = {}
+    while time.monotonic() <= deadline:
+        app.processEvents()
+        probe_pending = getattr(widget, "_runtime_probe_worker", None) is not None
+        engine_pending = getattr(widget, "_engine_worker", None) is not None
+        blocked_reason_visible = bool(_visible_label_text(widget, expected_reason))
+        if window is not None:
+            last_render_evidence = _interactive_3d_render_evidence(widget, window)
+        if not probe_pending and not engine_pending:
+            if expected_outcome == "blocked" and blocked_reason_visible:
+                return {
+                    "settled": True,
+                    "outcome": "blocked",
+                    "render_evidence": last_render_evidence,
+                }
+            if expected_outcome == "rendered" and last_render_evidence.get("ok"):
+                return {
+                    "settled": True,
+                    "outcome": "rendered",
+                    "render_evidence": last_render_evidence,
+                }
+        time.sleep(0.01)
+    return {
+        "settled": False,
+        "outcome": "timeout",
+        "render_evidence": last_render_evidence,
+    }
+
+
+def _interactive_3d_render_evidence(widget: Any, window: Any) -> dict[str, Any]:
+    """Read observable VTK and Qt facts without treating allocation as a render."""
+    plotter = getattr(widget, "plotter_widget", None)
+    if plotter is None:
+        return {
+            "ok": False,
+            "reason": "PyVista plotter was not created",
+            "plotter_created": False,
+            "plotter_visible": False,
+            "plotter_geometry": {"ok": False, "reason": "plotter is missing"},
+            "render_window_rendered": False,
+            "render_window_size": {"width": 0, "height": 0},
+            "actor_count": 0,
+            "last_render_seconds": 0.0,
+        }
+
+    geometry = _widget_geometry(plotter, window)
+    render_window = getattr(plotter, "render_window", None)
+    renderer = getattr(plotter, "renderer", None)
+    never_rendered = _safe_call(render_window, "GetNeverRendered", default=1)
+    render_size = _safe_call(render_window, "GetSize", default=(0, 0))
+    if not isinstance(render_size, (tuple, list)) or len(render_size) < 2:
+        render_size = (0, 0)
+    actors = _safe_call(renderer, "GetActors", default=None)
+    actor_count = int(_safe_call(actors, "GetNumberOfItems", default=0) or 0)
+    if actor_count <= 0:
+        renderer_actors = getattr(renderer, "actors", None)
+        if isinstance(renderer_actors, dict):
+            actor_count = len(renderer_actors)
+    last_render_seconds = float(
+        _safe_call(renderer, "GetLastRenderTimeInSeconds", default=0.0) or 0.0
+    )
+    render_window_rendered = bool(
+        render_window is not None
+        and int(never_rendered or 0) == 0
+        and int(render_size[0]) > 0
+        and int(render_size[1]) > 0
+        and last_render_seconds > 0.0
+    )
+    error_text = _visible_label_text(widget, "Error:")
+    ok = bool(
+        plotter.isVisible()
+        and geometry.get("ok")
+        and render_window_rendered
+        and actor_count > 0
+        and not error_text
+    )
+    if error_text:
+        reason = error_text
+    elif not geometry.get("ok"):
+        reason = str(geometry.get("reason") or "plotter geometry is invalid")
+    elif not render_window_rendered:
+        reason = "VTK render window has not completed a visible render"
+    elif actor_count <= 0:
+        reason = "VTK renderer has no visible actors"
+    else:
+        reason = ""
+    return {
+        "ok": ok,
+        "reason": reason,
+        "plotter_created": True,
+        "plotter_visible": bool(plotter.isVisible()),
+        "plotter_geometry": geometry,
+        "render_window_rendered": render_window_rendered,
+        "render_window_size": {
+            "width": int(render_size[0]),
+            "height": int(render_size[1]),
+        },
+        "actor_count": actor_count,
+        "last_render_seconds": last_render_seconds,
+        "error_text": error_text,
+    }
+
+
+def _safe_call(target: Any, method_name: str, *, default: Any) -> Any:
+    method = getattr(target, method_name, None)
+    if not callable(method):
+        return default
+    try:
+        return method()
+    except Exception:
+        return default
 
 
 def _capture_blocked_tab(
@@ -380,35 +710,185 @@ def _capture_blocked_tab(
             "plotter_created": False,
         }
     panel.tabs.setCurrentIndex(tab_index)
-    panel.on_update()
-    _process_events(app, 500)
+    _process_events(app, 50)
     widget = panel.tabs.currentWidget()
-    blocked_reason = _visible_label_text(widget)
     expected_reason = spec["expected_reason"]
+    terminal_settled = _wait_for_3d_capture_terminal_state(
+        app,
+        widget,
+        expected_outcome="blocked",
+        expected_reason=expected_reason,
+    )
+    blocked_reason = _visible_label_text(widget, expected_reason)
     message_evidence = _blocked_message_evidence(widget, expected_reason)
+    message_geometry = _visible_label_geometry(widget, window, expected_reason)
     plotter_created = bool(getattr(widget, "plotter_widget", None))
     screenshot_path = output_dir / spec["screenshot"]
-    capture_code = _capture_current_window(window, screenshot_path)
+    capture_code = _capture_fully_rendered_window(window, screenshot_path)
+    screenshot_sha256 = ""
+    if capture_code == 0:
+        screenshot_path, screenshot_sha256 = _content_addressed_screenshot_path(
+            screenshot_path
+        )
+    screenshot_region = _screenshot_region_evidence(
+        screenshot_path,
+        message_geometry,
+        window_size={"width": int(window.width()), "height": int(window.height())},
+        require_chromatic_content=True,
+    )
     ok = (
         capture_code == 0
+        and terminal_settled["settled"]
+        and terminal_settled["outcome"] == "blocked"
         and expected_reason in blocked_reason
         and not plotter_created
         and message_evidence["ok"]
+        and message_geometry["ok"]
+        and screenshot_region["ok"]
     )
     return {
         "tab": tab_name,
         "screenshot": _artifact_path(screenshot_path),
+        "screenshot_sha256": screenshot_sha256,
         "ok": ok,
         "failure_reason": ""
         if ok
-        else f"{tab_name} did not show an unclipped expected blocked reason.",
+        else (f"{tab_name} did not settle on an unclipped expected blocked reason."),
+        "terminal_settled": terminal_settled["settled"],
+        "outcome": terminal_settled["outcome"],
         "blocked_reason": blocked_reason,
         "message_evidence": message_evidence,
+        "message_geometry": message_geometry,
+        "screenshot_region": screenshot_region,
         "plotter_created": plotter_created,
     }
 
 
-def _render_evidence(widget: Any) -> dict[str, Any]:
+def _capture_interactive_tab(
+    app: QApplication,
+    window: Any,
+    output_dir: Path,
+    spec: dict[str, str],
+) -> dict[str, Any]:
+    panel = window.visualization_panel
+    tab_name = spec["tab"]
+    tab_index = _find_tab_index(panel, tab_name)
+    if tab_index < 0:
+        return {
+            "tab": tab_name,
+            "screenshot": "",
+            "ok": False,
+            "failure_reason": f"Tab not found: {tab_name}",
+            "outcome": "missing",
+            "terminal_settled": False,
+            "plotter_created": False,
+        }
+    panel.tabs.setCurrentIndex(tab_index)
+    _process_events(app, 50)
+    widget = panel.tabs.currentWidget()
+    terminal = _wait_for_3d_capture_terminal_state(
+        app,
+        widget,
+        window=window,
+        expected_outcome="rendered",
+        expected_reason=spec["expected_reason"],
+    )
+    plotter = getattr(widget, "plotter_widget", None)
+    if terminal["settled"] and plotter is not None:
+        render = getattr(plotter, "render", None)
+        if callable(render):
+            render()
+        plotter.update()
+        plotter.repaint()
+        _process_events(app, 150)
+        terminal = _wait_for_3d_capture_terminal_state(
+            app,
+            widget,
+            window=window,
+            expected_outcome="rendered",
+            expected_reason=spec["expected_reason"],
+            timeout_ms=1000,
+        )
+
+    render_evidence = terminal.get("render_evidence") or {}
+    plotter_geometry = render_evidence.get("plotter_geometry") or {
+        "ok": False,
+        "reason": "plotter geometry is missing",
+    }
+    screenshot_path = output_dir / spec["interactive_screenshot"]
+    runtime_contract = _three_d_runtime_contract()
+    capture_method = str(runtime_contract["capture_method"])
+    capture_code = _capture_fully_rendered_window(
+        window,
+        screenshot_path,
+        capture_method=capture_method,
+    )
+    screenshot_sha256 = ""
+    if capture_code == 0:
+        screenshot_path, screenshot_sha256 = _content_addressed_screenshot_path(
+            screenshot_path
+        )
+    screenshot_region = _screenshot_region_evidence(
+        screenshot_path,
+        plotter_geometry,
+        window_size={"width": int(window.width()), "height": int(window.height())},
+        require_chromatic_content=True,
+    )
+    ok = bool(
+        capture_code == 0
+        and terminal["settled"]
+        and terminal["outcome"] == "rendered"
+        and render_evidence.get("ok")
+        and screenshot_region.get("ok")
+        and not UNCAUGHT_EXCEPTIONS
+    )
+    failure_reason = ""
+    if not ok:
+        failure_reason = _interactive_3d_failure_reason(
+            terminal,
+            screenshot_region,
+            capture_code,
+        )
+    return {
+        "tab": tab_name,
+        "screenshot": _artifact_path(screenshot_path),
+        "screenshot_sha256": screenshot_sha256,
+        "ok": ok,
+        "failure_reason": failure_reason,
+        "outcome": terminal["outcome"],
+        "terminal_settled": terminal["settled"],
+        "plotter_created": bool(render_evidence.get("plotter_created")),
+        "plotter_visible": bool(render_evidence.get("plotter_visible")),
+        "plotter_geometry": plotter_geometry,
+        "render_evidence": render_evidence,
+        "screenshot_region": screenshot_region,
+        "capture_method": capture_method,
+    }
+
+
+def _interactive_3d_failure_reason(
+    terminal: dict[str, Any],
+    screenshot_region: dict[str, Any],
+    capture_code: int,
+) -> str:
+    if not terminal.get("settled"):
+        evidence = terminal.get("render_evidence") or {}
+        detail = evidence.get("reason") or "render did not reach a terminal state"
+        return f"3D Plot timed out: {detail}."
+    evidence = terminal.get("render_evidence") or {}
+    if not evidence.get("ok"):
+        return f"3D Plot render evidence failed: {evidence.get('reason') or 'unknown'}"
+    if capture_code != 0:
+        return "3D Plot native-window screenshot capture failed."
+    if not screenshot_region.get("ok"):
+        detail = screenshot_region.get("reason") or "framebuffer paint evidence failed"
+        return f"3D Plot {detail}."
+    if UNCAUGHT_EXCEPTIONS:
+        return "3D Plot emitted an uncaught Qt/runtime exception."
+    return "3D Plot render validation failed."
+
+
+def _render_evidence(widget: Any, window: Any) -> dict[str, Any]:
     fig = getattr(widget, "fig", None)
     axes = list(getattr(fig, "axes", []) or [])
     image_count = sum(
@@ -418,22 +898,189 @@ def _render_evidence(widget: Any) -> dict[str, Any]:
     )
     error_label = getattr(widget, "error_label", None)
     canvas = getattr(widget, "canvas", None)
+    canvas_geometry = _widget_geometry(canvas, window)
+    artist_layout = _matplotlib_layout_evidence(fig, canvas)
     return {
         "error_visible": bool(error_label and error_label.isVisible()),
         "error_text": str(error_label.text()) if error_label else "",
         "axes_count": len(axes),
         "image_count": image_count,
         "canvas_visible": bool(canvas and canvas.isVisible()),
+        "canvas_geometry": canvas_geometry,
+        "artist_layout": artist_layout,
+        "window_size": {
+            "width": int(window.width()),
+            "height": int(window.height()),
+        },
     }
 
 
-def _visible_label_text(widget: Any) -> str:
+def _matplotlib_layout_evidence(fig: Any, canvas: Any) -> dict[str, Any]:
+    """Report Matplotlib artists that extend outside the visible canvas."""
+    if fig is None or canvas is None:
+        return {
+            "ok": False,
+            "reason": "Matplotlib figure or canvas is missing",
+            "clipped_axes": [],
+            "axes_bounds": [],
+            "canvas_size": {"width": 0, "height": 0},
+            "right_margin_pixels": 0.0,
+        }
+    draw = getattr(canvas, "draw", None)
+    get_renderer = getattr(canvas, "get_renderer", None)
+    get_width_height = getattr(canvas, "get_width_height", None)
+    if (
+        not callable(draw)
+        or not callable(get_renderer)
+        or not callable(get_width_height)
+    ):
+        return {
+            "ok": False,
+            "reason": "Matplotlib canvas cannot provide render geometry",
+            "clipped_axes": [],
+            "axes_bounds": [],
+            "canvas_size": {"width": 0, "height": 0},
+            "right_margin_pixels": 0.0,
+        }
+
+    draw()
+    renderer = get_renderer()
+    width, height = cast(tuple[int, int], get_width_height())
+    tolerance = 2.0
+    axes_bounds: list[dict[str, float | int | bool]] = []
+    clipped_axes: list[int] = []
+    for index, axis in enumerate(list(getattr(fig, "axes", []) or [])):
+        bounds = axis.get_tightbbox(renderer)
+        if bounds is None:
+            continue
+        clipped = bool(
+            bounds.x0 < -tolerance
+            or bounds.y0 < -tolerance
+            or bounds.x1 > float(width) + tolerance
+            or bounds.y1 > float(height) + tolerance
+        )
+        axes_bounds.append(
+            {
+                "axis": index,
+                "x0": round(float(bounds.x0), 3),
+                "y0": round(float(bounds.y0), 3),
+                "x1": round(float(bounds.x1), 3),
+                "y1": round(float(bounds.y1), 3),
+                "clipped": clipped,
+            }
+        )
+        if clipped:
+            clipped_axes.append(index)
+    reason = (
+        f"axes {', '.join(str(index) for index in clipped_axes)} extend beyond the canvas"
+        if clipped_axes
+        else ""
+    )
+    return {
+        "ok": not clipped_axes,
+        "reason": reason,
+        "clipped_axes": clipped_axes,
+        "axes_bounds": axes_bounds,
+        "canvas_size": {"width": int(width), "height": int(height)},
+        "right_margin_pixels": round(
+            float(width)
+            - max(
+                (float(bounds["x1"]) for bounds in axes_bounds),
+                default=float(width),
+            ),
+            3,
+        ),
+    }
+
+
+def _widget_geometry(widget: Any, window: Any) -> dict[str, Any]:
+    if widget is None:
+        return {
+            "ok": False,
+            "reason": "widget is missing",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+        }
+    rect = widget.rect()
+    top_left = widget.mapTo(window, rect.topLeft())
+    geometry: dict[str, Any] = {
+        "x": int(top_left.x()),
+        "y": int(top_left.y()),
+        "width": int(rect.width()),
+        "height": int(rect.height()),
+    }
+    in_bounds = (
+        geometry["x"] >= 0
+        and geometry["y"] >= 0
+        and geometry["x"] + geometry["width"] <= int(window.width())
+        and geometry["y"] + geometry["height"] <= int(window.height())
+    )
+    large_enough = geometry["width"] >= 160 and geometry["height"] >= 160
+    geometry.update(
+        {
+            "ok": bool(widget.isVisible() and in_bounds and large_enough),
+            "reason": ""
+            if widget.isVisible() and in_bounds and large_enough
+            else "widget is hidden, clipped, or too small",
+        }
+    )
+    return geometry
+
+
+def _visible_label_geometry(
+    widget: Any,
+    window: Any,
+    expected_text: str,
+) -> dict[str, Any]:
+    labels = [
+        label
+        for label in widget.findChildren(QLabel)
+        if not label.isHidden() and expected_text in label.text()
+    ]
+    if not labels:
+        return {
+            "ok": False,
+            "reason": "expected label is missing",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+        }
+    label = labels[0]
+    rect = label.rect()
+    top_left = label.mapTo(window, rect.topLeft())
+    geometry: dict[str, Any] = {
+        "x": int(top_left.x()),
+        "y": int(top_left.y()),
+        "width": int(rect.width()),
+        "height": int(rect.height()),
+    }
+    in_bounds = (
+        geometry["x"] >= 0
+        and geometry["y"] >= 0
+        and geometry["x"] + geometry["width"] <= int(window.width())
+        and geometry["y"] + geometry["height"] <= int(window.height())
+    )
+    geometry.update(
+        {
+            "ok": bool(label.isVisible() and in_bounds and label.height() >= 20),
+            "reason": ""
+            if label.isVisible() and in_bounds and label.height() >= 20
+            else "message label is hidden or clipped",
+        }
+    )
+    return geometry
+
+
+def _visible_label_text(widget: Any, expected_text: str) -> str:
     labels = [
         label.text()
         for label in widget.findChildren(QLabel)
-        if not label.isHidden() and label.text()
+        if not label.isHidden() and expected_text in label.text()
     ]
-    return " ".join(labels)
+    return labels[0] if labels else ""
 
 
 def _control_layout_evidence(panel: Any) -> dict[str, Any]:
@@ -643,6 +1290,7 @@ def validate_visualization_render_payload(
             return False, "Final state does not have montage for topographic render."
 
     renders = {item.get("tab"): item for item in payload.get("renders", [])}
+    screenshot_digests: dict[str, str] = {}
     for spec in RENDER_TAB_SPECS:
         tab = spec["tab"]
         render = renders.get(tab)
@@ -654,35 +1302,174 @@ def validate_visualization_render_payload(
             return False, f"{tab} showed an error instead of a render."
         if not render.get("canvas_visible"):
             return False, f"{tab} canvas was not visible."
+        if render.get("explanation_context") != spec["expected_context"]:
+            return False, f"{tab} scientific context is stale or incorrect."
         if int(render.get("image_count") or 0) < 1:
             return False, f"{tab} did not contain a rendered image artist."
+        canvas_geometry = render.get("canvas_geometry") or {}
+        if not canvas_geometry.get("ok"):
+            detail = canvas_geometry.get("reason") or "canvas geometry is invalid"
+            return False, f"{tab} {detail}."
+        artist_layout = render.get("artist_layout") or {}
+        if not artist_layout.get("ok"):
+            detail = artist_layout.get("reason") or "plot labels are clipped"
+            return False, f"{tab} {detail}."
+        if (
+            tab == "Topographic Map"
+            and float(artist_layout.get("right_margin_pixels") or 0.0)
+            < TOPOGRAPHIC_COLORBAR_MIN_MARGIN_PX
+        ):
+            return (
+                False,
+                "Topographic Map colorbar does not leave a readable right margin.",
+            )
+        screenshot_region = render.get("screenshot_region") or {}
+        if not screenshot_region.get("ok"):
+            detail = screenshot_region.get("reason") or "plot region is invalid"
+            return False, f"{tab} {detail}."
         screenshot_ok, screenshot_reason = _validate_screenshot(
             render.get("screenshot"),
             f"{tab} screenshot",
         )
         if not screenshot_ok:
             return False, screenshot_reason
+        digest_ok, digest_reason = _validate_screenshot_digest(
+            render.get("screenshot"),
+            render.get("screenshot_sha256"),
+            f"{tab} screenshot",
+        )
+        if not digest_ok:
+            return False, digest_reason
+        digest = str(render.get("screenshot_sha256") or "")
+        duplicate_tab = screenshot_digests.get(digest)
+        if duplicate_tab is not None:
+            return (
+                False,
+                f"{duplicate_tab} and {tab} have an identical screenshot; "
+                "the tab capture did not publish distinct render evidence.",
+            )
+        screenshot_digests[digest] = tab
 
+    runtime = payload.get("three_d_runtime") or {}
+    expected_outcome = str(runtime.get("expected_outcome") or "")
+    if expected_outcome == "blocked":
+        if payload.get("interactive_renders"):
+            return False, "Interactive 3D evidence was recorded in a blocked runtime."
+        ok, reason = _validate_blocked_3d_evidence(payload)
+        if not ok:
+            return False, reason
+    elif expected_outcome == "rendered":
+        if payload.get("blocked_renders"):
+            return False, "3D was treated as blocked in an interactive runtime."
+        ok, reason = _validate_interactive_3d_evidence(payload)
+        if not ok:
+            return False, reason
+    else:
+        return False, "3D runtime contract is missing or invalid."
+    return True, ""
+
+
+def _validate_blocked_3d_evidence(payload: dict[str, Any]) -> tuple[bool, str]:
     blocked = {item.get("tab"): item for item in payload.get("blocked_renders", [])}
-    for spec in BLOCKED_TAB_SPECS:
+    for spec in THREE_D_TAB_SPECS:
         tab = spec["tab"]
         render = blocked.get(tab)
         if not render:
             return False, f"Missing blocked evidence for {tab}."
         if not render.get("ok"):
             return False, render.get("failure_reason") or f"{tab} blocked check failed."
+        if render.get("terminal_settled") is not True:
+            return False, f"{tab} did not reach a terminal capture state."
+        if render.get("outcome") not in {None, "blocked"}:
+            return False, f"{tab} did not settle as blocked."
         if render.get("plotter_created"):
             return False, f"{tab} created a PyVista plotter in a blocked runtime."
         if spec["expected_reason"] not in str(render.get("blocked_reason", "")):
             return False, f"{tab} did not show a user-facing blocked reason."
         if not (render.get("message_evidence") or {}).get("ok"):
             return False, f"{tab} blocked reason appears clipped or hidden."
+        screenshot_region = render.get("screenshot_region") or {}
+        if not screenshot_region.get("ok"):
+            detail = (
+                screenshot_region.get("reason")
+                or "blocked message region was not painted"
+            )
+            return False, f"{tab} {detail}."
         screenshot_ok, screenshot_reason = _validate_screenshot(
             render.get("screenshot"),
             f"{tab} blocked screenshot",
         )
         if not screenshot_ok:
             return False, screenshot_reason
+        digest_ok, digest_reason = _validate_screenshot_digest(
+            render.get("screenshot"),
+            render.get("screenshot_sha256"),
+            f"{tab} blocked screenshot",
+        )
+        if not digest_ok:
+            return False, digest_reason
+    return True, ""
+
+
+def _validate_interactive_3d_evidence(
+    payload: dict[str, Any],
+) -> tuple[bool, str]:
+    rendered = {
+        item.get("tab"): item for item in payload.get("interactive_renders", [])
+    }
+    for spec in THREE_D_TAB_SPECS:
+        tab = spec["tab"]
+        render = rendered.get(tab)
+        if not render:
+            return False, f"Missing interactive render evidence for {tab}."
+        if not render.get("ok"):
+            return False, render.get("failure_reason") or f"{tab} render failed."
+        if render.get("terminal_settled") is not True:
+            return False, f"{tab} did not reach a terminal render state."
+        if render.get("outcome") != "rendered":
+            return False, f"{tab} did not settle as an interactive render."
+        if not render.get("plotter_created") or not render.get("plotter_visible"):
+            return False, f"{tab} PyVista plotter was not visible."
+        if not (render.get("plotter_geometry") or {}).get("ok"):
+            return False, f"{tab} plotter geometry was hidden, clipped, or too small."
+        evidence = render.get("render_evidence") or {}
+        if not evidence.get("ok"):
+            detail = evidence.get("reason") or "render evidence is incomplete"
+            return False, f"{tab} {detail}."
+        if not evidence.get("render_window_rendered"):
+            return False, f"{tab} VTK render window did not complete a render."
+        if int(evidence.get("actor_count") or 0) < 1:
+            return False, f"{tab} VTK renderer did not contain visible actors."
+        if float(evidence.get("last_render_seconds") or 0.0) <= 0.0:
+            return False, f"{tab} did not record VTK render timing evidence."
+        runtime = payload.get("three_d_runtime") or {}
+        expected_capture_method = str(runtime.get("capture_method") or "")
+        if render.get("capture_method") != expected_capture_method:
+            return False, f"{tab} did not capture the expected native framebuffer."
+        if (
+            runtime.get("qt_platform") == "xcb"
+            and render.get("capture_method") != "xcb_screen_grab"
+        ):
+            return False, f"{tab} did not capture the native XCB framebuffer."
+        screenshot_region = render.get("screenshot_region") or {}
+        if not screenshot_region.get("ok"):
+            detail = screenshot_region.get("reason") or "framebuffer was not painted"
+            return False, f"{tab} {detail}."
+        if float(screenshot_region.get("sentinel_fraction") or 0.0) > 0.001:
+            return False, f"{tab} contains unpainted capture pixels."
+        screenshot_ok, screenshot_reason = _validate_screenshot(
+            render.get("screenshot"),
+            f"{tab} interactive screenshot",
+        )
+        if not screenshot_ok:
+            return False, screenshot_reason
+        digest_ok, digest_reason = _validate_screenshot_digest(
+            render.get("screenshot"),
+            render.get("screenshot_sha256"),
+            f"{tab} interactive screenshot",
+        )
+        if not digest_ok:
+            return False, digest_reason
     return True, ""
 
 
@@ -694,7 +1481,343 @@ def _validate_screenshot(path: Any, label: str) -> tuple[bool, str]:
         return False, f"{label} file was not found: {screenshot}."
     if is_nearly_black(screenshot):
         return False, f"{label} was nearly all black: {screenshot}."
+    shell_ok, missing_regions = _main_window_shell_repaint_evidence(screenshot)
+    if not shell_ok:
+        return (
+            False,
+            f"{label} did not repaint the complete main window shell "
+            f"({', '.join(missing_regions)}): {screenshot}.",
+        )
     return True, ""
+
+
+def _validate_screenshot_digest(
+    path: Any,
+    expected_digest: Any,
+    label: str,
+) -> tuple[bool, str]:
+    screenshot = Path(str(path or "").strip())
+    digest = str(expected_digest or "").strip().lower()
+    if len(digest) != 64:
+        return False, f"{label} did not record a complete SHA-256 digest."
+    if not screenshot.is_file():
+        return False, f"{label} file was not found: {screenshot}."
+    actual = hashlib.sha256(screenshot.read_bytes()).hexdigest()
+    if actual != digest:
+        return False, f"{label} SHA-256 did not match the captured artifact."
+    return True, ""
+
+
+def _capture_fully_rendered_window(
+    window: Any,
+    output_path: Path,
+    *,
+    capture_method: str = "qt_widget_render",
+) -> int:
+    """Capture the complete widget tree, including native OpenGL children."""
+    window.ensurePolished()
+    window.update()
+    QApplication.sendPostedEvents()
+    QApplication.processEvents()
+
+    if capture_method in {"screen_grab", "xcb_screen_grab"}:
+        screen = window.screen() or QApplication.primaryScreen()
+        if screen is None:
+            print(
+                "No Qt screen is available for native-window capture.", file=sys.stderr
+            )
+            return 3
+        window.raise_()
+        window.activateWindow()
+        QApplication.processEvents()
+        pixmap = screen.grabWindow(int(window.winId()))
+    else:
+        ratio = max(float(window.devicePixelRatioF()), 1.0)
+        pixel_width = max(1, round(window.width() * ratio))
+        pixel_height = max(1, round(window.height() * ratio))
+        pixmap = QPixmap(pixel_width, pixel_height)
+        pixmap.setDevicePixelRatio(ratio)
+        pixmap.fill(_UNPAINTED_CAPTURE_SENTINEL)
+        window.render(pixmap)
+    if pixmap.isNull():
+        print("Failed to render the main window pixmap.", file=sys.stderr)
+        return 3
+    if not pixmap.save(str(output_path)):
+        print("Failed to save the rendered main window pixmap.", file=sys.stderr)
+        return 4
+    try:
+        _normalize_png_artifact(output_path)
+    except Exception as exc:
+        print(f"Failed to normalize screenshot PNG: {exc}", file=sys.stderr)
+        return 5
+    screenshot_ok, reason = _validate_screenshot(output_path, output_path.name)
+    if not screenshot_ok:
+        print(reason, file=sys.stderr)
+        return 2
+    print(f"Saved screenshot to {output_path}")
+    return 0
+
+
+def _normalize_png_artifact(path: Path) -> dict[str, Any]:
+    """Re-encode Qt PNG output as a portable opaque RGB artifact.
+
+    A full RGB re-encode removes encoder-specific ambiguity. The capture then
+    receives a content-addressed filename so artifact viewers cannot serve an
+    older frame from a path-only cache after a rerun.
+    """
+    from PIL import Image
+
+    temporary_path = path.with_name(f".{path.stem}.normalized.png")
+    with Image.open(path) as source:
+        source.load()
+        normalized = source.convert("RGB")
+        width, height = normalized.size
+        normalized.save(
+            temporary_path,
+            format="PNG",
+            optimize=False,
+            compress_level=6,
+        )
+    temporary_path.replace(path)
+    return {
+        "format": "PNG",
+        "mode": "RGB",
+        "width": int(width),
+        "height": int(height),
+    }
+
+
+def _content_addressed_screenshot_path(path: Path) -> tuple[Path, str]:
+    """Rename a screenshot with a digest so changed evidence gets a new URL."""
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    destination = path.with_name(f"{path.stem}-{digest[:12]}{path.suffix}")
+    path.replace(destination)
+    return destination, digest
+
+
+def _remove_previous_visualization_screenshots(output_dir: Path) -> None:
+    """Keep the generated artifact directory limited to the current capture."""
+    for path in output_dir.glob("visualization-render-*.png"):
+        path.unlink()
+
+
+def _screenshot_region_evidence(
+    path: Path,
+    logical_rect: dict[str, Any],
+    *,
+    window_size: dict[str, int],
+    require_chromatic_content: bool,
+) -> dict[str, Any]:
+    """Measure whether a widget's screenshot region contains visible content."""
+    from collections import Counter
+
+    from PIL import Image
+
+    if not path.is_file():
+        return {
+            "ok": False,
+            "reason": "screenshot file is missing",
+            "unique_color_count": 0,
+            "dominant_color_fraction": 1.0,
+            "chromatic_fraction": 0.0,
+            "near_black_fraction": 1.0,
+            "sentinel_fraction": 0.0,
+        }
+    logical_width = int(window_size.get("width") or 0)
+    logical_height = int(window_size.get("height") or 0)
+    if logical_width <= 0 or logical_height <= 0 or logical_rect.get("ok") is False:
+        return {
+            "ok": False,
+            "reason": logical_rect.get("reason") or "region geometry is invalid",
+            "unique_color_count": 0,
+            "dominant_color_fraction": 1.0,
+            "chromatic_fraction": 0.0,
+            "near_black_fraction": 1.0,
+            "sentinel_fraction": 0.0,
+        }
+
+    with Image.open(path) as source:
+        image = source.convert("RGB")
+        scale_x = image.width / logical_width
+        scale_y = image.height / logical_height
+        left = max(0, round(int(logical_rect["x"]) * scale_x))
+        top = max(0, round(int(logical_rect["y"]) * scale_y))
+        right = min(
+            image.width,
+            round((int(logical_rect["x"]) + int(logical_rect["width"])) * scale_x),
+        )
+        bottom = min(
+            image.height,
+            round((int(logical_rect["y"]) + int(logical_rect["height"])) * scale_y),
+        )
+        if right <= left or bottom <= top:
+            return {
+                "ok": False,
+                "reason": "region falls outside the captured window",
+                "unique_color_count": 0,
+                "dominant_color_fraction": 1.0,
+                "chromatic_fraction": 0.0,
+                "near_black_fraction": 1.0,
+                "sentinel_fraction": 0.0,
+            }
+        crop = image.crop((left, top, right, bottom))
+        pixels = cast(
+            list[tuple[int, int, int]],
+            list(crop.get_flattened_data()),
+        )
+
+    colors = Counter(pixels)
+    pixel_count = len(pixels)
+    unique_color_count = len(colors)
+    dominant_color_fraction = max(colors.values(), default=pixel_count) / pixel_count
+    chromatic_fraction = (
+        sum(
+            1
+            for red, green, blue in pixels
+            if max(red, green, blue) - min(red, green, blue) >= 12
+        )
+        / pixel_count
+    )
+    near_black_fraction = (
+        sum(1 for red, green, blue in pixels if max(red, green, blue) <= 8)
+        / pixel_count
+    )
+    sentinel_fraction = (
+        sum(
+            1
+            for red, green, blue in pixels
+            if red >= 250 and green <= 5 and blue >= 250
+        )
+        / pixel_count
+    )
+    visually_empty = (
+        unique_color_count < 16
+        or dominant_color_fraction >= 0.98
+        or near_black_fraction >= 0.85
+    )
+    missing_chromatic_content = require_chromatic_content and chromatic_fraction < 0.005
+    unpainted_capture = sentinel_fraction > 0.001
+    ok = not visually_empty and not missing_chromatic_content and not unpainted_capture
+    if unpainted_capture:
+        reason = "plot region contains unpainted capture pixels"
+    elif visually_empty:
+        reason = "plot region is visually empty"
+    elif missing_chromatic_content:
+        reason = "plot region has no visible foreground content"
+    else:
+        reason = ""
+    return {
+        "ok": ok,
+        "reason": reason,
+        "pixel_rect": {
+            "x": left,
+            "y": top,
+            "width": right - left,
+            "height": bottom - top,
+        },
+        "pixel_count": pixel_count,
+        "unique_color_count": unique_color_count,
+        "dominant_color_fraction": round(dominant_color_fraction, 6),
+        "chromatic_fraction": round(chromatic_fraction, 6),
+        "near_black_fraction": round(near_black_fraction, 6),
+        "sentinel_fraction": round(sentinel_fraction, 6),
+    }
+
+
+def _main_window_shell_repaint_evidence(path: Path) -> tuple[bool, list[str]]:
+    """Detect offscreen captures where only the newly selected tab repainted."""
+    from PIL import Image
+
+    with Image.open(path) as source:
+        image = source.convert("RGB")
+        width, height = image.size
+        if width <= 0 or height <= 0:
+            return False, ["empty image"]
+
+        top_height = max(1, min(height, round(height * 0.08)))
+        content_top = min(top_height, height - 1)
+        regions = {
+            "top navigation": (0, 0, width, top_height),
+            "right sidebar": (
+                min(width - 1, round(width * 0.68)),
+                content_top,
+                width,
+                height,
+            ),
+        }
+        failed = []
+        for name, box in regions.items():
+            metrics = _shell_region_metrics(image.crop(box))
+            if (
+                metrics["near_black_fraction"] >= 0.75
+                or metrics["entropy_bits"] < 0.03
+                or metrics["contrast_fraction"] < 0.002
+                or metrics["luminance_range"] < 12.0
+            ):
+                failed.append(name)
+        if _sentinel_fraction(image) > 0.001:
+            failed.append("unpainted capture pixels")
+        return not failed, failed
+
+
+def _shell_region_metrics(image: Any) -> dict[str, float]:
+    """Measure whether a dark-theme shell region contains painted controls/text."""
+    from collections import Counter
+
+    pixels = list(image.get_flattened_data())
+    if not pixels:
+        return {
+            "near_black_fraction": 1.0,
+            "entropy_bits": 0.0,
+            "contrast_fraction": 0.0,
+            "luminance_range": 0.0,
+        }
+    colors = Counter(pixels)
+    pixel_count = len(pixels)
+    dominant_color, _ = colors.most_common(1)[0]
+    entropy_bits = -sum(
+        (count / pixel_count) * math.log2(count / pixel_count)
+        for count in colors.values()
+    )
+    contrast_fraction = (
+        sum(
+            1
+            for pixel in pixels
+            if max(
+                abs(channel - base)
+                for channel, base in zip(pixel, dominant_color, strict=True)
+            )
+            >= 12
+        )
+        / pixel_count
+    )
+    luminances = [
+        0.2126 * red + 0.7152 * green + 0.0722 * blue for red, green, blue in pixels
+    ]
+    return {
+        "near_black_fraction": _near_black_fraction(image),
+        "entropy_bits": entropy_bits,
+        "contrast_fraction": contrast_fraction,
+        "luminance_range": max(luminances) - min(luminances),
+    }
+
+
+def _near_black_fraction(image: Any) -> float:
+    pixels = list(image.get_flattened_data())
+    if not pixels:
+        return 1.0
+    count = sum(1 for red, green, blue in pixels if max(red, green, blue) <= 8)
+    return count / len(pixels)
+
+
+def _sentinel_fraction(image: Any) -> float:
+    pixels = list(image.get_flattened_data())
+    if not pixels:
+        return 1.0
+    count = sum(
+        1 for red, green, blue in pixels if red >= 250 and green <= 5 and blue >= 250
+    )
+    return count / len(pixels)
 
 
 def _artifact_path(path: Path) -> str:
@@ -712,7 +1835,7 @@ def _set_deterministic_capture_seed() -> None:
 
         np.random.seed(DETERMINISTIC_CAPTURE_SEED)
     except Exception:
-        pass
+        LOGGER.debug("NumPy capture seeding is unavailable", exc_info=True)
     try:
         import torch
 
@@ -720,7 +1843,7 @@ def _set_deterministic_capture_seed() -> None:
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(DETERMINISTIC_CAPTURE_SEED)
     except Exception:
-        pass
+        LOGGER.debug("PyTorch capture seeding is unavailable", exc_info=True)
 
 
 def stable_artifact_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -757,6 +1880,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- supports: {metadata.get('supports', '')}",
         f"- does_not_support: {metadata.get('does_not_support', '')}",
         f"- next_human_or_runtime_gate: {metadata.get('next_human_or_runtime_gate', '')}",
+        f"- Qt platform: `{(payload.get('three_d_runtime') or {}).get('qt_platform', '')}`",
+        f"- expected 3D outcome: `{(payload.get('three_d_runtime') or {}).get('expected_outcome', '')}`",
         "",
         f"- status: `{payload['status']}`",
         f"- failure reason: {payload.get('failure_reason') or 'none'}",
@@ -780,10 +1905,15 @@ def render_markdown(payload: dict[str, Any]) -> str:
                 "",
                 f"- status: `{'ok' if render.get('ok') else 'failed'}`",
                 f"- screenshot: `{render.get('screenshot', '')}`",
+                f"- screenshot SHA-256: `{render.get('screenshot_sha256', '')}`",
                 f"- axes count: `{render.get('axes_count')}`",
                 f"- image count: `{render.get('image_count')}`",
+                f"- scientific context: {render.get('explanation_context', '')}",
                 f"- error visible: `{render.get('error_visible')}`",
                 f"- canvas visible: `{render.get('canvas_visible')}`",
+                f"- artist layout: `{'inside canvas' if (render.get('artist_layout') or {}).get('ok') else 'invalid'}`",
+                f"- canvas color count: `{(render.get('screenshot_region') or {}).get('unique_color_count')}`",
+                f"- canvas chromatic fraction: `{(render.get('screenshot_region') or {}).get('chromatic_fraction')}`",
                 "",
             ],
         )
@@ -797,10 +1927,38 @@ def render_markdown(payload: dict[str, Any]) -> str:
                     "",
                     f"- status: `{'ok' if render.get('ok') else 'failed'}`",
                     f"- screenshot: `{render.get('screenshot', '')}`",
+                    f"- screenshot SHA-256: `{render.get('screenshot_sha256', '')}`",
                     f"- plotter created: `{render.get('plotter_created')}`",
+                    f"- terminal outcome: `{render.get('outcome')}`",
                     f"- blocked reason: {render.get('blocked_reason', '')}",
+                    f"- message chromatic fraction: `{(render.get('screenshot_region') or {}).get('chromatic_fraction')}`",
                     "",
                 ],
+            )
+
+    if payload.get("interactive_renders"):
+        lines.extend(["## Interactive 3D Renders", ""])
+        for render in payload.get("interactive_renders", []):
+            evidence = render.get("render_evidence") or {}
+            region = render.get("screenshot_region") or {}
+            lines.extend(
+                [
+                    f"### {render.get('tab', '')}",
+                    "",
+                    f"- status: `{'ok' if render.get('ok') else 'failed'}`",
+                    f"- screenshot: `{render.get('screenshot', '')}`",
+                    f"- screenshot SHA-256: `{render.get('screenshot_sha256', '')}`",
+                    f"- capture method: `{render.get('capture_method', '')}`",
+                    f"- terminal outcome: `{render.get('outcome')}`",
+                    f"- plotter visible: `{render.get('plotter_visible')}`",
+                    f"- VTK render completed: `{evidence.get('render_window_rendered')}`",
+                    f"- actor count: `{evidence.get('actor_count')}`",
+                    f"- render time seconds: `{evidence.get('last_render_seconds')}`",
+                    f"- framebuffer color count: `{region.get('unique_color_count')}`",
+                    f"- framebuffer chromatic fraction: `{region.get('chromatic_fraction')}`",
+                    f"- unpainted pixel fraction: `{region.get('sentinel_fraction')}`",
+                    "",
+                ]
             )
 
     final_state = payload.get("final_state") or {}
@@ -836,6 +1994,8 @@ def _find_tab_index(panel: Any, tab_name: str) -> int:
 
 
 def _render_failure_reason(tab_name: str, evidence: dict[str, Any]) -> str:
+    if evidence.get("render_settled") is False:
+        return f"{tab_name} render did not finish before the capture timeout."
     if evidence["error_visible"]:
         return f"{tab_name} showed error: {evidence['error_text']}"
     if not evidence["canvas_visible"]:
@@ -844,6 +2004,17 @@ def _render_failure_reason(tab_name: str, evidence: dict[str, Any]) -> str:
         return f"{tab_name} did not contain rendered axes."
     if evidence["image_count"] < 1:
         return f"{tab_name} did not contain a rendered image artist."
+    geometry = evidence.get("canvas_geometry") or {}
+    if not geometry.get("ok"):
+        return f"{tab_name} {geometry.get('reason') or 'canvas geometry is invalid'}."
+    artist_layout = evidence.get("artist_layout") or {}
+    if not artist_layout.get("ok"):
+        return f"{tab_name} {artist_layout.get('reason') or 'plot labels are clipped'}."
+    if evidence.get("colorbar_margin_ok") is False:
+        return f"{tab_name} colorbar does not leave a readable right margin."
+    region = evidence.get("screenshot_region") or {}
+    if not region.get("ok"):
+        return f"{tab_name} {region.get('reason') or 'plot region is invalid'}."
     return f"{tab_name} screenshot capture failed."
 
 

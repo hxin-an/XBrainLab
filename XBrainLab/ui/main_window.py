@@ -1,20 +1,33 @@
 """Main application window module for XBrainLab.
 
 Provides the top-level QMainWindow that manages navigation, panel switching,
-AI assistant integration, and debug tool execution.
+and AI assistant integration.
 """
 
 import contextlib
 import sys
 import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
+from threading import RLock
 from typing import Any
 
 from PyQt6 import sip
-from PyQt6.QtCore import QRect, QSettings, QSize, Qt, QThreadPool, QTimer, pyqtSignal
+from PyQt6.QtCore import (
+    QCoreApplication,
+    QObject,
+    QSignalBlocker,
+    Qt,
+    QThread,
+    QThreadPool,
+    QTimer,
+    pyqtSignal,
+    pyqtSlot,
+)
 from PyQt6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDockWidget,
     QFrame,
     QHBoxLayout,
@@ -30,6 +43,8 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application import QueryStateCommand, StopTrainingCommand
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
+    application_background_tasks_idle,
+    application_runtime_initialized,
     execute_application_command,
     execute_application_command_async,
     has_real_application_context,
@@ -37,28 +52,22 @@ from XBrainLab.ui.application_capabilities import (
     release_application_shutdown_fence,
     request_application_shutdown_fence,
 )
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.controller_compatibility_bootstrap import (
     get_compatibility_workflow_controllers_for_panel_bootstrap,
 )
 from XBrainLab.ui.core.worker import Worker
+from XBrainLab.ui.panel_navigation import PanelPreparationFailure
+from XBrainLab.ui.product_language import workflow_stage_hint
 from XBrainLab.ui.refresh_coordinator import refresh_after_navigation
 from XBrainLab.ui.styles.stylesheets import Stylesheets
-from XBrainLab.ui.window_placement import (
-    bounded_window_position,
-    choose_screen_for_rect,
-    default_window_size_for_available,
-    frame_extents_for,
-    is_window_geometry_usable,
-    screen_geometry_for,
-    startup_geometry_diagnostics_enabled,
-    startup_screen_hint,
-    usable_window_position_bounds,
-    widget_geometry_diagnostic_line,
-)
+from XBrainLab.ui.window_geometry_lifecycle import WindowGeometryLifecycle
 
 # Compatibility hooks for older tests and debug fixtures that patch these names
 # directly. Runtime loading still happens through the lazy loader helpers below.
-ToolExecutor = None
 AgentManager = None
 InfoPanelService = None
 DatasetPanel = None
@@ -67,8 +76,27 @@ TrainingPanel = None
 EvaluationPanel = None
 VisualizationPanel = None
 
+
+class _ResponsiveTopBar(QFrame):
+    """Notify the shell when docks change the navigation's usable width."""
+
+    resized = pyqtSignal()
+
+    def resizeEvent(self, event):  # noqa: N802
+        super().resizeEvent(event)
+        self.resized.emit()
+
+
 SHUTDOWN_FENCE_RELEASE_RETRY_MS = 250
 SHUTDOWN_FENCE_RELEASE_MAX_ATTEMPTS = 8
+ASSISTANT_SHUTDOWN_RETRY_INTERVAL_MS = 250
+# Controller cleanup can spend up to four seconds fencing optional RAG work,
+# three seconds stopping generation, and two seconds releasing its worker thread.
+# Keep the GUI responsive while allowing that bounded ownership chain to finish.
+ASSISTANT_SHUTDOWN_MAX_WAIT_MS = 12_000
+ASSISTANT_SHUTDOWN_MAX_ATTEMPTS = (
+    ASSISTANT_SHUTDOWN_MAX_WAIT_MS // ASSISTANT_SHUTDOWN_RETRY_INTERVAL_MS
+)
 
 
 @dataclass(frozen=True)
@@ -78,6 +106,7 @@ class _PanelSpec:
     module: str
     class_name: str
     controller_names: tuple[str, ...]
+    background_import_safe: bool = True
 
 
 _PANEL_SPECS: tuple[_PanelSpec, ...] = (
@@ -101,6 +130,7 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "XBrainLab.ui.panels.training.panel",
         "TrainingPanel",
         ("training", "dataset"),
+        background_import_safe=False,
     ),
     _PanelSpec(
         "evaluation_panel",
@@ -108,6 +138,7 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "XBrainLab.ui.panels.evaluation.panel",
         "EvaluationPanel",
         ("evaluation", "training"),
+        background_import_safe=False,
     ),
     _PanelSpec(
         "visualization_panel",
@@ -115,6 +146,7 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "XBrainLab.ui.panels.visualization.panel",
         "VisualizationPanel",
         ("visualization", "training"),
+        background_import_safe=False,
     ),
 )
 
@@ -122,6 +154,7 @@ _STARTUP_PREWARM_MODULES: tuple[str, ...] = (
     "XBrainLab.backend.application.service",
     "XBrainLab.backend.load_data.raw_data_loader",
 )
+_LAZY_IMPORT_LOCK = RLock()
 
 
 def _load_panel_class(module_name: str, class_name: str) -> Any:
@@ -129,7 +162,8 @@ def _load_panel_class(module_name: str, class_name: str) -> Any:
     patched = globals().get(class_name)
     if patched is not None:
         return patched
-    module = import_module(module_name)
+    with _LAZY_IMPORT_LOCK:
+        module = import_module(module_name)
     return getattr(module, class_name)
 
 
@@ -140,15 +174,6 @@ def _load_agent_manager_class():
         return patched
     module = import_module("XBrainLab.ui.components.agent_manager")
     return module.AgentManager
-
-
-def _load_tool_executor_class():
-    """Load debug tool execution only when a debug request is emitted."""
-    patched = globals().get("ToolExecutor")
-    if patched is not None:
-        return patched
-    module = import_module("XBrainLab.debug.tool_executor")
-    return module.ToolExecutor
 
 
 def _load_info_panel_service_class():
@@ -168,13 +193,22 @@ def _prewarm_startup_modules(
     failed: list[str] = []
     for module_name in modules:
         try:
-            import_module(module_name)
+            with _LAZY_IMPORT_LOCK:
+                import_module(module_name)
         except Exception:  # noqa: PERF203
             logger.debug("Startup prewarm failed for %s", module_name, exc_info=True)
             failed.append(module_name)
         else:
             loaded.append(module_name)
     return {"loaded": loaded, "failed": failed}
+
+
+def _require_global_thread_pool() -> QThreadPool:
+    """Return the Qt pool before a caller commits background task ownership."""
+    thread_pool = QThreadPool.globalInstance()
+    if thread_pool is None:
+        raise RuntimeError("Qt thread pool is unavailable.")
+    return thread_pool
 
 
 class _LazyPanelPlaceholder(QWidget):
@@ -187,13 +221,52 @@ class _LazyPanelPlaceholder(QWidget):
         label = QLabel(f"Loading {panel_label}...")
         label.setObjectName("LazyPanelPlaceholder")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        detail = QLabel("Please wait.")
-        detail.setObjectName("LazyPanelPlaceholderDetail")
-        detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.detail = QLabel("Please wait.")
+        self.detail.setObjectName("LazyPanelPlaceholderDetail")
+        self.detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addStretch()
         layout.addWidget(label)
-        layout.addWidget(detail)
+        layout.addWidget(self.detail)
         layout.addStretch()
+
+    def show_prepare_failure(self) -> None:
+        """Keep a failed first-open recoverable without showing a modal popup."""
+        self.detail.setText("Could not open this panel. Select it again to retry.")
+
+    def show_preparing(self) -> None:
+        """Reset a prior failure message when the user retries preparation."""
+        self.detail.setText("Please wait.")
+
+
+class _PanelPrepareDelivery(QObject):
+    """Deliver background import completion to one live MainWindow."""
+
+    def __init__(self, window: Any, panel_index: int) -> None:
+        super().__init__(window)
+        self._window_ref = weakref.ref(window)
+        self._panel_index = panel_index
+
+    @pyqtSlot(object)
+    def handle_result(self, panel_class: Any) -> None:
+        window = self._window_ref()
+        if window is None or sip.isdeleted(window):
+            return
+        window._on_panel_prepare_result(self._panel_index, panel_class)
+
+    @pyqtSlot(tuple)
+    def handle_error(self, error: tuple) -> None:
+        window = self._window_ref()
+        if window is None or sip.isdeleted(window):
+            return
+        window._on_panel_prepare_error(self._panel_index, error)
+
+    @pyqtSlot()
+    def handle_finished(self) -> None:
+        window = self._window_ref()
+        if window is not None and not sip.isdeleted(window):
+            window._clear_panel_prepare_worker(self._panel_index, self)
+        if not sip.isdeleted(self):
+            self.deleteLater()
 
 
 class _StartupInfoPanelService:
@@ -253,6 +326,8 @@ class _StartupInfoPanelService:
         panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
 
     def _query_data_lists(self) -> tuple[list[Any], list[Any]]:
+        if not application_runtime_initialized(self):
+            return [], []
         try:
             from XBrainLab.backend.application.commands import (  # noqa: PLC0415
                 QueryStateCommand,
@@ -292,7 +367,6 @@ class MainWindow(QMainWindow):
     Attributes:
         study: The application Study instance holding controllers and data.
         agent_initialized: Whether the AI agent has been lazily initialized.
-        debug_executor: ToolExecutor for offline debug-mode tool execution.
         info_service: InfoPanelService managing aggregate info panel updates.
         stack: QStackedWidget holding all main functional panels.
         nav_btns: List of navigation QPushButtons in the top bar.
@@ -304,11 +378,7 @@ class MainWindow(QMainWindow):
     # Signals to control the worker
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
-    DEFAULT_WINDOW_SIZE = QSize(1280, 800)
-    MIN_WINDOW_SIZE = QSize(760, 520)
-    WINDOW_EDGE_MARGIN = 24
-    WINDOW_TOP_DRAG_MARGIN = 72
-    WINDOW_BOTTOM_MARGIN = 48
+    COMPACT_NAV_BREAKPOINT = 720
 
     def __init__(self, study):
         """Initialize the main window.
@@ -321,16 +391,30 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.study = study
         self.setWindowTitle("XBrainLab")
-        self.setMinimumSize(self.MIN_WINDOW_SIZE)
-        self._post_show_geometry_recovery_scheduled = False
-        self._restore_or_place_window()
+        self.window_geometry = WindowGeometryLifecycle(self)
+        self.window_geometry.restore_initial_geometry()
 
         self.agent_initialized = False  # Flag for lazy loading
         self.agent_manager = None
-        self.debug_executor = None
         self._workflow_controllers = None
         self._loaded_panel_indices: set[int] = set()
         self._startup_prewarm_worker = None
+        self._panel_prepare_workers: dict[
+            int,
+            tuple[Worker, _PanelPrepareDelivery],
+        ] = {}
+        self._panel_prepare_queue: list[int] = []
+        self._panel_prepare_active_index: int | None = None
+        self._prepared_panel_classes: dict[int, Any] = {}
+        self._panel_materialization_pending: set[int] = set()
+        self._panel_ready_callbacks: dict[
+            int,
+            list[Callable[[QWidget], None]],
+        ] = {}
+        self._panel_failed_callbacks: dict[
+            int,
+            list[Callable[[PanelPreparationFailure], None]],
+        ] = {}
         self._close_retry_pending = False
         self._closing_in_progress = False
         self._shutdown_fence_active = False
@@ -340,6 +424,13 @@ class MainWindow(QMainWindow):
         self._shutdown_release_attempts = 0
         self._shutdown_only_mode = False
         self._force_shutdown_requested = False
+        self._assistant_shutdown_attempts = 0
+        self._assistant_cleanup_signal = None
+        self._assistant_cleanup_runtime = None
+        self._model_download_terminal_signal = None
+        self._model_download_lifecycle = None
+        self._defer_initial_application_runtime = True
+        self._startup_prewarm_retry_pending = False
 
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -354,14 +445,32 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         # 1. Top Navigation Bar
-        self.top_bar = QFrame()
+        self.top_bar = _ResponsiveTopBar()
         self.top_bar.setObjectName("TopBar")
         self.top_bar.setFixedHeight(50)
+        self.top_bar.resized.connect(
+            lambda: QTimer.singleShot(0, self._update_navigation_layout)
+        )
         self.top_bar_layout = QHBoxLayout(self.top_bar)
         self.top_bar_layout.setContentsMargins(10, 0, 10, 0)
         self.top_bar_layout.setSpacing(10)
 
         # Navigation Buttons
+        self.compact_nav_combo = QComboBox()
+        self.compact_nav_combo.setObjectName("CompactNavigation")
+        self.compact_nav_combo.setToolTip("Workflow page")
+        self.compact_nav_combo.setMinimumWidth(150)
+        self.compact_nav_combo.setMaximumWidth(220)
+        self.compact_nav_combo.setStyleSheet(Stylesheets.COMBO_BOX)
+        self.compact_nav_combo.addItems(
+            [spec.label for spec in _PANEL_SPECS],
+        )
+        self.compact_nav_combo.currentIndexChanged.connect(
+            self._request_page_from_navigation,
+        )
+        self.compact_nav_combo.hide()
+        self.top_bar_layout.addWidget(self.compact_nav_combo)
+
         self.nav_btns = []
         self.add_nav_btn("Dataset", 0, "Dataset")
         self.add_nav_btn("Preprocess", 1, "Preprocess")
@@ -380,6 +489,7 @@ class MainWindow(QMainWindow):
         self.top_bar_layout.addWidget(self.ai_btn)
 
         main_layout.addWidget(self.top_bar)
+        QTimer.singleShot(0, self._update_navigation_layout)
 
         # 2. Services (Must be before panels to allow registration)
         self.info_service = _StartupInfoPanelService(
@@ -399,222 +509,6 @@ class MainWindow(QMainWindow):
 
         logger.info("MainWindow initialized")
 
-    def _restore_or_place_window(self) -> None:
-        """Restore healthy saved geometry or recover to a draggable placement."""
-        settings = self._window_settings()
-        saved_geometry = settings.value("main_window/geometry", None)
-        self._log_startup_geometry_message(
-            "restore start saved_geometry=%s",
-            "yes" if saved_geometry is not None else "no",
-        )
-        restored = False
-        if saved_geometry is not None:
-            try:
-                restored = bool(self.restoreGeometry(saved_geometry))
-            except TypeError:
-                logger.debug("Ignoring invalid saved main-window geometry")
-        self._log_startup_geometry_message("restoreGeometry result=%s", restored)
-
-        target_screen = self._target_screen_for_window()
-        if restored and self._is_current_window_geometry_usable(target_screen):
-            self._log_startup_geometry("main_window.after_restore_healthy")
-            return
-
-        if saved_geometry is not None:
-            logger.info("Resetting unusable saved main-window geometry")
-            settings.remove("main_window/geometry")
-            self._log_startup_geometry_message("removed unusable saved geometry")
-
-        self._place_maximized_fallback(target_screen)
-        self._log_startup_geometry("main_window.after_maximized_fallback")
-
-    def _place_default_window(self, screen=None) -> None:
-        """Place a default-size window where the native title bar is reachable."""
-        target_screen = screen or self._target_screen_for_window()
-        self.resize(self._default_window_size_for_screen(target_screen))
-        self._center_window_on_available_screen(target_screen)
-
-    def _place_maximized_fallback(self, screen=None) -> None:
-        """Place the window on a valid screen, then start maximized."""
-        self.setWindowState(Qt.WindowState.WindowNoState)
-        self._place_default_window(screen)
-        self.setWindowState(Qt.WindowState.WindowMaximized)
-
-    @staticmethod
-    def _window_settings() -> QSettings:
-        """Return persistent UI shell settings."""
-        return QSettings("XBrainLab", "XBrainLab")
-
-    def _default_window_size_for_screen(self, screen=None) -> QSize:
-        """Scale the initial size down while leaving room to drag the title bar."""
-        return default_window_size_for_available(
-            self.DEFAULT_WINDOW_SIZE,
-            self.MIN_WINDOW_SIZE,
-            self._available_screen_geometry(screen),
-            edge_margin=self.WINDOW_EDGE_MARGIN,
-            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
-            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
-        )
-
-    def _available_screen_geometry(self, screen=None) -> QRect:
-        """Return the usable geometry for a selected screen."""
-        target_screen = screen or self._target_screen_for_window()
-        return screen_geometry_for(target_screen, self.DEFAULT_WINDOW_SIZE).available
-
-    def _screen_geometry(self, screen=None) -> QRect:
-        """Return full screen geometry for frame-aware placement."""
-        target_screen = screen or self._target_screen_for_window()
-        return screen_geometry_for(target_screen, self.DEFAULT_WINDOW_SIZE).full
-
-    def _target_screen_for_window(self):
-        """Choose a target screen from frame/client geometry, startup hint, cursor."""
-        candidate = self._window_rect_for_screen_choice()
-        startup_hint = startup_screen_hint()
-        if not self.isVisible() and self._is_unshown_default_rect(candidate):
-            candidate = None
-        return choose_screen_for_rect(candidate, preferred_screen=startup_hint)
-
-    def _window_rect_for_screen_choice(self) -> QRect | None:
-        """Return the best current rectangle for screen selection."""
-        frame = self.frameGeometry()
-        if frame.isValid():
-            return frame
-        current = self.geometry()
-        if current.isValid():
-            return current
-        return None
-
-    def _is_unshown_default_rect(self, candidate: QRect | None) -> bool:
-        """Return whether a hidden widget rect is only Qt's default origin."""
-        if candidate is None or not candidate.isValid():
-            return False
-        return candidate.x() == 0 and candidate.y() == 0
-
-    def _center_window_on_available_screen(self, screen=None) -> None:
-        """Center the current window rectangle on the available screen."""
-        target_screen = screen or self._target_screen_for_window()
-        available = self._available_screen_geometry(target_screen)
-        screen_geometry = self._screen_geometry(target_screen)
-        width = min(self.width(), available.width())
-        height = min(self.height(), available.height())
-        x = available.left() + max((available.width() - width) // 2, 0)
-        y = available.top() + max((available.height() - height) // 2, 0)
-        x, y = self._bounded_window_position(
-            available,
-            width,
-            height,
-            x,
-            y,
-            screen_geometry=screen_geometry,
-        )
-        self.setGeometry(QRect(x, y, width, height))
-
-    def _clamp_window_to_available_screen(self) -> None:
-        """Move/resize the window into the usable screen title-bar bounds."""
-        if self.isMaximized() or self.isFullScreen():
-            return
-
-        target_screen = self._target_screen_for_window()
-        available = self._available_screen_geometry(target_screen)
-        screen_geometry = self._screen_geometry(target_screen)
-        current = self.geometry()
-        width = min(
-            max(current.width(), self.MIN_WINDOW_SIZE.width()),
-            available.width(),
-        )
-        height = min(
-            max(current.height(), self.MIN_WINDOW_SIZE.height()),
-            available.height(),
-        )
-        x, y = self._bounded_window_position(
-            available,
-            width,
-            height,
-            current.x(),
-            current.y(),
-            screen_geometry=screen_geometry,
-        )
-        self.setGeometry(QRect(x, y, width, height))
-
-    def _is_current_window_geometry_usable(self, screen=None) -> bool:
-        """Return whether current geometry is safe to restore or persist."""
-        if self.isFullScreen():
-            return False
-        if self.isMaximized():
-            return True
-
-        target_screen = screen or self._target_screen_for_window()
-        available = self._available_screen_geometry(target_screen)
-        screen_geometry = self._screen_geometry(target_screen)
-        current = self.geometry()
-        frame = self.frameGeometry()
-        return is_window_geometry_usable(
-            current,
-            available_geometry=available,
-            screen_geometry=screen_geometry,
-            frame_geometry=frame,
-            min_size=self.MIN_WINDOW_SIZE,
-            edge_margin=self.WINDOW_EDGE_MARGIN,
-            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
-            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
-        )
-
-    def _bounded_window_position(
-        self,
-        available: QRect,
-        width: int,
-        height: int,
-        preferred_x: int,
-        preferred_y: int,
-        *,
-        screen_geometry: QRect | None = None,
-    ) -> tuple[int, int]:
-        """Clamp a window position while preserving drag-safe top margins."""
-        frame_extents = frame_extents_for(self.geometry(), self.frameGeometry())
-        return bounded_window_position(
-            available,
-            width,
-            height,
-            preferred_x,
-            preferred_y,
-            edge_margin=self.WINDOW_EDGE_MARGIN,
-            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
-            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
-            screen_geometry=screen_geometry,
-            frame_extents=frame_extents,
-        )
-
-    def _usable_window_position_bounds(
-        self,
-        available: QRect,
-        width: int,
-        height: int,
-        *,
-        screen_geometry: QRect | None = None,
-    ) -> tuple[int, int, int, int]:
-        """Return screen bounds that leave room for native window dragging."""
-        frame_extents = frame_extents_for(self.geometry(), self.frameGeometry())
-        return usable_window_position_bounds(
-            available,
-            width,
-            height,
-            edge_margin=self.WINDOW_EDGE_MARGIN,
-            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
-            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
-            screen_geometry=screen_geometry,
-            frame_extents=frame_extents,
-        )
-
-    def _log_startup_geometry(self, label: str) -> None:
-        """Log current geometry only when startup diagnostics are enabled."""
-        if startup_geometry_diagnostics_enabled():
-            logger.info(widget_geometry_diagnostic_line(label, self))
-
-    def _log_startup_geometry_message(self, message: str, *args: object) -> None:
-        """Log a startup diagnostic message without affecting normal UI."""
-        if startup_geometry_diagnostics_enabled():
-            logger.info("startup geometry: " + message, *args)
-
     def apply_vscode_theme(self):
         """Apply the VS Code dark theme stylesheet to the main window."""
         self.setStyleSheet(Stylesheets.MAIN_WINDOW)
@@ -633,7 +527,7 @@ class MainWindow(QMainWindow):
         btn.setCheckable(True)
         btn.setObjectName("NavButton")
 
-        btn.clicked.connect(lambda: self.switch_page(index))
+        btn.clicked.connect(lambda: self._request_page_from_navigation(index))
 
         self.top_bar_layout.addWidget(btn)
         self.nav_btns.append(btn)
@@ -641,20 +535,167 @@ class MainWindow(QMainWindow):
         if index == 0:
             btn.setChecked(True)
 
-    def switch_page(self, index):
-        """Switch the active panel in the stacked widget.
+    def switch_page(
+        self,
+        index: int,
+        *,
+        on_ready: Callable[[QWidget], None] | None = None,
+        on_failed: Callable[[PanelPreparationFailure], None] | None = None,
+    ) -> bool:
+        """Activate a ready panel or asynchronously prepare its first open.
 
-        Updates button check states and delegates target-panel refresh to the
-        UI refresh coordinator.
+        Public programmatic navigation follows the same non-blocking path as a
+        navigation click. Only a materialized panel is activated synchronously.
 
         Args:
             index: Zero-based index of the panel to display.
+            on_ready: Optional one-shot callback delivered on the GUI thread
+                after the target panel is materialized.
+            on_failed: Optional one-shot callback delivered on the GUI thread
+                when this panel preparation attempt fails terminally.
 
+        Returns:
+            ``True`` when the panel was already materialized and activated,
+            otherwise ``False`` while preparation continues.
         """
-        self._ensure_panel_loaded(index)
+        return self._request_page_from_navigation(
+            index,
+            on_ready=on_ready,
+            on_failed=on_failed,
+        )
+
+    def _request_page_from_navigation(
+        self,
+        index: int,
+        *,
+        on_ready: Callable[[QWidget], None] | None = None,
+        on_failed: Callable[[PanelPreparationFailure], None] | None = None,
+    ) -> bool:
+        """Show a first-open placeholder and prepare expensive imports off-thread."""
+        if index < 0 or index >= len(_PANEL_SPECS):
+            return False
+        if self._closing_in_progress or sip.isdeleted(self):
+            return False
+
+        self._show_page(index)
+        panel = self._materialized_panel(index)
+        if panel is not None:
+            self._finish_page_activation(index)
+            if on_ready is not None:
+                self._deliver_panel_ready_callback(index, on_ready, panel)
+            return True
+
+        if on_ready is not None:
+            self._panel_ready_callbacks.setdefault(index, []).append(on_ready)
+        if on_failed is not None:
+            self._panel_failed_callbacks.setdefault(index, []).append(on_failed)
+        placeholder = self.stack.widget(index)
+        if isinstance(placeholder, _LazyPanelPlaceholder):
+            placeholder.show_preparing()
+
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage(f"Opening {_PANEL_SPECS[index].label}...")
+        self._request_panel_prepare(index)
+        return False
+
+    def _materialized_panel(self, index: int) -> QWidget | Any | None:
+        """Return a ready panel while preserving legacy injected test panels."""
+        if index < 0 or index >= len(_PANEL_SPECS):
+            return None
+        spec = _PANEL_SPECS[index]
+        panel = getattr(self, spec.attr, None)
+        if index in self._loaded_panel_indices:
+            return panel
+        if panel is None or isinstance(panel, _LazyPanelPlaceholder):
+            return None
+        self._loaded_panel_indices.add(index)
+        return panel
+
+    def _deliver_panel_ready_callback(
+        self,
+        index: int,
+        callback: Callable[[QWidget], None],
+        panel: QWidget | Any,
+    ) -> None:
+        try:
+            callback(panel)
+        except Exception:
+            logger.exception(
+                "Panel-ready callback failed for %s",
+                _PANEL_SPECS[index].label,
+            )
+
+    def _deliver_panel_ready_callbacks(self, index: int, panel: QWidget) -> None:
+        """Deliver and release callbacks waiting for one materialized panel."""
+        callbacks = self._panel_ready_callbacks.pop(index, [])
+        self._panel_failed_callbacks.pop(index, None)
+        for callback in callbacks:
+            self._deliver_panel_ready_callback(index, callback, panel)
+
+    def _deliver_panel_failed_callback(
+        self,
+        index: int,
+        callback: Callable[[PanelPreparationFailure], None],
+        failure: PanelPreparationFailure,
+    ) -> None:
+        try:
+            callback(failure)
+        except Exception:
+            logger.exception(
+                "Panel-failed callback failed for %s",
+                _PANEL_SPECS[index].label,
+            )
+
+    def _deliver_panel_failed_callbacks(self, index: int) -> None:
+        """Fail and release every callback waiting on this preparation attempt."""
+        self._panel_ready_callbacks.pop(index, None)
+        callbacks = self._panel_failed_callbacks.pop(index, [])
+        if not callbacks:
+            return
+        spec = _PANEL_SPECS[index]
+        failure = PanelPreparationFailure(
+            panel_index=index,
+            panel_name=spec.label,
+            message=f"Could not open {spec.label}.",
+        )
+        for callback in callbacks:
+            self._deliver_panel_failed_callback(index, callback, failure)
+
+    def _show_page(self, index: int) -> None:
+        """Select one stack page and synchronize navigation controls."""
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
+        with QSignalBlocker(self.compact_nav_combo):
+            self.compact_nav_combo.setCurrentIndex(index)
+
+    def resizeEvent(self, event):  # noqa: N802
+        """Use a page selector when the assistant leaves little nav width."""
+        super().resizeEvent(event)
+        if hasattr(self, "top_bar"):
+            QTimer.singleShot(0, self._update_navigation_layout)
+
+    def _update_navigation_layout(self) -> None:
+        """Keep every workflow destination readable in the available top bar."""
+        if not hasattr(self, "compact_nav_combo"):
+            return
+        compact = self.top_bar.contentsRect().width() < self.COMPACT_NAV_BREAKPOINT
+        self.compact_nav_combo.setVisible(compact)
+        for button in self.nav_btns:
+            button.setVisible(not compact)
+
+    def _activate_page(self, index: int) -> None:
+        """Activate an already materialized page through the synchronous API."""
+        self._show_page(index)
+        self._finish_page_activation(index)
+
+    def _finish_page_activation(self, index: int) -> None:
+        """Refresh and repaint one materialized page after navigation."""
+        if index not in self._loaded_panel_indices:
+            return
+        if self.stack.count() > index and self.stack.currentIndex() != index:
+            return
 
         refresh_after_navigation(self, index)
         self._repaint_navigation_surface()
@@ -663,6 +704,216 @@ class MainWindow(QMainWindow):
             status_bar = self.statusBar()
             if status_bar is not None:
                 status_bar.showMessage(self._backend_status_bar_hint())
+
+    def _request_panel_prepare(self, index: int) -> None:
+        """Start at most one background class import for a hidden panel."""
+        if (
+            index in self._loaded_panel_indices
+            or index in self._panel_materialization_pending
+            or self._closing_in_progress
+        ):
+            return
+        if index in self._prepared_panel_classes:
+            self._schedule_panel_materialization(index)
+            return
+        if (
+            index in self._panel_prepare_workers
+            or index in self._panel_prepare_queue
+            or self._panel_prepare_active_index == index
+        ):
+            return
+
+        if (
+            self._startup_prewarm_worker is not None
+            or self._panel_prepare_active_index is not None
+        ):
+            self._panel_prepare_queue.append(index)
+            return
+        self._start_panel_prepare(index)
+
+    def _start_panel_prepare(self, index: int) -> None:
+        """Start one queued panel import without another import worker in flight."""
+        spec = _PANEL_SPECS[index]
+        if not spec.background_import_safe:
+            self._panel_prepare_active_index = index
+            QTimer.singleShot(0, lambda: self._prepare_panel_class_on_gui(index))
+            return
+
+        delivery: _PanelPrepareDelivery | None = None
+        try:
+            worker = Worker(_load_panel_class, spec.module, spec.class_name)
+            delivery = _PanelPrepareDelivery(self, index)
+            worker.signals.result.connect(delivery.handle_result)
+            worker.signals.error.connect(delivery.handle_error)
+            worker.signals.finished.connect(delivery.handle_finished)
+            self._panel_prepare_workers[index] = (worker, delivery)
+            self._panel_prepare_active_index = index
+
+            thread_pool = _require_global_thread_pool()
+            thread_pool.start(worker)
+        except Exception as exc:
+            self._panel_prepare_workers.pop(index, None)
+            if self._panel_prepare_active_index == index:
+                self._panel_prepare_active_index = None
+            if delivery is not None:
+                delivery.deleteLater()
+            logger.warning("Could not start %s panel preparation: %s", spec.label, exc)
+            self._show_panel_prepare_failure(index)
+            QTimer.singleShot(0, self._start_next_panel_prepare)
+
+    def _prepare_panel_class_on_gui(self, index: int) -> None:
+        """Resolve Qt-native panel modules on the application thread."""
+        if self._closing_in_progress or self._panel_prepare_active_index != index:
+            if self._panel_prepare_active_index == index:
+                self._panel_prepare_active_index = None
+            return
+        spec = _PANEL_SPECS[index]
+        try:
+            panel_class = _load_panel_class(spec.module, spec.class_name)
+        except Exception as exc:
+            logger.warning("Could not prepare %s panel: %s", spec.label, exc)
+            self._panel_prepare_active_index = None
+            self._show_panel_prepare_failure(index)
+            QTimer.singleShot(0, self._start_next_panel_prepare)
+            return
+
+        self._panel_prepare_active_index = None
+        self._on_panel_prepare_result(index, panel_class)
+        QTimer.singleShot(0, self._start_next_panel_prepare)
+
+    def _start_next_panel_prepare(self) -> None:
+        """Start the next valid first-open request after prior ownership ends."""
+        if (
+            self._closing_in_progress
+            or self._startup_prewarm_worker is not None
+            or self._panel_prepare_active_index is not None
+        ):
+            return
+        while self._panel_prepare_queue:
+            index = self._panel_prepare_queue.pop(0)
+            if (
+                index in self._loaded_panel_indices
+                or index in self._panel_materialization_pending
+                or index in self._prepared_panel_classes
+            ):
+                continue
+            self._start_panel_prepare(index)
+            if self._panel_prepare_active_index is not None:
+                return
+
+    def _on_panel_prepare_result(self, index: int, panel_class: Any) -> None:
+        """Cache a prepared class and queue QWidget creation on the GUI thread."""
+        if self._closing_in_progress or sip.isdeleted(self):
+            return
+        self._prepared_panel_classes[index] = panel_class
+        if self.stack.currentIndex() == index:
+            self._schedule_panel_materialization(index)
+
+    def _on_panel_prepare_error(self, index: int, error: tuple) -> None:
+        """Expose a recoverable inline first-open failure without a modal dialog."""
+        message = error[1] if len(error) > 1 else error
+        logger.warning(
+            "Could not prepare %s panel: %s",
+            _PANEL_SPECS[index].label,
+            message,
+        )
+        self._show_panel_prepare_failure(index)
+
+    def _show_panel_prepare_failure(self, index: int) -> None:
+        placeholder = self.stack.widget(index)
+        if isinstance(placeholder, _LazyPanelPlaceholder):
+            placeholder.show_prepare_failure()
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage(
+                f"Could not open {_PANEL_SPECS[index].label} · Select it to retry",
+                6000,
+            )
+        self._deliver_panel_failed_callbacks(index)
+
+    def _clear_panel_prepare_worker(
+        self,
+        index: int,
+        delivery: _PanelPrepareDelivery | None = None,
+    ) -> None:
+        """Release one background import owner after its terminal signal."""
+        owner = self._panel_prepare_workers.get(index)
+        if delivery is not None and (owner is None or owner[1] is not delivery):
+            return
+        self._panel_prepare_workers.pop(index, None)
+        if self._panel_prepare_active_index == index:
+            self._panel_prepare_active_index = None
+        QTimer.singleShot(0, self._start_next_panel_prepare)
+
+    def _restore_panel_placeholder(self, index: int) -> _LazyPanelPlaceholder:
+        """Restore the pre-materialization widget after a failed construction."""
+        spec = _PANEL_SPECS[index]
+        current = self.stack.widget(index)
+        if isinstance(current, _LazyPanelPlaceholder):
+            placeholder = current
+        else:
+            was_current = self.stack.currentIndex() == index
+            if current is not None:
+                self.stack.removeWidget(current)
+                current.setParent(None)
+                current.deleteLater()
+            placeholder = _LazyPanelPlaceholder(spec.label, self)
+            self.stack.insertWidget(index, placeholder)
+            if was_current:
+                self.stack.setCurrentIndex(index)
+        setattr(self, spec.attr, placeholder)
+        return placeholder
+
+    def _handle_panel_materialization_failure(
+        self,
+        index: int,
+        error: Exception,
+    ) -> None:
+        """Rollback a failed prepared class without poisoning the next attempt."""
+        spec = _PANEL_SPECS[index]
+        logger.warning(
+            "Could not construct prepared %s panel: %s",
+            spec.label,
+            error,
+            exc_info=True,
+        )
+        self._prepared_panel_classes.pop(index, None)
+        self._panel_materialization_pending.discard(index)
+        self._loaded_panel_indices.discard(index)
+        self._clear_panel_prepare_worker(index)
+        self._restore_panel_placeholder(index)
+        self._show_panel_prepare_failure(index)
+
+    def _schedule_panel_materialization(self, index: int) -> None:
+        """Queue QWidget creation after the navigation click has returned."""
+        if (
+            index in self._loaded_panel_indices
+            or index in self._panel_materialization_pending
+            or index not in self._prepared_panel_classes
+            or self._closing_in_progress
+        ):
+            return
+        self._panel_materialization_pending.add(index)
+        window_ref = weakref.ref(self)
+
+        def _materialize_if_alive() -> None:
+            window = window_ref()
+            if window is None or sip.isdeleted(window):
+                return
+            window._panel_materialization_pending.discard(index)
+            if window._closing_in_progress or window.stack.currentIndex() != index:
+                return
+            panel_class = window._prepared_panel_classes.get(index)
+            try:
+                panel = window._materialize_panel(index, panel_class=panel_class)
+            except Exception as exc:
+                window._handle_panel_materialization_failure(index, exc)
+                return
+            if panel is not None:
+                window._finish_page_activation(index)
+                window._deliver_panel_ready_callbacks(index, panel)
+
+        QTimer.singleShot(0, _materialize_if_alive)
 
     def _repaint_navigation_surface(self) -> None:
         """Flush page and navigation paints after a stacked-page transition."""
@@ -679,6 +930,8 @@ class MainWindow(QMainWindow):
 
     def _backend_status_bar_hint(self) -> str:
         """Return a user-facing workflow hint without requiring the AI dock."""
+        if not application_runtime_initialized(self):
+            return workflow_stage_hint("empty")
         result = execute_application_command(
             self,
             QueryStateCommand(query="state"),
@@ -687,23 +940,13 @@ class MainWindow(QMainWindow):
         if result is None or result.failed:
             logger.debug("Failed to read backend status bar hint", exc_info=True)
             return "Workflow status unavailable"
+        if result.diagnostics.get("view_stale") or not result.diagnostics.get(
+            "view_verified",
+            True,
+        ):
+            return "Workflow status unavailable · Try again"
         state = result.diagnostics.get("state", {})
-        active_training = state.get("active_training", {})
-        active_dataset = state.get("active_dataset", {})
-        evaluation = state.get("evaluation", {})
-        if active_training.get("is_running"):
-            return "Training in progress"
-        if evaluation.get("finished_runs", 0) > 0:
-            return "Training complete · Review results"
-        if active_dataset.get("has_datasets"):
-            return "Dataset ready · Train model"
-        if active_dataset.get("has_epoch_data"):
-            return "Epochs ready · Generate dataset"
-        if active_dataset.get("has_preprocessed_data"):
-            return "Preprocessed data ready · Create epochs"
-        if active_dataset.get("has_raw_data"):
-            return "EEG data loaded · Preprocess data"
-        return "No EEG data open · Scan a data source to begin"
+        return workflow_stage_hint(state.get("pipeline_stage"))
 
     def init_panels(self):
         """Create the first panel now and defer hidden panels until first use."""
@@ -732,8 +975,21 @@ class MainWindow(QMainWindow):
 
     def _ensure_panel_loaded(self, index: int) -> QWidget | None:
         """Instantiate a workflow panel on first navigation to that panel."""
+        return self._materialize_panel(index)
+
+    def _materialize_panel(
+        self,
+        index: int,
+        *,
+        panel_class: Any | None = None,
+    ) -> QWidget | None:
+        """Create one QWidget panel on the GUI thread after class preparation."""
         if index < 0 or index >= len(_PANEL_SPECS):
             return None
+
+        application = QCoreApplication.instance()
+        if application is not None and QThread.currentThread() != application.thread():
+            raise RuntimeError("Workflow panels must be created on the GUI thread")
 
         spec = _PANEL_SPECS[index]
         existing = getattr(self, spec.attr, None)
@@ -752,20 +1008,46 @@ class MainWindow(QMainWindow):
             )
             self._workflow_controllers = controllers
 
-        panel_class = _load_panel_class(spec.module, spec.class_name)
+        resolved_panel_class = panel_class or self._prepared_panel_classes.get(index)
+        if resolved_panel_class is None:
+            resolved_panel_class = _load_panel_class(spec.module, spec.class_name)
+        if not callable(resolved_panel_class):
+            raise TypeError(f"{spec.class_name} did not resolve to a panel class")
         controller_args = [getattr(controllers, name) for name in spec.controller_names]
-        panel = panel_class(*controller_args, self)
+        panel = resolved_panel_class(*controller_args, self)
+        if not isinstance(panel, QWidget):
+            if isinstance(panel, QObject):
+                panel.setParent(None)
+                panel.deleteLater()
+            raise TypeError(f"{spec.class_name} did not create a QWidget")
 
         old_widget = self.stack.widget(index)
         was_current = self.stack.currentIndex() == index
+        try:
+            if old_widget is not None:
+                self.stack.removeWidget(old_widget)
+                old_widget.setParent(None)
+            self.stack.insertWidget(index, panel)
+            if was_current:
+                self.stack.setCurrentIndex(index)
+            setattr(self, spec.attr, panel)
+            self._loaded_panel_indices.add(index)
+            self._prepared_panel_classes.pop(index, None)
+            self._panel_materialization_pending.discard(index)
+        except Exception:
+            if self.stack.indexOf(panel) >= 0:
+                self.stack.removeWidget(panel)
+            panel.setParent(None)
+            panel.deleteLater()
+            if old_widget is not None and self.stack.indexOf(old_widget) < 0:
+                self.stack.insertWidget(index, old_widget)
+                if was_current:
+                    self.stack.setCurrentIndex(index)
+                setattr(self, spec.attr, old_widget)
+            raise
+
         if old_widget is not None:
-            self.stack.removeWidget(old_widget)
-            old_widget.setParent(None)
-        self.stack.insertWidget(index, panel)
-        if was_current:
-            self.stack.setCurrentIndex(index)
-        setattr(self, spec.attr, panel)
-        self._loaded_panel_indices.add(index)
+            old_widget.deleteLater()
 
         if spec.attr == "visualization_panel":
             self._connect_agent_visualization_monitor()
@@ -782,18 +1064,28 @@ class MainWindow(QMainWindow):
 
         agent_manager_class = _load_agent_manager_class()
         self.agent_manager = agent_manager_class(self, self.study)
-        self.agent_manager.init_ui()
-
-        # M3.1: Debug tool execution handled by MainWindow for offline support
-        if self.agent_manager.chat_panel:
-            self.agent_manager.chat_panel.debug_tool_requested.connect(
-                self._on_debug_tool_requested,
-            )
+        try:
+            self.agent_manager.init_ui()
+        except Exception:
+            failed_manager = self.agent_manager
+            self.agent_manager = None
+            logger.exception("AI assistant UI initialization failed")
+            with contextlib.suppress(Exception):
+                failed_manager.close()
+            self.ai_btn.setChecked(False)
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "AI Assistant could not open. Try again.",
+                    6000,
+                )
+            return
 
         # Connect Status Updates
         self.agent_manager.status_message_received.connect(
             self._on_agent_status_message,
         )
+        self._connect_assistant_cleanup_signal()
         self._connect_agent_visualization_monitor()
 
     def _connect_agent_visualization_monitor(self) -> None:
@@ -805,54 +1097,11 @@ class MainWindow(QMainWindow):
         if callable(connect):
             connect()
 
-    def _debug_executor_for_request(self):
-        """Create the debug executor only when a debug request is made."""
-        if self.debug_executor is None:
-            tool_executor_class = _load_tool_executor_class()
-            self.debug_executor = tool_executor_class(self.study)
-        return self.debug_executor
-
     def _on_agent_status_message(self, msg: str):
         """Update status bar safely."""
         sb = self.statusBar()
         if sb:
-            sb.showMessage(msg)
-
-    def _on_debug_tool_requested(self, tool_name: str, params: dict):
-        """Handle debug tool execution request (M3.1).
-
-        Executes the requested tool via ``debug_executor`` and posts the
-        result back to the chat panel. Also handles ``switch_panel``
-        commands that would normally be parsed by the LLM controller.
-
-        Args:
-            tool_name: Name of the tool to execute.
-            params: Dictionary of parameters to pass to the tool.
-
-        """
-        logger.info("Debug Mode: Requesting %s", tool_name)
-        result = self._debug_executor_for_request().execute(tool_name, params)
-
-        # Feedback to Chat
-        if self.agent_manager and self.agent_manager.chat_panel:
-            # We use the compatibility or proper method to append message
-            # Ideally via chat_controller but for Direct UI debug feedback:
-            self.agent_manager.chat_panel.append_message(
-                "System",
-                "Diagnostic action completed. Details were saved to logs.",
-            )
-            # Ensure we scroll to bottom
-            self.agent_manager.chat_panel._scroll_to_bottom()
-
-        # M3.1 FIX: Handle Switch Panel in Debug Mode
-        # In normal agent flow, LLMController parses the "Request:" string.
-        # In Debug Mode, we must handle it explicitly here.
-        if tool_name == "switch_panel" and result and "Request: Switch UI" in result:
-            # Map 'panel_name' (Tool param) to 'panel' (AgentManager param)
-            panel = params.get("panel_name")
-            view = params.get("view_mode")
-            if panel and self.agent_manager:
-                self.agent_manager.switch_panel({"panel": panel, "view_mode": view})
+            sb.showMessage(msg, 6000)
 
     def toggle_ai_dock(self):
         """Toggle the AI assistant dock widget visibility."""
@@ -864,19 +1113,40 @@ class MainWindow(QMainWindow):
 
     def _schedule_startup_prewarm(self) -> None:
         """Schedule safe background imports after the first UI frame."""
+        if self._closing_in_progress or sip.isdeleted(self):
+            return
         QTimer.singleShot(1400, self._start_startup_prewarm)
 
     def _start_startup_prewarm(self) -> None:
         """Start non-UI background import prewarm without blocking startup."""
-        if self._startup_prewarm_worker is not None:
+        if (
+            self._closing_in_progress
+            or sip.isdeleted(self)
+            or self._startup_prewarm_worker is not None
+        ):
             return
-        worker = Worker(_prewarm_startup_modules)
-        worker.signals.result.connect(self._on_startup_prewarm_result)
-        worker.signals.finished.connect(self._clear_startup_prewarm_worker)
-        self._startup_prewarm_worker = worker
-        thread_pool = QThreadPool.globalInstance()
-        if thread_pool is not None:
+        if self._panel_prepare_active_index is not None or self._panel_prepare_queue:
+            if not self._startup_prewarm_retry_pending:
+                self._startup_prewarm_retry_pending = True
+                QTimer.singleShot(250, self._retry_startup_prewarm)
+            return
+        try:
+            worker = Worker(_prewarm_startup_modules)
+            worker.signals.result.connect(self._on_startup_prewarm_result)
+            worker.signals.finished.connect(self._clear_startup_prewarm_worker)
+            self._startup_prewarm_worker = worker
+            thread_pool = _require_global_thread_pool()
             thread_pool.start(worker)
+        except Exception as exc:
+            self._startup_prewarm_worker = None
+            logger.warning("Could not start background module prewarm: %s", exc)
+            QTimer.singleShot(0, self._start_next_panel_prepare)
+
+    def _retry_startup_prewarm(self) -> None:
+        """Retry prewarm only after lazy panel imports release the Qt pool."""
+        self._startup_prewarm_retry_pending = False
+        if not self._closing_in_progress:
+            self._start_startup_prewarm()
 
     def _on_startup_prewarm_result(self, result: dict[str, list[str]]) -> None:
         """Log prewarm outcome for profiling without surfacing UI noise."""
@@ -891,6 +1161,7 @@ class MainWindow(QMainWindow):
     def _clear_startup_prewarm_worker(self) -> None:
         """Release the worker reference after the background task completes."""
         self._startup_prewarm_worker = None
+        QTimer.singleShot(0, self._start_next_panel_prepare)
 
     def update_info_panel(self):
         """Refresh the aggregate info panel if it exists."""
@@ -906,43 +1177,7 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):  # noqa: N802
         """Clamp restored geometry once the window has a native frame."""
         super().showEvent(event)
-        if not self._post_show_geometry_recovery_scheduled:
-            self._post_show_geometry_recovery_scheduled = True
-            self._log_startup_geometry("main_window.show_event")
-            QTimer.singleShot(
-                0,
-                lambda: self._recover_unusable_window_geometry_if_alive(
-                    "post_show_0ms"
-                ),
-            )
-            QTimer.singleShot(
-                250,
-                lambda: self._recover_unusable_window_geometry_if_alive(
-                    "post_show_250ms"
-                ),
-            )
-
-    def _recover_unusable_window_geometry_if_alive(self, recovery_label: str) -> None:
-        """Run delayed recovery only while the underlying Qt window still exists."""
-        if sip.isdeleted(self):
-            return
-        self._recover_unusable_window_geometry(recovery_label)
-
-    def _recover_unusable_window_geometry(
-        self,
-        recovery_label: str = "post_show",
-    ) -> None:
-        """Recenter after show if the window manager produced bad geometry."""
-        self._log_startup_geometry(f"main_window.{recovery_label}.before")
-        if self._is_current_window_geometry_usable():
-            self._log_startup_geometry_message("%s usable=True", recovery_label)
-            return
-        logger.info(
-            "Recovering unusable main-window geometry after show (%s)",
-            recovery_label,
-        )
-        self._place_maximized_fallback()
-        self._log_startup_geometry(f"main_window.{recovery_label}.after")
+        self.window_geometry.handle_window_shown()
 
     def closeEvent(self, event):  # noqa: N802
         """Handle application close by cleaning up the agent manager.
@@ -951,13 +1186,32 @@ class MainWindow(QMainWindow):
             event: The QCloseEvent triggered on window close.
 
         """
+        if sip.isdeleted(self):
+            event.accept()
+            return
         logger.info("Closing application...")
         if self._force_shutdown_requested:
+            if not self._closing_in_progress:
+                self._begin_close_attempt()
+            if not self._owned_ui_background_work_idle():
+                event.ignore()
+                self._schedule_close_retry()
+                status_bar = self.statusBar()
+                if status_bar is not None:
+                    status_bar.showMessage(
+                        "Finishing background interface work before closing...",
+                        3000,
+                    )
+                return
+            if not self._finalize_visualization_native_render_resources():
+                event.ignore()
+                self._schedule_close_retry()
+                return
             logger.critical("Forcing GUI shutdown after safe recovery failed.")
-            if self.agent_manager is not None:
-                with contextlib.suppress(Exception):
-                    self.agent_manager.close()
-            super().closeEvent(event)
+            if not self._close_assistant_for_shutdown():
+                self._handle_assistant_shutdown_failure(event)
+                return
+            self._delegate_close_event_if_alive(event)
             return
         if not self._closing_in_progress:
             self._begin_close_attempt()
@@ -979,36 +1233,224 @@ class MainWindow(QMainWindow):
                     3000,
                 )
             return
-        if self.agent_manager is not None and not self.agent_manager.close():
+        if not self._owned_ui_background_work_idle():
             event.ignore()
+            self._schedule_close_retry()
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Finishing background interface work before closing...",
+                    3000,
+                )
+            return
+        if not self._finalize_visualization_native_render_resources():
+            event.ignore()
+            self._schedule_close_retry()
+            return
+        if not self._close_assistant_for_shutdown():
+            self._handle_assistant_shutdown_failure(event)
+            return
+        if not self.window_geometry.persist_before_close():
+            event.accept()
+            return
+        self._delegate_close_event_if_alive(event)
+
+    def _delegate_close_event_if_alive(self, event: Any) -> bool:
+        """Finish Qt close without touching an already deleted C++ wrapper."""
+        if sip.isdeleted(self):
+            event.accept()
+            return False
+        try:
+            super().closeEvent(event)
+        except RuntimeError:
+            if sip.isdeleted(self):
+                event.accept()
+                return False
+            raise
+        return True
+
+    def _begin_close_attempt(self) -> None:
+        """Freeze user actions while worker ownership is being released."""
+        self._closing_in_progress = True
+        self._startup_prewarm_retry_pending = False
+        self._training_close_ready = False
+        self._shutdown_release_retry_pending = False
+        self._shutdown_release_attempts = 0
+        self._assistant_shutdown_attempts = 0
+        self._set_close_interaction_enabled(False)
+        self._begin_visualization_render_shutdown()
+
+    def _owned_ui_background_work_idle(self) -> bool:
+        """Return whether every UI-owned background worker is terminal."""
+        return (
+            self._startup_prewarm_worker is None
+            and not self._panel_prepare_workers
+            and self._panel_prepare_active_index is None
+            and self._visualization_native_render_idle()
+        )
+
+    def _begin_visualization_render_shutdown(self) -> None:
+        """Ask the loaded Visualization panel to reject new native work."""
+        panel = getattr(self, "visualization_panel", None)
+        begin_shutdown = getattr(panel, "begin_native_render_shutdown", None)
+        if callable(begin_shutdown):
+            begin_shutdown()
+
+    def _visualization_native_render_idle(self) -> bool:
+        """Return true when loaded saliency views released terminal ownership."""
+        panel = getattr(self, "visualization_panel", None)
+        is_idle = getattr(panel, "native_render_work_idle", None)
+        if not callable(is_idle):
+            return True
+        try:
+            return bool(is_idle())
+        except Exception:
+            logger.exception("Could not verify Visualization native render cleanup.")
+            return False
+
+    def _finalize_visualization_native_render_resources(self) -> bool:
+        """Finalize loaded saliency widgets after their workers are terminal."""
+        panel = getattr(self, "visualization_panel", None)
+        finalize = getattr(panel, "finalize_native_render_resources", None)
+        if not callable(finalize):
+            return True
+        if QThread.currentThread() is not self.thread():
+            logger.error(
+                "Visualization native resources cannot be finalized off the GUI thread."
+            )
+            return False
+        try:
+            return bool(finalize())
+        except Exception:
+            logger.exception("Could not finalize Visualization native resources.")
+            return False
+
+    def _close_assistant_for_shutdown(self) -> bool:
+        """Return true only after assistant-owned Qt resources have stopped."""
+        agent_manager = self.agent_manager
+        if agent_manager is None:
+            self._assistant_shutdown_attempts = 0
+            return True
+        self._connect_assistant_cleanup_signal()
+        try:
+            stopped = bool(agent_manager.close())
+        except Exception:
+            stopped = False
+            logger.exception("Assistant teardown failed during GUI shutdown")
+        if stopped:
+            self._assistant_shutdown_attempts = 0
+            return True
+        self._assistant_shutdown_attempts = min(
+            self._assistant_shutdown_attempts + 1,
+            ASSISTANT_SHUTDOWN_MAX_ATTEMPTS,
+        )
+        return False
+
+    def _connect_assistant_cleanup_signal(self) -> bool:
+        """Observe the runtime's terminal cleanup signal exactly once."""
+        agent_manager = self.agent_manager
+        self._connect_model_download_terminal_signal()
+        runtime = getattr(agent_manager, "assistant_runtime", None)
+        signal = getattr(runtime, "cleanup_finished", None)
+        if signal is None or not callable(getattr(signal, "connect", None)):
+            return False
+        if runtime is self._assistant_cleanup_runtime:
+            return True
+        previous = self._assistant_cleanup_signal
+        if previous is not None:
+            with contextlib.suppress(RuntimeError, TypeError):
+                previous.disconnect(self._on_assistant_cleanup_finished)
+        signal.connect(self._on_assistant_cleanup_finished)
+        self._assistant_cleanup_signal = signal
+        self._assistant_cleanup_runtime = runtime
+        return True
+
+    def _connect_model_download_terminal_signal(self) -> bool:
+        """Resume close promptly when app-owned model download cleanup ends."""
+        agent_manager = self.agent_manager
+        lifecycle = getattr(agent_manager, "model_download_lifecycle", None)
+        signal = getattr(lifecycle, "terminal", None)
+        if signal is None or not callable(getattr(signal, "connect", None)):
+            return False
+        if lifecycle is self._model_download_lifecycle:
+            return True
+        previous = self._model_download_terminal_signal
+        if previous is not None:
+            with contextlib.suppress(RuntimeError, TypeError):
+                previous.disconnect(self._on_model_download_terminal)
+        signal.connect(self._on_model_download_terminal)
+        self._model_download_terminal_signal = signal
+        self._model_download_lifecycle = lifecycle
+        return True
+
+    @pyqtSlot(bool, str)
+    def _on_model_download_terminal(self, _ok: bool, _message: str) -> None:
+        """Retry a fenced app close after subprocess and QThread terminal."""
+        if sip.isdeleted(self) or not (
+            self._closing_in_progress or self._force_shutdown_requested
+        ):
+            return
+        self._schedule_close_retry(delay_ms=0)
+
+    @pyqtSlot(bool, str)
+    def _on_assistant_cleanup_finished(self, ok: bool, message: str) -> None:
+        """Resume a fenced close only after assistant ownership is terminal."""
+        if sip.isdeleted(self) or not (
+            self._closing_in_progress or self._force_shutdown_requested
+        ):
+            return
+        if not ok:
+            detail = str(message or "Assistant cleanup did not finish.")
+            logger.error("Assistant teardown completed with errors: %s", detail)
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Assistant shutdown needs another cleanup attempt.",
+                )
+            self._schedule_close_retry()
+            return
+        self._assistant_shutdown_attempts = 0
+        self._schedule_close_retry(delay_ms=0)
+
+    def _handle_assistant_shutdown_failure(self, event: Any) -> None:
+        """Keep the window fenced until assistant-owned resources are released."""
+        if sip.isdeleted(self):
+            event.accept()
+            return
+        event.ignore()
+        attempts = self._assistant_shutdown_attempts
+        if attempts < ASSISTANT_SHUTDOWN_MAX_ATTEMPTS:
+            logger.warning(
+                "Assistant teardown incomplete; scheduling retry %s of %s.",
+                attempts + 1,
+                ASSISTANT_SHUTDOWN_MAX_ATTEMPTS,
+            )
             status_bar = self.statusBar()
             if status_bar is not None:
                 status_bar.showMessage(
                     "Assistant is still stopping. "
                     "XBrainLab will close when it is safe.",
-                    3000,
                 )
+            self._connect_assistant_cleanup_signal()
             self._schedule_close_retry()
             return
-        if not self.isMaximized() and not self.isFullScreen():
-            settings = self._window_settings()
-            if self._is_current_window_geometry_usable():
-                settings.setValue(
-                    "main_window/geometry",
-                    self.saveGeometry(),
-                )
-            else:
-                logger.info("Discarding unusable main-window geometry on close")
-                settings.remove("main_window/geometry")
-        super().closeEvent(event)
 
-    def _begin_close_attempt(self) -> None:
-        """Freeze user actions while worker ownership is being released."""
-        self._closing_in_progress = True
-        self._training_close_ready = False
-        self._shutdown_release_retry_pending = False
-        self._shutdown_release_attempts = 0
+        logger.warning(
+            "Assistant teardown is taking longer than %s attempts; continuing "
+            "safe shutdown retries.",
+            attempts,
+        )
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage(
+                "XBrainLab is in shutdown-only recovery while model and "
+                "assistant resources are still owned.",
+            )
+        self._assistant_shutdown_attempts = ASSISTANT_SHUTDOWN_MAX_ATTEMPTS
+        self._shutdown_only_mode = True
         self._set_close_interaction_enabled(False)
+        self._connect_assistant_cleanup_signal()
+        self._schedule_close_retry()
 
     def _cancel_close_attempt(self) -> None:
         """Release the backend fence before restoring user interaction."""
@@ -1081,6 +1523,7 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Retry,
         )
         if reply == QMessageBox.StandardButton.Close:
+            self._assistant_shutdown_attempts = 0
             self._force_shutdown_requested = True
             QTimer.singleShot(0, self.close)
             return
@@ -1096,6 +1539,15 @@ class MainWindow(QMainWindow):
         self._shutdown_release_retry_pending = False
         self._shutdown_release_attempts = 0
         self._shutdown_only_mode = False
+        self._assistant_shutdown_attempts = 0
+        panel = getattr(self, "visualization_panel", None)
+        cancel_render_shutdown = getattr(
+            panel,
+            "cancel_native_render_shutdown",
+            None,
+        )
+        if callable(cancel_render_shutdown):
+            cancel_render_shutdown()
         self._set_close_interaction_enabled(True)
 
     def _set_close_interaction_enabled(self, enabled: bool) -> None:
@@ -1124,12 +1576,16 @@ class MainWindow(QMainWindow):
             self._restore_close_interaction()
         return bool(installed)
 
-    def _schedule_close_retry(self) -> None:
+    def _schedule_close_retry(
+        self,
+        *,
+        delay_ms: int = ASSISTANT_SHUTDOWN_RETRY_INTERVAL_MS,
+    ) -> None:
         """Coalesce close retries while training or assistant workers stop."""
         if self._close_retry_pending:
             return
         self._close_retry_pending = True
-        QTimer.singleShot(250, self._retry_close)
+        QTimer.singleShot(max(0, int(delay_ms)), self._retry_close)
 
     def _retry_close(self) -> None:
         """Retry a deferred close only while this Qt window still exists."""
@@ -1153,7 +1609,16 @@ class MainWindow(QMainWindow):
         def _handle_result(result) -> None:
             self._training_close_check_in_flight = False
             if self._training_stop_result_allows_close(result):
-                self._training_close_ready = True
+                self._training_close_ready = application_background_tasks_idle(
+                    self,
+                    timeout=0.0,
+                )
+                if not self._training_close_ready:
+                    status_bar = self.statusBar()
+                    if status_bar is not None:
+                        status_bar.showMessage(
+                            "Finishing background analysis before closing...",
+                        )
                 self._schedule_close_retry()
                 return
             if not result.failed and result.diagnostics.get("stopped") is False:
@@ -1218,16 +1683,14 @@ def global_exception_handler(exctype, value, tb):
     if issubclass(exctype, KeyboardInterrupt):
         sys.__excepthook__(exctype, value, tb)
         return
-    logger.error("Uncaught exception", exc_info=(exctype, value, tb))
     app = QApplication.instance()
     if app is None:
         return
-    msg = QMessageBox()
-    msg.setIcon(QMessageBox.Icon.Critical)
-    msg.setText("An unexpected error occurred.")
-    msg.setInformativeText(str(value))
-    msg.setWindowTitle("Error")
-    msg.exec()
+    present_unexpected_error(
+        None,
+        UnexpectedErrorContext.APPLICATION_UNEXPECTED,
+        error_info=(exctype, value, tb),
+    )
 
 
 # Only set exception hook if not running under pytest

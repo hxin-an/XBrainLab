@@ -22,6 +22,13 @@ Milestone 是最低交付門檻，不是工作上限。完成一個 milestone �
 - 不可用 dashboard PASS、單一 smoke test、或 deterministic eval 取代產品驗收。
 - 最終回報前要主動列出「仍不能宣稱完成」的部分；若這些部分是使用者明確要求的核心需求，就不能把工作返還為完成。
 - 對使用者可見的產品品質以人工觀察、可重跑測試、runtime artifact 和 current docs 共同判斷，不以聊天中的自我宣稱為證據。
+- 長對話使用多個 worker 時，預設不得複製完整 conversation context。以最小必要摘要發包，
+  並將 worker 設為不繼承主對話；只有任務確實依賴完整上下文時才可例外。大量發包前要檢查
+  Windows C 槽可用空間與 `~/.codex/sessions` 增量，避免每個 worker 各自產生數百 MB 的
+  session log。
+- 公開資料下載、大型 benchmark、可重建 UI artifact 與大容量暫存應放在 repo 所在的 D 槽，
+  不放在 WSL root filesystem。若 C 槽低於 30 GB、單輪 session log 增加超過 2 GB，或將執行
+  可能產生大量 native crash dump 的測試，先停止擴增 worker 並收斂資源。
 
 目前主線：
 
@@ -72,6 +79,15 @@ MCP 已從 active roadmap 移除。不要把 MCP hardening、MCP client certific
 8. 重要進度、決策、驗證結果寫進文件，不靠聊天回報保存狀態。
 9. tool-call eval 要等 backend / UI / agent / local LLM 主線穩定後再做。
 10. MCP 不再是 active plan；不要為一般 handoff 補 MCP gate。
+11. Repo root 的 `settings.json` 是使用者本機 LLM / runtime 設定。不得 stage、commit、
+    revert、覆寫或用 skip-worktree 隱藏。它可以是 handoff 時唯一明確列出的 dirty path；
+    任何其他 dirty source 仍必須收斂後才可交付。
+12. 測試或 walkthrough 卡住時，只能終止本 agent 明確啟動且可識別的單一 PID / tool session。
+    禁止執行 `wsl --shutdown`、系統 `shutdown`、`killall`、廣泛 `pkill` 或其他會關閉整個
+    Ubuntu / WSL 環境與無關程序的命令。
+13. Qt、PyTorch、MNE 或其他可能 native abort 的驗證必須使用 `prlimit --core=0`，並設定明確
+    timeout。不得用 `fork_context=true` 扇出長對話；worker 應接收 bounded prompt、必要路徑與
+    驗收條件，不複製整段聊天。
 
 ## Handoff-ready 規則
 
@@ -168,7 +184,8 @@ poetry run pytest --capture=sys \
 ```bash
 poetry run python scripts/dev/fetch_public_eeg_fixtures.py
 poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
+  --strict --format json --write-artifacts
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/io/test_io_integration.py \
   tests/integration/io/test_public_bids_fixture.py \

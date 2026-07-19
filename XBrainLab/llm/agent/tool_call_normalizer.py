@@ -3,6 +3,10 @@
 import re
 from typing import Any
 
+from XBrainLab.backend.training.input_contract import (
+    REQUIRED_TRAINING_FIELDS,
+    has_training_option_arguments,
+)
 from XBrainLab.llm.agent.intent import infer_user_intent
 
 _TOOL_ALIASES: dict[str, str] = {
@@ -37,27 +41,24 @@ def normalize_tool_call(
     params: dict[str, Any],
     *,
     latest_user_text: str = "",
+    published_tool_names: frozenset[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Return a verifier-ready tool call without bypassing backend policy."""
-    normalized_name = _TOOL_ALIASES.get(tool_name, tool_name)
     normalized_params = _drop_none_values(dict(params))
-    remap_alias_key = _REMAP_ALIAS_KEYS.get(tool_name)
-    if remap_alias_key:
-        normalized_params.setdefault("_remap_choice_key", remap_alias_key)
-    normalized_name, normalized_params = _apply_latest_intent_override(
-        normalized_name,
+    normalized_name = _normalize_tool_alias(
+        tool_name,
         normalized_params,
         latest_user_text,
     )
-
-    if _should_promote_to_standard_preprocess(
-        normalized_name,
-        latest_user_text,
-    ):
-        normalized_name = "apply_standard_preprocess"
-    if _should_demote_to_bandpass_only(normalized_name, latest_user_text):
-        normalized_name = "apply_bandpass_filter"
-        normalized_params = {}
+    # Resource consent is a host-only field. A model proposal cannot approve its
+    # own RAM/VRAM warning; the confirmation callback injects it after user input.
+    normalized_params.pop("resource_preflight_confirmed", None)
+    normalized_params.pop("resource_preflight_token", None)
+    normalized_params.pop("confirmed", None)
+    remap_alias_key = _REMAP_ALIAS_KEYS.get(tool_name)
+    if remap_alias_key:
+        normalized_params.setdefault("_remap_choice_key", remap_alias_key)
+    del published_tool_names
 
     if normalized_name == "apply_bandpass_filter":
         _rename_key(normalized_params, "low_frequency", "low_freq")
@@ -82,7 +83,7 @@ def normalize_tool_call(
         _normalize_preview_args(normalized_params, latest_user_text)
 
     if normalized_name == "validate_interpretation":
-        _normalize_candidate_id_args(normalized_params)
+        _normalize_candidate_id_args(normalized_params, latest_user_text)
 
     if normalized_name == "apply_interpretation":
         _normalize_apply_args(normalized_params, latest_user_text)
@@ -101,10 +102,6 @@ def normalize_tool_call(
     if normalized_name == "reload_interpretation_recipe":
         _normalize_recipe_reload_args(normalized_params, latest_user_text)
 
-    if _should_promote_to_start_training(normalized_name, latest_user_text):
-        normalized_name = "start_training"
-        normalized_params = {}
-
     if normalized_name == "clear_dataset":
         normalized_params = {}
 
@@ -115,6 +112,25 @@ def normalize_tool_call(
         normalized_params.setdefault("query", "state")
 
     return normalized_name, normalized_params
+
+
+def _normalize_tool_alias(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> str:
+    aliased_name = _TOOL_ALIASES.get(tool_name, tool_name)
+    if tool_name not in {"train", "train_model"}:
+        return aliased_name
+
+    if _has_complete_training_options(params):
+        return "configure_training"
+    latest_intent = infer_user_intent(latest_user_text)
+    if latest_intent == "configure_training":
+        return "configure_training"
+    if not latest_user_text.strip() and has_training_option_arguments(params):
+        return "configure_training"
+    return aliased_name
 
 
 def _drop_none_values(value: Any) -> Any:
@@ -128,71 +144,6 @@ def _drop_none_values(value: Any) -> Any:
     if isinstance(value, list):
         return [_drop_none_values(item) for item in value]
     return value
-
-
-def _should_promote_to_standard_preprocess(
-    tool_name: str,
-    latest_user_text: str,
-) -> bool:
-    if tool_name != "apply_bandpass_filter":
-        return False
-    text = latest_user_text.lower()
-    return "preprocess" in text or "standard" in text
-
-
-def _should_demote_to_bandpass_only(tool_name: str, latest_user_text: str) -> bool:
-    if tool_name != "apply_standard_preprocess":
-        return False
-    text = latest_user_text.lower()
-    return "bandpass" in text and "preprocess" not in text and "standard" not in text
-
-
-def _apply_latest_intent_override(
-    tool_name: str,
-    params: dict[str, Any],
-    latest_user_text: str,
-) -> tuple[str, dict[str, Any]]:
-    intent = infer_user_intent(latest_user_text)
-    if intent == "scan_source" and tool_name in {
-        "preview_interpretation",
-        "validate_interpretation",
-        "apply_interpretation",
-    }:
-        return "scan_source", {}
-    if intent == "scan_source" and tool_name == "load_data":
-        source_path = _extract_path(latest_user_text)
-        return (
-            "scan_source",
-            {"source_path": source_path} if source_path else dict(params),
-        )
-    if intent == "load_data" and tool_name == "scan_source":
-        source_path = _extract_path(latest_user_text)
-        return (
-            "load_data",
-            {"paths": [source_path]} if source_path else dict(params),
-        )
-    if intent == "preview_interpretation" and tool_name == "scan_source":
-        return "preview_interpretation", {}
-    if intent == "validate_interpretation" and tool_name in {
-        "preview_interpretation",
-        "reload_interpretation_recipe",
-    }:
-        return "validate_interpretation", {}
-    if intent == "apply_interpretation" and tool_name == "validate_interpretation":
-        return "apply_interpretation", dict(params)
-    if intent == "reload_interpretation_recipe" and tool_name == "scan_source":
-        recipe_path = _extract_path(latest_user_text)
-        return (
-            "reload_interpretation_recipe",
-            {"recipe_path": recipe_path} if recipe_path else dict(params),
-        )
-    if intent == "configure_training" and tool_name == "configure_training":
-        model_name = _extract_model_name(latest_user_text)
-        if model_name:
-            return "set_model", {"model_name": model_name}
-    if intent == "create_epoch" and tool_name == "generate_dataset":
-        return "epoch_data", _extract_epoch_args(latest_user_text)
-    return tool_name, params
 
 
 def _rename_key(params: dict[str, Any], old: str, new: str) -> None:
@@ -267,13 +218,17 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
     ):
         normalized_choices.setdefault("subject", scan_id)
         params.pop("scan_id", None)
-    elif _is_invalid_generated_id(scan_id, "scan"):
+    elif not _latest_text_names_internal_id(latest_user_text, scan_id, "scan"):
         params.pop("scan_id", None)
     _simplify_metadata_overrides(normalized_choices)
     latest_metadata = _extract_metadata_choices(latest_user_text)
     for key, value in latest_metadata.items():
         normalized_choices[key] = value
-    _drop_unrequested_metadata_choices(normalized_choices, latest_metadata)
+    _drop_unrequested_metadata_choices(
+        normalized_choices,
+        latest_metadata,
+        latest_user_text,
+    )
     _repair_preview_choice_confusions(normalized_choices, latest_user_text)
     event_role = _extract_event_role(latest_user_text)
     if event_role:
@@ -336,8 +291,9 @@ def _extract_metadata_choices(latest_user_text: str) -> dict[str, str]:
 def _drop_unrequested_metadata_choices(
     choices: dict[str, Any],
     latest_metadata: dict[str, str],
+    latest_user_text: str,
 ) -> None:
-    if not latest_metadata:
+    if not latest_user_text.strip():
         return
     for key in ("subject", "session", "task", "run"):
         if key not in latest_metadata:
@@ -362,7 +318,12 @@ def _guard_unmentioned_choice_paths(
 ) -> None:
     if not latest_user_text.strip():
         return
-    for key in ("required_label_carriers", "selected_eeg_files"):
+    for key in (
+        "required_label_carriers",
+        "selected_eeg_files",
+        "label_sources",
+        "excluded_label_carriers",
+    ):
         values = choices.get(key)
         if not isinstance(values, list):
             continue
@@ -517,11 +478,12 @@ def _repair_preview_choice_confusions(
 
 
 def _normalize_apply_args(params: dict[str, Any], latest_user_text: str) -> None:
-    if _is_invalid_generated_id(params.get("candidate_id"), "candidate"):
+    if not _latest_text_names_internal_id(
+        latest_user_text,
+        params.get("candidate_id"),
+        "candidate",
+    ):
         params.pop("candidate_id", None)
-    text = latest_user_text.lower()
-    if any(marker in text for marker in ("i confirm", "yes, apply", "yes apply")):
-        params["confirmed"] = True
 
 
 def _normalize_recipe_reload_args(
@@ -535,9 +497,31 @@ def _normalize_recipe_reload_args(
             params["recipe_path"] = extracted
 
 
-def _normalize_candidate_id_args(params: dict[str, Any]) -> None:
-    if _is_invalid_generated_id(params.get("candidate_id"), "candidate"):
+def _normalize_candidate_id_args(params: dict[str, Any], latest_user_text: str) -> None:
+    if not _latest_text_names_internal_id(
+        latest_user_text,
+        params.get("candidate_id"),
+        "candidate",
+    ):
         params.pop("candidate_id", None)
+
+
+def _latest_text_names_internal_id(
+    latest_user_text: str,
+    value: Any,
+    prefix: str,
+) -> bool:
+    """Keep an opaque backend id only when the user named that exact id."""
+    if _is_invalid_generated_id(value, prefix) or not isinstance(value, str):
+        return False
+    candidate = value.strip()
+    return bool(
+        re.search(
+            rf"(?<![A-Za-z0-9_-]){re.escape(candidate)}(?![A-Za-z0-9_-])",
+            latest_user_text,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def _is_invalid_generated_id(value: Any, prefix: str) -> bool:
@@ -559,20 +543,18 @@ def _normalize_epoch_args(params: dict[str, Any], latest_user_text: str) -> None
     if "t_min" in extracted and "t_max" in extracted:
         params["t_min"] = extracted["t_min"]
         params["t_max"] = extracted["t_max"]
-    elif "event_id" in params:
-        params["t_min"] = -0.1
-        params["t_max"] = 1.0
+    elif latest_user_text.strip():
+        # Epoch bounds are required user decisions. Discard model-invented
+        # values when the latest request does not contain an explicit window.
+        params.pop("t_min", None)
+        params.pop("t_max", None)
 
 
 def _extract_epoch_args(text: str) -> dict[str, Any]:
     args: dict[str, Any] = {}
-    events = re.search(
-        r"\bevents?\s+(.+?)(?=\s+from\b|\.|,?\s+reply\b|$)",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if events:
-        event_ids = _split_event_ids(events.group(1))
+    event_text = _extract_epoch_event_text(text)
+    if event_text:
+        event_ids = _split_event_ids(event_text)
         if event_ids:
             args["event_id"] = event_ids
     window = re.search(
@@ -584,6 +566,19 @@ def _extract_epoch_args(text: str) -> dict[str, Any]:
         args["t_min"] = float(window.group(1))
         args["t_max"] = float(window.group(2))
     return args
+
+
+def _extract_epoch_event_text(text: str) -> str:
+    """Extract events from both `events A/B` and `A/B events` phrasing."""
+    patterns = (
+        r"\bfor\s+(?:the\s+)?(.+?)\s+events?\s+(?=from\b)",
+        r"\bevents?\s+(?!from\b)(.+?)(?=\s+from\b|\.|,?\s+reply\b|$)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return ""
 
 
 def _split_event_ids(text: str) -> list[str]:
@@ -637,13 +632,12 @@ def _normalize_dataset_args(params: dict[str, Any], latest_user_text: str) -> No
     split_strategy = params.get("split_strategy")
     if split_strategy in {"individual", "group"} and "training_mode" not in params:
         params["training_mode"] = split_strategy
-        params["split_strategy"] = "trial"
     if "group" in text:
         params["training_mode"] = "group"
     elif "individual" in text:
         params["training_mode"] = "individual"
     if split_strategy in {"individual", "group"}:
-        params["split_strategy"] = "trial"
+        params.pop("split_strategy", None)
     if "subject" in text and "split" in text:
         params["split_strategy"] = "subject"
     elif "session" in text and "split" in text:
@@ -654,7 +648,6 @@ def _normalize_dataset_args(params: dict[str, Any], latest_user_text: str) -> No
         test_ratio = _extract_percent_ratio(text, "test")
         if test_ratio is not None:
             params["test_ratio"] = test_ratio
-    params.setdefault("split_strategy", "trial")
     params.setdefault("training_mode", "individual")
     params.setdefault("val_ratio", 0.2)
 
@@ -670,15 +663,10 @@ def _extract_percent_ratio(text: str, label: str) -> float | None:
     return None
 
 
-def _should_promote_to_start_training(
-    tool_name: str,
-    latest_user_text: str,
-) -> bool:
-    if tool_name != "configure_training":
-        return False
-    text = latest_user_text.lower()
-    return "train" in text and not any(
-        marker in text for marker in ("configure", "set option", "training option")
+def _has_complete_training_options(params: dict[str, Any]) -> bool:
+    return all(
+        field in params and params[field] is not None
+        for field in REQUIRED_TRAINING_FIELDS
     )
 
 

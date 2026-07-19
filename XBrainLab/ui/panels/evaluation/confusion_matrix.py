@@ -1,7 +1,8 @@
 """Confusion matrix widget for displaying classification results."""
 
+import warnings
 from contextlib import suppress
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -12,6 +13,86 @@ from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import PlotType
 from XBrainLab.ui.styles.theme import Theme
+
+CONFUSION_MATRIX_LOAD_FAILED_TEXT = (
+    "Confusion matrix could not be displayed. "
+    "Select another completed run or refresh Evaluation."
+)
+
+
+class _ResponsiveFigureCanvas(FigureCanvas):
+    """Reflow figure margins after Qt assigns a narrower canvas geometry."""
+
+    def __init__(self, figure: Figure) -> None:
+        super().__init__(figure)
+        self._responsive_tick_state: dict[
+            object,
+            tuple[float, Literal["left", "center", "right"], float, str],
+        ] = {}
+
+    def resizeEvent(self, event):  # noqa: N802
+        super().resizeEvent(event)
+        if not any(axis.axison for axis in self.figure.axes):
+            return
+        self.fit_layout()
+
+    def fit_layout(self) -> None:
+        """Fit labels and margins to the current canvas without losing wide layout."""
+        primary_axis = next(
+            (axis for axis in self.figure.axes if axis.axison),
+            None,
+        )
+        if primary_axis is not None:
+            labels = [
+                label for label in primary_axis.get_xticklabels() if label.get_text()
+            ]
+            if self.width() < 480:
+                rotation = 70 if self.width() < 320 else 45
+                for label in labels:
+                    if label not in self._responsive_tick_state:
+                        self._responsive_tick_state[label] = (
+                            float(label.get_rotation()),
+                            cast(
+                                Literal["left", "center", "right"],
+                                label.get_horizontalalignment(),
+                            ),
+                            float(label.get_fontsize()),
+                            str(label.get_text()),
+                        )
+                    label.set_rotation(rotation)
+                    label.set_horizontalalignment("right")
+                    label.set_rotation_mode("anchor")
+                    label.set_fontsize(8)
+            else:
+                for label in labels:
+                    original = self._responsive_tick_state.pop(label, None)
+                    if original is not None:
+                        rotation, alignment, font_size, text = original
+                        label.set_text(text)
+                        label.set_rotation(rotation)
+                        label.set_horizontalalignment(alignment)
+                        label.set_rotation_mode("default")
+                        label.set_fontsize(font_size)
+        try:
+            # Qt can briefly assign a canvas geometry too small for Matplotlib's
+            # solver while docks are opening or closing. The previous valid
+            # layout remains usable, so contain only that known transient warning.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"Tight layout not applied\..*",
+                    category=UserWarning,
+                )
+                self.figure.tight_layout(pad=1.0)
+        except Exception as layout_error:
+            logger.warning(
+                "Skipping confusion matrix responsive layout: %s",
+                layout_error,
+            )
+        if hasattr(self, "_draw_pending"):
+            self._draw_pending = False
+        with suppress(RuntimeError):
+            self.draw()
 
 
 class ConfusionMatrixWidget(QWidget):
@@ -51,7 +132,7 @@ class ConfusionMatrixWidget(QWidget):
 
         # Initial Placeholder
         self.fig: Figure | None = Figure(figsize=(5, 4), dpi=100)
-        self.canvas: FigureCanvas | None = FigureCanvas(self.fig)
+        self.canvas: FigureCanvas | None = _ResponsiveFigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
 
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
@@ -119,14 +200,15 @@ class ConfusionMatrixWidget(QWidget):
                 Theme.apply_matplotlib_dark_theme(self.fig)
 
                 # Re-create canvas
-                self.canvas = FigureCanvas(self.fig)
+                self.canvas = _ResponsiveFigureCanvas(self.fig)
                 self.plot_layout.addWidget(self.canvas)
+                self.fit_plot_to_canvas()
             else:
                 self._show_message("No data available for this plan.")
 
         except Exception as e:
             logger.error("Error plotting matrix: %s", e, exc_info=True)
-            self._show_message(f"Error: {e}", color=Theme.ERROR)
+            self._show_message(CONFUSION_MATRIX_LOAD_FAILED_TEXT, color=Theme.ERROR)
 
     def _show_message(self, message, color=Theme.TEXT_MUTED):
         """Display a centered text message in place of the plot.
@@ -159,6 +241,14 @@ class ConfusionMatrixWidget(QWidget):
         if self.fig is not None:
             plt.close(self.fig)
             self.fig = None
+
+    def fit_plot_to_canvas(self) -> None:
+        """Recompute plot margins for the canvas' current on-screen width."""
+        if self.fig is None or self.canvas is None:
+            return
+        self.plot_layout.activate()
+        if isinstance(self.canvas, _ResponsiveFigureCanvas):
+            self.canvas.fit_layout()
 
     def closeEvent(self, event):  # noqa: N802
         self._clear_plot_widgets()

@@ -28,8 +28,8 @@ class ExecutionSnapshot:
     next_continue_allowed_after_success: bool = True
     next_stop_after_success: bool = False
     recommended_next_step: str | None = None
-    existing_ui_surface: str | None = None
     read_error: str | None = None
+    publication: Any | None = None
 
     @classmethod
     def safe_to_continue(cls) -> ExecutionSnapshot:

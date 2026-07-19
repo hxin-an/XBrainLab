@@ -1,12 +1,54 @@
-"""Evaluation record module for storing and exporting model evaluation results."""
+"""Evaluation records and persistence for model metrics and saliency artifacts."""
 
+from __future__ import annotations
+
+import copy
 import os
+from collections.abc import Mapping
+from typing import Any, cast
 
 import numpy as np
 import torch
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
-from XBrainLab.backend.utils.logger import logger
+from ...utils.logger import logger
+from ..saliency_artifact_integrity import (
+    SALIENCY_METHOD_STORE_NAMES,
+    SaliencyArtifactIntegrityError,
+    SaliencyIntegrityDiagnostic,
+    SaliencyIntegrityReason,
+    build_saliency_artifact_manifest,
+    verify_saliency_artifact_manifest,
+)
+from ..saliency_provenance import (
+    SALIENCY_CONTEXT_SCHEMA_VERSION,  # noqa: F401 - compatibility re-export
+    SALIENCY_PRODUCER_SCHEMA_VERSION,  # noqa: F401 - compatibility re-export
+    SaliencyArtifactContext,
+    SaliencyContextError,
+    SaliencyProducerIdentity,
+    canonicalize_saliency_identity,  # noqa: F401 - compatibility re-export
+    describe_saliency_array,  # noqa: F401 - compatibility re-export
+    fingerprint_saliency_epoch_data,  # noqa: F401 - compatibility re-export
+    fingerprint_saliency_identity,  # noqa: F401 - compatibility re-export
+    fingerprint_saliency_model_state,  # noqa: F401 - compatibility re-export
+    fingerprint_saliency_split_mask,  # noqa: F401 - compatibility re-export
+)
+
+EVAL_ARTIFACT_SCHEMA_VERSION = 4
+SALIENCY_EXPORT_ARTIFACT_SCHEMA_VERSION = 3
+
+
+def _has_items(value: Any) -> bool:
+    try:
+        return len(value) > 0
+    except TypeError:
+        return False
+
+
+def _require_plain_eval_artifact(value: object) -> dict[str, object]:
+    if type(value) is not dict:
+        raise TypeError("Eval artifact root must be a plain mapping.")
+    return value
 
 
 def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
@@ -60,6 +102,12 @@ class EvalRecord:
         smoothgrad_sq: dict,
         vargrad: dict,
         evaluation_split: str = "unknown",
+        *,
+        saliency_context: SaliencyArtifactContext | dict[str, Any] | None = None,
+        saliency_method_parameters: Mapping[str, object] | None = None,
+        saliency_noise_seeds: Mapping[str, object] | None = None,
+        saliency_integrity_manifest: Mapping[str, object] | None = None,
+        _from_artifact: bool = False,
     ) -> None:
         """Initialize the evaluation record.
 
@@ -72,6 +120,11 @@ class EvalRecord:
             smoothgrad_sq: Per-class SmoothGrad² saliency maps.
             vargrad: Per-class VarGrad saliency maps.
             evaluation_split: Data split used for this final evaluation.
+            saliency_context: Immutable EEG identity used when interpreting
+                class-indexed and channel-indexed saliency arrays.
+            saliency_method_parameters: Exact effective parameters by method.
+            saliency_noise_seeds: Noise-tunnel seed by stochastic method.
+            saliency_integrity_manifest: Serialized payload integrity manifest.
 
         """
         self.label = label
@@ -82,6 +135,285 @@ class EvalRecord:
         self.smoothgrad_sq = smoothgrad_sq
         self.vargrad = vargrad
         self.evaluation_split = str(evaluation_split or "unknown")
+        if isinstance(saliency_context, dict):
+            saliency_context = SaliencyArtifactContext.from_payload(saliency_context)
+        self.saliency_context = saliency_context
+        self._loaded_from_artifact = False
+        self._saliency_context_error: str | None = None
+        self._saliency_context_missing = False
+        self._saliency_integrity_error: SaliencyArtifactIntegrityError | None = None
+        self.saliency_method_parameters = copy.deepcopy(
+            dict(saliency_method_parameters or {})
+        )
+        self.saliency_noise_seeds = copy.deepcopy(dict(saliency_noise_seeds or {}))
+        self.saliency_integrity_manifest = (
+            copy.deepcopy(dict(saliency_integrity_manifest))
+            if saliency_integrity_manifest is not None
+            else None
+        )
+        if self.has_saliency_data() and not self.saliency_method_parameters:
+            self.saliency_method_parameters = {
+                method: {}
+                for method, store in self._saliency_stores().items()
+                if _has_items(store)
+            }
+        if (
+            not _from_artifact
+            and self.has_saliency_data()
+            and self.saliency_context is not None
+        ):
+            self._seal_saliency_integrity()
+
+    @property
+    def saliency_context_status(self) -> str:
+        """Return the explicit compatibility state for saliency identity."""
+        if self._saliency_context_error is not None:
+            if self._saliency_context_missing:
+                return "legacy_missing"
+            return "incompatible"
+        if self.saliency_context is not None:
+            return "verified"
+        if not self.has_saliency_data():
+            return "not_applicable"
+        if self._loaded_from_artifact:
+            return "legacy_missing"
+        return "runtime_unbound"
+
+    @property
+    def saliency_recompute_reason(self) -> str | None:
+        """Return an actionable reason when persisted saliency is unusable."""
+        return self._saliency_context_error
+
+    @property
+    def saliency_integrity_reason(self) -> SaliencyIntegrityReason | None:
+        """Return the typed artifact-integrity reason, when validation failed."""
+        if self._saliency_integrity_error is None:
+            return None
+        return self._saliency_integrity_error.reason
+
+    @property
+    def saliency_integrity_diagnostics(
+        self,
+    ) -> tuple[SaliencyIntegrityDiagnostic, ...]:
+        """Return bounded method/class diagnostics for an integrity failure."""
+        if self._saliency_integrity_error is None:
+            return ()
+        return self._saliency_integrity_error.diagnostics
+
+    def has_saliency_data(self) -> bool:
+        """Return whether any attribution method contains class results."""
+        return any(
+            _has_items(store)
+            for store in (
+                self.gradient,
+                self.gradient_input,
+                self.smoothgrad,
+                self.smoothgrad_sq,
+                self.vargrad,
+            )
+        )
+
+    def bind_saliency_context(
+        self,
+        epoch_data: Any,
+        *,
+        producer_identity: SaliencyProducerIdentity | None = None,
+    ) -> SaliencyArtifactContext:
+        """Bind a fresh runtime saliency record to one immutable EEG context.
+
+        Persisted legacy records are never rebound because doing so would assign
+        old class/channel indices using whichever dataset happens to be active.
+        """
+        if self.saliency_context is None and self._loaded_from_artifact:
+            raise SaliencyContextError(
+                "This legacy saliency artifact does not contain identity context. "
+                "Recompute saliency for the current dataset."
+            )
+        current = self._build_saliency_context(
+            epoch_data,
+            producer_identity=producer_identity,
+        )
+        if self.saliency_context is None:
+            self.saliency_context = current
+            self._saliency_context_error = None
+            self._seal_saliency_integrity()
+            return current
+        return self._validate_saliency_context(current)
+
+    def validate_saliency_context(
+        self,
+        epoch_data: Any,
+        *,
+        producer_identity: SaliencyProducerIdentity | None = None,
+    ) -> SaliencyArtifactContext:
+        """Validate an existing artifact identity without mutating the record."""
+        self._raise_saliency_context_error()
+        if self.saliency_context is None:
+            if self._loaded_from_artifact:
+                raise SaliencyContextError(
+                    "This legacy saliency artifact does not contain identity "
+                    "context. Recompute saliency for the current dataset."
+                )
+            raise SaliencyContextError(
+                "Saliency identity context is not bound. Recompute saliency "
+                "before rendering."
+            )
+        return self._validate_saliency_context(
+            self._build_saliency_context(
+                epoch_data,
+                producer_identity=producer_identity,
+            )
+        )
+
+    def _build_saliency_context(
+        self,
+        epoch_data: Any,
+        *,
+        producer_identity: SaliencyProducerIdentity | None,
+    ) -> SaliencyArtifactContext:
+        """Build the current EEG identity using the trained output contract."""
+        expected_class_count = None
+        outputs = np.asarray(self.output)
+        if outputs.ndim == 2 and outputs.shape[1] > 0:
+            expected_class_count = int(outputs.shape[1])
+        if producer_identity is None:
+            if self.saliency_context is None:
+                raise SaliencyContextError(
+                    "Saliency producer provenance is unavailable. Recompute "
+                    "saliency for the current dataset."
+                )
+            producer_identity = self.saliency_context.producer_identity
+        return SaliencyArtifactContext.from_epoch_data(
+            epoch_data,
+            class_count=expected_class_count,
+            producer_identity=producer_identity,
+        )
+
+    def _validate_saliency_context(
+        self,
+        current: SaliencyArtifactContext,
+    ) -> SaliencyArtifactContext:
+        """Compare one current identity with the immutable artifact identity."""
+        self._raise_saliency_context_error()
+        if self.saliency_context is None:
+            raise SaliencyContextError("Saliency identity context is not bound.")
+        differences = self.saliency_context.mismatch_details(current)
+        if differences:
+            raise SaliencyContextError(
+                "Saliency artifact does not match the current EEG "
+                f"{', '.join(differences)}. Recompute saliency before rendering."
+            )
+        self._verify_saliency_integrity()
+        return self.saliency_context
+
+    def validate_saliency_producer_identity(
+        self,
+        producer_identity: SaliencyProducerIdentity,
+    ) -> SaliencyProducerIdentity:
+        """Validate dataset/split/run/model provenance without EEG array access."""
+        self._raise_saliency_context_error()
+        if self.saliency_context is None:
+            raise SaliencyContextError(
+                "Saliency producer provenance is missing. Recompute saliency."
+            )
+        differences = self.saliency_context.producer_identity.mismatch_details(
+            producer_identity
+        )
+        if differences:
+            raise SaliencyContextError(
+                "Saliency artifact does not match the current "
+                f"{', '.join(differences)}. Recompute saliency before rendering."
+            )
+        self._verify_saliency_integrity()
+        return self.saliency_context.producer_identity
+
+    def mark_saliency_context_incompatible(self, reason: str) -> None:
+        """Fail closed while preserving non-saliency evaluation metrics."""
+        normalized = str(reason).strip()
+        if not normalized:
+            normalized = "Saliency provenance is incompatible."
+        if "recompute saliency" not in normalized.lower():
+            normalized = f"{normalized} Recompute saliency for the current run."
+        self._saliency_context_error = normalized
+
+    def mark_saliency_integrity_incompatible(
+        self,
+        error: SaliencyArtifactIntegrityError,
+    ) -> None:
+        """Preserve metrics while retaining a typed fail-closed saliency error."""
+        self.mark_saliency_context_incompatible(str(error))
+        self._saliency_integrity_error = SaliencyArtifactIntegrityError(
+            error.reason,
+            self._saliency_context_error or str(error),
+            diagnostics=error.diagnostics,
+        )
+
+    def _raise_saliency_context_error(self) -> None:
+        if self._saliency_integrity_error is not None:
+            raise self._saliency_integrity_error
+        if self._saliency_context_error is not None:
+            raise SaliencyContextError(self._saliency_context_error)
+
+    def _saliency_stores(self) -> dict[str, object]:
+        return {
+            method: getattr(self, attribute)
+            for method, attribute in SALIENCY_METHOD_STORE_NAMES.items()
+        }
+
+    def _seal_saliency_integrity(self) -> dict[str, object]:
+        if self.saliency_context is None:
+            raise SaliencyContextError(
+                "Saliency integrity cannot be sealed without identity context."
+            )
+        manifest = build_saliency_artifact_manifest(
+            self._saliency_stores(),
+            context=self.saliency_context,
+            method_parameters=self.saliency_method_parameters,
+            noise_seeds=self.saliency_noise_seeds,
+        )
+        self.saliency_integrity_manifest = manifest
+        parameters = manifest["method_parameters"]
+        seeds = manifest["noise_seeds"]
+        if not isinstance(parameters, dict) or not isinstance(seeds, dict):
+            raise SaliencyArtifactIntegrityError(
+                SaliencyIntegrityReason.MALFORMED_MANIFEST,
+                "Generated saliency manifest contract is malformed.",
+            )
+        self.saliency_method_parameters = copy.deepcopy(parameters)
+        self.saliency_noise_seeds = copy.deepcopy(seeds)
+        self._saliency_integrity_error = None
+        return manifest
+
+    def _verify_saliency_integrity(self) -> dict[str, object] | None:
+        if not self.has_saliency_data():
+            return None
+        if self.saliency_context is None:
+            raise SaliencyArtifactIntegrityError(
+                SaliencyIntegrityReason.PRODUCER_MISMATCH,
+                "Saliency integrity cannot be verified without identity context.",
+            )
+        manifest = verify_saliency_artifact_manifest(
+            self.saliency_integrity_manifest,
+            self._saliency_stores(),
+            context=self.saliency_context,
+            method_parameters=self.saliency_method_parameters,
+            noise_seeds=self.saliency_noise_seeds,
+        )
+        self.saliency_integrity_manifest = manifest
+        return manifest
+
+    def _require_persistable_saliency_context(self) -> None:
+        self._raise_saliency_context_error()
+        if self.has_saliency_data() and self.saliency_context is None:
+            raise SaliencyContextError(
+                "Saliency cannot be persisted without class, channel, and epoch "
+                "identity context. Bind the evaluation record to its epoch data first."
+            )
+        if self.has_saliency_data():
+            if self.saliency_integrity_manifest is None:
+                self._seal_saliency_integrity()
+            else:
+                self._verify_saliency_integrity()
 
     def export(self, target_path: str) -> None:
         """Export the evaluation record as a torch file.
@@ -90,7 +422,9 @@ class EvalRecord:
             target_path: Directory path where the ``'eval'`` file will be saved.
 
         """
+        self._require_persistable_saliency_context()
         record = {
+            "artifact_schema_version": EVAL_ARTIFACT_SCHEMA_VERSION,
             "label": self.label,
             "output": self.output,
             "gradient": self.gradient,
@@ -99,11 +433,28 @@ class EvalRecord:
             "smoothgrad_sq": self.smoothgrad_sq,
             "vargrad": self.vargrad,
             "evaluation_split": self.evaluation_split,
+            "saliency_context": (
+                self.saliency_context.to_payload()
+                if self.saliency_context is not None
+                else None
+            ),
+            "saliency_method_parameters": copy.deepcopy(
+                self.saliency_method_parameters
+            ),
+            "saliency_noise_seeds": copy.deepcopy(self.saliency_noise_seeds),
+            "saliency_integrity_manifest": copy.deepcopy(
+                self.saliency_integrity_manifest
+            ),
         }
         torch.save(record, os.path.join(target_path, "eval"))
 
     @classmethod
-    def load(cls, target_path: str) -> "EvalRecord | None":
+    def load(
+        cls,
+        target_path: str,
+        *,
+        expected_producer_identity: SaliencyProducerIdentity | None = None,
+    ) -> EvalRecord | None:
         """Load an evaluation record from a torch file.
 
         Args:
@@ -119,20 +470,138 @@ class EvalRecord:
             return None
 
         try:
-            data = torch.load(path, weights_only=False)
-            return cls(
-                label=data["label"],
-                output=data["output"],
-                gradient=data.get("gradient", {}),
-                gradient_input=data.get("gradient_input", {}),
-                smoothgrad=data.get("smoothgrad", {}),
-                smoothgrad_sq=data.get("smoothgrad_sq", {}),
-                vargrad=data.get("vargrad", {}),
-                evaluation_split=data.get("evaluation_split", "unknown"),
+            data = _require_plain_eval_artifact(torch.load(path, weights_only=False))
+            saliency_stores = {
+                attribute: (value if type(value) is dict else {})
+                for attribute in SALIENCY_METHOD_STORE_NAMES.values()
+                for value in (data.get(attribute, {}),)
+            }
+            malformed_stores = tuple(
+                attribute
+                for attribute in SALIENCY_METHOD_STORE_NAMES.values()
+                if type(data.get(attribute, {})) is not dict
+            )
+            integrity_stores = {
+                method: saliency_stores[attribute]
+                for method, attribute in SALIENCY_METHOD_STORE_NAMES.items()
+            }
+            has_saliency = bool(malformed_stores) or any(
+                bool(value) for value in saliency_stores.values()
+            )
+            raw_artifact_version = data.get("artifact_schema_version", 0)
+            artifact_version = (
+                raw_artifact_version if type(raw_artifact_version) is int else 0
+            )
+            context_payload = data.get("saliency_context")
+            method_parameters = data.get("saliency_method_parameters", {})
+            noise_seeds = data.get("saliency_noise_seeds", {})
+            integrity_manifest = data.get("saliency_integrity_manifest")
+            context: SaliencyArtifactContext | None = None
+            context_error: str | None = None
+            integrity_error: SaliencyArtifactIntegrityError | None = None
+            if malformed_stores:
+                integrity_error = SaliencyArtifactIntegrityError(
+                    SaliencyIntegrityReason.PARTIAL_COVERAGE,
+                    "Saliency class stores must be plain mappings: "
+                    f"{', '.join(malformed_stores)}.",
+                )
+            if context_payload is None:
+                if has_saliency:
+                    context_error = (
+                        "This legacy saliency artifact does not contain producer "
+                        "identity context."
+                    )
+            else:
+                try:
+                    context = SaliencyArtifactContext.from_payload(context_payload)
+                except SaliencyContextError as exc:
+                    context_error = str(exc)
+                    if artifact_version < EVAL_ARTIFACT_SCHEMA_VERSION:
+                        context_error = (
+                            "This legacy saliency identity schema is unsupported: "
+                            f"{context_error}"
+                        )
+            if integrity_error is not None:
+                pass
+            elif has_saliency and context_error is not None:
+                integrity_error = SaliencyArtifactIntegrityError(
+                    SaliencyIntegrityReason.PRODUCER_MISMATCH,
+                    context_error,
+                )
+            elif has_saliency and artifact_version != EVAL_ARTIFACT_SCHEMA_VERSION:
+                integrity_error = SaliencyArtifactIntegrityError(
+                    SaliencyIntegrityReason.UNSUPPORTED_SCHEMA,
+                    "This legacy saliency artifact schema version "
+                    f"{artifact_version} does not contain the required payload "
+                    "integrity manifest.",
+                )
+            elif has_saliency and context is not None:
+                try:
+                    verify_saliency_artifact_manifest(
+                        integrity_manifest,
+                        integrity_stores,
+                        context=context,
+                        method_parameters=method_parameters,
+                        noise_seeds=noise_seeds,
+                    )
+                except SaliencyArtifactIntegrityError as exc:
+                    integrity_error = exc
+                except SaliencyContextError as exc:
+                    integrity_error = SaliencyArtifactIntegrityError(
+                        SaliencyIntegrityReason.MALFORMED_MANIFEST,
+                        str(exc),
+                    )
+            record = cls(
+                label=cast(np.ndarray, data["label"]),
+                output=cast(np.ndarray, data["output"]),
+                gradient=saliency_stores["gradient"],
+                gradient_input=saliency_stores["gradient_input"],
+                smoothgrad=saliency_stores["smoothgrad"],
+                smoothgrad_sq=saliency_stores["smoothgrad_sq"],
+                vargrad=saliency_stores["vargrad"],
+                evaluation_split=str(data.get("evaluation_split", "unknown")),
+                saliency_context=context,
+                saliency_method_parameters=(
+                    method_parameters if type(method_parameters) is dict else None
+                ),
+                saliency_noise_seeds=(
+                    noise_seeds if type(noise_seeds) is dict else None
+                ),
+                saliency_integrity_manifest=(
+                    integrity_manifest if type(integrity_manifest) is dict else None
+                ),
+                _from_artifact=True,
             )
         except Exception as e:
             logger.error("Failed to load EvalRecord: %s", e, exc_info=True)
             return None
+        else:
+            record._loaded_from_artifact = True
+            if context_error is not None:
+                record.mark_saliency_context_incompatible(context_error)
+                record._saliency_context_missing = context_payload is None
+            if integrity_error is not None:
+                record.mark_saliency_integrity_incompatible(integrity_error)
+                if context_payload is None:
+                    record._saliency_context_missing = True
+            if (
+                expected_producer_identity is not None
+                and has_saliency
+                and integrity_error is None
+                and context is not None
+            ):
+                differences = context.producer_identity.mismatch_details(
+                    expected_producer_identity
+                )
+                if differences:
+                    record.mark_saliency_integrity_incompatible(
+                        SaliencyArtifactIntegrityError(
+                            SaliencyIntegrityReason.PRODUCER_MISMATCH,
+                            "Saliency artifact does not match the current "
+                            f"{', '.join(differences)}.",
+                        )
+                    )
+            return record
 
     def export_csv(self, target_path: str) -> None:
         """Export evaluation results as a CSV file.
@@ -156,7 +625,7 @@ class EvalRecord:
         )
 
     def export_saliency(self, method: str, target_path: str | None = None) -> dict:
-        """Return (and optionally save) a specific saliency map.
+        """Build and optionally save an identity-bearing saliency artifact.
 
         Args:
             method: Saliency method name. One of ``'Gradient'``,
@@ -166,7 +635,8 @@ class EvalRecord:
                 data is also saved via ``torch.save``.
 
         Returns:
-            The saliency dictionary for the requested method.
+            A versioned artifact envelope containing the requested saliency and
+            its immutable EEG identity context.
 
         """
         if method == "Gradient":
@@ -181,9 +651,35 @@ class EvalRecord:
             saliency = self.vargrad
         else:
             raise ValueError(f"Unknown saliency method: {method}")
+        self._require_persistable_saliency_context()
+        if self.saliency_context is None:
+            raise SaliencyContextError("Saliency identity context is not bound.")
+        method_parameters = {method: self.saliency_method_parameters[method]}
+        noise_seeds = (
+            {method: self.saliency_noise_seeds[method]}
+            if method in self.saliency_noise_seeds
+            else {}
+        )
+        manifest = build_saliency_artifact_manifest(
+            {method: saliency},
+            context=self.saliency_context,
+            method_parameters=method_parameters,
+            noise_seeds=noise_seeds,
+        )
+        artifact = {
+            "artifact_schema_version": SALIENCY_EXPORT_ARTIFACT_SCHEMA_VERSION,
+            "method": method,
+            "saliency": saliency,
+            "saliency_context": self.saliency_context.to_payload()
+            if self.saliency_context is not None
+            else None,
+            "saliency_method_parameters": copy.deepcopy(method_parameters),
+            "saliency_noise_seeds": copy.deepcopy(noise_seeds),
+            "saliency_integrity_manifest": copy.deepcopy(manifest),
+        }
         if target_path:
-            torch.save(saliency, target_path)
-        return saliency
+            torch.save(artifact, target_path)
+        return artifact
 
     def get_acc(self) -> float:
         """Compute the classification accuracy.
@@ -295,7 +791,11 @@ class EvalRecord:
             Numpy array of gradient saliency maps for the given class.
 
         """
-        return self.gradient[label_index]
+        return self._saliency_for_class(
+            self.gradient,
+            label_index,
+            method="Gradient",
+        )
 
     def get_gradient_input(self, label_index: int) -> np.ndarray:
         """Return gradient*input saliency maps for the specified class.
@@ -307,7 +807,11 @@ class EvalRecord:
             Numpy array of gradient*input saliency maps for the given class.
 
         """
-        return self.gradient_input[label_index]
+        return self._saliency_for_class(
+            self.gradient_input,
+            label_index,
+            method="Gradient * Input",
+        )
 
     def get_smoothgrad(self, label_index: int) -> np.ndarray:
         """Return SmoothGrad saliency maps for the specified class.
@@ -319,7 +823,11 @@ class EvalRecord:
             Numpy array of SmoothGrad saliency maps for the given class.
 
         """
-        return self.smoothgrad[label_index]
+        return self._saliency_for_class(
+            self.smoothgrad,
+            label_index,
+            method="SmoothGrad",
+        )
 
     def get_smoothgrad_sq(self, label_index: int) -> np.ndarray:
         """Return SmoothGrad² saliency maps for the specified class.
@@ -331,7 +839,11 @@ class EvalRecord:
             Numpy array of SmoothGrad² saliency maps for the given class.
 
         """
-        return self.smoothgrad_sq[label_index]
+        return self._saliency_for_class(
+            self.smoothgrad_sq,
+            label_index,
+            method="SmoothGrad Squared",
+        )
 
     def get_vargrad(self, label_index: int) -> np.ndarray:
         """Return VarGrad saliency maps for the specified class.
@@ -343,4 +855,27 @@ class EvalRecord:
             Numpy array of VarGrad saliency maps for the given class.
 
         """
-        return self.vargrad[label_index]
+        return self._saliency_for_class(
+            self.vargrad,
+            label_index,
+            method="VarGrad",
+        )
+
+    def _saliency_for_class(
+        self,
+        store: Mapping[object, np.ndarray],
+        label_index: int,
+        *,
+        method: str,
+    ) -> np.ndarray:
+        """Return one class result without leaking persistence ``KeyError``."""
+        self._raise_saliency_context_error()
+        self._verify_saliency_integrity()
+        try:
+            value = store[label_index]
+        except KeyError as exc:
+            raise SaliencyContextError(
+                f"{method} saliency is unavailable for class {label_index}. "
+                "Recompute saliency for the current run."
+            ) from exc
+        return value

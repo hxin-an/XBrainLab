@@ -8,13 +8,62 @@ history.
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass, field
+from enum import Enum
+from time import monotonic
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from XBrainLab.backend.study import Study
     from XBrainLab.backend.training import Trainer
 
+from XBrainLab.backend.training_state_contract import (
+    TrainingStateToken,
+    TrainingTerminalOutcome,
+)
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingLifecycleEvent:
+    """Generation-bound training truth safe to reconcile after Qt queuing."""
+
+    token: TrainingStateToken
+    outcome: TrainingTerminalOutcome
+    publication_generation: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.token, TrainingStateToken):
+            raise TypeError("training lifecycle token is invalid")
+        if not isinstance(self.outcome, TrainingTerminalOutcome):
+            raise TypeError("training lifecycle outcome is invalid")
+        generation = self.publication_generation
+        if generation is not None and (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or generation < 1
+        ):
+            raise TypeError(
+                "training lifecycle publication generation must be positive"
+            )
+
+
+class _TerminalHandoffPhase(str, Enum):
+    PENDING = "pending"
+    NOTIFIED = "notified"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass(slots=True)
+class _TerminalHandoff:
+    """Completion state for one exact controller-admitted training run."""
+
+    generation: int
+    complete: threading.Event = field(default_factory=threading.Event)
+    phase: _TerminalHandoffPhase = _TerminalHandoffPhase.PENDING
+    detail: str | None = None
 
 
 class TrainingController(Observable):
@@ -46,7 +95,10 @@ class TrainingController(Observable):
 
     events: ClassVar[list[str]] = [
         "training_started",
+        "training_started_state",
         "training_stopped",
+        "training_terminal_published",
+        "training_analysis_published",
         "training_updated",
         "config_changed",
         "history_cleared",
@@ -64,6 +116,10 @@ class TrainingController(Observable):
         self._monitor_thread: threading.Thread | None = None
 
         self._shutdown_event = threading.Event()
+        self._terminal_handoff_lock = threading.Lock()
+        self._terminal_handoff_sequence = 0
+        self._active_terminal_handoff: int | None = None
+        self._terminal_handoffs: dict[int, _TerminalHandoff] = {}
 
     def is_training(self) -> bool:
         """Check whether a training run is currently in progress.
@@ -74,27 +130,63 @@ class TrainingController(Observable):
         """
         return self._study.is_training()
 
-    def start_training(self, *, append: bool = True, interactive: bool = True) -> None:
+    def start_training(self, *, append: bool = True, interactive: bool = True) -> int:
         """Generate a training plan and start training.
 
-        Appends to existing plans to preserve history. If training
-        is already running, the call is a no-op. A background
-        monitoring thread is started automatically.
+        Appends to existing plans to preserve history. An already-running
+        training lifecycle is rejected so a second command cannot reuse its
+        terminal handoff identity. A background monitoring thread is started
+        automatically.
         """
         if self.is_training():
-            return
+            raise RuntimeError("Training is already running")
 
-        self._study.generate_plan(force_update=True, append=append)
+        self._retire_previous_monitor()
+        handoff = self._reserve_terminal_handoff()
 
-        if interactive:
-            self._study.train(interact=True)
+        try:
+            self._study.generate_plan(force_update=True, append=append)
+            if interactive:
+                self._study.train(interact=True)
+                lifecycle = self._lifecycle_event()
+                if lifecycle is not None:
+                    self.notify("training_started_state", lifecycle)
+                self.notify("training_started")
+                self._start_monitoring(handoff.generation)
+                return handoff.generation
+
             self.notify("training_started")
-            self._start_monitoring()
-            return
+            try:
+                self._study.train(interact=False)
+            finally:
+                self._publish_training_stopped(handoff.generation)
+        except BaseException as exc:
+            self._complete_terminal_handoff(
+                handoff.generation,
+                phase=_TerminalHandoffPhase.FAILED,
+                detail=f"Training start failed: {type(exc).__name__}: {exc}",
+            )
+            raise
+        return handoff.generation
 
-        self.notify("training_started")
-        self._study.train(interact=False)
-        self.notify("training_stopped")
+    def _lifecycle_event(self) -> TrainingLifecycleEvent | None:
+        """Capture one typed token/outcome pair for non-ordering UI consumers."""
+        trainer = getattr(self._study, "trainer", None)
+        get_token = getattr(trainer, "get_state_snapshot_token", None)
+        get_outcome = getattr(trainer, "get_terminal_outcome", None)
+        if not callable(get_token) or not callable(get_outcome):
+            return None
+        try:
+            token = get_token()
+            outcome = get_outcome()
+        except Exception:
+            return None
+        if not isinstance(token, TrainingStateToken) or not isinstance(
+            outcome,
+            TrainingTerminalOutcome,
+        ):
+            return None
+        return TrainingLifecycleEvent(token=token, outcome=outcome)
 
     def stop_training(self) -> None:
         """Interrupt the current training process.
@@ -117,38 +209,218 @@ class TrainingController(Observable):
         self._shutdown_event.set()
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=1.0)
+        self.cancel_terminal_notification_waits(
+            "Training monitoring stopped during application shutdown."
+        )
 
-    def _start_monitoring(self):
+    def wait_for_terminal_notification(
+        self,
+        generation: int | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> bool:
+        """Wait for callbacks from one exact controller-admitted training run."""
+        with self._terminal_handoff_lock:
+            target_generation = (
+                self._terminal_handoff_sequence if generation is None else generation
+            )
+            if target_generation == 0:
+                return True
+            handoff = self._terminal_handoffs.get(target_generation)
+        if handoff is None or not handoff.complete.wait(timeout=timeout):
+            return False
+        with self._terminal_handoff_lock:
+            current = self._terminal_handoffs.get(target_generation)
+            return (
+                current is not None
+                and current is handoff
+                and current.phase is _TerminalHandoffPhase.NOTIFIED
+            )
+
+    def wait_until_restart_safe(self, *, timeout: float | None = None) -> bool:
+        """Wait until the previous monitor can no longer overlap a new run.
+
+        Call this boundary without the application command lock. The monitor
+        publishes terminal state through that lock before it exits.
+        """
+        if self._study.is_training():
+            return False
+
+        deadline = None if timeout is None else monotonic() + max(0.0, timeout)
+
+        def remaining() -> float | None:
+            if deadline is None:
+                return None
+            return max(0.0, deadline - monotonic())
+
+        with self._terminal_handoff_lock:
+            active_generation = self._active_terminal_handoff
+            handoff = (
+                self._terminal_handoffs.get(active_generation)
+                if active_generation is not None
+                else None
+            )
+        if handoff is not None and not handoff.complete.wait(timeout=remaining()):
+            return False
+
+        thread = self._monitor_thread
+        if thread is None:
+            return True
+        if thread is threading.current_thread():
+            return False
+        if thread.is_alive():
+            thread.join(timeout=remaining())
+        if thread.is_alive():
+            return False
+        if self._monitor_thread is thread:
+            self._monitor_thread = None
+        return True
+
+    def cancel_terminal_notification_waits(self, reason: str) -> None:
+        """Wake pending lifecycle waiters without reporting a terminal delivery."""
+        detail = str(reason).strip() or "Training terminal notification was cancelled."
+        with self._terminal_handoff_lock:
+            pending = [
+                handoff
+                for handoff in self._terminal_handoffs.values()
+                if handoff.phase is _TerminalHandoffPhase.PENDING
+            ]
+            for handoff in pending:
+                handoff.phase = _TerminalHandoffPhase.CANCELLED
+                handoff.detail = detail
+                handoff.complete.set()
+                if self._active_terminal_handoff == handoff.generation:
+                    self._active_terminal_handoff = None
+
+    def _start_monitoring(self, generation: int):
         """Start a daemon thread to monitor training progress.
 
-        If a monitoring thread is already running, this method is a
-        no-op.
+        A previous monitor must be fully retired before a new run is admitted.
         """
         if self._monitor_thread and self._monitor_thread.is_alive():
-            return
+            raise RuntimeError("The previous training monitor is still shutting down")
 
         self._shutdown_event.clear()
-        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._monitor_thread = threading.Thread(
+            target=self._monitor_loop,
+            args=(generation,),
+            daemon=True,
+        )
         self._monitor_thread.start()
 
-    def _monitor_loop(self):
+    def _monitor_loop(self, generation: int):
         """Poll trainer status and emit ``training_updated`` events.
 
         Runs in a background thread. Exits when training finishes
         or the shutdown event is set.
         """
-        while not self._shutdown_event.is_set():
-            if not self.is_training():
-                # Training finished naturally or stopped
-                self.notify("training_stopped")  # Ensure UI knows it stopped
-                break
+        terminal_attempted = False
+        try:
+            while not self._shutdown_event.is_set():
+                if not self.is_training():
+                    terminal_attempted = True
+                    self._publish_training_stopped(generation)
+                    return
 
-            # Emit update event
-            self.notify("training_updated")
+                self.notify("training_updated")
+                if self._shutdown_event.wait(1.0):
+                    return
+        except BaseException as exc:
+            logger.exception("Training monitor failed")
+            self._complete_terminal_handoff(
+                generation,
+                phase=_TerminalHandoffPhase.FAILED,
+                detail=f"Training monitor failed: {type(exc).__name__}: {exc}",
+            )
+        finally:
+            if not terminal_attempted:
+                phase = (
+                    _TerminalHandoffPhase.CANCELLED
+                    if self._shutdown_event.is_set()
+                    else _TerminalHandoffPhase.FAILED
+                )
+                self._complete_terminal_handoff(
+                    generation,
+                    phase=phase,
+                    detail=(
+                        "Training monitor stopped before terminal notification."
+                        if phase is _TerminalHandoffPhase.CANCELLED
+                        else "Training monitor exited before terminal notification."
+                    ),
+                )
 
-            # Smart Sleep: Wait 1s OR break immediately if shutdown set
-            if self._shutdown_event.wait(1.0):
-                break
+    def _publish_training_stopped(self, generation: int) -> bool:
+        """Attempt terminal callbacks before completing one exact handoff."""
+        try:
+            delivered = self.notify("training_stopped")
+        except BaseException as exc:
+            logger.exception("Training terminal notification failed")
+            self._complete_terminal_handoff(
+                generation,
+                phase=_TerminalHandoffPhase.FAILED,
+                detail=f"Terminal notification failed: {type(exc).__name__}: {exc}",
+            )
+            return False
+        self._complete_terminal_handoff(
+            generation,
+            phase=_TerminalHandoffPhase.NOTIFIED,
+            detail=(
+                None
+                if delivered
+                else "One or more terminal observers requested publication retry."
+            ),
+        )
+        return delivered
+
+    def _reserve_terminal_handoff(self) -> _TerminalHandoff:
+        with self._terminal_handoff_lock:
+            active_generation = self._active_terminal_handoff
+            if active_generation is not None:
+                active = self._terminal_handoffs.get(active_generation)
+                if active is not None and active.phase is _TerminalHandoffPhase.PENDING:
+                    raise RuntimeError(
+                        "The previous training terminal handoff is still pending"
+                    )
+            self._terminal_handoff_sequence += 1
+            handoff = _TerminalHandoff(generation=self._terminal_handoff_sequence)
+            self._terminal_handoffs[handoff.generation] = handoff
+            self._active_terminal_handoff = handoff.generation
+            self._prune_terminal_handoffs_locked()
+            return handoff
+
+    def _complete_terminal_handoff(
+        self,
+        generation: int,
+        *,
+        phase: _TerminalHandoffPhase,
+        detail: str | None,
+    ) -> None:
+        with self._terminal_handoff_lock:
+            handoff = self._terminal_handoffs.get(generation)
+            if handoff is None or handoff.phase is not _TerminalHandoffPhase.PENDING:
+                return
+            handoff.phase = phase
+            handoff.detail = detail
+            handoff.complete.set()
+            if self._active_terminal_handoff == generation:
+                self._active_terminal_handoff = None
+
+    def _retire_previous_monitor(self) -> None:
+        thread = self._monitor_thread
+        if thread is None or not thread.is_alive():
+            return
+        thread.join(timeout=1.0)
+        if thread.is_alive():
+            raise RuntimeError("The previous training monitor is still shutting down")
+
+    def _prune_terminal_handoffs_locked(self) -> None:
+        completed = [
+            generation
+            for generation, handoff in self._terminal_handoffs.items()
+            if handoff.phase is not _TerminalHandoffPhase.PENDING
+        ]
+        for generation in completed[:-32]:
+            self._terminal_handoffs.pop(generation, None)
 
     def clear_history(self) -> None:
         """Clear all training history.

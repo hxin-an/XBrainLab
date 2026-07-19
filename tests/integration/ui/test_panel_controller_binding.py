@@ -71,8 +71,8 @@ class TestPanelControllerBinding:
         training_panel.history_table = MagicMock()
         training_panel.tab_acc = MagicMock()
         training_panel.tab_loss = MagicMock()
-        training_panel._history_from_application_query = MagicMock(return_value=[])
-        training_panel._legacy_history_for_render = MagicMock()
+        training_panel._history_for_render = MagicMock(return_value=[])
+        training_panel._compatibility_history_for_render = MagicMock()
 
         with patch(
             "XBrainLab.ui.panels.training.panel.refresh_after_observer",
@@ -85,7 +85,7 @@ class TestPanelControllerBinding:
         training_panel.tab_loss.clear.assert_called_once()
         assert training_panel.current_plotting_record is None
         assert training_panel._last_epoch_count == -1
-        training_panel._legacy_history_for_render.assert_not_called()
+        training_panel._compatibility_history_for_render.assert_not_called()
         refresh_after_observer.assert_called_once_with(
             training_panel,
             event_name="training_updated",

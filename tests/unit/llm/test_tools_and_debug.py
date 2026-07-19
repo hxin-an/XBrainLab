@@ -25,6 +25,7 @@ EXPECTED_AGENT_TOOL_NAMES = {
     "preview_interpretation",
     "query_state",
     "reload_interpretation_recipe",
+    "reset_preprocess",
     "resample_data",
     "saliency",
     "save_interpretation_recipe",
@@ -34,6 +35,7 @@ EXPECTED_AGENT_TOOL_NAMES = {
     "set_montage",
     "set_reference",
     "start_training",
+    "stop_training",
     "switch_panel",
     "validate_interpretation",
     "visualize",
@@ -105,35 +107,108 @@ class TestBackendResolver:
 class TestToolExecutor:
     def test_execute_unknown_tool(self):
         from XBrainLab.debug.tool_executor import ToolExecutor
+        from XBrainLab.llm.tools.application_surface import ToolCommandResult
 
         executor = ToolExecutor(study=MagicMock())
         result = executor.execute("nonexistent_tool", {})
-        assert "Error:" in result or "Unknown" in result
+        assert isinstance(result, ToolCommandResult)
+        assert result.ok is False
+        assert result.error_type == "input"
+        assert result.tool_name == "unknown_debug_tool"
+        assert result.message == "The requested debug tool is unavailable."
 
-    def test_execute_success(self):
+    def test_execute_success(self, tmp_path):
         from XBrainLab.debug.tool_executor import ToolExecutor
+        from XBrainLab.llm.tools.application_surface import ToolCommandResult
 
         executor = ToolExecutor(study=MagicMock())
-        with patch.dict(
-            ToolExecutor.TOOL_MAP,
-            {
-                "test_tool": MagicMock(
-                    return_value=MagicMock(execute=MagicMock(return_value="ok"))
-                )
-            },
+        result = executor.execute(
+            "list_files",
+            {"directory": str(tmp_path)},
+            authorization_text=f"List files in `{tmp_path}`.",
+        )
+
+        assert isinstance(result, ToolCommandResult)
+        assert result.ok is True
+        assert result.raw_result == []
+
+    def test_execute_exception(self, tmp_path):
+        from XBrainLab.debug.tool_executor import ToolExecutor
+        from XBrainLab.llm.tools.application_surface import ToolCommandResult
+
+        executor = ToolExecutor(study=MagicMock())
+        with patch(
+            "XBrainLab.debug.tool_executor.RealListFilesTool.execute",
+            side_effect=RuntimeError(
+                "/home/alice/private/subject-17/events.tsv "
+                "alice@example.test token=hf_super_secret"
+            ),
         ):
-            result = executor.execute("test_tool", {"param": "value"})
-            assert result == "ok"
+            result = executor.execute(
+                "list_files",
+                {"directory": str(tmp_path)},
+                authorization_text=f"List files in `{tmp_path}`.",
+            )
+            assert isinstance(result, ToolCommandResult)
+            assert result.ok is False
+            assert result.error_type == "runtime"
+            assert result.message == (
+                "The assistant tool could not complete the action. "
+                "Refresh application state before retrying."
+            )
+            assert result.error_code == "unexpected_tool_failure"
+            assert result.recovery_action == "refresh_application_state"
+            assert result.raw_result is None
+            assert result.diagnostics["incident_id"]
+            serialized = repr(result.to_payload())
+            assert "/home/alice/private" not in serialized
+            assert "alice@example.test" not in serialized
+            assert "hf_super_secret" not in serialized
 
-    def test_execute_exception(self):
+    def test_partial_training_debug_call_fails_without_backend_mutation(self):
+        from XBrainLab.backend.application import get_application_service
+        from XBrainLab.backend.study import Study
         from XBrainLab.debug.tool_executor import ToolExecutor
+        from XBrainLab.llm.tools.application_surface import ToolCommandResult
 
-        mock_cls = MagicMock()
-        mock_cls.return_value.execute.side_effect = RuntimeError("boom")
-        executor = ToolExecutor(study=MagicMock())
-        with patch.dict(ToolExecutor.TOOL_MAP, {"bad": mock_cls}):
-            result = executor.execute("bad", {})
-            assert "Error" in result
+        study = Study()
+        service = get_application_service(study)
+        before = service.get_state().training
+
+        result = ToolExecutor(study).execute(
+            "configure_training",
+            {"model_name": "EEGNet", "epoch": 10},
+        )
+
+        assert isinstance(result, ToolCommandResult)
+        assert result.ok is False
+        assert result.error_type == "input"
+        assert service.get_state().training == before
+
+    def test_complete_training_debug_call_accepts_learning_rate_one(self):
+        from XBrainLab.backend.application import get_application_service
+        from XBrainLab.backend.study import Study
+        from XBrainLab.debug.tool_executor import ToolExecutor
+        from XBrainLab.llm.tools.application_surface import ToolCommandResult
+
+        study = Study()
+        result = ToolExecutor(study).execute(
+            "configure_training",
+            {
+                "model_name": "EEGNet",
+                "epoch": 2,
+                "batch_size": 4,
+                "learning_rate": 1,
+            },
+        )
+
+        assert isinstance(result, ToolCommandResult)
+        assert result.ok is True
+        training = get_application_service(study).get_state().training
+        assert training.model_name == "EEGNet"
+        assert training.training_option["epoch"] == 2
+        assert training.training_option["batch_size"] == 4
+        assert training.training_option["learning_rate"] == 1.0
 
 
 # --- tool_debug_mode.py ---
@@ -143,7 +218,17 @@ class TestToolDebugMode:
 
         from XBrainLab.debug.tool_debug_mode import DebugToolCall, ToolDebugMode
 
-        script = {"calls": [{"tool": "t1", "params": {"a": 1}}, {"tool": "t2"}]}
+        script = {
+            "calls": [
+                {
+                    "tool": "t1",
+                    "params": {"a": 1},
+                    "confirmed": True,
+                    "authorization_text": "Host selected the input path.",
+                },
+                {"tool": "t2"},
+            ]
+        }
         p = tmp_path / "test_script.json"
         p.write_text(json.dumps(script))
 
@@ -152,10 +237,20 @@ class TestToolDebugMode:
         assert not dbg.is_complete
 
         call1 = dbg.next_call()
-        assert call1 == DebugToolCall(tool="t1", params={"a": 1})
+        assert call1 == DebugToolCall(
+            tool="t1",
+            params={"a": 1},
+            confirmed=True,
+            authorization_text="Host selected the input path.",
+        )
 
         call2 = dbg.next_call()
-        assert call2 == DebugToolCall(tool="t2", params={})
+        assert call2 == DebugToolCall(
+            tool="t2",
+            params={},
+            confirmed=False,
+            authorization_text="",
+        )
 
         assert dbg.next_call() is None
         assert dbg.is_complete

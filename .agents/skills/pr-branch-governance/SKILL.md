@@ -132,7 +132,9 @@ Important progress must not stay local-only during long-running MVP work. After
 each validated checkpoint:
 
 1. Run `git status --short --branch`.
-2. Confirm no unrelated local files are staged, especially `.vscode/settings.json`.
+2. Confirm no unrelated local files are staged. Repo-root `settings.json` is protected
+   user-local LLM/runtime configuration: never stage, commit, revert, overwrite, or hide
+   it with skip-worktree. It may remain as the sole explicitly reported dirty path.
 3. Commit the checkpoint with a focused message.
 4. Push the current branch to `origin`.
 5. If the branch has no upstream, use `git push -u origin <branch-name>`.

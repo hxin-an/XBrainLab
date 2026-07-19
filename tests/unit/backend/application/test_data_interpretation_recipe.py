@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+import pytest
+
+from XBrainLab.backend.application import data_interpretation_recipe as recipe_module
 from XBrainLab.backend.application.data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
@@ -124,6 +127,114 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
     assert loaded.run_event_mappings == {}
 
 
+def test_recipe_preserves_reviewed_label_content_identity(tmp_path):
+    content_identity = {
+        "version": 1,
+        "algorithm": "sha256",
+        "scope": "label_carriers_and_bids_event_sidecars",
+        "scope_sha256": "scope-digest",
+        "content_sha256": "content-digest",
+        "review_contract_sha256": "contract-digest",
+        "files": [
+            {
+                "path": "/data/events.tsv",
+                "role": "label_carrier",
+                "file_bytes": 42,
+                "sha256": "file-digest",
+            }
+        ],
+        "bindings": [{"path": "/data/events.tsv"}],
+    }
+    applied = SimpleNamespace(
+        interpretation_id="interp-identity",
+        source_path="/data",
+        source_kind="folder",
+        loaded_files=["/data/sample.fif"],
+        label_sources=["/data"],
+        label_carriers=["/data/events.tsv"],
+        bids={},
+        label_carrier_plan=[{"path": "/data/events.tsv"}],
+        metadata=[],
+        format_capabilities=[],
+        skip_labels=False,
+        label_carrier="external_files",
+        excluded_label_carriers=[],
+        validation_decision="needs_confirmation",
+        confirmations=["Confirm labels."],
+        event_roles={"trial_type": "class label"},
+        class_map={"left": "Left"},
+        internal_event_selection={},
+        run_event_mappings={},
+        label_imports=[{"status": "applied"}],
+        recipe_trace=["content:scope-digest", "applied:interp-identity"],
+    )
+
+    recipe = build_import_recipe(
+        recipe_id="recipe-identity",
+        applied=applied,
+        warnings=[],
+        content_identity=content_identity,
+    )
+    target = tmp_path / "identity-recipe.json"
+    recipe.write_json(str(target))
+    loaded = load_import_recipe(str(target))
+
+    assert loaded.content_identity == content_identity
+    assert loaded.recipe_trace == [
+        "content:scope-digest",
+        "applied:interp-identity",
+        "recipe:recipe-identity",
+    ]
+
+
+def test_recipe_loader_uses_one_bounded_binary_read(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "oversized-recipe.json"
+    target.write_bytes(b"{}")
+    with target.open("ab") as handle:
+        handle.truncate(recipe_module.IMPORT_RECIPE_MAX_BYTES + 100)
+    original_open = type(target).open
+    original_read_text = type(target).read_text
+    read_sizes = []
+
+    class _ObservedReader:
+        def __init__(self, handle):
+            self._handle = handle
+
+        def __enter__(self):
+            self._handle.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._handle.__exit__(*args)
+
+        def read(self, size=-1):
+            read_sizes.append(size)
+            return self._handle.read(size)
+
+        def __getattr__(self, name):
+            return getattr(self._handle, name)
+
+    def _observed_open(path, *args, **kwargs):
+        handle = original_open(path, *args, **kwargs)
+        mode = str(args[0] if args else kwargs.get("mode", "r"))
+        if path == target and mode == "rb":
+            return _ObservedReader(handle)
+        return handle
+
+    def _guarded_read_text(path, *args, **kwargs):
+        if path == target:
+            pytest.fail("recipe loader used unbounded Path.read_text")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(target), "open", _observed_open)
+    monkeypatch.setattr(type(target), "read_text", _guarded_read_text)
+
+    with pytest.raises(ValueError, match=r"recipe.*limit"):
+        recipe_module.load_import_recipe(str(target))
+
+    assert read_sizes == [recipe_module.IMPORT_RECIPE_MAX_BYTES + 1]
+
+
 def test_choices_from_import_recipe_recreates_review_choices():
     recipe = ImportRecipe(
         recipe_id="recipe-1",
@@ -211,9 +322,21 @@ def test_choices_from_import_recipe_recreates_review_choices():
         "placement_method": "interval",
         "granularity": "trial",
         "role": "class cue labels",
+        "value_decisions": {
+            "1": {
+                "suggested_name": "left",
+                "decision_source": "legacy_recipe_class_map_suggestion",
+                "provenance": "legacy_recipe:class_map",
+            },
+            "2": {
+                "suggested_name": "right",
+                "decision_source": "legacy_recipe_class_map_suggestion",
+                "provenance": "legacy_recipe:class_map",
+            },
+        },
     }
     assert choices["event_roles"] == {"trial_type": "class cue"}
-    assert choices["class_map"] == {"1": "left", "2": "right"}
+    assert "class_map" not in choices
     assert choices["run_event_mappings"] == {
         "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
     }

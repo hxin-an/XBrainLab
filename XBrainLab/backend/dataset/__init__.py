@@ -3,7 +3,7 @@
 from .data_splitter import DataSplitter, DataSplittingConfig
 from .dataset import Dataset
 from .dataset_generator import DatasetGenerator
-from .epochs import Epochs
+from .epochs import Epochs, EpochWindowProvenance
 from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
 from .split_audit import (
     SplitAuditIssue,
@@ -19,6 +19,7 @@ __all__ = [
     "DataSplittingConfig",
     "Dataset",
     "DatasetGenerator",
+    "EpochWindowProvenance",
     "Epochs",
     "SplitAuditIssue",
     "SplitAuditResult",

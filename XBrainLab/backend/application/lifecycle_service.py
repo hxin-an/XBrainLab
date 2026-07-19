@@ -49,10 +49,13 @@ class LifecycleCommandService:
         if not isinstance(command, ResetPreprocessCommand):
             raise TypeError("Invalid command for reset_preprocess")
         before = self._get_state()
+        training_boundary = self._pipeline_transaction.begin_downstream_replacement()
         snapshot = self._pipeline_transaction.capture()
         try:
             self.study.reset_preprocess(force_update=True)
-            self.training.clean_datasets(force_update=True)
+            trainer_retired = self._pipeline_transaction.commit_pipeline_invalidation(
+                training_boundary,
+            )
         except Exception:
             self._pipeline_transaction.restore(snapshot)
             raise
@@ -68,7 +71,7 @@ class LifecycleCommandService:
                 "preprocess_operations_before": before.preprocessed.operations,
                 "had_epoch_data": before.epoch.exists,
                 "dataset_count_before": before.dataset.count,
-                "trainer_cleared": before.training.has_trainer,
+                "trainer_cleared": trainer_retired,
             },
         )
 
@@ -89,9 +92,7 @@ class LifecycleCommandService:
         return "New session started.", {"single_session_backend": True}
 
     def _clear_training_configuration(self) -> None:
-        self.training_commands.clear_configuration(
-            getattr(self.study, "training_manager", None),
-        )
+        self.training_commands.clear_configuration()
 
     def _clear_interpretation_state(self) -> None:
         self.interpretation.clear()

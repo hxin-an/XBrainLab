@@ -1,12 +1,13 @@
 """Service for coordinating AggregateInfoPanel updates across the application."""
 
+from __future__ import annotations
+
 import weakref
-from unittest.mock import Mock
+from typing import Any, Protocol
 
 from PyQt6.QtCore import QObject
 
 from XBrainLab.backend.application import QueryStateCommand
-from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
@@ -14,6 +15,12 @@ from XBrainLab.ui.application_capabilities import (
     local_result_payload,
 )
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
+
+
+class _InfoPanelStudyPort(Protocol):
+    """Compatibility context that can provide observable data controllers."""
+
+    def get_controller(self, controller_type: str) -> Any: ...
 
 
 class InfoPanelService(QObject):
@@ -30,7 +37,7 @@ class InfoPanelService(QObject):
 
     def __init__(
         self,
-        study: "Study",
+        study: _InfoPanelStudyPort,
         *,
         observe_controller_events: bool = True,
     ):
@@ -146,22 +153,17 @@ class InfoPanelService(QObject):
         panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
 
     def _query_data_lists(self):
-        """Return raw/preprocessed lists through ApplicationService when possible."""
-        if isinstance(self.study, Study) and not isinstance(self.study, Mock):
-            try:
-                result = execute_application_command(
-                    self,
-                    QueryStateCommand(query="data_lists", include_objects=True),
-                    refresh=False,
-                )
-            except Exception as exc:
-                logger.error("Info panel state query failed: %s", exc)
-                return [], []
-            if result is None:
-                logger.debug(
-                    "Info panel state query unavailable for real Study context",
-                )
-                return [], []
+        """Return command-backed lists or explicit compatibility controller data."""
+        try:
+            result = execute_application_command(
+                self,
+                QueryStateCommand(query="data_lists", include_objects=True),
+                refresh=False,
+            )
+        except Exception as exc:
+            logger.error("Info panel state query failed: %s", exc)
+            return [], []
+        if result is not None:
             if result.ok:
                 payload = local_result_payload(result)
                 return (
@@ -171,6 +173,8 @@ class InfoPanelService(QObject):
             logger.debug("Info panel state query failed: %s", result.message)
             return [], []
 
+        # Standalone compatibility contexts expose an explicit controller port.
+        # The shared compatibility boundary rejects real Study controller reads.
         loaded = []
         dataset_controller = get_controller_for_compatibility_context(
             self,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -20,11 +20,42 @@ from XBrainLab.backend.application import (
     TrainCommand,
     ValidateInterpretationCommand,
 )
+from XBrainLab.backend.training.record.eval import EvalRecord
+from XBrainLab.backend.training_state_contract import PostTrainingSaliencyPhase
 from XBrainLab.ui.main_window import MainWindow
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data"
 GDF_PATH = FIXTURE_ROOT / "A01T.gdf"
 LABEL_PATH = FIXTURE_ROOT / "label" / "A01T.mat"
+
+
+def _class_value_decisions() -> dict[str, dict[str, object]]:
+    return {
+        "1": {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "left hand",
+        },
+        "2": {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "right hand",
+        },
+        "3": {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "feet",
+        },
+        "4": {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "tongue",
+        },
+    }
 
 
 def _render_evidence(widget: Any) -> dict[str, Any]:
@@ -43,6 +74,14 @@ def _render_evidence(widget: Any) -> dict[str, Any]:
         "axes_count": len(axes),
         "image_count": image_count,
         "canvas_visible": bool(canvas and canvas.isVisible()),
+        "titles": [axis.get_title() for axis in axes if axis.get_title()],
+        "x_labels": [axis.get_xlabel() for axis in axes if axis.get_xlabel()],
+        "y_labels": [axis.get_ylabel() for axis in axes if axis.get_ylabel()],
+        "color_limits": [
+            tuple(image.get_clim())
+            for axis in axes
+            for image in list(getattr(axis, "images", []) or [])
+        ],
     }
 
 
@@ -69,19 +108,8 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
                 "label_field": "classlabel",
                 "placement_method": "eeg_event",
                 "target_event_codes": ["768"],
-                "class_map": {
-                    "1": "left hand",
-                    "2": "right hand",
-                    "3": "feet",
-                    "4": "tongue",
-                },
+                "value_decisions": _class_value_decisions(),
             }
-        },
-        "class_map": {
-            "1": "left hand",
-            "2": "right hand",
-            "3": "feet",
-            "4": "tongue",
         },
     }
     commands = [
@@ -128,13 +156,15 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
     qtbot.addWidget(window)
     window.resize(1220, 900)
     window.show()
-    window.switch_page(4)
-    qtbot.wait(50)
+    ready_panels = []
+    window.switch_page(4, on_ready=ready_panels.append)
+    qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=5_000)
 
-    panel = window.visualization_panel
+    panel = cast(Any, ready_panels[0])
     assert panel.plan_combo.currentText().startswith("Fold 1")
     assert panel.run_combo.currentText() == "Run 1"
 
+    expected_class_names = {"left hand", "right hand", "feet", "tongue"}
     for tab_name in ("Saliency Map", "Spectrogram"):
         tab_index = next(
             index
@@ -152,6 +182,26 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
         assert evidence["error_visible"] is False, evidence["error_text"]
         assert evidence["canvas_visible"] is True
         assert evidence["image_count"] > 0
+        assert set(evidence["titles"]) == expected_class_names
+        assert len(evidence["color_limits"]) == 4
+        assert len(set(evidence["color_limits"])) == 1
+        if tab_name == "Saliency Map":
+            assert set(evidence["x_labels"]) == {"Time (s)"}
+            assert set(evidence["y_labels"]) == {"Channel"}
+        else:
+            assert set(evidence["x_labels"]) == {"Time (s)"}
+            assert set(evidence["y_labels"]) == {"Frequency (Hz)"}
+
+    context = eval_record.saliency_context
+    assert context is not None
+    assert {name for _key, name in context.class_map} == expected_class_names
+    assert context.channel_names == tuple(service.study.epoch_data.get_channel_names())
+    identity_artifact = tmp_path / "saliency-identity-round-trip"
+    identity_artifact.mkdir()
+    eval_record.export(str(identity_artifact))
+    reloaded = EvalRecord.load(str(identity_artifact))
+    assert reloaded is not None
+    assert reloaded.saliency_context == context
 
     window.close()
 
@@ -163,7 +213,7 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
 def test_post_training_saliency_configuration_recomputes_metric_only_run(
     tmp_path,
 ) -> None:
-    """Training stays fast by default, then saliency can be computed on demand."""
+    """Training computes the fast baseline before advanced on-demand saliency."""
 
     service = ApplicationService()
     scan_result = service.execute(
@@ -181,19 +231,8 @@ def test_post_training_saliency_configuration_recomputes_metric_only_run(
                 "label_field": "classlabel",
                 "placement_method": "eeg_event",
                 "target_event_codes": ["768"],
-                "class_map": {
-                    "1": "left hand",
-                    "2": "right hand",
-                    "3": "feet",
-                    "4": "tongue",
-                },
+                "value_decisions": _class_value_decisions(),
             }
-        },
-        "class_map": {
-            "1": "left hand",
-            "2": "right hand",
-            "3": "feet",
-            "4": "tongue",
         },
     }
     commands = [
@@ -230,12 +269,23 @@ def test_post_training_saliency_configuration_recomputes_metric_only_run(
     holder = service.study.trainer.get_training_plan_holders()[0]
     eval_record = holder.get_plans()[0].get_eval_record()
     assert eval_record is not None
-    assert eval_record.gradient == {}
-    assert service.get_state().visualization.saliency_available is False
+    assert sorted(eval_record.gradient) == [0, 1, 2, 3]
+    assert sorted(eval_record.gradient_input) == [0, 1, 2, 3]
+    assert eval_record.smoothgrad == {}
+    publication = service.get_view_publication()
+    assert publication.state.visualization.post_training_saliency.phase is (
+        PostTrainingSaliencyPhase.SUCCEEDED
+    )
+    assert publication.state.visualization.saliency_available is True
+    assert any(
+        method.method == "Gradient" and method.complete
+        for run in publication.state.visualization.saliency_coverage
+        for method in run.methods
+    )
 
     saliency = service.execute(
         SaliencyCommand(
-            method="Gradient",
+            method="SmoothGrad",
             params={"nt_samples": 1, "nt_samples_batch_size": 1, "stdevs": 1.0},
         ),
     )
@@ -244,5 +294,5 @@ def test_post_training_saliency_configuration_recomputes_metric_only_run(
     assert saliency.diagnostics["saliency_available"] is True
     assert service.get_state().visualization.saliency_available is True
     eval_record = holder.get_plans()[0].get_eval_record()
-    assert sorted(eval_record.gradient) == [0, 1, 2, 3]
-    assert all(len(value) > 0 for value in eval_record.gradient.values())
+    assert sorted(eval_record.smoothgrad) == [0, 1, 2, 3]
+    assert all(len(value) > 0 for value in eval_record.smoothgrad.values())

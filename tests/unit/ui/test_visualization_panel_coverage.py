@@ -1,27 +1,174 @@
-"""Coverage tests for VisualizationPanel methods: refresh_combos, on_plan_changed, on_update."""
+"""Contract coverage for publication-backed VisualizationPanel behavior."""
 
 from __future__ import annotations
 
+import threading
+from dataclasses import replace
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
-from PyQt6.QtWidgets import QWidget
+from matplotlib.figure import Figure
+from PyQt6.QtCore import QRunnable, QThreadPool
+from PyQt6.QtWidgets import QLabel, QWidget
 
+from XBrainLab.backend.application import (
+    ApplicationViewPublication,
+    SaliencyPlanIdentity,
+    SaliencyRenderData,
+    SaliencyRenderPublication,
+    SaliencyRenderRequest,
+    SaliencyRunIdentity,
+)
+from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.application.state import (
+    ApplicationStateSnapshot,
+    SaliencyClassCoverageSnapshot,
+    SaliencyMethodCoverageSnapshot,
+    SaliencyRunCoverageSnapshot,
+    VisualizationStateSnapshot,
+)
+from XBrainLab.backend.application.view_publication import ApplicationViewStore
+from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 from XBrainLab.backend.utils.observer import Observable
 
 
-def _make_panel(qtbot, preprocess_controller=None):
-    """Create a VisualizationPanel with mocked dependencies."""
-    mock_ctrl = MagicMock()
-    mock_ctrl.get_trainers.return_value = []
+def _complete_coverage(method: str = "Gradient") -> SaliencyMethodCoverageSnapshot:
+    return SaliencyMethodCoverageSnapshot(
+        method=method,
+        available=True,
+        complete=True,
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=0,
+                display_name="left",
+                event_code=0,
+                available=True,
+            ),
+        ],
+    )
 
-    # Use real QWidget instances so QTabWidget.addTab accepts them
+
+def _visualization_result(
+    *run_coverages: SaliencyRunCoverageSnapshot,
+) -> CommandResult:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        visualization=VisualizationStateSnapshot(
+            saliency_available=any(
+                method.available for run in run_coverages for method in run.methods
+            ),
+            saliency_coverage=list(run_coverages),
+        ),
+    )
+    return CommandResult.success_result(
+        command_name="visualize",
+        message="Visualization ready.",
+        state=state,
+        changed_state=ChangedState(),
+    )
+
+
+def _run_coverage(
+    *,
+    plan_index: int,
+    run_index: int,
+    model_name: str,
+    run_name: str = "",
+    methods: tuple[SaliencyMethodCoverageSnapshot, ...] | None = None,
+) -> SaliencyRunCoverageSnapshot:
+    return SaliencyRunCoverageSnapshot(
+        plan_index=plan_index,
+        run_index=run_index,
+        model_name=model_name,
+        run_name=run_name,
+        methods=list(methods or (_complete_coverage(),)),
+    )
+
+
+def _publish_panel_state(
+    panel,
+    result: CommandResult,
+    *,
+    publication: ApplicationViewPublication | None = None,
+) -> ApplicationViewPublication:
+    """Install one exact application publication and populate its selectors."""
+    assert isinstance(result.state, ApplicationStateSnapshot)
+    publication = (
+        publication
+        or ApplicationViewStore(
+            result.state,
+            TrainingReadBoundary.no_trainer(),
+        ).read()
+    )
+    assert panel._accept_application_publication(publication) is True
+    panel.last_application_query = result
+    panel._application_summary_dirty = False
+    with patch.object(panel, "on_update"):
+        panel.refresh_combos()
+    return publication
+
+
+def _select_run(panel, run_identity: SaliencyRunIdentity) -> None:
+    plan_index = next(
+        (
+            index
+            for index in range(1, panel.plan_combo.count())
+            if panel.plan_combo.itemData(index) == run_identity.plan
+        ),
+        -1,
+    )
+    assert plan_index >= 1
+    panel.plan_combo.blockSignals(True)
+    panel.plan_combo.setCurrentIndex(plan_index)
+    panel.plan_combo.blockSignals(False)
+    with patch.object(panel, "on_update"):
+        panel.on_plan_changed(
+            panel.plan_combo.currentText(),
+            preferred_run=run_identity,
+        )
+    assert panel.run_combo.currentData() == run_identity
+
+
+def _render_data(method: str = "Gradient") -> SaliencyRenderData:
+    return SaliencyRenderData(
+        method=method,
+        saliency_by_class={0: np.ones((1, 2, 3))},
+        class_map=((0, "left"),),
+        event_ids={"left": 0},
+        channel_names=("C3", "C4"),
+        channel_positions=((-0.04, 0.0, 0.08), (0.04, 0.0, 0.08)),
+        sfreq=128.0,
+        tmin=0.0,
+    )
+
+
+def _make_panel(
+    qtbot,
+    *,
+    training_controller=None,
+    preprocess_controller=None,
+    parent=None,
+):
+    """Create a panel whose controller exposes no live training objects."""
+    controller = Observable()
+
     def _widget_factory(parent=None):
-        w = QWidget(parent)
-        w.show_error = MagicMock()
-        w.update_plot = MagicMock()
-        w.repaint = MagicMock()
-        return w
+        widget = cast(Any, QWidget(parent))
+        widget.show_error = MagicMock()
+        widget.show_message = MagicMock()
+        widget.set_saliency_coverage = MagicMock()
+        widget.set_post_training_saliency_status = MagicMock()
+        widget.update_plot = MagicMock()
+        widget.invalidate_render_publication = MagicMock()
+        widget.begin_render_shutdown = MagicMock()
+        widget.cancel_render_shutdown = MagicMock()
+        widget.native_render_work_idle = MagicMock(return_value=True)
+        widget.finalize_native_render_resources = MagicMock(return_value=True)
+        widget.native_render_resources_finalized = MagicMock(return_value=True)
+        widget.repaint = MagicMock()
+        return widget
 
     class _SidebarStub(QWidget):
         def __init__(self, *args, **kwargs):
@@ -53,344 +200,1229 @@ def _make_panel(qtbot, preprocess_controller=None):
         from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
         panel = VisualizationPanel(
-            controller=mock_ctrl,
+            controller=controller,
+            training_controller=training_controller,
             preprocess_controller=preprocess_controller,
-            parent=None,
+            parent=parent,
         )
         qtbot.addWidget(panel)
-    return panel, mock_ctrl
+    return panel, controller
+
+
+def _make_real_saliency_panel(qtbot, *, application_runtime=None, parent=None):
+    class _SidebarStub(QWidget):
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+            self.update_info = MagicMock()
+
+    with patch(
+        "XBrainLab.ui.panels.visualization.panel.ControlSidebar",
+        _SidebarStub,
+    ):
+        from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
+
+        panel = VisualizationPanel(
+            controller=Observable(),
+            application_runtime=application_runtime,
+            parent=parent,
+        )
+        qtbot.addWidget(panel)
+    return panel
 
 
 @pytest.fixture
-def panel_and_ctrl(qtbot):
+def panel_and_controller(qtbot):
     return _make_panel(qtbot)
 
 
+def _current_widget(panel) -> Any:
+    widget = panel.tabs.currentWidget()
+    assert widget is not None
+    return cast(Any, widget)
+
+
+def test_publication_runtime_composes_through_active_real_map_view(qtbot):
+    result = _visualization_result(
+        _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+    )
+    assert isinstance(result.state, ApplicationStateSnapshot)
+    publication = ApplicationViewStore(
+        result.state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+    render_requests: list[SaliencyRenderRequest] = []
+
+    class _PublicationRuntime:
+        def execute(self, command):
+            return CommandResult.success_result(
+                command_name=command.name.value,
+                message="Native saliency stress fixture ready.",
+                state=result.state,
+                changed_state=ChangedState(),
+            )
+
+        def get_view_publication(self):
+            return publication
+
+        def get_saliency_render(self, request):
+            render_requests.append(request)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=publication.generation,
+                training_generation=1,
+                data=_render_data(),
+            )
+
+    runtime = _PublicationRuntime()
+    panel = _make_real_saliency_panel(qtbot, application_runtime=runtime)
+
+    panel.on_update()
+    panel.refresh_combos()
+    previous_figure = panel.tab_map.fig
+    previous_canvas = panel.tab_map.canvas
+    panel.on_update()
+
+    qtbot.waitUntil(
+        lambda: (
+            panel.tab_map.native_render_work_idle()
+            and panel.tab_map.fig is not None
+            and panel.tab_map.canvas is not None
+            and panel.tab_map.fig is not previous_figure
+            and panel.tab_map.canvas is not previous_canvas
+            and bool(panel.tab_map.fig.axes)
+            and panel.tab_map.error_label.isHidden()
+        ),
+        timeout=5000,
+    )
+
+    assert render_requests
+    assert render_requests[-1].publication_generation == publication.generation
+    assert render_requests[-1].run == panel.run_combo.currentData()
+    assert panel.tabs.currentWidget() is panel.tab_map
+
+
+def test_real_panel_close_ignores_global_pool_saturation_before_submission(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.ui.main_window import MainWindow
+    from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+        SaliencyMapWidget,
+    )
+
+    result = _visualization_result(
+        _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+    )
+    assert isinstance(result.state, ApplicationStateSnapshot)
+    publication = ApplicationViewStore(
+        result.state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+    render_publication = SaliencyRenderPublication(
+        request=SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=SaliencyRunIdentity(
+                plan=SaliencyPlanIdentity(plan_index=0),
+                run_index=0,
+            ),
+            method="Gradient",
+        ),
+        generation=publication.generation,
+        training_generation=1,
+        data=_render_data(),
+    )
+    render_requests: list[SaliencyRenderRequest] = []
+
+    class _PublicationRuntime:
+        def execute(self, command):
+            return CommandResult.success_result(
+                command_name=command.name.value,
+                message="Native saliency saturation fixture ready.",
+                state=result.state,
+                changed_state=ChangedState(),
+            )
+
+        def get_view_publication(self):
+            return publication
+
+        def get_saliency_render(self, request):
+            render_requests.append(request)
+            return replace(render_publication, request=request)
+
+    global_started = threading.Event()
+    global_release = threading.Event()
+    global_finished = threading.Event()
+    render_started = threading.Event()
+    render_release = threading.Event()
+
+    class _GlobalBlocker(QRunnable):
+        def run(self) -> None:
+            global_started.set()
+            global_release.wait(timeout=5.0)
+            global_finished.set()
+
+    def render(_data, _absolute) -> Figure:
+        render_started.set()
+        assert render_release.wait(timeout=5.0)
+        figure = Figure()
+        figure.set_label("owned-pool-render")
+        figure.add_subplot(111).plot([0, 1], [1, 0])
+        return figure
+
+    monkeypatch.setattr(SaliencyMapWidget, "_render_plot", staticmethod(render))
+    pool = QThreadPool.globalInstance()
+    assert pool is not None
+    qtbot.waitUntil(lambda: pool.activeThreadCount() == 0, timeout=2000)
+    previous_max_threads = pool.maxThreadCount()
+    pool.setMaxThreadCount(1)
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(MagicMock())
+    qtbot.addWidget(window)
+    panel = _make_real_saliency_panel(
+        qtbot,
+        application_runtime=_PublicationRuntime(),
+        parent=window,
+    )
+    cast(Any, window).visualization_panel = panel
+    _publish_panel_state(panel, result, publication=publication)
+    window.show()
+    blocker = _GlobalBlocker()
+    pool.start(blocker)
+
+    try:
+        qtbot.waitUntil(global_started.is_set, timeout=1000)
+        panel.on_update()
+        qtbot.waitUntil(render_started.is_set, timeout=1000)
+        assert render_requests
+        assert pool.activeThreadCount() == 1
+
+        with (
+            patch.object(
+                window,
+                "_ensure_shutdown_fence_for_close",
+                return_value=True,
+            ),
+            patch.object(window, "_stop_training_for_close", return_value=True),
+            patch.object(
+                window.window_geometry,
+                "persist_before_close",
+                return_value=True,
+            ),
+        ):
+            window.close()
+            assert window.isVisible()
+            assert window._closing_in_progress is True
+            assert global_finished.is_set() is False
+
+            render_release.set()
+            qtbot.waitUntil(lambda: not window.isVisible(), timeout=5000)
+
+        assert global_finished.is_set() is False
+        assert pool.activeThreadCount() == 1
+        assert panel.native_render_work_idle() is True
+        assert panel.native_render_resources_finalized() is True
+    finally:
+        render_release.set()
+        global_release.set()
+        qtbot.waitUntil(global_finished.is_set, timeout=3000)
+        qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
+        if not panel.native_render_resources_finalized():
+            panel.begin_native_render_shutdown()
+            assert panel.finalize_native_render_resources() is True
+        pool.setMaxThreadCount(previous_max_threads)
+        window.hide()
+
+
+def test_tab_switch_invalidates_previous_saliency_view(panel_and_controller):
+    panel, _controller = panel_and_controller
+    previous = cast(Any, panel.tab_map)
+
+    with patch.object(panel, "on_update"):
+        panel.tabs.setCurrentIndex(1)
+
+    previous.invalidate_render_publication.assert_called_once_with()
+    assert panel._last_active_saliency_view is panel.tab_spectro
+
+
+def test_panel_shutdown_fences_all_saliency_views(panel_and_controller):
+    panel, _controller = panel_and_controller
+    views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
+
+    panel.begin_native_render_shutdown()
+
+    for view in views:
+        cast(Any, view).begin_render_shutdown.assert_called_once_with()
+    cast(Any, panel.tab_topo).native_render_work_idle.return_value = False
+    assert panel.native_render_work_idle() is False
+    cast(Any, panel.tab_topo).native_render_work_idle.return_value = True
+    assert panel.native_render_work_idle() is True
+    panel.cancel_native_render_shutdown()
+    for view in views:
+        cast(Any, view).cancel_render_shutdown.assert_called_once_with()
+
+
+def test_panel_native_resource_finalizer_is_idempotent(panel_and_controller):
+    panel, _controller = panel_and_controller
+    views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
+
+    assert panel.native_render_resources_finalized() is False
+    assert panel.finalize_native_render_resources() is True
+    assert panel.finalize_native_render_resources() is True
+    assert panel.native_render_resources_finalized() is True
+
+    for view in views:
+        cast(Any, view).finalize_native_render_resources.assert_called_once_with()
+
+
+def test_real_panel_propagates_3d_native_close_failure_until_verified(qtbot):
+    panel = _make_real_saliency_panel(qtbot)
+
+    class _RecoverableInteractor(QWidget):
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.fail_close = True
+            self.close_calls = 0
+            self.delete_later_calls = 0
+            self._closed = False
+            self._RenderWindow = object()
+            self.iren = object()
+            self.renderer = object()
+
+        def close(self) -> bool:
+            self.close_calls += 1
+            if self.fail_close:
+                raise RuntimeError("recoverable native close failure")
+            self._closed = True
+            self._RenderWindow = None
+            self.iren = None
+            self.renderer = None
+            return True
+
+        def deleteLater(self) -> None:
+            self.delete_later_calls += 1
+
+    plotter = _RecoverableInteractor(panel.tab_3d.plot_container)
+    panel.tab_3d.plot_layout.addWidget(plotter)
+    panel.tab_3d.plotter_widget = plotter
+    panel.begin_native_render_shutdown()
+
+    assert panel.native_render_work_idle() is True
+    assert panel.finalize_native_render_resources() is False
+    assert panel.native_render_resources_finalized() is False
+    assert panel.tab_3d.plotter_widget is plotter
+    assert plotter.delete_later_calls == 0
+
+    plotter.fail_close = False
+    assert panel.finalize_native_render_resources() is True
+    assert panel.native_render_resources_finalized() is True
+    assert panel.tab_3d.plotter_widget is None
+    assert plotter.close_calls == 2
+    assert plotter.delete_later_calls == 1
+    cleanup_state = panel.tab_3d._native_interactor_cleanup_state
+    assert cleanup_state.finalized is True
+    assert cleanup_state.finalize_count == 1
+    assert cleanup_state.close_attempts == 2
+    assert cleanup_state.close_successes == 1
+    QWidget.deleteLater(plotter)
+
+
+def test_cancelled_shutdown_resubmits_active_tab_with_current_publication(
+    panel_and_controller,
+):
+    panel, _controller = panel_and_controller
+    publication = MagicMock(usable=True)
+    panel._application_view_publication = publication
+    views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
+
+    with patch.object(panel, "on_update") as on_update:
+        panel.begin_native_render_shutdown()
+        panel.cancel_native_render_shutdown()
+
+    assert panel._application_view_publication is publication
+    assert panel.tabs.currentWidget() is panel.tab_map
+    for view in views:
+        cast(Any, view).cancel_render_shutdown.assert_called_once_with()
+    on_update.assert_called_once_with()
+
+
+def test_cancelled_shutdown_resubmits_2d_publication_to_true_worker(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+        SaliencyMapWidget,
+    )
+
+    panel = _make_real_saliency_panel(qtbot)
+    result = _visualization_result(
+        _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+    )
+    publication = _publish_panel_state(panel, result)
+    run_identity = cast(SaliencyRunIdentity, panel.run_combo.currentData())
+    render_publication = SaliencyRenderPublication(
+        request=SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=run_identity,
+            method="Gradient",
+        ),
+        generation=publication.generation,
+        training_generation=1,
+        data=_render_data(),
+    )
+    first_started = threading.Event()
+    release_first = threading.Event()
+    worker_threads: list[int] = []
+    render_count = 0
+
+    def render(_data, _absolute) -> Figure:
+        nonlocal render_count
+        render_count += 1
+        worker_threads.append(threading.get_ident())
+        figure = Figure()
+        figure.set_label(f"resumed-2d-{render_count}")
+        figure.add_subplot(111).plot([0, 1], [render_count, 0])
+        if render_count == 1:
+            first_started.set()
+            assert release_first.wait(timeout=3.0)
+        return figure
+
+    monkeypatch.setattr(SaliencyMapWidget, "_render_plot", staticmethod(render))
+    with patch(
+        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        return_value=render_publication,
+    ):
+        panel.on_update()
+        assert first_started.wait(timeout=1.0)
+        panel.begin_native_render_shutdown()
+        release_first.set()
+        qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
+
+        panel.cancel_native_render_shutdown()
+        qtbot.waitUntil(
+            lambda: (
+                panel.tab_map.fig is not None
+                and panel.tab_map.fig.get_label() == "resumed-2d-2"
+                and panel.native_render_work_idle()
+            ),
+            timeout=3000,
+        )
+
+    assert render_count == 2
+    assert panel.tab_map.error_label.isHidden()
+    assert all(thread_id != threading.get_ident() for thread_id in worker_threads)
+
+
+def test_cancelled_shutdown_resubmits_3d_publication_to_true_worker(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.ui.panels.visualization.saliency_views import plot_3d_view
+
+    panel = _make_real_saliency_panel(qtbot)
+    result = _visualization_result(
+        _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+    )
+    publication = _publish_panel_state(panel, result)
+    run_identity = cast(SaliencyRunIdentity, panel.run_combo.currentData())
+    render_publication = SaliencyRenderPublication(
+        request=SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=run_identity,
+            method="Gradient",
+        ),
+        generation=publication.generation,
+        training_generation=1,
+        data=_render_data(),
+    )
+    first_started = threading.Event()
+    release_first = threading.Event()
+    worker_threads: list[int] = []
+    prepare_count = 0
+
+    class _FakeInteractor(QWidget):
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.interactor = self
+
+        def Initialize(self) -> None:
+            return
+
+    def prepare_engine(*_args, **_kwargs):
+        nonlocal prepare_count
+        prepare_count += 1
+        worker_threads.append(threading.get_ident())
+        if prepare_count == 1:
+            first_started.set()
+            assert release_first.wait(timeout=3.0)
+        return object(), 2
+
+    monkeypatch.setattr(
+        plot_3d_view.Saliency3D,
+        "prepare_engine",
+        staticmethod(prepare_engine),
+    )
+    monkeypatch.setattr(
+        plot_3d_view.Saliency3DPlotWidget,
+        "_interactive_3d_runtime_available",
+        staticmethod(lambda: (True, "")),
+    )
+    monkeypatch.setattr(plot_3d_view.pyvistaqt, "QtInteractor", _FakeInteractor)
+    monkeypatch.setattr(panel.tab_3d, "_do_3d_plot", MagicMock())
+    with patch.object(panel, "on_update"):
+        panel.tabs.setCurrentIndex(3)
+
+    with patch(
+        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        return_value=render_publication,
+    ):
+        panel.on_update()
+        assert first_started.wait(timeout=1.0)
+        panel.begin_native_render_shutdown()
+        release_first.set()
+        qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
+
+        panel.cancel_native_render_shutdown()
+        qtbot.waitUntil(
+            lambda: (
+                isinstance(panel.tab_3d.plotter_widget, _FakeInteractor)
+                and panel.native_render_work_idle()
+            ),
+            timeout=3000,
+        )
+
+    plot_widgets = []
+    for index in range(panel.tab_3d.plot_layout.count()):
+        item = panel.tab_3d.plot_layout.itemAt(index)
+        if item is not None:
+            plot_widgets.append(item.widget())
+    assert prepare_count == 2
+    assert panel.tab_3d.plotter_widget in plot_widgets
+    assert not any(
+        isinstance(widget, QLabel) and widget.text() == "Preparing 3D view..."
+        for widget in plot_widgets
+    )
+    assert all(thread_id != threading.get_ident() for thread_id in worker_threads)
+
+
 class TestRefreshCombos:
-    def test_no_trainers(self, panel_and_ctrl):
-        panel, ctrl = panel_and_ctrl
-        ctrl.get_trainers.return_value = []
-        panel.refresh_combos()
-        # Plan combo should only have placeholder
+    def test_empty_publication_keeps_only_placeholder(self, panel_and_controller):
+        panel, _controller = panel_and_controller
+
+        publication = _publish_panel_state(panel, _visualization_result())
+
+        assert publication.usable is True
         assert panel.plan_combo.count() == 1
+        assert panel.plan_combo.itemText(0) == "Select a plan"
+        assert panel.plan_combo.itemData(0) is None
+        assert panel.run_combo.count() == 0
+        assert panel._runs_by_plan == {}
 
-    def test_with_trainers(self, panel_and_ctrl):
-        panel, ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.model_holder.target_model.__name__ = "EEGNet"
-        trainer.option.repeat_num = 3
-        trainer.get_plans.return_value = [MagicMock() for _ in range(3)]
-        ctrl.get_trainers.return_value = [trainer]
+    def test_populates_sorted_typed_plan_and_run_identities(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        result = _visualization_result(
+            _run_coverage(
+                plan_index=1,
+                run_index=1,
+                model_name="SCCNet",
+                run_name="Repeat B",
+            ),
+            _run_coverage(
+                plan_index=0,
+                run_index=1,
+                model_name="EEGNet",
+                run_name="Repeat B",
+            ),
+            _run_coverage(
+                plan_index=1,
+                run_index=0,
+                model_name="SCCNet",
+                run_name="Repeat A",
+            ),
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                run_name="Repeat A",
+            ),
+        )
 
-        panel.refresh_combos()
-        # Should have "Select a plan" + "Fold 1 (EEGNet)"
-        assert panel.plan_combo.count() == 2
-        assert "EEGNet" in panel.plan_combo.itemText(1)
+        _publish_panel_state(panel, result)
 
-    def test_multiple_trainers(self, panel_and_ctrl):
-        panel, ctrl = panel_and_ctrl
-        t1 = MagicMock()
-        t1.model_holder.target_model.__name__ = "EEGNet"
-        t1.option.repeat_num = 1
-        t1.get_plans.return_value = [MagicMock()]
+        plan_zero = SaliencyPlanIdentity(plan_index=0)
+        plan_one = SaliencyPlanIdentity(plan_index=1)
+        assert [
+            panel.plan_combo.itemText(index)
+            for index in range(panel.plan_combo.count())
+        ] == ["Select a plan", "Fold 1 (EEGNet)", "Fold 2 (SCCNet)"]
+        assert panel.plan_combo.itemData(1) == plan_zero
+        assert panel.plan_combo.itemData(2) == plan_one
+        assert isinstance(panel.plan_combo.itemData(1), SaliencyPlanIdentity)
+        assert [
+            panel.run_combo.itemData(index) for index in range(panel.run_combo.count())
+        ] == [
+            SaliencyRunIdentity(plan=plan_zero, run_index=0),
+            SaliencyRunIdentity(plan=plan_zero, run_index=1),
+        ]
+        assert [
+            panel.run_combo.itemText(index) for index in range(panel.run_combo.count())
+        ] == ["Repeat A", "Repeat B"]
 
-        t2 = MagicMock()
-        t2.model_holder.target_model.__name__ = "SCCNet"
-        t2.option.repeat_num = 2
-        t2.get_plans.return_value = [MagicMock(), MagicMock()]
+        _select_run(
+            panel,
+            SaliencyRunIdentity(plan=plan_one, run_index=1),
+        )
 
-        ctrl.get_trainers.return_value = [t1, t2]
-        panel.refresh_combos()
-        assert panel.plan_combo.count() == 3
+        assert [
+            panel.run_combo.itemData(index) for index in range(panel.run_combo.count())
+        ] == [
+            SaliencyRunIdentity(plan=plan_one, run_index=0),
+            SaliencyRunIdentity(plan=plan_one, run_index=1),
+        ]
+        assert panel.run_combo.findText("Average") == -1
 
-    def test_clears_stale_plans_when_trainers_disappear(self, panel_and_ctrl):
-        panel, ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.model_holder.target_model.__name__ = "EEGNet"
-        trainer.option.repeat_num = 1
-        trainer.get_plans.return_value = [MagicMock()]
-        ctrl.get_trainers.return_value = [trainer]
+    def test_preserves_selection_by_identity_across_publication_generation(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        initial_result = _visualization_result(
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                run_name="Initial 1",
+            ),
+            _run_coverage(
+                plan_index=1,
+                run_index=0,
+                model_name="SCCNet",
+                run_name="Initial 1",
+            ),
+            _run_coverage(
+                plan_index=1,
+                run_index=1,
+                model_name="SCCNet",
+                run_name="Initial 2",
+            ),
+        )
+        assert isinstance(initial_result.state, ApplicationStateSnapshot)
+        store = ApplicationViewStore(
+            initial_result.state,
+            TrainingReadBoundary.no_trainer(),
+        )
+        first_publication = store.read()
+        _publish_panel_state(
+            panel,
+            initial_result,
+            publication=first_publication,
+        )
+        selected_run = SaliencyRunIdentity(
+            plan=SaliencyPlanIdentity(plan_index=1),
+            run_index=1,
+        )
+        _select_run(panel, selected_run)
 
-        panel.refresh_combos()
-        assert panel.plan_combo.count() == 2
-        assert panel.run_combo.count() == 2
+        updated_result = _visualization_result(
+            _run_coverage(
+                plan_index=1,
+                run_index=1,
+                model_name="SCCNet v2",
+                run_name="Updated 2",
+            ),
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                run_name="Updated 1",
+            ),
+            _run_coverage(
+                plan_index=1,
+                run_index=0,
+                model_name="SCCNet v2",
+                run_name="Updated 1",
+            ),
+        )
+        assert isinstance(updated_result.state, ApplicationStateSnapshot)
+        second_publication = store.publish(
+            updated_result.state,
+            TrainingReadBoundary.no_trainer(),
+        )
+        assert second_publication.generation == first_publication.generation + 1
 
-        current_widget = panel.tabs.currentWidget()
-        current_widget.show_error = MagicMock()
-        ctrl.get_trainers.return_value = []
-        panel.refresh_combos()
+        _publish_panel_state(
+            panel,
+            updated_result,
+            publication=second_publication,
+        )
 
+        assert panel.plan_combo.currentData() == selected_run.plan
+        assert panel.plan_combo.currentText() == "Fold 2 (SCCNet v2)"
+        assert panel.run_combo.currentData() == selected_run
+        assert panel.run_combo.currentText() == "Updated 2"
+
+    @pytest.mark.parametrize(
+        ("verified", "stale"),
+        [(False, False), (True, True)],
+        ids=("unverified", "stale"),
+    )
+    def test_rejects_unusable_publication_and_clears_controls(
+        self,
+        panel_and_controller,
+        verified,
+        stale,
+    ):
+        panel, _controller = panel_and_controller
+        result = _visualization_result(
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+            ),
+        )
+        accepted = _publish_panel_state(panel, result)
+        rejected = replace(accepted, verified=verified, stale=stale)
+        assert rejected.usable is False
+
+        assert panel._accept_application_publication(rejected) is False
+        with patch.object(panel, "on_update"):
+            panel.refresh_combos()
+
+        assert panel._application_view_publication is None
         assert panel.plan_combo.count() == 1
         assert panel.plan_combo.itemText(0) == "Select a plan"
         assert panel.run_combo.count() == 0
-        current_widget.show_error.assert_called_once()
+        assert panel._runs_by_plan == {}
+        for view in (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d):
+            cast(Any, view).invalidate_render_publication.assert_called_once_with()
+
+    def test_rejects_publication_with_unreliable_state(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        result = _visualization_result(
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+            ),
+        )
+        accepted = _publish_panel_state(panel, result)
+        unreliable = replace(
+            accepted,
+            state=replace(accepted.state, state_reliable=False),
+        )
+        assert unreliable.usable is True
+        assert unreliable.state.state_reliable is False
+
+        assert panel._accept_application_publication(unreliable) is False
+        assert panel._application_view_publication is None
 
 
 class TestOnPlanChanged:
-    def test_valid_plan(self, panel_and_ctrl):
-        panel, _ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.option.repeat_num = 2
-        panel.friendly_map["Fold 1 (EEGNet)"] = trainer
+    def test_populates_runs_only_for_typed_plan_identity(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        plan = SaliencyPlanIdentity(plan_index=0)
+        result = _visualization_result(
+            _run_coverage(
+                plan_index=0,
+                run_index=1,
+                model_name="EEGNet",
+            ),
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+            ),
+        )
+        _publish_panel_state(panel, result)
 
-        panel.on_plan_changed("Fold 1 (EEGNet)")
-        # Run combo should have "Run 1", "Run 2", "Average"
-        assert panel.run_combo.count() == 3
-        assert panel.run_combo.itemText(2) == "Average"
+        panel.run_combo.clear()
+        with patch.object(panel, "on_update"):
+            panel.on_plan_changed("display text is not the identity")
 
-    def test_unknown_plan(self, panel_and_ctrl):
-        panel, _ = panel_and_ctrl
-        panel.on_plan_changed("does not exist")
+        assert panel.plan_combo.currentData() == plan
+        assert [
+            panel.run_combo.itemData(index) for index in range(panel.run_combo.count())
+        ] == [
+            SaliencyRunIdentity(plan=plan, run_index=0),
+            SaliencyRunIdentity(plan=plan, run_index=1),
+        ]
+
+    def test_placeholder_identity_clears_run_selection(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        panel.plan_combo.blockSignals(True)
+        panel.plan_combo.setCurrentIndex(0)
+        panel.plan_combo.blockSignals(False)
+
+        with patch.object(panel, "on_update"):
+            panel.on_plan_changed("Fold 1 (EEGNet)")
+
+        assert panel.plan_combo.currentData() is None
         assert panel.run_combo.count() == 0
 
 
 class TestOnUpdate:
-    def _setup_plan(self, panel, trainer, plan_text="Fold 1 (EEGNet)"):
-        """Helper to set up a plan selection."""
-        panel.friendly_map[plan_text] = trainer
-        panel.plan_combo.addItem(plan_text)
-        panel.plan_combo.setCurrentText(plan_text)
-
-    def test_no_plan_selected(self, panel_and_ctrl):
-        panel, _ = panel_and_ctrl
-        # Default: plan_combo is "Select a plan"
-        current_widget = panel.tabs.currentWidget()
-        current_widget.show_error = MagicMock()
-        panel.on_update()
-        current_widget.show_error.assert_called_once()
-
-    def test_run_not_selected(self, panel_and_ctrl):
-        panel, _ = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.option.repeat_num = 0
-        trainer.get_plans.return_value = []
-        self._setup_plan(panel, trainer)
-        # run_combo is empty
-
-        current_widget = panel.tabs.currentWidget()
-        current_widget.show_error = MagicMock()
-        panel.on_update()
-        current_widget.show_error.assert_called_once()
-
-    def test_average_run(self, panel_and_ctrl):
-        panel, ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.option.repeat_num = 1
-        trainer.get_plans.return_value = [MagicMock()]
-        self._setup_plan(panel, trainer)
-        panel.run_combo.addItem("Average")
-        panel.run_combo.setCurrentText("Average")
-
-        avg_record = MagicMock()
-        ctrl.get_averaged_record.return_value = avg_record
-
-        current_widget = panel.tabs.currentWidget()
-        current_widget.update_plot = MagicMock()
-        current_widget.repaint = MagicMock()
+    def test_without_valid_selection_shows_placeholder(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        _publish_panel_state(panel, _visualization_result())
+        current_widget = _current_widget(panel)
+        current_widget.show_message.reset_mock()
+        current_widget.show_error.reset_mock()
+        current_widget.update_plot.reset_mock()
 
         panel.on_update()
+
+        current_widget.update_plot.assert_not_called()
+        current_widget.show_error.assert_not_called()
+        current_widget.show_message.assert_called_once_with(
+            "Select a plan and run to continue."
+        )
+
+    def test_without_run_identity_shows_placeholder(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        panel.run_combo.blockSignals(True)
+        panel.run_combo.clear()
+        panel.run_combo.blockSignals(False)
+        current_widget = _current_widget(panel)
+        current_widget.show_message.reset_mock()
+        current_widget.update_plot.reset_mock()
+
+        panel.on_update()
+
+        assert isinstance(panel.plan_combo.currentData(), SaliencyPlanIdentity)
+        assert panel.run_combo.currentData() is None
+        current_widget.update_plot.assert_not_called()
+        current_widget.show_message.assert_called_once_with(
+            "Select a plan and run to continue."
+        )
+
+    def test_missing_publication_with_typed_selection_fails_closed(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        assert isinstance(panel.plan_combo.currentData(), SaliencyPlanIdentity)
+        assert isinstance(panel.run_combo.currentData(), SaliencyRunIdentity)
+        panel._application_view_publication = None
+        current_widget = _current_widget(panel)
+        current_widget.show_message.reset_mock()
+        current_widget.update_plot.reset_mock()
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        ) as get_render:
+            panel.on_update()
+
+        get_render.assert_not_called()
+        current_widget.set_saliency_coverage.assert_called_with(None)
+        current_widget.update_plot.assert_not_called()
+        current_widget.show_message.assert_called_once_with(
+            "Saliency coverage is unavailable because application state could "
+            "not be verified."
+        )
+
+    def test_unknown_typed_run_identity_fails_closed(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        plan_identity = cast(
+            SaliencyPlanIdentity,
+            panel.plan_combo.currentData(),
+        )
+        stale_run = SaliencyRunIdentity(plan=plan_identity, run_index=99)
+        panel.run_combo.blockSignals(True)
+        panel.run_combo.clear()
+        panel.run_combo.addItem("Stale run", stale_run)
+        panel.run_combo.blockSignals(False)
+        current_widget = _current_widget(panel)
+        current_widget.show_message.reset_mock()
+        current_widget.update_plot.reset_mock()
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        ) as get_render:
+            panel.on_update()
+
+        get_render.assert_not_called()
+        current_widget.set_saliency_coverage.assert_called_with(None)
+        current_widget.update_plot.assert_not_called()
+        current_widget.show_message.assert_called_once_with(
+            "Saliency coverage is unavailable for the selected result."
+        )
+
+    def test_unavailable_published_method_never_requests_render(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        unavailable = SaliencyMethodCoverageSnapshot(
+            method="Gradient",
+            available=False,
+            complete=False,
+            classes=[
+                SaliencyClassCoverageSnapshot(
+                    class_index=0,
+                    display_name="left",
+                    available=False,
+                ),
+            ],
+        )
+        _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                    methods=(unavailable,),
+                ),
+            ),
+        )
+        current_widget = _current_widget(panel)
+        current_widget.show_message.reset_mock()
+        current_widget.update_plot.reset_mock()
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        ) as get_render:
+            panel.on_update()
+
+        get_render.assert_not_called()
+        current_widget.set_saliency_coverage.assert_called_with(unavailable)
+        current_widget.update_plot.assert_not_called()
+        current_widget.show_message.assert_called_once_with(
+            "Gradient saliency has not been computed for this run. "
+            "Use Compute Saliency to continue."
+        )
+
+    def test_render_request_uses_exact_publication_and_run_identity(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        coverage = _complete_coverage()
+        publication = _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=2,
+                    run_index=4,
+                    model_name="EEGNet",
+                    run_name="Held-out repeat",
+                    methods=(coverage,),
+                ),
+            ),
+        )
+        plan_identity = SaliencyPlanIdentity(plan_index=2)
+        run_identity = SaliencyRunIdentity(
+            plan=plan_identity,
+            run_index=4,
+        )
+        assert panel.plan_combo.currentData() == plan_identity
+        assert panel.run_combo.currentData() == run_identity
+        expected_request = SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=run_identity,
+            method="Gradient",
+        )
+        requests: list[SaliencyRenderRequest] = []
+
+        def get_render(_panel, request, **_kwargs):
+            requests.append(request)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=_render_data(request.method),
+            )
+
+        current_widget = _current_widget(panel)
+        current_widget.update_plot.reset_mock()
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            side_effect=get_render,
+        ):
+            panel.on_update()
+
+        assert requests == [expected_request]
+        current_widget.set_saliency_coverage.assert_called_with(coverage)
         current_widget.update_plot.assert_called_once()
+        rendered, absolute = current_widget.update_plot.call_args.args
+        assert isinstance(rendered, SaliencyRenderPublication)
+        assert rendered.request == expected_request
+        assert rendered.generation == publication.generation
+        assert absolute is False
 
-    def test_average_no_record(self, panel_and_ctrl):
-        panel, ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        self._setup_plan(panel, trainer)
-        panel.run_combo.addItem("Average")
-        panel.run_combo.setCurrentText("Average")
-        ctrl.get_averaged_record.return_value = None
+    def test_stale_render_publication_is_rejected(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        publication = _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        run_identity = cast(
+            SaliencyRunIdentity,
+            panel.run_combo.currentData(),
+        )
+        stale_request = SaliencyRenderRequest(
+            publication_generation=publication.generation + 1,
+            run=run_identity,
+            method="Gradient",
+        )
+        stale_render = SaliencyRenderPublication(
+            request=stale_request,
+            generation=stale_request.publication_generation,
+            training_generation=8,
+            data=_render_data(),
+        )
+        current_widget = _current_widget(panel)
+        current_widget.show_message.reset_mock()
+        current_widget.update_plot.reset_mock()
 
-        current_widget = panel.tabs.currentWidget()
-        current_widget.show_error = MagicMock()
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            return_value=stale_render,
+        ):
+            panel.on_update()
 
-        panel.on_update()
-        current_widget.show_error.assert_called_once()
-
-    def test_specific_run(self, panel_and_ctrl):
-        panel, _ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.option.repeat_num = 2
-        plan = MagicMock()
-        plan.get_eval_record.return_value = MagicMock()
-        trainer.get_plans.return_value = [plan, MagicMock()]
-        self._setup_plan(panel, trainer)
-        panel.run_combo.addItem("Run 1")
-        panel.run_combo.setCurrentText("Run 1")
-
-        current_widget = panel.tabs.currentWidget()
-        current_widget.update_plot = MagicMock()
-        current_widget.repaint = MagicMock()
-
-        panel.on_update()
-        current_widget.update_plot.assert_called_once()
-
-    def test_run_no_eval_record(self, panel_and_ctrl):
-        panel, _ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.option.repeat_num = 1
-        plan = MagicMock()
-        plan.get_eval_record.return_value = None
-        trainer.get_plans.return_value = [plan]
-        self._setup_plan(panel, trainer)
-        panel.run_combo.addItem("Run 1")
-        panel.run_combo.setCurrentText("Run 1")
-
-        current_widget = panel.tabs.currentWidget()
-        current_widget.show_error = MagicMock()
-
-        panel.on_update()
-        current_widget.show_error.assert_called_once()
-
-    def test_run_index_out_of_range(self, panel_and_ctrl):
-        panel, _ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        trainer.option.repeat_num = 1
-        trainer.get_plans.return_value = []  # empty
-        self._setup_plan(panel, trainer)
-        panel.run_combo.addItem("Run 99")
-        panel.run_combo.setCurrentText("Run 99")
-
-        current_widget = panel.tabs.currentWidget()
-        current_widget.show_error = MagicMock()
-
-        panel.on_update()
-        current_widget.show_error.assert_called_once()
-
-    def test_unparseable_run_name(self, panel_and_ctrl):
-        panel, _ctrl = panel_and_ctrl
-        trainer = MagicMock()
-        self._setup_plan(panel, trainer)
-        panel.run_combo.addItem("CustomName")
-        panel.run_combo.setCurrentText("CustomName")
-
-        current_widget = panel.tabs.currentWidget()
-        current_widget.show_error = MagicMock()
-
-        panel.on_update()
-        current_widget.show_error.assert_called_once()
+        current_widget.update_plot.assert_not_called()
+        current_widget.show_message.assert_called_once_with(
+            "Visualization results changed. Refresh Visualization and try again."
+        )
+        assert panel._application_view_publication is None
+        assert panel._application_summary_dirty is True
 
 
 class TestUpdatePanel:
-    def test_update_panel(self, panel_and_ctrl):
-        panel, _ctrl = panel_and_ctrl
+    def test_update_panel_refreshes_info_then_plot(self, panel_and_controller):
+        panel, _controller = panel_and_controller
         with (
-            patch.object(panel, "update_info") as mock_info,
-            patch.object(panel, "on_update") as mock_update,
+            patch.object(panel, "update_info") as update_info,
+            patch.object(panel, "on_update") as on_update,
         ):
             panel.update_panel()
-            mock_info.assert_called_once()
-            mock_update.assert_called_once()
 
-    def test_update_info(self, panel_and_ctrl):
-        panel, _ctrl = panel_and_ctrl
-        panel.sidebar = MagicMock()
-        with patch.object(panel, "refresh_combos"):
+        update_info.assert_called_once_with()
+        on_update.assert_called_once_with()
+
+    def test_update_info_refreshes_sidebar_and_combos(self, panel_and_controller):
+        panel, _controller = panel_and_controller
+        panel.last_saliency_query = MagicMock()
+        panel._saliency_summary_dirty = False
+        with patch.object(panel, "refresh_combos") as refresh_combos:
             panel.update_info()
-            panel.sidebar.update_info.assert_called_once()
+
+        panel.sidebar.update_info.assert_called_once_with()
+        refresh_combos.assert_called_once_with()
 
 
-def test_visualization_panel_clears_stale_plans_on_preprocess_change(qtbot):
-    preprocess_controller = Observable()
-    panel, ctrl = _make_panel(qtbot, preprocess_controller=preprocess_controller)
-    trainer = MagicMock()
-    trainer.model_holder.target_model.__name__ = "EEGNet"
-    trainer.option.repeat_num = 1
-    trainer.get_plans.return_value = [MagicMock()]
-    ctrl.get_trainers.return_value = [trainer]
-
-    panel.refresh_combos()
-    assert panel.plan_combo.count() == 2
-    assert panel.plan_combo.itemText(1) == "Fold 1 (EEGNet)"
-    assert panel.run_combo.count() == 2
-
-    ctrl.get_trainers.return_value = []
-    preprocess_controller.notify("preprocess_changed")
-    qtbot.wait(50)
-
-    assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a plan"
-    assert panel.run_combo.count() == 0
+class _MainWindowStub(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.study = object()
 
 
-def test_visualization_panel_clears_stale_plans_on_history_cleared(qtbot):
-    training_controller = Observable()
-    panel, ctrl = _make_panel(qtbot)
-    panel.training_controller = training_controller
-    panel._setup_bridges()
-    trainer = MagicMock()
-    trainer.model_holder.target_model.__name__ = "EEGNet"
-    trainer.option.repeat_num = 1
-    trainer.get_plans.return_value = [MagicMock()]
-    ctrl.get_trainers.return_value = [trainer]
-
-    panel.refresh_combos()
-    assert panel.plan_combo.count() == 2
-    assert panel.plan_combo.itemText(1) == "Fold 1 (EEGNet)"
-    assert panel.run_combo.count() == 2
-
-    ctrl.get_trainers.return_value = []
-    training_controller.notify("history_cleared")
-    qtbot.wait(50)
-
-    assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a plan"
-    assert panel.run_combo.count() == 0
-
-
-def test_visualization_panel_clears_stale_plans_on_config_changed(qtbot):
-    training_controller = Observable()
-    panel, ctrl = _make_panel(qtbot)
-    panel.training_controller = training_controller
-    panel._setup_bridges()
-    trainer = MagicMock()
-    trainer.model_holder.target_model.__name__ = "EEGNet"
-    trainer.option.repeat_num = 1
-    trainer.get_plans.return_value = [MagicMock()]
-    ctrl.get_trainers.return_value = [trainer]
-
-    panel.refresh_combos()
-    assert panel.plan_combo.count() == 2
-    assert panel.plan_combo.itemText(1) == "Fold 1 (EEGNet)"
-    assert panel.run_combo.count() == 2
-
-    ctrl.get_trainers.return_value = []
-    training_controller.notify("config_changed")
-    qtbot.wait(50)
-
-    assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a plan"
-    assert panel.run_combo.count() == 0
-
-
-def test_visualization_panel_preserves_selected_plan_and_average_on_training_stopped(
+@pytest.mark.parametrize(
+    ("event_name", "source_kind"),
+    [
+        ("preprocess_changed", "preprocess"),
+        ("history_cleared", "training"),
+        ("config_changed", "training"),
+    ],
+)
+def test_refresh_event_discards_publication_before_empty_republication(
     qtbot,
+    event_name,
+    source_kind,
 ):
+    parent = _MainWindowStub()
+    qtbot.addWidget(parent)
+    source = Observable()
+    panel, _controller = _make_panel(
+        qtbot,
+        training_controller=source if source_kind == "training" else None,
+        preprocess_controller=source if source_kind == "preprocess" else None,
+        parent=parent,
+    )
+    _publish_panel_state(
+        panel,
+        _visualization_result(
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+            ),
+        ),
+    )
+    assert panel.plan_combo.count() == 2
+    assert panel.run_combo.count() == 1
+
+    with patch.object(panel, "update_panel") as update_panel:
+        source.notify(event_name)
+        qtbot.waitUntil(lambda: update_panel.call_count == 1, timeout=1000)
+
+    assert panel._application_view_publication is None
+    assert panel._application_summary_dirty is True
+    assert panel._saliency_summary_dirty is True
+
+    _publish_panel_state(panel, _visualization_result())
+
+    assert panel.plan_combo.count() == 1
+    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.run_combo.count() == 0
+
+
+def test_training_stopped_preserves_typed_selection_in_new_publication(qtbot):
+    parent = _MainWindowStub()
+    qtbot.addWidget(parent)
     training_controller = Observable()
-    panel, ctrl = _make_panel(qtbot)
-    panel.training_controller = training_controller
-    panel._setup_bridges()
+    panel, _controller = _make_panel(
+        qtbot,
+        training_controller=training_controller,
+        parent=parent,
+    )
+    initial_result = _visualization_result(
+        _run_coverage(
+            plan_index=0,
+            run_index=0,
+            model_name="EEGNet",
+        ),
+        _run_coverage(
+            plan_index=1,
+            run_index=0,
+            model_name="SCCNet",
+        ),
+        _run_coverage(
+            plan_index=1,
+            run_index=1,
+            model_name="SCCNet",
+        ),
+    )
+    assert isinstance(initial_result.state, ApplicationStateSnapshot)
+    store = ApplicationViewStore(
+        initial_result.state,
+        TrainingReadBoundary.no_trainer(),
+    )
+    first_publication = store.read()
+    _publish_panel_state(
+        panel,
+        initial_result,
+        publication=first_publication,
+    )
+    selected_run = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=1),
+        run_index=1,
+    )
+    _select_run(panel, selected_run)
 
-    t1 = MagicMock()
-    t1.model_holder.target_model.__name__ = "EEGNet"
-    t1.option.repeat_num = 2
-    t1.get_plans.return_value = [MagicMock(), MagicMock()]
+    with patch.object(panel, "update_panel") as update_panel:
+        training_controller.notify("training_stopped")
+        qtbot.waitUntil(lambda: update_panel.call_count == 1, timeout=1000)
 
-    t2 = MagicMock()
-    t2.model_holder.target_model.__name__ = "SCCNet"
-    t2.option.repeat_num = 2
-    t2.get_plans.return_value = [MagicMock(), MagicMock()]
+    assert panel._application_view_publication is None
+    updated_result = _visualization_result(
+        _run_coverage(
+            plan_index=0,
+            run_index=0,
+            model_name="EEGNet",
+        ),
+        _run_coverage(
+            plan_index=1,
+            run_index=0,
+            model_name="SCCNet",
+            run_name="Repeat 1",
+        ),
+        _run_coverage(
+            plan_index=1,
+            run_index=1,
+            model_name="SCCNet",
+            run_name="Repeat 2",
+        ),
+    )
+    assert isinstance(updated_result.state, ApplicationStateSnapshot)
+    second_publication = store.publish(
+        updated_result.state,
+        TrainingReadBoundary.no_trainer(),
+    )
+    _publish_panel_state(
+        panel,
+        updated_result,
+        publication=second_publication,
+    )
 
-    ctrl.get_trainers.return_value = [t1, t2]
-    ctrl.get_averaged_record.return_value = MagicMock()
-
-    panel.refresh_combos()
-    panel.plan_combo.setCurrentIndex(2)
-    panel.run_combo.setCurrentIndex(2)
-
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
-    assert panel.run_combo.currentText() == "Average"
-
-    training_controller.notify("training_stopped")
-    qtbot.wait(50)
-
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
-    assert panel.run_combo.currentText() == "Average"
+    assert second_publication.generation == first_publication.generation + 1
+    assert panel.plan_combo.currentData() == selected_run.plan
+    assert panel.run_combo.currentData() == selected_run
+    assert panel.run_combo.currentText() == "Repeat 2"

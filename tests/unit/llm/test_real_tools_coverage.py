@@ -1,174 +1,318 @@
-"""Coverage tests for real preprocess + dataset tools — validation, error, and success paths."""
+"""Canonical-surface contracts for real preprocess and dataset tools."""
 
-from contextlib import nullcontext
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+from XBrainLab.backend.application import (
+    ChangedState,
+    CommandName,
+    CommandResult,
+    ErrorType,
+)
+from XBrainLab.llm.tools import application_surface
+from XBrainLab.llm.tools.application_surface import (
+    ToolAvailability,
+    ToolAvailabilityContext,
+)
+from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest
+
+
+def _assert_canonical_result(
+    result: ToolResult,
+    *,
+    tool_name: str,
+    ok: bool,
+    message: str,
+    payload: object,
+    error_type: str,
+    state: dict | None = None,
+) -> None:
+    assert result.ok is ok
+    assert result.message == message
+    assert result.diagnostics == payload
+    if result.payload is None:
+        assert payload == {}
+    else:
+        assert isinstance(result.payload, dict)
+        assert result.payload["status"] == ("ok" if ok else "failed")
+        assert result.payload["command_name"] == (
+            application_surface.TOOL_TO_COMMAND[tool_name].value
+        )
+        assert result.payload["diagnostics"] == payload
+        assert isinstance(result.payload["state"], dict)
+        assert isinstance(result.payload["changed_state"], dict)
+    assert result.error_type == error_type
+    assert result.recoverable is True
+    assert result.command_name == application_surface.TOOL_TO_COMMAND[tool_name].value
+    assert result.capability is not None
+    assert result.capability["tool_name"] == tool_name
+    assert result.state == ({} if result.payload is not None else state)
+    assert isinstance(result.changed_state, dict)
+    assert result.error_code is None
+    assert result.recovery_action is None
+
+
+def _assert_safe_unexpected_result(
+    result: ToolResult,
+    *,
+    tool_name: str,
+) -> None:
+    assert result.ok is False
+    assert result.message == (
+        "The assistant tool could not complete the action. "
+        "Refresh application state before retrying."
+    )
+    assert result.payload is None
+    assert result.error_type == "runtime"
+    assert result.recoverable is False
+    assert result.command_name == application_surface.TOOL_TO_COMMAND[tool_name].value
+    assert result.error_code == "unexpected_tool_failure"
+    assert result.recovery_action == "refresh_application_state"
+    assert result.state is None
+    assert result.capability is None
+    assert result.changed_state["state_unknown"] is True
+    assert result.diagnostics["incident_id"]
 
 
 def _command_result(
     *,
+    command_name: str,
     failed: bool = False,
     message: str = "ok",
     diagnostics: dict | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        failed=failed,
-        ok=not failed,
+) -> CommandResult:
+    if failed:
+        return CommandResult.failure_result(
+            command_name=command_name,
+            message=message,
+            state={},
+            changed_state=ChangedState(),
+            error_type=ErrorType.RUNTIME,
+            recoverable=True,
+            diagnostics=diagnostics,
+        )
+    return CommandResult.success_result(
+        command_name=command_name,
         message=message,
-        diagnostics=diagnostics or {},
+        state={},
+        changed_state=ChangedState(),
+        diagnostics=diagnostics,
     )
 
 
-def _service(
-    result: SimpleNamespace | None = None,
+def _install_canonical_runtime(
+    monkeypatch,
+    tool_name: str,
+    result: CommandResult | None = None,
     *,
     side_effect: Exception | None = None,
-) -> MagicMock:
-    service = MagicMock()
-    service.preprocess.batch_notifications.return_value = nullcontext()
+) -> tuple[MagicMock, MagicMock, MagicMock]:
+    command_name = application_surface.TOOL_TO_COMMAND[tool_name].value
+    availability = ToolAvailability(
+        tool_name=tool_name,
+        enabled=True,
+        command_name=command_name,
+    )
+    context = ToolAvailabilityContext(
+        availability=availability,
+        state={"canonical_snapshot": True},
+        generation=11,
+    )
+    get_context = MagicMock(return_value=context)
+    runtime = MagicMock()
     if side_effect is not None:
-        service.execute.side_effect = side_effect
+        runtime.execute.side_effect = side_effect
     else:
-        service.execute.return_value = result or _command_result()
-    return service
+        runtime.execute.return_value = result or _command_result(
+            command_name=command_name,
+        )
+    runtime_provider = MagicMock(return_value=runtime)
+    monkeypatch.setattr(application_surface, "get_application_context", get_context)
+    monkeypatch.setattr(
+        application_surface,
+        "application_tool_runtime",
+        runtime_provider,
+    )
+    return runtime, get_context, runtime_provider
 
 
 # --- Real Preprocess Tools ---
 
 
-class TestRealBandPassValidation:
-    def test_missing_params_returns_error(self):
-        from XBrainLab.llm.tools.real.preprocess_real import RealBandPassFilterTool
+@pytest.mark.parametrize(
+    ("class_name", "tool_name", "kwargs"),
+    [
+        (
+            "RealBandPassFilterTool",
+            "apply_bandpass_filter",
+            {"low_freq": None, "high_freq": 40.0},
+        ),
+        (
+            "RealBandPassFilterTool",
+            "apply_bandpass_filter",
+            {"low_freq": 4.0, "high_freq": None},
+        ),
+        ("RealNotchFilterTool", "apply_notch_filter", {"freq": None}),
+        ("RealResampleTool", "resample_data", {"rate": None}),
+        ("RealNormalizeTool", "normalize_data", {"method": None}),
+        ("RealRereferenceTool", "set_reference", {"method": None}),
+        ("RealChannelSelectionTool", "select_channels", {"channels": None}),
+    ],
+)
+def test_missing_preprocess_inputs_use_canonical_surface_validation(
+    monkeypatch,
+    class_name: str,
+    tool_name: str,
+    kwargs: dict,
+):
+    from XBrainLab.llm.tools.real import preprocess_real
 
-        tool = RealBandPassFilterTool()
-        assert "Error" in tool.execute(study=MagicMock(), low_freq=None, high_freq=40.0)
-        assert "Error" in tool.execute(study=MagicMock(), low_freq=4.0, high_freq=None)
+    runtime, get_context, runtime_provider = _install_canonical_runtime(
+        monkeypatch,
+        tool_name,
+    )
+    study = object()
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_service_exception_returns_failed(self, mock_get_service):
-        from XBrainLab.llm.tools.real.preprocess_real import RealBandPassFilterTool
+    result = getattr(preprocess_real, class_name)().execute(study, **kwargs)
 
-        mock_get_service.return_value = _service(side_effect=RuntimeError("boom"))
-        tool = RealBandPassFilterTool()
-        result = tool.execute(study=MagicMock(), low_freq=4.0, high_freq=40.0)
-        assert "Bandpass filter failed" in result
-
-
-class TestRealNotchValidation:
-    def test_missing_freq(self):
-        from XBrainLab.llm.tools.real.preprocess_real import RealNotchFilterTool
-
-        tool = RealNotchFilterTool()
-        assert "Error" in tool.execute(study=MagicMock(), freq=None)
-
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_service_exception(self, mock_get_service):
-        from XBrainLab.llm.tools.real.preprocess_real import RealNotchFilterTool
-
-        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
-        tool = RealNotchFilterTool()
-        assert "Notch filter failed" in tool.execute(study=MagicMock(), freq=50.0)
-
-
-class TestRealResampleValidation:
-    def test_missing_rate(self):
-        from XBrainLab.llm.tools.real.preprocess_real import RealResampleTool
-
-        assert "Error" in RealResampleTool().execute(study=MagicMock(), rate=None)
-
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_service_exception(self, mock_get_service):
-        from XBrainLab.llm.tools.real.preprocess_real import RealResampleTool
-
-        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
-        assert "Resample failed" in RealResampleTool().execute(
-            study=MagicMock(), rate=256
-        )
-
-
-class TestRealNormalizeValidation:
-    def test_missing_method(self):
-        from XBrainLab.llm.tools.real.preprocess_real import RealNormalizeTool
-
-        assert "Error" in RealNormalizeTool().execute(study=MagicMock(), method=None)
-
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_service_exception(self, mock_get_service):
-        from XBrainLab.llm.tools.real.preprocess_real import RealNormalizeTool
-
-        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
-        assert "Normalization failed" in RealNormalizeTool().execute(
-            study=MagicMock(), method="z-score"
-        )
+    _assert_canonical_result(
+        result,
+        tool_name=tool_name,
+        ok=False,
+        message="Required inputs are missing for this workflow command.",
+        payload={},
+        error_type="input",
+        state={"canonical_snapshot": True},
+    )
+    runtime.execute.assert_not_called()
+    get_context.assert_called_once_with(study, tool_name, runtime=runtime)
+    runtime_provider.assert_called_once_with(study)
 
 
-class TestRealRereferenceValidation:
-    def test_missing_method(self):
-        from XBrainLab.llm.tools.real.preprocess_real import RealRereferenceTool
+@pytest.mark.parametrize(
+    ("class_name", "tool_name", "kwargs", "expected_command_fields"),
+    [
+        (
+            "RealBandPassFilterTool",
+            "apply_bandpass_filter",
+            {"low_freq": 4.0, "high_freq": 40.0},
+            {"low_freq": 4.0, "high_freq": 40.0},
+        ),
+        (
+            "RealNotchFilterTool",
+            "apply_notch_filter",
+            {"freq": 50.0},
+            {"notch_freq": 50.0},
+        ),
+        (
+            "RealResampleTool",
+            "resample_data",
+            {"rate": 256},
+            {"rate": 256},
+        ),
+        (
+            "RealNormalizeTool",
+            "normalize_data",
+            {"method": "z-score"},
+            {"method": "z-score"},
+        ),
+        (
+            "RealRereferenceTool",
+            "set_reference",
+            {"method": "average"},
+            {"method": "average"},
+        ),
+        (
+            "RealChannelSelectionTool",
+            "select_channels",
+            {"channels": ["C3"]},
+            {"channels": ["C3"]},
+        ),
+    ],
+)
+def test_preprocess_runtime_errors_cross_the_canonical_surface(
+    monkeypatch,
+    class_name: str,
+    tool_name: str,
+    kwargs: dict,
+    expected_command_fields: dict,
+):
+    from XBrainLab.llm.tools.real import preprocess_real
 
-        assert "Error" in RealRereferenceTool().execute(study=MagicMock(), method=None)
+    error = RuntimeError(f"{tool_name} exploded")
+    runtime, get_context, runtime_provider = _install_canonical_runtime(
+        monkeypatch,
+        tool_name,
+        side_effect=error,
+    )
+    study = object()
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_service_exception(self, mock_get_service):
-        from XBrainLab.llm.tools.real.preprocess_real import RealRereferenceTool
+    result = getattr(preprocess_real, class_name)().execute(study, **kwargs)
 
-        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
-        assert "Re-reference failed" in RealRereferenceTool().execute(
-            study=MagicMock(), method="average"
-        )
-
-
-class TestRealChannelSelectionValidation:
-    def test_missing_channels(self):
-        from XBrainLab.llm.tools.real.preprocess_real import RealChannelSelectionTool
-
-        assert "Error" in RealChannelSelectionTool().execute(
-            study=MagicMock(), channels=None
-        )
-
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_service_exception(self, mock_get_service):
-        from XBrainLab.llm.tools.real.preprocess_real import RealChannelSelectionTool
-
-        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
-        assert "Channel selection failed" in RealChannelSelectionTool().execute(
-            study=MagicMock(), channels=["C3"]
-        )
+    command = runtime.execute.call_args.args[0]
+    for field, expected in expected_command_fields.items():
+        assert getattr(command, field) == expected
+    _assert_safe_unexpected_result(result, tool_name=tool_name)
+    get_context.assert_called_once_with(study, tool_name, runtime=runtime)
+    runtime_provider.assert_called_once_with(study)
 
 
 class TestRealSetMontageValidation:
     def test_missing_montage_name(self):
         from XBrainLab.llm.tools.real.preprocess_real import RealSetMontageTool
 
-        assert "Error" in RealSetMontageTool().execute(
-            study=MagicMock(), montage_name=None
-        )
+        result = RealSetMontageTool().execute(study=MagicMock(), montage_name=None)
+        assert isinstance(result, ToolResult)
+        assert result.ok is False
+        assert result.error_type == "input"
+        assert "montage name" in result.message
 
 
 class TestRealEpochDataError:
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_service_exception(self, mock_get_service):
+    def test_runtime_exception_uses_canonical_surface(self, monkeypatch):
         from XBrainLab.llm.tools.real.preprocess_real import RealEpochDataTool
 
-        mock_get_service.return_value = _service(side_effect=RuntimeError("bad epoch"))
-        result = RealEpochDataTool().execute(study=MagicMock(), t_min=-0.1, t_max=1.0)
-        assert "Epoching failed" in result
+        error = RuntimeError("bad epoch")
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "epoch_data",
+            side_effect=error,
+        )
+        study = object()
+
+        result = RealEpochDataTool().execute(study=study, t_min=-0.1, t_max=1.0)
+
+        command = runtime.execute.call_args.args[0]
+        assert command.t_min == -0.1
+        assert command.t_max == 1.0
+        assert command.baseline is None
+        assert command.event_ids is None
+        _assert_safe_unexpected_result(result, tool_name="epoch_data")
+        get_context.assert_called_once_with(study, "epoch_data", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
 
 
 class TestRealStandardPreprocessOptionalSteps:
-    """Cover the optional branches in RealStandardPreprocessTool."""
+    """Verify optional parameters are translated only by ApplicationSurface."""
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
-    def test_all_optional_steps(self, mock_get_service):
-        from XBrainLab.backend.application import PreprocessCommand, PreprocessOperation
+    def test_all_optional_steps(self, monkeypatch):
+        from XBrainLab.backend.application import PreprocessOperation
         from XBrainLab.llm.tools.real.preprocess_real import RealStandardPreprocessTool
 
-        service = _service(_command_result())
-        mock_get_service.return_value = service
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "apply_standard_preprocess",
+            _command_result(
+                command_name=CommandName.PREPROCESS.value,
+                message="Standard preprocessing applied.",
+                diagnostics={"operations": 6},
+            ),
+        )
+        study = object()
 
-        tool = RealStandardPreprocessTool()
-        result = tool.execute(
-            study=MagicMock(),
+        result = RealStandardPreprocessTool().execute(
+            study=study,
             l_freq=4.0,
             h_freq=40.0,
             notch_freq=50.0,
@@ -176,19 +320,29 @@ class TestRealStandardPreprocessOptionalSteps:
             rereference="average",
             normalize_method="z-score",
         )
-        assert "successfully" in result.lower()
-        operations = [
-            call.args[0].operation
-            for call in service.execute.call_args_list
-            if isinstance(call.args[0], PreprocessCommand)
-        ]
-        assert operations == [
-            PreprocessOperation.BANDPASS,
-            PreprocessOperation.NOTCH,
-            PreprocessOperation.RESAMPLE,
-            PreprocessOperation.REREFERENCE,
-            PreprocessOperation.NORMALIZE,
-        ]
+
+        command = runtime.execute.call_args.args[0]
+        assert command.operation == PreprocessOperation.STANDARD
+        assert command.low_freq == 4.0
+        assert command.high_freq == 40.0
+        assert command.notch_freq == 50.0
+        assert command.rate == 256
+        assert command.method == "z-score"
+        assert command.channels == ["average"]
+        _assert_canonical_result(
+            result,
+            tool_name="apply_standard_preprocess",
+            ok=True,
+            message="Standard preprocessing applied.",
+            payload={"operations": 6},
+            error_type="none",
+        )
+        get_context.assert_called_once_with(
+            study,
+            "apply_standard_preprocess",
+            runtime=runtime,
+        )
+        runtime_provider.assert_called_once_with(study)
 
 
 # --- Real Dataset Tools ---
@@ -198,7 +352,9 @@ class TestRealListFilesValidation:
     def test_empty_directory(self):
         from XBrainLab.llm.tools.real.dataset_real import RealListFilesTool
 
-        assert "Error" in RealListFilesTool().execute(study=MagicMock(), directory=None)
+        result = RealListFilesTool().execute(study=MagicMock(), directory=None)
+        assert result.ok is False
+        assert result.error_type == "input"
 
     @patch("XBrainLab.llm.tools.real.dataset_real.os.path.isdir", return_value=False)
     def test_nonexistent_directory(self, _mock):
@@ -207,7 +363,8 @@ class TestRealListFilesValidation:
         result = RealListFilesTool().execute(
             study=MagicMock(), directory="/nonexistent/path"
         )
-        assert "does not exist" in result
+        assert result.ok is False
+        assert "does not exist" in result.message
 
     @patch(
         "XBrainLab.llm.tools.real.dataset_real.os.listdir",
@@ -220,9 +377,8 @@ class TestRealListFilesValidation:
         result = RealListFilesTool().execute(
             study=MagicMock(), directory="/data", pattern="*.gdf"
         )
-        assert "a.gdf" in result
-        assert "c.gdf" in result
-        assert "b.set" not in result
+        assert result.ok is True
+        assert result.payload == ["a.gdf", "c.gdf"]
 
 
 class TestRealListFilesSecurity:
@@ -232,78 +388,191 @@ class TestRealListFilesSecurity:
         result = RealListFilesTool().execute(
             study=MagicMock(), directory="C:\\Windows\\System32"
         )
-        assert "not allowed" in result or "Error" in result
+        assert result.ok is False
+        assert result.error_type in {"permission", "input"}
 
 
 class TestRealLoadDataValidation:
-    def test_empty_paths(self):
+    @pytest.mark.parametrize("paths", [None, []])
+    def test_empty_paths_use_canonical_surface_validation(self, monkeypatch, paths):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
-        assert "Error" in RealLoadDataTool().execute(study=MagicMock(), paths=None)
-        assert "Error" in RealLoadDataTool().execute(study=MagicMock(), paths=[])
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "load_data",
+        )
+        study = object()
 
-    @patch("XBrainLab.llm.tools.real.dataset_real.os.path.isdir", return_value=True)
-    @patch(
-        "XBrainLab.llm.tools.real.dataset_real.os.listdir",
-        side_effect=PermissionError("no access"),
-    )
-    def test_directory_scan_error(self, _mock_list, _mock_isdir):
+        result = RealLoadDataTool().execute(study=study, paths=paths)
+
+        _assert_canonical_result(
+            result,
+            tool_name="load_data",
+            ok=False,
+            message="Required inputs are missing for this workflow command.",
+            payload={},
+            error_type="input",
+            state={"canonical_snapshot": True},
+        )
+        runtime.execute.assert_not_called()
+        get_context.assert_called_once_with(study, "load_data", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
+
+    def test_directory_scan_error_is_owned_by_canonical_surface(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
-        result = RealLoadDataTool().execute(study=MagicMock(), paths=["/secure/dir"])
-        assert "Error scanning directory" in result
+        monkeypatch.setattr(application_surface.os.path, "isdir", lambda _path: True)
+        monkeypatch.setattr(
+            application_surface.os,
+            "listdir",
+            MagicMock(side_effect=PermissionError("no access")),
+        )
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "load_data",
+        )
+        study = object()
 
-    @patch("XBrainLab.llm.tools.real.dataset_real.os.path.isdir", return_value=True)
-    @patch("XBrainLab.llm.tools.real.dataset_real.os.listdir", return_value=[])
-    def test_no_valid_files(self, _mock_list, _mock_isdir):
+        result = RealLoadDataTool().execute(study=study, paths=["/secure/dir"])
+
+        _assert_canonical_result(
+            result,
+            tool_name="load_data",
+            ok=False,
+            message="Required inputs are missing for this workflow command.",
+            payload={},
+            error_type="input",
+            state={"canonical_snapshot": True},
+        )
+        runtime.execute.assert_not_called()
+        get_context.assert_called_once_with(study, "load_data", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
+
+    def test_no_valid_files_is_owned_by_canonical_surface(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
-        result = RealLoadDataTool().execute(study=MagicMock(), paths=["/empty/dir"])
-        assert "No valid files" in result
+        monkeypatch.setattr(application_surface.os.path, "isdir", lambda _path: True)
+        monkeypatch.setattr(application_surface.os, "listdir", lambda _path: [])
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "load_data",
+        )
+        study = object()
 
-    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
-    @patch("XBrainLab.llm.tools.real.dataset_real.os.path.isdir", return_value=False)
-    def test_partial_success(self, _mock_isdir, mock_get_service):
+        result = RealLoadDataTool().execute(study=study, paths=["/empty/dir"])
+
+        _assert_canonical_result(
+            result,
+            tool_name="load_data",
+            ok=False,
+            message="Required inputs are missing for this workflow command.",
+            payload={},
+            error_type="input",
+            state={"canonical_snapshot": True},
+        )
+        runtime.execute.assert_not_called()
+        get_context.assert_called_once_with(study, "load_data", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
+
+    def test_partial_success_preserves_canonical_structured_result(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
-        mock_get_service.return_value = _service(
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "load_data",
             _command_result(
+                command_name=CommandName.LOAD_DATA.value,
+                message="Loaded 2 file(s); 1 failed.",
                 diagnostics={"success_count": 2, "errors": ["err1"]},
             ),
         )
+        study = object()
+
         result = RealLoadDataTool().execute(
-            study=MagicMock(), paths=["/a.gdf", "/b.gdf"]
+            study=study,
+            paths=["/a.gdf", "/b.gdf"],
         )
-        assert "Successfully loaded 2 files" in result
-        assert "Errors" in result
+
+        command = runtime.execute.call_args.args[0]
+        assert command.paths == ["/a.gdf", "/b.gdf"]
+        _assert_canonical_result(
+            result,
+            tool_name="load_data",
+            ok=True,
+            message="Loaded 2 file(s); 1 failed.",
+            payload={"success_count": 2, "errors": ["err1"]},
+            error_type="none",
+        )
+        get_context.assert_called_once_with(study, "load_data", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
 
 
 class TestRealAttachLabelsValidation:
-    def test_missing_mapping(self):
+    def test_missing_mapping_uses_canonical_surface_validation(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealAttachLabelsTool
 
-        assert "Error" in RealAttachLabelsTool().execute(
-            study=MagicMock(), mapping=None
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "attach_labels",
         )
+        study = object()
 
-    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
-    def test_no_labels_attached(self, mock_get_service):
+        result = RealAttachLabelsTool().execute(study=study, mapping=None)
+
+        _assert_canonical_result(
+            result,
+            tool_name="attach_labels",
+            ok=False,
+            message="Required inputs are missing for this workflow command.",
+            payload={},
+            error_type="input",
+            state={"canonical_snapshot": True},
+        )
+        runtime.execute.assert_not_called()
+        get_context.assert_called_once_with(study, "attach_labels", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
+
+    def test_no_labels_attached_preserves_canonical_result(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealAttachLabelsTool
 
-        mock_get_service.return_value = _service(
-            _command_result(diagnostics={"success_count": 0}),
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "attach_labels",
+            _command_result(
+                command_name=CommandName.ATTACH_LABELS.value,
+                message="No labels attached.",
+                diagnostics={"success_count": 0},
+            ),
         )
-        result = RealAttachLabelsTool().execute(study=MagicMock(), mapping={"a": "b"})
-        assert "No labels attached" in result
+        study = object()
+
+        result = RealAttachLabelsTool().execute(study=study, mapping={"a": "b"})
+
+        command = runtime.execute.call_args.args[0]
+        assert command.mapping == {"a": "b"}
+        assert command.label_paths == ["b"]
+        _assert_canonical_result(
+            result,
+            tool_name="attach_labels",
+            ok=True,
+            message="No labels attached.",
+            payload={"success_count": 0},
+            error_type="none",
+        )
+        get_context.assert_called_once_with(study, "attach_labels", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
 
 
 class TestRealGetDatasetInfoEvents:
-    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
-    def test_summary_with_events(self, mock_get_service):
+    def test_summary_with_events_uses_canonical_query(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealGetDatasetInfoTool
 
-        mock_get_service.return_value = _service(
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "query_state",
             _command_result(
+                command_name=CommandName.QUERY_STATE.value,
+                message="Dataset summary.",
                 diagnostics={
                     "count": 3,
                     "files": ["a.gdf", "b.gdf", "c.gdf"],
@@ -312,21 +581,66 @@ class TestRealGetDatasetInfoEvents:
                 },
             ),
         )
-        result = RealGetDatasetInfoTool().execute(study=MagicMock())
-        assert "Events: 120" in result
-        assert "Unique: 4" in result
+        study = object()
+
+        result = RealGetDatasetInfoTool().execute(study=study)
+
+        command = runtime.execute.call_args.args[0]
+        assert command.query == "data_summary"
+        _assert_canonical_result(
+            result,
+            tool_name="query_state",
+            ok=True,
+            message="Loaded 3 files:\na.gdf\nb.gdf\nc.gdf\nEvents: 120 (Unique: 4)",
+            payload={
+                "count": 3,
+                "files": ["a.gdf", "b.gdf", "c.gdf"],
+                "total": 120,
+                "unique_count": 4,
+            },
+            error_type="none",
+        )
+        get_context.assert_called_once_with(study, "query_state", runtime=runtime)
+        runtime_provider.assert_called_once_with(study)
 
 
 class TestRealGenerateDatasetError:
-    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
-    def test_generation_failure(self, mock_get_service):
+    def test_generation_failure_preserves_canonical_result(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealGenerateDatasetTool
 
-        mock_get_service.return_value = _service(
-            _command_result(failed=True, message="fail"),
+        runtime, get_context, runtime_provider = _install_canonical_runtime(
+            monkeypatch,
+            "generate_dataset",
+            _command_result(
+                command_name=CommandName.GENERATE_DATASET.value,
+                failed=True,
+                message="Dataset generation failed.",
+                diagnostics={"reason": "split unavailable"},
+            ),
         )
-        result = RealGenerateDatasetTool().execute(study=MagicMock())
-        assert "Dataset generation failed" in result
+        study = object()
+
+        result = RealGenerateDatasetTool().execute(study=study)
+
+        command = runtime.execute.call_args.args[0]
+        assert command.test_ratio == 0.2
+        assert command.val_ratio == 0.2
+        assert command.split_strategy == "trial"
+        assert command.training_mode == "individual"
+        _assert_canonical_result(
+            result,
+            tool_name="generate_dataset",
+            ok=False,
+            message="Dataset generation failed.",
+            payload={"reason": "split unavailable"},
+            error_type="runtime",
+        )
+        get_context.assert_called_once_with(
+            study,
+            "generate_dataset",
+            runtime=runtime,
+        )
+        runtime_provider.assert_called_once_with(study)
 
 
 # --- Tool Registry ---
@@ -362,4 +676,6 @@ class TestRealSwitchPanelNoViewMode:
 
         tool = RealSwitchPanelTool()
         result = tool.execute(study=MagicMock(), panel_name="training", view_mode=None)
-        assert "training" in result.lower()
+        assert isinstance(result, UiRequest)
+        assert result.kind.value == "switch_panel"
+        assert result.params == {"panel": "training", "view_mode": None}

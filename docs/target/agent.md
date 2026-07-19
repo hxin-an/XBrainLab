@@ -87,11 +87,17 @@ case 數量目標：
 - multi-turn workflow cases 至少 `15` 個。
 - local LLM primary / fallback runner 至少重跑 `3` 次；不足時只能標成 exploratory。
 
-目前 Goal 1 已有 tool-call benchmark runner 和 dashboard：deterministic baseline、
-primary local model、fallback local model 都已用同一份 `117` cases 重跑，primary /
-fallback 各 `3` 次，artifact 顯示 `117 / 117`。這支撐目前 benchmark slice 的
-thesis-candidate tool-call claim；仍不代表 UI usability、Windows launcher、雙螢幕 /
-DPI、長時間桌面會話、EEG training quality 或 product completion 已完成。
+先前的 primary / fallback `117 / 117` artifacts 使用舊 prompt 與舊 scorer schema；該
+prompt 會加入 evaluator 推導的 intent、direct command 和 case-specific blocked reason，
+因此這個數字已撤回，不能再作為 raw model accuracy 或 thesis-candidate evidence。
+
+目前 runner 已把 primary prompt condition 固定為
+`state_capability_unassisted`：只提供使用者對話、compact backend state 與 capability-filtered
+tool contracts；raw model score 與 host-assisted normalization / blocking score 分開保存。新的
+primary / fallback 正式主張必須在乾淨 checkpoint 上，以新版 schema 各跑至少 `100` cases、
+`3` repeats，並保存 prompt condition、完整 attempts、source fingerprints 和 failure taxonomy。
+在重跑完成前，目前只能宣稱 strict-envelope implementation contract 有測試保護，不能宣稱
+任何 local-model tool-call accuracy 或 thesis-candidate benchmark 結果。
 
 這套 scoring system 才是 thesis evidence 的核心之一；dashboard clean 只能證明工程健康，不能替代 tool-call 準確率評估。
 

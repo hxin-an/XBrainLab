@@ -32,6 +32,32 @@ def _assert_no_overlap(widgets: list[QWidget], ancestor: QWidget) -> None:
         assert previous.bottom() < current.top()
 
 
+def _assert_evaluation_info_is_reachable(panel, qtbot) -> None:
+    panel._update_responsive_layout()
+    if panel._info_in_bottom_tabs:
+        tabs = panel.chart_tabs if panel._details_in_chart_tabs else panel.bottom_tabs
+        info_index = tabs.indexOf(panel.info_tab)
+        assert info_index >= 0
+        tabs.setCurrentIndex(info_index)
+        qtbot.wait(0)
+
+        scroll_area = panel.info_tab_scroll
+        assert panel.info_panel.parentWidget() is scroll_area.content
+        if not scroll_area.isVisibleTo(panel):
+            assert panel.plot_stack.currentWidget() is panel.no_data_label
+            return
+        scroll_area.ensureWidgetVisible(panel.info_panel, 0, 8)
+        qtbot.wait(0)
+        info_rect = _widget_rect_in(panel.info_panel, scroll_area.viewport())
+        assert info_rect.intersects(scroll_area.viewport().rect())
+        return
+
+    sidebar_rect = _widget_rect_in(panel.right_panel, panel)
+    assert panel.rect().contains(sidebar_rect)
+    info_rect = _widget_rect_in(panel.info_panel, panel.right_panel)
+    assert panel.right_panel.rect().contains(info_rect)
+
+
 @pytest.mark.parametrize(("width", "height"), TARGET_WINDOW_SIZES)
 def test_five_panel_sidebars_are_responsive_and_actions_remain_reachable(
     qtbot,
@@ -50,24 +76,23 @@ def test_five_panel_sidebars_are_responsive_and_actions_remain_reachable(
     )
 
     for index in range(5):
-        window.switch_page(index)
+        ready_panels = []
+        window.switch_page(index, on_ready=ready_panels.append)
+        qtbot.waitUntil(
+            lambda panels=ready_panels: len(panels) == 1,
+            timeout=5_000,
+        )
         qtbot.wait(0)
 
-        panel = window.stack.currentWidget()
+        panel = ready_panels[0]
         assert panel is not None
-        is_action_sidebar = index != 3
-        sidebar = (
-            panel.sidebar
-            if is_action_sidebar
-            else window.evaluation_panel.info_panel.parentWidget()
-        )
+        if index == 3:
+            _assert_evaluation_info_is_reachable(panel, qtbot)
+            continue
+
+        sidebar = panel.sidebar
         sidebar_rect = _widget_rect_in(sidebar, panel)
         assert panel.rect().contains(sidebar_rect)
-
-        if not is_action_sidebar:
-            info_rect = _widget_rect_in(window.evaluation_panel.info_panel, sidebar)
-            assert sidebar.rect().contains(info_rect)
-            continue
 
         scroll_area = sidebar.scroll_area
         vertical_owners = [

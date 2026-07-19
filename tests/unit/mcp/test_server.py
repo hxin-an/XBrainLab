@@ -4,8 +4,13 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import numpy as np
+import torch
+
 from XBrainLab.backend.application import ApplicationService, CommandName
+from XBrainLab.backend.dataset.epochs import EpochWindowProvenance
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.mcp.server import PROTOCOL_VERSION, MCPServer
 
 
@@ -219,9 +224,49 @@ def test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists():
     raw.get_filename.return_value = "sample.fif"
     raw.get_filepath.return_value = "/tmp/sample.fif"
     service.study.loaded_data_list = [raw]
-    cast(Any, service.study).datasets = [object()]
-    cast(Any, service.study).model_holder = object()
-    cast(Any, service.study).training_option = object()
+    epoch_data = MagicMock()
+    epoch_data.get_data.return_value = np.zeros((4, 1, 8), dtype=np.float32)
+    labels = np.asarray([0, 1, 0, 1])
+    epoch_data.get_label_list.return_value = labels
+    epoch_data.get_label_list_by_mask.side_effect = lambda mask: labels[mask]
+    epoch_data.get_label_number.return_value = 2
+    epoch_data.get_model_args.return_value = {}
+    epoch_data.get_epoch_window_provenance.return_value = tuple(
+        EpochWindowProvenance(
+            source_recording_id=f"path-sha256:{'a' * 64}",
+            event_sample=index * 20,
+            window_start_sample=index * 20,
+            window_end_sample_exclusive=index * 20 + 8,
+            source_sfreq=100.0,
+            epoch_sfreq=100.0,
+            tmin_seconds=0.0,
+            tmax_seconds=0.07,
+            source_coordinates_verified=True,
+        )
+        for index in range(4)
+    )
+    dataset = MagicMock()
+    dataset.get_epoch_data.return_value = epoch_data
+    dataset.get_name.return_value = "test dataset"
+    dataset.train_mask = np.asarray([True, True, False, False])
+    dataset.val_mask = np.asarray([False, False, True, False])
+    dataset.test_mask = np.asarray([False, False, False, True])
+    cast(Any, service.study).datasets = [dataset]
+    service.study.model_holder = ModelHolder(torch.nn.Identity, {})
+    service.study.training_option = TrainingOption(
+        "/tmp/xbrainlab-mcp-test",
+        torch.optim.Adam,
+        {},
+        True,
+        None,
+        1,
+        2,
+        0.001,
+        0,
+        TrainingEvaluation.VAL_ACC,
+        1,
+    )
+    service.get_state()
     server = MCPServer(service)
     server.handle_message(
         {

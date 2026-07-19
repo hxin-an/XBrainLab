@@ -4,13 +4,13 @@
   "artifact_metadata": {
     "status": "current release-candidate visualization evidence",
     "generator": "scripts/dev/capture_visualization_render_walkthrough.py",
-    "environment": "Qt offscreen VisualizationPanel capture with PYVISTA_OFF_SCREEN",
-    "supports": "MainWindow VisualizationPanel 2D saliency renders and headless 3D blocked state",
+    "environment": "Qt offscreen noninteractive VisualizationPanel capture",
+    "supports": "MainWindow VisualizationPanel 2D saliency renders and the user-facing 3D blocked state",
     "does_not_support": "interactive 3D render or human Windows click-through acceptance",
-    "next_human_or_runtime_gate": "manual desktop visualization click-through with an interactive OpenGL session"
+    "next_human_or_runtime_gate": "repeat this walkthrough in an interactive XCB/OpenGL runtime"
   },
   "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
-  "training_output_dir": "/tmp/xbrainlab-visualization-render-output",
+  "training_output_dir": "/mnt/d/workspace_v2/tmp/xbrainlab-visualization-render-output",
   "dataset_preparation": {
     "ok": true,
     "commands": [
@@ -88,6 +88,7 @@
               "participants_file": null,
               "participant_count": 0,
               "participants": [],
+              "metadata_materialized": false,
               "channel_status_summary": {
                 "total": 0,
                 "good": 0,
@@ -122,7 +123,20 @@
                 "channels_files": []
               },
               "dataset_description": null,
-              "dataset": {}
+              "dataset": {},
+              "root_validation_issue": "",
+              "metadata_read_budget": {
+                "budget_bytes": 1048576,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              },
+              "looks_like_bids": false,
+              "metadata_discovery": {
+                "budget_bytes": 1048576,
+                "candidate_bytes": 0,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              }
             },
             "format_capabilities": [
               {
@@ -171,6 +185,7 @@
               "participants_file": null,
               "participant_count": 0,
               "participants": [],
+              "metadata_materialized": true,
               "channel_status_summary": {
                 "total": 0,
                 "good": 0,
@@ -205,7 +220,20 @@
                 "channels_files": []
               },
               "dataset_description": null,
-              "dataset": {}
+              "dataset": {},
+              "root_validation_issue": "",
+              "metadata_read_budget": {
+                "budget_bytes": 1048576,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              },
+              "looks_like_bids": false,
+              "metadata_discovery": {
+                "budget_bytes": 1048576,
+                "candidate_bytes": 0,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              }
             },
             "label_carrier_plan": [],
             "event_roles": {
@@ -220,21 +248,25 @@
               "source": "mne_internal_events",
               "file_count": 1,
               "scanned_files": [
+                "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+              ],
+              "scanned_file_names": [
                 "training_completion_raw.fif"
               ],
-              "event_count": 6,
+              "event_count": 12,
               "candidate_label_events": [
                 {
                   "event_code": "left",
                   "code": "left",
                   "use_as": "Class label",
-                  "event_count": 3,
+                  "event_count": 6,
                   "coverage": "1/1 files",
                   "present_files": 1,
                   "total_files": 1,
                   "missing_files": [],
+                  "missing_file_paths": [],
                   "file_counts": {
-                    "training_completion_raw.fif": 3
+                    "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif": 6
                   },
                   "evidence": "Class-like text",
                   "class_name": "left"
@@ -243,13 +275,14 @@
                   "event_code": "right",
                   "code": "right",
                   "use_as": "Class label",
-                  "event_count": 3,
+                  "event_count": 6,
                   "coverage": "1/1 files",
                   "present_files": 1,
                   "total_files": 1,
                   "missing_files": [],
+                  "missing_file_paths": [],
                   "file_counts": {
-                    "training_completion_raw.fif": 3
+                    "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif": 6
                   },
                   "evidence": "Class-like text",
                   "class_name": "right"
@@ -264,6 +297,10 @@
                 "left",
                 "right"
               ],
+              "label_event_counts": {
+                "left": 6,
+                "right": 6
+              },
               "not_label_event_codes": [],
               "class_map": {
                 "left": "left",
@@ -326,8 +363,6 @@
             ],
             "warnings": [],
             "confirmation_items": [
-              "Confirm run metadata for training_completion_raw.fif.",
-              "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
               "Confirm task metadata for training_completion_raw.fif.",
               "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
@@ -336,10 +371,32 @@
             "choices": {
               "label_carrier": "embedded_events"
             },
+            "content_identity": {
+              "version": 3,
+              "algorithm": "sha256",
+              "scope": "selected_eeg_parser_dependencies_label_carriers_and_local_bids_sidecars",
+              "scope_sha256": "b083575ad473c0d7ae413e1ebaa81bd353b90e153f241697a882702fe01642fb",
+              "content_sha256": "2d3e4ace68465657133e0b703c8e133c596c844d048f17b78842b1efc0cf6a86",
+              "review_contract_sha256": "d0b1140a575c9db1125db534edb6e215e6513036cd68dc15883e46d810f9df98",
+              "files": [
+                {
+                  "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                  "role": "selected_eeg",
+                  "file_bytes": 52709,
+                  "sha256": "467352ff700a9d2ae61765507fc5b8431a6a4e3ac4398955cd2c538d90951b69"
+                }
+              ],
+              "selected_eeg_files": [
+                "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+              ],
+              "parser_dependencies": [],
+              "bindings": []
+            },
             "recipe_trace": [
               "scan:scan-1",
               "candidate:candidate-2",
-              "choices:label_carrier"
+              "choices:label_carrier",
+              "content:b083575ad473c0d7ae413e1ebaa81bd353b90e153f241697a882702fe01642fb"
             ]
           },
           "preview": {
@@ -354,37 +411,23 @@
             ],
             "action_items": [
               {
-                "issue": "Confirm run metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
-                "target_step": "Review Metadata",
-                "severity": "needs_confirmation"
-              },
-              {
-                "issue": "Confirm session metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
-                "target_step": "Review Metadata",
-                "severity": "needs_confirmation"
-              },
-              {
                 "issue": "Confirm subject metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
+                "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+                "next_action": "Set or confirm the missing values in Review Metadata.",
                 "target_step": "Review Metadata",
                 "severity": "needs_confirmation"
               },
               {
                 "issue": "Confirm task metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
+                "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+                "next_action": "Set or confirm the missing values in Review Metadata.",
                 "target_step": "Review Metadata",
                 "severity": "needs_confirmation"
               },
               {
                 "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
+                "impact": "Class, timing, artifact, or system events could be mistaken for training labels or omitted from the import.",
+                "next_action": "Assign each event role in Match Labels.",
                 "target_step": "Match Labels",
                 "severity": "needs_confirmation"
               }
@@ -443,8 +486,6 @@
             ],
             "warnings": [],
             "confirmation_items": [
-              "Confirm run metadata for training_completion_raw.fif.",
-              "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
               "Confirm task metadata for training_completion_raw.fif.",
               "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
@@ -468,6 +509,7 @@
               "participants_file": null,
               "participant_count": 0,
               "participants": [],
+              "metadata_materialized": true,
               "channel_status_summary": {
                 "total": 0,
                 "good": 0,
@@ -502,7 +544,20 @@
                 "channels_files": []
               },
               "dataset_description": null,
-              "dataset": {}
+              "dataset": {},
+              "root_validation_issue": "",
+              "metadata_read_budget": {
+                "budget_bytes": 1048576,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              },
+              "looks_like_bids": false,
+              "metadata_discovery": {
+                "budget_bytes": 1048576,
+                "candidate_bytes": 0,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              }
             },
             "event_roles": {
               "internal_events": "event role candidates"
@@ -516,21 +571,25 @@
               "source": "mne_internal_events",
               "file_count": 1,
               "scanned_files": [
+                "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+              ],
+              "scanned_file_names": [
                 "training_completion_raw.fif"
               ],
-              "event_count": 6,
+              "event_count": 12,
               "candidate_label_events": [
                 {
                   "event_code": "left",
                   "code": "left",
                   "use_as": "Class label",
-                  "event_count": 3,
+                  "event_count": 6,
                   "coverage": "1/1 files",
                   "present_files": 1,
                   "total_files": 1,
                   "missing_files": [],
+                  "missing_file_paths": [],
                   "file_counts": {
-                    "training_completion_raw.fif": 3
+                    "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif": 6
                   },
                   "evidence": "Class-like text",
                   "class_name": "left"
@@ -539,13 +598,14 @@
                   "event_code": "right",
                   "code": "right",
                   "use_as": "Class label",
-                  "event_count": 3,
+                  "event_count": 6,
                   "coverage": "1/1 files",
                   "present_files": 1,
                   "total_files": 1,
                   "missing_files": [],
+                  "missing_file_paths": [],
                   "file_counts": {
-                    "training_completion_raw.fif": 3
+                    "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif": 6
                   },
                   "evidence": "Class-like text",
                   "class_name": "right"
@@ -555,7 +615,226 @@
               "names_reliable": true,
               "pattern_status": "Suggested label events found"
             },
-            "recipe_reload_summary": {}
+            "recipe_reload_summary": {},
+            "resource_preflight": {
+              "path_count": 1,
+              "eeg_path_count": 1,
+              "label_carrier_count": 0,
+              "scan_metadata_count": 0,
+              "file_bytes": 52709,
+              "raw_eeg_bytes": 102400,
+              "metadata_bytes": 1051648,
+              "label_carrier_file_bytes": 0,
+              "label_carrier_working_set_bytes": 0,
+              "label_carrier_persistent_bytes": 0,
+              "label_parser_transient_peak_bytes": 0,
+              "scan_metadata_file_bytes": 0,
+              "scan_metadata_working_set_bytes": 0,
+              "scan_metadata_persistent_bytes": 0,
+              "scan_metadata_parser_transient_peak_bytes": 0,
+              "external_parser_transient_peak_bytes": 0,
+              "mat_preflight_read_budget_bytes": 1048576,
+              "mat_preflight_bytes_read": 0,
+              "mat_preflight_budget_exhausted": false,
+              "labels_metadata_bytes": 1051648,
+              "preprocessing_intermediate_bytes": 35840,
+              "epoch_cache_bytes": 0,
+              "estimated_ram_working_set_bytes": 1487360,
+              "partial_estimated_ram_working_set_bytes": 1487360,
+              "size_bound_known": true,
+              "unbounded_eeg_files": [],
+              "estimate_source": "header_or_file_size",
+              "files": [
+                {
+                  "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                  "estimate_source": "mne_header",
+                  "file_bytes": 52709,
+                  "channels": 4,
+                  "time_samples": 3200,
+                  "sampling_rate_hz": 128.0,
+                  "dtype_size_bytes": 8,
+                  "estimated_raw_bytes": 102400,
+                  "raw_bytes": 102400,
+                  "annotations_bytes": 3072,
+                  "resource_kind": "eeg"
+                }
+              ],
+              "safety_margin": 1.25,
+              "raw_import_dtype": "float64",
+              "raw_import_dtype_bytes": 8,
+              "file_size_fallback_multiplier": 4.0,
+              "ram_formula": "(raw_eeg + metadata + persistent_label_payloads + persistent_scan_metadata + max_sequential_parser_transient + preprocessing_intermediate + epoch_cache) * safety_margin",
+              "warning_ratio": 0.6,
+              "blocking_ratio": 0.8,
+              "required_to_available_ratio": 4.766913204963287e-05,
+              "available_ram_bytes": "<runtime-dependent>",
+              "schema_version": 1,
+              "risk_level": "safe",
+              "requires_confirmation": false,
+              "issues": [],
+              "warnings": [],
+              "unknowns": [],
+              "message": "Resource check: Safe\n\nEstimated memory required: 1.4 MB\nAvailable RAM: 29.1 GB\nRisk level: Safe",
+              "suggestions": [],
+              "required_memory_bytes": 1487360,
+              "available_memory_bytes": 31201742848,
+              "total_memory_bytes": 33185521664,
+              "used_memory_bytes": 1360261120,
+              "dataset_ram_risk_level": "safe",
+              "vram": {
+                "risk_level": "unknown",
+                "required_memory_bytes": 1487360,
+                "available_memory_bytes": 31201742848,
+                "total_memory_bytes": 33185521664,
+                "used_memory_bytes": 1360261120,
+                "message": "Resource check: Safe\n\nEstimated memory required: 1.4 MB\nAvailable RAM: 29.1 GB\nRisk level: Safe",
+                "suggestions": [],
+                "gpu_name": null,
+                "gpu_index": null,
+                "reason": null
+              },
+              "vram_risk_level": "unknown",
+              "parser_admission": {
+                "admitted_path_count": 1,
+                "admitted_total_bytes": 52709,
+                "dependent_path_count": 0,
+                "identity_fields": [
+                  "file_bytes",
+                  "device",
+                  "inode",
+                  "mtime_ns",
+                  "ctime_ns",
+                  "content_probe_sha256"
+                ]
+              },
+              "bids_events_json": {
+                "read_limit_bytes": 1048576,
+                "bytes_read": 0,
+                "admitted_path_count": 0,
+                "cached_path_count": 0
+              },
+              "confirmation_receipt_reused": false
+            },
+            "content_identity": {
+              "version": 3,
+              "algorithm": "sha256",
+              "scope": "selected_eeg_parser_dependencies_label_carriers_and_local_bids_sidecars",
+              "scope_sha256": "b083575ad473c0d7ae413e1ebaa81bd353b90e153f241697a882702fe01642fb",
+              "content_sha256": "2d3e4ace68465657133e0b703c8e133c596c844d048f17b78842b1efc0cf6a86",
+              "review_contract_sha256": "d0b1140a575c9db1125db534edb6e215e6513036cd68dc15883e46d810f9df98",
+              "files": [
+                {
+                  "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                  "role": "selected_eeg",
+                  "file_bytes": 52709,
+                  "sha256": "467352ff700a9d2ae61765507fc5b8431a6a4e3ac4398955cd2c538d90951b69"
+                }
+              ],
+              "selected_eeg_files": [
+                "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+              ],
+              "parser_dependencies": [],
+              "bindings": []
+            }
+          },
+          "resource_preflight": {
+            "path_count": 1,
+            "eeg_path_count": 1,
+            "label_carrier_count": 0,
+            "scan_metadata_count": 0,
+            "file_bytes": 52709,
+            "raw_eeg_bytes": 102400,
+            "metadata_bytes": 1051648,
+            "label_carrier_file_bytes": 0,
+            "label_carrier_working_set_bytes": 0,
+            "label_carrier_persistent_bytes": 0,
+            "label_parser_transient_peak_bytes": 0,
+            "scan_metadata_file_bytes": 0,
+            "scan_metadata_working_set_bytes": 0,
+            "scan_metadata_persistent_bytes": 0,
+            "scan_metadata_parser_transient_peak_bytes": 0,
+            "external_parser_transient_peak_bytes": 0,
+            "mat_preflight_read_budget_bytes": 1048576,
+            "mat_preflight_bytes_read": 0,
+            "mat_preflight_budget_exhausted": false,
+            "labels_metadata_bytes": 1051648,
+            "preprocessing_intermediate_bytes": 35840,
+            "epoch_cache_bytes": 0,
+            "estimated_ram_working_set_bytes": 1487360,
+            "partial_estimated_ram_working_set_bytes": 1487360,
+            "size_bound_known": true,
+            "unbounded_eeg_files": [],
+            "estimate_source": "header_or_file_size",
+            "files": [
+              {
+                "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "estimate_source": "mne_header",
+                "file_bytes": 52709,
+                "channels": 4,
+                "time_samples": 3200,
+                "sampling_rate_hz": 128.0,
+                "dtype_size_bytes": 8,
+                "estimated_raw_bytes": 102400,
+                "raw_bytes": 102400,
+                "annotations_bytes": 3072,
+                "resource_kind": "eeg"
+              }
+            ],
+            "safety_margin": 1.25,
+            "raw_import_dtype": "float64",
+            "raw_import_dtype_bytes": 8,
+            "file_size_fallback_multiplier": 4.0,
+            "ram_formula": "(raw_eeg + metadata + persistent_label_payloads + persistent_scan_metadata + max_sequential_parser_transient + preprocessing_intermediate + epoch_cache) * safety_margin",
+            "warning_ratio": 0.6,
+            "blocking_ratio": 0.8,
+            "required_to_available_ratio": 4.766913204963287e-05,
+            "available_ram_bytes": "<runtime-dependent>",
+            "schema_version": 1,
+            "risk_level": "safe",
+            "requires_confirmation": false,
+            "issues": [],
+            "warnings": [],
+            "unknowns": [],
+            "message": "Resource check: Safe\n\nEstimated memory required: 1.4 MB\nAvailable RAM: 29.1 GB\nRisk level: Safe",
+            "suggestions": [],
+            "required_memory_bytes": 1487360,
+            "available_memory_bytes": 31201742848,
+            "total_memory_bytes": 33185521664,
+            "used_memory_bytes": 1360261120,
+            "dataset_ram_risk_level": "safe",
+            "vram": {
+              "risk_level": "unknown",
+              "required_memory_bytes": 1487360,
+              "available_memory_bytes": 31201742848,
+              "total_memory_bytes": 33185521664,
+              "used_memory_bytes": 1360261120,
+              "message": "Resource check: Safe\n\nEstimated memory required: 1.4 MB\nAvailable RAM: 29.1 GB\nRisk level: Safe",
+              "suggestions": [],
+              "gpu_name": null,
+              "gpu_index": null,
+              "reason": null
+            },
+            "vram_risk_level": "unknown",
+            "parser_admission": {
+              "admitted_path_count": 1,
+              "admitted_total_bytes": 52709,
+              "dependent_path_count": 0,
+              "identity_fields": [
+                "file_bytes",
+                "device",
+                "inode",
+                "mtime_ns",
+                "ctime_ns",
+                "content_probe_sha256"
+              ]
+            },
+            "bids_events_json": {
+              "read_limit_bytes": 1048576,
+              "bytes_read": 0,
+              "admitted_path_count": 0,
+              "cached_path_count": 0
+            },
+            "confirmation_receipt_reused": false
           }
         }
       },
@@ -574,8 +853,6 @@
             ],
             "warnings": [],
             "required_confirmations": [
-              "Confirm run metadata for training_completion_raw.fif.",
-              "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
               "Confirm task metadata for training_completion_raw.fif.",
               "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
@@ -586,37 +863,23 @@
             ],
             "action_items": [
               {
-                "issue": "Confirm run metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
-                "target_step": "Review Metadata",
-                "severity": "needs_confirmation"
-              },
-              {
-                "issue": "Confirm session metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
-                "target_step": "Review Metadata",
-                "severity": "needs_confirmation"
-              },
-              {
                 "issue": "Confirm subject metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
+                "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+                "next_action": "Set or confirm the missing values in Review Metadata.",
                 "target_step": "Review Metadata",
                 "severity": "needs_confirmation"
               },
               {
                 "issue": "Confirm task metadata for training_completion_raw.fif.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
+                "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+                "next_action": "Set or confirm the missing values in Review Metadata.",
                 "target_step": "Review Metadata",
                 "severity": "needs_confirmation"
               },
               {
                 "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
-                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-                "next_action": "Review the target step and confirm the choice.",
+                "impact": "Class, timing, artifact, or system events could be mistaken for training labels or omitted from the import.",
+                "next_action": "Assign each event role in Match Labels.",
                 "target_step": "Match Labels",
                 "severity": "needs_confirmation"
               }
@@ -658,6 +921,7 @@
               "participants_file": null,
               "participant_count": 0,
               "participants": [],
+              "metadata_materialized": true,
               "channel_status_summary": {
                 "total": 0,
                 "good": 0,
@@ -692,7 +956,20 @@
                 "channels_files": []
               },
               "dataset_description": null,
-              "dataset": {}
+              "dataset": {},
+              "root_validation_issue": "",
+              "metadata_read_budget": {
+                "budget_bytes": 1048576,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              },
+              "looks_like_bids": false,
+              "metadata_discovery": {
+                "budget_bytes": 1048576,
+                "candidate_bytes": 0,
+                "bytes_read": 0,
+                "budget_exhausted": false
+              }
             },
             "label_carrier_plan": [],
             "metadata": [
@@ -751,8 +1028,6 @@
             "excluded_label_carriers": [],
             "validation_decision": "needs_confirmation",
             "confirmations": [
-              "Confirm run metadata for training_completion_raw.fif.",
-              "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
               "Confirm task metadata for training_completion_raw.fif.",
               "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
@@ -769,6 +1044,10 @@
                 "left",
                 "right"
               ],
+              "label_event_counts": {
+                "left": 6,
+                "right": 6
+              },
               "not_label_event_codes": [],
               "class_map": {
                 "left": "left",
@@ -781,6 +1060,7 @@
               "scan:scan-1",
               "candidate:candidate-2",
               "choices:label_carrier",
+              "content:b083575ad473c0d7ae413e1ebaa81bd353b90e153f241697a882702fe01642fb",
               "validation:needs_confirmation",
               "applied:interpretation-4"
             ]
@@ -794,6 +1074,15 @@
               "run": ""
             }
           ],
+          "source_identity_apply": [
+            {
+              "file": "training_completion_raw.fif",
+              "algorithm": "sha256",
+              "sha256": "467352ff700a9d2ae61765507fc5b8431a6a4e3ac4398955cd2c538d90951b69",
+              "file_bytes": 52709
+            }
+          ],
+          "channels_apply": [],
           "label_carriers_pending": [],
           "label_apply": {
             "status": "not_applicable",
@@ -804,22 +1093,113 @@
               "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
               "source": "Labels inside EEG files"
             }
-          ]
+          ],
+          "trainer_retired": false,
+          "resource_preflight": {
+            "path_count": 1,
+            "eeg_path_count": 1,
+            "label_carrier_count": 0,
+            "scan_metadata_count": 0,
+            "file_bytes": 52709,
+            "raw_eeg_bytes": 102400,
+            "metadata_bytes": 1051648,
+            "label_carrier_file_bytes": 0,
+            "label_carrier_working_set_bytes": 0,
+            "label_carrier_persistent_bytes": 0,
+            "label_parser_transient_peak_bytes": 0,
+            "scan_metadata_file_bytes": 0,
+            "scan_metadata_working_set_bytes": 0,
+            "scan_metadata_persistent_bytes": 0,
+            "scan_metadata_parser_transient_peak_bytes": 0,
+            "external_parser_transient_peak_bytes": 0,
+            "mat_preflight_read_budget_bytes": 1048576,
+            "mat_preflight_bytes_read": 0,
+            "mat_preflight_budget_exhausted": false,
+            "labels_metadata_bytes": 1051648,
+            "preprocessing_intermediate_bytes": 35840,
+            "epoch_cache_bytes": 0,
+            "estimated_ram_working_set_bytes": 1487360,
+            "partial_estimated_ram_working_set_bytes": 1487360,
+            "size_bound_known": true,
+            "unbounded_eeg_files": [],
+            "estimate_source": "header_or_file_size",
+            "files": [
+              {
+                "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "estimate_source": "mne_header",
+                "file_bytes": 52709,
+                "channels": 4,
+                "time_samples": 3200,
+                "sampling_rate_hz": 128.0,
+                "dtype_size_bytes": 8,
+                "estimated_raw_bytes": 102400,
+                "raw_bytes": 102400,
+                "annotations_bytes": 3072,
+                "resource_kind": "eeg"
+              }
+            ],
+            "safety_margin": 1.25,
+            "raw_import_dtype": "float64",
+            "raw_import_dtype_bytes": 8,
+            "file_size_fallback_multiplier": 4.0,
+            "ram_formula": "(raw_eeg + metadata + persistent_label_payloads + persistent_scan_metadata + max_sequential_parser_transient + preprocessing_intermediate + epoch_cache) * safety_margin",
+            "warning_ratio": 0.6,
+            "blocking_ratio": 0.8,
+            "required_to_available_ratio": 4.766992053941149e-05,
+            "available_ram_bytes": "<runtime-dependent>",
+            "schema_version": 1,
+            "risk_level": "safe",
+            "requires_confirmation": false,
+            "issues": [],
+            "warnings": [],
+            "unknowns": [],
+            "message": "Resource check: Safe\n\nEstimated memory required: 1.4 MB\nAvailable RAM: 29.1 GB\nRisk level: Safe",
+            "suggestions": [],
+            "required_memory_bytes": 1487360,
+            "available_memory_bytes": 31201226752,
+            "total_memory_bytes": 33185521664,
+            "used_memory_bytes": 1360777216,
+            "dataset_ram_risk_level": "safe",
+            "vram": {
+              "risk_level": "unknown",
+              "required_memory_bytes": 1487360,
+              "available_memory_bytes": 31201226752,
+              "total_memory_bytes": 33185521664,
+              "used_memory_bytes": 1360777216,
+              "message": "Resource check: Safe\n\nEstimated memory required: 1.4 MB\nAvailable RAM: 29.1 GB\nRisk level: Safe",
+              "suggestions": [],
+              "gpu_name": null,
+              "gpu_index": null,
+              "reason": null
+            },
+            "vram_risk_level": "unknown",
+            "confirmation_receipt_reused": false
+          }
         }
       },
       {
         "command": "preprocess",
         "ok": true,
-        "message": "Standard preprocessing applied.",
+        "message": "Standard preprocessing applied. Normalization using z-score is queued for per-epoch application during epoch creation.",
         "error_type": null,
-        "diagnostics": {}
+        "diagnostics": {
+          "normalization_method": "z-score",
+          "normalization_scope": "per_epoch_per_channel",
+          "raw_requests_deferred": 1,
+          "epoched_items_normalized": 0,
+          "recording_statistics_used": false
+        }
       },
       {
         "command": "create_epoch",
         "ok": true,
         "message": "Created epochs from 0.0s to 1.5s.",
         "error_type": null,
-        "diagnostics": {}
+        "diagnostics": {
+          "normalization_scope": "per_epoch_per_channel",
+          "deferred_normalization_applied_count": 1,
+          "recording_statistics_used": false
+        }
       },
       {
         "command": "generate_dataset",
@@ -828,63 +1208,26 @@
         "error_type": null,
         "diagnostics": {
           "dataset_count": 1,
+          "replacement_mode": "create",
+          "replaced_existing": false,
+          "previous_dataset_count": 0,
+          "previous_trainer_present": false,
+          "trainer_retired": false,
           "protocol": "trial-wise",
           "split_audit": {
             "ok": true,
             "dataset_count": 1,
-            "issues": [
-              {
-                "dataset_name": "Subject-0_0",
-                "severity": "warning",
-                "message": "validation split is missing class label(s) 1.",
-                "indices": [
-                  1,
-                  3,
-                  5
-                ]
-              },
-              {
-                "dataset_name": "Subject-0_0",
-                "severity": "warning",
-                "message": "test split is missing class label(s) 1.",
-                "indices": [
-                  1,
-                  3,
-                  5
-                ]
-              }
-            ]
+            "issues": []
           },
           "split_summary": {
             "count": 1,
-            "train_count": 4,
-            "val_count": 1,
-            "test_count": 1,
+            "train_count": 7,
+            "val_count": 2,
+            "test_count": 3,
             "audit": {
               "ok": true,
               "dataset_count": 1,
-              "issues": [
-                {
-                  "dataset_name": "Subject-0_0",
-                  "severity": "warning",
-                  "message": "validation split is missing class label(s) 1.",
-                  "indices": [
-                    1,
-                    3,
-                    5
-                  ]
-                },
-                {
-                  "dataset_name": "Subject-0_0",
-                  "severity": "warning",
-                  "message": "test split is missing class label(s) 1.",
-                  "indices": [
-                    1,
-                    3,
-                    5
-                  ]
-                }
-              ]
+              "issues": []
             }
           }
         }
@@ -915,7 +1258,7 @@
             "session": "0"
           }
         ],
-        "event_total": 6,
+        "event_total": 12,
         "unique_events": [
           "left",
           "right"
@@ -942,8 +1285,9 @@
         ],
         "operations": [
           "Filtering 4.0 ~ 40.0 Hz",
-          "z-score normalization",
-          "Epoching 0.0 ~ 1.5 by event (None baseline)"
+          "z score normalization requested (deferred to per-epoch application)",
+          "Epoching 0.0 ~ 1.5 by event (None baseline)",
+          "z score normalization applied independently per epoch and channel"
         ],
         "diagnostics": {
           "runtime_signals": [],
@@ -954,7 +1298,7 @@
       "epoch": {
         "available": true,
         "exists": true,
-        "epoch_count": 6,
+        "epoch_count": 12,
         "n_channels": 4,
         "n_times": 193,
         "sfreq": 128.0,
@@ -983,34 +1327,13 @@
         "generator_exists": true,
         "split_summary": {
           "count": 1,
-          "train_count": 4,
-          "val_count": 1,
-          "test_count": 1,
+          "train_count": 7,
+          "val_count": 2,
+          "test_count": 3,
           "audit": {
             "ok": true,
             "dataset_count": 1,
-            "issues": [
-              {
-                "dataset_name": "Subject-0_0",
-                "severity": "warning",
-                "message": "validation split is missing class label(s) 1.",
-                "indices": [
-                  1,
-                  3,
-                  5
-                ]
-              },
-              {
-                "dataset_name": "Subject-0_0",
-                "severity": "warning",
-                "message": "test split is missing class label(s) 1.",
-                "indices": [
-                  1,
-                  3,
-                  5
-                ]
-              }
-            ]
+            "issues": []
           }
         }
       },
@@ -1025,7 +1348,13 @@
         "plan_count": 0,
         "run_count": 0,
         "finished_run_count": 0,
+        "read_generation": 0,
         "progress_message": null,
+        "terminal_outcome": {
+          "state": "unknown",
+          "run": null,
+          "detail": "Typed training outcome is unavailable."
+        },
         "missing_requirements": [
           "Model Selection",
           "Training Settings"
@@ -1043,7 +1372,26 @@
         "saliency_available": false,
         "montage_available": false,
         "channel_positions_available": false,
-        "channel_count": 4
+        "channel_count": 4,
+        "saliency_params": {},
+        "montage_channels": [
+          "C3",
+          "C4",
+          "Cz",
+          "Pz"
+        ],
+        "montage_positions": [],
+        "saliency_coverage": [],
+        "post_training_saliency": {
+          "phase": "idle",
+          "generation": 2,
+          "run": null,
+          "training_generation": null,
+          "methods": [],
+          "error_code": null,
+          "message": null,
+          "diagnostic_type": null
+        }
       },
       "interpretation": {
         "has_scan_result": true,
@@ -1066,37 +1414,23 @@
         "warnings": [],
         "action_items": [
           {
-            "issue": "Confirm run metadata for training_completion_raw.fif.",
-            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-            "next_action": "Review the target step and confirm the choice.",
-            "target_step": "Review Metadata",
-            "severity": "needs_confirmation"
-          },
-          {
-            "issue": "Confirm session metadata for training_completion_raw.fif.",
-            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-            "next_action": "Review the target step and confirm the choice.",
-            "target_step": "Review Metadata",
-            "severity": "needs_confirmation"
-          },
-          {
             "issue": "Confirm subject metadata for training_completion_raw.fif.",
-            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-            "next_action": "Review the target step and confirm the choice.",
+            "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+            "next_action": "Set or confirm the missing values in Review Metadata.",
             "target_step": "Review Metadata",
             "severity": "needs_confirmation"
           },
           {
             "issue": "Confirm task metadata for training_completion_raw.fif.",
-            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-            "next_action": "Review the target step and confirm the choice.",
+            "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+            "next_action": "Set or confirm the missing values in Review Metadata.",
             "target_step": "Review Metadata",
             "severity": "needs_confirmation"
           },
           {
             "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
-            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-            "next_action": "Review the target step and confirm the choice.",
+            "impact": "Class, timing, artifact, or system events could be mistaken for training labels or omitted from the import.",
+            "next_action": "Assign each event role in Match Labels.",
             "target_step": "Match Labels",
             "severity": "needs_confirmation"
           }
@@ -1159,6 +1493,7 @@
           "participants_file": null,
           "participant_count": 0,
           "participants": [],
+          "metadata_materialized": true,
           "channel_status_summary": {
             "total": 0,
             "good": 0,
@@ -1193,7 +1528,20 @@
             "channels_files": []
           },
           "dataset_description": null,
-          "dataset": {}
+          "dataset": {},
+          "root_validation_issue": "",
+          "metadata_read_budget": {
+            "budget_bytes": 1048576,
+            "bytes_read": 0,
+            "budget_exhausted": false
+          },
+          "looks_like_bids": false,
+          "metadata_discovery": {
+            "budget_bytes": 1048576,
+            "candidate_bytes": 0,
+            "bytes_read": 0,
+            "budget_exhausted": false
+          }
         },
         "label_carrier_plan": [],
         "format_capabilities": [
@@ -1218,6 +1566,7 @@
           "ready": true,
           "supervised_ready": true,
           "supervised_blockers": [],
+          "supervised_blocker_codes": [],
           "label_source": "internal_events",
           "source": "applied_interpretation",
           "placement_modes": [],
@@ -1225,6 +1574,11 @@
             "left": "left",
             "right": "right"
           },
+          "usable_class_labels": [
+            "left",
+            "right"
+          ],
+          "usable_class_count": 2,
           "default_epoch_events": [
             "left",
             "right"
@@ -1244,6 +1598,7 @@
             "right"
           ],
           "run_event_mappings": {},
+          "run_dependent_mapping": false,
           "event_label_aliases": {
             "left": "left",
             "right": "right"
@@ -1263,6 +1618,7 @@
             "participants_file": null,
             "participant_count": 0,
             "participants": [],
+            "metadata_materialized": true,
             "channel_status_summary": {
               "total": 0,
               "good": 0,
@@ -1297,13 +1653,30 @@
               "channels_files": []
             },
             "dataset_description": null,
-            "dataset": {}
+            "dataset": {},
+            "root_validation_issue": "",
+            "metadata_read_budget": {
+              "budget_bytes": 1048576,
+              "bytes_read": 0,
+              "budget_exhausted": false
+            },
+            "looks_like_bids": false,
+            "metadata_discovery": {
+              "budget_bytes": 1048576,
+              "candidate_bytes": 0,
+              "bytes_read": 0,
+              "budget_exhausted": false
+            }
           },
           "internal_event_selection": {
             "label_event_codes": [
               "left",
               "right"
             ],
+            "label_event_counts": {
+              "left": 6,
+              "right": 6
+            },
             "not_label_event_codes": [],
             "class_map": {
               "left": "left",
@@ -1326,9 +1699,13 @@
         "has_model": false,
         "has_training_option": false,
         "has_trainer": false,
-        "is_running": false
+        "is_running": false,
+        "finished_run_count": 0
       },
-      "last_error": null
+      "last_error": null,
+      "state_reliable": true,
+      "training_liveness_reliable": true,
+      "read_errors": []
     }
   },
   "training": {
@@ -1353,8 +1730,10 @@
             "repeat": 1,
             "device": "cpu",
             "optimizer": "Adam",
+            "optimizer_params": {},
             "checkpoint_epoch": 0,
-            "output_dir": "/tmp/xbrainlab-visualization-render-output"
+            "output_dir": "/mnt/d/workspace_v2/tmp/xbrainlab-visualization-render-output",
+            "evaluation_option": "Last Epoch"
           }
         }
       },
@@ -1404,26 +1783,105 @@
       {
         "command": "train",
         "ok": true,
-        "message": "Training started.",
+        "message": "Training completed.",
         "error_type": null,
         "diagnostics": {
           "append": true,
           "interactive": false,
+          "training_handoff_generation": 1,
           "resource_preflight": {
-            "dataset_bytes": 37104,
-            "estimated_ram_working_set_bytes": 74208,
-            "estimated_gpu_batch_working_set_bytes": 98816,
-            "available_ram_bytes": "<runtime-dependent>",
+            "dataset_count": 1,
+            "fold_count": 1,
+            "repeat_count": 1,
+            "training_record_count": 1,
+            "folds_repeats_concurrent": false,
+            "peak_execution_scope": "one_fold_one_repeat_one_batch",
+            "dataset_bytes": 74208,
+            "dataset_ram_working_set_bytes": 148416,
+            "retained_model_bytes": 4936,
+            "retained_gradient_bytes": 4936,
+            "retained_optimizer_state_bytes": 9872,
+            "retained_checkpoint_bytes": 14808,
+            "retained_training_record_bytes": 34552,
+            "training_best_checkpoint_copies": 3,
+            "training_retained_gradient_copies": 1,
+            "estimated_ram_before_margin_bytes": 182968,
+            "estimated_ram_working_set_bytes": 228710,
+            "training_ram_safety_margin": 1.25,
+            "ram_formula": "(dataset_working_set + fold_repeat_records * (model + gradient + optimizer_states + best_checkpoints)) * safety_margin",
+            "peak_input_batch_bytes": 6176,
+            "peak_validation_batch_bytes": 6176,
+            "peak_batch_bytes": 6176,
+            "peak_batch_samples": 2,
+            "model_parameter_bytes": 4936,
+            "model_parameter_estimate_source": "instantiated",
+            "model_parameter_estimate_reliable": true,
+            "model_parameter_estimate_error": null,
+            "gradient_bytes": 4936,
+            "optimizer_state_bytes": 9872,
+            "optimizer_state_multiplier": 2.0,
+            "evaluation_model_bytes": 4936,
+            "activation_bytes": 49408,
+            "activation_factor": 8.0,
+            "logits_bytes": 48,
+            "runtime_workspace_bytes": 67108864,
+            "class_count": 2,
+            "batch_size": 2,
+            "training_dtype": "float32",
+            "training_dtype_bytes": 4,
+            "mixed_precision_applied": false,
+            "estimated_gpu_before_margin_bytes": 67189176,
+            "estimated_gpu_batch_working_set_bytes": 0,
+            "vram_safety_margin": 1.25,
+            "vram_formula": "(parameters + gradients + optimizer_states + evaluation_model + peak_batch + activations + logits + runtime_workspace) * safety_margin",
+            "warning_ratio": 0.6,
+            "blocking_ratio": 0.8,
+            "required_to_available_ratio": 7.331734170221533e-06,
             "available_vram_bytes": "<runtime-dependent>",
             "gpu_index": null,
-            "uses_cpu": true
+            "uses_cpu": true,
+            "payload_type": "training_resource_preflight",
+            "schema_version": 1,
+            "risk_level": "safe",
+            "requires_confirmation": false,
+            "issues": [],
+            "warnings": [],
+            "unknowns": [],
+            "message": "Resource check: Safe\n\nEstimated memory required: 223.3 KB\nAvailable RAM: 29.1 GB\nRisk level: Safe",
+            "suggestions": [],
+            "required_memory_bytes": 228710,
+            "available_memory_bytes": 31194529792,
+            "total_memory_bytes": 33185521664,
+            "used_memory_bytes": 1367474176,
+            "dataset_ram_risk_level": "safe",
+            "vram": {
+              "risk_level": "safe",
+              "required_memory_bytes": 0,
+              "available_memory_bytes": null,
+              "total_memory_bytes": null,
+              "used_memory_bytes": null,
+              "message": "CPU training selected; GPU memory check is not required.",
+              "suggestions": [],
+              "gpu_name": null,
+              "gpu_index": null,
+              "reason": null
+            },
+            "vram_risk_level": "safe",
+            "model_name": "EEGNet",
+            "training_batch_size": 2,
+            "confirmation_receipt_reused": false
+          },
+          "terminal_outcome": "completed",
+          "training_run": {
+            "trainer_id": "12fa9b20a7114903b8f76db265742d27",
+            "run_id": 1
           }
         }
       }
     ],
     "finished_run_count": 1,
     "metrics_available": true,
-    "saliency_available": false
+    "saliency_available": true
   },
   "application_evaluate": {
     "command": "evaluate",
@@ -1436,6 +1894,9 @@
       "target": null,
       "plan_count": 1,
       "finished_run_count": 1,
+      "evaluation_splits": [
+        "test"
+      ],
       "training_active": false,
       "plans": [
         {
@@ -1443,11 +1904,17 @@
           "name": "Subject-0_0",
           "run_count": 1,
           "finished_run_count": 1,
+          "evaluation_splits": [
+            "test"
+          ],
           "metrics": {
             "status": "available"
           }
         }
-      ]
+      ],
+      "training_read_verified": true,
+      "training_read_generation": 38,
+      "training_read_trainer_identity": "12fa9b20a7114903b8f76db265742d27"
     }
   },
   "application_visualize": {
@@ -1475,63 +1942,282 @@
       "channel_count": 4,
       "montage_available": true,
       "saliency_configured": true,
-      "saliency_available": true
+      "saliency_available": true,
+      "training_read_verified": true,
+      "training_read_generation": 38,
+      "training_read_trainer_identity": "12fa9b20a7114903b8f76db265742d27"
     }
+  },
+  "three_d_runtime": {
+    "qt_platform": "offscreen",
+    "configured_qt_platform": "offscreen",
+    "pyvista_off_screen": false,
+    "display": ":0",
+    "interactive_display": false,
+    "expected_outcome": "blocked",
+    "capture_method": "qt_widget_render"
   },
   "renders": [
     {
       "tab": "Saliency Map",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-saliency-map.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-saliency-map-867b9ef05deb.png",
+      "screenshot_sha256": "867b9ef05debcfe7a36805cde8515d8f1222449641df543f94bee96818d84a49",
       "ok": true,
       "failure_reason": "",
+      "render_settled": true,
+      "colorbar_margin_ok": true,
+      "screenshot_region": {
+        "ok": true,
+        "reason": "",
+        "pixel_rect": {
+          "x": 31,
+          "y": 289,
+          "width": 474,
+          "height": 454
+        },
+        "pixel_count": 215196,
+        "unique_color_count": 939,
+        "dominant_color_fraction": 0.4544,
+        "chromatic_fraction": 0.388548,
+        "near_black_fraction": 0.0,
+        "sentinel_fraction": 0.0
+      },
+      "explanation_context": "Grouped by true class label · Mean across evaluated epochs",
       "error_visible": false,
       "error_text": "Rendering saliency...",
-      "axes_count": 2,
-      "image_count": 3,
-      "canvas_visible": true
+      "axes_count": 3,
+      "image_count": 4,
+      "canvas_visible": true,
+      "canvas_geometry": {
+        "x": 31,
+        "y": 289,
+        "width": 474,
+        "height": 454,
+        "ok": true,
+        "reason": ""
+      },
+      "artist_layout": {
+        "ok": true,
+        "reason": "",
+        "clipped_axes": [],
+        "axes_bounds": [
+          {
+            "axis": 0,
+            "x0": 6.872,
+            "y0": 15.202,
+            "x1": 210.03,
+            "y1": 421.853,
+            "clipped": false
+          },
+          {
+            "axis": 1,
+            "x0": 221.248,
+            "y0": 15.202,
+            "x1": 424.405,
+            "y1": 421.853,
+            "clipped": false
+          },
+          {
+            "axis": 2,
+            "x0": 413.743,
+            "y0": 92.019,
+            "x1": 474.725,
+            "y1": 355.441,
+            "clipped": false
+          }
+        ],
+        "canvas_size": {
+          "width": 474,
+          "height": 454
+        },
+        "right_margin_pixels": -0.725
+      },
+      "window_size": {
+        "width": 796,
+        "height": 796
+      }
     },
     {
       "tab": "Spectrogram",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-spectrogram.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-spectrogram-e0b39a14dc06.png",
+      "screenshot_sha256": "e0b39a14dc064f5e3ebe0a68801d0aca42c736ed0888b72c8ab6e8a16dd7a6d8",
       "ok": true,
       "failure_reason": "",
+      "render_settled": true,
+      "colorbar_margin_ok": true,
+      "screenshot_region": {
+        "ok": true,
+        "reason": "",
+        "pixel_rect": {
+          "x": 31,
+          "y": 305,
+          "width": 474,
+          "height": 438
+        },
+        "pixel_count": 207612,
+        "unique_color_count": 775,
+        "dominant_color_fraction": 0.511854,
+        "chromatic_fraction": 0.342008,
+        "near_black_fraction": 0.012755,
+        "sentinel_fraction": 0.0
+      },
+      "explanation_context": "Grouped by true class label · Mean magnitude across evaluated epochs and channels",
       "error_visible": false,
       "error_text": "Rendering saliency...",
-      "axes_count": 2,
-      "image_count": 3,
-      "canvas_visible": true
+      "axes_count": 3,
+      "image_count": 4,
+      "canvas_visible": true,
+      "canvas_geometry": {
+        "x": 31,
+        "y": 305,
+        "width": 474,
+        "height": 438,
+        "ok": true,
+        "reason": ""
+      },
+      "artist_layout": {
+        "ok": true,
+        "reason": "",
+        "clipped_axes": [],
+        "axes_bounds": [
+          {
+            "axis": 0,
+            "x0": 0.497,
+            "y0": 14.282,
+            "x1": 187.409,
+            "y1": 390.253,
+            "clipped": false
+          },
+          {
+            "axis": 1,
+            "x0": 193.71,
+            "y0": 14.282,
+            "x1": 380.622,
+            "y1": 390.253,
+            "clipped": false
+          },
+          {
+            "axis": 2,
+            "x0": 395.032,
+            "y0": 78.156,
+            "x1": 451.14,
+            "y1": 336.324,
+            "clipped": false
+          }
+        ],
+        "canvas_size": {
+          "width": 474,
+          "height": 438
+        },
+        "right_margin_pixels": 22.86
+      },
+      "window_size": {
+        "width": 796,
+        "height": 796
+      }
     },
     {
       "tab": "Topographic Map",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-topographic-map.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-topographic-map-f839b79e33c6.png",
+      "screenshot_sha256": "f839b79e33c6262b5f282167b04878b6bdfec81deb1fa996329b12939f1bcb79",
       "ok": true,
       "failure_reason": "",
+      "render_settled": true,
+      "colorbar_margin_ok": true,
+      "screenshot_region": {
+        "ok": true,
+        "reason": "",
+        "pixel_rect": {
+          "x": 31,
+          "y": 289,
+          "width": 474,
+          "height": 454
+        },
+        "pixel_count": 215196,
+        "unique_color_count": 4486,
+        "dominant_color_fraction": 0.890779,
+        "chromatic_fraction": 0.074207,
+        "near_black_fraction": 0.004122,
+        "sentinel_fraction": 0.0
+      },
+      "explanation_context": "Grouped by true class label · Mean across evaluated epochs and time",
       "error_visible": false,
       "error_text": "Rendering saliency...",
-      "axes_count": 2,
-      "image_count": 4,
-      "canvas_visible": true
+      "axes_count": 3,
+      "image_count": 8,
+      "canvas_visible": true,
+      "canvas_geometry": {
+        "x": 31,
+        "y": 289,
+        "width": 474,
+        "height": 454,
+        "ok": true,
+        "reason": ""
+      },
+      "artist_layout": {
+        "ok": true,
+        "reason": "",
+        "clipped_axes": [],
+        "axes_bounds": [
+          {
+            "axis": 0,
+            "x0": 37.92,
+            "y0": 157.428,
+            "x1": 192.485,
+            "y1": 318.905,
+            "clipped": false
+          },
+          {
+            "axis": 1,
+            "x0": 238.855,
+            "y0": 157.428,
+            "x1": 393.42,
+            "y1": 318.905,
+            "clipped": false
+          },
+          {
+            "axis": 2,
+            "x0": 388.544,
+            "y0": 90.8,
+            "x1": 452.056,
+            "y1": 379.167,
+            "clipped": false
+          }
+        ],
+        "canvas_size": {
+          "width": 474,
+          "height": 454
+        },
+        "right_margin_pixels": 21.944
+      },
+      "window_size": {
+        "width": 796,
+        "height": 796
+      }
     }
   ],
   "blocked_renders": [
     {
       "tab": "3D Plot",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-3d-blocked.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-3d-blocked-718c8e796acc.png",
+      "screenshot_sha256": "718c8e796acce934babd97a42b1c8fef1c2db9dd8f5cc9019791f8824426dfbe",
       "ok": true,
       "failure_reason": "",
+      "terminal_settled": true,
+      "outcome": "blocked",
       "blocked_reason": "3D rendering requires an interactive OpenGL desktop session. Use the desktop launcher, or switch to Saliency Map, Spectrogram, or Topographic Map in this headless environment.",
       "message_evidence": {
         "ok": true,
         "reason": "",
         "label_rect": {
           "x": 0,
-          "y": 0,
+          "y": 44,
           "width": 474,
-          "height": 476
+          "height": 410
         },
         "container_size": {
           "width": 474,
-          "height": 476
+          "height": 454
         },
         "size_hint": {
           "width": 363,
@@ -1540,9 +2226,34 @@
         "clipped_by_bounds": false,
         "clipped_by_hint": false
       },
+      "message_geometry": {
+        "x": 31,
+        "y": 333,
+        "width": 474,
+        "height": 410,
+        "ok": true,
+        "reason": ""
+      },
+      "screenshot_region": {
+        "ok": true,
+        "reason": "",
+        "pixel_rect": {
+          "x": 31,
+          "y": 333,
+          "width": 474,
+          "height": 410
+        },
+        "pixel_count": 194340,
+        "unique_color_count": 1927,
+        "dominant_color_fraction": 0.934774,
+        "chromatic_fraction": 0.057147,
+        "near_black_fraction": 0.0,
+        "sentinel_fraction": 0.0
+      },
       "plotter_created": false
     }
   ],
+  "interactive_renders": [],
   "claim_boundary": {
     "supports": [
       "true MainWindow VisualizationPanel Matplotlib saliency renders",
@@ -1555,7 +2266,7 @@
   },
   "dismissed_dialogs": [],
   "screenshots": {
-    "ready": "artifacts/ui/visualization-render/visualization-render-saliency-map.png"
+    "ready": "artifacts/ui/visualization-render/visualization-render-saliency-map-867b9ef05deb.png"
   },
   "final_state": {
     "pipeline_stage": "trained",
@@ -1582,7 +2293,7 @@
           "session": "0"
         }
       ],
-      "event_total": 6,
+      "event_total": 12,
       "unique_events": [
         "left",
         "right"
@@ -1609,8 +2320,9 @@
       ],
       "operations": [
         "Filtering 4.0 ~ 40.0 Hz",
-        "z-score normalization",
-        "Epoching 0.0 ~ 1.5 by event (None baseline)"
+        "z score normalization requested (deferred to per-epoch application)",
+        "Epoching 0.0 ~ 1.5 by event (None baseline)",
+        "z score normalization applied independently per epoch and channel"
       ],
       "diagnostics": {
         "runtime_signals": [],
@@ -1621,7 +2333,7 @@
     "epoch": {
       "available": true,
       "exists": true,
-      "epoch_count": 6,
+      "epoch_count": 12,
       "n_channels": 4,
       "n_times": 193,
       "sfreq": 128.0,
@@ -1650,34 +2362,13 @@
       "generator_exists": true,
       "split_summary": {
         "count": 1,
-        "train_count": 4,
-        "val_count": 1,
-        "test_count": 1,
+        "train_count": 7,
+        "val_count": 2,
+        "test_count": 3,
         "audit": {
           "ok": true,
           "dataset_count": 1,
-          "issues": [
-            {
-              "dataset_name": "Subject-0_0",
-              "severity": "warning",
-              "message": "validation split is missing class label(s) 1.",
-              "indices": [
-                1,
-                3,
-                5
-              ]
-            },
-            {
-              "dataset_name": "Subject-0_0",
-              "severity": "warning",
-              "message": "test split is missing class label(s) 1.",
-              "indices": [
-                1,
-                3,
-                5
-              ]
-            }
-          ]
+          "issues": []
         }
       }
     },
@@ -1693,15 +2384,26 @@
         "repeat": 1,
         "device": "cpu",
         "optimizer": "Adam",
+        "optimizer_params": {},
         "checkpoint_epoch": 0,
-        "output_dir": "/tmp/xbrainlab-visualization-render-output"
+        "output_dir": "/mnt/d/workspace_v2/tmp/xbrainlab-visualization-render-output",
+        "evaluation_option": "Last Epoch"
       },
       "has_trainer": true,
       "is_running": false,
       "plan_count": 1,
       "run_count": 1,
       "finished_run_count": 1,
-      "progress_message": null,
+      "read_generation": 38,
+      "progress_message": "Pending",
+      "terminal_outcome": {
+        "state": "completed",
+        "run": {
+          "trainer_id": "12fa9b20a7114903b8f76db265742d27",
+          "run_id": 1
+        },
+        "detail": null
+      },
       "missing_requirements": []
     },
     "evaluation": {
@@ -1716,7 +2418,199 @@
       "saliency_available": true,
       "montage_available": true,
       "channel_positions_available": true,
-      "channel_count": 4
+      "channel_count": 4,
+      "saliency_params": {
+        "SmoothGrad": {
+          "nt_samples": 5,
+          "nt_samples_batch_size": null,
+          "stdevs": 1.0
+        },
+        "SmoothGrad_Squared": {
+          "nt_samples": 5,
+          "nt_samples_batch_size": null,
+          "stdevs": 1.0
+        },
+        "VarGrad": {
+          "nt_samples": 5,
+          "nt_samples_batch_size": null,
+          "stdevs": 1.0
+        },
+        "_methods": [
+          "Gradient",
+          "Gradient * Input"
+        ],
+        "_profile": "recommended"
+      },
+      "montage_channels": [
+        "C3",
+        "C4",
+        "Cz",
+        "Pz"
+      ],
+      "montage_positions": [
+        [
+          -0.06,
+          0.0,
+          0.0
+        ],
+        [
+          0.06,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.04,
+          0.0
+        ],
+        [
+          0.0,
+          -0.08,
+          0.0
+        ]
+      ],
+      "saliency_coverage": [
+        {
+          "plan_index": 0,
+          "run_index": 0,
+          "plan_name": "Subject-0_0",
+          "model_name": "EEGNet",
+          "run_name": "Run 1",
+          "methods": [
+            {
+              "method": "Gradient",
+              "available": true,
+              "complete": true,
+              "classes": [
+                {
+                  "class_index": 0,
+                  "display_name": "left",
+                  "event_code": 0,
+                  "store_key": 0,
+                  "available": true,
+                  "reason": null
+                },
+                {
+                  "class_index": 1,
+                  "display_name": "right",
+                  "event_code": 1,
+                  "store_key": 1,
+                  "available": true,
+                  "reason": null
+                }
+              ]
+            },
+            {
+              "method": "Gradient * Input",
+              "available": true,
+              "complete": true,
+              "classes": [
+                {
+                  "class_index": 0,
+                  "display_name": "left",
+                  "event_code": 0,
+                  "store_key": 0,
+                  "available": true,
+                  "reason": null
+                },
+                {
+                  "class_index": 1,
+                  "display_name": "right",
+                  "event_code": 1,
+                  "store_key": 1,
+                  "available": true,
+                  "reason": null
+                }
+              ]
+            },
+            {
+              "method": "SmoothGrad",
+              "available": false,
+              "complete": false,
+              "classes": [
+                {
+                  "class_index": 0,
+                  "display_name": "left",
+                  "event_code": 0,
+                  "store_key": null,
+                  "available": false,
+                  "reason": "No SmoothGrad saliency is available for left. Recompute saliency for this run and class."
+                },
+                {
+                  "class_index": 1,
+                  "display_name": "right",
+                  "event_code": 1,
+                  "store_key": null,
+                  "available": false,
+                  "reason": "No SmoothGrad saliency is available for right. Recompute saliency for this run and class."
+                }
+              ]
+            },
+            {
+              "method": "SmoothGrad_Squared",
+              "available": false,
+              "complete": false,
+              "classes": [
+                {
+                  "class_index": 0,
+                  "display_name": "left",
+                  "event_code": 0,
+                  "store_key": null,
+                  "available": false,
+                  "reason": "No SmoothGrad_Squared saliency is available for left. Recompute saliency for this run and class."
+                },
+                {
+                  "class_index": 1,
+                  "display_name": "right",
+                  "event_code": 1,
+                  "store_key": null,
+                  "available": false,
+                  "reason": "No SmoothGrad_Squared saliency is available for right. Recompute saliency for this run and class."
+                }
+              ]
+            },
+            {
+              "method": "VarGrad",
+              "available": false,
+              "complete": false,
+              "classes": [
+                {
+                  "class_index": 0,
+                  "display_name": "left",
+                  "event_code": 0,
+                  "store_key": null,
+                  "available": false,
+                  "reason": "No VarGrad saliency is available for left. Recompute saliency for this run and class."
+                },
+                {
+                  "class_index": 1,
+                  "display_name": "right",
+                  "event_code": 1,
+                  "store_key": null,
+                  "available": false,
+                  "reason": "No VarGrad saliency is available for right. Recompute saliency for this run and class."
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "post_training_saliency": {
+        "phase": "succeeded",
+        "generation": 5,
+        "run": {
+          "trainer_id": "12fa9b20a7114903b8f76db265742d27",
+          "run_id": 1
+        },
+        "training_generation": 36,
+        "methods": [
+          "Gradient",
+          "Gradient * Input"
+        ],
+        "error_code": null,
+        "message": "Automatic saliency is available.",
+        "diagnostic_type": null
+      }
     },
     "interpretation": {
       "has_scan_result": true,
@@ -1739,37 +2633,23 @@
       "warnings": [],
       "action_items": [
         {
-          "issue": "Confirm run metadata for training_completion_raw.fif.",
-          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-          "next_action": "Review the target step and confirm the choice.",
-          "target_step": "Review Metadata",
-          "severity": "needs_confirmation"
-        },
-        {
-          "issue": "Confirm session metadata for training_completion_raw.fif.",
-          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-          "next_action": "Review the target step and confirm the choice.",
-          "target_step": "Review Metadata",
-          "severity": "needs_confirmation"
-        },
-        {
           "issue": "Confirm subject metadata for training_completion_raw.fif.",
-          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-          "next_action": "Review the target step and confirm the choice.",
+          "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+          "next_action": "Set or confirm the missing values in Review Metadata.",
           "target_step": "Review Metadata",
           "severity": "needs_confirmation"
         },
         {
           "issue": "Confirm task metadata for training_completion_raw.fif.",
-          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-          "next_action": "Review the target step and confirm the choice.",
+          "impact": "Files may be grouped under the wrong subject, session, task, or run in the import recipe.",
+          "next_action": "Set or confirm the missing values in Review Metadata.",
           "target_step": "Review Metadata",
           "severity": "needs_confirmation"
         },
         {
           "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
-          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
-          "next_action": "Review the target step and confirm the choice.",
+          "impact": "Class, timing, artifact, or system events could be mistaken for training labels or omitted from the import.",
+          "next_action": "Assign each event role in Match Labels.",
           "target_step": "Match Labels",
           "severity": "needs_confirmation"
         }
@@ -1832,6 +2712,7 @@
         "participants_file": null,
         "participant_count": 0,
         "participants": [],
+        "metadata_materialized": true,
         "channel_status_summary": {
           "total": 0,
           "good": 0,
@@ -1866,7 +2747,20 @@
           "channels_files": []
         },
         "dataset_description": null,
-        "dataset": {}
+        "dataset": {},
+        "root_validation_issue": "",
+        "metadata_read_budget": {
+          "budget_bytes": 1048576,
+          "bytes_read": 0,
+          "budget_exhausted": false
+        },
+        "looks_like_bids": false,
+        "metadata_discovery": {
+          "budget_bytes": 1048576,
+          "candidate_bytes": 0,
+          "bytes_read": 0,
+          "budget_exhausted": false
+        }
       },
       "label_carrier_plan": [],
       "format_capabilities": [
@@ -1891,6 +2785,7 @@
         "ready": true,
         "supervised_ready": true,
         "supervised_blockers": [],
+        "supervised_blocker_codes": [],
         "label_source": "internal_events",
         "source": "applied_interpretation",
         "placement_modes": [],
@@ -1898,6 +2793,11 @@
           "left": "left",
           "right": "right"
         },
+        "usable_class_labels": [
+          "left",
+          "right"
+        ],
+        "usable_class_count": 2,
         "default_epoch_events": [
           "left",
           "right"
@@ -1917,6 +2817,7 @@
           "right"
         ],
         "run_event_mappings": {},
+        "run_dependent_mapping": false,
         "event_label_aliases": {
           "left": "left",
           "right": "right"
@@ -1936,6 +2837,7 @@
           "participants_file": null,
           "participant_count": 0,
           "participants": [],
+          "metadata_materialized": true,
           "channel_status_summary": {
             "total": 0,
             "good": 0,
@@ -1970,13 +2872,30 @@
             "channels_files": []
           },
           "dataset_description": null,
-          "dataset": {}
+          "dataset": {},
+          "root_validation_issue": "",
+          "metadata_read_budget": {
+            "budget_bytes": 1048576,
+            "bytes_read": 0,
+            "budget_exhausted": false
+          },
+          "looks_like_bids": false,
+          "metadata_discovery": {
+            "budget_bytes": 1048576,
+            "candidate_bytes": 0,
+            "bytes_read": 0,
+            "budget_exhausted": false
+          }
         },
         "internal_event_selection": {
           "label_event_codes": [
             "left",
             "right"
           ],
+          "label_event_counts": {
+            "left": 6,
+            "right": 6
+          },
           "not_label_event_codes": [],
           "class_map": {
             "left": "left",
@@ -1999,9 +2918,13 @@
       "has_model": true,
       "has_training_option": true,
       "has_trainer": true,
-      "is_running": false
+      "is_running": false,
+      "finished_run_count": 1
     },
-    "last_error": null
+    "last_error": null,
+    "state_reliable": true,
+    "training_liveness_reliable": true,
+    "read_errors": []
   },
   "ui_state": {
     "current_panel": "Visualization",
@@ -2031,26 +2954,26 @@
         "plan": {
           "x": 95,
           "y": 111,
-          "width": 150,
+          "width": 158,
           "height": 30
         },
         "run": {
-          "x": 291,
+          "x": 299,
           "y": 111,
-          "width": 150,
+          "width": 158,
           "height": 30
         },
         "method": {
           "x": 95,
           "y": 147,
-          "width": 150,
+          "width": 158,
           "height": 30
         },
         "absolute": {
-          "x": 291,
-          "y": 151,
-          "width": 150,
-          "height": 21
+          "x": 299,
+          "y": 154,
+          "width": 158,
+          "height": 16
         }
       },
       "label_rects": {
@@ -2061,7 +2984,7 @@
           "height": 30
         },
         "Run:": {
-          "x": 253,
+          "x": 261,
           "y": 111,
           "width": 30,
           "height": 30

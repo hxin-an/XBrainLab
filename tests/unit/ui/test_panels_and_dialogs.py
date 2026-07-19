@@ -194,9 +194,10 @@ class TestVisualizationPanel:
     def test_creates(self, panel):
         assert isinstance(panel, QWidget)
 
-    def test_get_trainers(self, panel):
-        result = panel.get_trainers()
-        assert isinstance(result, list)
+    def test_refresh_combos_does_not_read_live_trainers(self, panel):
+        panel.refresh_combos()
+
+        panel.controller.get_trainers.assert_not_called()
 
     def test_refresh_combos(self, panel):
         panel.refresh_combos()
@@ -227,6 +228,7 @@ class TestEvaluationPanel:
                 w = cast(Any, QWidget())
                 w.update_plot = MagicMock()
                 w.clear = MagicMock()
+                w.fit_plot_to_canvas = MagicMock()
                 return w
 
             return factory

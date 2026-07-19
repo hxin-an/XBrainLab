@@ -12,6 +12,7 @@ from XBrainLab.backend.application.data_interpretation_choice_schema import (
 )
 
 from ..base import BaseTool
+from ..result_contract import ToolExecutionResult
 
 
 class BaseListFilesTool(BaseTool):
@@ -45,7 +46,7 @@ class BaseListFilesTool(BaseTool):
             "required": ["directory"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -95,7 +96,7 @@ class BaseScanSourceTool(BaseTool):
             "required": ["source_path"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -128,7 +129,7 @@ class BasePreviewInterpretationTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -157,7 +158,7 @@ class BaseValidateInterpretationTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -193,7 +194,7 @@ class BaseApplyInterpretationTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -220,7 +221,7 @@ class BaseSaveInterpretationRecipeTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -248,7 +249,7 @@ class BaseReloadInterpretationRecipeTool(BaseTool):
             "required": ["recipe_path"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -286,7 +287,7 @@ class BaseLoadDataTool(BaseTool):
             "required": ["paths"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -324,7 +325,7 @@ class BaseAttachLabelsTool(BaseTool):
             "required": ["mapping"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -348,7 +349,7 @@ class BaseClearDatasetTool(BaseTool):
         """Clearing data is destructive and requires user confirmation."""
         return True
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -367,7 +368,7 @@ class BaseGetDatasetInfoTool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -404,7 +405,7 @@ class BaseQueryStateTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -447,5 +448,5 @@ class BaseGenerateDatasetTool(BaseTool):
             "required": ["split_strategy", "training_mode"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError

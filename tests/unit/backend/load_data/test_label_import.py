@@ -1,5 +1,6 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import mne
 import numpy as np
 import pytest
 
@@ -15,31 +16,27 @@ def mock_raw():
     return raw
 
 
-def test_timestamp_import(mock_raw):
-    loader = EventLoader(mock_raw)
+def test_timestamp_import():
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    mne_raw = mne.io.RawArray(np.zeros((1, 300)), info, verbose=False)
+    raw = Raw("timestamp.fif", mne_raw)
+    loader = EventLoader(raw)
     # Simulate list of dicts from CSV
     loader.label_list = [
         {"onset": 1.0, "duration": 0.5, "label": "Event A"},
         {"onset": 2.0, "duration": 0.5, "label": "Event B"},
     ]
 
-    with patch("mne.events_from_annotations") as mock_events_from_annot:
-        mock_events_from_annot.return_value = (
-            np.array([[100, 0, 1], [200, 0, 2]]),
-            {"Event A": 1, "Event B": 2},
-        )
+    events, event_id = loader.create_event({})
+    loader.apply()
 
-        events, event_id = loader.create_event({})
-
-        # Verify Annotations created
-        assert loader.annotations is not None
-        assert len(loader.annotations) == 2
-        assert loader.annotations.onset[0] == 1.0
-        assert loader.annotations.description[0] == "Event A"
-
-        # Verify events returned
-        assert events is not None
-        assert event_id is not None
+    assert loader.annotations is not None
+    assert len(loader.annotations) == 2
+    assert loader.annotations.onset[0] == 1.0
+    assert loader.annotations.description[0] == "Event A"
+    assert events is not None
+    assert events[:, 0].tolist() == [100, 200]
+    assert event_id == {"Event A": 1, "Event B": 2}
 
 
 def test_smart_filter(mock_raw):

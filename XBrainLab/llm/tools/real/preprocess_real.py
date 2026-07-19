@@ -7,12 +7,11 @@ to the loaded EEG data.
 
 from typing import Any
 
-from XBrainLab.backend.application import (
-    CreateEpochCommand,
-    PreprocessCommand,
-    PreprocessOperation,
-    QueryStateCommand,
-    get_application_service,
+from XBrainLab.llm.tools import execute_real_application_tool
+from XBrainLab.llm.tools.result_contract import (
+    ToolResult,
+    UiRequest,
+    UiRequestKind,
 )
 
 from ..definitions.preprocess_def import (
@@ -23,6 +22,7 @@ from ..definitions.preprocess_def import (
     BaseNotchFilterTool,
     BaseRereferenceTool,
     BaseResampleTool,
+    BaseResetPreprocessTool,
     BaseSetMontageTool,
     BaseStandardPreprocessTool,
 )
@@ -64,20 +64,14 @@ def _format_channel_identity_guardrail(diagnostics: dict[str, Any]) -> str:
 
 def _preprocess_diagnostics(study: Any) -> dict[str, Any]:
     """Return preprocess diagnostics from the shared command service."""
-    result = get_application_service(study).execute(
-        QueryStateCommand(query="preprocess_diagnostics"),
+    result = execute_real_application_tool(
+        study,
+        "query_state",
+        {"query": "preprocess_diagnostics"},
     )
-    return dict(result.diagnostics) if result.ok else {}
-
-
-def _append_channel_identity_guardrail(message: str, study: Any) -> str:
-    """Append a preprocess-stage channel-identity guardrail when needed."""
-    return message + _format_channel_identity_guardrail(_preprocess_diagnostics(study))
-
-
-def _raise_if_failed(result: Any) -> None:
-    if getattr(result, "failed", False):
-        raise RuntimeError(str(result.message))
+    if result.ok and isinstance(result.payload, dict):
+        return dict(result.payload)
+    return {}
 
 
 class RealStandardPreprocessTool(BaseStandardPreprocessTool):
@@ -97,7 +91,7 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
         resample_rate: int | None = None,
         normalize_method: str = "z-score",
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Apply the standard preprocessing pipeline.
 
         Args:
@@ -115,71 +109,29 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
             A success message or an error description.
 
         """
-        service = get_application_service(study)
-
-        try:
-            with service.preprocess.batch_notifications():
-                # 1. Bandpass
-                _raise_if_failed(
-                    service.execute(
-                        PreprocessCommand(
-                            operation=PreprocessOperation.BANDPASS,
-                            low_freq=l_freq,
-                            high_freq=h_freq,
-                        ),
-                    ),
-                )
-
-                # 2. Notch
-                if notch_freq:
-                    _raise_if_failed(
-                        service.execute(
-                            PreprocessCommand(
-                                operation=PreprocessOperation.NOTCH,
-                                notch_freq=notch_freq,
-                            ),
-                        ),
-                    )
-
-                # 3. Resample
-                if resample_rate:
-                    _raise_if_failed(
-                        service.execute(
-                            PreprocessCommand(
-                                operation=PreprocessOperation.RESAMPLE,
-                                rate=resample_rate,
-                            ),
-                        ),
-                    )
-
-                # 4. Rereference
-                if rereference:
-                    _raise_if_failed(
-                        service.execute(
-                            PreprocessCommand(
-                                operation=PreprocessOperation.REREFERENCE,
-                                method=rereference,
-                            ),
-                        ),
-                    )
-
-                # 5. Normalize
-                if normalize_method:
-                    _raise_if_failed(
-                        service.execute(
-                            PreprocessCommand(
-                                operation=PreprocessOperation.NORMALIZE,
-                                method=normalize_method,
-                            ),
-                        ),
-                    )
-
-        except Exception as e:
-            return f"Preprocessing failed: {e!s}"
-
-        return _append_channel_identity_guardrail(
-            "Standard preprocessing applied successfully.",
+        return execute_real_application_tool(
             study,
+            self.name,
+            {
+                "l_freq": l_freq,
+                "h_freq": h_freq,
+                "notch_freq": notch_freq,
+                "rereference": rereference,
+                "resample_rate": resample_rate,
+                "normalize_method": normalize_method,
+            },
+        )
+
+
+class RealResetPreprocessTool(BaseResetPreprocessTool):
+    """Reset preprocessing through the canonical ApplicationService command."""
+
+    def execute(self, study: Any, **kwargs) -> ToolResult:
+        """Retain loaded raw EEG while clearing derived preprocessing state."""
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"confirmed": kwargs.get("confirmed", False)},
         )
 
 
@@ -192,7 +144,7 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
         low_freq: float | None = None,
         high_freq: float | None = None,
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Apply a bandpass filter to loaded EEG data.
 
         Args:
@@ -205,28 +157,17 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
             A confirmation or error message.
 
         """
-        if low_freq is None or high_freq is None:
-            return "Error: low_freq and high_freq are required."
-
-        try:
-            _raise_if_failed(
-                get_application_service(study).execute(
-                    PreprocessCommand(
-                        operation=PreprocessOperation.BANDPASS,
-                        low_freq=low_freq,
-                        high_freq=high_freq,
-                    ),
-                ),
-            )
-        except Exception as e:
-            return f"Bandpass filter failed: {e!s}"
-        return f"Applied Bandpass Filter ({low_freq}-{high_freq} Hz)"
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"low_freq": low_freq, "high_freq": high_freq},
+        )
 
 
 class RealNotchFilterTool(BaseNotchFilterTool):
     """Real implementation of :class:`BaseNotchFilterTool`."""
 
-    def execute(self, study: Any, freq: float | None = None, **kwargs) -> str:
+    def execute(self, study: Any, freq: float | None = None, **kwargs) -> ToolResult:
         """Apply a notch filter to remove power-line noise.
 
         Args:
@@ -238,27 +179,17 @@ class RealNotchFilterTool(BaseNotchFilterTool):
             A confirmation or error message.
 
         """
-        if freq is None:
-            return "Error: freq is required."
-
-        try:
-            _raise_if_failed(
-                get_application_service(study).execute(
-                    PreprocessCommand(
-                        operation=PreprocessOperation.NOTCH,
-                        notch_freq=freq,
-                    ),
-                ),
-            )
-        except Exception as e:
-            return f"Notch filter failed: {e!s}"
-        return f"Applied Notch Filter ({freq} Hz)"
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"freq": freq},
+        )
 
 
 class RealResampleTool(BaseResampleTool):
     """Real implementation of :class:`BaseResampleTool`."""
 
-    def execute(self, study: Any, rate: int | None = None, **kwargs) -> str:
+    def execute(self, study: Any, rate: int | None = None, **kwargs) -> ToolResult:
         """Resample the loaded EEG data to a new sampling rate.
 
         Args:
@@ -270,27 +201,17 @@ class RealResampleTool(BaseResampleTool):
             A confirmation or error message.
 
         """
-        if rate is None:
-            return "Error: rate is required."
-
-        try:
-            _raise_if_failed(
-                get_application_service(study).execute(
-                    PreprocessCommand(
-                        operation=PreprocessOperation.RESAMPLE,
-                        rate=rate,
-                    ),
-                ),
-            )
-        except Exception as e:
-            return f"Resample failed: {e!s}"
-        return f"Resampled data to {rate} Hz"
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"rate": rate},
+        )
 
 
 class RealNormalizeTool(BaseNormalizeTool):
     """Real implementation of :class:`BaseNormalizeTool`."""
 
-    def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
+    def execute(self, study: Any, method: str | None = None, **kwargs) -> ToolResult:
         """Normalise the loaded EEG data.
 
         Args:
@@ -302,27 +223,17 @@ class RealNormalizeTool(BaseNormalizeTool):
             A confirmation or error message.
 
         """
-        if method is None:
-            return "Error: method is required."
-
-        try:
-            _raise_if_failed(
-                get_application_service(study).execute(
-                    PreprocessCommand(
-                        operation=PreprocessOperation.NORMALIZE,
-                        method=method,
-                    ),
-                ),
-            )
-        except Exception as e:
-            return f"Normalization failed: {e!s}"
-        return f"Normalized data using {method}"
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {"method": method},
+        )
 
 
 class RealRereferenceTool(BaseRereferenceTool):
     """Real implementation of :class:`BaseRereferenceTool`."""
 
-    def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
+    def execute(self, study: Any, method: str | None = None, **kwargs) -> ToolResult:
         """Set the EEG reference.
 
         Args:
@@ -334,30 +245,22 @@ class RealRereferenceTool(BaseRereferenceTool):
             A confirmation or error message.
 
         """
-        if method is None:
-            return "Error: method is required."
-
-        try:
-            _raise_if_failed(
-                get_application_service(study).execute(
-                    PreprocessCommand(
-                        operation=PreprocessOperation.REREFERENCE,
-                        method=method,
-                    ),
-                ),
-            )
-        except Exception as e:
-            return f"Re-reference failed: {e!s}"
-        return _append_channel_identity_guardrail(
-            f"Applied reference: {method}",
+        return execute_real_application_tool(
             study,
+            self.name,
+            {"method": method},
         )
 
 
 class RealChannelSelectionTool(BaseChannelSelectionTool):
     """Real implementation of :class:`BaseChannelSelectionTool`."""
 
-    def execute(self, study: Any, channels: list[str] | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        channels: list[str] | None = None,
+        **kwargs,
+    ) -> ToolResult:
         """Select specific EEG channels to keep.
 
         Args:
@@ -369,23 +272,10 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
             A confirmation or error message.
 
         """
-        if channels is None:
-            return "Error: channels list is required."
-
-        try:
-            _raise_if_failed(
-                get_application_service(study).execute(
-                    PreprocessCommand(
-                        operation=PreprocessOperation.SELECT_CHANNELS,
-                        channels=channels,
-                    ),
-                ),
-            )
-        except Exception as e:
-            return f"Channel selection failed: {e!s}"
-        return _append_channel_identity_guardrail(
-            f"Selected {len(channels)} channels.",
+        return execute_real_application_tool(
             study,
+            self.name,
+            {"channels": channels},
         )
 
 
@@ -396,7 +286,12 @@ class RealSetMontageTool(BaseSetMontageTool):
     user to visually verify the channel-to-electrode mapping.
     """
 
-    def execute(self, study: Any, montage_name: str | None = None, **kwargs) -> str:
+    def execute(
+        self,
+        study: Any,
+        montage_name: str | None = None,
+        **kwargs,
+    ) -> ToolResult | UiRequest:
         """Request montage application with UI confirmation.
 
         Args:
@@ -409,13 +304,19 @@ class RealSetMontageTool(BaseSetMontageTool):
 
         """
         if montage_name is None:
-            return "Error: montage_name is required."
+            return ToolResult(
+                ok=False,
+                message="A montage name is required.",
+                error_type="input",
+            )
 
-        # Instead of auto-applying, request UI confirmation
-        # This allows users to visually verify channel-to-electrode mapping
-        return _append_channel_identity_guardrail(
-            f"Request: confirm_montage '{montage_name}'",
-            study,
+        warning = _format_channel_identity_guardrail(_preprocess_diagnostics(study))
+        return UiRequest(
+            kind=UiRequestKind.CONFIRM_MONTAGE,
+            params={
+                "montage_name": montage_name,
+                "warning": warning.strip(),
+            },
         )
 
 
@@ -430,7 +331,7 @@ class RealEpochDataTool(BaseEpochDataTool):
         baseline: list[float] | None = None,
         event_id: list[str] | None = None,  # Note: Definitions use 'event_id'
         **kwargs,
-    ) -> str:
+    ) -> ToolResult:
         """Epoch continuous EEG data based on event markers.
 
         Args:
@@ -445,18 +346,13 @@ class RealEpochDataTool(BaseEpochDataTool):
             A confirmation message or an error description.
 
         """
-        try:
-            _raise_if_failed(
-                get_application_service(study).execute(
-                    CreateEpochCommand(
-                        t_min=t_min,
-                        t_max=t_max,
-                        baseline=baseline,
-                        event_ids=event_id,
-                    ),
-                ),
-            )
-        except Exception as e:
-            return f"Epoching failed: {e!s}"
-        else:
-            return f"Data epoched from {t_min}s to {t_max}s."
+        return execute_real_application_tool(
+            study,
+            self.name,
+            {
+                "t_min": t_min,
+                "t_max": t_max,
+                "baseline": baseline,
+                "event_id": event_id,
+            },
+        )

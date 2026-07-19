@@ -13,6 +13,13 @@ EXPECTED_NAV_TEXTS = [
     "Evaluation",
     "Visualization",
 ]
+EXPECTED_PANEL_ATTRS = [
+    "dataset_panel",
+    "preprocess_panel",
+    "training_panel",
+    "evaluation_panel",
+    "visualization_panel",
+]
 
 
 def _checked_states(window):
@@ -21,6 +28,13 @@ def _checked_states(window):
 
 def _checked_state_for(index: int) -> list[bool]:
     return [button_index == index for button_index in range(len(EXPECTED_NAV_TEXTS))]
+
+
+def _switch_and_wait_for_panel(window: MainWindow, index: int, qtbot) -> Any:
+    ready_panels: list[Any] = []
+    window.switch_page(index, on_ready=ready_panels.append)
+    qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=5_000)
+    return ready_panels[0]
 
 
 @pytest.fixture
@@ -70,9 +84,15 @@ def test_navigation_buttons_keep_page_and_checked_state_in_sync(qtbot, study):
 
     for index in (1, 2, 3, 4, 0):
         qtbot.mouseClick(window.nav_btns[index], Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(
+            lambda index=index: index in window._loaded_panel_indices,
+            timeout=5_000,
+        )
+        panel = getattr(window, EXPECTED_PANEL_ATTRS[index])
         assert window.stack.currentIndex() == index
         assert _checked_states(window) == _checked_state_for(index)
-        assert window.stack.currentWidget() is window.stack.widget(index)
+        assert window.stack.currentWidget() is panel
+        assert window.stack.widget(index) is panel
 
     window.close()
 
@@ -82,8 +102,7 @@ def test_evaluation_page_empty_state_uses_command_blocked_reason(qtbot, study):
     window = MainWindow(study)
     qtbot.addWidget(window)
 
-    window.switch_page(3)
-    eval_panel = window.evaluation_panel
+    eval_panel = _switch_and_wait_for_panel(window, 3, qtbot)
     eval_panel.update_panel()
 
     assert eval_panel.last_application_query is not None
@@ -96,9 +115,10 @@ def test_evaluation_page_empty_state_uses_command_blocked_reason(qtbot, study):
         eval_panel.last_application_query.diagnostics.get("exception_type")
         == "PreconditionError"
     )
-    assert eval_panel.model_combo.count() == 1
+    assert eval_panel.model_combo.count() == 0
+    assert eval_panel.model_combo.isEnabled() is False
     assert (
-        eval_panel.model_combo.currentText()
+        eval_panel.model_combo.toolTip()
         == "Create a training plan before evaluating results."
     )
     assert (
@@ -118,8 +138,7 @@ def test_visualization_page_empty_state_uses_command_blocked_reason(qtbot, study
     window = MainWindow(study)
     qtbot.addWidget(window)
 
-    window.switch_page(4)
-    viz_panel = window.visualization_panel
+    viz_panel = _switch_and_wait_for_panel(window, 4, qtbot)
     viz_panel.update_panel()
 
     assert viz_panel.last_application_query is not None
@@ -141,10 +160,10 @@ def test_visualization_page_empty_state_uses_command_blocked_reason(qtbot, study
     assert viz_panel.tabs.tabText(2) == "Topographic Map"
     current_widget = cast(Any, viz_panel.tabs.currentWidget())
     assert current_widget.error_label.isHidden() is False
-    assert (
-        current_widget.error_label.text()
-        == "Error: Create epochs, complete training, or configure saliency "
-        "before opening visualization views."
+    assert current_widget.error_label.text() == (
+        "Create epochs, complete training, or configure saliency before opening "
+        "visualization views."
     )
+    assert "Error:" not in current_widget.error_label.text()
 
     window.close()

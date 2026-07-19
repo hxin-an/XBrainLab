@@ -16,10 +16,10 @@ def serialize_json_value(value: Any, *, _seen: set[int] | None = None) -> Any:
     consumers receive an explicit opaque-object descriptor instead of the raw
     Python object when a result is serialized.
     """
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
     if isinstance(value, Enum):
         return serialize_json_value(value.value, _seen=_seen)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
     if isinstance(value, PurePath):
         return os.fspath(value)
 

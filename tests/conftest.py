@@ -17,9 +17,14 @@ This conftest module provides:
 
 import os
 import sys
-import tempfile
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+from scripts.dev.test_runtime_paths import (
+    configure_test_temp_root,
+    matplotlib_cache_root,
+)
 
 # --- PYTEST COLLECTION FIX ---
 # Prevent pytest from scanning XBrainLab source directory as tests
@@ -30,10 +35,12 @@ collect_ignore_glob = ["../XBrainLab/**"]
 # otherwise abort during pytest-qt qapp startup or fall back to flaky fd
 # capture behavior. Set conservative defaults here so the repo itself carries
 # the known-good test environment, instead of relying only on wrappers.
-matplotlib_cache_dir = os.path.join(tempfile.gettempdir(), "matplotlib-codex")
+repo_root = Path(__file__).resolve().parents[1]
+test_temp_root = configure_test_temp_root(repo_root)
+matplotlib_cache_dir = matplotlib_cache_root(test_temp_root)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("MPLBACKEND", "Agg")
-os.environ.setdefault("MPLCONFIGDIR", matplotlib_cache_dir)
+os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_dir)
 os.makedirs(matplotlib_cache_dir, exist_ok=True)
 
 # --- KNOWN ISSUE: pytest-cov / PyTorch Conflict ---

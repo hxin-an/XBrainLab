@@ -5,78 +5,206 @@ execution, and communication between the UI layer and the backend
 worker thread.
 """
 
-import json
 import logging
-import re
-import threading
-from ast import literal_eval
-from collections import deque
+from collections.abc import Callable
 from contextlib import suppress
+from enum import Enum
 from typing import Any, cast
 
-from PyQt6.QtCore import QEventLoop, QObject, QThread, QTimer, pyqtSignal
+from PyQt6 import sip
+from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 
 from XBrainLab.backend.application import CommandName, get_application_service
-from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.backend.application.view_publication import (
+    InterpretationReviewIdentity,
+)
+from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
+from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.application_surface import (
-    READ_ONLY_TOOLS,
-    TOOL_TO_COMMAND,
-    CapabilityPolicyUnavailable,
+    APPLICATION_COMMAND_TOOLS,
     ToolAvailability,
+    ToolAvailabilityContext,
     ToolCommandResult,
-    get_tool_availability,
+)
+from XBrainLab.llm.tools.result_contract import (
+    UiRequest,
+    UiRequestKind,
+    redact_public_text,
+    safe_unexpected_failure,
 )
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
+from XBrainLab.product_language import ASSISTANT_CANCELLED_MESSAGE, tool_action_label
 
-from .assembler import ContextAssembler
+from .assembler import ContextAssembler, PromptToolPublication
+from .assistant_activity import (
+    AssistantAttentionKind,
+    AssistantTurnActivity,
+    AssistantTurnActivityPhase,
+)
 from .confidence import estimate_confidence
+from .confirmation import (
+    AgentConfirmationRequest,
+    AgentConfirmationResolution,
+    AgentConfirmationResolutionStatus,
+)
 from .conversation import ConversationHistory
 from .decision_context import build_workflow_decision_context
-from .execution_policy import ExecutionSnapshot, HostExecutionPolicy
-from .intent import command_for_intent, infer_user_intent, path_label_for_intent
+from .execution_policy import ExecutionSnapshot
+from .interaction import AgentInteractionOutcome, AgentInteractionStatus
 from .metrics import AgentMetricsTracker
-from .parser import CommandParser
+from .parser import CommandParser, ToolEnvelopeParseResult, ToolEnvelopeStatus
+from .pending_interaction import (
+    PendingConfirmationDecision,
+    PendingInteractionCoordinator,
+    PendingWorkflowHandoffDecision,
+)
+from .product_turn_policy import ProductTurnKind, ProductTurnPolicy
+from .rag_lifecycle import RAGLifecycleRetriever, RAGRetrieverLifecycle
+from .request_admission import (
+    UserRequestAdmissionAction,
+    UserRequestAdmissionPolicy,
+)
+from .response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
+    AssistantResponseAction,
+    AssistantResponseKind,
+    AssistantResponsePresentation,
+    interaction_outcome_kind,
+    interaction_outcome_message,
+    panel_target_for_command,
+    user_facing_generation_error,
+)
+from .runtime_state import AssistantRuntimePhase, AssistantRuntimeSnapshot
+from .state_reliability import (
+    serialized_application_state_reliable,
+    typed_application_state_reliable,
+)
+from .strict_envelope_recovery import (
+    DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
+    StrictEnvelopeRecoveryAction,
+    StrictEnvelopeRecoveryRequest,
+)
+from .tool_attempt_coordinator import (
+    ApplicationToolContextSource,
+    ToolAttemptAction,
+    ToolAttemptCoordinator,
+    ToolAttemptDecision,
+    ToolAttemptFeedback,
+    ToolAttemptRequest,
+)
 from .tool_call_normalizer import normalize_tool_call
-from .tool_execution_coordinator import ToolExecutionCoordinator
+from .tool_execution_coordinator import (
+    ToolExecutionCoordinator,
+    ToolExecutionOutcome,
+)
+from .tool_feedback import (
+    build_recovery_feedback,
+    format_tool_output,
+    summarize_tool_result,
+)
+from .turn import (
+    AssistantDebugToolRequest,
+    AssistantGenerationDispatchAcknowledgement,
+    AssistantGenerationDispatchPhase,
+    AssistantGenerationEvent,
+    AssistantGenerationEventPhase,
+    AssistantGenerationStopAcknowledgement,
+    AssistantGenerationStopRequest,
+    AssistantResponseContract,
+    AssistantTurnCorrelation,
+    AssistantTurnDeliveryAcknowledgement,
+    AssistantTurnDeliveryPhase,
+    AssistantTurnRequest,
+    AssistantTurnTerminal,
+)
+from .ui_handoff import (
+    WorkflowUiHandoffRequest,
+    WorkflowUiHandoffResolution,
+    WorkflowUiHandoffResolutionStatus,
+)
 from .verifier import VerificationLayer
 from .worker import AgentWorker
 
 logger = logging.getLogger(__name__)
 
 
-WORKER_THREAD_SHUTDOWN_WAIT_MS = 2000
+WORKER_GENERATION_SHUTDOWN_WAIT_MS = 2000
+WORKER_SHUTDOWN_RETRY_INTERVAL_MS = 100
+WORKER_SHUTDOWN_TIMEOUT_MS = 5000
+_QT_THREAD_TYPE = QThread
 
 
-TOOL_ACTION_LABELS = {
-    "list_files": "File browser",
-    "get_dataset_info": "Dataset summary",
-    "query_state": "State query",
-    "scan_source": "Data source scan",
-    "preview_interpretation": "Import preview",
-    "validate_interpretation": "Import validation",
-    "apply_interpretation": "Import apply",
-    "save_interpretation_recipe": "Recipe save",
-    "reload_interpretation_recipe": "Recipe reload",
-    "load_data": "Import data",
-    "attach_labels": "Add labels to loaded data",
-    "apply_standard_preprocess": "Preprocessing",
-    "apply_bandpass_filter": "Bandpass filter",
-    "apply_notch_filter": "Notch filter",
-    "resample_data": "Resampling",
-    "normalize_data": "Normalization",
-    "set_reference": "Reference setup",
-    "select_channels": "Channel selection",
-    "set_montage": "Montage setup",
-    "epoch_data": "Epoch creation",
-    "generate_dataset": "Dataset builder",
-    "set_model": "Model setup",
-    "configure_training": "Training setup",
-    "start_training": "Training",
-    "clear_dataset": "Session reset",
-    "switch_panel": "Navigation",
-}
+class _ControllerShutdownPhase(str, Enum):
+    OPEN = "open"
+    WORKER_STOPPING = "worker_stopping"
+    THREAD_STOPPING = "thread_stopping"
+    CLOSED = "closed"
+
+
+class _BestEffortGenerationObservers:
+    """Isolate diagnostic callbacks from the worker dispatch contract."""
+
+    def __init__(self) -> None:
+        self._callbacks: list[Callable[[object], None]] = []
+        self._emitting = False
+
+    def connect(self, callback: Callable[[object], None]) -> None:
+        if not callable(callback):
+            raise TypeError("Generation diagnostic observer must be callable.")
+        self._callbacks.append(callback)
+
+    def disconnect(self, callback: Callable[[object], None] | None = None) -> None:
+        if callback is None:
+            self._callbacks.clear()
+            return
+        self._callbacks = [
+            registered for registered in self._callbacks if registered != callback
+        ]
+
+    def emit(self, payload: object) -> None:
+        if self._emitting:
+            logger.warning(
+                "Ignored reentrant assistant generation diagnostic publication."
+            )
+            return
+        self._emitting = True
+        try:
+            for callback in tuple(self._callbacks):
+                self._notify(callback, payload)
+        finally:
+            self._emitting = False
+
+    @staticmethod
+    def _notify(callback: Callable[[object], None], payload: object) -> None:
+        try:
+            callback(payload)
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_controller",
+                operation="publish_generation_diagnostic",
+            )
+
+
+class _ExpectedPublicationApplicationRuntime:
+    """Immutable tool runtime binding execution to one reviewed publication."""
+
+    def __init__(self, service: Any, generation: int) -> None:
+        self._service = service
+        self._generation = generation
+
+    def get_view_publication(self) -> Any:
+        return self._service.get_view_publication()
+
+    def execute(self, command: Any) -> Any:
+        return self._service.execute(
+            command,
+            expected_publication_generation=self._generation,
+        )
 
 
 class LLMController(QObject):
@@ -105,28 +233,40 @@ class LLMController(QObject):
     MODE_MULTI = "multi"
 
     # Signals to UI
-    response_ready = pyqtSignal(str, str)  # sender, text
-    chunk_received = pyqtSignal(str)  # New signal for streaming
-    generation_started = pyqtSignal()  # New signal for UI prep
+    response_presentation_ready = pyqtSignal(object)
+    generation_event = pyqtSignal(object)
     processing_finished = pyqtSignal()  # ROBUST: New signal for UI to stop spinner
+    turn_finished = pyqtSignal(object)
     status_update = pyqtSignal(str)  # status message
     error_occurred = pyqtSignal(str)  # error message
-    request_user_interaction = pyqtSignal(str, dict)  # command, params
-    remove_content = pyqtSignal(str)  # New signal to hide JSON
+    panel_navigation_requested = pyqtSignal(object)
     execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
     application_command_completed = pyqtSignal(object)
     application_command_started = pyqtSignal()
+    runtime_state_changed = pyqtSignal(object)
+    interaction_resolved = pyqtSignal(object)
+    confirmation_requested = pyqtSignal(object)
+    workflow_ui_handoff_requested = pyqtSignal(object)
+    activity_changed = pyqtSignal(object)
+    shutdown_finished = pyqtSignal(bool, str)
 
     # Internal signals to Worker
-    sig_initialize = pyqtSignal()  # Simple signal, no args
-    sig_generate = pyqtSignal(list)
-    sig_reinit = pyqtSignal(str)  # M3.4: Re-init signal
-    sig_cancel_generation = pyqtSignal()
+    sig_initialize = pyqtSignal(object)
+    sig_generate: _BestEffortGenerationObservers
+    _sig_dispatch_generation = pyqtSignal(object)
+    sig_reinit = pyqtSignal(object)
+    sig_cancel_generation = pyqtSignal(object)
     sig_shutdown_worker = pyqtSignal()
+    sig_rag_context_ready = pyqtSignal(int, str, str, str)
 
     MAX_HISTORY = 20
 
-    def __init__(self, study):
+    def __init__(
+        self,
+        study,
+        *,
+        rag_lifecycle: RAGRetrieverLifecycle | None = None,
+    ) -> None:
         """Initializes the LLMController.
 
         Sets up the tool registry, context assembler, verification layer,
@@ -134,9 +274,11 @@ class LLMController(QObject):
 
         Args:
             study: The application Study object providing experiment context.
+            rag_lifecycle: Optional lifecycle owner injected by tests or hosts.
 
         """
         super().__init__()
+        self.sig_generate = _BestEffortGenerationObservers()
         self.study = study
 
         # Initialize Tool Registry & Assembler
@@ -151,56 +293,67 @@ class LLMController(QObject):
             },
         )
 
-        # Initialize RAG Retriever
-        self.rag_retriever = RAGRetriever()
+        # The lifecycle is the sole owner of retriever work and cleanup.
+        self._rag_lifecycle = (
+            rag_lifecycle
+            if rag_lifecycle is not None
+            else RAGRetrieverLifecycle(RAGRetriever())
+        )
 
         # Setup Worker in separate thread to avoid blocking UI during load/inference
         self.worker_thread = QThread()
         self.worker = AgentWorker()
         self.worker.moveToThread(self.worker_thread)
         self.worker_thread.finished.connect(self.worker.deleteLater)
+        self.worker_thread.finished.connect(self._on_worker_thread_finished)
 
         self._conversation = ConversationHistory(max_size=self.MAX_HISTORY)
 
         # Connect worker signals
-        self.worker.chunk_received.connect(self._on_chunk_received)
-        self.worker.finished.connect(self._on_generation_finished)
-        self.worker.error.connect(self._on_worker_error)
+        self.worker.generation_chunk_received.connect(self._on_chunk_received)
+        self.worker.generation_finished.connect(self._on_generation_finished)
+        self.worker.generation_error.connect(self._on_generation_error)
+        self.worker.generation_dispatch_acknowledged.connect(
+            self._on_generation_dispatch_acknowledged
+        )
+        self.worker.error.connect(self._on_runtime_error)
         self.worker.log.connect(self.status_update)
 
         # Connect control signals
         self.sig_initialize.connect(self.worker.initialize_agent)
-        self.sig_generate.connect(self.worker.generate_from_messages)
+        self._sig_dispatch_generation.connect(self.worker.generate_from_messages)
         self.sig_reinit.connect(self.worker.reinitialize_agent)  # M3.4
         self.sig_cancel_generation.connect(self.worker.cancel_generation)
+        # Worker affinity is the dedicated thread, so AutoConnection queues cleanup.
         self.sig_shutdown_worker.connect(self.worker.shutdown)
         self.worker.generation_stop_finished.connect(
             self._on_generation_stop_finished,
         )
         self.worker.runtime_snapshot_changed.connect(self._on_runtime_snapshot_changed)
+        self.worker.shutdown_finished.connect(self._on_worker_shutdown_finished)
+        self.sig_rag_context_ready.connect(self._on_rag_context_ready)
 
         # Start thread
         self.worker_thread.start()
 
         self.current_response = ""
-        self._worker_runtime_snapshot: dict[str, Any] = {
-            "initialized": False,
-            "backend_mode": "",
-            "model_id": "",
-        }
+        self._worker_runtime_snapshot = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.IDLE,
+            initialized=False,
+        )
         self.is_processing = False
-        self._emitted_len = 0
-        self._is_buffering = False
         self._visible_response_sent = False
         self._last_tool_summary: str | None = None
+        self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
+        self._active_tool_publication = PromptToolPublication.empty()
+        self._active_response_contract = AssistantResponseContract.STRUCTURED_ACTION
 
         # Metrics tracker
         self.metrics = AgentMetricsTracker()
 
         # Robustness State
-        self._recent_tool_calls: deque = deque(maxlen=10)
         self._retry_count = 0
-        self._max_retries = 2
+        self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
 
         # Tool Failure Loop Protection
         self._tool_failure_count = 0
@@ -208,23 +361,129 @@ class LLMController(QObject):
         self._loop_break_count = 0
         self._max_loop_breaks = 3
 
-        # The model proposes commands; this host policy owns continuation.
-        self._execution_policy = HostExecutionPolicy()
+        # The model proposes commands; this deterministic policy boundary owns
+        # publication, intent, provenance, confirmation, and continuation.
+        self._tool_attempt_coordinator = ToolAttemptCoordinator(
+            registry=self.registry,
+            verifier=self.verifier,
+            context_source=ApplicationToolContextSource(self.study),
+        )
+        self._tool_execution_coordinator = ToolExecutionCoordinator(
+            self,
+            block_policy=self._tool_attempt_coordinator,
+        )
+        self._request_admission = UserRequestAdmissionPolicy()
+        self._product_turn_policy = ProductTurnPolicy(self.study)
         self._tool_execution_count = 0
         self._turn_cancelled = False
+        self._cancellation_response_sent = False
+        self._rag_turn_id = 0
+        self._active_rag_turn_id: int | None = None
+        self._active_host_turn_id: int | None = None
+        self._active_host_turn_generation: int | None = None
+        self._generation_id = 0
+        self._active_generation_id: int | None = None
+        self._active_generation_dispatch_phase: (
+            AssistantGenerationDispatchPhase | None
+        ) = None
+        self._generation_dispatch_in_progress = False
+        self._stopping_generation_id: int | None = None
+        self._waiting_for_rag = False
+        self._admitted_command_name: str | None = None
+        self._admitted_publication_generation: int | None = None
+        self._initialize_shutdown_lifecycle()
 
         # Execution mode: 'single' stops after success, 'multi' auto-continues
         self._execution_mode: str = self.MODE_SINGLE
         self._successful_tool_count = 0
         self._max_tool_executions = 5
 
-        # HITL: Pending confirmation state
-        self._pending_confirmation: tuple[str, dict] | None = None
+        self._pending_interactions = PendingInteractionCoordinator()
+
+    def _initialize_shutdown_lifecycle(self) -> None:
+        """Initialize the controller-owned, signal-driven shutdown state."""
+        self._closing = False
+        self._closed = False
+        self._shutdown_phase = _ControllerShutdownPhase.OPEN
+        self._shutdown_preamble_complete = False
+        self._rag_shutdown_attempted = False
+        self._shutdown_timeout_timer = QTimer(self)
+        self._shutdown_timeout_timer.setSingleShot(True)
+        self._shutdown_timeout_timer.timeout.connect(self._on_shutdown_timeout)
+        self._shutdown_retry_timer = QTimer(self)
+        self._shutdown_retry_timer.setSingleShot(True)
+        self._shutdown_retry_timer.timeout.connect(self._request_worker_shutdown)
 
     @property
     def execution_mode(self) -> str:
         """The current execution mode ('single' or 'multi')."""
         return self._execution_mode
+
+    @property
+    def accepts_commands(self) -> bool:
+        """Return whether this controller may accept new product commands."""
+        return not self._closing and not self._closed
+
+    @property
+    def shutdown_in_progress(self) -> bool:
+        """Return whether asynchronous worker ownership is still being released."""
+        return self._closing and not self._closed
+
+    @property
+    def rag_retriever(self) -> RAGLifecycleRetriever:
+        """Expose the lifecycle-owned retriever for diagnostics and compatibility."""
+        return self._rag_lifecycle.retriever
+
+    @property
+    def pending_interactions(self) -> PendingInteractionCoordinator:
+        """Return the typed owner of pending confirmation and UI handoff state."""
+        return self._pending_interactions
+
+    def _publish_activity(
+        self,
+        phase: AssistantTurnActivityPhase,
+        *,
+        command_name: str = "",
+        request_id: str = "",
+        message: str = "",
+        attention_kind: AssistantAttentionKind = AssistantAttentionKind.ATTENTION,
+    ) -> None:
+        """Publish transient assistant activity without duplicating workflow truth."""
+        self.activity_changed.emit(
+            AssistantTurnActivity(
+                phase=phase,
+                command_name=command_name,
+                request_id=request_id,
+                message=message,
+                turn_id=self._active_host_turn_id,
+                generation=self._active_host_turn_generation,
+                attention_kind=attention_kind,
+            )
+        )
+
+    def _publish_response(
+        self,
+        text: str,
+        *,
+        kind: AssistantResponseKind = AssistantResponseKind.MESSAGE,
+        actions: tuple[AssistantResponseAction, ...] = (),
+        marks_current_turn: bool = True,
+    ) -> None:
+        """Publish one opaque, typed response to the product transcript.
+
+        Model text is classified before this boundary. Once copy reaches this
+        method the UI must render it verbatim instead of reclassifying prefixes
+        such as ``Request:`` or JSON-looking prose.
+        """
+        presentation = AssistantResponsePresentation(
+            text=text,
+            correlation=self._require_active_turn_correlation(),
+            kind=kind,
+            actions=actions,
+        )
+        self.response_presentation_ready.emit(presentation)
+        if marks_current_turn:
+            self._visible_response_sent = True
 
     def set_execution_mode(self, mode: str) -> None:
         """Set the execution mode.
@@ -235,6 +494,8 @@ class LLMController(QObject):
                 per-turn host tool cap).
 
         """
+        if self._reject_command_while_closing("set execution mode"):
+            return
         if mode not in (self.MODE_SINGLE, self.MODE_MULTI):
             logger.warning("Invalid execution mode: %s", mode)
             return
@@ -243,17 +504,19 @@ class LLMController(QObject):
         self.execution_mode_changed.emit(mode)
         logger.info("Execution mode changed to: %s", mode)
 
-    def initialize(self):
+    def initialize(self, launch_spec: AssistantRuntimeLaunchSpec):
         """Initializes the underlying worker engine and RAG retriever.
 
         Emits the initialization signal to the worker thread and starts
-        RAG initialization in a separate daemon thread.
+        RAG initialization through the owned lifecycle helper.
         """
-        self.sig_initialize.emit()
+        if self._reject_command_while_closing("initialize"):
+            return
+        if not isinstance(launch_spec, AssistantRuntimeLaunchSpec):
+            raise TypeError("Assistant initialization requires a runtime launch spec.")
+        self.sig_initialize.emit(launch_spec)
 
-        # Start RAG initialization in a separate thread to not block UI
-        # This will run in parallel with the LLM loading (which is in worker thread)
-        threading.Thread(target=self.rag_retriever.initialize, daemon=True).start()
+        self._rag_lifecycle.start()
 
     @property
     def history(self):
@@ -274,37 +537,212 @@ class LLMController(QObject):
         """
         self._conversation.append(role, content)
 
-    def handle_user_input(self, text: str):
-        """Entry point for user input from the UI.
+    @pyqtSlot(object)
+    def handle_user_turn(
+        self,
+        payload: object,
+    ) -> AssistantTurnDeliveryAcknowledgement:
+        """Start one host-correlated request without replacing an active turn."""
+        if not isinstance(payload, AssistantTurnRequest):
+            raise TypeError("Assistant user turn must use AssistantTurnRequest.")
+        try:
+            if not self.accepts_commands:
+                logger.warning(
+                    "Rejected turn %s because controller shutdown has started",
+                    redact_public_text(payload.turn_id),
+                )
+                self.turn_finished.emit(
+                    AssistantTurnTerminal(
+                        correlation=payload.correlation,
+                        outcome="rejected_closing",
+                    )
+                )
+                return AssistantTurnDeliveryAcknowledgement(
+                    correlation=payload.correlation,
+                    phase=AssistantTurnDeliveryPhase.REJECTED,
+                    message="Assistant controller is closing.",
+                )
+            if (
+                self._active_host_turn_id is not None
+                or self.is_processing
+                or self.pending_interactions.has_pending
+            ):
+                logger.warning(
+                    "Rejected turn %s because controller turn %s is still active",
+                    redact_public_text(payload.turn_id),
+                    self._active_host_turn_id,
+                )
+                self.turn_finished.emit(
+                    AssistantTurnTerminal(
+                        correlation=payload.correlation,
+                        outcome="rejected_busy",
+                    )
+                )
+                return AssistantTurnDeliveryAcknowledgement(
+                    correlation=payload.correlation,
+                    phase=AssistantTurnDeliveryPhase.REJECTED,
+                    message="Assistant controller is busy.",
+                )
+            self._active_host_turn_id = payload.turn_id
+            self._active_host_turn_generation = payload.generation
+            self._handle_admitted_user_input(payload.text)
+        except Exception as exc:
+            failure = safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_turn_controller",
+                operation="deliver_host_turn",
+            )
+            self._finish_turn_delivery_error(payload)
+            return AssistantTurnDeliveryAcknowledgement(
+                correlation=payload.correlation,
+                phase=AssistantTurnDeliveryPhase.ERROR,
+                message=failure.message,
+            )
+        return AssistantTurnDeliveryAcknowledgement(
+            correlation=payload.correlation,
+            phase=AssistantTurnDeliveryPhase.ACCEPTED,
+        )
 
-        Appends the user message to history, retrieves RAG context, and
-        triggers LLM generation.  Ignores empty input or input received
-        while the agent is already processing.
+    def _finish_turn_delivery_error(
+        self,
+        request: AssistantTurnRequest | AssistantDebugToolRequest,
+    ) -> None:
+        """Release controller state before reporting a host setup failure."""
+        if self._active_turn_correlation() != request.correlation:
+            return
+        self._rollback_failed_turn_setup()
+        self._emit_processing_finished("delivery_error")
+
+    def _rollback_failed_turn_setup(self) -> None:
+        """Unwind every mutable side effect of a partially started turn.
+
+        Host delivery and admitted-input setup share this boundary so a fault at
+        any point cannot leave metrics, pending interaction, RAG, authorization,
+        or generation state that rejects the next correlated request.
+        """
+        cleanup_steps = (
+            ("metrics", self.metrics.finish_turn),
+            ("pending interactions", self.pending_interactions.clear),
+            ("RAG context", self.assembler.clear_context),
+            ("recovery feedback", self.assembler.clear_recovery_feedback),
+            ("turn authorization", self.assembler.clear_turn_authorization),
+            ("tool attempt state", self._tool_attempt_coordinator.reset_turn),
+        )
+        for label, cleanup in cleanup_steps:
+            self._run_turn_setup_cleanup(label, cleanup)
+
+        self._invalidate_pending_rag_turn()
+        self.is_processing = False
+        self.current_response = ""
+        self._active_generation_id = None
+        self._active_generation_dispatch_phase = None
+        self._generation_dispatch_in_progress = False
+        self._stopping_generation_id = None
+        self._admitted_command_name = None
+        self._admitted_publication_generation = None
+        self._active_tool_publication = PromptToolPublication.empty()
+        self._active_response_contract = AssistantResponseContract.STRUCTURED_ACTION
+        self._retry_count = 0
+        self._tool_failure_count = 0
+        self._loop_break_count = 0
+        self._successful_tool_count = 0
+        self._tool_execution_count = 0
+        self._turn_cancelled = False
+        self._cancellation_response_sent = False
+        self._visible_response_sent = False
+        self._last_tool_summary = None
+        self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
+
+    @staticmethod
+    def _run_turn_setup_cleanup(
+        label: str,
+        cleanup: Callable[[], object],
+    ) -> None:
+        """Run one rollback action without skipping later cleanup actions."""
+        try:
+            cleanup()
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_controller",
+                operation=f"turn_setup_rollback_{label}",
+            )
+
+    def _emit_processing_finished(self, outcome: str = "completed") -> None:
+        """Publish UI completion and a correlated host terminal exactly once."""
+        correlation = self._active_turn_correlation()
+        self._active_host_turn_id = None
+        self._active_host_turn_generation = None
+        self._active_generation_id = None
+        self._active_generation_dispatch_phase = None
+        self._stopping_generation_id = None
+        self.processing_finished.emit()
+        if correlation is not None:
+            self.turn_finished.emit(
+                AssistantTurnTerminal(correlation=correlation, outcome=outcome)
+            )
+
+    def _active_turn_correlation(self) -> AssistantTurnCorrelation | None:
+        if (
+            self._active_host_turn_id is None
+            or self._active_host_turn_generation is None
+        ):
+            return None
+        return AssistantTurnCorrelation(
+            generation=self._active_host_turn_generation,
+            turn_id=self._active_host_turn_id,
+        )
+
+    def _require_active_turn_correlation(self) -> AssistantTurnCorrelation:
+        correlation = self._active_turn_correlation()
+        if correlation is None:
+            raise RuntimeError("Assistant response has no active turn correlation.")
+        return correlation
+
+    def handle_user_input(self, text: str):
+        """Reject input that bypasses the host's typed turn admission."""
+        del text
+        logger.error(
+            "Rejected assistant input without an AssistantTurnRequest correlation."
+        )
+
+    def _handle_admitted_user_input(self, text: str) -> None:
+        """Start input previously admitted through ``handle_user_turn``.
+
+        Appends the user message to history, schedules RAG retrieval through
+        the owned lifecycle, and returns without waiting for embeddings.  LLM
+        generation starts only when the current-turn RAG result is delivered
+        back to this controller through the Qt queued signal.
 
         Args:
             text: The user's input text.
 
         """
+        if self._reject_command_while_closing("handle user input"):
+            return
         if not text.strip():
             return
+        self._require_active_turn_correlation()
 
         # RACE CONDITION FIX: Prevent re-entry if already generating or loading
-        if self.is_processing:
+        if self.is_processing or self.pending_interactions.has_pending:
             logger.warning("User input ignored - Agent is busy.")
-            self.response_ready.emit(
-                "System",
+            self._publish_response(
                 "The assistant is still processing the previous request. "
                 "Stop it or wait for the current response before sending again.",
+                kind=AssistantResponseKind.BLOCKED,
+                marks_current_turn=False,
             )
             return
 
-        if self._handle_product_shortcut(text):
-            return
-        if self._handle_no_tool_shortcut(text):
+        if self._handle_product_turn(text):
             return
 
         self.is_processing = True
         self.status_update.emit("Thinking...")
+        self._publish_activity(AssistantTurnActivityPhase.PREPARING)
 
         # Start metrics for this turn
         turn = self.metrics.start_turn()
@@ -314,234 +752,512 @@ class LLMController(QObject):
             # 1. Update History
             self._append_history("user", text)
 
-            # Reset retry counters for new turn
-            self._retry_count = 0
-            self._tool_failure_count = 0
-            self._loop_break_count = 0
-            self._successful_tool_count = 0
-            self._tool_execution_count = 0
-            self._turn_cancelled = False
-
-            # 2. Retrieve RAG Context (Examples)
-            features = self.rag_retriever.get_similar_examples(text)
+            self._reset_user_turn_state()
+            if self._handle_request_admission(text):
+                return
+            turn_id = self._begin_rag_turn()
             self.assembler.clear_context()
+
+            # 2. Retrieve RAG Context (Examples) off the GUI thread.
+            if not self._rag_lifecycle.retrieve(
+                turn_id,
+                text,
+                self._publish_rag_context_ready,
+                allowed_tool_names=self.assembler.rag_allowed_tool_names(text),
+            ):
+                self._on_rag_context_ready(turn_id, text, "", "")
+        except Exception as exc:
+            failure = safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_turn_controller",
+                operation="handle_user_input",
+            )
+            self._rollback_failed_turn_setup()
+            self.error_occurred.emit(failure.message)
+            self._publish_response(
+                "The assistant could not start this request. Try again or "
+                "rephrase the workflow step.",
+                kind=AssistantResponseKind.ERROR,
+            )
+            self._publish_activity(
+                AssistantTurnActivityPhase.NEEDS_ATTENTION,
+                message=failure.message,
+                attention_kind=AssistantAttentionKind.ERROR,
+            )
+            self._emit_processing_finished("failed_to_start")
+
+    def _handle_product_turn(self, text: str) -> bool:
+        """Coordinate one deterministic product response without generation."""
+        decision = self._product_turn_policy.evaluate(text)
+        if decision is None:
+            return False
+        self._reset_user_turn_state()
+        self._append_history("user", text)
+        self._append_history("assistant", decision.message)
+        if decision.kind is ProductTurnKind.CLARIFICATION:
+            self._publish_response(
+                decision.message,
+                kind=AssistantResponseKind.CLARIFICATION,
+                actions=(
+                    AssistantResponseAction.send_message(
+                        "Check workflow",
+                        "What is ready now?",
+                    ),
+                    AssistantResponseAction.open_panel(
+                        "Open Dataset",
+                        AssistantPanelTarget.DATASET,
+                    ),
+                ),
+            )
+        else:
+            self._publish_response(decision.message)
+        self.status_update.emit("Ready")
+        self._publish_activity(AssistantTurnActivityPhase.IDLE)
+        self._emit_processing_finished()
+        return True
+
+    def _reset_user_turn_state(self) -> None:
+        """Reset counters that are scoped to one user-authored turn."""
+        self._retry_count = 0
+        self._tool_failure_count = 0
+        self._loop_break_count = 0
+        self._successful_tool_count = 0
+        self._tool_execution_count = 0
+        self._turn_cancelled = False
+        self._cancellation_response_sent = False
+        self._stopping_generation_id = None
+        self._tool_attempt_coordinator.reset_turn()
+        self.pending_interactions.clear_workflow_handoff()
+        self._active_tool_publication = PromptToolPublication.empty()
+        self._visible_response_sent = False
+        self._last_tool_summary = None
+        self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
+        self.assembler.clear_recovery_feedback()
+        self.assembler.clear_turn_authorization()
+        self._admitted_command_name = None
+        self._admitted_publication_generation = None
+
+    def _handle_request_admission(self, text: str) -> bool:
+        """Resolve explicit blockers and decisions before model generation."""
+        try:
+            publication = get_application_service(
+                self.study,
+            ).get_view_publication()
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_controller",
+                operation="read_request_admission_state",
+            )
+            publication = None
+
+        decision = self._request_admission.evaluate(text, publication)
+        if decision.action is UserRequestAdmissionAction.GENERATE:
+            self._admitted_command_name = (
+                decision.command.value if decision.command is not None else None
+            )
+            self._admitted_publication_generation = (
+                publication.generation if publication is not None else None
+            )
+            self.assembler.set_turn_authorized_command(self._admitted_command_name)
+            return False
+        if decision.command is None:
+            logger.error(
+                "Assistant admission returned no command for %s",
+                decision.action,
+            )
+            return False
+
+        command_name = decision.command.value
+        if decision.action is UserRequestAdmissionAction.EXECUTE_READ_ONLY:
+            self._execute_admitted_read_only(command_name)
+            return True
+        if decision.action is UserRequestAdmissionAction.BLOCKED:
+            capability = None
+            state = None
+            generation = None
+            if publication is not None:
+                state = publication.state.to_dict()
+                generation = publication.generation
+                try:
+                    capability = publication.effective_capabilities.get(
+                        decision.command
+                    ).to_dict()
+                except KeyError:
+                    capability = None
+            self._handle_tool_attempt_blocked(
+                command_name,
+                ToolCommandResult(
+                    ok=False,
+                    tool_name=command_name,
+                    command_name=command_name,
+                    message=decision.message,
+                    error_type="precondition",
+                    recoverable=True,
+                    blocked_reason=decision.message,
+                    state=state,
+                    capability=capability,
+                    diagnostics={"publication_generation": generation},
+                ),
+            )
+            return True
+
+        request = self._workflow_ui_handoff_request(
+            decision.command,
+            decision_fields=decision.decision_fields,
+            suggested_values=decision.suggestions,
+            publication=publication,
+        )
+        self.pending_interactions.begin_workflow_handoff(request)
+        self.status_update.emit("Waiting for workflow decision.")
+        self._publish_activity(
+            AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+            command_name=request.command_name,
+            request_id=request.request_id,
+            message=decision.message,
+        )
+        self.workflow_ui_handoff_requested.emit(request)
+        return True
+
+    def _workflow_ui_handoff_request(
+        self,
+        command_name: CommandName | str,
+        *,
+        decision_fields: Any = (),
+        suggested_values: Any = None,
+        publication: Any | None = None,
+    ) -> WorkflowUiHandoffRequest:
+        """Build one handoff, binding import review to published domain identity."""
+        command = (
+            command_name
+            if isinstance(command_name, CommandName)
+            else CommandName(str(command_name).strip().lower())
+        )
+        identity = None
+        if command is CommandName.APPLY_INTERPRETATION:
+            current_publication = publication
+            if current_publication is None:
+                try:
+                    current_publication = get_application_service(
+                        self.study
+                    ).get_view_publication()
+                except Exception as exc:
+                    safe_unexpected_failure(
+                        logger,
+                        exc,
+                        boundary="assistant_controller",
+                        operation="bind_data_import_review_identity",
+                    )
+            interpretation = getattr(
+                getattr(current_publication, "state", None),
+                "interpretation",
+                None,
+            )
+            generation = getattr(current_publication, "generation", None)
+            scan_id = getattr(interpretation, "latest_scan_id", None)
+            candidate_id = getattr(interpretation, "latest_candidate_id", None)
+            if (
+                type(generation) is int
+                and generation >= 0
+                and isinstance(scan_id, str)
+                and scan_id.strip()
+                and isinstance(candidate_id, str)
+                and candidate_id.strip()
+                and bool(getattr(current_publication, "usable", False))
+            ):
+                identity = InterpretationReviewIdentity(
+                    publication_generation=generation,
+                    scan_id=scan_id,
+                    candidate_id=candidate_id,
+                )
+        return WorkflowUiHandoffRequest.for_decision(
+            command,
+            decision_fields=decision_fields,
+            suggested_values=suggested_values,
+            interpretation_identity=identity,
+        )
+
+    def _execute_admitted_read_only(self, command_name: str) -> None:
+        """Execute one host-selected read-only command through normal boundaries."""
+        if command_name != CommandName.QUERY_STATE.value:
+            self._handle_tool_attempt_blocked(
+                command_name,
+                ToolCommandResult.failure(
+                    command_name,
+                    "This read-only assistant action is not supported.",
+                    error_type="input",
+                ),
+            )
+            return
+
+        context = self._tool_attempt_coordinator.context_for(command_name)
+        if context is None:
+            self._handle_tool_attempt_blocked(
+                command_name,
+                ToolCommandResult.failure(
+                    command_name,
+                    "Current workflow state is temporarily unavailable.",
+                    command_name=command_name,
+                    error_type="precondition",
+                    recoverable=True,
+                ),
+            )
+            return
+
+        self._execute_tool_attempt(
+            ToolAttemptDecision(
+                action=ToolAttemptAction.EXECUTE,
+                command_name=command_name,
+                params={"query": "state"},
+                context=context,
+                tool=self.registry.get_tool(command_name),
+            )
+        )
+
+    def _begin_rag_turn(self) -> int:
+        """Open a new RAG turn token before asynchronous retrieval starts."""
+        self._rag_turn_id += 1
+        self._active_rag_turn_id = self._rag_turn_id
+        self._waiting_for_rag = True
+        return self._rag_turn_id
+
+    def _invalidate_pending_rag_turn(self) -> None:
+        """Invalidate any queued RAG result for stop/reset/close boundaries."""
+        self._rag_turn_id = int(getattr(self, "_rag_turn_id", 0)) + 1
+        self._active_rag_turn_id = None
+        self._waiting_for_rag = False
+
+    def _publish_rag_context_ready(
+        self,
+        turn_id: int,
+        text: str,
+        features: str,
+        error: str,
+    ) -> None:
+        """Publish background RAG completion to the controller owner thread."""
+        self.sig_rag_context_ready.emit(turn_id, text, features, error)
+
+    def _on_rag_context_ready(
+        self,
+        turn_id: int,
+        text: str,
+        features: str,
+        error: str,
+    ) -> None:
+        """Start generation only for the still-current user turn."""
+        if (
+            turn_id != self._active_rag_turn_id
+            or not self._waiting_for_rag
+            or not self.is_processing
+            or self._turn_cancelled
+            or self._closing
+            or self._closed
+        ):
+            return
+
+        self._waiting_for_rag = False
+        self._active_rag_turn_id = None
+        if error:
+            logger.warning(
+                "Optional RAG retrieval failed; continuing without RAG context: %s",
+                redact_public_text(error),
+            )
+            features = ""
+
+        try:
+            admitted_before_rag = (
+                self._admitted_command_name,
+                self._admitted_publication_generation,
+            )
+            if self._handle_request_admission(text):
+                return
+            admitted_after_rag = (
+                self._admitted_command_name,
+                self._admitted_publication_generation,
+            )
+            if admitted_after_rag != admitted_before_rag:
+                logger.info(
+                    "Discarded RAG context after workflow authorization changed "
+                    "from %s to %s.",
+                    admitted_before_rag,
+                    admitted_after_rag,
+                )
+                features = ""
+
             if features:
                 self.assembler.add_context(features)
-            intent_context = self._latest_intent_context(text)
-            if intent_context:
-                self.assembler.add_context(intent_context)
-
-            # 3. Start Generation Loop
             self._generate_response()
-        except Exception as e:
-            logger.error("Error in handle_user_input: %s", e)
-            self.metrics.finish_turn()
-            self.error_occurred.emit(str(e))
-            self.is_processing = False
-            self.processing_finished.emit()
+        except Exception as continuation_error:
+            self._finish_generation_request_failure(continuation_error)
 
-    def _handle_product_shortcut(self, text: str) -> bool:
-        """Answer simple product greetings without invoking tools or the LLM."""
-        normalized = re.sub(r"[^\w\s]", "", text, flags=re.UNICODE).strip().lower()
-        greetings = {
-            "hello",
-            "hi",
-            "hey",
-            "嗨",
-            "你好",
-            "您好",
-        }
-        if normalized not in greetings:
-            return False
-
-        self._retry_count = 0
-        self._tool_failure_count = 0
-        self._loop_break_count = 0
-        self._successful_tool_count = 0
-        message = (
-            "Hello. I can help you move through the EEG workflow: import raw "
-            "data, prepare preprocessing, create epochs, build a training "
-            "dataset, configure training, and explain why a step is blocked. "
-            "To begin, choose EEG files or ask what is ready now."
-        )
-        self._append_history("user", text)
-        self._append_history("assistant", message)
-        self.response_ready.emit("Assistant", message)
-        self.status_update.emit("Ready")
-        self.processing_finished.emit()
-        return True
-
-    def _handle_no_tool_shortcut(self, text: str) -> bool:
-        """Answer no-call explanatory or clarification turns without tools."""
-        intent = infer_user_intent(text)
-        if intent not in {"no_tool", "ask_clarification"}:
-            return False
-
-        self._retry_count = 0
-        self._tool_failure_count = 0
-        self._loop_break_count = 0
-        self._successful_tool_count = 0
-        self._append_history("user", text)
-        message = self._no_tool_response(text, intent)
-        self._append_history("assistant", message)
-        self.response_ready.emit("Assistant", message)
-        self.status_update.emit("Ready")
-        self.processing_finished.emit()
-        return True
-
-    def _no_tool_response(self, text: str, intent: str) -> str:
-        """Build a concise user-facing no-tool response."""
-        normalized = text.lower()
-        if intent == "ask_clarification":
-            return (
-                "Tell me which step you want to do next: import data, preview "
-                "labels and metadata, preprocess, create epochs, build a "
-                "dataset, train, evaluate, or inspect saliency."
-            )
-
-        if "train" in normalized or "training" in normalized or "訓練" in normalized:
-            try:
-                capability = (
-                    get_application_service(self.study)
-                    .get_capabilities()
-                    .get(
-                        CommandName.TRAIN,
-                    )
-                )
-            except Exception:
-                capability = None
-            if capability is not None and not capability.enabled:
-                reason = "; ".join(capability.reasons)
-                return f"Training is not ready yet: {self._clean_reason(reason)}"
-            return (
-                "Training can run only after the dataset, model, and training "
-                "options are ready; starting it still needs confirmation."
-            )
-
-        if "epoch" in normalized or "切片段" in normalized:
-            return (
-                "An epoch is a time window cut around an event marker, used to "
-                "turn continuous EEG into examples for training or analysis."
-            )
-
-        if "label" in normalized or "標籤" in normalized:
-            return (
-                "Labels describe event or class meaning. In XBrainLab, the "
-                "Data Interpretation flow previews the label carrier, event "
-                "role, class map, and metadata before anything is applied."
-            )
-
-        return (
-            "No workflow action is needed for that question. Ask for a concrete "
-            "step when you want me to operate on the session."
-        )
-
-    @staticmethod
-    def _latest_intent_context(text: str) -> str:
-        """Return prompt context that makes the latest requested step explicit."""
-        intent = infer_user_intent(text)
-        if intent == "no_tool":
-            return (
-                "Latest user intent inferred by XBrainLab: no_tool. Do not call "
-                "a tool; answer the explanatory question in user-facing language."
-            )
-        if intent == "ask_clarification":
-            return (
-                "Latest user intent inferred by XBrainLab: ask_clarification. "
-                "Do not call a tool; ask one concise question for the missing "
-                "workflow step or input."
-            )
-        command = command_for_intent(intent)
-        if command is None:
-            return ""
-        return (
-            "Latest user intent inferred by XBrainLab: "
-            f"{intent}. Prefer the direct workflow command {command.value} when "
-            "it is available. If that command is blocked, explain the blocked "
-            "reason instead of choosing a substitute tool."
-        )
-
-    def _generate_response(self):
+    def _generate_response(self) -> bool:
         """Triggers LLM generation based on the current history.
 
         Builds the full message list via the assembler, resets the
         response accumulator, and emits signals to the worker thread.
         """
-        # Use Assembler to construct messages (Dynamic Prompting)
-        messages = self.assembler.get_messages(self.history)
-        self.current_response = ""  # Reset accumulator
-        self._emitted_len = 0  # Track what we sent to UI
-        self._is_buffering = False
-        self._visible_response_sent = False
-        self._last_tool_summary = None
-
-        # Track LLM call metrics
-        if self.metrics.current_turn:
-            self.metrics.current_turn.llm_calls += 1
-            self.metrics.current_turn.input_chars += sum(
-                len(m.get("content", "")) for m in messages
+        if self._generation_dispatch_in_progress:
+            logger.warning(
+                "Ignored reentrant assistant generation dispatch for the active turn."
             )
+            return False
+        self._generation_dispatch_in_progress = True
+        try:
+            request = self.assembler.get_generation_request(self.history)
+            self._generation_id += 1
+            request = request.correlated(self._generation_id)
+            self._active_generation_id = request.generation_id
+            self._active_generation_dispatch_phase = None
+            messages = request.to_model_messages()
+            self._active_response_contract = request.response_contract
+            publication = getattr(
+                self.assembler,
+                "latest_tool_publication",
+                None,
+            )
+            self._active_tool_publication = (
+                publication
+                if isinstance(publication, PromptToolPublication)
+                else PromptToolPublication.empty()
+            )
+            self.current_response = ""
+            # Hold the complete generation until it is classified as user text or
+            # a tool proposal. This prevents prose-prefixed or cross-chunk JSON from
+            # appearing briefly in the product transcript.
+            self._visible_response_sent = False
+            self._last_tool_summary = None
+            self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
 
-        # Update status and Start Bubble
-        self.status_update.emit("Generating response...")
-        self.generation_started.emit()
+            if self.metrics.current_turn:
+                self.metrics.current_turn.llm_calls += 1
+                self.metrics.current_turn.input_chars += sum(
+                    len(message.get("content", "")) for message in messages
+                )
 
-        # Call worker via signal
-        self.sig_generate.emit(messages)
+            self.status_update.emit("Generating response...")
+            self._publish_activity(AssistantTurnActivityPhase.THINKING)
+            self._sig_dispatch_generation.emit(request)
+            self.sig_generate.emit(request)
+        except Exception as error:
+            self._finish_generation_request_failure(error)
+            return False
+        finally:
+            self._generation_dispatch_in_progress = False
+        return True
 
-    def _on_chunk_received(self, chunk: str):
-        """Accumulates a streaming chunk and forwards it to the UI.
+    def _on_generation_dispatch_acknowledged(self, payload: object) -> None:
+        """Commit ordered worker acceptance/start evidence for the active ID."""
+        if not isinstance(payload, AssistantGenerationDispatchAcknowledgement):
+            logger.error(
+                "Ignored untyped assistant generation dispatch acknowledgement."
+            )
+            return
+        if payload.generation_id != self._active_generation_id:
+            return
+        if self._turn_cancelled or self._closing or self._closed:
+            return
+        if payload.phase is AssistantGenerationDispatchPhase.ACCEPTED:
+            if self._active_generation_dispatch_phase is None:
+                self._active_generation_dispatch_phase = payload.phase
+            return
+        if payload.phase is not AssistantGenerationDispatchPhase.STARTED:
+            return
+        if (
+            self._active_generation_dispatch_phase
+            is not AssistantGenerationDispatchPhase.ACCEPTED
+        ):
+            logger.error(
+                "Ignored assistant generation start without acceptance for %s.",
+                redact_public_text(payload.generation_id),
+            )
+            return
+        self._active_generation_dispatch_phase = payload.phase
+        self.generation_event.emit(
+            AssistantGenerationEvent(
+                generation_id=payload.generation_id,
+                phase=AssistantGenerationEventPhase.STARTED,
+            )
+        )
 
-        Implements speculative buffering: the first few characters are
-        held back to detect tool-call JSON signatures before deciding
-        whether to stream or suppress the output.
+    def _finish_generation_request_failure(self, error: Exception) -> None:
+        """Terminate a turn when pre-generation continuation cannot dispatch."""
+        failure = safe_unexpected_failure(
+            logger,
+            error,
+            boundary="assistant_turn_controller",
+            operation="dispatch_generation_continuation",
+        )
+        message = failure.message
+        self._invalidate_pending_rag_turn()
+        generation_id = self._active_generation_id
+        if generation_id is not None:
+            self._arbitrate_generation_terminal(
+                generation_id,
+                AssistantGenerationEventPhase.ERROR,
+                text=message,
+            )
+        self._finish_worker_error(
+            message,
+            outcome="generation_request_failed",
+        )
+
+    def _on_chunk_received(
+        self,
+        generation_id: int,
+        chunk: str,
+    ):
+        """Accumulate a worker chunk until the response is classified.
+
+        The full generation is buffered until completion so a model cannot leak
+        a late or prose-prefixed tool JSON object into the product transcript.
 
         Args:
             chunk: A text fragment received from the LLM generation stream.
 
         """
+        if generation_id != self._active_generation_id:
+            return
+        if (
+            not self.is_processing
+            or self._turn_cancelled
+            or self._closing
+            or self._closed
+        ):
+            return
+        if chunk == "":
+            return
+
+        self.generation_event.emit(
+            AssistantGenerationEvent(
+                generation_id=generation_id,
+                phase=AssistantGenerationEventPhase.CHUNK,
+                text=chunk,
+            )
+        )
         self.current_response += chunk
 
         # Track output chars
         if self.metrics.current_turn:
             self.metrics.current_turn.output_chars += len(chunk)
 
-        # Heuristic: Determine if we should buffer (hide) this output
-        # 1. Start of message: Wait a bit to check for '{' or 'Request:'
-        if len(self.current_response) < 10:
-            # Buffer the first few chars to identify tool calls vs text
-            return
-
-        # 2. Check for Tool Signatures
-        stripped = self.current_response.strip()
-        is_tool_start = stripped.startswith(("{", "Request:"))
-        has_tool_block = (
-            "```json" in self.current_response or "```python" in self.current_response
-        )
-
-        if is_tool_start or has_tool_block:
-            self._is_buffering = True
-
-        # 3. Stream or Buffer
-        if not self._is_buffering:
-            # Emit only the NEW part
-            to_emit = self.current_response[self._emitted_len :]
-            if to_emit:
-                self.chunk_received.emit(to_emit)
-                self._emitted_len += len(to_emit)
-                self._visible_response_sent = True
-        else:
-            # We are buffering (hiding) potential tool output
-            pass
-
-    def _on_generation_finished(self):
+    def _on_generation_finished(
+        self,
+        generation_id: int,
+        _messages: list[Any],
+    ):
         """Handles completion of one LLM generation turn.
 
         Parses the accumulated response for tool commands, retries on
         broken JSON, or finalizes the turn if no commands are found.
         """
+        if not self._arbitrate_generation_terminal(
+            generation_id,
+            AssistantGenerationEventPhase.FINISHED,
+        ):
+            return
         if not self.is_processing:
-            # Generation completed after stop_generation was called; discard.
             return
 
         response_text = self.current_response.strip()
@@ -550,28 +1266,30 @@ class LLMController(QObject):
             self._handle_empty_response()
             return
 
-        # Flush buffer if we detained text thinking it was a tool, but it's not
-        # (yet validated) Actually, wait until we confirm it's NOT a tool.
-
-        command_result = CommandParser.parse(response_text)
-
-        # 1. broken JSON check
-        if self._handle_json_broken_retry(response_text, command_result):
+        if (
+            getattr(
+                self,
+                "_active_response_contract",
+                AssistantResponseContract.STRUCTURED_ACTION,
+            )
+            is AssistantResponseContract.NATURAL_LANGUAGE
+        ):
+            self._retry_count = 0
+            self._finalize_turn(response_text)
             return
 
-        # 2. Process Result
-        if command_result:
-            self._retry_count = 0  # Reset on success
-            self._process_tool_calls(command_result, response_text)
-        else:
-            # Not a tool call. Ensure we emitted everything to the UI.
-            to_emit = self.current_response[self._emitted_len :]
-            if to_emit:
-                self.chunk_received.emit(to_emit)
-                self._emitted_len += len(to_emit)
-                self._visible_response_sent = True
+        envelope = CommandParser.parse_product(response_text)
 
-            self._finalize_turn(response_text)
+        # Invalid tool-shaped output is never treated as user-facing prose and
+        # never reaches verification or execution.
+        if self._handle_tool_envelope_failure(response_text, envelope):
+            return
+
+        if envelope.status is ToolEnvelopeStatus.VALID:
+            self._retry_count = 0  # Reset on success
+            self._process_tool_calls(list(envelope.commands), response_text)
+        else:
+            self._finalize_turn(envelope.message or response_text)
 
     def _handle_empty_response(self):
         """Finish a turn with a visible fallback when the model returns nothing."""
@@ -581,253 +1299,400 @@ class LLMController(QObject):
             "before producing output. Try Retry, or open settings to inspect the "
             "local runtime status."
         )
-        logger.warning(message)
+        logger.warning(redact_public_text(message))
         self.metrics.finish_turn()
         self.error_occurred.emit(message)
+        self._publish_response(
+            message,
+            kind=AssistantResponseKind.ERROR,
+            actions=(
+                AssistantResponseAction.send_message(
+                    "Retry",
+                    "Please retry my previous request.",
+                ),
+            ),
+        )
         self.status_update.emit("Empty response")
+        self._publish_activity(
+            AssistantTurnActivityPhase.NEEDS_ATTENTION,
+            message=message,
+            attention_kind=AssistantAttentionKind.ERROR,
+        )
         self.is_processing = False
-        self.processing_finished.emit()
+        self._emit_processing_finished("empty_response")
 
-    def _handle_json_broken_retry(
+    def _handle_tool_envelope_failure(
         self,
         response_text: str,
-        command_result: Any,
+        envelope: ToolEnvelopeParseResult,
     ) -> bool:
-        """Checks for broken JSON output and triggers a retry if needed.
+        """Retry a model response that violates the product tool envelope.
 
-        If the response looks like a JSON tool call but failed parsing,
-        appends an error hint to history and re-triggers generation up to
-        ``_max_retries`` times.
+        Only a ``FORMAT_ERROR`` result enters this path. A normal user-facing
+        answer remains ``NO_TOOL`` and a valid envelope proceeds to policy
+        verification. The malformed response is never executed or shown.
 
         Args:
             response_text: The full accumulated LLM response.
-            command_result: The result from ``CommandParser.parse``, or
-                ``None`` if parsing failed.
+            envelope: Typed strict-parser classification for the response.
 
         Returns:
             ``True`` if a retry was triggered (caller should return early),
             ``False`` otherwise.
 
         """
-        if command_result:
+        decision = self._strict_envelope_recovery_policy.decide(
+            StrictEnvelopeRecoveryRequest(
+                envelope=envelope,
+                recovery_attempts_used=self._retry_count,
+            )
+        )
+        if decision.action not in {
+            StrictEnvelopeRecoveryAction.RETRY_FORMAT,
+            StrictEnvelopeRecoveryAction.EXHAUSTED,
+        }:
             return False
 
-        # Fragile check refactoring:
-        # Check if it looks like JSON/Code but failed parsing
-        has_code_block = "```json" in response_text or "```python" in response_text
-        has_braces = response_text.strip().startswith("{") and "}" in response_text
-
-        if (has_code_block or has_braces) and self._retry_count < self._max_retries:
-            logger.warning("Broken JSON/Code detected. Retrying...")
-            # Hide the broken JSON from UI
-            self.remove_content.emit(response_text)
-
-            self._retry_count += 1
-            self._append_history("assistant", response_text)
-
-            err_msg = (
-                "System: Your last output contained broken JSON or Code. "
-                "Please ensure you output VALID JSON inside ```json``` blocks only."
+        if decision.action is StrictEnvelopeRecoveryAction.RETRY_FORMAT:
+            logger.warning(
+                "Rejected model tool envelope: %s",
+                redact_public_text(envelope.error),
             )
-            self._append_history("user", err_msg)
-            self.status_update.emit("Invalid JSON, retrying...")
+            self._retry_count = decision.recovery_attempts_after
+            if decision.message is None:
+                raise RuntimeError("Format retry decision is missing recovery context")
+            self.assembler.add_context(decision.message.content)
+            self.status_update.emit("Invalid assistant action, retrying...")
             self._generate_response()
             return True
-        if self._retry_count >= self._max_retries:
-            logger.error("Max retries reached for JSON error.")
 
-        return False
+        logger.error("Max retries reached for JSON error.")
+        message = (
+            "The assistant could not produce a valid assistant action. Try again "
+            "or describe one workflow step more specifically."
+        )
+        self._publish_response(message, kind=AssistantResponseKind.ERROR)
+        self.metrics.finish_turn()
+        self.status_update.emit("Invalid assistant action")
+        self._publish_activity(
+            AssistantTurnActivityPhase.NEEDS_ATTENTION,
+            message=message,
+            attention_kind=AssistantAttentionKind.ERROR,
+        )
+        self.is_processing = False
+        self._emit_processing_finished("invalid_action")
+        return True
 
     def _process_tool_calls(self, command_result: Any, response_text: str):
         """Verify and execute at most one model-proposed command."""
+        command = self._select_tool_proposal(command_result)
+        if command is None:
+            self._finalize_turn_after_tool()
+            return
+
+        decision = self._evaluate_tool_proposal(command, response_text)
+        if self._present_tool_attempt_boundary(decision):
+            return
+        self._execute_tool_attempt(decision)
+
+    def _select_tool_proposal(
+        self,
+        command_result: Any,
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Normalize one model response and enforce the per-turn host limit."""
         parsed_commands = (
             command_result if isinstance(command_result, list) else [command_result]
         )
         latest_user_text = self._latest_user_request_text()
         normalized_commands = [
-            normalize_tool_call(cmd, params, latest_user_text=latest_user_text)
+            normalize_tool_call(
+                cmd,
+                params,
+                latest_user_text=latest_user_text,
+                published_tool_names=self._active_tool_publication.tool_names,
+            )
             for cmd, params in parsed_commands
         ]
-        command = self._execution_policy.first_command(normalized_commands)
-        if command is None:
-            self._finalize_turn_after_tool()
-            return
-        start_decision = self._execution_policy.before_command(
+        selection = self._tool_attempt_coordinator.select_proposal(
+            normalized_commands,
             mode=self._execution_mode,
             execution_count=self._tool_execution_count,
             workflow_tool_cap=self._max_tool_executions,
             cancelled=self._turn_cancelled,
         )
-        if not start_decision.continue_workflow:
-            logger.info("Host policy rejected tool proposal: %s", start_decision.reason)
-            self._finalize_turn_after_tool()
-            return
-        commands = [command]
-        if len(normalized_commands) > 1:
+        command = selection.command
+        if command is None:
+            if selection.reason != "no_command":
+                logger.info(
+                    "Host policy rejected tool proposal: %s",
+                    redact_public_text(selection.reason),
+                )
+            return None
+        if selection.discarded_count:
             logger.warning(
                 "Discarded %d additional tool proposal(s); host policy allows "
                 "one command per model response.",
-                len(normalized_commands) - 1,
+                selection.discarded_count,
             )
+        return cast(tuple[str, dict[str, Any]], command)
 
-        # Hide the raw JSON from the UI now that we've parsed it
-        self.remove_content.emit(response_text)
-
+    def _evaluate_tool_proposal(
+        self,
+        command: tuple[str, dict[str, Any]],
+        response_text: str,
+    ) -> ToolAttemptDecision:
+        """Evaluate one normalized proposal against one backend publication."""
         self._append_history("assistant", response_text)
-
-        # Heuristic confidence applies only to the eligible proposal.
-        confidence = estimate_confidence(response_text, commands)
+        confidence = estimate_confidence(response_text, [command])
         logger.debug("Heuristic confidence: %.2f", confidence)
 
-        for cmd, params in commands:
-            # --- Loop Detection ---
-
-            # Use sort_keys=True for stable string representation of params
-            try:
-                params_str = json.dumps(params, sort_keys=True)
-            except (TypeError, ValueError):
-                # Fallback for non-serializable objects (rare for parsed tool output)
-                logger.debug("Non-serializable tool params, using str()", exc_info=True)
-                params_str = str(params)
-            call_signature = (cmd, params_str)
-            self._recent_tool_calls.append(call_signature)
-
-            if self._detect_loop(call_signature):
-                self._handle_loop_detected(cmd)
-                return
-
-            intent_block_result = self._check_requested_intent_boundary(cmd)
-            if intent_block_result is not None:
-                user_message = self._summarize_tool_result(
-                    cmd,
-                    False,
-                    intent_block_result,
-                )
-                logger.warning(
-                    "Tool rejected by requested intent boundary: %s",
-                    intent_block_result.message,
-                )
-                self.status_update.emit(f"Blocked: {user_message}")
-                self.response_ready.emit("System", user_message)
-                self._visible_response_sent = True
-                self._append_history(
-                    "user",
-                    f"System: Tool call REJECTED: {intent_block_result.message}",
-                )
-                self._last_tool_summary = user_message
-                self._finalize_turn_after_tool()
-                return
-
-            # --- Verification Layer ---
-            validation = self.verifier.verify_tool_call(
-                (cmd, params),
+        cmd, params = command
+        return self._tool_attempt_coordinator.evaluate(
+            ToolAttemptRequest(
+                command_name=cmd,
+                params=params,
                 confidence=confidence,
+                publication=self._active_tool_publication,
+                latest_user_text=self._latest_user_request_text(),
             )
+        )
 
-            if not validation.is_valid:
-                logger.warning(
-                    "Tool rejected by Verifier: %s",
-                    validation.error_message,
-                )
-                self._handle_verification_failure(
-                    cmd,
-                    validation.error_message or "Tool call did not pass validation.",
-                )
+    def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
+        """Present loop, block, validation, or confirmation boundaries."""
+        cmd = decision.command_name
+        if decision.action is ToolAttemptAction.LOOP:
+            self._handle_loop_detected(cmd)
+            return True
+        if decision.action in {
+            ToolAttemptAction.PUBLICATION_BLOCKED,
+            ToolAttemptAction.PROVENANCE_BLOCKED,
+            ToolAttemptAction.INTENT_BLOCKED,
+            ToolAttemptAction.VERIFICATION_BLOCKED,
+            ToolAttemptAction.CAPABILITY_BLOCKED,
+            ToolAttemptAction.RESOURCE_CONFIRMATION_BLOCKED,
+        }:
+            result = cast(ToolCommandResult, decision.result)
+            self._handle_tool_attempt_blocked(
+                cmd,
+                result,
+                feedback=decision.feedback,
+            )
+            return True
+        if decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED:
+            self._request_tool_confirmation(decision)
+            return True
+        return False
+
+    def _request_tool_confirmation(
+        self,
+        decision: ToolAttemptDecision,
+        context: ToolAvailabilityContext | None = None,
+    ) -> None:
+        """Pause one proposal at its backend or tool confirmation boundary."""
+        cmd = decision.command_name
+        request = self._build_confirmation_request(decision, context)
+        self.pending_interactions.begin_confirmation(decision, request)
+        self.status_update.emit(f"Waiting for confirmation: {cmd}")
+        self._publish_activity(
+            AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+            command_name=cmd,
+            request_id=request.request_id,
+        )
+        self.confirmation_requested.emit(request)
+
+    def _build_confirmation_request(
+        self,
+        decision: ToolAttemptDecision,
+        context: ToolAvailabilityContext | None = None,
+    ) -> AgentConfirmationRequest:
+        """Build the typed request paired with one confirmation decision."""
+        cmd = decision.command_name
+        # Keep the prompt-time generation on the request. Resolution re-reads a
+        # fresh context and ApplicationService performs the final locked check.
+        tool_context = context
+        if tool_context is None and isinstance(
+            decision.context,
+            ToolAvailabilityContext,
+        ):
+            tool_context = decision.context
+        label = tool_action_label(cmd)
+        return AgentConfirmationRequest.for_action(
+            command_name=cmd,
+            params=decision.params,
+            action_label=label,
+            description=decision.message
+            or (decision.tool.description if decision.tool else label),
+            destructive=bool(tool_context and tool_context.availability.destructive),
+            publication_generation=(tool_context.generation if tool_context else None),
+            confirmation_kind=decision.confirmation_kind,
+        )
+
+    def _execute_tool_attempt(
+        self,
+        decision: ToolAttemptDecision,
+        *,
+        after_confirmation: bool = False,
+        request_id: str = "",
+        execution_params: dict[str, Any] | None = None,
+        execution_context: ToolAvailabilityContext | None = None,
+        expected_publication_generation: int | None = None,
+    ) -> None:
+        """Execute a verified decision and apply its continuation policy."""
+        cmd = decision.command_name
+        params = decision.params if execution_params is None else execution_params
+        tool_context = execution_context or cast(
+            ToolAvailabilityContext,
+            decision.context,
+        )
+        autonomy = (
+            tool_context.availability if tool_context.availability.enabled else None
+        )
+        status_prefix = "Executing confirmed" if after_confirmation else "Executing"
+        self.status_update.emit(f"{status_prefix}: {cmd}...")
+        self._publish_activity(
+            AssistantTurnActivityPhase.RUNNING_COMMAND,
+            command_name=cmd,
+            request_id=request_id,
+        )
+        self._tool_execution_count += 1
+        if expected_publication_generation is None:
+            outcome = self._execute_tool_no_loop(
+                cmd,
+                params,
+                context=tool_context,
+            )
+        else:
+            outcome = self._execute_tool_no_loop(
+                cmd,
+                params,
+                context=tool_context,
+                expected_publication_generation=expected_publication_generation,
+            )
+        presented = self._present_tool_execution_outcome(decision, outcome)
+        if presented is None:
+            return
+        success, result, requested_ui = presented
+        if requested_ui:
+            if self.pending_interactions.workflow_handoff is None:
+                self._finalize_turn_after_tool()
+            return
+        if after_confirmation:
+            if not success:
+                self._tool_failure_count += 1
+                self._refresh_execution_snapshot()
+                self._finalize_turn_after_tool()
                 return
+            self._handle_tool_success(autonomy, after_confirmation=True)
+            return
+        if not success and self._should_wait_for_user_after_tool_failure(result):
+            self._finalize_turn_after_tool()
+            return
+        if not success:
+            self._handle_tool_failure(autonomy, result)
+            return
+        self._handle_tool_success(autonomy)
 
-            availability = self._check_tool_availability(cmd)
-            if availability is not None:
-                block_result = self._tool_block_result(cmd, availability)
-                user_message = self._summarize_tool_result(
-                    cmd,
-                    False,
-                    block_result,
-                )
-                logger.warning(
-                    "Tool blocked by ApplicationService: %s",
-                    block_result.message,
-                )
-                self.status_update.emit(f"Blocked: {user_message}")
-                self.response_ready.emit("System", user_message)
-                self._visible_response_sent = True
+    def _present_tool_execution_outcome(
+        self,
+        decision: ToolAttemptDecision,
+        outcome: ToolExecutionOutcome,
+    ) -> tuple[bool, ToolCommandResult | UiRequest, bool] | None:
+        """Publish one result or pause it at the resource confirmation boundary."""
+        cmd = decision.command_name
+        success, result = outcome.success, outcome.result
+        self._last_tool_summary = self._summarize_tool_result(cmd, success, result)
+        self._last_tool_summary_kind = (
+            AssistantResponseKind.TOOL_RESULT
+            if success
+            else AssistantResponseKind.BLOCKED
+        )
+        resource_boundary = self._tool_attempt_coordinator.resource_confirmation(
+            decision,
+            result,
+        )
+        if resource_boundary is not None:
+            if resource_boundary.action is ToolAttemptAction.CONFIRMATION_REQUIRED:
+                context = cast(ToolAvailabilityContext, resource_boundary.context)
+                self._request_tool_confirmation(resource_boundary, context)
                 self._append_history(
                     "user",
-                    f"System: Tool call REJECTED: {block_result.message}",
+                    f"Tool Output: {self._format_tool_output(cmd, success, result)}",
                 )
-                self._last_tool_summary = user_message
-                self._finalize_turn_after_tool()
-                return
-
-            self.status_update.emit(f"Executing: {cmd}...")
-
-            # --- HITL: Dangerous Action Confirmation ---
-            tool = self.registry.get_tool(cmd)
-            autonomy = self._tool_autonomy(cmd)
-            if self._execution_policy.needs_confirmation(
-                autonomy,
-                tool_requires_confirmation=bool(tool and tool.requires_confirmation),
-            ):
-                # Confirmation authorizes this command only. Never preserve the
-                # original model batch tail for later execution.
-                self._pending_confirmation = (cmd, params)
-                self.status_update.emit(f"Waiting for confirmation: {cmd}")
-                decision_boundary = (
-                    autonomy.decision_boundary
-                    if autonomy is not None and autonomy.decision_boundary
-                    else "tool_confirmation"
+            else:
+                blocked_result = cast(ToolCommandResult, resource_boundary.result)
+                self._handle_tool_attempt_blocked(
+                    cmd,
+                    blocked_result,
+                    feedback=resource_boundary.feedback,
                 )
-                self.request_user_interaction.emit(
-                    "confirm_action",
-                    {
-                        "tool_name": cmd,
-                        "params": params,
-                        "description": (
-                            tool.description
-                            if tool
-                            else "ApplicationService requires confirmation."
-                        ),
-                        "decision_boundary": decision_boundary,
-                    },
-                )
-                return  # Pause — wait for user response
+            return None
+        requested_ui = self._handle_tool_result_logic(result, success)
+        self._append_history(
+            "user",
+            f"Tool Output: {self._format_tool_output(cmd, success, result)}",
+        )
+        return success, result, requested_ui
 
-            # Execute Tool
-            self._tool_execution_count += 1
-            _success, result = self._execute_tool_no_loop(cmd, params)
-
-            self._last_tool_summary = self._summarize_tool_result(
-                cmd,
-                _success,
-                result,
+    def _handle_tool_attempt_blocked(
+        self,
+        command_name: str,
+        result: ToolCommandResult,
+        *,
+        feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION,
+    ) -> None:
+        """Present one typed policy/intent rejection and finish the turn."""
+        user_message = self._summarize_tool_result(command_name, False, result)
+        logger.warning(
+            "Tool attempt blocked: %s",
+            redact_public_text(result.message),
+        )
+        self.status_update.emit(f"Blocked: {user_message}")
+        self._publish_activity(
+            AssistantTurnActivityPhase.NEEDS_ATTENTION,
+            command_name=command_name,
+            message=user_message,
+        )
+        panel_target = self._panel_target_for_command(command_name)
+        actions = (
+            (
+                AssistantResponseAction.open_panel(
+                    f"Open {panel_target.value.title()}",
+                    panel_target,
+                ),
             )
+            if panel_target is not None
+            else ()
+        )
+        self._publish_response(
+            user_message,
+            kind=AssistantResponseKind.BLOCKED,
+            actions=actions,
+        )
+        history_message = (
+            f"Tool Output: {self._format_tool_output(command_name, False, result)}"
+            if feedback is ToolAttemptFeedback.TOOL_OUTPUT
+            else f"System: Tool call REJECTED: {result.message}"
+        )
+        self._append_history("user", history_message)
+        self._last_tool_summary = user_message
+        self._last_tool_summary_kind = AssistantResponseKind.BLOCKED
+        self._finalize_turn_after_tool()
 
-            # Handle Side Effects
-            requested_ui = self._handle_tool_result_logic(result, _success)
+    @staticmethod
+    def _panel_target_for_command(
+        command_name: str,
+    ) -> AssistantPanelTarget | None:
+        """Map a blocked backend/tool action to one existing product surface."""
+        return panel_target_for_command(command_name)
 
-            # Feed result back to History
-            self._append_history(
-                "user",
-                f"Tool Output: {self._format_tool_output(cmd, _success, result)}",
-            )
-
-            if requested_ui:
-                self._finalize_turn_after_tool()
-                return
-
-            if not _success and self._should_wait_for_user_after_tool_failure(result):
-                self._finalize_turn_after_tool()
-                return
-            if not _success:
-                self._handle_tool_failure(autonomy)
-                return
-
-            self._handle_tool_success(autonomy)
-            return
-
-    def _handle_tool_failure(self, autonomy: ToolAvailability | None) -> None:
+    def _handle_tool_failure(
+        self,
+        autonomy: ToolAvailability | None,
+        result: ToolCommandResult | UiRequest,
+    ) -> None:
         """Apply host retry limits after one failed command."""
         self._tool_failure_count += 1
-        decision = self._execution_policy.after_failure(
+        decision = self._tool_attempt_coordinator.after_failure(
             mode=self._execution_mode,
             availability=autonomy,
             failure_count=self._tool_failure_count,
@@ -837,6 +1702,12 @@ class LLMController(QObject):
             cancelled=self._turn_cancelled,
         )
         if decision.continue_workflow:
+            self.assembler.set_recovery_feedback(
+                build_recovery_feedback(
+                    getattr(result, "tool_name", "") or "unknown_tool",
+                    result,
+                )
+            )
             logger.info(
                 "Workflow failure %d/%d; requesting one corrected proposal.",
                 self._tool_failure_count,
@@ -844,6 +1715,8 @@ class LLMController(QObject):
             )
             self._generate_response()
             return
+
+        self.assembler.clear_recovery_feedback()
 
         if decision.reason in {"retry_cap", "tool_cap"}:
             self._append_history(
@@ -860,6 +1733,7 @@ class LLMController(QObject):
         after_confirmation: bool = False,
     ) -> None:
         """Refresh workflow truth, then apply host continuation policy."""
+        self.assembler.clear_recovery_feedback()
         self._tool_failure_count = 0
         self._successful_tool_count += 1
         if self._execution_mode == self.MODE_MULTI or after_confirmation:
@@ -867,7 +1741,7 @@ class LLMController(QObject):
         else:
             snapshot = ExecutionSnapshot.safe_to_continue()
 
-        decision = self._execution_policy.after_success(
+        decision = self._tool_attempt_coordinator.after_success(
             mode=self._execution_mode,
             availability=autonomy,
             snapshot=snapshot,
@@ -877,6 +1751,15 @@ class LLMController(QObject):
             cancelled=self._turn_cancelled,
         )
         if decision.continue_workflow:
+            if not snapshot.recommended_next_step:
+                logger.error("Workflow continuation was allowed without a next command")
+                self.status_update.emit("Workflow could not determine the next step.")
+                self._finalize_turn_after_tool()
+                return
+            self.assembler.set_turn_authorized_command(
+                snapshot.recommended_next_step,
+                continuation=True,
+            )
             logger.info(
                 "Workflow policy allowed one next proposal (%d/%d).",
                 self._tool_execution_count,
@@ -887,33 +1770,55 @@ class LLMController(QObject):
 
         if decision.reason == "decision_needed":
             self.status_update.emit("Waiting for workflow decision.")
-            self.request_user_interaction.emit(
-                "decision_required",
-                {
-                    "command": snapshot.recommended_next_step,
-                    "decision_needed": list(snapshot.decision_needed),
-                    "existing_ui_surface": snapshot.existing_ui_surface,
-                },
-            )
-        logger.info("Workflow policy stopped: %s", decision.reason)
+            if snapshot.recommended_next_step:
+                request = self._workflow_ui_handoff_request(
+                    snapshot.recommended_next_step,
+                    decision_fields=snapshot.decision_needed,
+                    publication=snapshot.publication,
+                )
+                self.pending_interactions.begin_workflow_handoff(request)
+                self._publish_activity(
+                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                    command_name=request.command_name,
+                    request_id=request.request_id,
+                )
+                self.workflow_ui_handoff_requested.emit(request)
+                logger.info(
+                    "Workflow policy stopped: %s",
+                    redact_public_text(decision.reason),
+                )
+                return
+            else:
+                logger.error(
+                    "Workflow decision fields were published without a next command"
+                )
+                self.status_update.emit("Workflow decision could not be opened.")
+        logger.info(
+            "Workflow policy stopped: %s",
+            redact_public_text(decision.reason),
+        )
         self._finalize_turn_after_tool()
 
     def _refresh_execution_snapshot(self) -> ExecutionSnapshot:
         """Re-read state, capabilities, and decision context after a command."""
         try:
             service = get_application_service(self.study)
-            state = service.get_state()
-            capabilities = service.get_capabilities()
+            publication = service.get_view_publication()
+            state = publication.state
+            capabilities = publication.effective_capabilities
             context = build_workflow_decision_context(
                 self.study,
                 latest_user_text=self._latest_user_request_text(),
                 mode=self._execution_mode,
+                publication=publication,
             )
             next_capability = None
             if context.recommended_next_step:
                 next_capability = capabilities.get(context.recommended_next_step)
             return ExecutionSnapshot(
-                state_reliable=self._state_snapshot_reliable(state),
+                state_reliable=(
+                    publication.usable and self._state_snapshot_reliable(state)
+                ),
                 decision_needed=tuple(context.decision_needed),
                 can_auto_continue=bool(context.can_auto_continue),
                 next_requires_confirmation=bool(
@@ -938,41 +1843,21 @@ class LLMController(QObject):
                     next_capability and next_capability.stop_after_success
                 ),
                 recommended_next_step=context.recommended_next_step,
-                existing_ui_surface=getattr(context, "existing_ui_surface", None),
+                publication=publication,
             )
         except Exception as exc:
-            logger.warning("Workflow policy refresh failed: %s", exc)
-            return ExecutionSnapshot.unreliable(str(exc))
+            failure = safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_turn_controller",
+                operation="refresh_workflow_policy",
+            )
+            return ExecutionSnapshot.unreliable(failure.message)
 
     @staticmethod
     def _state_snapshot_reliable(state: Any) -> bool:
-        """Resolve reliability from the state contract and read diagnostics."""
-        missing = object()
-        explicit = getattr(state, "state_reliable", missing)
-        if explicit is not missing:
-            return bool(explicit)
-
-        payload: dict[str, Any] = {}
-        to_dict = getattr(state, "to_dict", None)
-        if callable(to_dict):
-            candidate = to_dict()
-            if isinstance(candidate, dict):
-                payload = candidate
-        if "state_reliable" in payload:
-            return bool(payload["state_reliable"])
-
-        read_errors = getattr(state, "read_errors", missing)
-        if read_errors is missing:
-            read_errors = payload.get("read_errors", [])
-        return not bool(read_errors)
-
-    def _tool_autonomy(self, command_name: str) -> ToolAvailability | None:
-        """Read enabled command autonomy metadata for host decisions."""
-        try:
-            availability = get_tool_availability(self.study, command_name)
-        except Exception:
-            return None
-        return availability if availability.enabled else None
+        """Accept only the typed, complete application-state publication."""
+        return typed_application_state_reliable(state)
 
     def _finalize_turn_after_tool(self):
         """Finalizes the turn after tool execution.
@@ -980,116 +1865,273 @@ class LLMController(QObject):
         Stops generation and signals the UI that the agent is ready for
         new input.  Resets the successful-tool counter.
         """
+        if self.pending_interactions.workflow_handoff is not None:
+            logger.error("Refused to finalize while a workflow UI handoff is pending")
+            self.status_update.emit("Waiting for XBrainLab settings to finish.")
+            return
         self._successful_tool_count = 0
         if not self._visible_response_sent:
             summary = (
                 self._last_tool_summary
                 or "Tool execution finished, but no assistant message was produced."
             )
-            self.response_ready.emit("Tool", summary)
-            self._visible_response_sent = True
+            self._publish_response(summary, kind=self._last_tool_summary_kind)
         self.metrics.finish_turn()
         self.status_update.emit("Ready")
+        self._publish_activity(AssistantTurnActivityPhase.IDLE)
         self.is_processing = False
-        self.processing_finished.emit()
+        self._emit_processing_finished()
 
-    def _handle_verification_failure(self, command_name: str, message: str) -> None:
-        """Stop on verifier rejection with a user-facing repair prompt."""
-        mapped_command = TOOL_TO_COMMAND.get(command_name)
-        result = ToolCommandResult.failure(
-            command_name,
-            self._verification_failure_message(command_name, message),
-            command_name=mapped_command.value if mapped_command is not None else None,
-            state=self._application_state_payload(),
-            raw_result=message,
-            error_type="input",
-            recoverable=True,
-        )
-        user_message = self._summarize_tool_result(command_name, False, result)
-        self.status_update.emit(f"Blocked: {user_message}")
-        self.response_ready.emit("System", user_message)
-        self._visible_response_sent = True
-        self._last_tool_summary = user_message
-        self._append_history(
-            "user",
-            f"Tool Output: {self._format_tool_output(command_name, False, result)}",
-        )
-        self._finalize_turn_after_tool()
-
-    def _verification_failure_message(self, command_name: str, message: str) -> str:
-        """Convert verifier diagnostics into stable internal tool output text."""
-        intent = infer_user_intent(self._latest_user_request_text())
-        path_label = path_label_for_intent(intent)
-        lower = message.lower()
-        if path_label and "actual path" in lower:
-            return f"Required {path_label} must be an actual path provided by the user."
-        if path_label and (
-            "missing required parameter" in lower or "required input" in lower
-        ):
-            return f"Required {path_label} is missing."
-        if command_name == "list_files" and "directory" in lower:
-            return "directory is required"
-        if "missing required parameter" in lower:
-            return message.replace("Missing required parameter(s)", "Required input")
-        return message
-
-    def on_user_confirmed(self, approved: bool):
-        """Resume tool execution after a HITL confirmation dialog.
-
-        Called by the UI when the user accepts or rejects a dangerous
-        action that was gated by ``requires_confirmation``.
-
-        Args:
-            approved: ``True`` if the user confirmed the action,
-                ``False`` if they cancelled.
-
-        """
-        if not self._pending_confirmation:
-            logger.warning("on_user_confirmed called with no pending action")
+    def on_user_confirmation_resolved(self, payload: object) -> None:
+        """Resolve exactly one still-current assistant action confirmation."""
+        if self._reject_command_while_closing("confirm action"):
             return
-
-        cmd, params = self._pending_confirmation
-        self._pending_confirmation = None
-
-        if approved:
-            logger.info("User confirmed dangerous action: %s", cmd)
-            self.status_update.emit(f"Executing confirmed: {cmd}...")
-
-            confirmed_params = self._confirmed_tool_params(cmd, params)
-            autonomy = self._tool_autonomy(cmd)
-            self._tool_execution_count += 1
-            _success, result = self._execute_tool_no_loop(cmd, confirmed_params)
-            self._last_tool_summary = self._summarize_tool_result(
-                cmd,
-                _success,
-                result,
+        resolution = self.pending_interactions.resolve_confirmation(payload)
+        if resolution.decision is PendingConfirmationDecision.INVALID:
+            logger.error(
+                "Ignored untyped assistant confirmation: %s",
+                redact_public_text(payload),
             )
-            requested_ui = self._handle_tool_result_logic(result, _success)
-            self._append_history(
-                "user",
-                f"Tool Output: {self._format_tool_output(cmd, _success, result)}",
+            return
+        typed_payload = resolution.resolution
+        if typed_payload is None:
+            logger.error("Confirmation coordinator returned no typed resolution")
+            return
+        if resolution.decision is PendingConfirmationDecision.NO_PENDING:
+            logger.warning("Ignored confirmation resolution with no pending action")
+            return
+        if resolution.decision is PendingConfirmationDecision.DUPLICATE:
+            logger.warning(
+                "Ignored duplicate assistant confirmation for %s (%s)",
+                typed_payload.command_name,
+                typed_payload.request_id,
             )
+            return
+        if resolution.decision is PendingConfirmationDecision.STALE:
+            logger.warning(
+                "Ignored stale assistant confirmation for %s (%s)",
+                typed_payload.command_name,
+                typed_payload.request_id,
+            )
+            return
+        pending_pair = resolution.pending
+        interaction_outcome = resolution.outcome
+        if pending_pair is None or interaction_outcome is None:
+            logger.error("Confirmation session consumed no pending value")
+            return
+        pending = pending_pair.decision
+        request = pending_pair.request
+        cmd = pending.command_name
 
-            if requested_ui:
-                self._finalize_turn_after_tool()
-                return
-
-            if not _success:
-                self._tool_failure_count += 1
-                self._refresh_execution_snapshot()
-                self._finalize_turn_after_tool()
-            else:
-                # Confirmation approves exactly one command. Re-read workflow
-                # truth, then stop instead of executing the original batch tail.
-                self._handle_tool_success(autonomy, after_confirmation=True)
-        else:
-            logger.info("User rejected dangerous action: %s", cmd)
+        if resolution.decision is PendingConfirmationDecision.CANCEL:
+            logger.info("User cancelled assistant action: %s", cmd)
+            self._turn_cancelled = True
+            self._last_tool_summary = None
             self._append_history(
                 "user",
                 f"System: User rejected '{cmd}'. Action was NOT executed.",
             )
             self.status_update.emit("Action cancelled by user.")
+            self.interaction_resolved.emit(interaction_outcome)
+            self._publish_response(
+                interaction_outcome_message(interaction_outcome),
+                kind=interaction_outcome_kind(interaction_outcome),
+            )
             self._finalize_turn_after_tool()
+            return
+
+        current_context = self._tool_attempt_coordinator.context_for(cmd)
+        if current_context.generation != request.publication_generation:
+            message = (
+                "Workflow state changed while this confirmation was open. "
+                "Review the action again before continuing."
+            )
+            self.interaction_resolved.emit(
+                AgentInteractionOutcome(
+                    status=AgentInteractionStatus.BLOCKED,
+                    command_name=cmd,
+                    request_id=request.request_id,
+                    message=message,
+                )
+            )
+            self._handle_tool_attempt_blocked(
+                cmd,
+                ToolCommandResult.failure(
+                    cmd,
+                    message,
+                    error_type="stale_confirmation",
+                    recoverable=True,
+                    diagnostics={
+                        "confirmed_generation": request.publication_generation,
+                        "current_generation": current_context.generation,
+                    },
+                ),
+            )
+            return
+
+        logger.info("User confirmed assistant action: %s", cmd)
+        self.interaction_resolved.emit(interaction_outcome)
+        try:
+            confirmed_params = self._tool_attempt_coordinator.approved_params(pending)
+        except ValueError as exc:
+            self._handle_tool_attempt_blocked(
+                cmd,
+                ToolCommandResult.failure(
+                    cmd,
+                    redact_public_text(exc),
+                    error_type="contract",
+                    recoverable=False,
+                ),
+                feedback=ToolAttemptFeedback.TOOL_OUTPUT,
+            )
+            return
+        self._execute_tool_attempt(
+            pending,
+            after_confirmation=True,
+            request_id=request.request_id,
+            execution_params=confirmed_params,
+            execution_context=current_context,
+            expected_publication_generation=request.publication_generation,
+        )
+
+    def on_workflow_ui_handoff_resolved(self, payload: object) -> None:
+        """Consume one correlated result from an existing product UI surface."""
+        if self._reject_command_while_closing("resolve product UI handoff"):
+            return
+        if not isinstance(payload, WorkflowUiHandoffResolution):
+            logger.error(
+                "Ignored untyped workflow UI handoff resolution: %s",
+                redact_public_text(payload),
+            )
+        resolution = self.pending_interactions.resolve_workflow_handoff(payload)
+        typed_payload = resolution.resolution
+        if resolution.decision is PendingWorkflowHandoffDecision.INVALID:
+            logger.warning("Ignored invalid workflow UI handoff transition")
+            return
+        if resolution.decision is PendingWorkflowHandoffDecision.NO_PENDING:
+            logger.warning("Ignored workflow UI resolution with no pending request")
+            return
+        if typed_payload is None:
+            logger.error("Workflow handoff coordinator returned no typed resolution")
+            return
+        if resolution.decision is PendingWorkflowHandoffDecision.DUPLICATE:
+            logger.warning(
+                "Ignored duplicate workflow UI resolution for %s (%s)",
+                typed_payload.command_name,
+                typed_payload.request_id,
+            )
+            return
+        if resolution.decision is PendingWorkflowHandoffDecision.STALE:
+            logger.warning(
+                "Ignored stale workflow UI resolution for %s (%s)",
+                typed_payload.command_name,
+                typed_payload.request_id,
+            )
+            return
+        request = resolution.request
+        outcome = resolution.outcome
+        if request is None or outcome is None:
+            logger.error("Workflow handoff resolution retained no interaction value")
+            return
+        if resolution.decision is PendingWorkflowHandoffDecision.PROGRESS:
+            self._record_ui_handoff_outcome(outcome, progress=True)
+            self.interaction_resolved.emit(outcome)
+            self._publish_activity(
+                AssistantTurnActivityPhase.RUNNING_COMMAND,
+                command_name=request.command_name,
+                request_id=request.request_id,
+                message=typed_payload.message,
+            )
+            return
+        self._record_ui_handoff_outcome(outcome, progress=False)
+        self.interaction_resolved.emit(outcome)
+        self._publish_response(
+            interaction_outcome_message(outcome),
+            kind=interaction_outcome_kind(outcome),
+        )
+        self._finalize_turn_after_tool()
+
+    def _record_ui_handoff_outcome(
+        self,
+        outcome: AgentInteractionOutcome,
+        *,
+        progress: bool,
+    ) -> None:
+        """Record presentation state for one coordinator-owned UI outcome."""
+        command_name = outcome.command_name
+        status = outcome.status
+        if progress:
+            self._append_history(
+                "user",
+                (
+                    f"System: '{command_name}' is still pending in the existing "
+                    "XBrainLab settings. Do not treat navigation or command "
+                    "scheduling as completion."
+                ),
+            )
+            self.status_update.emit("XBrainLab settings command is running.")
+            return
+
+        if status is AgentInteractionStatus.DEFERRED_TO_UI:
+            self._append_history(
+                "user",
+                (
+                    f"System: The '{command_name}' product panel is open for "
+                    "manual continuation. The requested workflow action was not "
+                    "verified as completed."
+                ),
+            )
+            self._last_tool_summary = None
+            self.status_update.emit("Product panel open for manual completion.")
+            return
+
+        if status is AgentInteractionStatus.COMPLETED_IN_UI:
+            self._append_history(
+                "user",
+                f"System: The user completed '{command_name}' in XBrainLab.",
+            )
+            self._last_tool_summary = (
+                "The requested settings were completed in XBrainLab. Read current "
+                "workflow state before proposing another action."
+            )
+            self.status_update.emit("Existing settings completed.")
+            return
+
+        if status is AgentInteractionStatus.CANCELLED:
+            self._turn_cancelled = True
+            self._last_tool_summary = None
+            self._append_history(
+                "user",
+                (
+                    f"System: The user cancelled '{command_name}' in XBrainLab. "
+                    "No workflow action was executed."
+                ),
+            )
+            self.status_update.emit("Existing settings cancelled.")
+            return
+
+        outcome_label = {
+            AgentInteractionStatus.BLOCKED: "blocked by workflow state",
+            AgentInteractionStatus.UNAVAILABLE: "unavailable",
+            AgentInteractionStatus.FAILED: "unable to open",
+        }[status]
+        self._append_history(
+            "user",
+            f"System: XBrainLab settings for '{command_name}' were {outcome_label}.",
+        )
+        self._last_tool_summary = (
+            f"The existing settings surface was {outcome_label}. No workflow "
+            "action was executed."
+        )
+        self.status_update.emit(
+            {
+                AgentInteractionStatus.BLOCKED: "Existing settings blocked.",
+                AgentInteractionStatus.UNAVAILABLE: ("Existing settings unavailable."),
+                AgentInteractionStatus.FAILED: (
+                    "Existing settings could not be opened."
+                ),
+            }[status]
+        )
 
     def _handle_loop_detected(self, cmd: str):
         """Handles detection of a repeated tool-call loop.
@@ -1108,10 +2150,30 @@ class LLMController(QObject):
                 "Aborting to prevent infinite recursion."
             )
             self._append_history("user", msg)
+            visible_message = (
+                "The assistant stopped because it repeated the same action "
+                "without making progress. Check the current workflow before "
+                "trying a narrower request."
+            )
+            self._append_history("assistant", visible_message)
+            self._publish_response(
+                visible_message,
+                kind=AssistantResponseKind.BLOCKED,
+                actions=(
+                    AssistantResponseAction.send_message(
+                        "Check workflow",
+                        "What is ready now?",
+                    ),
+                ),
+            )
             self.metrics.finish_turn()
             self.status_update.emit("Loop detected, aborting.")
+            self._publish_activity(
+                AssistantTurnActivityPhase.NEEDS_ATTENTION,
+                command_name=cmd,
+            )
             self.is_processing = False
-            self.processing_finished.emit()
+            self._emit_processing_finished("loop_detected")
             return
 
         msg = (
@@ -1133,12 +2195,21 @@ class LLMController(QObject):
 
         """
         self._append_history("assistant", response_text)
+        self._publish_response(response_text)
         self.metrics.finish_turn()
         self.status_update.emit("Ready")
+        self._publish_activity(AssistantTurnActivityPhase.IDLE)
         self.is_processing = False
-        self.processing_finished.emit()
+        self._emit_processing_finished()
 
-    def _execute_tool_no_loop(self, command_name, params):
+    def _execute_tool_no_loop(
+        self,
+        command_name,
+        params,
+        *,
+        context: ToolAvailabilityContext | None = None,
+        expected_publication_generation: int | None = None,
+    ) -> ToolExecutionOutcome:
         """Executes a single tool call without triggering generation.
 
         Performs an ApplicationService capability-policy check before
@@ -1150,114 +2221,37 @@ class LLMController(QObject):
             params: Dictionary of parameters to pass to the tool.
 
         Returns:
-            A ``(success, result)`` tuple where ApplicationService-backed
-            tools return a structured ``ToolCommandResult`` and legacy tools
-            keep their existing string result.
+            A typed outcome containing success and the structured tool result.
 
         """
-        return ToolExecutionCoordinator(self).execute(command_name, params)
-
-    def _check_tool_availability(
-        self,
-        command_name: str,
-    ) -> ToolAvailability | str | None:
-        """Return a backend policy block record, or ``None`` if available."""
-        try:
-            availability = get_tool_availability(self.study, command_name)
-        except CapabilityPolicyUnavailable as exc:
-            return ToolAvailability(
-                tool_name=command_name,
-                enabled=False,
-                reasons=(
-                    "Backend capability policy is unavailable; execution is "
-                    f"blocked until workflow state can be verified. ({exc})",
-                ),
-                command_name=(
-                    TOOL_TO_COMMAND[command_name].value
-                    if command_name in TOOL_TO_COMMAND
-                    else None
-                ),
-                read_only=command_name in READ_ONLY_TOOLS,
-                can_auto_execute=False,
-            )
-        except Exception as exc:
-            logger.debug("Tool availability check failed", exc_info=True)
-            return f"Could not read backend capability policy: {exc}"
-
-        if availability.enabled:
-            return None
-        return availability
-
-    def _check_requested_intent_boundary(
-        self,
-        tool_name: str,
-    ) -> ToolCommandResult | None:
-        """Reject substitute tool calls when the requested workflow step is blocked."""
-        latest_request = self._latest_user_request_text()
-        if not latest_request:
-            return None
-
-        requested_intent = infer_user_intent(latest_request)
-        requested_command = command_for_intent(requested_intent)
-        if requested_command is None:
-            return None
-
-        chosen_command = TOOL_TO_COMMAND.get(tool_name)
-        if chosen_command == requested_command:
-            return None
-
-        try:
-            capability = (
-                get_application_service(self.study)
-                .get_capabilities()
-                .get(
-                    requested_command,
-                )
-            )
-        except Exception:
-            logger.debug("Requested-intent boundary check failed", exc_info=True)
-            return None
-
-        if (
-            requested_intent in {"visualize", "saliency"}
-            and chosen_command != requested_command
-        ):
-            reason = "; ".join(capability.reasons) or (
-                "Use an ApplicationService readiness summary before opening "
-                "visualization views."
-            )
-            return ToolCommandResult(
-                ok=False,
-                tool_name=tool_name,
-                command_name=requested_command.value,
-                message=(
-                    f"Requested workflow step '{requested_command.value}' needs a "
-                    f"readiness summary: {reason}"
-                ),
-                error_type="precondition",
-                recoverable=True,
-                blocked_reason=reason,
-            )
-
-        if capability.enabled:
-            return None
-
-        reason = "; ".join(capability.reasons) or (
-            "The requested workflow step is not available yet."
+        tool_context = context or self._tool_attempt_coordinator.context_for(
+            command_name
         )
-        return ToolCommandResult(
-            ok=False,
-            tool_name=tool_name,
-            command_name=requested_command.value,
-            message=(
-                f"Requested workflow step '{requested_command.value}' is not "
-                f"available: {reason}"
-            ),
-            error_type="precondition",
-            recoverable=True,
-            blocked_reason=reason,
-            state=self._application_state_payload(),
-            capability=capability.to_dict(),
+        application_runtime = None
+        bound_generation = expected_publication_generation
+        generation_required = (
+            command_name in APPLICATION_COMMAND_TOOLS
+            and tool_context.availability.enabled
+        )
+        if bound_generation is None and generation_required:
+            bound_generation = tool_context.generation
+        if generation_required and bound_generation is None:
+            tool_context = self._tool_attempt_coordinator.unavailable_context(
+                command_name,
+                "Backend publication generation is unavailable; execution is "
+                "blocked until workflow state can be verified.",
+            )
+        elif bound_generation is not None:
+            service = get_application_service(self.study)
+            application_runtime = _ExpectedPublicationApplicationRuntime(
+                service,
+                bound_generation,
+            )
+        return self._tool_execution_coordinator.execute(
+            command_name,
+            params,
+            context=tool_context,
+            application_runtime=application_runtime,
         )
 
     def _latest_user_request_text(self) -> str:
@@ -1273,75 +2267,15 @@ class LLMController(QObject):
             return content
         return ""
 
-    def _confirmed_tool_params(
+    def _handle_tool_result_logic(
         self,
-        command_name: str,
-        params: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Inject backend confirmation fields after the user approves."""
-        if command_name in {"apply_interpretation", "clear_dataset", "start_training"}:
-            return {**params, "confirmed": True}
-        return params
-
-    def _tool_block_result(
-        self,
-        command_name: str,
-        availability: ToolAvailability | str,
-    ) -> ToolCommandResult:
-        """Convert a capability block or read failure into a structured result."""
-        if isinstance(availability, ToolAvailability):
-            return ToolCommandResult.blocked(
-                command_name,
-                availability,
-                state=self._application_state_payload(),
-            )
-        mapped_command = TOOL_TO_COMMAND.get(command_name)
-        return ToolCommandResult.failure(
-            command_name,
-            availability,
-            command_name=mapped_command.value if mapped_command is not None else None,
-            state=self._application_state_payload(),
-            error_type="runtime",
-            recoverable=True,
-        )
-
-    def _application_state_payload(self) -> dict[str, Any] | None:
-        """Return a compact current ApplicationService state payload."""
-        if not hasattr(self.study, "data_manager"):
-            return None
-        try:
-            return get_application_service(self.study).get_state().to_dict()
-        except Exception:
-            logger.debug("Failed to capture ApplicationService state", exc_info=True)
-            return None
-
-    def _detect_loop(self, current_call_signature) -> bool:
-        """Checks whether the same tool call has been made excessively.
+        result: ToolCommandResult | UiRequest,
+        success: bool = True,
+    ) -> bool:
+        """Process a typed tool result and emit requested GUI interactions.
 
         Args:
-            current_call_signature: A ``(cmd_name, params_str)`` tuple
-                uniquely identifying the tool call.
-
-        Returns:
-            ``True`` if the signature appears 3 or more times in the
-            recent call history.
-
-        """
-        count = 0
-        for call in self._recent_tool_calls:
-            if call == current_call_signature:
-                count += 1
-        return count >= 3
-
-    def _handle_tool_result_logic(self, result: Any, success: bool = True) -> bool:
-        """Processes tool output for UI side effects.
-
-        Detects special ``Request:`` prefixed results (e.g. panel switches,
-        montage confirmations) and emits the appropriate interaction
-        signals to the UI.
-
-        Args:
-            result: The tool's output string or structured tool result.
+            result: The normalized tool result or UI request.
             success: Whether the tool execution was successful.
 
         Returns:
@@ -1349,478 +2283,550 @@ class LLMController(QObject):
             ``False`` otherwise.
 
         """
-        if isinstance(result, ToolCommandResult):
-            visible_message = self._summarize_tool_result(
-                result.tool_name,
-                success,
-                result,
-            )
-            result = result.message
-        elif not isinstance(result, str):
-            visible_message = self._summarize_tool_result("", success, result)
-            result = str(result) if result is not None else ""
-        else:
-            visible_message = self._summarize_tool_result("", success, result)
-        if result.startswith("Request:"):
-            # Format: "Request: CMD params... (View: view_mode)"
-            # Example: "Request: Switch UI to 'visualization' (View: 3d_plot)"
-
-            cmd_part = result.replace("Request:", "").strip()
-
-            if cmd_part.lower().startswith("switch ui to"):
-                # Use regex to robustly capture panel name and optional view mode
-                # Matches: Switch UI to 'panel' OR Switch UI to 'panel' (View: view)
-                pattern = r"Switch UI to ['\"](\w+)['\"](?:\s+\(View:\s+(\w+)\))?"
-                match = re.match(pattern, cmd_part, re.IGNORECASE)
-
-                if match:
-                    panel = match.group(1)
-                    view_mode = match.group(2)  # None if not present
-
-                    self.request_user_interaction.emit(
-                        "switch_panel",
-                        {"panel": panel, "view_mode": view_mode},
+        if isinstance(result, UiRequest):
+            if result.kind is UiRequestKind.SWITCH_PANEL:
+                try:
+                    request = AssistantPanelNavigationRequest(
+                        target=AssistantPanelTarget(
+                            str(result.params.get("panel", "")).strip().lower()
+                        ),
+                        view_mode=result.params.get("view_mode"),
                     )
-                    return True
-
-            # Handle confirm_montage requests
-            if "confirm_montage" in cmd_part.lower():
-                # Extract montage name: "confirm_montage 'standard_1020'"
-                pattern = r"confirm_montage\s+['\"](\w+)['\"]"
-                montage_match = re.search(pattern, cmd_part, re.IGNORECASE)
-                montage_name = montage_match.group(1) if montage_match else None
-
-                self.status_update.emit("Waiting for user to confirm montage...")
-                self.request_user_interaction.emit(
-                    "confirm_montage",
-                    {"montage_name": montage_name, "context": cmd_part},
-                )
+                except (TypeError, ValueError):
+                    self._publish_response(
+                        "That XBrainLab view is not available. Choose Dataset, "
+                        "Preprocess, Training, Evaluation, or Visualization.",
+                        kind=AssistantResponseKind.BLOCKED,
+                    )
+                    return False
+                self.panel_navigation_requested.emit(request)
                 return True
+            if result.kind is UiRequestKind.CONFIRM_MONTAGE:
+                self.status_update.emit("Waiting for user to confirm montage...")
+                request = WorkflowUiHandoffRequest.for_decision(
+                    CommandName.APPLY_MONTAGE,
+                    decision_fields=("channel_mapping",),
+                    suggested_values={
+                        "montage_name": result.params.get("montage_name"),
+                        "warning": result.params.get("warning"),
+                    },
+                )
+                self.pending_interactions.begin_workflow_handoff(request)
+                self._publish_activity(
+                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                    command_name=request.command_name,
+                    request_id=request.request_id,
+                )
+                self.workflow_ui_handoff_requested.emit(request)
+                return True
+            return False
 
-        if not result.startswith("Request:") and not success:
-            # Only report as a user-facing message if the tool actually failed.
-            # Developer diagnostics stay in structured history/logs.
-            self.response_ready.emit("System", visible_message)
-            self._visible_response_sent = True
+        # Tool failures remain internal recovery evidence until the host retry
+        # policy decides that the turn is terminal. Publishing here would show
+        # a failure bubble before a corrected retry succeeds.
         return False
 
     @staticmethod
-    def _summarize_tool_result(command_name: str, success: bool, result: Any) -> str:
-        """Build a short visible tool summary for the chat transcript."""
-        if isinstance(result, ToolCommandResult):
-            message = result.message
-            tool_name = result.tool_name or command_name
-        else:
-            message = str(result) if result is not None else ""
-            tool_name = command_name
-
-        tool_name = tool_name or command_name
-        label = TOOL_ACTION_LABELS.get(tool_name, "Assistant action")
-        text = message.strip()
-        lower_text = text.lower()
-
-        if text.startswith("Request:"):
-            if "confirm_montage" in lower_text or "verify montage" in lower_text:
-                return (
-                    "Montage setup needs confirmation in the app before it can "
-                    "continue."
-                )
-            if "switch ui" in lower_text:
-                return "I opened the requested workspace panel."
-            return "The app needs your confirmation before this action can continue."
-
-        if tool_name == "list_files":
-            if not success and "directory is required" in lower_text:
-                return (
-                    "I need a folder path before I can list files. Choose a "
-                    "folder in the app or paste the path here."
-                )
-            if not success and "does not exist" in lower_text:
-                return (
-                    "I could not find that folder. Choose another folder or "
-                    "paste a valid path."
-                )
-            if not success and "system directories" in lower_text:
-                return (
-                    "I cannot browse protected system folders. Choose a project "
-                    "or EEG data folder instead."
-                )
-            files = LLMController._parse_legacy_file_list(text)
-            if success and files is not None:
-                if not files:
-                    return (
-                        "I did not find files in that folder. Choose another "
-                        "folder or import EEG data to begin."
-                    )
-                preview = ", ".join(files[:5])
-                suffix = "" if len(files) <= 5 else f", and {len(files) - 5} more"
-                return f"I found {len(files)} item(s): {preview}{suffix}."
-
-        if isinstance(result, ToolCommandResult) and not success:
-            reason = (result.blocked_reason or result.message or "").strip()
-            if result.error_type == "precondition":
-                clean_reason = LLMController._clean_reason(reason)
-                return f"{label} is not available yet: {clean_reason}"
-            if result.error_type == "confirmation_required":
-                return f"{label} needs confirmation in the app before it can continue."
-            if result.error_type == "input":
-                return (
-                    f"I need more information before {label.lower()} can continue: "
-                    f"{LLMController._clean_reason(reason)}"
-                )
-            return (
-                f"I could not complete {label.lower()}. Details were saved to "
-                "diagnostics; check the app status bar or try again."
-            )
-
-        if not success:
-            if not text:
-                return (
-                    f"I could not complete {label.lower()}. Check diagnostics "
-                    "or try again."
-                )
-            return (
-                f"I could not complete {label.lower()}: "
-                f"{LLMController._clean_reason(text)}"
-            )
-
-        if not text or text in {"[]", "{}"}:
-            return (
-                "The action completed, but there is nothing to show yet. "
-                "Ask what is ready or choose the next workflow step."
-            )
-
-        if "requires ui confirmation" in lower_text or "backendfacade legacy path" in (
-            lower_text
-        ):
-            return f"{label} needs confirmation in the app before it can continue."
-
-        return LLMController._clean_success_message(text)
+    def _summarize_tool_result(
+        command_name: str,
+        success: bool,
+        result: ToolCommandResult | UiRequest,
+    ) -> str:
+        """Compatibility wrapper around the assistant feedback policy."""
+        return summarize_tool_result(command_name, success, result)
 
     @staticmethod
-    def _parse_legacy_file_list(message: str) -> list[str] | None:
-        """Parse legacy list_files string output without exposing Python syntax."""
-        try:
-            parsed = literal_eval(message)
-        except (SyntaxError, ValueError):
-            return None
-        if not isinstance(parsed, list):
-            return None
-        return [str(item) for item in parsed]
-
-    @staticmethod
-    def _clean_reason(reason: str) -> str:
-        """Remove developer prefixes from a reason shown in chat."""
-        cleaned = reason.strip()
-        for prefix in ("Error:", "Tool execution failed:", "Tool failed:"):
-            if cleaned.lower().startswith(prefix.lower()):
-                cleaned = cleaned[len(prefix) :].strip()
-        cleaned = cleaned.replace("ApplicationService", "the workflow")
-        cleaned = cleaned.replace("legacy facade path", "app confirmation path")
-        cleaned = cleaned.replace(
-            "paths list cannot be empty.", "a file or folder path is required."
-        )
-        cleaned = cleaned.replace("directory is required", "a folder path is required")
-        cleaned = cleaned.replace(
-            "epoch, batch_size, and learning_rate are required.",
-            "training epochs, batch size, and learning rate are required.",
-        )
-        cleaned = re.sub(
-            r"\b([A-Za-z]+(?:_[A-Za-z0-9]+)+)\b",
-            lambda match: match.group(1).replace("_", " "),
-            cleaned,
-        )
-        return cleaned or "the workflow is missing required input."
-
-    @staticmethod
-    def _clean_success_message(message: str) -> str:
-        """Return a success message safe for first-layer chat."""
-        cleaned = message.strip()
-        if cleaned.startswith("Request:"):
-            return "The app needs your confirmation before this action can continue."
-        try:
-            parsed = literal_eval(cleaned)
-        except (SyntaxError, ValueError):
-            return cleaned
-        if isinstance(parsed, list):
-            if not parsed:
-                return (
-                    "The action completed, but there is nothing to show yet. "
-                    "Ask what is ready or choose the next workflow step."
-                )
-            preview = ", ".join(str(item) for item in parsed[:5])
-            suffix = "" if len(parsed) <= 5 else f", and {len(parsed) - 5} more"
-            return f"I found {len(parsed)} item(s): {preview}{suffix}."
-        return cleaned
-
-    @staticmethod
-    def _should_wait_for_user_after_tool_failure(result: Any) -> bool:
+    def _should_wait_for_user_after_tool_failure(
+        result: ToolCommandResult | UiRequest,
+    ) -> bool:
         """Return whether a failed tool should stop and ask the user."""
-        return isinstance(result, ToolCommandResult) and result.user_correctable
-
-    @staticmethod
-    def _format_tool_output(command_name: str, success: bool, result: Any) -> str:
-        """Serialize tool output so the next LLM turn sees structured state."""
-        if isinstance(result, ToolCommandResult):
-            payload = LLMController._compact_tool_payload(result)
-            return json.dumps(payload, ensure_ascii=False, default=str)
-
-        payload = {
-            "ok": bool(success),
-            "tool_name": command_name,
-            "message": str(result) if result is not None else "",
-            "raw_result": result,
-        }
-        try:
-            return json.dumps(payload, ensure_ascii=False, default=str)
-        except (TypeError, ValueError):
-            payload["raw_result"] = str(result)
-            return json.dumps(payload, ensure_ascii=False)
-
-    @staticmethod
-    def _compact_tool_payload(result: ToolCommandResult) -> dict[str, Any]:
-        """Return tool feedback compact enough for the next local-model turn."""
-        payload: dict[str, Any] = {
-            "ok": result.ok,
-            "tool_name": result.tool_name,
-            "command_name": result.command_name,
-            "message": result.message,
-            "error_type": result.error_type,
-            "recoverable": result.recoverable,
-            "blocked_reason": result.blocked_reason,
-        }
-        if result.capability:
-            payload["capability"] = {
-                key: result.capability.get(key)
-                for key in (
-                    "command_name",
-                    "enabled",
-                    "reasons",
-                    "requires_confirmation",
-                    "decision_boundary",
-                    "continue_allowed_after_success",
-                )
-                if key in result.capability
-            }
-        state_summary = LLMController._compact_state_summary(result.state)
-        if state_summary:
-            payload["state_summary"] = state_summary
-        diagnostics = LLMController._compact_tool_diagnostics(result.diagnostics)
-        if diagnostics:
-            payload["diagnostics"] = diagnostics
-        return payload
-
-    @staticmethod
-    def _compact_state_summary(state: dict[str, Any] | None) -> dict[str, Any]:
-        """Keep only workflow readiness fields needed for follow-up turns."""
-        if not isinstance(state, dict):
-            return {}
-
-        def pick(section: str, keys: tuple[str, ...]) -> dict[str, Any]:
-            value = state.get(section)
-            if not isinstance(value, dict):
-                return {}
-            return {key: value.get(key) for key in keys if key in value}
-
-        summary: dict[str, Any] = {}
-        if "pipeline_stage" in state:
-            summary["pipeline_stage"] = state.get("pipeline_stage")
-        for section, keys in {
-            "raw": ("loaded", "count", "files", "formats", "event_total"),
-            "preprocessed": (
-                "available",
-                "count",
-                "is_epoched",
-                "operations",
-            ),
-            "epoch": ("available", "exists", "epoch_count", "event_names"),
-            "dataset": ("available", "count", "names", "locked"),
-            "training": (
-                "has_model",
-                "has_training_option",
-                "has_trainer",
-                "is_running",
-                "missing_requirements",
-            ),
-            "interpretation": (
-                "has_scan_result",
-                "has_candidate",
-                "has_preview",
-                "has_validation_decision",
-                "has_applied_interpretation",
-                "has_recipe",
-                "validation_decision",
-                "pending_confirmation",
-                "blocked_reasons",
-                "summary",
-            ),
-        }.items():
-            section_summary = pick(section, keys)
-            if section_summary:
-                summary[section] = section_summary
-        last_error = state.get("last_error")
-        if isinstance(last_error, dict):
-            summary["last_error"] = {
-                key: last_error.get(key)
-                for key in ("error_type", "message", "recoverable")
-                if key in last_error
-            }
-        return summary
-
-    @staticmethod
-    def _compact_tool_diagnostics(diagnostics: dict[str, Any]) -> dict[str, Any]:
-        """Keep small diagnostics fields while dropping full raw/state payloads."""
-        if not isinstance(diagnostics, dict):
-            return {}
-        compact: dict[str, Any] = {}
-        for key in (
-            "payload_type",
-            "success_count",
-            "errors",
-            "label_carriers_pending",
-            "recipe_updated",
-            "tool_name",
-            "command_name",
-        ):
-            if key in diagnostics:
-                compact[key] = diagnostics[key]
-        return compact
-
-    def _on_worker_error(self, error_msg):
-        """Handle a fatal worker error by notifying the UI.
-
-        Finishes the current metrics turn and resets processing state.
-
-        Args:
-            error_msg: Human-readable error description from the worker.
-
-        """
-        self.metrics.finish_turn()
-        self.error_occurred.emit(error_msg)
-        self.status_update.emit("Error")
-        self.is_processing = False
-        self.processing_finished.emit()
-
-    def close(self) -> bool:
-        """Shuts down the worker thread and cleans up resources."""
-        if hasattr(self, "rag_retriever") and self.rag_retriever:
-            try:
-                self.rag_retriever.close()
-            except Exception:
-                logger.debug("RAG retriever cleanup failed", exc_info=True)
-        worker_stopped = self._shutdown_worker()
-        if not worker_stopped:
-            logger.error("Agent worker did not stop; retaining thread ownership")
+        if not isinstance(result, ToolCommandResult):
             return False
-        if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
-            self.worker_thread.quit()
-            if not self.worker_thread.wait(WORKER_THREAD_SHUTDOWN_WAIT_MS):
-                logger.error("Agent worker thread did not stop within timeout")
+        state_reliable = serialized_application_state_reliable(result.state)
+        return result.user_correctable or not result.recoverable or not state_reliable
+
+    @staticmethod
+    def _format_tool_output(
+        command_name: str,
+        success: bool,
+        result: ToolCommandResult | UiRequest,
+    ) -> str:
+        """Compatibility wrapper around compact local-model feedback."""
+        return format_tool_output(command_name, success, result)
+
+    def _on_runtime_error(self, error_msg: object) -> None:
+        """Handle model/runtime errors only when no generation owns work."""
+        if self._active_generation_id is not None:
+            return
+        self._finish_worker_error(str(error_msg or "Assistant runtime failed."))
+
+    def _on_generation_error(
+        self,
+        generation_id: int,
+        error_msg: str,
+    ) -> None:
+        """Handle a correlated generation error and reject stale terminals."""
+        message = str(error_msg or "Assistant generation failed.")
+        if not self._arbitrate_generation_terminal(
+            generation_id,
+            AssistantGenerationEventPhase.ERROR,
+            text=message,
+        ):
+            return
+        self._finish_worker_error(message)
+
+    def _arbitrate_generation_terminal(
+        self,
+        generation_id: int,
+        phase: AssistantGenerationEventPhase,
+        *,
+        text: str = "",
+    ) -> bool:
+        """Commit one correlated terminal with cancellation taking priority.
+
+        A finish or error queued after a stop request does not consume the active
+        generation. The stop acknowledgement can then commit ``CANCELLED`` and
+        clear correlation, which also makes every later callback stale.
+        """
+        if generation_id != self._active_generation_id:
+            return False
+        if self._turn_cancelled:
+            if phase is not AssistantGenerationEventPhase.CANCELLED:
                 return False
-        self.worker = None
+        elif phase is AssistantGenerationEventPhase.CANCELLED:
+            return False
+        self._active_generation_id = None
+        self._active_generation_dispatch_phase = None
+        self.generation_event.emit(
+            AssistantGenerationEvent(
+                generation_id=generation_id,
+                phase=phase,
+                text=text,
+            )
+        )
         return True
 
-    def runtime_snapshot(self) -> dict[str, Any]:
-        """Return the latest worker-published runtime state."""
-        return dict(self._worker_runtime_snapshot)
+    def _finish_worker_error(
+        self,
+        message: str,
+        *,
+        outcome: str = "generation_error",
+    ) -> None:
+        """Publish one visible failure after correlation has been resolved.
 
-    def _on_runtime_snapshot_changed(self, snapshot: object) -> None:
-        if isinstance(snapshot, dict):
-            self._worker_runtime_snapshot = dict(snapshot)
+        Finishes the current metrics turn and resets processing state.
+        """
+        was_processing = self.is_processing
+        self.metrics.finish_turn()
+        self.error_occurred.emit(message)
+        if was_processing:
+            self._publish_response(
+                user_facing_generation_error(message),
+                kind=AssistantResponseKind.ERROR,
+                actions=(
+                    AssistantResponseAction.send_message(
+                        "Retry",
+                        "Please retry my previous request.",
+                    ),
+                ),
+            )
+        self.status_update.emit("Error")
+        self._publish_activity(
+            AssistantTurnActivityPhase.NEEDS_ATTENTION,
+            message=message,
+            attention_kind=AssistantAttentionKind.ERROR,
+        )
+        self.is_processing = False
+        self._emit_processing_finished(outcome)
 
-    def _shutdown_worker(self) -> bool:
+    def close(self) -> bool:
+        """Start signal-driven cleanup and report whether ownership is terminal."""
+        if self._closed:
+            return True
+        if self._shutdown_phase in {
+            _ControllerShutdownPhase.WORKER_STOPPING,
+            _ControllerShutdownPhase.THREAD_STOPPING,
+        }:
+            return False
+
+        self._closing = True
+        self._prepare_shutdown_once()
         worker = cast(Any, getattr(self, "worker", None))
         if worker is None:
-            return True
-        if (
-            not isinstance(worker, QObject)
-            or worker.thread() is QThread.currentThread()
-        ):
-            try:
-                result = cast(Any, worker).shutdown(
-                    wait_ms=WORKER_THREAD_SHUTDOWN_WAIT_MS
+            self._request_worker_thread_exit()
+            return self._closed
+
+        if not isinstance(worker, QObject):
+            return self._close_non_qobject_worker(worker)
+
+        if sip.isdeleted(worker):
+            self._request_worker_thread_exit()
+            return self._closed
+
+        self._shutdown_phase = _ControllerShutdownPhase.WORKER_STOPPING
+        if not self._shutdown_timeout_timer.isActive():
+            self._shutdown_timeout_timer.start(WORKER_SHUTDOWN_TIMEOUT_MS)
+        self._request_worker_shutdown()
+        return self._closed
+
+    def _prepare_shutdown_once(self) -> None:
+        """Cancel controller-owned work exactly once before worker teardown."""
+        if self._shutdown_preamble_complete:
+            return
+        self._shutdown_preamble_complete = True
+        correlation = self._active_turn_correlation()
+        self.is_processing = False
+        self._turn_cancelled = False
+        if correlation is not None:
+            self._emit_processing_finished("shutdown_cancelled")
+        else:
+            self._active_generation_id = None
+            self._active_generation_dispatch_phase = None
+            self._stopping_generation_id = None
+        self.pending_interactions.clear()
+        self._invalidate_pending_rag_turn()
+        if not self._rag_shutdown_attempted:
+            self._rag_shutdown_attempted = True
+            if not self._close_rag_lifecycle():
+                logger.warning(
+                    "Optional RAG retriever lifecycle did not stop cleanly; "
+                    "continuing controller shutdown."
                 )
-            except Exception:
-                logger.debug("Agent worker cleanup failed", exc_info=True)
-                return False
-            else:
-                return result is not False
 
-        completed = {"done": False, "ok": False}
-        wait_loop = QEventLoop()
-        qt_worker = cast(Any, worker)
+    def _close_non_qobject_worker(self, worker: Any) -> bool:
+        """Keep lightweight test doubles retryable without a Qt signal contract."""
+        try:
+            result = worker.shutdown(wait_ms=WORKER_GENERATION_SHUTDOWN_WAIT_MS)
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_controller_shutdown",
+                operation="close_non_qobject_worker",
+            )
+            self._shutdown_phase = _ControllerShutdownPhase.OPEN
+            return False
+        if result is False:
+            self._shutdown_phase = _ControllerShutdownPhase.OPEN
+            return False
+        self._request_worker_thread_exit()
+        return self._closed
 
-        def _on_shutdown_finished(ok: bool) -> None:
-            completed["done"] = True
-            completed["ok"] = bool(ok)
-            wait_loop.quit()
+    @pyqtSlot()
+    def _request_worker_shutdown(self) -> None:
+        """Queue one worker-owned cleanup attempt without entering a nested loop."""
+        if self._shutdown_phase is not _ControllerShutdownPhase.WORKER_STOPPING:
+            return
+        worker = cast(Any, getattr(self, "worker", None))
+        if worker is None or not isinstance(worker, QObject) or sip.isdeleted(worker):
+            self._request_worker_thread_exit()
+            return
+        try:
+            self.sig_shutdown_worker.emit()
+        except (RuntimeError, TypeError):
+            logger.debug("Agent worker shutdown signal could not be delivered")
+            if not self._shutdown_retry_timer.isActive():
+                self._shutdown_retry_timer.start(WORKER_SHUTDOWN_RETRY_INTERVAL_MS)
 
-        qt_worker.shutdown_finished.connect(_on_shutdown_finished)
-        QTimer.singleShot(WORKER_THREAD_SHUTDOWN_WAIT_MS + 1000, wait_loop.quit)
-        self.sig_shutdown_worker.emit()
-        wait_loop.exec()
-        with suppress(RuntimeError, TypeError):
-            qt_worker.shutdown_finished.disconnect(_on_shutdown_finished)
-        return completed["done"] and completed["ok"]
+    @pyqtSlot(bool)
+    def _on_worker_shutdown_finished(self, ok: bool) -> None:
+        """Advance worker cleanup from its typed terminal acknowledgement."""
+        if self._shutdown_phase is not _ControllerShutdownPhase.WORKER_STOPPING:
+            return
+        if ok:
+            self._shutdown_retry_timer.stop()
+            self._request_worker_thread_exit()
+            return
+        logger.warning("Agent worker cleanup is still pending; retrying asynchronously")
+        if not self._shutdown_retry_timer.isActive():
+            self._shutdown_retry_timer.start(WORKER_SHUTDOWN_RETRY_INTERVAL_MS)
+
+    def _request_worker_thread_exit(self) -> None:
+        """Request event-loop exit and wait only through ``QThread.finished``."""
+        if self._closed:
+            return
+        self._shutdown_phase = _ControllerShutdownPhase.THREAD_STOPPING
+        self._shutdown_retry_timer.stop()
+        thread = cast(Any, getattr(self, "worker_thread", None))
+        if not isinstance(thread, _QT_THREAD_TYPE):
+            quit_thread = getattr(thread, "quit", None)
+            if callable(quit_thread):
+                quit_thread()
+            self._finalize_shutdown()
+            return
+        if sip.isdeleted(thread) or not thread.isRunning():
+            self._finalize_shutdown()
+            return
+        thread.quit()
+
+    @pyqtSlot()
+    def _on_worker_thread_finished(self) -> None:
+        """Commit terminal ownership only after the native worker thread exits."""
+        if self._shutdown_phase is not _ControllerShutdownPhase.THREAD_STOPPING:
+            if self._shutdown_phase is _ControllerShutdownPhase.WORKER_STOPPING:
+                logger.error(
+                    "Assistant worker thread stopped before cleanup was confirmed"
+                )
+                self.shutdown_finished.emit(
+                    False,
+                    "Assistant worker stopped before cleanup completed.",
+                )
+            return
+        self._finalize_shutdown()
+
+    @pyqtSlot()
+    def _on_shutdown_timeout(self) -> None:
+        """Report slow cleanup while retaining ownership until worker success."""
+        if self._closed:
+            return
+        logger.error(
+            "Assistant worker cleanup exceeded %sms; cleanup remains pending",
+            WORKER_SHUTDOWN_TIMEOUT_MS,
+        )
+        self._shutdown_timeout_timer.stop()
+        worker = cast(Any, getattr(self, "worker", None))
+        if isinstance(worker, QObject) and not sip.isdeleted(worker):
+            self._disconnect_worker_callbacks(
+                worker,
+                preserve_shutdown_terminal=True,
+            )
+        if not self._shutdown_retry_timer.isActive():
+            self._shutdown_retry_timer.start(WORKER_SHUTDOWN_RETRY_INTERVAL_MS)
+        self.shutdown_finished.emit(
+            False,
+            "Assistant worker cleanup timed out; cleanup is still pending.",
+        )
+
+    def _disconnect_worker_callbacks(
+        self,
+        worker: QObject,
+        *,
+        preserve_shutdown_terminal: bool = False,
+    ) -> None:
+        """Fence late worker signals while preserving terminal cleanup evidence."""
+        bindings = (
+            ("generation_chunk_received", self._on_chunk_received),
+            ("generation_finished", self._on_generation_finished),
+            ("generation_error", self._on_generation_error),
+            (
+                "generation_dispatch_acknowledged",
+                self._on_generation_dispatch_acknowledged,
+            ),
+            ("error", self._on_runtime_error),
+            ("log", self.status_update),
+            ("generation_stop_finished", self._on_generation_stop_finished),
+            ("runtime_snapshot_changed", self._on_runtime_snapshot_changed),
+            ("shutdown_finished", self._on_worker_shutdown_finished),
+        )
+        for signal_name, slot in bindings:
+            if preserve_shutdown_terminal and signal_name == "shutdown_finished":
+                continue
+            signal = getattr(worker, signal_name, None)
+            if signal is None:
+                continue
+            with suppress(RuntimeError, TypeError):
+                signal.disconnect(slot)
+
+    def _finalize_shutdown(self, detail: str = "") -> None:
+        """Publish one terminal event without touching released Qt wrappers."""
+        if self._closed:
+            return
+        self._shutdown_timeout_timer.stop()
+        self._shutdown_retry_timer.stop()
+        self.worker = None
+        self._closed = True
+        self._shutdown_phase = _ControllerShutdownPhase.CLOSED
+        self.shutdown_finished.emit(True, detail)
+
+    def _reject_command_while_closing(self, command: str) -> bool:
+        """Reject new work once shutdown starts, while cleanup remains retryable."""
+        if self.accepts_commands:
+            return False
+        logger.warning(
+            "Assistant command '%s' rejected because controller is shutting down",
+            command,
+        )
+        return True
+
+    def _close_rag_lifecycle(self) -> bool:
+        """Delegate optional retriever cleanup to its sole lifecycle owner."""
+        try:
+            return bool(self._rag_lifecycle.close())
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_controller_shutdown",
+                operation="close_rag_lifecycle",
+            )
+            return False
+
+    def runtime_snapshot(self) -> AssistantRuntimeSnapshot:
+        """Return the latest worker-published runtime state."""
+        return self._worker_runtime_snapshot
+
+    def _on_runtime_snapshot_changed(self, snapshot: object) -> None:
+        if not isinstance(snapshot, AssistantRuntimeSnapshot):
+            logger.error(
+                "Ignored untyped assistant runtime transition: %s",
+                type(snapshot).__name__,
+            )
+            return
+        validation_error = snapshot.validation_error()
+        if validation_error:
+            logger.error(
+                "Ignored inconsistent assistant runtime transition: %s",
+                redact_public_text(validation_error),
+            )
+            return
+        self._worker_runtime_snapshot = snapshot
+        self.runtime_state_changed.emit(snapshot)
 
     def stop_generation(self):
         """Request generation cancellation and wait for worker acknowledgement."""
+        if self._reject_command_while_closing("stop generation"):
+            return
+        session = self.pending_interactions
+        pending_handoff = session.workflow_handoff
+        if pending_handoff is not None:
+            self.on_workflow_ui_handoff_resolved(
+                WorkflowUiHandoffResolution.for_request(
+                    pending_handoff,
+                    status=WorkflowUiHandoffResolutionStatus.CANCELLED,
+                    message="The pending settings step was cancelled.",
+                )
+            )
+            return
+        pending_confirmation = session.confirmation
+        if pending_confirmation is not None:
+            self.on_user_confirmation_resolved(
+                AgentConfirmationResolution.for_request(
+                    pending_confirmation.request,
+                    status=AgentConfirmationResolutionStatus.CANCELLED,
+                )
+            )
+            return
         if self.is_processing:
-            self._turn_cancelled = True
-            self.status_update.emit("Stopping...")
-            self.metrics.finish_turn()
+            if not self._turn_cancelled:
+                self._turn_cancelled = True
+                self.status_update.emit("Stopping...")
+                self._publish_activity(AssistantTurnActivityPhase.STOPPING)
+                self.metrics.finish_turn()
+            if self._waiting_for_rag:
+                self._invalidate_pending_rag_turn()
+                self._complete_cancelled_turn()
+                return
+            generation_id = self._stopping_generation_id or self._active_generation_id
+            if generation_id is None:
+                self._complete_cancelled_turn()
+                return
+            self._stopping_generation_id = generation_id
+            request = AssistantGenerationStopRequest(generation_id=generation_id)
             worker = getattr(self, "worker", None)
             if (
                 isinstance(worker, QObject)
                 and worker.thread() is not QThread.currentThread()
             ):
-                self.sig_cancel_generation.emit()
+                self.sig_cancel_generation.emit(request)
             else:
                 cancel_generation = getattr(worker, "cancel_generation", None)
                 if callable(cancel_generation):
-                    cancel_generation()
+                    cancel_generation(request)
                 else:
-                    self._on_generation_stop_finished(True)
+                    self._on_generation_stop_finished(
+                        AssistantGenerationStopAcknowledgement(
+                            generation_id=generation_id,
+                            stopped=True,
+                        )
+                    )
 
-    def _on_generation_stop_finished(self, stopped: bool) -> None:
+    def _on_generation_stop_finished(self, payload: object) -> None:
         """Keep the UI in Stopping state until the worker owns no live thread."""
+        if not isinstance(payload, AssistantGenerationStopAcknowledgement):
+            logger.error("Ignored untyped assistant generation stop acknowledgement.")
+            return
         if not self._turn_cancelled:
             return
-        if not stopped:
+        if (
+            payload.generation_id != self._stopping_generation_id
+            or payload.generation_id != self._active_generation_id
+        ):
+            logger.warning(
+                "Ignored stale generation stop acknowledgement for %s; "
+                "active=%s stopping=%s",
+                redact_public_text(payload.generation_id),
+                self._active_generation_id,
+                self._stopping_generation_id,
+            )
+            return
+        if not payload.stopped:
             self.status_update.emit("Stopping...")
             return
+        self._complete_cancelled_turn()
+
+    def _complete_cancelled_turn(self) -> None:
+        """Publish one durable cancellation result after work has stopped."""
+        if self._cancellation_response_sent:
+            return
+        self._cancellation_response_sent = True
+        generation_id = self._active_generation_id
+        if (
+            generation_id is not None
+            and not LLMController._arbitrate_generation_terminal(
+                self,
+                generation_id,
+                AssistantGenerationEventPhase.CANCELLED,
+            )
+        ):
+            self._cancellation_response_sent = False
+            return
+        message = ASSISTANT_CANCELLED_MESSAGE
+        self.current_response = ""
+        self._append_history("assistant", message)
+        self._publish_response(message, kind=AssistantResponseKind.CANCELLED)
         self.is_processing = False
         self.status_update.emit("Stopped")
-        self.processing_finished.emit()
+        self._publish_activity(AssistantTurnActivityPhase.IDLE)
+        self._emit_processing_finished("cancelled")
 
-    def set_model(self, model_display_name: str):
-        """Switches the active LLM model.
+    def set_model(self, launch_spec: AssistantRuntimeLaunchSpec):
+        """Forward one pre-resolved model selection to the worker.
 
         Args:
-            model_display_name: Runtime mode key or backend-specific
-                model identifier.
+            launch_spec: Exact immutable selection resolved by the lifecycle.
 
         """
-        normalized_mode = LLMConfig.normalize_backend_mode(
-            model_display_name,
-            fallback="",
+        if self._reject_command_while_closing("set model"):
+            return
+        if not isinstance(launch_spec, AssistantRuntimeLaunchSpec):
+            raise TypeError("Assistant model switch requires a runtime launch spec.")
+        self.status_update.emit(
+            f"Switching model to: {redact_public_text(launch_spec.model_id)}"
         )
-        target = normalized_mode if normalized_mode else model_display_name
-
-        self.status_update.emit(f"Switching mode to: {model_display_name}")
-        self.sig_reinit.emit(target)
+        self.sig_reinit.emit(launch_spec)
 
     def reset_conversation(self):
         """Resets conversation history and all internal state counters."""
+        if self._reject_command_while_closing("reset conversation"):
+            return
+        if (
+            self._active_host_turn_id is not None
+            or self.is_processing
+            or self.pending_interactions.workflow_handoff is not None
+        ):
+            logger.warning("Conversation reset ignored while a turn is active")
+            return
+        self._invalidate_pending_rag_turn()
         self._conversation.clear()
         self.current_response = ""
         self._retry_count = 0
         self._tool_failure_count = 0
         self._loop_break_count = 0
-        self._recent_tool_calls.clear()
-        self._pending_confirmation = None
+        self._tool_attempt_coordinator.reset_turn()
+        self.pending_interactions.reset()
         self._tool_execution_count = 0
         self._turn_cancelled = False
+        self._cancellation_response_sent = False
 
         # Reset metrics for new conversation
         self.metrics.reset()
@@ -1829,9 +2835,80 @@ class LLMController(QObject):
         self.assembler.clear_context()
 
         self.status_update.emit("Conversation reset.")
+        self._publish_activity(AssistantTurnActivityPhase.IDLE)
 
-    def execute_debug_tool(self, tool_name: str, params: dict):
-        """Executes a tool directly, bypassing LLM generation.
+    @pyqtSlot(object)
+    def execute_debug_tool(
+        self,
+        payload: object,
+    ) -> AssistantTurnDeliveryAcknowledgement:
+        """Execute one host-correlated diagnostic tool request."""
+        if not isinstance(payload, AssistantDebugToolRequest):
+            raise TypeError("Assistant debug turns must use AssistantDebugToolRequest.")
+        try:
+            if not self.accepts_commands:
+                self.turn_finished.emit(
+                    AssistantTurnTerminal(
+                        correlation=payload.correlation,
+                        outcome="rejected_closing",
+                    )
+                )
+                return AssistantTurnDeliveryAcknowledgement(
+                    correlation=payload.correlation,
+                    phase=AssistantTurnDeliveryPhase.REJECTED,
+                    message="Assistant controller is closing.",
+                )
+            if (
+                self._active_host_turn_id is not None
+                or self.is_processing
+                or self.pending_interactions.has_pending
+            ):
+                self.turn_finished.emit(
+                    AssistantTurnTerminal(
+                        correlation=payload.correlation,
+                        outcome="rejected_busy",
+                    )
+                )
+                return AssistantTurnDeliveryAcknowledgement(
+                    correlation=payload.correlation,
+                    phase=AssistantTurnDeliveryPhase.REJECTED,
+                    message="Assistant controller is busy.",
+                )
+            self._active_host_turn_id = payload.turn_id
+            self._active_host_turn_generation = payload.generation
+            self._execute_admitted_debug_tool(
+                payload.tool_name,
+                payload.to_params(),
+                confirmed=payload.confirmed,
+                authorization_text=payload.authorization_text,
+            )
+        except Exception as exc:
+            failure = safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_debug_controller",
+                operation=payload.tool_name,
+            )
+            self._finish_turn_delivery_error(payload)
+            return AssistantTurnDeliveryAcknowledgement(
+                correlation=payload.correlation,
+                phase=AssistantTurnDeliveryPhase.ERROR,
+                message=failure.message,
+            )
+        return AssistantTurnDeliveryAcknowledgement(
+            correlation=payload.correlation,
+            phase=AssistantTurnDeliveryPhase.ACCEPTED,
+        )
+
+    def _execute_admitted_debug_tool(
+        self,
+        tool_name: str,
+        params: dict[str, Any],
+        *,
+        confirmed: bool = False,
+        authorization_text: str = "",
+    ) -> None:
+        """Execute a diagnostic tool after exact host-turn admission.
 
         Used by Debug Mode to invoke tools manually.  The call and its
         result are recorded in conversation history.
@@ -1841,32 +2918,60 @@ class LLMController(QObject):
             params: Dictionary of parameters for the tool.
 
         """
-        logger.info("Debug Execution: %s with %s", tool_name, params)
+        self._require_active_turn_correlation()
+        admission = ToolExecutor(self.study).admit(
+            tool_name,
+            dict(params),
+            authorization_text=authorization_text,
+            confirmed=confirmed,
+        )
+        display_tool_name = (
+            tool_name
+            if isinstance(admission, DebugToolAdmission)
+            else admission.tool_name
+        )
+        safe_tool_name = redact_public_text(display_tool_name)
+        logger.info(
+            "Debug execution admitted for %s (parameter count: %d)",
+            safe_tool_name,
+            len(params),
+        )
 
         self.is_processing = True
-        self.status_update.emit(f"Debug: Executing {tool_name}...")
+        self.status_update.emit(f"Debug: Executing {safe_tool_name}...")
 
-        # Show a product-safe diagnostic notice in chat; raw call details remain
-        # only in controller history/logs.
-        params_str = json.dumps(params, indent=2, ensure_ascii=False)
-        call_msg = f"Tool Call: {tool_name}\nParams: {params_str}"
-        self._append_history("user", f"[DEBUG] {call_msg}")
-        self.response_ready.emit("Debug", "Running a diagnostic action...")
+        self._append_history("user", f"[DEBUG] Tool Call: {safe_tool_name}")
+        self._publish_response("Running a diagnostic action...")
 
-        success, result = self._execute_tool_no_loop(tool_name, params)
+        if isinstance(admission, DebugToolAdmission):
+            outcome = self._execute_tool_no_loop(
+                tool_name,
+                admission.params,
+                context=admission.context,
+            )
+        else:
+            outcome = ToolExecutionOutcome(False, admission)
+        success, result = outcome.success, outcome.result
 
         # Handle Side Effects (UI Switching etc)
         self._handle_tool_result_logic(result, success)
 
         # Keep structured output in controller history, but do not expose raw
         # JSON/tool syntax in the visible product transcript.
-        msg = f"Tool Output: {self._format_tool_output(tool_name, success, result)}"
+        msg = (
+            "Tool Output: "
+            f"{self._format_tool_output(display_tool_name, success, result)}"
+        )
         self._append_history("assistant", msg)
-        self.response_ready.emit(
-            "System",
-            self._summarize_tool_result(tool_name, success, result),
+        self._publish_response(
+            self._summarize_tool_result(display_tool_name, success, result),
+            kind=(
+                AssistantResponseKind.TOOL_RESULT
+                if success
+                else AssistantResponseKind.BLOCKED
+            ),
         )
 
         self.status_update.emit("Ready")
         self.is_processing = False
-        self.processing_finished.emit()
+        self._emit_processing_finished()

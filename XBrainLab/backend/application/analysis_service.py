@@ -7,8 +7,9 @@ from typing import Any
 
 import numpy as np
 
+from ..training_manager import current_post_training_saliency_target
+from .capabilities import SALIENCY_TRAINING_ACTIVE_REASON
 from .commands import (
-    ApplyMontageCommand,
     Command,
     EvaluateCommand,
     SaliencyCommand,
@@ -22,19 +23,17 @@ HandlerResult = str | tuple[str, dict[str, Any]]
 
 
 class AnalysisCommandService:
-    """Handle evaluation, visualization, saliency, and montage commands."""
+    """Handle evaluation, visualization, and saliency commands."""
 
     def __init__(
         self,
         *,
         evaluation: Any,
         visualization: Any,
-        preprocess: Any,
         get_state: Callable[[], ApplicationStateSnapshot],
     ) -> None:
         self.evaluation = evaluation
         self.visualization = visualization
-        self.preprocess = preprocess
         self._get_state = get_state
 
     def handle_evaluate(self, command: Command) -> HandlerResult:
@@ -172,7 +171,42 @@ class AnalysisCommandService:
             configure_reasons = self._saliency_configuration_reasons(state)
             if configure_reasons:
                 raise PreconditionError("; ".join(configure_reasons))
+            automatic_target = current_post_training_saliency_target()
             self.visualization.set_saliency_params(params)
+            if automatic_target is not None:
+                schedule = automatic_target.schedule_outcome
+                if schedule is None:
+                    raise PreconditionError(
+                        "Automatic saliency scheduler did not publish an outcome.",
+                        diagnostics={
+                            "post_training_saliency_schedule": {
+                                "disposition": "rejected",
+                                "reason": "outcome_unavailable",
+                            }
+                        },
+                    )
+                schedule_diagnostics = schedule.to_dict()
+                if not schedule.scheduled:
+                    raise PreconditionError(
+                        schedule.message,
+                        diagnostics={
+                            "post_training_saliency_schedule": schedule_diagnostics,
+                        },
+                    )
+                return (
+                    schedule.message,
+                    {
+                        "payload_type": "saliency_configuration",
+                        "action": "schedule",
+                        "saliency_configured": True,
+                        "saliency_available": (
+                            self._get_state().visualization.saliency_available
+                        ),
+                        "requested_method": requested_method,
+                        "params": self._json_safe(params),
+                        "post_training_saliency_schedule": schedule_diagnostics,
+                    },
+                )
             return (
                 "Saliency parameters configured.",
                 {
@@ -208,41 +242,22 @@ class AnalysisCommandService:
             },
         )
 
-    def handle_apply_montage(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ApplyMontageCommand):
-            raise TypeError("Invalid command for apply_montage")
-        if not command.channels:
-            raise PreconditionError("channels list cannot be empty.")
-        if not command.positions:
-            raise PreconditionError("positions list cannot be empty.")
-        if len(command.channels) != len(command.positions):
-            raise PreconditionError("channels and positions must have equal length.")
-
-        self.preprocess.apply_montage(command.channels, command.positions)
-        message = (
-            f"Applied montage '{command.montage_name}' "
-            f"to {len(command.channels)} channel(s)."
-            if command.montage_name
-            else f"Applied montage to {len(command.channels)} channel(s)."
-        )
-        return (
-            message,
-            {
-                "channel_count": len(command.channels),
-                "montage_name": command.montage_name,
-            },
-        )
-
     @staticmethod
     def _saliency_configuration_reasons(
         state: ApplicationStateSnapshot,
     ) -> list[str]:
+        reasons = []
+        if state.active_training.is_running:
+            reasons.append(SALIENCY_TRAINING_ACTIVE_REASON)
         if state.active_training.has_trainer or (
             state.active_training.has_model
             and state.active_training.has_training_option
         ):
-            return []
-        return ["Select a model and training settings before configuring saliency."]
+            return reasons
+        reasons.append(
+            "Select a model and training settings before configuring saliency."
+        )
+        return reasons
 
     @staticmethod
     def _call_list(call: Callable[[], Any]) -> list[Any]:

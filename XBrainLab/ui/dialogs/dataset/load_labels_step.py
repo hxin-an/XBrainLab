@@ -102,8 +102,9 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         *,
         include_excluded: bool = False,
     ) -> list[dict[str, Any]]:
-        carriers = self.preview.get("label_carrier_preview") or []
-        if not isinstance(carriers, list) or not carriers:
+        if "label_carrier_preview" in self.preview:
+            carriers = self.preview.get("label_carrier_preview")
+        else:
             carriers = [
                 {
                     "name": Path(str(carrier)).name,
@@ -112,9 +113,9 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
                 }
                 for carrier in self.scan_result.get("label_carriers", []) or []
             ]
-        result: list[dict[str, Any]] = []
         if not isinstance(carriers, list):
-            return result
+            return []
+        result: list[dict[str, Any]] = []
         for carrier in carriers:
             if not isinstance(carrier, dict):
                 continue

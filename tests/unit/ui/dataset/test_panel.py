@@ -119,6 +119,35 @@ def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
     real_window.close()
 
 
+def test_deferred_runtime_uses_actionable_empty_state(qtbot):
+    real_window = QMainWindow()
+    cast(Any, real_window).study = Study()
+    controller = MagicMock()
+    controller.study = cast(Any, real_window).study
+    panel = DatasetPanel(controller=controller, parent=real_window)
+    qtbot.addWidget(real_window)
+    qtbot.addWidget(panel)
+    panel.table.setRowCount(1)
+    panel.data_surface.setCurrentWidget(panel.table)
+    panel.empty_state_title.setText("Stale dataset state")
+    panel.empty_state_detail.setText("Stale detail")
+
+    with patch(
+        "XBrainLab.ui.panels.dataset.panel.is_application_runtime_deferred",
+        return_value=True,
+    ):
+        panel.update_panel()
+
+    assert panel.table.rowCount() == 0
+    assert panel.data_surface.currentWidget() is panel.empty_state
+    assert panel.empty_state_title.text() == "No EEG data loaded"
+    assert (
+        panel.empty_state_detail.text()
+        == "Import a file, folder, or BIDS folder to begin."
+    )
+    real_window.close()
+
+
 def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot):
     """Test initialization creates controller."""
     # Create a REAL QMainWindow to serve as parent
@@ -190,7 +219,7 @@ def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
         panel.sidebar.clear_dataset()
         mock_controller.clean_dataset.assert_not_called()
         mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Clear Dataset Blocked"
+        assert mock_warning.call_args.args[1] == "Reset Session Blocked"
         mock_info.assert_not_called()
 
 
@@ -227,6 +256,47 @@ def test_dataset_panel_update_table(mock_main_window, mock_controller, qtbot):
     file_item = panel.table.item(0, 0)
     assert file_item is not None
     assert file_item.text() == "test.set"
+
+
+def test_dataset_panel_uses_product_empty_state_instead_of_blank_table(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.resize(980, 520)
+    panel.show()
+
+    panel.update_panel()
+    qtbot.wait(0)
+
+    assert panel.table.rowCount() == 0
+    assert panel.empty_state.isVisibleTo(panel)
+    assert not panel.table.isVisibleTo(panel)
+    assert panel.empty_state_title.text() == "No EEG data loaded"
+    assert "Import a file, folder, or BIDS folder" in panel.empty_state_detail.text()
+
+
+def test_dataset_panel_restores_table_when_rows_are_available(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    mock_controller.get_loaded_data_list.return_value = [
+        loaded_data_stub("sub-01_task-mi_raw.fif")
+    ]
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.resize(980, 520)
+    panel.show()
+
+    panel.update_panel()
+    qtbot.wait(0)
+
+    assert panel.table.rowCount() == 1
+    assert panel.table.isVisibleTo(panel)
+    assert not panel.empty_state.isVisibleTo(panel)
 
 
 def test_dataset_panel_table_columns_fill_available_width(
@@ -304,6 +374,31 @@ def test_dataset_panel_refits_table_after_loaded_rows_settle(
     assert header is not None
     assert viewport is not None
     assert scrollbar is not None
+    assert abs(header.length() - viewport.width()) <= 2
+    assert scrollbar.maximum() == 0
+
+
+def test_dataset_panel_uses_compact_columns_when_assistant_reduces_width(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.resize(425, 420)
+    panel.show()
+    qtbot.wait(10)
+
+    panel._fit_table_columns_to_viewport()
+
+    header = panel.table.horizontalHeader()
+    viewport = panel.table.viewport()
+    scrollbar = panel.table.horizontalScrollBar()
+    assert header is not None
+    assert viewport is not None
+    assert scrollbar is not None
+    assert not panel.table.isColumnHidden(0)
+    assert all(panel.table.isColumnHidden(column) for column in range(1, 7))
     assert abs(header.length() - viewport.width()) <= 2
     assert scrollbar.maximum() == 0
 
@@ -547,9 +642,9 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
 
     controller.update_metadata.assert_not_called()
     mock_warning.assert_called_once()
-    assert mock_warning.call_args.args[1] == "Metadata blocked"
-    assert "could not safely complete" in mock_warning.call_args.args[2]
-    mock_update.assert_not_called()
+    assert mock_warning.call_args.args[1] == "Refresh Dataset and Edit Again"
+    assert "Refresh the Dataset table" in mock_warning.call_args.args[2]
+    mock_update.assert_called_once()
 
 
 def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):

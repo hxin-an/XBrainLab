@@ -2,12 +2,75 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from threading import Event, Thread
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.generation import ResolvedGenerationOptions
+
+CONFIGURED_TEST_OPTIONS = ResolvedGenerationOptions(
+    max_new_tokens=128,
+    do_sample=True,
+    temperature=0.7,
+    top_p=0.9,
+)
+PRIMARY_MODEL_REVISION = (
+    "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
+)
+
+
+class _EmptyStreamer:
+    def __iter__(self) -> Iterator[str]:
+        return iter(())
+
+    def end(self) -> None:
+        return None
+
+
+def _configure_blocking_generation(
+    backend: Any,
+) -> tuple[
+    MagicMock,
+    Event,
+    Event,
+    list[Thread],
+    Callable[..., Thread],
+    MagicMock,
+]:
+    tokenizer = MagicMock()
+    tokenizer.apply_chat_template.return_value = "prompt text"
+    tokenizer.return_value = MagicMock(to=MagicMock(return_value={}))
+
+    release = Event()
+    started = Event()
+    model = MagicMock()
+    model.device = "cpu"
+
+    def block_generation(**_kwargs: Any) -> None:
+        started.set()
+        release.wait(timeout=3)
+
+    model.generate.side_effect = block_generation
+    backend.is_loaded = True
+    backend.tokenizer = tokenizer
+    backend.model = model
+
+    threads: list[Thread] = []
+
+    def thread_factory(*args: Any, **kwargs: Any) -> Thread:
+        thread = Thread(*args, **kwargs)
+        threads.append(thread)
+        return thread
+
+    transformers = MagicMock()
+    transformers.TextIteratorStreamer.side_effect = lambda *_args, **_kwargs: (
+        _EmptyStreamer()
+    )
+    return model, release, started, threads, thread_factory, transformers
 
 
 def _make_config(**overrides):
@@ -38,6 +101,111 @@ class TestLocalBackendInit:
         assert backend.model is None
         assert backend.tokenizer is None
         assert backend.is_loaded is False
+
+
+class TestGenerationOwnedEngineLifecycle:
+    def test_engine_retains_backend_when_generation_blocks_unload(self):
+        from XBrainLab.llm.core.engine import LLMEngine
+
+        config = LLMConfig(inference_mode="local")
+        engine = LLMEngine(config)
+        backend = MagicMock()
+        backend.unload.return_value = False
+        engine.backends["local"] = backend
+        engine._backend_model_ids["local"] = "old-model"
+        engine.active_backend = backend
+        config.model_name = "new-model"
+
+        with pytest.raises(RuntimeError, match="generation is still running"):
+            engine.switch_backend("local")
+
+        assert engine.backends == {"local": backend}
+        assert engine.active_backend is backend
+        assert engine._backend_model_ids == {"local": "old-model"}
+        assert engine.close() is False
+        assert engine.backends == {"local": backend}
+        assert engine.active_backend is backend
+
+
+class TestGenerationProfiles:
+    @pytest.mark.parametrize(
+        ("options", "expected_sampling"),
+        [
+            (
+                ResolvedGenerationOptions(
+                    max_new_tokens=128,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9,
+                ),
+                True,
+            ),
+            (ResolvedGenerationOptions(max_new_tokens=128, do_sample=False), False),
+        ],
+    )
+    def test_profile_controls_sampling_without_mutating_saved_config(
+        self,
+        options,
+        expected_sampling,
+    ):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        config = _make_config(do_sample=True)
+        backend = LocalBackend(config)
+        backend.is_loaded = True
+        tokenizer = MagicMock()
+        tokenizer.apply_chat_template.return_value = "prompt text"
+        tokenizer.return_value = MagicMock(to=MagicMock(return_value={}))
+        model = MagicMock()
+        model.device = "cpu"
+        backend.tokenizer = tokenizer
+        backend.model = model
+        streamer = MagicMock()
+        streamer.__iter__ = MagicMock(return_value=iter([]))
+
+        class ImmediateThread:
+            def __init__(self, target, **_kwargs):
+                self._target = target
+
+            def start(self):
+                self._target()
+
+            def join(self, timeout=0):
+                return None
+
+            def is_alive(self):
+                return False
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "transformers": MagicMock(
+                        TextIteratorStreamer=MagicMock(return_value=streamer)
+                    ),
+                },
+            ),
+            patch(
+                "XBrainLab.llm.core.backends.local.Thread",
+                ImmediateThread,
+            ),
+        ):
+            list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=options,
+                )
+            )
+
+        generation_kwargs = model.generate.call_args.kwargs
+        assert generation_kwargs["do_sample"] is expected_sampling
+        assert config.do_sample is True
+        if expected_sampling:
+            assert generation_kwargs["temperature"] == 0.7
+            assert generation_kwargs["top_p"] == 0.9
+        else:
+            assert "temperature" not in generation_kwargs
+            assert "top_p" not in generation_kwargs
 
 
 class TestLocalBackendLoad:
@@ -84,6 +252,8 @@ class TestLocalBackendLoad:
         model_kwargs = mock_model_cls.from_pretrained.call_args.kwargs
         assert tokenizer_kwargs["local_files_only"] is True
         assert model_kwargs["local_files_only"] is True
+        assert tokenizer_kwargs["revision"] == PRIMARY_MODEL_REVISION
+        assert model_kwargs["revision"] == PRIMARY_MODEL_REVISION
 
     @patch("XBrainLab.llm.core.backends.local.torch", create=True)
     def test_load_4bit(self, mock_torch):
@@ -337,7 +507,12 @@ class TestGenerateStream:
         backend.model = None
 
         with pytest.raises(RuntimeError, match="not loaded"):
-            list(backend.generate_stream([{"role": "user", "content": "hi"}]))
+            list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=CONFIGURED_TEST_OPTIONS,
+                )
+            )
 
     def test_generate_stream_calls_load(self):
         """generate_stream calls load() if not loaded."""
@@ -350,7 +525,12 @@ class TestGenerateStream:
             patch.object(backend, "load", side_effect=RuntimeError("skip")),
             pytest.raises(RuntimeError, match="skip"),
         ):
-            list(backend.generate_stream([{"role": "user", "content": "hi"}]))
+            list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=CONFIGURED_TEST_OPTIONS,
+                )
+            )
 
     def test_generate_stream_success(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
@@ -385,7 +565,12 @@ class TestGenerateStream:
                 "XBrainLab.llm.core.backends.local.Thread",
             ) as mock_thread_cls,
         ):
-            result = list(backend.generate_stream([{"role": "user", "content": "hi"}]))
+            result = list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=CONFIGURED_TEST_OPTIONS,
+                )
+            )
             mock_thread_cls.return_value.start.assert_called_once()
             assert result == ["Hello", " world"]
 
@@ -438,25 +623,162 @@ class TestGenerateStream:
             ),
             pytest.raises(RuntimeError, match="Local generation failed: boom"),
         ):
-            list(backend.generate_stream([{"role": "user", "content": "hi"}]))
+            list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=CONFIGURED_TEST_OPTIONS,
+                )
+            )
 
         mock_streamer.end.assert_called_once()
 
-    def test_cancel_generation_ends_streamer_and_joins_thread(self):
+    def test_cancel_generation_waits_for_model_thread_exit(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
         backend = LocalBackend(_make_config())
-        streamer = MagicMock()
-        thread = MagicMock()
-        thread.is_alive.side_effect = [True, False]
-        backend._active_streamer = streamer
-        backend._active_generation_thread = thread
+        (
+            _model,
+            release,
+            started,
+            threads,
+            thread_factory,
+            transformers,
+        ) = _configure_blocking_generation(backend)
+        outer_thread = Thread(
+            target=lambda: list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "first"}],
+                    options=CONFIGURED_TEST_OPTIONS,
+                )
+            )
+        )
 
-        stopped = backend.cancel_generation(wait_timeout=0.5)
+        try:
+            with (
+                patch.dict("sys.modules", {"transformers": transformers}),
+                patch(
+                    "XBrainLab.llm.core.backends.local.Thread",
+                    side_effect=thread_factory,
+                ),
+            ):
+                outer_thread.start()
+                assert started.wait(timeout=1)
 
-        assert stopped is True
-        assert backend._generation_cancel_event.is_set() is True
-        streamer.end.assert_called_once()
-        thread.join.assert_called_once_with(timeout=0.5)
-        assert backend._active_generation_thread is None
-        assert backend._active_streamer is None
+                assert backend.cancel_generation(wait_timeout=0.01) is False
+                release.set()
+                outer_thread.join(timeout=1)
+                assert backend.cancel_generation(wait_timeout=0.01) is True
+        finally:
+            release.set()
+            outer_thread.join(timeout=1)
+            for thread in threads:
+                thread.join(timeout=1)
+        assert outer_thread.is_alive() is False
+
+    def test_rejects_next_generation_while_model_thread_outlives_streamer(self):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        backend = LocalBackend(_make_config())
+        (
+            model,
+            release,
+            started,
+            threads,
+            thread_factory,
+            transformers,
+        ) = _configure_blocking_generation(backend)
+        outer_errors: list[BaseException] = []
+
+        def consume_first_generation() -> None:
+            try:
+                list(
+                    backend.generate_stream(
+                        [{"role": "user", "content": "first"}],
+                        options=CONFIGURED_TEST_OPTIONS,
+                    )
+                )
+            except BaseException as error:
+                outer_errors.append(error)
+
+        outer_thread = Thread(target=consume_first_generation)
+
+        try:
+            with (
+                patch.dict("sys.modules", {"transformers": transformers}),
+                patch(
+                    "XBrainLab.llm.core.backends.local.Thread",
+                    side_effect=thread_factory,
+                ),
+            ):
+                outer_thread.start()
+                assert started.wait(timeout=1)
+
+                with pytest.raises(RuntimeError, match=r"generation.*still running"):
+                    list(
+                        backend.generate_stream(
+                            [{"role": "user", "content": "second"}],
+                            options=CONFIGURED_TEST_OPTIONS,
+                        )
+                    )
+
+            assert model.generate.call_count == 1
+        finally:
+            release.set()
+            outer_thread.join(timeout=1)
+            for thread in threads:
+                thread.join(timeout=1)
+        assert outer_thread.is_alive() is False
+        assert outer_errors == []
+
+    def test_unload_preserves_resources_while_model_thread_is_alive(self):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        backend = LocalBackend(_make_config())
+        (
+            _model,
+            release,
+            started,
+            threads,
+            thread_factory,
+            transformers,
+        ) = _configure_blocking_generation(backend)
+        loaded_model = backend.model
+        loaded_tokenizer = backend.tokenizer
+        outer_errors: list[BaseException] = []
+
+        def consume_first_generation() -> None:
+            try:
+                list(
+                    backend.generate_stream(
+                        [{"role": "user", "content": "first"}],
+                        options=CONFIGURED_TEST_OPTIONS,
+                    )
+                )
+            except BaseException as error:
+                outer_errors.append(error)
+
+        outer_thread = Thread(target=consume_first_generation)
+
+        try:
+            with (
+                patch.dict("sys.modules", {"transformers": transformers}),
+                patch(
+                    "XBrainLab.llm.core.backends.local.Thread",
+                    side_effect=thread_factory,
+                ),
+            ):
+                outer_thread.start()
+                assert started.wait(timeout=1)
+
+                assert backend.unload() is False
+
+            assert backend.model is loaded_model
+            assert backend.tokenizer is loaded_tokenizer
+            assert backend.is_loaded is True
+        finally:
+            release.set()
+            outer_thread.join(timeout=1)
+            for thread in threads:
+                thread.join(timeout=1)
+        assert outer_thread.is_alive() is False
+        assert outer_errors == []

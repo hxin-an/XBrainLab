@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -42,8 +43,25 @@ class TestBM25Index:
         from XBrainLab.llm.rag.bm25 import BM25Index
 
         data = [
-            {"id": 1, "input": "load data from file", "category": "dataset"},
-            {"id": 2, "input": "apply filter", "category": "preprocess"},
+            {
+                "id": 1,
+                "input": "inspect the current dataset",
+                "category": "dataset",
+                "expected_tool_calls": [
+                    {"tool_name": "get_dataset_info", "parameters": {}}
+                ],
+            },
+            {
+                "id": 2,
+                "input": "apply filter",
+                "category": "preprocess",
+                "expected_tool_calls": [
+                    {
+                        "tool_name": "apply_bandpass_filter",
+                        "parameters": {"low_freq": 4.0, "high_freq": 40.0},
+                    }
+                ],
+            },
             {"id": 3, "input": "", "category": "empty"},
         ]
         with tempfile.NamedTemporaryFile(
@@ -110,7 +128,7 @@ class TestRetrieverInitialization:
         # Pre-import so the attribute exists at module level
         from XBrainLab.llm.rag.indexer import RAGIndexer as _orig
 
-        _mod.RAGIndexer = _orig  # ensure patchable
+        cast(Any, _mod).RAGIndexer = _orig  # ensure patchable
         with patch.object(
             _mod,
             "RAGIndexer",
@@ -123,9 +141,9 @@ class TestRetrieverInitialization:
 
         r = RAGRetriever()
         r.is_initialized = True
-        r._executor = MagicMock()
-        r._executor.submit.side_effect = Exception("thread fail")
+        r.client = MagicMock()
         r.embeddings = MagicMock()
+        r.embeddings.embed_query.side_effect = Exception("embedding fail")
 
         result = r.get_similar_examples("test query")
         assert result == ""

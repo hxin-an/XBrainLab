@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from XBrainLab.llm.agent.confidence import estimate_confidence
 
 # ---------------------------------------------------------------------------
@@ -81,3 +83,14 @@ class TestEstimateConfidence:
         # load_data IS in the default set → should get the bonus
         score = estimate_confidence(text, cmds)
         assert score >= 0.7
+
+    @pytest.mark.parametrize("tool_name", ["reset_preprocess", "stop_training"])
+    def test_default_known_tools_include_every_registered_lifecycle_tool(
+        self,
+        tool_name,
+    ):
+        text = f'```json\n{{"tool": "{tool_name}", "params": {{"x": 1}}}}\n```'
+
+        score = estimate_confidence(text, [(tool_name, {"x": 1})])
+
+        assert score >= 0.85

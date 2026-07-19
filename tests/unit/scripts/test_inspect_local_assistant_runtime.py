@@ -4,29 +4,38 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.dev.inspect_local_assistant_runtime import (
-    _extract_json_object,
     classify_runtime,
     render_markdown,
     run_prompt_smoke,
     run_structured_output_smoke,
 )
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.model_catalog import (
+    MIN_MODEL_WEIGHT_BYTES,
+    local_model_spec,
+)
 
 
 def _create_hf_cache(cache_dir: Path, repo_id: str) -> None:
+    spec = local_model_spec(repo_id)
+    assert spec is not None
     model_root = cache_dir / f"models--{repo_id.replace('/', '--')}"
-    snapshot_dir = model_root / "snapshots" / "test-revision"
+    snapshot_dir = model_root / "snapshots" / spec.revision
+    blobs_dir = model_root / "blobs"
     snapshot_dir.mkdir(parents=True)
+    blobs_dir.mkdir(parents=True)
     (model_root / "refs").mkdir(parents=True)
-    (model_root / "refs" / "main").write_text("test-revision", encoding="utf-8")
+    (model_root / "refs" / "main").write_text(spec.revision, encoding="utf-8")
+    (blobs_dir / "cached-artifact").write_text("cached", encoding="utf-8")
 
-    for filename in (
-        "config.json",
-        "tokenizer_config.json",
-        "model.safetensors.index.json",
-        "model-00001-of-00001.safetensors",
-    ):
+    for filename in ("config.json", "tokenizer_config.json"):
         (snapshot_dir / filename).write_text("{}", encoding="utf-8")
+    (snapshot_dir / "model.safetensors.index.json").write_text(
+        '{"weight_map":{"layer":"model-00001-of-00001.safetensors"}}',
+        encoding="utf-8",
+    )
+    with (snapshot_dir / "model-00001-of-00001.safetensors").open("wb") as stream:
+        stream.truncate(MIN_MODEL_WEIGHT_BYTES)
 
 
 def test_classify_runtime_reports_cpu_fallback(tmp_path: Path):
@@ -112,9 +121,74 @@ def test_structured_smoke_skips_when_local_runtime_unavailable(tmp_path: Path):
     assert "Local runtime unavailable" in result["message"]
 
 
-def test_extract_json_object_accepts_code_fence():
-    parsed = _extract_json_object(
-        '```json\n{"tool_name":"get_state","arguments":{}}\n```'
-    )
+def test_prompt_smoke_always_closes_loaded_engine():
+    config = LLMConfig()
+    config.apply_runtime_selection("local", ui_active_mode="local")
 
-    assert parsed == {"tool_name": "get_state", "arguments": {}}
+    with (
+        patch.object(LLMConfig, "local_backend_ready", return_value=True),
+        patch("scripts.dev.inspect_local_assistant_runtime.LLMEngine") as engine_type,
+    ):
+        engine_type.return_value.generate_stream.return_value = iter(["READY"])
+
+        result = run_prompt_smoke(config)
+
+    assert result["status"] == "passed"
+    engine_type.return_value.close.assert_called_once_with()
+
+
+def test_structured_smoke_closes_engine_when_generation_fails():
+    config = LLMConfig()
+    config.apply_runtime_selection("local", ui_active_mode="local")
+
+    with (
+        patch.object(LLMConfig, "local_backend_ready", return_value=True),
+        patch("scripts.dev.inspect_local_assistant_runtime.LLMEngine") as engine_type,
+    ):
+        engine_type.return_value.generate_stream.side_effect = RuntimeError("failed")
+
+        result = run_structured_output_smoke(config)
+
+    assert result["status"] == "failed"
+    engine_type.return_value.close.assert_called_once_with()
+
+
+def test_structured_smoke_accepts_only_the_product_tool_envelope():
+    config = LLMConfig()
+    config.apply_runtime_selection("local", ui_active_mode="local")
+
+    with (
+        patch.object(LLMConfig, "local_backend_ready", return_value=True),
+        patch("scripts.dev.inspect_local_assistant_runtime.LLMEngine") as engine_type,
+    ):
+        engine_type.return_value.generate_stream.return_value = iter(
+            ['{"tool_name":"query_state","parameters":{}}']
+        )
+
+        result = run_structured_output_smoke(config)
+
+    assert result["status"] == "passed"
+    engine_type.return_value.close.assert_called_once_with()
+
+
+def test_structured_smoke_rejects_legacy_arguments_and_code_fences():
+    config = LLMConfig()
+    config.apply_runtime_selection("local", ui_active_mode="local")
+
+    for response in (
+        '{"tool_name":"get_state","arguments":{}}',
+        '```json\n{"tool_name":"query_state","parameters":{}}\n```',
+    ):
+        with (
+            patch.object(LLMConfig, "local_backend_ready", return_value=True),
+            patch(
+                "scripts.dev.inspect_local_assistant_runtime.LLMEngine"
+            ) as engine_type,
+        ):
+            engine_type.return_value.generate_stream.return_value = iter([response])
+
+            result = run_structured_output_smoke(config)
+
+        assert result["status"] == "failed"
+        assert result["failure_type"] == "output_format"
+        engine_type.return_value.close.assert_called_once_with()

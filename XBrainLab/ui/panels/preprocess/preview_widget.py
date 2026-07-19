@@ -6,7 +6,7 @@ crosshair cursors and debounced navigation controls.
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -109,6 +109,9 @@ class PreviewWidget(QWidget):
             [],
             pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
             name="Current",
+        )
+        self.time_current_curve.sigPlotChanged.connect(
+            self._on_current_curve_data_changed
         )
 
         # Monkey-patch leaveEvent to hide crosshair when mouse leaves the widget
@@ -233,17 +236,29 @@ class PreviewWidget(QWidget):
 
         plot_layout.addWidget(self.plot_tabs)
 
+        self.locked_status_label = QLabel()
+        self.locked_status_label.setObjectName("PreprocessPreviewStatus")
+        self.locked_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.locked_status_label.setWordWrap(True)
+        self.locked_status_label.hide()
+        plot_layout.addWidget(self.locked_status_label)
+
         # 2. Controls (Channel, Y-Scale)
         ctrl_layout = QHBoxLayout()
-        ctrl_layout.addWidget(QLabel("Channel:"))
+        self.channel_label = QLabel("Channel:")
+        ctrl_layout.addWidget(self.channel_label)
         self.chan_combo = QComboBox()
         self.chan_combo.setMinimumWidth(100)
         self.chan_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.chan_combo.currentIndexChanged.connect(self._on_plot_param_changed)
+        channel_model = self.chan_combo.model()
+        if channel_model is not None:
+            channel_model.rowsInserted.connect(self._on_channels_inserted)
         ctrl_layout.addWidget(self.chan_combo)
 
         ctrl_layout.addSpacing(20)
-        ctrl_layout.addWidget(QLabel("Y-Scale (uV):"))
+        self.yscale_label = QLabel("Y-Scale (uV):")
+        ctrl_layout.addWidget(self.yscale_label)
         self.yscale_spin = QDoubleSpinBox()
         self.yscale_spin.setRange(0, 5000)
         self.yscale_spin.setValue(0)  # 0 = Auto
@@ -257,7 +272,8 @@ class PreviewWidget(QWidget):
 
         # 3. Time Navigation
         time_nav_layout = QHBoxLayout()
-        time_nav_layout.addWidget(QLabel("Time / Epoch:"))
+        self.time_label = QLabel("Time / Epoch:")
+        time_nav_layout.addWidget(self.time_label)
 
         self.time_slider = QSlider(Qt.Orientation.Horizontal)
         self.time_slider.setRange(0, 100)
@@ -274,12 +290,21 @@ class PreviewWidget(QWidget):
         self.plot_group.setLayout(plot_layout)
 
         layout.addWidget(self.plot_group)
+        self._set_preview_interactive(
+            False,
+            status="Load EEG data to preview signals.",
+        )
 
     def setup_timer(self):
         """Create a single-shot debounce timer for plot-parameter changes."""
-        self.plot_timer = QTimer()
+        self.plot_timer = QTimer(self)
         self.plot_timer.setSingleShot(True)
-        self.plot_timer.timeout.connect(self.request_plot_update.emit)
+        self.plot_timer.timeout.connect(self._emit_plot_update)
+
+    @pyqtSlot()
+    def _emit_plot_update(self) -> None:
+        """Forward the owned timer callback through the widget signal."""
+        self.request_plot_update.emit()
 
     def _on_plot_param_changed(self):
         """Start the debounce timer when a plot parameter changes."""
@@ -413,19 +438,55 @@ class PreviewWidget(QWidget):
         self.clear_plot_data()
         self.plot_time.setTitle("No Data")
         self.plot_freq.setTitle("No Data")
+        self._set_preview_interactive(
+            False,
+            status="Load EEG data to preview signals.",
+        )
 
     def show_locked_message(self, message: str):
-        """Display a locked/status message on the plots."""
+        """Display a locked state and remove misleading interaction affordances."""
         self.plot_timer.stop()
         self.clear_plot_data()
+        self.plot_time.setTitle("Preview unavailable")
+        self.plot_freq.setTitle("Preview unavailable")
+        self._set_preview_interactive(False, status=message)
 
-        # Use simple titles for now as it's most robust
-        self.plot_time.setTitle(message)
-        self.plot_freq.setTitle(message)
+    def _on_channels_inserted(self, *_args) -> None:
+        """Restore preview controls when a new raw dataset publishes channels."""
+        if self.chan_combo.count() <= 0:
+            return
+        self.plot_time.setTitle("")
+        self.plot_freq.setTitle("")
+        self._set_preview_interactive(True)
 
-        # Disable interaction cues if needed, or just clear content
-        # Adding a centered text item would be nicer but requires ViewBox mapping
-        # Title is sufficient for "Data is Epoched" status.
+    def _on_current_curve_data_changed(self, *_args) -> None:
+        """Restore controls when a reset-to-raw path publishes signal data."""
+        x_data = self.time_current_curve.xData
+        if x_data is None or len(x_data) == 0:
+            return
+        self._set_preview_interactive(True)
+
+    def _set_preview_interactive(
+        self,
+        enabled: bool,
+        *,
+        status: str = "",
+    ) -> None:
+        """Keep plot and navigation affordances aligned with preview availability."""
+        controls = (
+            self.plot_tabs,
+            self.channel_label,
+            self.chan_combo,
+            self.yscale_label,
+            self.yscale_spin,
+            self.time_label,
+            self.time_slider,
+            self.time_spin,
+        )
+        for control in controls:
+            control.setEnabled(enabled)
+        self.locked_status_label.setText(status)
+        self.locked_status_label.setVisible(bool(status) and not enabled)
 
     def clear_plot_data(self):
         """Clear plotted data without deleting PyQtGraph graphics items."""

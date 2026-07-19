@@ -2,6 +2,66 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Literal
+
+SubmissionRecheckKind = Literal["remap", "event_values"]
+
+
+@dataclass(frozen=True, slots=True)
+class SubmissionFacts:
+    """Current UI facts that affect whether a review may be submitted."""
+
+    decision: str
+    resource_blocked: bool
+    has_unresolved_required_decisions: bool
+    has_remap_options: bool
+    has_complete_remap_choices: bool
+    event_values_ready_for_recheck: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SubmissionProjection:
+    """Submission state consumed by every review/import UI surface."""
+
+    can_submit_for_backend_review: bool
+    confirmed_on_accept: bool
+    recheck_kind: SubmissionRecheckKind | None
+
+
+def project_submission(facts: SubmissionFacts) -> SubmissionProjection:
+    """Project UI facts without claiming authority over backend apply."""
+    recheck_kind: SubmissionRecheckKind | None = None
+    if not facts.resource_blocked:
+        if (
+            facts.decision == "blocked"
+            and facts.has_remap_options
+            and facts.has_complete_remap_choices
+        ):
+            recheck_kind = "remap"
+        elif (
+            facts.decision == "blocked"
+            and facts.event_values_ready_for_recheck
+            and not facts.has_unresolved_required_decisions
+        ):
+            recheck_kind = "event_values"
+
+    can_submit = bool(
+        not facts.resource_blocked
+        and (
+            (
+                facts.decision in {"safe", "needs_confirmation"}
+                and not facts.has_unresolved_required_decisions
+            )
+            or recheck_kind is not None
+        )
+    )
+    return SubmissionProjection(
+        can_submit_for_backend_review=can_submit,
+        confirmed_on_accept=can_submit,
+        recheck_kind=recheck_kind,
+    )
+
 
 def eeg_data_summary(
     *,

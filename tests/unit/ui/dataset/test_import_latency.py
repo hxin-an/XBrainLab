@@ -49,6 +49,7 @@ def _run_import_probe(code: str) -> str:
         capture_output=True,
         env=env,
         text=True,
+        timeout=60,
     )
     return result.stdout
 
@@ -204,6 +205,8 @@ def test_main_window_dataset_first_open_does_not_load_training_or_dialog_stack()
         window.switch_page(0)
         app.processEvents()
         assert not loaded_bad_modules(), ("after Dataset first open", loaded_bad_modules())
+        window.close()
+        app.processEvents()
         print("PASS")
         """,
     )
@@ -267,6 +270,8 @@ def test_main_window_default_startup_prepares_dataset_without_heavy_stacks() -> 
         app.processEvents()
         assert window._loaded_panel_indices == {0}
         assert not loaded_bad_modules(), ("after MainWindow show", loaded_bad_modules())
+        window.close()
+        app.processEvents()
         print("PASS")
         """,
     )

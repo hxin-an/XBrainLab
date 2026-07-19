@@ -2,26 +2,55 @@
 
 from __future__ import annotations
 
+import threading
+from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any, ClassVar, cast
+from unittest.mock import MagicMock
 
-from XBrainLab.backend.application.capabilities import (
-    CapabilityPolicy,
-    build_capability_policy,
-)
+import numpy as np
+import pytest
+
+from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.commands import CommandName, QueryStateCommand
 from XBrainLab.backend.application.dataset_generation_service import (
     DatasetGenerationCommandService,
 )
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.query_state_service import (
+    HandlerResult,
+    QueryStateCommandService,
+)
+from XBrainLab.backend.application.saliency_coverage import (
+    SaliencyCoverageProjector,
+)
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     InterpretationStateSnapshot,
+    SaliencyMethodCoverageSnapshot,
+    SaliencyRunCoverageSnapshot,
 )
-from XBrainLab.backend.application.state_service import (
-    HandlerResult,
-    QueryStateCommandService,
-    StateSnapshotService,
+from XBrainLab.backend.application.state_service import StateSnapshotService
+from XBrainLab.backend.application.training_runtime import (
+    TrainingConfigurationSnapshot,
+    TrainingRuntimeContext,
 )
 from XBrainLab.backend.application.training_service import TrainingCommandService
+from XBrainLab.backend.application.view_publication import (
+    ApplicationViewCoordinator,
+    ApplicationViewStore,
+)
+from XBrainLab.backend.training import Trainer, TrainingPlanHolder
+from XBrainLab.backend.training.record import TrainRecord
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyPhase,
+    PostTrainingSaliencyStatus,
+    TrainingOutcomeState,
+    TrainingReadBoundary,
+    TrainingRunIdentity,
+    TrainingStateToken,
+    TrainingTerminalOutcome,
+)
 
 
 class _Raw:
@@ -44,9 +73,33 @@ class _Raw:
         return ["filter", "normalize"]
 
 
+class _BrokenPreprocessHistoryRaw(_Raw):
+    def get_preprocess_history(self) -> list[str]:
+        raise RuntimeError("preprocess history unavailable")
+
+
 class _Epoch:
     event_id: ClassVar[dict[str, int]] = {"left": 1}
     data: ClassVar[list[list[list[float]]]] = [[[0.0, 0.1], [0.2, 0.3]]]
+    channel_position: ClassVar[dict[str, tuple[float, float, float]]] = {
+        "C3": (0.0, 0.0, 0.0),
+    }
+
+    def __len__(self) -> int:
+        return 1
+
+    def get_channel_names(self) -> list[str]:
+        return ["C3", "C4"]
+
+
+class _MalformedCapabilityEpoch:
+    event_id: ClassVar[dict[str, int]] = {"left": 1}
+    data: ClassVar[Any] = type(
+        "MalformedShape",
+        (),
+        {"shape": ("invalid", 2, 3)},
+    )()
+    sfreq: ClassVar[Any] = "not-a-frequency"
     channel_position: ClassVar[dict[str, tuple[float, float, float]]] = {
         "C3": (0.0, 0.0, 0.0),
     }
@@ -115,6 +168,14 @@ class _BrokenLoadedDataController(_DatasetController):
         raise RuntimeError("loaded data list unavailable")
 
 
+class _BrokenOptionalDatasetDiagnosticsController(_DatasetController):
+    def get_runtime_diagnostics(self) -> dict[str, Any]:
+        raise RuntimeError("dataset diagnostics unavailable")
+
+    def get_event_info(self) -> dict[str, Any]:
+        raise RuntimeError("event summary unavailable")
+
+
 class _PreprocessController:
     def get_runtime_diagnostics(self) -> dict[str, Any]:
         return {
@@ -130,12 +191,41 @@ class _PreprocessController:
         return ["C3", "C4"]
 
 
+class _BrokenPreprocessEpochedController(_PreprocessController):
+    def is_epoched(self) -> bool:
+        raise RuntimeError("epoch state unavailable")
+
+
+class _BrokenPreprocessChannelController(_PreprocessController):
+    def get_channel_names(self) -> list[str]:
+        raise RuntimeError("preprocess channels unavailable")
+
+
+class _BrokenOptionalPreprocessDiagnosticsController(_PreprocessController):
+    def get_runtime_diagnostics(self) -> dict[str, Any]:
+        raise RuntimeError("preprocess diagnostics unavailable")
+
+
+class _UnexpectedPreprocessReadController(_PreprocessController):
+    def is_epoched(self) -> bool:
+        raise AssertionError("is_epoched must not be read without preprocess context")
+
+    def get_channel_names(self) -> list[str]:
+        raise AssertionError("channels must not be read without preprocess context")
+
+
 class _TrainingController:
     def is_training(self) -> bool:
         return False
 
     def get_progress_text(self) -> str:
         return "Epoch 2/10"
+
+    def get_terminal_outcome(self) -> TrainingTerminalOutcome:
+        return TrainingTerminalOutcome(
+            state=TrainingOutcomeState.COMPLETED,
+            run=TrainingRunIdentity(trainer_id="trainer-state-test", run_id=4),
+        )
 
     def get_missing_requirements(self) -> list[str]:
         return ["model"]
@@ -154,6 +244,132 @@ class _TrainingController:
                 "is_current_run": True,
             }
         ]
+
+
+class _TrainingRuntime:
+    def __init__(
+        self,
+        study: _Study,
+        training: _TrainingController,
+        *,
+        saliency_status: PostTrainingSaliencyStatus | None = None,
+    ) -> None:
+        self.study = study
+        self.training = training
+        self._saliency_status = saliency_status or PostTrainingSaliencyStatus.idle()
+        self._configuration = TrainingConfigurationSnapshot(
+            model_holder=study.model_holder,
+            training_option=study.training_option,
+            saliency_params={"Gradient": {}},
+        )
+
+    def configuration_snapshot(self) -> TrainingConfigurationSnapshot:
+        return self._configuration
+
+    def set_saliency_params(self, params: dict[str, Any] | None) -> None:
+        self._configuration = replace(
+            self._configuration,
+            saliency_params=params,
+        )
+
+    def resource_context(self) -> TrainingRuntimeContext:
+        return TrainingRuntimeContext((), None, None)
+
+    def terminal_outcome(self) -> TrainingTerminalOutcome:
+        trainer = self.study.trainer
+        if trainer is None:
+            return TrainingTerminalOutcome(
+                state=TrainingOutcomeState.UNKNOWN,
+                detail="No trainer is available.",
+            )
+        getter = getattr(trainer, "get_terminal_outcome", None)
+        if callable(getter):
+            return getter()
+        return self.training.get_terminal_outcome()
+
+    def has_trainer(self) -> bool:
+        return self.study.trainer is not None
+
+    def capture_read_boundary(self) -> TrainingReadBoundary:
+        trainer = self.study.trainer
+        if trainer is None:
+            return TrainingReadBoundary.no_trainer()
+        identity_getter = getattr(trainer, "get_state_snapshot_identity", None)
+        token_getter = getattr(trainer, "get_state_snapshot_token", None)
+        if not callable(identity_getter) or not callable(token_getter):
+            return TrainingReadBoundary(
+                trainer_identity=(
+                    f"untracked:{type(trainer).__module__}.{type(trainer).__qualname__}"
+                ),
+                token=TrainingStateToken(0, False),
+            )
+        try:
+            identity = identity_getter()
+            token = token_getter()
+        except Exception:
+            identity = None
+            token = None
+        if (
+            not isinstance(identity, str)
+            or not identity.strip()
+            or not isinstance(token, TrainingStateToken)
+        ):
+            return TrainingReadBoundary(
+                trainer_identity=(
+                    f"untracked:{type(trainer).__module__}.{type(trainer).__qualname__}"
+                ),
+                token=TrainingStateToken(0, False),
+            )
+        return TrainingReadBoundary(
+            trainer_identity=identity,
+            token=token,
+        )
+
+    def saliency_status(self) -> PostTrainingSaliencyStatus:
+        return self._saliency_status
+
+    def set_saliency_status(self, status: PostTrainingSaliencyStatus) -> None:
+        self._saliency_status = status
+
+
+class _BrokenTrainingRequirementsController(_TrainingController):
+    def get_missing_requirements(self) -> list[str]:
+        raise RuntimeError("training requirements unavailable")
+
+
+class _BrokenTrainingProgressController(_TrainingController):
+    def get_progress_text(self) -> str:
+        raise RuntimeError("training progress unavailable")
+
+
+class _RunningTrainingController(_TrainingController):
+    def is_training(self) -> bool:
+        return True
+
+    def get_terminal_outcome(self) -> TrainingTerminalOutcome:
+        return TrainingTerminalOutcome(
+            state=TrainingOutcomeState.RUNNING,
+            run=TrainingRunIdentity(trainer_id="trainer-state-test", run_id=5),
+        )
+
+
+class _TerminalTrainingController(_TrainingController):
+    def __init__(self, outcome: TrainingOutcomeState) -> None:
+        self._outcome = outcome
+
+    def get_terminal_outcome(self) -> TrainingTerminalOutcome:
+        return TrainingTerminalOutcome(
+            state=self._outcome,
+            run=TrainingRunIdentity(trainer_id="trainer-state-test", run_id=6),
+        )
+
+
+class _StableTrainer:
+    def get_state_snapshot_identity(self) -> str:
+        return "trainer-state-test"
+
+    def get_state_snapshot_token(self) -> TrainingStateToken:
+        return TrainingStateToken(generation=1, stable=True)
 
 
 class _EvaluationController:
@@ -187,6 +403,27 @@ class _Plan:
         return self._runs
 
 
+class _BrokenPlan:
+    def get_plans(self) -> list[Any]:
+        raise RuntimeError("plan run list unavailable")
+
+
+class _BrokenRun:
+    eval_record = None
+
+    def is_finished(self) -> bool:
+        raise RuntimeError("run completion unavailable")
+
+
+class _BrokenEvalRecordRun:
+    def is_finished(self) -> bool:
+        return True
+
+    @property
+    def eval_record(self) -> Any:
+        raise RuntimeError("evaluation record unavailable")
+
+
 class _EvaluationControllerWithPlans:
     def __init__(self, plans: list[Any]) -> None:
         self._plans = plans
@@ -195,23 +432,35 @@ class _EvaluationControllerWithPlans:
         return self._plans
 
 
-def _snapshot_service() -> StateSnapshotService:
+def _snapshot_service(
+    *,
+    saliency_coverage_projector: SaliencyCoverageProjector | None = None,
+) -> StateSnapshotService:
     study = _Study()
+    study.trainer = _StableTrainer()
     dataset = _DatasetController(study)
+    training = _TrainingController()
+    training_runtime = _TrainingRuntime(study, training)
     return StateSnapshotService(
         study=study,
         dataset=dataset,
         preprocess=_PreprocessController(),
-        training=_TrainingController(),
+        training=training,
+        training_runtime=cast(Any, training_runtime),
         evaluation=_EvaluationController(),
         visualization=object(),
         dataset_generation=DatasetGenerationCommandService(
             study=study,
             training=object(),
+            has_trainer=training_runtime.has_trainer,
         ),
         training_commands=TrainingCommandService(
             training=object(),
+            training_runtime=cast(Any, training_runtime),
             get_state=lambda: cast(ApplicationStateSnapshot, None),
+        ),
+        saliency_coverage_projector=(
+            saliency_coverage_projector or SaliencyCoverageProjector()
         ),
         interpretation=type(
             "Interpretation",
@@ -244,10 +493,377 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.epoch.event_ids == {"left": 1}
     assert state.dataset.count == 1
     assert state.training.progress_message == "Epoch 2/10"
+    assert state.training.terminal_outcome.state is TrainingOutcomeState.COMPLETED
+    assert state.training.terminal_outcome.run == TrainingRunIdentity(
+        trainer_id="trainer-state-test",
+        run_id=4,
+    )
+    assert state.training.terminal_outcome.detail is None
+    terminal_outcome = state.to_dict()["training"]["terminal_outcome"]
+    assert terminal_outcome == {
+        "state": "completed",
+        "run": {"trainer_id": "trainer-state-test", "run_id": 4},
+        "detail": None,
+    }
+    assert type(terminal_outcome["state"]) is str
     assert state.training_liveness_reliable is True
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
+
+
+def test_state_snapshot_does_not_read_study_training_aliases() -> None:
+    class _BlockingStudyAliases:
+        def __init__(self, source: _Study) -> None:
+            self._source = source
+
+        def __getattr__(self, name: str) -> Any:
+            if name in {"model_holder", "training_option", "saliency_params"}:
+                raise AssertionError(f"State snapshot read Study.{name}")
+            return getattr(self._source, name)
+
+    service = _snapshot_service()
+    service.study = _BlockingStudyAliases(service.study)
+
+    state = service.build()
+
+    assert state.state_reliable is True
+    assert state.visualization.saliency_configured is True
+
+
+@pytest.mark.parametrize(
+    (
+        "case_name",
+        "has_raw",
+        "has_preprocessed",
+        "has_epoch",
+        "has_dataset",
+        "has_trainer",
+        "is_training",
+        "finished_run_count",
+        "expected_stage",
+    ),
+    [
+        ("empty", False, False, False, False, False, False, 0, "empty"),
+        ("raw", True, False, False, False, False, False, 0, "data_loaded"),
+        (
+            "preprocessed",
+            True,
+            True,
+            False,
+            False,
+            False,
+            False,
+            0,
+            "preprocessed",
+        ),
+        (
+            "epoch",
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+            0,
+            "epoch_ready",
+        ),
+        (
+            "dataset",
+            True,
+            True,
+            True,
+            True,
+            False,
+            False,
+            0,
+            "dataset_ready",
+        ),
+        (
+            "training",
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            0,
+            "training",
+        ),
+        (
+            "trained",
+            True,
+            True,
+            True,
+            True,
+            True,
+            False,
+            1,
+            "trained",
+        ),
+    ],
+)
+def test_state_snapshot_publishes_backend_stage_contract(
+    case_name: str,
+    has_raw: bool,
+    has_preprocessed: bool,
+    has_epoch: bool,
+    has_dataset: bool,
+    has_trainer: bool,
+    is_training: bool,
+    finished_run_count: int,
+    expected_stage: str,
+) -> None:
+    del case_name
+    service = _snapshot_service()
+    raw = _Raw()
+    service.study.loaded_data_list = [raw] if has_raw else []
+    service.study.preprocessed_data_list = [raw] if has_preprocessed else []
+    service.study.epoch_data = _Epoch() if has_epoch else None
+    service.study.datasets = [object()] if has_dataset else []
+    service.study.trainer = _StableTrainer() if has_trainer else None
+    service.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(eval_record=object()) for _ in range(finished_run_count)])]
+        if finished_run_count
+        else []
+    )
+    service.training_state = (
+        _RunningTrainingController() if is_training else _TrainingController()
+    )
+
+    assert service.build().pipeline_stage == expected_stage
+
+
+@pytest.mark.parametrize(
+    "terminal_outcome",
+    [TrainingOutcomeState.FAILED, TrainingOutcomeState.CANCELLED],
+)
+def test_trainer_without_finished_results_preserves_terminal_outcome_without_trained_stage(
+    terminal_outcome: TrainingOutcomeState,
+) -> None:
+    service = _snapshot_service()
+    service.study.trainer = _StableTrainer()
+    controller = _TerminalTrainingController(terminal_outcome)
+    service.training = controller
+    service.training_state = controller
+    cast(_TrainingRuntime, service.training_runtime).training = controller
+
+    state = service.build()
+
+    assert state.evaluation.finished_runs == 0
+    assert state.pipeline_stage == "dataset_ready"
+    assert state.training.terminal_outcome.state is terminal_outcome
+
+
+def test_prior_finished_result_remains_available_after_later_training_failure() -> None:
+    service = _snapshot_service()
+    service.study.trainer = _StableTrainer()
+    controller = _TerminalTrainingController(TrainingOutcomeState.FAILED)
+    service.training = controller
+    service.training_state = controller
+    cast(_TrainingRuntime, service.training_runtime).training = controller
+    service.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(eval_record=object())])]
+    )
+
+    state = service.build()
+
+    assert state.evaluation.finished_runs == 1
+    assert state.pipeline_stage == "trained"
+    assert state.training.terminal_outcome.state is TrainingOutcomeState.FAILED
+
+
+def test_state_snapshot_retries_when_training_changes_during_build(
+    monkeypatch,
+) -> None:
+    service = _snapshot_service()
+    baseline = service.build()
+    mixed = replace(baseline, pipeline_stage="training")
+    stable = replace(baseline, pipeline_stage="trained")
+    build_once = MagicMock(side_effect=[mixed, stable])
+    tokens = iter(
+        [
+            TrainingStateToken(1, True),
+            TrainingStateToken(2, True),
+            TrainingStateToken(2, True),
+            TrainingStateToken(2, True),
+        ]
+    )
+
+    class _TokenTrainer:
+        def get_state_snapshot_identity(self) -> str:
+            return "trainer-state-test"
+
+        def get_state_snapshot_token(self) -> TrainingStateToken:
+            return next(tokens)
+
+    service.study.trainer = _TokenTrainer()
+    monkeypatch.setattr(service, "_build_once", build_once, raising=False)
+
+    state = service.build()
+
+    assert state == stable
+    assert build_once.call_count == 2
+
+
+def test_state_snapshot_fails_closed_when_training_never_stabilizes(
+    monkeypatch,
+) -> None:
+    service = _snapshot_service()
+    baseline = service.build()
+    monkeypatch.setattr(
+        service,
+        "_build_once",
+        MagicMock(return_value=baseline),
+        raising=False,
+    )
+    tokens = iter(TrainingStateToken(index, True) for index in range(6))
+
+    class _ChangingTokenTrainer:
+        def get_state_snapshot_identity(self) -> str:
+            return "state-service-changing-trainer"
+
+        def get_state_snapshot_token(self) -> TrainingStateToken:
+            return next(tokens)
+
+    service.study.trainer = _ChangingTokenTrainer()
+
+    state = service.build()
+
+    assert state.state_reliable is False
+    assert state.training_liveness_reliable is False
+    assert state.active_training.is_running is True
+    assert "training state changed during snapshot" in state.read_errors
+
+
+def test_state_snapshot_fails_closed_for_mismatched_terminal_run_identity() -> None:
+    class _DifferentTrainer(_StableTrainer):
+        def get_state_snapshot_identity(self) -> str:
+            return "different-trainer"
+
+    service = _snapshot_service()
+    service.study.trainer = _DifferentTrainer()
+
+    state = service.build()
+
+    assert state.state_reliable is False
+    assert state.training_liveness_reliable is False
+    assert state.pipeline_stage == "unavailable"
+    assert state.training.is_running is True
+    assert state.active_training.is_running is True
+    assert any(
+        "terminal outcome identity does not match" in error
+        for error in state.read_errors
+    )
+
+
+def test_state_snapshot_without_trainer_publishes_unknown_terminal_outcome() -> None:
+    service = _snapshot_service()
+    service.study.trainer = None
+
+    state = service.build()
+
+    assert state.state_reliable is True
+    assert state.training.has_trainer is False
+    assert state.training.terminal_outcome.state is TrainingOutcomeState.UNKNOWN
+    assert state.training.terminal_outcome.run is None
+
+
+@pytest.mark.parametrize(
+    "malformed_token",
+    ["not-a-token", (None, True), ("0", True)],
+)
+def test_state_snapshot_fails_closed_for_malformed_explicit_trainer_token(
+    malformed_token,
+) -> None:
+    class _MalformedTokenTrainer:
+        def get_state_snapshot_token(self):
+            return malformed_token
+
+    service = _snapshot_service()
+    service.study.trainer = _MalformedTokenTrainer()
+
+    state = service.build()
+
+    assert state.state_reliable is False
+    assert state.pipeline_stage == "unavailable"
+    assert "training state changed during snapshot" in state.read_errors
+
+
+def test_state_snapshot_fails_closed_for_untracked_active_trainer() -> None:
+    service = _snapshot_service()
+    service.study.trainer = object()
+
+    state = service.build()
+
+    assert state.state_reliable is False
+    assert state.pipeline_stage == "unavailable"
+    assert "training state changed during snapshot" in state.read_errors
+
+
+@pytest.mark.parametrize("add_many", [False, True])
+def test_state_snapshot_retries_record_transition_for_added_plan(
+    add_many: bool,
+) -> None:
+    """A record finishing mid-read must not publish a mixed evaluation state."""
+    record = object.__new__(TrainRecord)
+    record.epoch = 1
+    record.option = cast(Any, SimpleNamespace(epoch=1))
+    record.eval_record = None
+    record._state_tracker = None
+
+    holder = object.__new__(TrainingPlanHolder)
+    holder.train_record_list = [record]
+    holder._state_tracker = None
+    holder._interrupt = threading.Event()
+    holder.error = None
+    holder.status = "Pending"
+    holder.model_holder = cast(
+        Any,
+        SimpleNamespace(
+            target_model=type("EEGNet", (), {}),
+        ),
+    )
+
+    trainer = Trainer([])
+    if add_many:
+        trainer.add_training_plan_holders([holder])
+    else:
+        trainer.add_plan(holder)
+    service = _snapshot_service()
+    service.study.trainer = trainer
+    service.evaluation_state = _EvaluationControllerWithPlans([holder])
+
+    first_finished_read = threading.Event()
+    allow_first_read_to_continue = threading.Event()
+    original_run_finished = service._run_finished
+    call_count = 0
+
+    def pause_after_first_finished_read(run: Any) -> bool:
+        nonlocal call_count
+        result = original_run_finished(run)
+        call_count += 1
+        if call_count == 1:
+            first_finished_read.set()
+            assert allow_first_read_to_continue.wait(timeout=2.0)
+        return result
+
+    service._run_finished = pause_after_first_finished_read
+    built: list[ApplicationStateSnapshot] = []
+    build_thread = threading.Thread(target=lambda: built.append(service.build()))
+    build_thread.start()
+
+    assert first_finished_read.wait(timeout=2.0)
+    record.set_eval_record(cast(Any, object()))
+    allow_first_read_to_continue.set()
+    build_thread.join(timeout=2.0)
+
+    assert not build_thread.is_alive()
+    assert len(built) == 1
+    assert call_count >= 2
+    assert built[0].evaluation.finished_runs == 1
+    assert built[0].evaluation.metrics_available is True
+    assert built[0].state_reliable is True
 
 
 def test_state_snapshot_records_critical_read_failures_and_fails_closed() -> None:
@@ -269,7 +885,242 @@ def test_state_snapshot_records_critical_read_failures_and_fails_closed() -> Non
     policy = build_capability_policy(state)
     assert policy.get(CommandName.UPDATE_METADATA).enabled is False
     assert policy.get(CommandName.TRAIN).enabled is False
+
     assert policy.get(CommandName.QUERY_STATE).enabled is True
+
+
+@pytest.mark.parametrize(
+    ("read_label", "expected_error", "configure", "assert_fallback"),
+    [
+        (
+            "preprocess.is_epoched",
+            "epoch state unavailable",
+            lambda service: setattr(
+                service,
+                "preprocess",
+                _BrokenPreprocessEpochedController(),
+            ),
+            lambda state: state.preprocessed.is_epoched is False,
+        ),
+        (
+            "preprocess.channel_names",
+            "preprocess channels unavailable",
+            lambda service: setattr(
+                service,
+                "preprocess",
+                _BrokenPreprocessChannelController(),
+            ),
+            lambda state: state.preprocessed.channel_names == [],
+        ),
+        (
+            "training.missing_requirements",
+            "training requirements unavailable",
+            lambda service: setattr(
+                service,
+                "training_state",
+                _BrokenTrainingRequirementsController(),
+            ),
+            lambda state: state.training.missing_requirements == [],
+        ),
+    ],
+)
+def test_authoritative_controller_read_failure_fails_state_and_publication_closed(
+    read_label: str,
+    expected_error: str,
+    configure,
+    assert_fallback,
+) -> None:
+    state_builder = _snapshot_service()
+    configure(state_builder)
+
+    state = state_builder.build()
+
+    assert assert_fallback(state)
+    assert state.state_reliable is False
+    assert state.read_errors == [f"{read_label}: {expected_error}"]
+
+    publication = ApplicationViewStore(
+        state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+    assert publication.verified is False
+    assert publication.stale is True
+    assert read_label in str(publication.refresh_error)
+    assert publication.effective_capabilities.get(CommandName.TRAIN).enabled is False
+
+
+def test_training_progress_failure_is_explicitly_optional_diagnostic() -> None:
+    state_builder = _snapshot_service()
+    state_builder.training = _BrokenTrainingProgressController()
+
+    state = state_builder.build()
+
+    assert state.training.progress_message is None
+    assert state.state_reliable is True
+    assert state.read_errors == []
+    publication = ApplicationViewStore(
+        state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+    assert publication.verified is True
+    assert publication.stale is False
+
+
+def test_optional_diagnostic_failures_do_not_invalidate_workflow_state() -> None:
+    state_builder = _snapshot_service()
+    state_builder.dataset = _BrokenOptionalDatasetDiagnosticsController(
+        state_builder.study,
+    )
+    state_builder.preprocess = _BrokenOptionalPreprocessDiagnosticsController()
+
+    state = state_builder.build()
+
+    assert state.raw.diagnostics == {}
+    assert state.raw.event_total == 0
+    assert state.raw.unique_events == []
+    assert state.preprocessed.diagnostics == {}
+    assert state.state_reliable is True
+    assert state.read_errors == []
+
+
+def test_absent_preprocess_context_does_not_read_authoritative_preprocess_fields() -> (
+    None
+):
+    state_builder = _snapshot_service()
+    state_builder.study.preprocessed_data_list = []
+    state_builder.study.epoch_data = None
+    state_builder.preprocess = _UnexpectedPreprocessReadController()
+
+    state = state_builder.build()
+
+    assert state.preprocessed.is_epoched is False
+    assert state.preprocessed.channel_names == []
+    assert state.state_reliable is True
+    assert state.read_errors == []
+
+
+def test_preprocess_history_failure_fails_capability_driving_state_closed() -> None:
+    state_builder = _snapshot_service()
+    state_builder.study.preprocessed_data_list = [_BrokenPreprocessHistoryRaw()]
+
+    state = state_builder.build()
+
+    assert state.preprocessed.operations == []
+    assert state.state_reliable is False
+    assert state.read_errors == [
+        "preprocess.history[0]: preprocess history unavailable",
+    ]
+    policy = build_capability_policy(state)
+    assert policy.get(CommandName.LOAD_DATA).enabled is False
+
+
+def test_malformed_epoch_model_inputs_fail_capability_state_closed() -> None:
+    state_builder = _snapshot_service()
+    state_builder.study.epoch_data = _MalformedCapabilityEpoch()
+
+    state = state_builder.build()
+
+    assert state.epoch.n_times is None
+    assert state.epoch.sfreq is None
+    assert state.state_reliable is False
+    assert state.read_errors == [
+        "epoch.n_times: invalid shape ('invalid', 2, 3)",
+        "epoch.sfreq: invalid value 'not-a-frequency'",
+    ]
+    policy = build_capability_policy(state)
+    assert policy.get(CommandName.TRAIN).enabled is False
+
+
+def test_authoritative_read_failure_marks_committed_publication_stale() -> None:
+    state_builder = _snapshot_service()
+    boundary = state_builder.capture_training_read_boundary()
+    coordinator = ApplicationViewCoordinator(
+        state_builder.build(),
+        initial_training_boundary=boundary,
+        build_state=state_builder.build,
+        capture_training_boundary=state_builder.capture_training_read_boundary,
+    )
+    initial = coordinator.committed()
+    state_builder.preprocess = _BrokenPreprocessChannelController()
+
+    refreshed = coordinator.refresh_strict()
+    committed = coordinator.committed()
+
+    assert refreshed.state_reliable is False
+    assert refreshed.read_errors == [
+        "preprocess.channel_names: preprocess channels unavailable",
+    ]
+    assert committed.generation == initial.generation
+    assert committed.verified is False
+    assert committed.stale is True
+    assert "preprocess.channel_names" in str(committed.refresh_error)
+    assert committed.effective_capabilities.get(CommandName.TRAIN).enabled is False
+
+
+def test_state_snapshot_records_plan_run_list_failure_and_fails_closed() -> None:
+    state_builder = _snapshot_service()
+    state_builder.evaluation_state = _EvaluationControllerWithPlans([_BrokenPlan()])
+
+    state = state_builder.build()
+
+    assert state.evaluation.total_plans == 1
+    assert state.evaluation.total_runs == 0
+    assert state.state_reliable is False
+    assert state.read_errors == [
+        "evaluation.plan[0].runs: plan run list unavailable",
+    ]
+
+    policy = build_capability_policy(state)
+    assert policy.get(CommandName.UPDATE_METADATA).enabled is False
+    assert policy.get(CommandName.TRAIN).enabled is False
+
+    publication = ApplicationViewStore(
+        state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+    assert publication.verified is False
+    assert publication.stale is True
+    assert "evaluation.plan[0].runs" in str(publication.refresh_error)
+    assert publication.effective_capabilities.get(CommandName.TRAIN).enabled is False
+
+
+def test_state_snapshot_records_run_completion_failure_and_fails_closed() -> None:
+    state_builder = _snapshot_service()
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_BrokenRun()])],
+    )
+
+    state = state_builder.build()
+
+    assert state.evaluation.total_plans == 1
+    assert state.evaluation.total_runs == 1
+    assert state.evaluation.finished_runs == 0
+    assert state.state_reliable is False
+    assert state.read_errors == [
+        "evaluation.plan[0].run[0].is_finished: run completion unavailable",
+    ]
+
+    policy = build_capability_policy(state)
+    assert policy.get(CommandName.EVALUATE).enabled is False
+    assert policy.get(CommandName.TRAIN).enabled is False
+
+
+def test_state_snapshot_records_run_evaluation_record_failure() -> None:
+    state_builder = _snapshot_service()
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_BrokenEvalRecordRun()])],
+    )
+
+    state = state_builder.build()
+
+    assert state.evaluation.total_plans == 1
+    assert state.evaluation.total_runs == 1
+    assert state.evaluation.finished_runs == 1
+    assert state.evaluation.metrics_available is False
+    assert state.state_reliable is False
+    assert state.read_errors == [
+        "evaluation.plan[0].run[0].eval_record: evaluation record unavailable",
+    ]
 
 
 def test_state_snapshot_lock_failure_blocks_raw_edits() -> None:
@@ -294,7 +1145,7 @@ def test_state_snapshot_lock_failure_blocks_raw_edits() -> None:
 
 def test_state_snapshot_requires_real_saliency_arrays_for_availability() -> None:
     state_builder = _snapshot_service()
-    state_builder.study.saliency_params = {}
+    cast(_TrainingRuntime, state_builder.training_runtime).set_saliency_params({})
     empty_eval = type("Eval", (), {"gradient": {0: []}})()
     state_builder.evaluation_state = _EvaluationControllerWithPlans(
         [_Plan([_FinishedRun(empty_eval)])],
@@ -309,8 +1160,18 @@ def test_state_snapshot_requires_real_saliency_arrays_for_availability() -> None
 
 def test_state_snapshot_reports_saliency_available_only_with_output_data() -> None:
     state_builder = _snapshot_service()
-    state_builder.study.saliency_params = {"SmoothGrad": {"nt_samples": 1}}
-    eval_record = type("Eval", (), {"gradient": {0: [[1.0]]}})()
+    cast(_TrainingRuntime, state_builder.training_runtime).set_saliency_params(
+        {"SmoothGrad": {"nt_samples": 1}}
+    )
+    eval_record = SimpleNamespace(
+        saliency_context=SimpleNamespace(
+            class_map=((1, "left"),),
+            channel_names=("C3", "C4"),
+            epoch_sample_count=2,
+        ),
+        saliency_context_status="verified",
+        gradient={0: np.ones((1, 2, 2), dtype=np.float32)},
+    )
     state_builder.evaluation_state = _EvaluationControllerWithPlans(
         [_Plan([_FinishedRun(eval_record)])],
     )
@@ -320,6 +1181,253 @@ def test_state_snapshot_reports_saliency_available_only_with_output_data() -> No
     assert state.evaluation.finished_runs == 1
     assert state.visualization.saliency_configured is True
     assert state.visualization.saliency_available is True
+
+
+def test_state_snapshot_reports_saliency_coverage_per_method_and_class() -> None:
+    state_builder = _snapshot_service()
+    eval_record = SimpleNamespace(
+        saliency_context=SimpleNamespace(
+            class_map=((769, "Left hand"), (770, "Right hand")),
+            channel_names=("C3", "C4"),
+            epoch_sample_count=2,
+        ),
+        saliency_context_status="verified",
+        gradient={
+            0: np.ones((1, 2, 2), dtype=np.float32),
+            1: np.empty((0, 2, 2), dtype=np.float32),
+        },
+        gradient_input={
+            0: np.full((1, 2, 2), 0.5, dtype=np.float32),
+            1: np.full((1, 2, 2), 0.25, dtype=np.float32),
+        },
+        smoothgrad={},
+        smoothgrad_sq={},
+        vargrad={},
+    )
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(eval_record)])],
+    )
+
+    state = state_builder.build()
+
+    assert state.visualization.saliency_available is True
+    assert len(state.visualization.saliency_coverage) == 1
+    run_coverage = state.visualization.saliency_coverage[0]
+    assert (run_coverage.plan_index, run_coverage.run_index) == (0, 0)
+
+    methods = {item.method: item for item in run_coverage.methods}
+    gradient = methods["Gradient"]
+    assert gradient.available is True
+    assert gradient.complete is False
+    assert [item.display_name for item in gradient.classes] == [
+        "Left hand",
+        "Right hand",
+    ]
+    assert [item.available for item in gradient.classes] == [True, False]
+    assert "Recompute" in str(gradient.classes[1].reason)
+
+    gradient_input = methods["Gradient * Input"]
+    assert gradient_input.available is True
+    assert gradient_input.complete is True
+    assert all(item.available for item in gradient_input.classes)
+
+    serialized = state.to_dict()["visualization"]["saliency_coverage"]
+    assert serialized[0]["methods"][0]["classes"][0]["event_code"] == 769
+    assert serialized[0]["methods"][0]["classes"][1]["available"] is False
+
+
+def test_state_snapshot_consumes_injected_saliency_coverage_projector() -> None:
+    projector = MagicMock(spec=SaliencyCoverageProjector)
+    projector.label_items_from_epoch.return_value = [(769, "Left hand")]
+    projected_run = SaliencyRunCoverageSnapshot(
+        plan_index=0,
+        run_index=0,
+        methods=[
+            SaliencyMethodCoverageSnapshot(
+                method="Gradient",
+                available=True,
+                complete=True,
+            )
+        ],
+    )
+    projector.project_run.return_value = projected_run
+    state_builder = _snapshot_service(saliency_coverage_projector=projector)
+    eval_record = SimpleNamespace(gradient={0: [[1.0]]})
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(eval_record)])],
+    )
+
+    state = state_builder.build()
+
+    projector.label_items_from_epoch.assert_called_once_with(
+        state_builder.study.epoch_data,
+    )
+    projector.project_run.assert_called_once_with(
+        eval_record,
+        plan_index=0,
+        run_index=0,
+        label_items=[(769, "Left hand")],
+    )
+    assert state.visualization.saliency_coverage == [
+        replace(
+            projected_run,
+            plan_name="Plan 1",
+            model_name="Unknown model",
+            run_name="Run 1",
+        )
+    ]
+    assert state.visualization.saliency_available is True
+
+
+def test_state_snapshot_does_not_publish_incompatible_saliency_arrays() -> None:
+    state_builder = _snapshot_service()
+    eval_record = SimpleNamespace(
+        saliency_context=SimpleNamespace(
+            class_map=((1, "left"),),
+            channel_names=("C3", "C4"),
+            epoch_sample_count=2,
+        ),
+        saliency_context_status="incompatible",
+        saliency_recompute_reason="Saliency context integrity check failed.",
+        gradient={0: np.ones((1, 2, 2), dtype=np.float32)},
+    )
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(eval_record)])],
+    )
+
+    state = state_builder.build()
+
+    gradient = state.visualization.saliency_coverage[0].methods[0]
+    assert gradient.method == "Gradient"
+    assert gradient.available is False
+    assert gradient.complete is False
+    assert state.visualization.saliency_available is False
+
+
+@pytest.mark.parametrize(
+    ("available", "complete"),
+    [(True, False), (False, True)],
+)
+def test_state_snapshot_requires_consistent_complete_saliency_coverage_for_publication(
+    available: bool,
+    complete: bool,
+) -> None:
+    projector = MagicMock(spec=SaliencyCoverageProjector)
+    projector.label_items_from_epoch.return_value = [(1, "left")]
+    projector.project_run.return_value = SaliencyRunCoverageSnapshot(
+        plan_index=0,
+        run_index=0,
+        methods=[
+            SaliencyMethodCoverageSnapshot(
+                method="Gradient",
+                available=available,
+                complete=complete,
+            ),
+        ],
+    )
+    state_builder = _snapshot_service(saliency_coverage_projector=projector)
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(SimpleNamespace())])],
+    )
+
+    state = state_builder.build()
+
+    assert state.visualization.saliency_available is False
+
+
+def test_state_snapshot_saliency_coverage_is_backward_compatible_when_empty() -> None:
+    state_builder = _snapshot_service()
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(SimpleNamespace(gradient={}))])],
+    )
+
+    state = state_builder.build()
+
+    assert state.visualization.saliency_available is False
+    assert len(state.visualization.saliency_coverage) == 1
+    assert all(
+        method.available is False
+        for method in state.visualization.saliency_coverage[0].methods
+    )
+    assert ApplicationStateSnapshot.empty().visualization.saliency_coverage == []
+    assert (
+        ApplicationStateSnapshot.empty().visualization.post_training_saliency.phase
+        is PostTrainingSaliencyPhase.IDLE
+    )
+
+
+@pytest.mark.parametrize(
+    ("phase", "error_code", "message"),
+    [
+        (PostTrainingSaliencyPhase.PENDING, None, None),
+        (PostTrainingSaliencyPhase.RUNNING, None, None),
+        (
+            PostTrainingSaliencyPhase.FAILED,
+            "cuda_oom",
+            "Automatic saliency could not finish.",
+        ),
+        (
+            PostTrainingSaliencyPhase.CANCELLED,
+            None,
+            "Automatic saliency computation was cancelled.",
+        ),
+    ],
+)
+def test_state_snapshot_serializes_post_training_saliency_lifecycle(
+    phase: PostTrainingSaliencyPhase,
+    error_code: str | None,
+    message: str | None,
+) -> None:
+    pending = PostTrainingSaliencyStatus.pending(
+        generation=4,
+        run=TrainingRunIdentity(trainer_id="trainer-saliency", run_id=2),
+        training_generation=9,
+        methods=("Gradient", "Gradient * Input"),
+    )
+    status = (
+        pending
+        if phase is PostTrainingSaliencyPhase.PENDING
+        else pending.transition(
+            generation=4,
+            phase=phase,
+            error_code=error_code,
+            message=message,
+            diagnostic_type="OutOfMemoryError"
+            if phase is PostTrainingSaliencyPhase.FAILED
+            else None,
+        )
+    )
+    state_builder = _snapshot_service()
+    cast(_TrainingRuntime, state_builder.training_runtime).set_saliency_status(status)
+
+    state = state_builder.build()
+
+    assert state.visualization.post_training_saliency == status
+    serialized = state.to_dict()["visualization"]["post_training_saliency"]
+    assert serialized["phase"] == phase.value
+    assert serialized["generation"] == 4
+    assert serialized["run"] == {
+        "trainer_id": "trainer-saliency",
+        "run_id": 2,
+    }
+    assert serialized["methods"] == ["Gradient", "Gradient * Input"]
+    assert serialized["error_code"] == error_code
+
+
+def test_state_snapshot_preserves_retired_saliency_generation() -> None:
+    status = PostTrainingSaliencyStatus.idle(generation=12)
+    state_builder = _snapshot_service()
+    cast(_TrainingRuntime, state_builder.training_runtime).set_saliency_status(status)
+
+    state = state_builder.build()
+
+    assert state.visualization.post_training_saliency.phase is (
+        PostTrainingSaliencyPhase.IDLE
+    )
+    assert state.visualization.post_training_saliency.generation == 12
+    serialized = state.to_dict()["visualization"]["post_training_saliency"]
+    assert serialized["phase"] == "idle"
+    assert serialized["generation"] == 12
 
 
 def test_data_summary_query_falls_back_to_state_when_loaded_list_query_fails() -> None:
@@ -336,22 +1444,14 @@ def test_data_summary_query_falls_back_to_state_when_loaded_list_query_fails() -
     assert summary["unique_labels"] == ["left"]
 
 
-def test_query_state_service_returns_summary_and_capabilities() -> None:
+def test_query_state_service_returns_readonly_summaries() -> None:
     state_builder = _snapshot_service()
     query = QueryStateCommandService(
         study=state_builder.study,
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=state_builder.build,
-        get_capabilities=lambda: CapabilityPolicy({}),
     )
-
-    message, payload = _expect_payload(
-        query.handle_query_state(QueryStateCommand(query="state")),
-    )
-    assert message == "Application state snapshot ready."
-    assert payload["state"]["raw"]["files"] == ["subject01.fif"]
-    assert "capabilities" in payload
 
     summary_message, summary = _expect_payload(
         query.handle_query_state(QueryStateCommand(query="data_summary")),
@@ -373,6 +1473,23 @@ def test_query_state_service_returns_summary_and_capabilities() -> None:
     )
     assert suggestions_message == "Smart filter suggestions ready."
     assert suggestions == {"suggestions": [0, 1]}
+
+    data_lists_message, data_lists = _expect_payload(
+        query.handle_query_state(QueryStateCommand(query="data_lists")),
+    )
+    assert data_lists_message == "Data list query ready."
+    assert set(data_lists) == {
+        "raw_count",
+        "preprocessed_count",
+        "raw_files",
+        "preprocessed_files",
+    }
+    assert data_lists["raw_count"] == 1
+    assert data_lists["preprocessed_count"] == 1
+    assert data_lists["raw_files"] == ["subject01.fif"]
+    assert data_lists["preprocessed_files"] == ["subject01.fif"]
+    assert "loaded_data_list" not in data_lists
+    assert "preprocessed_data_list" not in data_lists
 
     history_message, history = _expect_payload(
         query.handle_query_state(QueryStateCommand(query="training_history")),
@@ -403,6 +1520,7 @@ def test_query_state_service_returns_summary_and_capabilities() -> None:
         "payload_type": "dataset_generation_context",
         "epoch_available": True,
         "generator_exists": True,
+        "dataset_count": 1,
     }
 
     _split_objects_message, split_context_objects = _expect_payload(
@@ -418,6 +1536,20 @@ def test_query_state_service_returns_summary_and_capabilities() -> None:
         split_context_objects["dataset_generator"]
         is state_builder.study.dataset_generator
     )
+    assert split_context_objects["datasets"] == state_builder.study.datasets
+
+
+def test_query_state_service_rejects_duplicate_state_publication_route() -> None:
+    state_builder = _snapshot_service()
+    query = QueryStateCommandService(
+        study=state_builder.study,
+        dataset=state_builder.dataset,
+        state_builder=state_builder,
+        get_state=state_builder.build,
+    )
+
+    with pytest.raises(PreconditionError, match="ApplicationService publication"):
+        query.handle_query_state(QueryStateCommand(query="state"))
 
 
 def test_training_history_query_does_not_build_full_state_snapshot() -> None:
@@ -431,7 +1563,6 @@ def test_training_history_query_does_not_build_full_state_snapshot() -> None:
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=fail_get_state,
-        get_capabilities=lambda: CapabilityPolicy({}),
     )
 
     message, payload = _expect_payload(

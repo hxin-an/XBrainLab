@@ -11,6 +11,9 @@ from XBrainLab.ui.styles.theme import Theme
 _CHECKMARK_ICON = (
     Path(__file__).resolve().parents[2] / "resources" / "icons" / "checkmark.svg"
 ).as_posix()
+_CHEVRON_DOWN_ICON = (
+    Path(__file__).resolve().parents[2] / "resources" / "icons" / "chevron-down.svg"
+).as_posix()
 
 
 class Stylesheets:
@@ -117,6 +120,12 @@ class Stylesheets:
         QPushButton:hover {{
             background-color: {Theme.ACCENT_HOVER};
         }}
+        QPushButton:disabled {{
+            background-color: {Theme.BTN_DISABLED_BG};
+            color: {Theme.BTN_DISABLED_TEXT};
+            border: 1px solid {Theme.BTN_DISABLED_BORDER};
+            font-weight: normal;
+        }}
     """
 
     # Transparent / Ghost Button
@@ -148,6 +157,14 @@ class Stylesheets:
         QMainWindow {{
             background-color: {Theme.BACKGROUND_DARK};
             color: {Theme.TEXT_SECONDARY};
+        }}
+        QMainWindow::separator {{
+            background-color: {Theme.BACKGROUND_LIGHT};
+            width: 1px;
+            height: 1px;
+        }}
+        QMainWindow::separator:hover {{
+            background-color: {Theme.ACCENT_PRIMARY};
         }}
         QWidget {{
             background-color: {Theme.BACKGROUND_DARK};
@@ -311,13 +328,21 @@ class Stylesheets:
             min-width: 120px;
         }}
         QComboBox::drop-down {{
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 24px;
             border: 0px;
+        }}
+        QComboBox::down-arrow {{
+            image: url("{_CHEVRON_DOWN_ICON}");
+            width: 12px;
+            height: 12px;
         }}
     """
 
     # Sidebar Container
     SIDEBAR_CONTAINER = f"""
-        QWidget {{
+        QWidget#RightPanel {{
             background-color: {Theme.BACKGROUND_MID};
             border-right: 1px solid {Theme.BACKGROUND_LIGHT};
         }}
@@ -480,6 +505,12 @@ class Stylesheets:
             background-color: #26313a;
             border-radius: 3px;
         }
+        QPushButton:focus {
+            color: #ffffff;
+            background-color: #26313a;
+            border: 1px solid #4f94c9;
+            border-radius: 3px;
+        }
     """
 
     AGENT_NEW_CONV_BTN = """
@@ -490,5 +521,11 @@ class Stylesheets:
             font-size: 16px;
             font-weight: bold;
         }
-        QPushButton:hover { color: #ffffff; }
+        QPushButton:hover { color: #ffffff; background-color: #26313a; }
+        QPushButton:focus {
+            color: #ffffff;
+            background-color: #26313a;
+            border: 1px solid #4f94c9;
+            border-radius: 3px;
+        }
     """

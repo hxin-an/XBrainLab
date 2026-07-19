@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5,6 +7,53 @@ import pytest
 from XBrainLab.backend.controller.dataset_controller import DatasetController
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.backend.services.label_import_service import LabelImportService
+
+
+class _MetadataRow:
+    def __init__(
+        self,
+        subject: str,
+        session: str,
+        *,
+        filepath: str = "",
+        fail_session: str | None = None,
+    ) -> None:
+        self.subject = subject
+        self.session = session
+        self.filepath = filepath
+        self.fail_session = fail_session
+
+    def get_filepath(self) -> str:
+        return self.filepath
+
+    def set_subject_name(self, subject: str) -> None:
+        self.subject = subject
+
+    def set_session_name(self, session: str) -> None:
+        if session == self.fail_session:
+            raise RuntimeError("metadata setter failed")
+        self.session = session
+
+
+class _MetadataStudy:
+    def __init__(
+        self,
+        rows: list[_MetadataRow],
+        preprocessed: list[object],
+        *,
+        fail_reset: bool = False,
+    ) -> None:
+        self.loaded_data_list = rows
+        self.preprocessed_data_list = preprocessed
+        self.reset_count = 0
+        self.fail_reset = fail_reset
+
+    def reset_preprocess(self, *, force_update: bool) -> None:
+        assert force_update is True
+        self.reset_count += 1
+        self.preprocessed_data_list = list(self.loaded_data_list)
+        if self.fail_reset:
+            raise RuntimeError("reset failed")
 
 
 @pytest.fixture
@@ -147,11 +196,10 @@ def test_update_metadata(controller, mock_study):
     d1 = MagicMock()
     mock_study.loaded_data_list = [d1]
 
-    controller.update_metadata(0, subject="Sub1", session="Ses1")
+    with patch.object(controller, "update_metadata_batch", return_value=1) as update:
+        controller.update_metadata(0, subject="Sub1", session="Ses1")
 
-    d1.set_subject_name.assert_called_with("Sub1")
-    d1.set_session_name.assert_called_with("Ses1")
-    mock_study.reset_preprocess.assert_called_with(force_update=True)
+    update.assert_called_once_with([(0, "Sub1", "Ses1")])
 
 
 def test_update_metadata_invalid_index(controller, mock_study):
@@ -160,6 +208,114 @@ def test_update_metadata_invalid_index(controller, mock_study):
     controller.update_metadata(0, subject="Sub1")
 
     mock_study.reset_preprocess.assert_not_called()
+
+
+def test_update_metadata_batch_failure_preserves_all_rows_and_preprocess_state():
+    first = _MetadataRow("old-1", "run-1")
+    second = _MetadataRow("old-2", "run-2", fail_session="bad-run")
+    original_rows = [first, second]
+    preprocessing_truth = [object()]
+    study = _MetadataStudy(original_rows, preprocessing_truth)
+    controller = DatasetController(study)
+    notifications: list[str] = []
+    controller.subscribe("data_changed", lambda: notifications.append("changed"))
+
+    with pytest.raises(RuntimeError, match="metadata setter failed"):
+        controller.update_metadata_batch(
+            [
+                (0, "new-1", "new-run-1"),
+                (1, "new-2", "bad-run"),
+            ]
+        )
+
+    assert study.loaded_data_list is original_rows
+    assert [(row.subject, row.session) for row in study.loaded_data_list] == [
+        ("old-1", "run-1"),
+        ("old-2", "run-2"),
+    ]
+    assert study.preprocessed_data_list is preprocessing_truth
+    assert study.reset_count == 0
+    assert notifications == []
+
+
+def test_update_metadata_batch_commits_once_after_all_rows_succeed():
+    first = _MetadataRow("old-1", "run-1")
+    second = _MetadataRow("old-2", "run-2")
+    original_rows = [first, second]
+    study = _MetadataStudy(original_rows, [object()])
+    controller = DatasetController(study)
+
+    updated = controller.update_metadata_batch(
+        [
+            (0, "new-1", None),
+            (1, None, "new-run-2"),
+        ]
+    )
+
+    assert updated == 2
+    assert study.loaded_data_list is not original_rows
+    assert [(row.subject, row.session) for row in study.loaded_data_list] == [
+        ("new-1", "run-1"),
+        ("old-2", "new-run-2"),
+    ]
+    assert [(row.subject, row.session) for row in original_rows] == [
+        ("old-1", "run-1"),
+        ("old-2", "run-2"),
+    ]
+    assert study.preprocessed_data_list == study.loaded_data_list
+    assert study.reset_count == 1
+
+
+def test_update_metadata_batch_restores_checkpoint_when_commit_reset_fails():
+    row = _MetadataRow("old", "run-1")
+    original_rows = [row]
+    preprocessing_truth = [object()]
+    study = _MetadataStudy(
+        original_rows,
+        preprocessing_truth,
+        fail_reset=True,
+    )
+    controller = DatasetController(study)
+
+    with pytest.raises(RuntimeError, match="reset failed"):
+        controller.update_metadata_batch([(0, "new", None)])
+
+    assert study.loaded_data_list is original_rows
+    assert study.preprocessed_data_list is preprocessing_truth
+    assert (row.subject, row.session) == ("old", "run-1")
+
+
+def test_smart_parse_uses_the_same_atomic_metadata_batch_boundary():
+    first = _MetadataRow("old-1", "run-1", filepath="/data/one.fif")
+    second = _MetadataRow(
+        "old-2",
+        "run-2",
+        filepath="/data/two.fif",
+        fail_session="bad-run",
+    )
+    original_rows = [first, second]
+    preprocessing_truth = [object()]
+    study = _MetadataStudy(original_rows, preprocessing_truth)
+    controller = DatasetController(study)
+    notifications: list[str] = []
+    controller.subscribe("data_changed", lambda: notifications.append("changed"))
+
+    with pytest.raises(RuntimeError, match="metadata setter failed"):
+        controller.apply_smart_parse(
+            {
+                "/data/one.fif": ("new-1", "new-run-1"),
+                "/data/two.fif": ("new-2", "bad-run"),
+            }
+        )
+
+    assert study.loaded_data_list is original_rows
+    assert [(row.subject, row.session) for row in study.loaded_data_list] == [
+        ("old-1", "run-1"),
+        ("old-2", "run-2"),
+    ]
+    assert study.preprocessed_data_list is preprocessing_truth
+    assert study.reset_count == 0
+    assert notifications == []
 
 
 def test_apply_smart_parse(controller, mock_study):
@@ -175,15 +331,16 @@ def test_apply_smart_parse(controller, mock_study):
         "/path/sub-02.edf": ("02", "-"),  # Session unchanged
     }
 
-    count = controller.apply_smart_parse(results)
+    with patch.object(controller, "update_metadata_batch", return_value=2) as update:
+        count = controller.apply_smart_parse(results)
 
     assert count == 2
-    d1.set_subject_name.assert_called_with("01")
-    d1.set_session_name.assert_called_with("01")
-    d2.set_subject_name.assert_called_with("02")
-    d2.set_session_name.assert_not_called()
-
-    mock_study.reset_preprocess.assert_called_with(force_update=True)
+    update.assert_called_once_with(
+        [
+            (0, "01", "01"),
+            (1, "02", None),
+        ]
+    )
 
 
 def test_apply_channel_selection(controller, mock_study):

@@ -75,6 +75,9 @@ _PREVIEW_DIALOG_STYLE = f"""
         border: none;
         border-radius: 6px;
     }}
+    QFrame#SplitPreviewSummaryPanel QLabel {{
+        background: transparent;
+    }}
     QLabel#SplitPreviewSectionTitle {{
         color: {Theme.TEXT_PRIMARY};
         font-weight: bold;
@@ -239,11 +242,20 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, title, epoch_data, config):
+    def __init__(
+        self,
+        parent,
+        title,
+        epoch_data,
+        config,
+        *,
+        initial_values: dict[str, str] | None = None,
+    ):
         if epoch_data is None:
             raise ValueError("Create epochs before previewing data splitting.")
         self.epoch_data = epoch_data
         self.config = config
+        self.initial_values = dict(initial_values or {})
         self.datasets = []
         self._datasets_lock = threading.Lock()
         self._preview_state_lock = threading.Lock()
@@ -416,6 +428,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                     self._default_split_entry_value(
                         splitter,
                         split_unit=SplitUnit.RATIO,
+                        initial_key="validation_ratio",
                     )
                 )
                 combo.currentTextChanged.connect(
@@ -476,6 +489,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                     self._default_split_entry_value(
                         splitter,
                         split_unit=default_unit,
+                        initial_key="test_ratio",
                     )
                 )
                 combo.currentTextChanged.connect(
@@ -530,9 +544,13 @@ class DataSplittingPreviewDialog(BaseDialog):
         splitter: DataSplitter,
         *,
         split_unit: SplitUnit,
+        initial_key: str,
     ) -> str:
         if split_unit == SplitUnit.KFOLD:
             return str(self._default_kfold_count(splitter))
+        explicit_value = str(self.initial_values.get(initial_key) or "").strip()
+        if explicit_value:
+            return explicit_value
         return DEFAULT_SPLIT_ENTRY_VALUE
 
     def _default_kfold_count(self, splitter: DataSplitter) -> int:

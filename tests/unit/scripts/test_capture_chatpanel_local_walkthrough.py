@@ -17,6 +17,36 @@ def test_has_raw_debug_text_flags_tool_syntax() -> None:
     )
 
 
+def test_has_raw_debug_text_flags_backend_status_tokens_in_visible_context() -> None:
+    assert (
+        has_raw_debug_text(["Interpretation validation: needs_confirmation."]) is True
+    )
+    assert has_raw_debug_text(['{"decision": "needs_confirmation"}']) is True
+    assert has_raw_debug_text(["Workflow status = waiting_for_decision"]) is True
+
+
+def test_has_raw_debug_text_allows_paths_and_general_snake_case_text() -> None:
+    assert (
+        has_raw_debug_text(
+            ["Loaded /tmp/session_01/needs_confirmation.edf successfully."]
+        )
+        is False
+    )
+    assert (
+        has_raw_debug_text(
+            [r"Loaded C:\\EEG_Data\\subject_01\\recording_file.edf successfully."]
+        )
+        is False
+    )
+    assert has_raw_debug_text(["snake_case is a common naming convention."]) is False
+    assert (
+        has_raw_debug_text(
+            ["The validation result is false_positive for this example."]
+        )
+        is False
+    )
+
+
 def test_render_markdown_includes_visible_transcript() -> None:
     payload = {
         "status": "passed",

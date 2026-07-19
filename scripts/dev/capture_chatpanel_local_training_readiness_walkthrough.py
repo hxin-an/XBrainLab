@@ -281,7 +281,6 @@ def run_training_readiness_walkthrough(
             state["input_enabled"] = panel.input_field.isEnabled()
         if controller is not None:
             state["executed_tools"] = collect_executed_tools(controller.metrics)
-            controller.close()
         try:
             state["final_state"] = get_application_service(study).get_state().to_dict()
         except Exception:
@@ -295,7 +294,6 @@ def run_training_readiness_walkthrough(
             state["status"] = "passed" if ok else "failed"
             state["failure_reason"] = "" if ok else reason
         window.close()
-        app.quit()
 
     def open_assistant() -> None:
         if not dataset_preparation.get("ok"):

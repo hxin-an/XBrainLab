@@ -30,6 +30,7 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
     configure_dark_table,
     dark_dialog_stylesheet,
+    fit_table_height_to_contents,
     normalize_dialog_button_box,
 )
 from XBrainLab.ui.styles.theme import Theme
@@ -128,7 +129,6 @@ class PickMontageDialog(BaseDialog):
         self.table = None
 
         super().__init__(parent, title="Set Montage")
-        self.resize(700, 500)
         self.setMinimumWidth(700)
         self.setStyleSheet(dark_dialog_stylesheet())
 
@@ -137,6 +137,8 @@ class PickMontageDialog(BaseDialog):
             self.on_montage_select(self.montage_combo.currentText())
         elif self.montage_list and self.montage_combo:
             self.on_montage_select(self.montage_list[0])
+
+        self._resize_dialog_to_content()
 
     def init_ui(self):
         """Initialize the dialog UI with montage selector and mapping table."""
@@ -321,8 +323,27 @@ class PickMontageDialog(BaseDialog):
                         lambda idx, r=row: self.on_channel_changed(r, idx),
                     )
 
+            self._resize_mapping_table_to_content()
+
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to load montage: {e}")
+
+    def _resize_mapping_table_to_content(self) -> None:
+        """Show short mappings without an empty viewport and bound long lists."""
+        if self.table is None:
+            return
+        fit_table_height_to_contents(
+            self.table,
+            max_visible_rows=10,
+            minimum_rows=1,
+            padding=8,
+        )
+
+    def _resize_dialog_to_content(self) -> None:
+        """Fit the dialog around the mapping rows without exceeding a useful size."""
+        self.adjustSize()
+        target_height = min(max(self.sizeHint().height(), 320), 640)
+        self.resize(max(self.width(), 700), target_height)
 
     def initial_sequential_fill(self):
         """Run a one-pass sequential fill for initialization."""

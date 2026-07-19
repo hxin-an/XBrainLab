@@ -1,489 +1,477 @@
-from contextlib import nullcontext
-from unittest.mock import MagicMock, patch
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
 
 import pytest
 
-from XBrainLab.backend.application import (
-    AttachLabelsCommand,
-    ConfigureTrainingCommand,
-    CreateEpochCommand,
-    EvaluateCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
-    PreprocessCommand,
-    PreprocessOperation,
-    QueryStateCommand,
-    ResetSessionCommand,
-    SaliencyCommand,
-    TrainCommand,
-    VisualizeCommand,
+from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.study import Study
+from XBrainLab.llm.tools import (
+    bind_real_tool_execution_context,
+    execute_real_application_tool,
 )
-from XBrainLab.llm.tools.real.analysis_real import (
-    RealEvaluateTool,
-    RealSaliencyTool,
-    RealVisualizeTool,
+from XBrainLab.llm.tools.application_surface import (
+    ToolCommandResult,
+    normalize_tool_result,
 )
-from XBrainLab.llm.tools.real.dataset_real import (
-    RealAttachLabelsTool,
-    RealClearDatasetTool,
-    RealGenerateDatasetTool,
-    RealGetDatasetInfoTool,
-    RealListFilesTool,
-    RealLoadDataTool,
-)
-from XBrainLab.llm.tools.real.preprocess_real import (
-    RealBandPassFilterTool,
-    RealChannelSelectionTool,
-    RealEpochDataTool,
-    RealNormalizeTool,
-    RealNotchFilterTool,
-    RealRereferenceTool,
-    RealResampleTool,
-    RealSetMontageTool,
-    RealStandardPreprocessTool,
-)
-from XBrainLab.llm.tools.real.training_real import (
-    RealConfigureTrainingTool,
-    RealSetModelTool,
-    RealStartTrainingTool,
+from XBrainLab.llm.tools.real import (
+    analysis_real,
+    dataset_real,
+    preprocess_real,
+    training_real,
 )
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
+
+_MAPPED_TOOL_CASES = (
+    (
+        dataset_real,
+        dataset_real.RealScanSourceTool(),
+        {"source_path": "/data/session.gdf"},
+        {
+            "source_path": "/data/session.gdf",
+            "source_hint": "auto",
+            "label_sources": None,
+        },
+    ),
+    (
+        dataset_real,
+        dataset_real.RealPreviewInterpretationTool(),
+        {"scan_id": "scan-1", "choices": {"subject": "01"}},
+        {
+            "scan_id": "scan-1",
+            "choices": {"subject": "01"},
+            "resource_preflight_confirmed": False,
+            "resource_preflight_token": None,
+        },
+    ),
+    (
+        dataset_real,
+        dataset_real.RealValidateInterpretationTool(),
+        {"candidate_id": "candidate-1"},
+        {"candidate_id": "candidate-1"},
+    ),
+    (
+        dataset_real,
+        dataset_real.RealApplyInterpretationTool(),
+        {"candidate_id": "candidate-1", "confirmed": True},
+        {
+            "candidate_id": "candidate-1",
+            "confirmed": True,
+            "resource_preflight_confirmed": False,
+            "resource_preflight_token": None,
+        },
+    ),
+    (
+        dataset_real,
+        dataset_real.RealSaveInterpretationRecipeTool(),
+        {"recipe_path": "/tmp/recipe.json"},
+        {"recipe_path": "/tmp/recipe.json"},
+    ),
+    (
+        dataset_real,
+        dataset_real.RealReloadInterpretationRecipeTool(),
+        {"recipe_path": "/tmp/recipe.json"},
+        {
+            "recipe_path": "/tmp/recipe.json",
+            "resource_preflight_confirmed": False,
+            "resource_preflight_token": None,
+        },
+    ),
+    (
+        dataset_real,
+        dataset_real.RealLoadDataTool(),
+        {"paths": ["/data/session.gdf"]},
+        {
+            "paths": ["/data/session.gdf"],
+            "allow_append": True,
+            "resource_preflight_confirmed": False,
+            "resource_preflight_token": None,
+        },
+    ),
+    (
+        dataset_real,
+        dataset_real.RealAttachLabelsTool(),
+        {"mapping": {"session.gdf": "/data/session.mat"}},
+        {
+            "mapping": {"session.gdf": "/data/session.mat"},
+            "label_format": None,
+            "resource_preflight_confirmed": False,
+            "resource_preflight_token": None,
+        },
+    ),
+    (
+        dataset_real,
+        dataset_real.RealClearDatasetTool(),
+        {"confirmed": True},
+        {"confirmed": True},
+    ),
+    (
+        dataset_real,
+        dataset_real.RealQueryStateTool(),
+        {"query": "state"},
+        {"query": "state"},
+    ),
+    (
+        dataset_real,
+        dataset_real.RealGenerateDatasetTool(),
+        {},
+        {
+            "test_ratio": 0.2,
+            "val_ratio": 0.2,
+            "split_strategy": "trial",
+            "training_mode": "individual",
+        },
+    ),
+    (
+        analysis_real,
+        analysis_real.RealEvaluateTool(),
+        {"target": "latest"},
+        {"target": "latest"},
+    ),
+    (
+        analysis_real,
+        analysis_real.RealVisualizeTool(),
+        {"view": "summary"},
+        {"view": "summary"},
+    ),
+    (
+        analysis_real,
+        analysis_real.RealSaliencyTool(),
+        {"method": "Gradient", "params": {"target": 1}},
+        {"method": "Gradient", "params": {"target": 1}},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealStandardPreprocessTool(),
+        {},
+        {
+            "l_freq": 4,
+            "h_freq": 40,
+            "notch_freq": 50,
+            "rereference": None,
+            "resample_rate": None,
+            "normalize_method": "z-score",
+        },
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealResetPreprocessTool(),
+        {"confirmed": True},
+        {"confirmed": True},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealBandPassFilterTool(),
+        {"low_freq": 1, "high_freq": 40},
+        {"low_freq": 1, "high_freq": 40},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealNotchFilterTool(),
+        {"freq": 50},
+        {"freq": 50},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealResampleTool(),
+        {"rate": 128},
+        {"rate": 128},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealNormalizeTool(),
+        {"method": "z-score"},
+        {"method": "z-score"},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealRereferenceTool(),
+        {"method": "average"},
+        {"method": "average"},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealChannelSelectionTool(),
+        {"channels": ["C3", "C4"]},
+        {"channels": ["C3", "C4"]},
+    ),
+    (
+        preprocess_real,
+        preprocess_real.RealEpochDataTool(),
+        {"t_min": 0, "t_max": 4, "event_id": ["left", "right"]},
+        {
+            "t_min": 0,
+            "t_max": 4,
+            "baseline": None,
+            "event_id": ["left", "right"],
+        },
+    ),
+    (
+        training_real,
+        training_real.RealSetModelTool(),
+        {"model_name": "EEGNet"},
+        {"model_name": "EEGNet"},
+    ),
+    (
+        training_real,
+        training_real.RealConfigureTrainingTool(),
+        {"epoch": 3, "batch_size": 4, "learning_rate": 0.001},
+        {
+            "model_name": None,
+            "epoch": 3,
+            "batch_size": 4,
+            "learning_rate": 0.001,
+            "repeat": 1,
+            "device": "cpu",
+            "optimizer": "adam",
+            "evaluation_option": "last_epoch",
+            "save_checkpoints_every": 0,
+        },
+    ),
+    (
+        training_real,
+        training_real.RealStartTrainingTool(),
+        {"confirmed": True},
+        {
+            "append": True,
+            "interactive": True,
+            "confirmed": True,
+            "resource_preflight_confirmed": False,
+            "resource_preflight_token": None,
+        },
+    ),
+    (
+        training_real,
+        training_real.RealStopTrainingTool(),
+        {},
+        {},
+    ),
+)
 
 
-@pytest.fixture
-def mock_study():
-    study = MagicMock()
-    study.loaded_data_list = []
-    study.output_dir = "./mock_output"
-    return study
+@pytest.mark.parametrize(
+    ("module", "tool", "kwargs", "expected_params"),
+    _MAPPED_TOOL_CASES,
+    ids=lambda value: getattr(value, "name", None),
+)
+def test_mapped_real_tool_execute_is_a_thin_canonical_delegate(
+    monkeypatch,
+    module,
+    tool,
+    kwargs: dict[str, Any],
+    expected_params: dict[str, Any],
+) -> None:
+    captured: dict[str, Any] = {}
+    canonical_result = ToolResult(
+        True,
+        "Canonical result",
+        payload={"operation_id": "op-1"},
+    )
+
+    def _delegate(study: Any, tool_name: str, params: dict[str, Any]) -> ToolResult:
+        captured.update({"study": study, "tool_name": tool_name, "params": params})
+        return canonical_result
+
+    monkeypatch.setattr(module, "execute_real_application_tool", _delegate)
+    study = object()
+
+    result = tool.execute(study, **kwargs)
+
+    assert result is canonical_result
+    assert captured == {
+        "study": study,
+        "tool_name": tool.name,
+        "params": expected_params,
+    }
 
 
-def _command_result(
-    message: str = "ok",
-    diagnostics: dict | None = None,
-    *,
-    failed: bool = False,
-):
-    result = MagicMock()
-    result.message = message
-    result.diagnostics = diagnostics or {}
-    result.failed = failed
-    result.ok = not failed
-    return result
+def test_direct_real_adapter_preserves_canonical_result_metadata() -> None:
+    study = Study()
+
+    direct_result = training_real.RealSetModelTool().execute(
+        study,
+        model_name="EEGNet",
+    )
+    normalized = normalize_tool_result(study, "set_model", direct_result)
+
+    assert direct_result.command_name == "configure_training"
+    assert direct_result.state is not None
+    assert direct_result.state["training"]["model_name"] == "EEGNet"
+    assert direct_result.capability is not None
+    assert direct_result.changed_state["training_changed"] is True
+    assert isinstance(direct_result.payload, dict)
+    assert direct_result.payload["status"] == "ok"
+    assert direct_result.payload["command_name"] == "configure_training"
+    assert direct_result.payload["state"]["training"]["model_name"] == "EEGNet"
+    assert direct_result.payload["changed_state"]["training_changed"] is True
+    assert isinstance(normalized, ToolCommandResult)
+    assert normalized.command_name == direct_result.command_name
+    assert normalized.state == direct_result.state
+    assert normalized.capability == direct_result.capability
+    assert normalized.changed_state == direct_result.changed_state
+    assert normalized.error_code == direct_result.error_code
+    assert normalized.recovery_action == direct_result.recovery_action
+    assert normalized.raw_result == direct_result.payload
 
 
-def _service(*results):
-    service = MagicMock()
-    service.preprocess.batch_notifications.return_value = nullcontext()
-    if len(results) == 1:
-        service.execute.return_value = results[0]
-    elif results:
-        service.execute.side_effect = list(results)
-    else:
-        service.execute.return_value = _command_result()
-    return service
+def test_direct_adapter_recovers_authoritative_publication_after_post_execute_failure(
+    monkeypatch,
+) -> None:
+    study = Study()
+    service = get_application_service(study)
+    execute_calls: list[object] = []
+
+    class _Runtime:
+        def get_view_publication(self):
+            return service.get_view_publication()
+
+        def execute(self, command):
+            execute_calls.append(command)
+            return service.execute(command)
+
+    def _fail_after_execute(*_args, **_kwargs):
+        raise RuntimeError("normalization failed after backend execution")
+
+    monkeypatch.setattr(
+        ToolCommandResult,
+        "from_command_result",
+        classmethod(_fail_after_execute),
+    )
+    runtime = _Runtime()
+
+    result = execute_real_application_tool(
+        bind_real_tool_execution_context(study, runtime),
+        "set_model",
+        {"model_name": "EEGNet"},
+    )
+
+    assert result.ok is False
+    assert len(execute_calls) == 1
+    assert result.state is not None
+    assert result.state["training"]["model_name"] == "EEGNet"
+    assert result.changed_state["state_unknown"] is False
+    assert result.diagnostics["state_source"] == "authoritative_publication"
+    assert result.diagnostics["publication_generation"] >= 1
+    assert result.diagnostics["refresh_required"] is False
 
 
-class TestRealTrainingTools:
-    def test_set_model_success(self, mock_study):
-        tool = RealSetModelTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.training_real.get_application_service",
-            return_value=service,
-        ):
-            result = tool.execute(mock_study, model_name="EEGNet")
+def test_direct_adapter_marks_state_unknown_when_publication_recovery_fails(
+    monkeypatch,
+) -> None:
+    study = Study()
+    service = get_application_service(study)
+    publication_reads = 0
 
-            assert "successfully set to EEGNet" in result
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, ConfigureTrainingCommand)
-            assert command.model_name == "EEGNet"
+    class _Runtime:
+        def get_view_publication(self):
+            nonlocal publication_reads
+            publication_reads += 1
+            if publication_reads > 1:
+                raise RuntimeError("publication unavailable")
+            return service.get_view_publication()
 
-    def test_set_model_unknown(self, mock_study):
-        tool = RealSetModelTool()
-        service = _service(_command_result("Unknown model", failed=True))
-        with patch(
-            "XBrainLab.llm.tools.real.training_real.get_application_service",
-            return_value=service,
-        ):
-            result = tool.execute(mock_study, model_name="UnknownModel")
-            assert "Failed to set model" in result
+        def execute(self, command):
+            return service.execute(command)
 
-    def test_configure_and_start_training(self, mock_study):
-        config_tool = RealConfigureTrainingTool()
-        start_tool = RealStartTrainingTool()
-        service = _service(_command_result())
+    def _fail_after_execute(*_args, **_kwargs):
+        raise RuntimeError("normalization failed after backend execution")
 
-        with patch(
-            "XBrainLab.llm.tools.real.training_real.get_application_service",
-            return_value=service,
-        ):
-            # Configure
-            res1 = config_tool.execute(
-                mock_study,
-                epoch=10,
-                batch_size=32,
-                learning_rate=0.001,
-                optimizer="sgd",
-                save_checkpoints_every=5,
-                output_dir="/tmp/xbrainlab-training-output",
-            )
-            assert "Training configured" in res1
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, ConfigureTrainingCommand)
-            assert command.optimizer == "sgd"
-            assert command.save_checkpoints_every == 5
-            assert command.output_dir == "/tmp/xbrainlab-training-output"
+    monkeypatch.setattr(
+        ToolCommandResult,
+        "from_command_result",
+        classmethod(_fail_after_execute),
+    )
 
-            # Start
-            res2 = start_tool.execute(mock_study)
-            assert "started successfully" in res2
-            train_command = service.execute.call_args.args[0]
-            assert isinstance(train_command, TrainCommand)
-            assert train_command.append is True
-            assert train_command.interactive is True
+    result = execute_real_application_tool(
+        bind_real_tool_execution_context(study, _Runtime()),
+        "set_model",
+        {"model_name": "EEGNet"},
+    )
 
-            res3 = start_tool.execute(
-                mock_study,
-                confirmed=True,
-                append=False,
-                interactive=False,
-            )
-            assert "started successfully" in res3
-            train_command = service.execute.call_args.args[0]
-            assert isinstance(train_command, TrainCommand)
-            assert train_command.confirmed is True
-            assert train_command.append is False
-            assert train_command.interactive is False
+    assert result.ok is False
+    assert result.state is None
+    assert result.changed_state["state_unknown"] is True
+    assert result.diagnostics["state_source"] == "unavailable"
+    assert result.diagnostics["refresh_required"] is True
 
 
-class TestRealAnalysisTools:
-    def test_evaluate_visualize_and_saliency_route_to_service(self, mock_study):
-        evaluate = RealEvaluateTool()
-        visualize = RealVisualizeTool()
-        saliency = RealSaliencyTool()
-        service = _service(
-            _command_result("Evaluation summary ready."),
-            _command_result("Visualization summary ready."),
-            _command_result("Saliency summary ready."),
+def test_get_dataset_info_uses_canonical_query_and_formats_read_only_result(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def _delegate(study: Any, tool_name: str, params: dict[str, Any]) -> ToolResult:
+        calls.append((tool_name, params))
+        return ToolResult(
+            True,
+            "Dataset summary",
+            payload={
+                "count": 1,
+                "files": ["session.gdf"],
+                "total": 12,
+                "unique_count": 2,
+            },
         )
 
-        with patch(
-            "XBrainLab.llm.tools.real.analysis_real.get_application_service",
-            return_value=service,
-        ):
-            assert "Evaluation" in evaluate.execute(mock_study, target="latest")
-            assert "Visualization" in visualize.execute(mock_study, view="summary")
-            assert "Saliency" in saliency.execute(
-                mock_study,
-                method="Gradient",
-                params={"absolute": True},
-            )
+    monkeypatch.setattr(dataset_real, "execute_real_application_tool", _delegate)
 
-            evaluate_command = service.execute.call_args_list[0].args[0]
-            visualize_command = service.execute.call_args_list[1].args[0]
-            saliency_command = service.execute.call_args_list[2].args[0]
-            assert isinstance(evaluate_command, EvaluateCommand)
-            assert isinstance(visualize_command, VisualizeCommand)
-            assert isinstance(saliency_command, SaliencyCommand)
-            assert evaluate_command.target == "latest"
-            assert visualize_command.view == "summary"
-            assert saliency_command.method == "Gradient"
-            assert saliency_command.params == {"absolute": True}
+    result = dataset_real.RealGetDatasetInfoTool().execute(object())
+
+    assert result.ok is True
+    assert result.message == ("Loaded 1 files:\nsession.gdf\nEvents: 12 (Unique: 2)")
+    assert calls == [("query_state", {"query": "data_summary"})]
 
 
-class TestRealDatasetTools:
-    def test_list_files(self, mock_study):
-        tool = RealListFilesTool()
-        with (
-            patch("os.listdir", return_value=["A.gdf", "B.txt"]),
-            patch("os.path.isdir", return_value=True),
-        ):
-            res = tool.execute(mock_study, directory="/mock_dir", pattern="*.gdf")
-            assert "A.gdf" in res
-            assert "B.txt" not in res
+def test_list_files_remains_a_direct_read_only_tool(tmp_path: Path) -> None:
+    (tmp_path / "session.gdf").touch()
+    (tmp_path / "notes.txt").touch()
 
-    def test_load_data(self, mock_study):
-        tool = RealLoadDataTool()
-        service = _service(_command_result(diagnostics={"success_count": 1}))
-        with patch(
-            "XBrainLab.llm.tools.real.dataset_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, paths=["/data/A.gdf"])
+    result = dataset_real.RealListFilesTool().execute(
+        object(),
+        directory=str(tmp_path),
+        pattern="*.gdf",
+    )
 
-            assert "Successfully loaded 1 files" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, LoadDataCommand)
-            assert command.paths == ["/data/A.gdf"]
+    assert result.ok is True
+    assert result.payload == ["session.gdf"]
 
-    def test_attach_labels(self, mock_study):
-        tool = RealAttachLabelsTool()
-        service = _service(_command_result(diagnostics={"success_count": 1}))
-        with patch(
-            "XBrainLab.llm.tools.real.dataset_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, mapping={"A.gdf": "/labels/A.mat"})
-            assert "Attached labels to 1 files" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, AttachLabelsCommand)
-            assert command.mapping == {"A.gdf": "/labels/A.mat"}
 
-    def test_clear_dataset(self, mock_study):
-        tool = RealClearDatasetTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.dataset_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study)
-            assert "Dataset cleared" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, ResetSessionCommand)
-            assert command.confirmed is True
-
-    def test_get_dataset_info(self, mock_study):
-        tool = RealGetDatasetInfoTool()
-        service = _service(
-            _command_result(
-                diagnostics={
-                    "count": 1,
-                    "files": ["A.gdf"],
-                    "total": 100,
-                    "unique_count": 2,
-                    "unique_labels": ["769", "770"],
-                    "gdf_duplicate_channel_details": [
-                        {
-                            "file": "A.gdf",
-                            "generated_bases": ["EEG"],
-                            "generated_channels": ["EEG-0", "EEG-1"],
-                            "message": "detail message",
-                        },
-                    ],
-                },
-            ),
+def test_set_montage_remains_a_typed_ui_request(monkeypatch) -> None:
+    def _delegate(study: Any, tool_name: str, params: dict[str, Any]) -> ToolResult:
+        assert tool_name == "query_state"
+        assert params == {"query": "preprocess_diagnostics"}
+        return ToolResult(
+            True,
+            "Diagnostics",
+            payload={
+                "gdf_duplicate_channel_details": [
+                    {"file": "A01T.gdf", "generated_bases": ["EEG"]}
+                ]
+            },
         )
-        with patch(
-            "XBrainLab.llm.tools.real.dataset_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study)
-            assert "Loaded 1 files" in res
-            assert "Events: 100" in res
-            assert "Diagnostics:" in res
-            assert "GDF duplicate-channel ambiguity: A.gdf (bases: EEG)" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, QueryStateCommand)
-            assert command.query == "data_summary"
 
-    def test_generate_dataset(self, mock_study):
-        tool = RealGenerateDatasetTool()
-        service = _service(_command_result(diagnostics={"dataset_count": 2}))
+    monkeypatch.setattr(preprocess_real, "execute_real_application_tool", _delegate)
 
-        with patch(
-            "XBrainLab.llm.tools.real.dataset_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, test_ratio=0.1, val_ratio=0.1)
+    result = preprocess_real.RealSetMontageTool().execute(
+        object(),
+        montage_name="standard_1020",
+    )
 
-            assert "Dataset successfully generated" in res
-            assert "Count: 2" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, GenerateDatasetCommand)
-            assert command.test_ratio == 0.1
-            assert command.val_ratio == 0.1
+    assert isinstance(result, UiRequest)
+    assert result.kind is UiRequestKind.CONFIRM_MONTAGE
+    assert result.params["montage_name"] == "standard_1020"
+    assert "A01T.gdf" in result.params["warning"]
 
 
-class TestRealPreprocessTools:
-    def test_bandpass_filter(self, mock_study):
-        tool = RealBandPassFilterTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, low_freq=1, high_freq=30)
+def test_switch_panel_remains_a_typed_ui_request() -> None:
+    result = RealSwitchPanelTool().execute(
+        object(),
+        panel_name="training",
+        view_mode="history",
+    )
 
-            assert "Applied Bandpass Filter" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, PreprocessCommand)
-            assert command.operation == PreprocessOperation.BANDPASS
-            assert command.low_freq == 1
-            assert command.high_freq == 30
-
-    def test_standard_preprocess(self, mock_study):
-        tool = RealStandardPreprocessTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, l_freq=4, h_freq=40)
-
-            assert "Standard preprocessing applied" in res
-            operations = [
-                call.args[0].operation
-                for call in service.execute.call_args_list
-                if isinstance(call.args[0], PreprocessCommand)
-            ]
-            assert PreprocessOperation.BANDPASS in operations
-            assert PreprocessOperation.NOTCH in operations
-
-    def test_notch_filter(self, mock_study):
-        tool = RealNotchFilterTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, freq=50)
-            assert "Applied Notch Filter" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, PreprocessCommand)
-            assert command.operation == PreprocessOperation.NOTCH
-            assert command.notch_freq == 50
-
-    def test_resample(self, mock_study):
-        tool = RealResampleTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, rate=128)
-            assert "Resampled" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, PreprocessCommand)
-            assert command.operation == PreprocessOperation.RESAMPLE
-            assert command.rate == 128
-
-    def test_normalize(self, mock_study):
-        tool = RealNormalizeTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, method="z-score")
-            assert "Normalized" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, PreprocessCommand)
-            assert command.operation == PreprocessOperation.NORMALIZE
-            assert command.method == "z-score"
-
-    def test_rereference(self, mock_study):
-        tool = RealRereferenceTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, method="CAR")
-            assert "Applied reference" in res
-            command = service.execute.call_args_list[0].args[0]
-            assert isinstance(command, PreprocessCommand)
-            assert command.operation == PreprocessOperation.REREFERENCE
-            assert command.method == "CAR"
-
-    def test_channel_selection(self, mock_study):
-        tool = RealChannelSelectionTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, channels=["C3", "C4"])
-            assert "Selected 2 channels" in res
-            command = service.execute.call_args_list[0].args[0]
-            assert isinstance(command, PreprocessCommand)
-            assert command.operation == PreprocessOperation.SELECT_CHANNELS
-            assert command.channels == ["C3", "C4"]
-
-    def test_channel_selection_surfaces_gdf_ambiguity(self, mock_study):
-        tool = RealChannelSelectionTool()
-        service = _service(
-            _command_result(),
-            _command_result(
-                diagnostics={
-                    "gdf_duplicate_channel_details": [
-                        {
-                            "file": "A01T.gdf",
-                            "generated_bases": ["EEG"],
-                            "generated_channels": ["EEG-0", "EEG-1"],
-                        },
-                    ],
-                },
-            ),
-        )
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, channels=["C3", "C4"])
-
-            assert "Selected 2 channels" in res
-            assert "GDF duplicate-channel ambiguity remains for A01T.gdf" in res
-
-    def test_epoch_data(self, mock_study):
-        tool = RealEpochDataTool()
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, t_min=0, t_max=4, event_id=None)
-            assert "Data epoched" in res
-            command = service.execute.call_args.args[0]
-            assert isinstance(command, CreateEpochCommand)
-            assert command.t_min == 0
-            assert command.t_max == 4
-
-    def test_set_montage(self, mock_study):
-        tool = RealSetMontageTool()
-        # Note: RealSetMontageTool now returns a confirmation request (human-in-the-loop)
-        # instead of auto-applying
-
-        service = _service(_command_result())
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, montage_name="standard_1020")
-
-        # Verify the confirmation request format
-        assert "confirm_montage 'standard_1020'" in res
-        command = service.execute.call_args.args[0]
-        assert isinstance(command, QueryStateCommand)
-        assert command.query == "preprocess_diagnostics"
-
-    def test_set_montage_surfaces_gdf_ambiguity(self, mock_study):
-        tool = RealSetMontageTool()
-        service = _service(
-            _command_result(
-                diagnostics={
-                    "gdf_duplicate_channel_details": [
-                        {
-                            "file": "A01T.gdf",
-                            "generated_bases": ["EEG"],
-                            "generated_channels": ["EEG-0", "EEG-1"],
-                        },
-                    ],
-                },
-            ),
-        )
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
-            return_value=service,
-        ):
-            res = tool.execute(mock_study, montage_name="standard_1020")
-
-            assert "confirm_montage 'standard_1020'" in res
-            assert "GDF duplicate-channel ambiguity remains for A01T.gdf" in res
-
-
-class TestRealUIControlTools:
-    def test_switch_panel(self, mock_study):
-        tool = RealSwitchPanelTool()
-        res = tool.execute(mock_study, panel_name="Training")
-        assert res == "Request: Switch UI to 'Training'"
+    assert isinstance(result, UiRequest)
+    assert result.kind is UiRequestKind.SWITCH_PANEL
+    assert result.params == {"panel": "training", "view_mode": "history"}

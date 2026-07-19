@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-10`
+最後更新：`2026-07-19`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -21,7 +21,9 @@
 
 ## Latest Desktop MVP Handoff Evidence
 
-2026-07-10 的 stabilization candidate 新增兩個會直接阻止假通過的 gate：
+2026-07-19 dirty integration candidate 已重建 backend、UI、agent、資料與產品 walkthrough
+evidence。以下數字只綁定目前 dirty candidate；commit 後仍要重跑 clean dashboard 才能成為可推送
+checkpoint。
 
 - external label pairing 由 `data_interpretation_pairing.py` 統一供 candidate validation、apply
   與 wizard review 使用。Generic multi-file partial mapping、BIDS multi-run 缺少一個
@@ -30,18 +32,40 @@
   screenshot hash、step text glyph、main navigation 與 visible `RightPanel`。純色 step background
   不再能冒充文字已渲染。
 
-本輪最新 focused / product evidence：
+本輪最新 product evidence：
 
-- pairing / candidate / apply / Data Import dialog / walkthrough focused batch：`225 passed`。
-- real IO + public BIDS + cross-source + checked-in real workflow：`46 passed`。
-- strict cross-source runner：`4 passed`，其中 3 個 source family 完成 one-epoch training，CNT
-  明確只算 epoch-only。
-- human-like desktop walkthrough：`27/27` phases，`21` screenshots，resource smoke PASS。
-- clean product baseline dashboard（`2168f0a0`）：overall `PASS`；UI unit `1341 passed`、real-data
-  IO `31 passed`、startup / 7 baselines / dialog / product walkthrough 全數 PASS。Final handoff
-  commit 的 exact result 以 generated `artifacts/quality/latest.md` 為準。
+- full unit：`9006 passed, 1 skipped`。
+- full integration：`388 passed`。
+- fast dashboard：Ruff、BasedPyright、architecture、startup、UI baseline、dialog、product
+  walkthrough、BIDS UI matrix、UI unit `2069 passed`、real-data IO `31 passed` 全數 PASS；
+  overall 只因 dirty-tree traceability 標為 WARN。
+- Data Interpretation real lifecycle：`20/20`，固定涵蓋 14 種 format paths、7 個 public cases、
+  5 個 public source families、7 個 pinned fixture fact contracts、7 個 external placement
+  contracts、4 個 internal-event profiles、固定 11 個 reviewed label/event cases。
+- strict cross-source runner `4/4`（PhysioNet、BBCI 是 2 個 class-grounded training cases；
+  SCCN、CNT 是 2 個 IO/epoch-only cases）。SCCN `rt` / `square` 沒有 public protocol class
+  ground truth，不算 supervised class 或 training evidence。
+- human-like desktop walkthrough：`40/40` phases、`42` screenshots、resource smoke PASS。
+- real local Phi-4 mini ChatPanel：GPU runtime、`query_state` tool turn 與一般問答 turn PASS；
+  關閉後 runtime / dispatcher 都是 `closed`、controller 已釋放、registered / running generation
+  threads 都是 `0`。
+- local raw tool-call candidate：`6/12`（50%）；host-assisted product policy `12/12`（100%）。後者
+  包含 request admission、normalization、verification 與 capability blocking，不能報成 raw-model
+  accuracy，也不能作 thesis claim。
+- anti-overfit robustness set：raw `1/7`（14.3%）；host-assisted product policy `7/7`（100%），
+  各跑 3 repeats 且結果 deterministic。這證明 host safety boundary，不代表 raw model 已學會
+  blocked-action、missing-input 或 decision-boundary 判斷。
+- RTX 5070 Ti bounded resource calibration：EEGNet、SCCNet、ShallowConvNet 三個單步 probe 的
+  conservative estimate 均覆蓋 observed allocated peak；artifact 在
+  `artifacts/resource_guard/calibration.json`。範圍固定為 batch 8、22 channels、301 samples，
+  folds / repeats 序列執行，不誇大為所有設定的完整訓練峰值。
+- quality dashboard 的 checks 已 PASS，但 dirty-tree policy 仍使 overall 為 WARN；這是 branch
+  hygiene 尚未關閉，不是測試失敗。
 
-以上仍不代表 Windows DPI、多螢幕、長時間 local LLM session 或 full BIDS validator acceptance。
+以上仍不代表 Windows DPI、多螢幕、互動式 3D、長時間 local LLM session、full BIDS validator
+acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-quality reviewer 已在
+修復後 re-gate 並 PASS；真實 Phi-4 mid-generation shutdown、real deferred-startup transition
+與 Windows 互動式 3D 仍是明確 claim boundary，不可由自動化結果外推。
 
 ## Roadmap Evidence Gate
 
@@ -124,9 +148,12 @@ handoff candidate 必須同時具備：
 必跑 command：
 
 ```bash
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+  --profile required-ci --verify-only
 poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
+  --strict --format json --write-artifacts
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/ui/test_data_import_wizard_format_matrix.py -q
@@ -144,22 +171,54 @@ poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
 
 - checked-in GDF + MAT：`A01T`、`A02T`、`A03T` 都要存在並有對應 label。
 - compact multiformat：FIF、FIF.GZ、epoched FIF、EDF、BDF、BrainVision、EEGLAB SET 都要存在。
-- public event-rich sources：至少 3 個 public event-rich fixtures，且來自至少 3 個 source families。
+- public class-grounded training sources：固定 PhysioNet motor EDF、BBCI GDF 兩個 fixtures。
+- public IO/epoch-only sources：固定 SCCN EEGLAB、MNE CNT 兩個 fixtures，不計入 training
+  evidence。
 - public BIDS EEG：必須有 downloaded tiny BIDS EEG root，包含 `events.tsv` / sidecar path。
+- real Data Interpretation lifecycle：20 個必要案例都要走完
+  `scan -> preview -> validate -> apply`，不能只靠非空檔案、header 或副檔名通過。
+- real public source diversity：7 個 public cases 必須涵蓋至少 5 個真正不同的 source families；
+  同一 A01T 的轉檔只算 format coverage，不算 source diversity。
+- Tier format apply：固定的 14 種格式路徑都必須到達 apply，包含 GDF/MAT、FIF/FIF.GZ、
+  epoched FIF、EDF、BDF、BrainVision、EEGLAB、CNT、BIDS EEG、CSV、TSV、TXT。required set
+  是固定集合，不能藉由移除失敗案例縮小分母。
+- external label placement：固定 7 個 contract 都必須保留 reviewed placement choices 並到達各自
+  宣告的 evidence tier：
+  MAT event order、CSV event order、CSV sample time、TSV interval、CSV event code、TXT event
+  order、BIDS interval。CSV / TSV / TXT 使用有效的小型 generated fixtures，但不計入 public
+  source diversity。
+- reviewed internal events：PhysioNet run-dependent T1/T2、BBCI event selection、SCCN annotation
+  selection、CNT event selection 是 4 個固定 reviewed-choice profiles；移除其中任何一個都會讓
+  strict gate 失敗。PhysioNet case 另外要求 run-level mapping 被保存。這裡的 profile 不等於
+  scientific class semantics；SCCN 與 CNT 只要求 IO/epoch-only。
+- reviewed label/event 固定必要集合是 11 個案例，不能由本次結果動態計算分母：
+  checked-in GDF+MAT、PhysioNet motor EDF、BBCI GDF、SCCN EEGLAB、MNE CNT、MNE-BIDS EEG、
+  generated CSV event-order、CSV sample-time、TSV interval、CSV event-code、TXT event-order。
+  其中 8 個要求 supervised tier、MNE-BIDS 要求 label-apply-only、SCCN 與 CNT 要求
+  IO/epoch-only。任何 case ID 缺失、evidence tier 降級或 reviewed choice 未保存都會 strict
+  FAIL。
+- public fixture facts：7 個 public cases 固定檢查 sampling rate、channel count/type、
+  canonical/source unit、sample count、embedded event count/labels 與 import warnings；任一欄
+  漂移都會 strict FAIL。
 
-這個 strict matrix 是 fixture inventory 與 capability-boundary gate，不是完整 workflow 證據。
-import、epoch、training、evaluation 或 OOM recovery 的 claim 必須另外由下方 real integration tests
-與 cross-source runner 支撐，不能只看 matrix JSON 為 true。
+`report_data_interpretation_format_matrix.py --strict` 同時輸出兩層證據：synthetic format
+capability contract，以及 checked-in / SHA-pinned real files 的 ApplicationService lifecycle。
+目前 lifecycle layer 是 20 個 cases：15 個 checked-in / SHA-pinned real-file cases，加上 5 個
+generated external-label contract cases；固定涵蓋 14 種 format paths、7 個 public cases、5 個
+public source families。它能證明列出的資料與明確 carrier schema 可完成 Data Interpretation
+apply；generated carrier 不代表新的資料來源，也不能單獨證明任意 schema、epoch creation、
+dataset split、training、evaluation、OOM recovery 或 scientific label semantics，這些仍由下方
+integration tests 與 strict cross-source runner 分別支撐。
 
-`test_data_import_wizard_format_matrix.py` 會把 Data Interpretation format matrix 裡的每個
-format-boundary case 送進真實 `ApplicationService scan -> preview -> validate`，再打開
+`test_data_import_wizard_format_matrix.py` 會把 synthetic format-boundary cases 送進
+`ApplicationService scan -> preview -> validate`，再打開
 `DataInterpretationPreviewDialog` 走完 `Choose EEG Data`、`Load Labels`、`Review Metadata`、
 `Match Labels`、`Review and Import` 五個 step。它覆蓋 GDF+MAT、EDF、BDF、EEGLAB、BrainVision、
 FIF、BIDS events、CSV / TSV / TXT labels，以及目前明確 blocked 的 XDF / LSL。
 
-這個 gate 能支撐「手測前已跨不同 dataset source 做過 import / label / BIDS / training-smoke
-preflight」。它仍不能支撐 full BIDS validator compliance、任意 proprietary format、
-長時間訓練穩定性、或 scientific model-quality claim。
+這個 UI gate 證明 wizard shell 對各 capability state 可用；public source diversity 與真正 apply
+由兩份 strict report 的 real-workflow layer 證明。整組 gate 仍不能支撐 full BIDS validator
+compliance、任意 proprietary format、長時間訓練穩定性或 scientific model-quality claim。
 
 ## Artifact 解讀
 
@@ -225,9 +284,11 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
 # strict_validation.ok: true
 
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
+  --strict --format json --write-artifacts
 # all_expected_capabilities_observed: true
 # all_expected_capabilities_match: true
+# real_workflows.summary.all_required_passed: true
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/ui/test_data_import_wizard_format_matrix.py -q
@@ -267,8 +328,8 @@ arbitrary public dataset certification, or scientific model-quality evidence.
 - 真實 A01T GDF+MAT 已走完整 Data Interpretation wizard contract：scan、preview、validate、apply、
   preprocess、epoch、split、EEGNet one-epoch training、evaluate；另有 async CUDA OOM failure
   狀態與成功 retry 的整合測試。
-- dataset matrix 不再把 MNE CNT epoch-only fixture 誤稱為 training pass；strict runner 現在明確回報
-  3 個 training source family + 1 個 epoch-only CNT source。
+- dataset matrix 不把 SCCN 或 MNE CNT 誤稱為 training pass；strict runner 固定回報
+  2 個 class-grounded training sources + 2 個 IO/epoch-only sources。
 
 當時通過的 checkpoint：
 
@@ -277,7 +338,7 @@ Core assistant / refresh / lifecycle focused merge: 283 passed
 Validation-truth focused suite: 70 passed
 Data Splitting + walkthrough focused suite: 42 passed
 Required IO + BIDS + cross-source + real GDF integration: 46 passed
-Strict cross-source runner: 4 passed (3 training, 1 epoch-only)
+Strict cross-source runner: 4 workflows passed; corrected claim is 2 training + 2 IO/epoch-only
 Dataset matrix: strict_validation.ok = true
 Data Interpretation format matrix: observed = true, match = true
 ```
@@ -301,22 +362,86 @@ test loader 上建立一次 final `EvalRecord`。AUC 無法定義時保存為 `N
 ```text
 Training contract/regression batch: 464 passed, 1 skipped
 Representative pipeline and public-source integration: 54 passed
-Strict public cross-source smoke: 4 passed (3 training, 1 epoch-only)
+Strict public cross-source smoke: 4 workflows passed; corrected claim is 2 training + 2 IO/epoch-only
 Ruff: PASS
 Configured Basedpyright: 0 errors
 ```
 
-完整 unit suite 尚未通過 handoff gate：它在約 88% 時由
-`application_capabilities._handle_result` 的 Qt callback segmentation fault 中止。此 crash 與
-shutdown/read-model lifecycle 會在獨立修復 slice 處理；本節只能支撐 training selection
-correctness checkpoint，不能支撐整體產品 handoff-ready。
+這一節只支撐 training selection correctness。當時阻斷完整 unit suite 的 Qt callback crash
+已由下方 non-blocking view / Qt lifecycle checkpoint 修復；仍要等 agent 與 scientific blockers
+關閉、完整 handoff gate 重建後，才能宣稱可交給使用者手測。
 
 其中 `464` tests 的 timeline、loader identity、state-dict、weighted-loss、AUC edge 與
 saliency-before-finish assertions 支撐 training-selection integrity。`54` integration tests 與
 strict cross-source runner 只證明改動後的 EDF / GDF / EEGLAB SET / CNT workflow 相容性，
 不能單獨證明 test isolation 或 scientific model quality。
 
-### 2026-06-20 Clean-Code Boundary Follow-Up
+## 2026-07-11 Non-Blocking View / Qt Lifecycle Candidate
+
+一般 `QueryStateCommand(state)` 現在從正式 Command API 讀
+`ApplicationViewPublication(state, capabilities, generation)`。command lock 空閒時會先重建並
+發布背景 state；長 mutation 持鎖時不等待，立即回最後一份已驗證 publication。UI、assistant
+decision context / tool policy 與 headless preflight 都讀同一 generation。Object-bearing
+`data_lists` / history query 仍序列化，避免併發暴露 mutable domain objects。mutation 執行後若
+無法驗證新 state，command 會 fail closed，不會回報假成功。
+
+Qt QThreadPool result/error 改由 owner-child QObject receiver 接收；owner 被刪除時 Qt 會自動
+移除 queued delivery。獨立 cleanup receiver 保留到 terminal `finished`，才解除 busy、observer
+suppression 與 active worker ownership。這修復了 pytest-qt teardown / WSLg 時序下落在
+`application_capabilities._handle_result` 的 native segmentation fault。
+
+目前 candidate evidence（仍是 dirty-tree checkpoint，不能視為 final handoff）：
+
+```text
+Full unit: 6908 passed, 2 skipped
+Full integration: 261 passed
+UI integration: 68 passed
+Architecture/source-guard batch: 195 passed
+Human-like walkthrough: 40/40 phases, 42 screenshots
+Repeated deleted-owner/close teardown stress: 50/50 passed
+Ruff: PASS
+Basedpyright: 0 errors, 0 warnings, 0 notes
+```
+
+這支撐 non-blocking state/capability view、背景 state 新鮮度、post-state fail-closed、Qt
+deleted-owner safety，以及 BIDS bounds/run mapping、overlapping-window split protection、saliency
+atomicity 的 regression。它仍不支撐 Windows 真人 acceptance、互動式 3D 或 thesis-grade agent
+accuracy；branch clean / push 與獨立 reviewer gate也尚未關閉。
+
+## 2026-07-15 Local Assistant Product Boundary
+
+本輪用已快取的 `microsoft/Phi-4-mini-instruct`、RTX 5070 Ti 與離線 Hugging Face 模式，從真實
+ChatPanel 跑兩個 turn：第一個透過 `query_state` 回報目前 workflow，第二個回答一般 EEG
+preprocessing 問題。artifact 位於
+`artifacts/ui/chatpanel-local-workflow/current/`，status 是 `passed`。
+
+同一模型的 unassisted raw candidate 只通過 `6/12`。host layer 在相同 12 cases 的 product
+policy score 是 `12/12`，表示 blocked request、缺參數、capability policy 和 normalization 能防止
+不安全執行；它不表示模型自己做對 12 次。完整報告位於
+`artifacts/agent_evals/current_candidate_strict/`，並標明 worktree dirty、exploratory、沒有 backend
+execution。這組 evidence 只支撐 Assistant MVP 的安全邊界，不支撐論文級準確率。
+
+七個獨立 anti-overfit cases 另跑 3 repeats：raw `1/7`，host-assisted `7/7`。dashboard 將它放在
+獨立 robustness section，不把分母混進 12-case baseline。Raw failures 仍是穩定的錯誤決策，
+因此 raw release gate 保持 open。
+
+## 2026-07-15 RTX Resource Guard Calibration
+
+`scripts/dev/calibrate_resource_guard.py --strict` 在 NVIDIA GeForce RTX 5070 Ti 上執行 bounded
+CUDA probe，結果寫入 `artifacts/resource_guard/calibration.json`：
+
+| Model | Estimated VRAM | Observed allocated delta | Covered |
+| --- | ---: | ---: | --- |
+| EEGNet | 86,326,780 B | 21,408,768 B | Yes |
+| SCCNet | 87,106,590 B | 1,856,000 B | Yes |
+| ShallowConvNet | 86,703,820 B | 24,632,832 B | Yes |
+
+校準 scope 是 batch 8、22 channels、301 samples、4 classes；3 folds 與 5 repeats 不是同時放入
+VRAM，peak scope 是 `one_fold_one_repeat_one_batch`。Probe 上限是 256 MiB 且不超過當時可用
+VRAM 的 10%。這支持公式在該 bounded scope 沒有低估觀察到的 allocated peak，但不等於完整
+training、任意 input length、任意 batch 或所有 CUDA allocator 狀態的絕對保證。
+
+## 2026-06-20 Clean-Code Boundary Follow-Up
 
 `refactor/saliency-resource-boundaries` keeps the BIDS epoch / saliency behavior
 unchanged while tightening two recently touched boundaries:
@@ -471,7 +596,8 @@ Validation:
 poetry run python scripts/dev/fetch_public_eeg_fixtures.py
 # downloaded/validated public fixtures, including mne-bids-tiny-eeg
 
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
+  --strict --format json --write-artifacts
 # all_expected_capabilities_observed: true
 # all_expected_capabilities_match: true
 
@@ -694,9 +820,11 @@ poetry run python scripts/dev/update_quality_dashboard.py
 ```
 
 Remaining coverage boundary: public cross-source fixtures are still optional /
-skipped when absent. PhysioNet EDF, BBCI GDF, and SCCN EEGLAB are training-smoke
-fixtures when present; the compact MNE CNT fixture is IO/preprocess/epoch-only
-because it has too few usable epochs for a class-balanced training split. The
+skipped when absent outside the required strict gate. PhysioNet EDF and BBCI GDF
+are class-grounded training-smoke fixtures. SCCN EEGLAB is IO/preprocess/epoch-only
+because the public fixture does not define `rt` / `square` as supervised protocol
+classes; compact MNE CNT is also IO/preprocess/epoch-only because it has too few
+usable epochs for a class-balanced training split. The
 default dashboard still does not claim human Windows click-through acceptance or
 full local-LLM runtime acceptance.
 

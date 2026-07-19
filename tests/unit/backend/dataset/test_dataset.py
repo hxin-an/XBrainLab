@@ -82,6 +82,27 @@ def test_dataset_set_test_mask(
     assert (train_number, val_number, test_number) == (total - 9, 6, 3)
 
 
+def test_dataset_resource_fingerprint_revision_tracks_split_mutations(
+    epochs,  # noqa: F811
+):
+    config = DataSplittingConfig(TrainingType.IND, False, [], [])
+    dataset = Dataset(epochs, config)
+    mask = np.zeros(epochs.get_data_length(), dtype=bool)
+    mask[:3] = True
+    expected_revision = dataset.get_resource_fingerprint_revision()
+
+    for mutate in (
+        lambda: dataset.set_test(mask),
+        lambda: dataset.set_val(mask),
+        dataset.set_remaining_to_train,
+        lambda: dataset.set_selection(False),
+        lambda: dataset.set_name("revised"),
+    ):
+        mutate()
+        expected_revision += 1
+        assert dataset.get_resource_fingerprint_revision() == expected_revision
+
+
 def test_dataset_discard(
     epochs,  # noqa: F811
 ):

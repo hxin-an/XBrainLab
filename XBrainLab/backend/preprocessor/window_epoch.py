@@ -4,6 +4,7 @@ import mne
 
 from ..load_data import Raw
 from .base import PreprocessBase
+from .normalize import Normalize
 
 
 class WindowEpoch(PreprocessBase):
@@ -48,6 +49,17 @@ class WindowEpoch(PreprocessBase):
 
         """
         return f"Epoching {duration}s ({overlap}s overlap) by sliding window"
+
+    def data_preprocess(
+        self,
+        duration: float,
+        overlap: float | str,
+    ) -> list[Raw]:
+        """Create windows, then apply any leakage-safe normalization request."""
+        result = super().data_preprocess(duration, overlap)
+        for preprocessed_data in result:
+            Normalize.apply_pending_epoch_normalization(preprocessed_data)
+        return result
 
     def _data_preprocess(
         self,

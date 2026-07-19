@@ -1,6 +1,8 @@
 """Evaluation panel for viewing confusion matrices, metrics, and model summaries."""
 
-from PyQt6.QtCore import Qt
+import logging
+
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import EvaluateCommand
+from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
 from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
@@ -25,7 +28,7 @@ from XBrainLab.ui.application_capabilities import (
     local_result_payload,
     run_controller_compatibility_call,
 )
-from XBrainLab.ui.components.info_panel import AggregateInfoPanel
+from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.components.presentation import ElidingComboBox, ResponsiveControlsBar
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
@@ -43,6 +46,18 @@ MODEL_SUMMARY_BACKGROUND_UNAVAILABLE_TEXT = (
     "Model summary could not start in the background. Try again after the current "
     "operation finishes."
 )
+MODEL_SUMMARY_LOAD_FAILED_TEXT = (
+    "Model details could not be loaded. Select another completed run or "
+    "reopen Evaluation to try again."
+)
+EVALUATION_DETAILS_LOAD_FAILED_TEXT = (
+    "Evaluation details could not be loaded. Select another completed run or "
+    "reopen Evaluation to try again."
+)
+CHART_TABS_BREAKPOINT = 720
+INFO_SIDEBAR_BREAKPOINT = 800
+COMPACT_HEIGHT_BREAKPOINT = 600
+logger = logging.getLogger(__name__)
 
 
 class EvaluationPanel(BasePanel):
@@ -259,15 +274,41 @@ class EvaluationPanel(BasePanel):
         """Load heavy evaluation payloads off the UI thread when possible."""
 
         def _handle_result(result) -> None:
-            self.last_application_query = result
-            if result.failed:
-                self._clear_metric_views()
+            if not isinstance(result, CommandResult):
+                logger.error(
+                    "Evaluation background query returned an invalid result: %s",
+                    type(result).__name__,
+                )
+                self._show_async_query_failure(
+                    include_model_summaries=include_model_summaries,
+                )
                 return
+            if result.failed:
+                logger.error(
+                    "Evaluation background query failed: %s",
+                    getattr(result, "error_message", None)
+                    or getattr(result, "message", "")
+                    or "No diagnostic message was provided.",
+                )
+                self._show_async_query_failure(
+                    include_model_summaries=include_model_summaries,
+                )
+                return
+            self.last_application_query = result
             if callable(on_ready):
                 on_ready()
 
-        def _handle_error(_error: tuple) -> None:
-            self._clear_metric_views()
+        def _handle_error(error: tuple) -> None:
+            value = error[1] if len(error) > 1 else error
+            formatted_traceback = error[2] if len(error) > 2 else ""
+            logger.error(
+                "Evaluation background query raised: %s\n%s",
+                value,
+                formatted_traceback,
+            )
+            self._show_async_query_failure(
+                include_model_summaries=include_model_summaries,
+            )
 
         return execute_application_command_async(
             self,
@@ -284,6 +325,19 @@ class EvaluationPanel(BasePanel):
             refresh=False,
             busy_target=self,
         )
+
+    def _show_async_query_failure(
+        self,
+        *,
+        include_model_summaries: bool,
+    ) -> None:
+        """Publish a stable terminal state without exposing backend diagnostics."""
+        if include_model_summaries:
+            self.summary_text.setText(MODEL_SUMMARY_LOAD_FAILED_TEXT)
+            return
+        self._clear_metric_views()
+        self.no_data_label.setText(EVALUATION_DETAILS_LOAD_FAILED_TEXT)
+        self.plot_stack.setCurrentIndex(1)
 
     def _plans_from_application_query(self):
         payload = self._evaluation_query_payload()
@@ -453,8 +507,9 @@ class EvaluationPanel(BasePanel):
             show_pct = self.chk_percentage.isChecked()
             self.matrix_widget.update_plot(proxy_record, show_percentage=show_pct)
 
-            self.metrics_table.update_data(metrics)
-            self.bar_chart.update_plot(metrics)
+            class_names = self._class_names_for_record(proxy_record)
+            self.metrics_table.update_data(metrics, class_names=class_names)
+            self.bar_chart.update_plot(metrics, class_names=class_names)
             self._update_summary_if_visible(plan)
             return
 
@@ -468,8 +523,9 @@ class EvaluationPanel(BasePanel):
         # Update Table and Bar Chart
         if record.eval_record:
             metrics = record.eval_record.get_per_class_metrics()
-            self.metrics_table.update_data(metrics)
-            self.bar_chart.update_plot(metrics)
+            class_names = self._class_names_for_record(record)
+            self.metrics_table.update_data(metrics, class_names=class_names)
+            self.bar_chart.update_plot(metrics, class_names=class_names)
         else:
             self.metrics_table.update_data({})
             self.bar_chart.update_plot({})
@@ -477,6 +533,26 @@ class EvaluationPanel(BasePanel):
         plan = self.model_combo.currentData()
         if plan:
             self._update_summary_if_visible(plan, record=record)
+
+    @staticmethod
+    def _class_names_for_record(record) -> dict[int, str]:
+        """Return the class labels used by the selected record's epoch data."""
+        dataset = getattr(record, "dataset", None)
+        get_epoch_data = getattr(dataset, "get_epoch_data", None)
+        if not callable(get_epoch_data):
+            return {}
+        epoch_data = get_epoch_data()
+        label_map = getattr(epoch_data, "label_map", {}) or {}
+        if not isinstance(label_map, dict):
+            return {}
+        class_names: dict[int, str] = {}
+        for key, value in label_map.items():
+            try:
+                class_index = int(key)
+            except (TypeError, ValueError):
+                continue
+            class_names[class_index] = str(value)
+        return class_names
 
     def update_model_summary(self, plan, record=None):
         """Generate and display model summary."""
@@ -517,11 +593,16 @@ class EvaluationPanel(BasePanel):
         self.update_model_summary(plan, record=record)
 
     def _summary_tab_visible(self) -> bool:
-        return (
+        bottom_visible = (
             hasattr(self, "bottom_tabs")
             and hasattr(self, "summary_tab")
             and self.bottom_tabs.currentWidget() is self.summary_tab
         )
+        compact_visible = (
+            getattr(self, "_details_in_chart_tabs", False)
+            and self.chart_tabs.currentWidget() is self.summary_tab
+        )
+        return bottom_visible or compact_visible
 
     def _on_bottom_tab_changed(self, _index: int) -> None:
         if not self._summary_tab_visible():
@@ -533,6 +614,14 @@ class EvaluationPanel(BasePanel):
         data = self.run_combo.currentData()
         record = None if data == "average" else data
         self.update_model_summary(plan, record=record)
+
+    def _on_chart_tab_changed(self, _index: int) -> None:
+        """Load deferred model details when compact mode owns the summary tab."""
+        if (
+            self._details_in_chart_tabs
+            and self.chart_tabs.currentWidget() is self.summary_tab
+        ):
+            self._on_bottom_tab_changed(-1)
 
     def _compatibility_pooled_result_for_render(self, plan):
         controller = self.controller
@@ -675,10 +764,13 @@ class EvaluationPanel(BasePanel):
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(20, 20, 20, 20)
         left_layout.setSpacing(20)
+        self.left_widget = left_widget
+        self.left_layout = left_layout
 
         # 1. Plots Group (Top)
         plots_group = QGroupBox("EVALUATION PLOTS")
         plots_group.setObjectName("EvaluationPlotsGroup")
+        self.plots_group = plots_group
         plots_layout = QVBoxLayout(plots_group)
         plots_layout.setContentsMargins(10, 20, 10, 10)
 
@@ -693,6 +785,10 @@ class EvaluationPanel(BasePanel):
         )
         charts_layout = QHBoxLayout(self.charts_container)
         charts_layout.setContentsMargins(0, 0, 0, 0)
+        charts_layout.setSpacing(6)
+        self.charts_layout = charts_layout
+        self._charts_are_tabbed = False
+        self._details_in_chart_tabs = False
 
         # Matrix Widget
         self.matrix_widget = ConfusionMatrixWidget(self)
@@ -701,6 +797,15 @@ class EvaluationPanel(BasePanel):
         # Bar Chart Widget
         self.bar_chart = MetricsBarChartWidget(self)
         charts_layout.addWidget(self.bar_chart, stretch=1)
+
+        self.chart_tabs = QTabWidget(self.charts_container)
+        self.chart_tabs.setObjectName("EvaluationChartTabs")
+        self.chart_tabs.setDocumentMode(True)
+        chart_tab_bar = self.chart_tabs.tabBar()
+        if chart_tab_bar is not None:
+            chart_tab_bar.setDrawBase(False)
+        self.chart_tabs.currentChanged.connect(self._on_chart_tab_changed)
+        self.chart_tabs.hide()
 
         self.plot_stack.addWidget(self.charts_container)
 
@@ -712,7 +817,7 @@ class EvaluationPanel(BasePanel):
 
         # Model Selection
         self.model_combo = ElidingComboBox()
-        self.model_combo.setMinimumWidth(120)
+        self.model_combo.setMinimumWidth(180)
         self.model_combo.setMaximumWidth(360)
         self.model_combo.setMinimumContentsLength(20)
         self.model_combo.setSizeAdjustPolicy(
@@ -730,7 +835,7 @@ class EvaluationPanel(BasePanel):
 
         # Run Selection
         self.run_combo = ElidingComboBox()
-        self.run_combo.setMinimumWidth(110)
+        self.run_combo.setMinimumWidth(180)
         self.run_combo.setMaximumWidth(300)
         self.run_combo.setMinimumContentsLength(18)
         self.run_combo.setSizeAdjustPolicy(
@@ -754,7 +859,7 @@ class EvaluationPanel(BasePanel):
         self.evaluation_controls_bar = ResponsiveControlsBar(
             [("Model", self.model_combo), ("Run", self.run_combo)],
             [self.chk_percentage],
-            wrap_width=500,
+            wrap_width=600,
         )
         self.evaluation_controls_bar.setObjectName("EvaluationControlsBar")
         plots_layout.addWidget(self.evaluation_controls_bar)
@@ -762,6 +867,9 @@ class EvaluationPanel(BasePanel):
 
         # 2. Bottom Section (Tabs: Metrics & Model Summary)
         self.bottom_tabs = QTabWidget()
+        bottom_tab_bar = self.bottom_tabs.tabBar()
+        if bottom_tab_bar is not None:
+            bottom_tab_bar.setDrawBase(False)
 
         # Tab 1: Metrics
         self.metrics_tab = QWidget()
@@ -783,26 +891,154 @@ class EvaluationPanel(BasePanel):
         self.bottom_tabs.addTab(self.summary_tab, "Model Summary")
         self.bottom_tabs.currentChanged.connect(self._on_bottom_tab_changed)
 
+        self.info_tab = QWidget()
+        self.info_tab_layout = QVBoxLayout(self.info_tab)
+        self.info_tab_layout.setContentsMargins(0, 0, 0, 0)
+        self.info_tab_scroll = SidebarScrollArea(self.info_tab)
+        self.info_tab_scroll.content_layout.setContentsMargins(10, 10, 10, 10)
+        self.info_tab_layout.addWidget(self.info_tab_scroll)
+        self._info_in_bottom_tabs = False
+
         # Add to left layout directly
         left_layout.addWidget(plots_group, stretch=2)
         left_layout.addWidget(self.bottom_tabs, stretch=1)
 
         # --- Right Side: Sidebar ---
-        right_panel = QWidget()
-        right_panel.setFixedWidth(260)
-        right_panel.setObjectName("RightPanel")
-        right_panel.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
+        self.right_panel = QWidget()
+        self.right_panel.setFixedWidth(260)
+        self.right_panel.setObjectName("RightPanel")
+        self.right_panel.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
 
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(10, 20, 10, 20)
+        self.right_layout = QVBoxLayout(self.right_panel)
+        self.right_layout.setContentsMargins(10, 20, 10, 20)
 
         # Aggregate Info
         self.info_panel = AggregateInfoPanel(self.main_window)
         self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        right_layout.addWidget(self.info_panel)
+        self.right_layout.addWidget(self.info_panel)
 
-        right_layout.addStretch()
+        self.right_layout.addStretch()
 
         # Add to main layout
         main_layout.addWidget(left_widget, stretch=1)
-        main_layout.addWidget(right_panel, stretch=0)
+        main_layout.addWidget(self.right_panel, stretch=0)
+        QTimer.singleShot(0, self._update_responsive_layout)
+
+    def resizeEvent(self, event):  # noqa: N802
+        """Use one full-width chart at a time when the content area narrows."""
+        super().resizeEvent(event)
+        if hasattr(self, "charts_container"):
+            QTimer.singleShot(0, self._update_responsive_layout)
+
+    def _update_responsive_layout(self) -> None:
+        self._update_info_layout()
+        self._update_chart_layout()
+        self._update_height_layout()
+
+    def _update_height_layout(self) -> None:
+        """Show one result surface at a time in the shortest supported window."""
+        if not hasattr(self, "plots_group"):
+            return
+        compact = (
+            self.contentsRect().height() < COMPACT_HEIGHT_BREAKPOINT
+            and self._charts_are_tabbed
+        )
+        if compact:
+            self.left_layout.setContentsMargins(12, 12, 12, 12)
+            self.left_layout.setSpacing(0)
+            self._move_details_into_chart_tabs()
+        else:
+            self._restore_detail_tabs()
+            self.left_layout.setContentsMargins(20, 20, 20, 20)
+            self.left_layout.setSpacing(20)
+
+    def _move_details_into_chart_tabs(self) -> None:
+        if self._details_in_chart_tabs:
+            return
+        for page in (self.metrics_tab, self.summary_tab, self.info_tab):
+            index = self.bottom_tabs.indexOf(page)
+            if index >= 0:
+                self.bottom_tabs.removeTab(index)
+        if self.chart_tabs.count() >= 2:
+            self.chart_tabs.setTabText(0, "Confusion")
+            self.chart_tabs.setTabText(1, "Per Class")
+        self.chart_tabs.addTab(self.metrics_tab, "Metrics")
+        self.chart_tabs.addTab(self.summary_tab, "Model")
+        if self._info_in_bottom_tabs:
+            self.chart_tabs.addTab(self.info_tab, "Data")
+        self.bottom_tabs.hide()
+        self._details_in_chart_tabs = True
+
+    def _restore_detail_tabs(self) -> None:
+        if not self._details_in_chart_tabs:
+            return
+        for page in (self.metrics_tab, self.summary_tab, self.info_tab):
+            index = self.chart_tabs.indexOf(page)
+            if index >= 0:
+                self.chart_tabs.removeTab(index)
+        if self.chart_tabs.count() >= 2:
+            self.chart_tabs.setTabText(0, "Confusion Matrix")
+            self.chart_tabs.setTabText(1, "Per-Class Metrics")
+        self.bottom_tabs.addTab(self.metrics_tab, "Metrics Summary")
+        self.bottom_tabs.addTab(self.summary_tab, "Model Summary")
+        if self._info_in_bottom_tabs:
+            self.bottom_tabs.addTab(self.info_tab, "Data Summary")
+        self.bottom_tabs.setVisible(self.plot_stack.currentIndex() == 0)
+        self._details_in_chart_tabs = False
+
+    def _update_info_layout(self) -> None:
+        """Keep dataset context accessible without squeezing the result plots."""
+        if not hasattr(self, "right_panel"):
+            return
+        use_tab = self.contentsRect().width() < INFO_SIDEBAR_BREAKPOINT
+        if use_tab == self._info_in_bottom_tabs:
+            return
+
+        if use_tab:
+            self.right_layout.removeWidget(self.info_panel)
+            self.info_tab_scroll.content_layout.addWidget(self.info_panel)
+            if self._details_in_chart_tabs:
+                self.chart_tabs.addTab(self.info_tab, "Data")
+            else:
+                self.bottom_tabs.addTab(self.info_tab, "Data Summary")
+            self.right_panel.hide()
+        else:
+            for tabs in (self.bottom_tabs, self.chart_tabs):
+                info_index = tabs.indexOf(self.info_tab)
+                if info_index >= 0:
+                    if tabs.currentIndex() == info_index:
+                        tabs.setCurrentIndex(0)
+                    tabs.removeTab(info_index)
+            self.info_tab_scroll.content_layout.removeWidget(self.info_panel)
+            self.right_layout.insertWidget(0, self.info_panel)
+            self.right_panel.show()
+        self._info_in_bottom_tabs = use_tab
+
+    def _update_chart_layout(self) -> None:
+        if not hasattr(self, "chart_tabs"):
+            return
+        use_tabs = self.charts_container.contentsRect().width() < CHART_TABS_BREAKPOINT
+        if use_tabs == self._charts_are_tabbed:
+            return
+
+        if use_tabs:
+            self.charts_layout.removeWidget(self.matrix_widget)
+            self.charts_layout.removeWidget(self.bar_chart)
+            self.chart_tabs.addTab(self.matrix_widget, "Confusion Matrix")
+            self.chart_tabs.addTab(self.bar_chart, "Per-Class Metrics")
+            self.charts_layout.addWidget(self.chart_tabs, stretch=1)
+            self.chart_tabs.show()
+        else:
+            self._restore_detail_tabs()
+            self.charts_layout.removeWidget(self.chart_tabs)
+            while self.chart_tabs.count():
+                self.chart_tabs.removeTab(0)
+            self.chart_tabs.hide()
+            self.matrix_widget.setParent(self.charts_container)
+            self.bar_chart.setParent(self.charts_container)
+            self.charts_layout.addWidget(self.matrix_widget, stretch=1)
+            self.charts_layout.addWidget(self.bar_chart, stretch=1)
+            self.matrix_widget.show()
+            self.bar_chart.show()
+        self._charts_are_tabbed = use_tabs
+        QTimer.singleShot(0, self.matrix_widget.fit_plot_to_canvas)

@@ -1,0 +1,212 @@
+"""Resource-admission identity regressions for Data Interpretation parsers."""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+
+from XBrainLab.backend.application.data_interpretation_resource_reader import (
+    AdmittedResourceReader,
+)
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.resource_guard import (
+    ResourceChecker,
+    check_import_resource_preflight,
+)
+
+
+def _preflight(paths: list[str], monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 10**12,
+                "total_bytes": 10**12,
+                "used_bytes": 0,
+            }
+        ),
+    )
+    return check_import_resource_preflight(paths)
+
+
+def test_reader_rejects_same_size_replacement_after_admission(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "events.tsv"
+    path.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
+    reader = AdmittedResourceReader.from_resource_preflight(
+        [str(path)],
+        _preflight([str(path)], monkeypatch),
+    )
+    admitted_stat = path.stat()
+
+    path.write_text("onset\ttrial_type\n0\trght\n", encoding="utf-8")
+    os.utime(
+        path,
+        ns=(admitted_stat.st_atime_ns, admitted_stat.st_mtime_ns + 1_000_000_000),
+    )
+
+    with pytest.raises(PreconditionError) as raised:
+        reader.assert_unchanged(path, purpose="BIDS events table")
+
+    assert raised.value.diagnostics["code"] == (
+        "interpretation_resource_changed_after_admission"
+    )
+    assert "mtime_ns" in raised.value.diagnostics["changed_fields"]
+
+
+def test_guard_rejects_a_file_changed_during_parser_materialization(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "labels.csv"
+    path.write_text("label\nleft\n", encoding="utf-8")
+    reader = AdmittedResourceReader.from_resource_preflight(
+        [str(path)],
+        _preflight([str(path)], monkeypatch),
+    )
+
+    with (
+        pytest.raises(PreconditionError) as raised,
+        reader.guard([path], purpose="label carrier"),
+    ):
+        path.write_text("label\nchanged\n", encoding="utf-8")
+
+    assert raised.value.diagnostics["parse_started"] is True
+
+
+def test_reader_content_probe_rejects_same_size_change_without_timestamp_assumption(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "participants.tsv"
+    path.write_text("participant_id\nsub-01\n", encoding="utf-8")
+    reader = AdmittedResourceReader.from_resource_preflight(
+        [str(path)],
+        _preflight([str(path)], monkeypatch),
+    )
+
+    path.write_text("participant_id\nsub-02\n", encoding="utf-8")
+
+    with pytest.raises(PreconditionError) as raised:
+        reader.assert_unchanged(path, purpose="BIDS metadata materialization")
+
+    assert "content_probe_sha256" in raised.value.diagnostics["changed_fields"]
+
+
+def test_reader_rejects_paths_missing_from_authoritative_preflight(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    admitted = tmp_path / "admitted.csv"
+    missing = tmp_path / "missing.csv"
+    admitted.write_text("label\n1\n", encoding="utf-8")
+    missing.write_text("label\n2\n", encoding="utf-8")
+
+    with pytest.raises(PreconditionError) as raised:
+        AdmittedResourceReader.from_resource_preflight(
+            [str(admitted), str(missing)],
+            _preflight([str(admitted)], monkeypatch),
+        )
+
+    assert raised.value.diagnostics["code"] == "interpretation_resource_not_admitted"
+
+
+def test_guard_expands_eeglab_set_to_its_admitted_external_data_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from scipy.io import savemat
+
+    set_path = tmp_path / "subject.set"
+    fdt_path = tmp_path / "Arbitrary-Data.FDT"
+    fdt_path.write_bytes(b"\0" * (2 * 10 * 4))
+    savemat(
+        set_path,
+        {
+            "EEG": {
+                "data": fdt_path.name,
+                "nbchan": 2.0,
+                "pnts": 10.0,
+                "trials": 1.0,
+            }
+        },
+        do_compression=True,
+    )
+    paths = [str(set_path), str(fdt_path)]
+    reader = AdmittedResourceReader.from_resource_preflight(
+        paths,
+        _preflight(paths, monkeypatch),
+    )
+
+    fdt_path.write_bytes(b"1" * fdt_path.stat().st_size)
+
+    with (
+        pytest.raises(PreconditionError) as raised,
+        reader.guard([set_path], purpose="embedded EEG event preview"),
+    ):
+        pass
+
+    assert raised.value.diagnostics["path"] == str(fdt_path)
+    assert raised.value.diagnostics["purpose"] == "embedded EEG event preview"
+
+
+def test_guard_expands_explicit_brainvision_parser_dependencies(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    vhdr_path = tmp_path / "subject.vhdr"
+    eeg_path = tmp_path / "subject.eeg"
+    vmrk_path = tmp_path / "subject.vmrk"
+    vhdr_path.write_bytes(b"header")
+    eeg_path.write_bytes(b"signal")
+    vmrk_path.write_bytes(b"marker")
+    paths = [str(vhdr_path), str(eeg_path), str(vmrk_path)]
+    reader = AdmittedResourceReader.from_resource_preflight(
+        paths,
+        _preflight(paths, monkeypatch),
+        dependent_files={
+            str(vhdr_path): [str(eeg_path), str(vmrk_path)],
+        },
+    )
+
+    vmrk_path.write_bytes(b"Marker")
+
+    with (
+        pytest.raises(PreconditionError) as raised,
+        reader.guard([vhdr_path], purpose="embedded EEG event preview"),
+    ):
+        pass
+
+    assert raised.value.diagnostics["path"] == str(vmrk_path)
+    assert raised.value.diagnostics["purpose"] == "embedded EEG event preview"
+
+
+def test_rebinding_parser_dependencies_rejects_a_new_unadmitted_reference(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    vhdr_path = tmp_path / "subject.vhdr"
+    admitted_eeg_path = tmp_path / "subject.eeg"
+    changed_eeg_path = tmp_path / "changed.eeg"
+    vhdr_path.write_bytes(b"header")
+    admitted_eeg_path.write_bytes(b"admitted signal")
+    changed_eeg_path.write_bytes(b"changed signal")
+    admitted_paths = [str(vhdr_path), str(admitted_eeg_path)]
+    reader = AdmittedResourceReader.from_resource_preflight(
+        admitted_paths,
+        _preflight(admitted_paths, monkeypatch),
+        dependent_files={str(vhdr_path): [str(admitted_eeg_path)]},
+    )
+
+    with pytest.raises(PreconditionError) as raised:
+        reader.with_dependent_files(
+            {str(vhdr_path): [str(changed_eeg_path)]},
+        )
+
+    assert raised.value.diagnostics["code"] == "interpretation_resource_not_admitted"
+    assert raised.value.diagnostics["owner_path"] == str(vhdr_path)
+    assert raised.value.diagnostics["missing_paths"] == [str(changed_eeg_path)]

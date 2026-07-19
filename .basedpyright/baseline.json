@@ -10,50 +10,6 @@
                 }
             }
         ],
-        "./XBrainLab/backend/dataset/epochs.py": [
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 42,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 30,
-                    "endColumn": 45,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 21,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 21,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./XBrainLab/backend/load_data/event_loader.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 48,
-                    "endColumn": 61,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/backend/load_data/raw.py": [
             {
                 "code": "reportAttributeAccessIssue",

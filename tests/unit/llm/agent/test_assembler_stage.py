@@ -5,7 +5,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from XBrainLab.llm.agent.assembler import ContextAssembler
-from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
+from XBrainLab.llm.agent.prompt_policy import (
+    STRICT_TOOL_RESPONSE_PROMPT_POLICY,
+    PromptPolicyReadResult,
+)
+from XBrainLab.llm.pipeline_state import PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -57,14 +61,8 @@ class TestStageBasedFiltering:
                 return_value=stage,
             ),
             patch(
-                "XBrainLab.llm.agent.assembler.enabled_tool_names",
-                return_value=list(
-                    STAGE_CONFIG.get(stage, STAGE_CONFIG[PipelineStage.EMPTY])["tools"]
-                ),
-            ),
-            patch(
-                "XBrainLab.llm.agent.assembler.blocked_tool_reasons",
-                return_value={},
+                "XBrainLab.llm.agent.assembler.read_prompt_policy",
+                return_value=PromptPolicyReadResult.not_applicable(),
             ),
         ):
             assembler = ContextAssembler(registry, study)
@@ -139,20 +137,19 @@ class TestStageBasedFiltering:
 
     def test_no_tools_registered_shows_fallback(self):
         prompt = self._build(PipelineStage.EMPTY, [])
-        assert "No tools currently available" in prompt
+        assert "No executable workflow actions are available" in prompt
 
-    def test_prompt_blocks_placeholder_paths_and_tool_substitution(self):
+    def test_prompt_composes_the_canonical_decision_policy(self):
         prompt = self._build(
             PipelineStage.EMPTY,
             ["scan_source", "preview_interpretation", "set_model"],
         )
-        assert "Never invent placeholder paths" in prompt
-        assert "do not call a different tool" in prompt
-        assert "Treat Workflow Decision Context as the current workflow truth" in prompt
-        assert "do not invent those parameters" in prompt
-        assert "continue_until_decision mode" in prompt
-        assert "apply_standard_preprocess for" in prompt
-        assert "individual and group are training_mode" in prompt
+
+        assert STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions() in prompt
+        assert "request-scoped action contracts below are authoritative" in prompt
+        assert "Workflow Decision Context" in prompt
+        assert "mode: step_by_step" in prompt
+        assert "Only the listed workflow action is available" in prompt
 
     def test_stage_filter_keeps_legacy_tools_out_of_primary_prompt(self):
         prompt = self._build(
@@ -181,12 +178,14 @@ class TestStageBasedFiltering:
                 return_value=PipelineStage.EMPTY,
             ),
             patch(
-                "XBrainLab.llm.agent.assembler.enabled_tool_names",
-                return_value=["load_data", "scan_source", "switch_panel"],
-            ),
-            patch(
-                "XBrainLab.llm.agent.assembler.blocked_tool_reasons",
-                return_value={},
+                "XBrainLab.llm.agent.assembler.read_prompt_policy",
+                return_value=PromptPolicyReadResult(
+                    publication=None,
+                    published_tools=frozenset(
+                        {"load_data", "scan_source", "switch_panel"}
+                    ),
+                    blocked_reasons=(),
+                ),
             ),
         ):
             prompt = ContextAssembler(registry, study).build_system_prompt()
@@ -222,7 +221,7 @@ class TestPromptContent:
             prompt = assembler.build_system_prompt()
 
         # Per-stage prompt should contain stage-specific guidance
-        assert "no data has been loaded" in prompt.lower()
+        assert "no data is loaded" in prompt.lower()
 
     def test_rag_context_appended(self):
         registry = ToolRegistry()
@@ -264,4 +263,5 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, study)
             prompt = assembler.build_system_prompt()
 
-        assert "ONLY use the tools listed above" in prompt
+        assert "action contracts below are authoritative" in prompt
+        assert "Use only an action contract listed for this exact turn" in prompt

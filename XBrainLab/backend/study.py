@@ -11,12 +11,11 @@ from .utils.check import validate_type
 from .utils.logger import logger
 
 if TYPE_CHECKING:
-    from XBrainLab.llm.pipeline_state import PipelineStage
-
     from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
     from .load_data import Raw, RawDataLoader
     from .preprocessor import PreprocessBase
     from .training import ModelHolder, Trainer, TrainingOption
+    from .training_state_contract import PostTrainingSaliencyScheduleOutcome
 
 
 class Study:
@@ -52,6 +51,7 @@ class Study:
         # Controller cache for singleton-like access
         self._controllers: dict = {}
         self._application_service: Any | None = None
+        self._application_service_lock = RLock()
         self._application_command_lock = RLock()
 
         logger.info("Study initialized (with DataManager + TrainingManager)")
@@ -115,7 +115,10 @@ class Study:
 
     @model_holder.setter
     def model_holder(self, value: ModelHolder | None) -> None:
-        self.training_manager.model_holder = value
+        if value is None:
+            self.training_manager.model_holder = None
+            return
+        self.training_manager.set_model_holder(value)
 
     @property
     def training_option(self) -> TrainingOption | None:
@@ -140,22 +143,6 @@ class Study:
     @saliency_params.setter
     def saliency_params(self, value: dict | None) -> None:
         self.training_manager.saliency_params = value
-
-    # --- Pipeline Stage ---
-
-    @property
-    def pipeline_stage(self) -> PipelineStage:
-        """Compute the current pipeline stage through ApplicationService state.
-
-        Returns:
-            The :class:`~XBrainLab.llm.pipeline_state.PipelineStage`
-            derived from the shared application state snapshot. This is always
-            recomputed — never cached — so it cannot drift from command truth.
-
-        """
-        from XBrainLab.llm.pipeline_state import compute_pipeline_stage  # noqa: PLC0415
-
-        return compute_pipeline_stage(self)
 
     # --- Controller Access ---
     def get_controller(self, controller_type: str):
@@ -225,7 +212,11 @@ class Study:
 
         Cleans trainer first since new raw data invalidates it.
         """
-        self.clean_trainer(force_update=force_update)
+        if (
+            self.training_manager.has_trainer()
+            or self.training_manager.has_active_saliency_work()
+        ):
+            self.clean_trainer(force_update=force_update)
         self.data_manager.set_loaded_data_list(loaded_data_list, force_update)
 
     # step 2 - preprocess
@@ -351,15 +342,27 @@ class Study:
         """Set channels and positions for visualization."""
         if not self.epoch_data:
             raise ValueError("No valid epoch data is generated")
+        current_channels = list(self.epoch_data.get_channel_names())
+        changes_channel_identity = list(chs) != current_channels
+        downstream_exists = bool(self.datasets) or self.trainer is not None
+        if changes_channel_identity and downstream_exists:
+            raise ValueError(
+                "Change the montage channel subset or order before generating "
+                "datasets or starting training. Existing model inputs and "
+                "saliency must keep their original channel identity."
+            )
         self.epoch_data.set_channels(chs, positions)
 
     def get_saliency_params(self) -> dict | None:
         """Return parameters for saliency computation via TrainingManager."""
         return self.training_manager.get_saliency_params()
 
-    def set_saliency_params(self, saliency_params) -> None:
+    def set_saliency_params(
+        self,
+        saliency_params,
+    ) -> PostTrainingSaliencyScheduleOutcome | None:
         """Set saliency parameters via TrainingManager."""
-        self.training_manager.set_saliency_params(saliency_params)
+        return self.training_manager.set_saliency_params(saliency_params)
 
     # --- Clean Workflow ---
     # Study extends DataManager's cleaning by adding trainer awareness.

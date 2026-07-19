@@ -33,6 +33,24 @@ from XBrainLab.ui.dialogs.common import (
 )
 from XBrainLab.ui.styles.theme import Theme
 
+_PARAMETER_PRESENTATION = {
+    "nt_samples": (
+        "Noise samples",
+        "Number of noisy input copies averaged for this method. Higher values "
+        "can look smoother but take longer to compute.",
+    ),
+    "nt_samples_batch_size": (
+        "Samples per batch",
+        "Number of noisy copies processed together. Automatic uses the runtime "
+        "default; a smaller value reduces peak memory use.",
+    ),
+    "stdevs": (
+        "Noise standard deviation",
+        "Scale of the noise added to each input copy. Higher values apply more "
+        "smoothing to the attribution result.",
+    ),
+}
+
 
 def _raise_no_saliency_method_selected() -> None:
     raise ValueError("Select at least one saliency method.")
@@ -244,13 +262,21 @@ class SaliencySettingDialog(BaseDialog):
 
         self.param_editors[method] = {}
         for row, param in enumerate(self.algo_map.get(method) or []):
-            label = QLabel(param)
+            label_text, tooltip = _PARAMETER_PRESENTATION.get(
+                param,
+                (param.replace("_", " ").capitalize(), param),
+            )
+            label = QLabel(label_text)
             label.setObjectName("SaliencyParamLabel")
             label.setFixedWidth(180)
+            label.setToolTip(tooltip)
+            label.setAccessibleName(label_text)
             label.setAlignment(
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
             )
             editor = self._build_param_editor(param)
+            editor.setToolTip(tooltip)
+            editor.setAccessibleName(label_text)
             self._set_editor_value(editor, self._initial_param_value(method, param))
             self.param_editors[method][param] = editor
             layout.addWidget(label, row, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -269,7 +295,7 @@ class SaliencySettingDialog(BaseDialog):
             editor = QSpinBox()
             if param == "nt_samples_batch_size":
                 editor.setRange(0, 100_000)
-                editor.setSpecialValueText("None")
+                editor.setSpecialValueText("Automatic")
             else:
                 editor.setRange(1, 100_000)
         editor.setObjectName("SaliencyParamEditor")

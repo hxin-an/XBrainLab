@@ -1,4 +1,5 @@
 import time
+from threading import Event
 from unittest.mock import Mock, patch
 
 import mne
@@ -16,15 +17,31 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
+from XBrainLab.backend.exceptions import (
+    SaliencyCancellationTimeoutError,
+    StaleSaliencyUpdateError,
+)
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.training.evaluator import Evaluator
 from XBrainLab.backend.training.option import TrainingEvaluation
-from XBrainLab.backend.training.record import RecordKey
+from XBrainLab.backend.training.record import EvalRecord, RecordKey
+from XBrainLab.backend.training.trainer import Trainer
 from XBrainLab.backend.training.training_plan import (
     ModelHolder,
     TrainingOption,
     TrainingPlanHolder,
     TrainRecord,
+)
+from XBrainLab.backend.training_manager import (
+    PostTrainingSaliencyTarget,
+    TrainingManager,
+    post_training_saliency_target,
+)
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyPhase,
+    TrainingOutcomeState,
+    TrainingRunIdentity,
+    TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils import set_seed
 
@@ -34,6 +51,11 @@ SAMPLE_NUM = CLASS_NUM
 REPEAT = 5
 TOTAL_NUM = SAMPLE_NUM * REPEAT
 BS = 2
+
+
+def _prepared_saliency_record() -> Mock:
+    """Return a contract-correct evaluator result for orchestration tests."""
+    return Mock(spec=EvalRecord)
 
 
 class FakeModel(torch.nn.Module):
@@ -218,6 +240,83 @@ def test_training_plan_holder_keeps_saliency_empty_until_configured(
     )
 
     assert holder.get_saliency_params() == {}
+
+
+def test_saliency_producer_identity_is_stable_for_same_training_run(base_holder):
+    record = base_holder.get_plans()[0]
+
+    first = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    second = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+
+    assert first == second
+    assert first.fingerprint == second.fingerprint
+
+
+def test_saliency_producer_identity_separates_dataset_split_run_and_model(
+    base_holder,
+):
+    record = base_holder.get_plans()[0]
+    epoch_data = base_holder.dataset.get_epoch_data()
+    baseline = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+
+    original_value = float(epoch_data.data.flat[-1])
+    epoch_data.data.flat[-1] = original_value + 1.0
+    dataset_changed = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    epoch_data.data.flat[-1] = original_value
+
+    original_test_mask = base_holder.dataset.test_mask.copy()
+    base_holder.dataset.test_mask[0] = not base_holder.dataset.test_mask[0]
+    split_changed = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    base_holder.dataset.test_mask = original_test_mask
+
+    original_seed = record.seed
+    record.seed = original_seed + 1
+    run_changed = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    record.seed = original_seed
+
+    with torch.no_grad():
+        original_weight = record.model.fc.weight.flatten()[0].item()
+        record.model.fc.weight.flatten()[0] = original_weight + 1.0
+    model_state_changed = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    with torch.no_grad():
+        record.model.fc.weight.flatten()[0] = original_weight
+
+    original_model_holder = base_holder.model_holder
+    base_holder.model_holder = ModelHolder(FakeModel, {"variant": 1})
+    model_changed = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    base_holder.model_holder = original_model_holder
+
+    assert dataset_changed.dataset_fingerprint != baseline.dataset_fingerprint
+    assert dataset_changed.split_fingerprint == baseline.split_fingerprint
+    assert split_changed.dataset_fingerprint == baseline.dataset_fingerprint
+    assert split_changed.split_fingerprint != baseline.split_fingerprint
+    assert run_changed.run_fingerprint != baseline.run_fingerprint
+    assert model_state_changed.model_fingerprint != baseline.model_fingerprint
+    assert model_changed.model_fingerprint != baseline.model_fingerprint
 
 
 @pytest.mark.parametrize(
@@ -768,12 +867,54 @@ def test_train_one_repeat_keeps_saliency_out_of_training_thread_when_configured(
     assert record.eval_record is sentinel
 
 
+def test_safe_move_to_cpu_preserves_optimizer_and_moves_nested_state(base_holder):
+    record = base_holder.get_plans()[0]
+    optimizer = record.optim
+    parameter = next(record.model.parameters())
+    optimizer.state[parameter] = {
+        "exp_avg": torch.ones_like(parameter),
+        "nested": [torch.ones(1), {"value": torch.ones(1)}],
+    }
+
+    base_holder._safe_move_to_cpu(record)
+
+    assert record.optim is optimizer
+    state = optimizer.state[parameter]
+    assert state["exp_avg"].device.type == "cpu"
+    assert state["nested"][0].device.type == "cpu"
+    assert state["nested"][1]["value"].device.type == "cpu"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+def test_safe_move_to_cpu_releases_model_and_optimizer_gpu_state(base_holder):
+    record = base_holder.get_plans()[0]
+    record.model.to("cuda:0")
+    optimizer = record.optim
+    parameter = next(record.model.parameters())
+    optimizer.state[parameter] = {
+        "exp_avg": torch.ones_like(parameter, device="cuda:0"),
+        "exp_avg_sq": torch.ones_like(parameter, device="cuda:0"),
+    }
+
+    base_holder._safe_move_to_cpu(record)
+
+    assert all(
+        parameter.device.type == "cpu" for parameter in record.model.parameters()
+    )
+    assert all(
+        value.device.type == "cpu"
+        for state in optimizer.state.values()
+        for value in state.values()
+        if torch.is_tensor(value)
+    )
+
+
 def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder):
     base_holder.option.repeat_num = 1
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
     record.eval_record = object()
-    sentinel = object()
+    sentinel = _prepared_saliency_record()
 
     with (
         patch.object(base_holder, "get_loader", return_value=(None, None, "loader")),
@@ -801,6 +942,711 @@ def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder)
         evaluation_split="test",
     )
     assert record.eval_record is sentinel
+
+
+def test_saliency_update_binds_epoch_identity_before_publication(base_holder):
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    record.eval_record = EvalRecord(
+        np.array([0]),
+        np.array([[1.0, 0.0, 0.0, 0.0]]),
+        {},
+        {},
+        {},
+        {},
+        {},
+    )
+    prepared = EvalRecord(
+        np.arange(CLASS_NUM),
+        np.eye(CLASS_NUM),
+        {
+            class_index: np.ones((1, 1, CLASS_NUM), dtype=np.float32)
+            * (class_index + 1)
+            for class_index in range(CLASS_NUM)
+        },
+        {},
+        {},
+        {},
+        {},
+    )
+
+    with (
+        patch.object(base_holder, "get_loader", return_value=(None, None, "loader")),
+        patch.object(base_holder, "get_eval_pair", return_value=("model", "loader")),
+        patch.object(Evaluator, "evaluate_with_saliency", return_value=prepared),
+    ):
+        plan = base_holder.prepare_saliency_update_plan(
+            {"_methods": ["Gradient"]},
+            records=[record],
+        )
+        update = base_holder.compute_saliency_update(plan)
+
+    assert update.eval_records[0][2] is prepared
+    assert prepared.saliency_context is not None
+    assert prepared.saliency_context_status == "verified"
+    assert prepared.saliency_context.channel_names == ("C1",)
+    assert prepared.saliency_context.epoch_sample_count == CLASS_NUM
+
+
+def _completed_saliency_run(
+    run_id: int = 1,
+) -> tuple[
+    TrainingRunIdentity,
+    TrainingTerminalOutcome,
+]:
+    run = TrainingRunIdentity(trainer_id="trainer-under-test", run_id=run_id)
+    return run, TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=run,
+    )
+
+
+def _mark_finished_records(base_holder, count: int) -> tuple[list, list[object]]:
+    records = base_holder.get_plans()[:count]
+    eval_records = [object() for _record in records]
+    for record, eval_record in zip(records, eval_records, strict=True):
+        record.epoch = base_holder.option.epoch
+        record.eval_record = eval_record
+    return records, eval_records
+
+
+def test_post_training_saliency_append_only_computes_new_records_off_thread(
+    base_holder,
+):
+    records, old_eval_records = _mark_finished_records(base_holder, 2)
+    trainer = Trainer([base_holder])
+    manager = TrainingManager()
+    manager.trainer = trainer
+    old_params = {"_methods": ["Gradient"]}
+    manager.saliency_params = old_params
+    base_holder.saliency_params = old_params
+    run, outcome = _completed_saliency_run()
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=1,
+        finished_runs_after=2,
+        append=True,
+    )
+    params = {
+        "_profile": "recommended",
+        "_methods": ["Gradient", "Gradient * Input"],
+    }
+    compute_started = Event()
+    release_compute = Event()
+    prepared_eval = _prepared_saliency_record()
+
+    def evaluate(*_args, **_kwargs):
+        compute_started.set()
+        assert release_compute.wait(timeout=2.0)
+        return prepared_eval
+
+    with (
+        patch.object(trainer, "get_terminal_outcome", return_value=outcome),
+        patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+        patch.object(
+            base_holder,
+            "get_eval_pair",
+            return_value=(Mock(), "test"),
+        ) as get_eval_pair,
+        patch.object(Evaluator, "evaluate_with_saliency", side_effect=evaluate),
+    ):
+        with post_training_saliency_target(target):
+            manager.set_saliency_params(params)
+
+        assert compute_started.wait(timeout=2.0)
+        assert records[0].eval_record is old_eval_records[0]
+        assert records[1].eval_record is old_eval_records[1]
+        release_compute.set()
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    assert get_eval_pair.call_args.args[0] is records[1]
+    assert records[0].eval_record is old_eval_records[0]
+    assert records[1].eval_record is prepared_eval
+    assert manager.saliency_params == params
+
+
+def test_post_training_saliency_append_race_discards_prepared_result(base_holder):
+    records, old_eval_records = _mark_finished_records(base_holder, 2)
+    trainer = Trainer([base_holder])
+    manager = TrainingManager()
+    manager.trainer = trainer
+    old_params = {"_methods": ["Gradient"]}
+    manager.saliency_params = old_params
+    base_holder.saliency_params = old_params
+    run, outcome = _completed_saliency_run()
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=1,
+        finished_runs_after=2,
+        append=True,
+    )
+    params = {
+        "_profile": "recommended",
+        "_methods": ["Gradient", "Gradient * Input"],
+    }
+
+    def race_with_append(*_args, **_kwargs):
+        trainer.add_training_plan_holders([])
+        return _prepared_saliency_record()
+
+    with (
+        patch.object(trainer, "get_terminal_outcome", return_value=outcome),
+        patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+        patch.object(base_holder, "get_eval_pair", return_value=(Mock(), "test")),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=race_with_append,
+        ),
+    ):
+        with post_training_saliency_target(target):
+            manager.set_saliency_params(params)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    assert [record.eval_record for record in records] == old_eval_records
+    assert manager.saliency_params is old_params
+    assert base_holder.saliency_params is old_params
+    assert (
+        manager.get_post_training_saliency_status().phase
+        is PostTrainingSaliencyPhase.CANCELLED
+    )
+
+
+@pytest.mark.parametrize(
+    "state",
+    [TrainingOutcomeState.FAILED, TrainingOutcomeState.CANCELLED],
+)
+def test_post_training_saliency_never_schedules_non_completed_run(base_holder, state):
+    _records, old_eval_records = _mark_finished_records(base_holder, 1)
+    trainer = Trainer([base_holder])
+    manager = TrainingManager()
+    manager.trainer = trainer
+    old_params = {"_methods": ["Gradient"]}
+    manager.saliency_params = old_params
+    base_holder.saliency_params = old_params
+    run, _completed = _completed_saliency_run()
+    outcome = TrainingTerminalOutcome(state=state, run=run)
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=True,
+    )
+
+    with (
+        patch.object(trainer, "get_terminal_outcome", return_value=outcome),
+        patch.object(Evaluator, "evaluate_with_saliency") as evaluate,
+        post_training_saliency_target(target),
+    ):
+        manager.set_saliency_params(
+            {
+                "_profile": "recommended",
+                "_methods": ["Gradient", "Gradient * Input"],
+            }
+        )
+
+    evaluate.assert_not_called()
+    assert manager.wait_for_saliency_job(timeout=0.1)
+    assert manager.saliency_params is old_params
+    assert base_holder.get_plans()[0].eval_record is old_eval_records[0]
+
+
+def test_post_training_saliency_publishes_multiple_records_atomically(base_holder):
+    records, old_eval_records = _mark_finished_records(base_holder, 2)
+    trainer = Trainer([base_holder])
+    manager = TrainingManager()
+    manager.trainer = trainer
+    old_params = {"_methods": ["Gradient"]}
+    manager.saliency_params = old_params
+    base_holder.saliency_params = old_params
+    run, outcome = _completed_saliency_run()
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=2,
+        append=True,
+    )
+    prepared = [_prepared_saliency_record(), _prepared_saliency_record()]
+    observed = []
+
+    def evaluate(*_args, **_kwargs):
+        observed.append([record.eval_record for record in records])
+        return prepared[len(observed) - 1]
+
+    with (
+        patch.object(trainer, "get_terminal_outcome", return_value=outcome),
+        patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+        patch.object(base_holder, "get_eval_pair", return_value=(Mock(), "test")),
+        patch.object(Evaluator, "evaluate_with_saliency", side_effect=evaluate),
+    ):
+        with post_training_saliency_target(target):
+            manager.set_saliency_params(
+                {
+                    "_profile": "recommended",
+                    "_methods": ["Gradient", "Gradient * Input"],
+                }
+            )
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    assert observed == [old_eval_records, old_eval_records]
+    assert [record.eval_record for record in records] == prepared
+
+
+def test_post_training_saliency_oom_preserves_existing_record_state(base_holder):
+    records, old_eval_records = _mark_finished_records(base_holder, 1)
+    trainer = Trainer([base_holder])
+    manager = TrainingManager()
+    manager.trainer = trainer
+    old_params = {"_methods": ["Gradient"]}
+    manager.saliency_params = old_params
+    base_holder.saliency_params = old_params
+    run, outcome = _completed_saliency_run()
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=True,
+    )
+    params = {
+        "_profile": "recommended",
+        "_methods": ["Gradient", "Gradient * Input"],
+    }
+
+    with (
+        patch.object(trainer, "get_terminal_outcome", return_value=outcome),
+        patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+        patch.object(base_holder, "get_eval_pair", return_value=(Mock(), "test")),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=torch.cuda.OutOfMemoryError("private allocation details"),
+        ),
+        patch("XBrainLab.backend.training_manager.release_cuda_cache") as release_cache,
+    ):
+        with post_training_saliency_target(target):
+            manager.set_saliency_params(params)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    status = manager.get_post_training_saliency_status()
+    assert status.phase is PostTrainingSaliencyPhase.FAILED
+    assert status.error_code == "cuda_oom"
+    assert "private allocation details" not in (status.message or "")
+    assert records[0].eval_record is old_eval_records[0]
+    assert manager.saliency_params is old_params
+    assert base_holder.saliency_params is old_params
+    release_cache.assert_called_once()
+
+
+def test_noncooperative_saliency_cancel_is_bounded_and_never_publishes(
+    base_holder,
+):
+    records, old_eval_records = _mark_finished_records(base_holder, 1)
+    trainer = Trainer([base_holder])
+    manager = TrainingManager()
+    manager.trainer = trainer
+    old_params = {"_methods": ["Gradient"]}
+    manager.saliency_params = old_params
+    base_holder.saliency_params = old_params
+    run, outcome = _completed_saliency_run()
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=True,
+    )
+    params = {
+        "_profile": "recommended",
+        "_methods": ["Gradient", "Gradient * Input"],
+    }
+    compute_started = Event()
+    release_compute = Event()
+
+    def noncooperative_evaluate(*_args, **_kwargs):
+        compute_started.set()
+        assert release_compute.wait(timeout=2.0)
+        return _prepared_saliency_record()
+
+    with (
+        patch.object(trainer, "get_terminal_outcome", return_value=outcome),
+        patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+        patch.object(base_holder, "get_eval_pair", return_value=(Mock(), "test")),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=noncooperative_evaluate,
+        ),
+        patch(
+            "XBrainLab.backend.training_manager."
+            "_POST_TRAINING_SALIENCY_CANCEL_WAIT_SECONDS",
+            0.01,
+        ),
+    ):
+        with post_training_saliency_target(target):
+            manager.set_saliency_params(params)
+        assert compute_started.wait(timeout=2.0)
+
+        started = time.monotonic()
+        with pytest.raises(SaliencyCancellationTimeoutError):
+            manager.clean_trainer(force_update=True)
+        assert time.monotonic() - started < 0.5
+
+        assert manager.trainer is trainer
+        assert records[0].eval_record is old_eval_records[0]
+        assert manager.saliency_params is old_params
+        assert (
+            manager.get_post_training_saliency_status().phase
+            is PostTrainingSaliencyPhase.CANCELLED
+        )
+        release_compute.set()
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    assert records[0].eval_record is old_eval_records[0]
+    assert manager.saliency_params is old_params
+
+
+def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
+    base_holder,
+):
+    records = base_holder.get_plans()[:2]
+    old_params = {"Gradient": {}}
+    old_eval_records = [object(), object()]
+    new_eval_records = [
+        _prepared_saliency_record(),
+        _prepared_saliency_record(),
+    ]
+    for record, old_eval_record in zip(records, old_eval_records, strict=True):
+        record.epoch = base_holder.option.epoch
+        record.eval_record = old_eval_record
+    base_holder.saliency_params = old_params
+    trainer = Trainer([base_holder])
+    train_loader, val_loader, test_loader = object(), object(), object()
+    observed_tokens = []
+
+    def evaluate_with_saliency(*args, **kwargs):
+        observed_tokens.append(trainer.get_state_snapshot_token())
+        assert base_holder.saliency_params is old_params
+        assert [record.eval_record for record in records] == old_eval_records
+        return new_eval_records[len(observed_tokens) - 1]
+
+    generation_before = trainer.get_state_generation()
+    params = {"SmoothGrad": {"nt_samples": 1}}
+    with (
+        patch.object(
+            base_holder,
+            "get_loader",
+            return_value=(train_loader, val_loader, test_loader),
+        ),
+        patch.object(
+            base_holder,
+            "get_eval_pair",
+            return_value=("model", test_loader),
+        ),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=evaluate_with_saliency,
+        ) as evaluate,
+    ):
+        base_holder.set_saliency_params(params)
+
+    assert all(token.stable for token in observed_tokens)
+    assert trainer.get_state_generation() == generation_before + 2
+    assert base_holder.saliency_params == params
+    assert [record.eval_record for record in records] == new_eval_records
+    assert [call.kwargs["evaluation_split"] for call in evaluate.call_args_list] == [
+        "test",
+        "test",
+    ]
+    for eval_record in new_eval_records:
+        producer_identity = eval_record.bind_saliency_context.call_args.kwargs[
+            "producer_identity"
+        ]
+        assert producer_identity.dataset_fingerprint
+        assert producer_identity.split_fingerprint
+        assert producer_identity.run_fingerprint
+        assert producer_identity.model_fingerprint
+
+
+def test_saliency_update_rejects_split_change_during_expensive_compute(base_holder):
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    previous_eval_record = object()
+    record.eval_record = previous_eval_record
+    original_test_mask = base_holder.dataset.test_mask.copy()
+
+    def mutate_split_during_compute(*_args, **_kwargs):
+        base_holder.dataset.test_mask[0] = not base_holder.dataset.test_mask[0]
+        return _prepared_saliency_record()
+
+    try:
+        with (
+            patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+            patch.object(
+                base_holder,
+                "get_eval_pair",
+                return_value=("model", "test"),
+            ),
+            patch.object(
+                Evaluator,
+                "evaluate_with_saliency",
+                side_effect=mutate_split_during_compute,
+            ),
+            pytest.raises(StaleSaliencyUpdateError),
+        ):
+            base_holder.set_saliency_params({"Gradient": {}})
+    finally:
+        base_holder.dataset.test_mask = original_test_mask
+
+    assert record.eval_record is previous_eval_record
+
+
+def test_set_saliency_params_second_record_failure_preserves_previous_state(
+    base_holder,
+):
+    records = base_holder.get_plans()[:2]
+    old_params = {"Gradient": {}}
+    old_eval_records = [object(), object()]
+    for record, old_eval_record in zip(records, old_eval_records, strict=True):
+        record.epoch = base_holder.option.epoch
+        record.eval_record = old_eval_record
+    base_holder.saliency_params = old_params
+    prepared_first_record = _prepared_saliency_record()
+
+    with (
+        patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+        patch.object(base_holder, "get_eval_pair", return_value=("model", "test")),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=[prepared_first_record, RuntimeError("second record failed")],
+        ),
+        pytest.raises(RuntimeError, match="second record failed"),
+    ):
+        base_holder.set_saliency_params({"SmoothGrad": {"nt_samples": 1}})
+
+    assert base_holder.saliency_params is old_params
+    assert [record.eval_record for record in records] == old_eval_records
+
+
+def test_training_manager_saliency_success_commits_all_holders_once(base_holder):
+    second_holder = TrainingPlanHolder(
+        base_holder.model_holder,
+        base_holder.dataset,
+        base_holder.option,
+        {},
+    )
+    holders = [base_holder, second_holder]
+    old_params = {"Gradient": {}}
+    old_eval_records = [object(), object()]
+    new_eval_records = [
+        _prepared_saliency_record(),
+        _prepared_saliency_record(),
+    ]
+    for holder, old_eval_record in zip(holders, old_eval_records, strict=True):
+        record = holder.get_plans()[0]
+        record.epoch = holder.option.epoch
+        record.eval_record = old_eval_record
+        holder.saliency_params = old_params
+
+    trainer = Trainer(holders)
+    manager = TrainingManager()
+    manager.trainer = trainer
+    manager.saliency_params = old_params
+    observed_tokens = []
+    commit_tokens = []
+
+    def evaluate_with_saliency(*args, **kwargs):
+        observed_tokens.append(trainer.get_state_snapshot_token())
+        assert manager.saliency_params is old_params
+        assert all(holder.saliency_params is old_params for holder in holders)
+        assert [holder.get_plans()[0].eval_record for holder in holders] == (
+            old_eval_records
+        )
+        return new_eval_records[len(observed_tokens) - 1]
+
+    original_publish_manager_params = manager._publish_saliency_params
+
+    def publish_manager_params(params):
+        original_publish_manager_params(params)
+        commit_tokens.append(trainer.get_state_snapshot_token())
+        assert manager.saliency_params == params
+        assert all(holder.saliency_params is old_params for holder in holders)
+        assert [holder.get_plans()[0].eval_record for holder in holders] == (
+            old_eval_records
+        )
+
+    generation_before = trainer.get_state_generation()
+    params = {"SmoothGrad": {"nt_samples": 1}}
+    with (
+        patch.object(
+            base_holder,
+            "get_loader",
+            return_value=(None, None, "first-test"),
+        ),
+        patch.object(
+            base_holder,
+            "get_eval_pair",
+            return_value=("first-model", "first-test"),
+        ),
+        patch.object(
+            second_holder,
+            "get_loader",
+            return_value=(None, None, "second-test"),
+        ),
+        patch.object(
+            second_holder,
+            "get_eval_pair",
+            return_value=("second-model", "second-test"),
+        ),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=evaluate_with_saliency,
+        ),
+        patch.object(
+            manager,
+            "_publish_saliency_params",
+            side_effect=publish_manager_params,
+        ),
+    ):
+        manager.set_saliency_params(params)
+
+    assert all(token.stable for token in observed_tokens)
+    assert [token.stable for token in commit_tokens] == [False]
+    assert trainer.get_state_generation() == generation_before + 2
+    assert manager.saliency_params == params
+    assert [holder.saliency_params for holder in holders] == [params, params]
+    assert [holder.get_plans()[0].eval_record for holder in holders] == new_eval_records
+
+
+def test_training_manager_saliency_second_holder_failure_preserves_all_state(
+    base_holder,
+):
+    second_holder = TrainingPlanHolder(
+        base_holder.model_holder,
+        base_holder.dataset,
+        base_holder.option,
+        {},
+    )
+    holders = [base_holder, second_holder]
+    old_manager_params = {"Gradient": {"source": "manager"}}
+    old_holder_params = [
+        {"Gradient": {"source": "first"}},
+        {"Gradient": {"source": "second"}},
+    ]
+    old_eval_records = [object(), object()]
+    for holder, holder_params, old_eval_record in zip(
+        holders,
+        old_holder_params,
+        old_eval_records,
+        strict=True,
+    ):
+        record = holder.get_plans()[0]
+        record.epoch = holder.option.epoch
+        record.eval_record = old_eval_record
+        holder.saliency_params = holder_params
+
+    manager = TrainingManager()
+    manager.trainer = Trainer(holders)
+    manager.saliency_params = old_manager_params
+    failure = RuntimeError("second holder failed")
+
+    with (
+        patch.object(
+            base_holder,
+            "get_loader",
+            return_value=(None, None, "first-test"),
+        ),
+        patch.object(
+            base_holder,
+            "get_eval_pair",
+            return_value=("first-model", "first-test"),
+        ),
+        patch.object(
+            second_holder,
+            "get_loader",
+            return_value=(None, None, "second-test"),
+        ),
+        patch.object(
+            second_holder,
+            "get_eval_pair",
+            return_value=("second-model", "second-test"),
+        ),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=[_prepared_saliency_record(), failure],
+        ),
+        pytest.raises(type(failure)) as raised,
+    ):
+        manager.set_saliency_params({"SmoothGrad": {"nt_samples": 1}})
+
+    assert raised.value is failure
+    assert manager.saliency_params is old_manager_params
+    assert [holder.saliency_params for holder in holders] == old_holder_params
+    assert [holder.get_plans()[0].eval_record for holder in holders] == old_eval_records
+
+
+def test_set_empty_saliency_params_atomically_recomputes_metric_only(base_holder):
+    records = base_holder.get_plans()[:2]
+    old_params = {"SmoothGrad": {"nt_samples": 1}}
+    old_eval_records = [object(), object()]
+    new_eval_records = [object(), object()]
+    for record, old_eval_record in zip(records, old_eval_records, strict=True):
+        record.epoch = base_holder.option.epoch
+        record.eval_record = old_eval_record
+    base_holder.saliency_params = old_params
+
+    with (
+        patch.object(
+            base_holder, "get_loader", return_value=(None, "validation", None)
+        ),
+        patch.object(
+            base_holder,
+            "get_eval_pair",
+            return_value=("model", "validation"),
+        ),
+        patch.object(
+            Evaluator,
+            "evaluate",
+            side_effect=new_eval_records,
+        ) as evaluate,
+        patch.object(Evaluator, "evaluate_with_saliency") as evaluate_with_saliency,
+    ):
+        base_holder.set_saliency_params({})
+
+    assert base_holder.saliency_params == {}
+    assert [record.eval_record for record in records] == new_eval_records
+    assert [call.kwargs["evaluation_split"] for call in evaluate.call_args_list] == [
+        "validation",
+        "validation",
+    ]
+    evaluate_with_saliency.assert_not_called()
+
+
+def test_set_empty_saliency_params_propagates_oom_and_preserves_previous_state(
+    base_holder,
+):
+    records = base_holder.get_plans()[:2]
+    old_params = {"SmoothGrad": {"nt_samples": 1}}
+    old_eval_records = [object(), object()]
+    for record, old_eval_record in zip(records, old_eval_records, strict=True):
+        record.epoch = base_holder.option.epoch
+        record.eval_record = old_eval_record
+    base_holder.saliency_params = old_params
+    oom = torch.cuda.OutOfMemoryError("metric-only recomputation OOM")
+
+    with (
+        patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
+        patch.object(base_holder, "get_eval_pair", return_value=("model", "test")),
+        patch.object(Evaluator, "evaluate", side_effect=[object(), oom]),
+        pytest.raises(torch.cuda.OutOfMemoryError) as raised,
+    ):
+        base_holder.set_saliency_params({})
+
+    assert raised.value is oom
+    assert base_holder.saliency_params is old_params
+    assert [record.eval_record for record in records] == old_eval_records
 
 
 def test_set_saliency_params_does_not_open_test_split_before_training_finishes(

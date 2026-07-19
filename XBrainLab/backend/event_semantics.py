@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import mne
-
 _GDF_EVENT_SEMANTICS: dict[str, dict[str, str]] = {
     "1023": {
         "bucket": "not_used",
@@ -40,22 +38,17 @@ def mark_gdf_rejected_trials(data: Any) -> bool:
     annotations = getattr(mne_data, "annotations", None)
     if annotations is None or len(annotations) == 0:
         return False
-    descriptions = list(annotations.description)
-    changed = False
-    for index, description in enumerate(descriptions):
-        if _normalized_event_code(description) == "1023":
-            descriptions[index] = "BAD_rejected_trial"
-            changed = True
-    if not changed:
+    rename_map = {
+        str(description): "BAD_rejected_trial"
+        for description in annotations.description
+        if _normalized_event_code(description) == "1023"
+    }
+    if not rename_map:
         return False
-    mne_data.set_annotations(
-        mne.Annotations(
-            onset=annotations.onset,
-            duration=annotations.duration,
-            description=descriptions,
-            orig_time=annotations.orig_time,
-        ),
-    )
+    # Rename the already-attached annotations in place. Re-attaching an
+    # ``orig_time=None`` annotation snapshot makes MNE add ``first_time`` a
+    # second time for cropped/non-zero-first-sample recordings.
+    annotations.rename(rename_map)
     return True
 
 

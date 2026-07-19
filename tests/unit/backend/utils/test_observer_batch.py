@@ -1,5 +1,7 @@
 """Unit tests for Observable.batch_notifications context manager."""
 
+from threading import Event, Thread
+
 import pytest
 
 from XBrainLab.backend.utils.observer import Observable
@@ -91,3 +93,49 @@ class TestBatchNotifications:
         obs.subscribe("x", lambda: calls.append("ok"))
         obs.notify("x")
         assert calls == ["ok"]
+
+    def test_concurrent_batches_keep_independent_events_and_delivery_results(
+        self,
+        obs,
+    ):
+        """One command cannot join or consume another thread's notification batch."""
+        first_entered = Event()
+        release_first = Event()
+        calls: list[str] = []
+        generations: dict[str, int | None] = {}
+        deliveries: dict[str, bool | None] = {}
+
+        obs.subscribe("evt", calls.append)
+
+        def run_first() -> None:
+            with obs.batch_notifications():
+                generations["first"] = obs.notification_batch_generation
+                obs.notify("evt", "first")
+                first_entered.set()
+                assert release_first.wait(timeout=2.0)
+            generation = generations["first"]
+            assert generation is not None
+            deliveries["first"] = obs.consume_batched_delivery("evt", generation)
+
+        def run_second() -> None:
+            assert first_entered.wait(timeout=2.0)
+            with obs.batch_notifications():
+                generations["second"] = obs.notification_batch_generation
+                obs.notify("evt", "second")
+            generation = generations["second"]
+            assert generation is not None
+            deliveries["second"] = obs.consume_batched_delivery("evt", generation)
+            release_first.set()
+
+        first = Thread(target=run_first, name="observer-first")
+        second = Thread(target=run_second, name="observer-second")
+        first.start()
+        second.start()
+        first.join(timeout=2.0)
+        second.join(timeout=2.0)
+
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert generations["first"] != generations["second"]
+        assert calls == ["second", "first"]
+        assert deliveries == {"second": True, "first": True}

@@ -1,9 +1,10 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 import torch
-from torch.utils.data import DataLoader
+from captum.attr import NoiseTunnel, Saliency
+from torch.utils.data import DataLoader, TensorDataset
 
 from XBrainLab.backend.training.evaluator import Evaluator
 from XBrainLab.backend.training.record import EvalRecord
@@ -167,6 +168,32 @@ def test_eval_model(dataloader, y, full_y):
         ]
         for g, expected_shape in zip(called_gradient, expected_list, strict=False):
             assert called_gradient[g].shape == expected_shape
+        constructor_kwargs = eval_record_mock.call_args.kwargs
+        assert constructor_kwargs["saliency_method_parameters"] == {
+            "Gradient": {},
+            "Gradient * Input": {},
+            "SmoothGrad": {
+                "nt_samples": 1,
+                "nt_samples_batch_size": None,
+                "stdevs": 0.1,
+            },
+            "SmoothGrad_Squared": {
+                "nt_samples": 1,
+                "nt_samples_batch_size": None,
+                "stdevs": 0.1,
+            },
+            "VarGrad": {
+                "nt_samples": 1,
+                "nt_samples_batch_size": None,
+                "stdevs": 0.1,
+            },
+        }
+        assert set(constructor_kwargs["saliency_noise_seeds"]) == {
+            "SmoothGrad",
+            "SmoothGrad_Squared",
+            "VarGrad",
+        }
+        assert len(set(constructor_kwargs["saliency_noise_seeds"].values())) == 1
 
 
 def test_eval_model_respects_selected_saliency_methods(dataloader, y, full_y):
@@ -204,3 +231,111 @@ def test_eval_model_respects_selected_saliency_methods(dataloader, y, full_y):
         assert called_smoothgrad == {}
         assert called_smoothgrad_sq == {}
         assert called_vargrad == {}
+        constructor_kwargs = eval_record_mock.call_args.kwargs
+        assert constructor_kwargs["saliency_method_parameters"] == {
+            "Gradient": {},
+            "Gradient * Input": {},
+        }
+        assert constructor_kwargs["saliency_noise_seeds"] == {}
+
+
+def test_saliency_targets_each_sample_ground_truth_label(dataloader, y):
+    model = FakeModel()
+    saliency = MagicMock()
+    observed_targets: list[list[int]] = []
+
+    def attribute(inputs, *, target, **kwargs):
+        assert kwargs["abs"] is False
+        observed_targets.append(list(target))
+        return torch.ones_like(inputs)
+
+    saliency.attribute.side_effect = attribute
+    with patch(
+        "XBrainLab.backend.training.evaluator.Saliency",
+        return_value=saliency,
+    ):
+        Evaluator.evaluate_with_saliency(
+            model,
+            dataloader,
+            {"_methods": ["Gradient"]},
+        )
+
+    assert observed_targets == [
+        list(y[start : start + BS]) for start in range(0, len(y), BS)
+    ]
+
+
+class _SignedLinearModel(torch.nn.Module):
+    def forward(self, inputs):
+        score = inputs[:, 0] - (2 * inputs[:, 1]) + (0.5 * inputs[:, 2])
+        return torch.stack((score, -score), dim=1)
+
+
+class _SignedQuadraticModel(torch.nn.Module):
+    def forward(self, inputs):
+        score = (inputs * inputs).sum(dim=1)
+        return torch.stack((score, -score), dim=1)
+
+
+def _single_sample_loader(inputs: torch.Tensor) -> DataLoader:
+    generator = torch.Generator().manual_seed(99)
+    return DataLoader(
+        TensorDataset(inputs, torch.tensor([0])),
+        batch_size=1,
+        generator=generator,
+    )
+
+
+def test_noise_tunnel_saliency_preserves_signed_base_gradient():
+    inputs = torch.tensor([[0.2, -0.3, 0.4]], dtype=torch.float32)
+    record = Evaluator.evaluate_with_saliency(
+        _SignedLinearModel(),
+        _single_sample_loader(inputs),
+        {
+            "_methods": ["SmoothGrad", "SmoothGrad_Squared"],
+            "SmoothGrad": {"nt_samples": 4, "stdevs": 0.2},
+            "SmoothGrad_Squared": {"nt_samples": 4, "stdevs": 0.2},
+        },
+    )
+
+    np.testing.assert_allclose(
+        record.smoothgrad[0],
+        np.array([[1.0, -2.0, 0.5]], dtype=np.float32),
+    )
+    np.testing.assert_allclose(
+        record.smoothgrad_sq[0],
+        np.array([[1.0, 4.0, 0.25]], dtype=np.float32),
+    )
+
+
+def test_vargrad_uses_variance_of_signed_gradients():
+    inputs = torch.tensor([[0.0, 0.2, -0.1]], dtype=torch.float32)
+    params = {"nt_samples": 64, "stdevs": 0.5}
+
+    torch.manual_seed(1234)
+    record = Evaluator.evaluate_with_saliency(
+        _SignedQuadraticModel(),
+        _single_sample_loader(inputs),
+        {"_methods": ["VarGrad"], "VarGrad": params},
+    )
+
+    torch.manual_seed(1234)
+    expected_signed = NoiseTunnel(Saliency(_SignedQuadraticModel())).attribute(
+        inputs.clone().requires_grad_(True),
+        target=[0],
+        nt_type="vargrad",
+        abs=False,
+        **params,
+    )
+    torch.manual_seed(1234)
+    absolute_gradient_variance = NoiseTunnel(
+        Saliency(_SignedQuadraticModel())
+    ).attribute(
+        inputs.clone().requires_grad_(True),
+        target=[0],
+        nt_type="vargrad",
+        **params,
+    )
+
+    np.testing.assert_allclose(record.vargrad[0], expected_signed.numpy())
+    assert not np.allclose(record.vargrad[0], absolute_gradient_variance.numpy())

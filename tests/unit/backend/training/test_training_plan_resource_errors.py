@@ -51,4 +51,37 @@ def test_training_plan_marks_cuda_oom_as_failed_and_releases_cache(monkeypatch) 
     assert holder.status == "Failed: CUDA out of memory"
     assert holder.error is not None
     assert "CUDA out of memory during training" in holder.error
-    assert calls
+    assert calls == ["empty"]
+
+
+def test_training_plan_preserves_oom_when_cuda_cache_release_fails(
+    monkeypatch,
+) -> None:
+    holder = cast(Any, TrainingPlanHolder.__new__(TrainingPlanHolder))
+    holder.option = SimpleNamespace(repeat_num=1)
+    holder.train_record_list = [_Record()]
+    holder.status = Status.PENDING.value
+    holder.error = None
+
+    def raise_oom(_record) -> None:
+        raise RuntimeError("CUDA out of memory. Tried to allocate 1.00 GiB")
+
+    def fail_cache_release() -> None:
+        raise RuntimeError("CUDA runtime is already shutting down")
+
+    holder.train_one_repeat = raise_oom
+    holder.is_finished = lambda: False
+    monkeypatch.setattr(
+        "XBrainLab.backend.training.training_plan.torch.cuda.is_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.training.training_plan.torch.cuda.empty_cache",
+        fail_cache_release,
+    )
+
+    holder.train()
+
+    assert holder.status == "Failed: CUDA out of memory"
+    assert holder.error is not None
+    assert "CUDA out of memory during training" in holder.error

@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.tools.base import BaseTool
 
 LEGACY_COMPATIBILITY_TOOLS: dict[str, str] = {
@@ -19,46 +20,29 @@ LEGACY_COMPATIBILITY_TOOLS: dict[str, str] = {
     ),
 }
 
-TOOL_TAXONOMY: dict[str, str] = {
-    "list_files": "Discovery",
-    "scan_source": "Data Interpretation",
-    "preview_interpretation": "Data Interpretation",
-    "validate_interpretation": "Data Interpretation",
-    "apply_interpretation": "Data Interpretation",
-    "save_interpretation_recipe": "Data Interpretation",
-    "reload_interpretation_recipe": "Data Interpretation",
-    "load_data": "Legacy Compatibility",
-    "attach_labels": "Legacy Compatibility",
-    "apply_standard_preprocess": "Data Transform",
-    "apply_bandpass_filter": "Data Transform",
-    "apply_notch_filter": "Data Transform",
-    "resample_data": "Data Transform",
-    "normalize_data": "Data Transform",
-    "set_reference": "Data Transform",
-    "select_channels": "Data Transform",
-    "set_montage": "Metadata Resolution",
-    "epoch_data": "Experiment Setup",
-    "generate_dataset": "Experiment Setup",
-    "set_model": "Experiment Setup",
-    "configure_training": "Experiment Setup",
-    "start_training": "Execution",
-    "evaluate": "Execution",
-    "visualize": "Execution",
-    "saliency": "Execution",
-    "clear_dataset": "Lifecycle",
-    "query_state": "Lifecycle",
-    "get_dataset_info": "Lifecycle",
-    "switch_panel": "UI Routing",
-}
+TOOL_TAXONOMY: dict[str, str] = AGENT_ACTION_CONTRACTS.taxonomy()
 
 
-def tool_contract_for_llm(tool: BaseTool) -> dict[str, Any]:
+def tool_contract_for_llm(
+    tool: BaseTool,
+    *,
+    use_backend_defaults: bool = False,
+) -> dict[str, Any]:
     """Return a compact, schema-constrained tool definition for the LLM."""
+    parameters = (
+        {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
+        if use_backend_defaults
+        else strict_prompt_parameters(tool.parameters)
+    )
     payload: dict[str, Any] = {
         "name": tool.name,
         "taxonomy": TOOL_TAXONOMY.get(tool.name, "Workflow"),
         "description": tool.description,
-        "parameters": strict_prompt_parameters(tool.parameters),
+        "parameters": parameters,
     }
     if tool.name in LEGACY_COMPATIBILITY_TOOLS:
         payload["legacy_compatibility"] = True

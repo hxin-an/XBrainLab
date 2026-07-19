@@ -2,6 +2,7 @@ from math import ceil
 from unittest.mock import patch
 
 from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 
@@ -103,7 +104,7 @@ class TestMessageBubble:
 
         # Resize Larger: 1000
         bubble.adjust_width(1000)
-        assert bubble_frame.maximumWidth() == 880  # 88% of 1000
+        assert bubble_frame.maximumWidth() == 720
 
         # Resize Smaller: 200
         bubble.adjust_width(200)
@@ -153,3 +154,28 @@ class TestMessageBubble:
         layout = document.documentLayout()
         assert layout is not None
         assert text_edit.height() >= ceil(layout.documentSize().height()) + 8
+
+    def test_visible_streaming_update_reflows_bubble_height(self, qtbot):
+        container = QWidget()
+        container.resize(280, 420)
+        layout = QVBoxLayout(container)
+        bubble = MessageBubble("Starting.", is_user=False)
+        layout.addWidget(bubble)
+        qtbot.addWidget(container)
+        container.show()
+        qtbot.wait(20)
+        initial_height = bubble.height()
+
+        bubble.set_text(
+            "The assistant is checking the selected EEG files.\n\n"
+            "- The metadata was read successfully.\n"
+            "- Label alignment still needs a decision.\n"
+            "- Open Match Labels to continue without losing the current import."
+        )
+        qtbot.wait(30)
+
+        assert bubble.height() > initial_height
+        assert bubble.text_edit is not None
+        document = bubble.text_edit.document()
+        assert document is not None
+        assert bubble.text_edit.height() >= ceil(document.size().height()) + 8

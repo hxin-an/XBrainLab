@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -20,6 +21,13 @@ from XBrainLab.llm.tools.real.preprocess_real import (
     RealSetMontageTool,
 )
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
+
+
+def _successful_tool_result(result) -> ToolResult:
+    assert isinstance(result, ToolResult)
+    assert result.ok is True, result.message
+    return result
 
 
 def _query_result(study, query: str, *, include_objects: bool = False):
@@ -72,7 +80,7 @@ class TestAllRealTools:
             pytest.skip("Test data A01T.gdf not found")
 
         load_tool = RealLoadDataTool()
-        load_tool.execute(study, paths=[GDF_FILE])
+        _successful_tool_result(load_tool.execute(study, paths=[GDF_FILE]))
         assert _state(study)["raw"]["count"] == 1
         return study
 
@@ -82,16 +90,24 @@ class TestAllRealTools:
         """Test RealListFilesTool."""
         tool = RealListFilesTool()
         # List the data directory itself
-        res = tool.execute(study, directory=TEST_DATA_DIR, pattern="*.gdf")
-        assert "A01T.gdf" in res
-        assert "Error" not in res
+        result = _successful_tool_result(
+            tool.execute(study, directory=TEST_DATA_DIR, pattern="*.gdf")
+        )
+        expected_files = sorted(path.name for path in Path(TEST_DATA_DIR).glob("*.gdf"))
+        assert result.message == f"Found {len(expected_files)} file(s)."
+        assert result.payload == expected_files
 
     def test_get_dataset_info_tool(self, loaded_study):
         """Test RealGetDatasetInfoTool."""
         tool = RealGetDatasetInfoTool()
-        res = tool.execute(loaded_study)
-        assert "Loaded 1 files" in res
-        assert "A01T.gdf" in res
+        result = _successful_tool_result(tool.execute(loaded_study))
+        raw_state = _state(loaded_study)["raw"]
+        assert result.message == (
+            "Loaded 1 files:\n"
+            "A01T.gdf\n"
+            f"Events: {raw_state['event_total']} "
+            f"(Unique: {len(raw_state['unique_events'])})"
+        )
 
     def test_attach_labels_tool(self, loaded_study):
         """Attach the real A01T class labels to its 769-772 trial markers."""
@@ -111,8 +127,8 @@ class TestAllRealTools:
         tool = RealAttachLabelsTool()
         mapping = {"A01T.gdf": LABEL_FILE}
 
-        res = tool.execute(loaded_study, mapping=mapping)
-        assert "Attached labels to 1 files" in res
+        result = _successful_tool_result(tool.execute(loaded_study, mapping=mapping))
+        assert result.message == "Attached labels to 1 file(s)."
         result = _query_result(
             loaded_study,
             "data_lists",
@@ -129,8 +145,8 @@ class TestAllRealTools:
         """Test RealClearDatasetTool."""
         assert _state(loaded_study)["raw"]["count"] == 1
         tool = RealClearDatasetTool()
-        res = tool.execute(loaded_study)
-        assert "Dataset cleared" in res
+        result = _successful_tool_result(tool.execute(loaded_study, confirmed=True))
+        assert result.message == "Session reset."
         assert _state(loaded_study)["raw"]["count"] == 0
 
     # --- Preprocess Tools ---
@@ -138,8 +154,8 @@ class TestAllRealTools:
     def test_notch_filter_tool(self, loaded_study):
         """Test RealNotchFilterTool."""
         tool = RealNotchFilterTool()
-        res = tool.execute(loaded_study, freq=50)
-        assert "Applied Notch Filter (50 Hz)" in res
+        result = _successful_tool_result(tool.execute(loaded_study, freq=50))
+        assert result.message == "Applied notch filter (50.0 Hz)."
 
         hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
         assert any("Notch" in h for h in hist)
@@ -147,8 +163,8 @@ class TestAllRealTools:
     def test_resample_tool(self, loaded_study):
         """Test RealResampleTool."""
         tool = RealResampleTool()
-        res = tool.execute(loaded_study, rate=100)
-        assert "Resampled data to 100 Hz" in res
+        result = _successful_tool_result(tool.execute(loaded_study, rate=100))
+        assert result.message == "Resampled data to 100 Hz."
 
         data = _first_preprocessed_data(loaded_study)
         assert data.get_mne().info["sfreq"] == 100
@@ -158,9 +174,8 @@ class TestAllRealTools:
         tool = RealChannelSelectionTool()
         channels = _state(loaded_study)["preprocessed"]["channel_names"][:2]
         assert len(channels) == 2
-        res = tool.execute(loaded_study, channels=channels)
-        assert "Selected 2 channels" in res
-        assert "duplicate-channel ambiguity" not in res
+        result = _successful_tool_result(tool.execute(loaded_study, channels=channels))
+        assert result.message == "Selected 2 channel(s)."
 
         data = _first_preprocessed_data(loaded_study)
         assert len(data.get_mne().ch_names) == 2
@@ -168,8 +183,8 @@ class TestAllRealTools:
     def test_rereference_tool(self, loaded_study):
         """Test RealRereferenceTool (CAR)."""
         tool = RealRereferenceTool()
-        res = tool.execute(loaded_study, method="average")
-        assert "Applied reference: average" in res
+        result = _successful_tool_result(tool.execute(loaded_study, method="average"))
+        assert result.message == "Applied reference: average."
 
         hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
         assert any("reference" in h.lower() or "average" in h.lower() for h in hist)
@@ -177,21 +192,26 @@ class TestAllRealTools:
     def test_normalize_tool(self, loaded_study):
         """Test RealNormalizeTool."""
         tool = RealNormalizeTool()
-        res = tool.execute(loaded_study, method="z-score")
-        assert "Normalized data" in res
+        result = _successful_tool_result(tool.execute(loaded_study, method="z-score"))
+        assert result.message == (
+            "Normalization using z-score is queued for per-epoch application "
+            "during epoch creation."
+        )
 
         hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
-        assert any("normalization" in h for h in hist)
+        assert any("normalization requested" in h for h in hist)
 
     def test_set_montage_tool(self, loaded_study):
         """Test RealSetMontageTool."""
         tool = RealSetMontageTool()
         # 'standard_1020' or 'china_1020' are supported?
         # Using 'standard_1020' is safest for MNE.
-        res = tool.execute(loaded_study, montage_name="standard_1020")
+        result = tool.execute(loaded_study, montage_name="standard_1020")
 
-        assert "confirm_montage 'standard_1020'" in res
-        assert "duplicate-channel ambiguity" not in res
+        assert isinstance(result, UiRequest)
+        assert result.kind is UiRequestKind.CONFIRM_MONTAGE
+        assert result.params["montage_name"] == "standard_1020"
+        assert "duplicate-channel ambiguity" not in result.params["warning"]
         assert _state(loaded_study)["raw"]["count"] == 1
 
     # --- UI Tools ---
@@ -199,6 +219,7 @@ class TestAllRealTools:
     def test_switch_panel_tool(self, study):
         """Test RealSwitchPanelTool."""
         tool = RealSwitchPanelTool()
-        res = tool.execute(study, panel_name="Training", view_mode="advanced")
-        assert "Request: Switch UI to 'Training'" in res
-        assert "(View: advanced)" in res
+        result = tool.execute(study, panel_name="Training", view_mode="advanced")
+        assert isinstance(result, UiRequest)
+        assert result.kind is UiRequestKind.SWITCH_PANEL
+        assert result.params == {"panel": "Training", "view_mode": "advanced"}

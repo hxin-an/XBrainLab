@@ -41,6 +41,9 @@ agent 不能把未驗證的修復直接交給使用者手測。任何「可以�
   multi-dataset gate，除非本輪明確不是產品 handoff。
 - subagent reviewer 只能當 gate input；主 agent 必須讀 diff、看 artifact、跑驗證後自己判定。
 - 若 gate 未完成，回報語意只能是 checkpoint / blocked，不能說 handoff-ready。
+- 長對話的 worker 預設使用 bounded prompt，不繼承完整 conversation context。並行前先確認
+  C 槽與 `~/.codex/sessions` 有足夠空間；大型下載、artifact 與 benchmark 暫存放 D 槽。
+- native/Qt/PyTorch 測試使用 timeout 與 `prlimit --core=0`，避免 WSL crash dump 吃滿 C 槽。
 
 目前主線是 product delivery：
 

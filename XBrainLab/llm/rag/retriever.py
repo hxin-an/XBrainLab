@@ -4,17 +4,20 @@ Provides lazy initialization, auto-indexing from bundled gold-set data,
 and semantic similarity search against a Qdrant vector store.
 Supports **hybrid retrieval** — a weighted combination of dense
 (semantic) similarity and sparse (BM25 keyword) scoring — for improved
-exact-match recall without sacrificing semantic coverage.
-
-Embedding queries are executed in a background thread to avoid blocking
-the Qt event loop.
+exact-match recall without sacrificing semantic coverage. The retriever
+is synchronous; GUI callers must run it through the owned RAG lifecycle.
 """
 
 from __future__ import annotations
 
+import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from contextlib import suppress
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from XBrainLab.llm.agent.intent import infer_user_intent
 
 if TYPE_CHECKING:
     from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -23,9 +26,23 @@ if TYPE_CHECKING:
 
 from .bm25 import BM25Index
 from .config import RAGConfig
-from .example_policy import is_primary_workflow_example
+from .example_policy import (
+    prompt_tool_call_from_metadata,
+)
 
 logger = logging.getLogger(__name__)
+
+_NON_ACTION_INTENTS = frozenset({"no_tool", "ask_clarification"})
+
+
+@dataclass(frozen=True)
+class _RetrievalLease:
+    """Snapshot of resources used by one retrieval operation."""
+
+    client: QdrantClient
+    embeddings: HuggingFaceEmbeddings
+    bm25_index: BM25Index | None
+    hybrid_alpha: float
 
 
 class RAGRetriever:
@@ -63,77 +80,157 @@ class RAGRetriever:
         self.vectorstore: Qdrant | None = None
         self.embeddings: HuggingFaceEmbeddings | None = None
         self.is_initialized = False
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag")
+        self._lifecycle = threading.Condition(threading.Lock())
+        self._initializing = False
+        self._closed = False
+        self._active_operations = 0
+        self._retired_clients: list[QdrantClient] = []
         self.bm25_index: BM25Index | None = None
         self.hybrid_alpha: float = (
             hybrid_alpha if hybrid_alpha is not None else self.DEFAULT_HYBRID_ALPHA
         )
 
-    def initialize(self):
+    def initialize(self) -> None:
         """Lazily initializes RAG components.
 
         Imports heavy dependencies, sets up the embedding model and
         Qdrant client, and auto-indexes from the bundled gold-set if
         the collection does not yet exist.  Subsequent calls are no-ops.
         """
-        if self.is_initialized:
+        if not self._begin_initialize():
             return
 
+        local_client: QdrantClient | None = None
+        local_embeddings: HuggingFaceEmbeddings | None = None
+        local_vectorstore: Qdrant | None = None
+        local_bm25_index: BM25Index | None = None
         try:
             logger.info("Initializing RAGRetriever...")
-            from langchain_community.embeddings import HuggingFaceEmbeddings
-            from langchain_community.vectorstores import Qdrant
-            from qdrant_client import QdrantClient
+            local_embeddings = self._create_embeddings()
+            local_client = self._create_client()
 
-            self.embeddings = HuggingFaceEmbeddings(
-                model_name=RAGConfig.EMBEDDING_MODEL,
-            )
-
-            # Initialize Client explicitly
-            self.client = QdrantClient(path=RAGConfig.get_storage_path())
-
-            # Auto-initialize if collection doesn't exist
-            if not self._collection_exists():
+            if not self._collection_exists(local_client):
                 logger.info("RAG collection not found, auto-initializing...")
-                self._auto_initialize()
+                local_vectorstore = self._auto_initialize(
+                    client=local_client,
+                    embeddings=local_embeddings,
+                    publish=False,
+                )
 
-            # Load existing collection
-            self.vectorstore = Qdrant(
-                client=self.client,
-                collection_name=RAGConfig.COLLECTION_NAME,
-                embeddings=self.embeddings,
+            local_vectorstore = local_vectorstore or self._create_vectorstore(
+                local_client,
+                local_embeddings,
             )
+            local_bm25_index = self._build_bm25_index(publish=False)
 
-            # Build BM25 index for hybrid retrieval
-            self._build_bm25_index()
-
-            self.is_initialized = True
-            logger.info(
-                "RAGRetriever initialized (hybrid_alpha=%.2f).",
-                self.hybrid_alpha,
-            )
         except Exception as e:
             logger.error("Failed to init RAGRetriever: %s", e)
-            self.vectorstore = None
-            self.client = None
+            self._finish_initialize_failed()
+            if local_client is not None:
+                self._close_client(local_client)
+            return
 
-    def _collection_exists(self) -> bool:
+        with self._lifecycle:
+            if self._closed:
+                self._initializing = False
+                self._lifecycle.notify_all()
+                if local_client is not None:
+                    self._close_client(local_client)
+                return
+
+            self.embeddings = local_embeddings
+            self.client = local_client
+            self.vectorstore = local_vectorstore
+            self.bm25_index = local_bm25_index
+            self.is_initialized = True
+            self._initializing = False
+            self._lifecycle.notify_all()
+            local_client = None
+
+        logger.info(
+            "RAGRetriever initialized (hybrid_alpha=%.2f).",
+            self.hybrid_alpha,
+        )
+
+    def _begin_initialize(self) -> bool:
+        """Reserve the single initializer slot unless closed or ready."""
+        with self._lifecycle:
+            if self._closed or self.is_initialized:
+                return False
+            while self._initializing:
+                self._lifecycle.wait()
+                if self._closed or self.is_initialized:
+                    return False
+            self._initializing = True
+            return True
+
+    def _finish_initialize_failed(self) -> None:
+        with self._lifecycle:
+            if not self._closed:
+                self.client = None
+                self.vectorstore = None
+                self.embeddings = None
+                self.bm25_index = None
+                self.is_initialized = False
+            self._initializing = False
+            self._lifecycle.notify_all()
+
+    @staticmethod
+    def _close_client(client: QdrantClient) -> None:
+        close = getattr(client, "close", None)
+        if callable(close):
+            with suppress(Exception):
+                close()
+
+    @staticmethod
+    def _create_embeddings() -> HuggingFaceEmbeddings:
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+
+        return HuggingFaceEmbeddings(model_name=RAGConfig.EMBEDDING_MODEL)
+
+    @staticmethod
+    def _create_client() -> QdrantClient:
+        from qdrant_client import QdrantClient
+
+        return QdrantClient(path=RAGConfig.get_storage_path())
+
+    @staticmethod
+    def _create_vectorstore(
+        client: QdrantClient,
+        embeddings: HuggingFaceEmbeddings,
+    ) -> Qdrant:
+        from langchain_community.vectorstores import Qdrant
+
+        return Qdrant(
+            client=client,
+            collection_name=RAGConfig.COLLECTION_NAME,
+            embeddings=embeddings,
+        )
+
+    def _collection_exists(self, client: QdrantClient | None = None) -> bool:
         """Checks whether the RAG collection exists in Qdrant.
 
         Returns:
             ``True`` if the collection is present, ``False`` otherwise.
 
         """
-        if not self.client:
+        target_client = client or self.client
+        if not target_client:
             return False
         try:
-            cols = self.client.get_collections().collections
+            cols = target_client.get_collections().collections
             return any(c.name == RAGConfig.COLLECTION_NAME for c in cols)
         except Exception:
             logger.debug("Failed to check Qdrant collection existence", exc_info=True)
             return False
 
-    def _auto_initialize(self):
+    def _auto_initialize(
+        self,
+        client: QdrantClient | None = None,
+        embeddings: HuggingFaceEmbeddings | None = None,
+        *,
+        publish: bool = True,
+    ) -> Qdrant | None:
         """Auto-indexes from the bundled ``gold_set.json`` via RAGIndexer.
 
         Looks for the gold-set file at ``rag/data/gold_set.json`` and
@@ -141,37 +238,42 @@ class RAGRetriever:
         """
         from pathlib import Path
 
-        from langchain_community.vectorstores import Qdrant
-
         from .indexer import RAGIndexer
 
         gold_set_path = Path(__file__).parent / "data" / "gold_set.json"
         if not gold_set_path.exists():
             logger.warning("Gold set not found: %s", gold_set_path)
-            return
+            return None
 
+        target_client = client or self.client
+        target_embeddings = embeddings or self.embeddings
+        if target_client is None or target_embeddings is None:
+            logger.warning("RAG auto-init skipped: client or embeddings missing.")
+            return None
         try:
             logger.info("Delegating auto-initialization to RAGIndexer...")
             indexer = RAGIndexer(
-                client=self.client,
-                embeddings=self.embeddings,
+                client=target_client,
+                embeddings=target_embeddings,
             )
             try:
                 docs = indexer.load_gold_set(str(gold_set_path))
                 if docs:
                     indexer.index_data(docs)
-                    # Re-initialize vectorstore after indexing
-                    self.vectorstore = Qdrant(
-                        client=self.client,
-                        collection_name=RAGConfig.COLLECTION_NAME,
-                        embeddings=self.embeddings,
+                    vectorstore = self._create_vectorstore(
+                        target_client,
+                        target_embeddings,
                     )
+                    if publish:
+                        self.vectorstore = vectorstore
+                    return vectorstore
             finally:
                 indexer.close()
         except Exception as e:
             logger.error("RAG auto-init failed: %s", e)
+        return None
 
-    def _build_bm25_index(self):
+    def _build_bm25_index(self, *, publish: bool = True) -> BM25Index | None:
         """Builds the in-memory BM25 index from the bundled gold-set.
 
         Falls back gracefully if the gold-set file is missing — hybrid
@@ -182,23 +284,78 @@ class RAGRetriever:
         gold_set_path = Path(__file__).parent / "data" / "gold_set.json"
         if not gold_set_path.exists():
             logger.warning("BM25: gold set not found — hybrid disabled.")
-            return
+            return None
 
         try:
             idx = BM25Index()
             idx.build_from_json(gold_set_path)
-            self.bm25_index = idx
+            if publish:
+                self.bm25_index = idx
             logger.info("BM25 index ready (%d docs).", idx.doc_count)
         except Exception as e:
             logger.error("BM25 index build failed: %s", e)
+            return None
+        else:
+            return idx
 
-    def close(self):
+    def close(self, *, wait: bool = False) -> None:
         """Closes the Qdrant client connection and releases resources."""
-        if self.client:
-            self.client.close()
-        self._executor.shutdown(wait=False)
+        close_now: QdrantClient | None = None
+        with self._lifecycle:
+            self._closed = True
+            client = self.client
+            self.client = None
+            self.vectorstore = None
+            self.embeddings = None
+            self.bm25_index = None
+            self.is_initialized = False
+            self._lifecycle.notify_all()
+            if client is not None:
+                if self._active_operations > 0:
+                    self._retired_clients.append(client)
+                else:
+                    close_now = client
 
-    def get_similar_examples(self, query: str, k: int = 3) -> str:
+        if close_now is not None:
+            self._close_client(close_now)
+        _ = wait
+
+    def _acquire_retrieval_lease(self) -> _RetrievalLease | None:
+        """Fence-aware snapshot for one retrieval without holding the lock."""
+        with self._lifecycle:
+            if self._closed or self.client is None or self.embeddings is None:
+                return None
+            self._active_operations += 1
+            return _RetrievalLease(
+                client=self.client,
+                embeddings=self.embeddings,
+                bm25_index=self.bm25_index,
+                hybrid_alpha=self.hybrid_alpha,
+            )
+
+    def _release_retrieval_lease(self) -> None:
+        close_later: list[QdrantClient] = []
+        with self._lifecycle:
+            if self._active_operations > 0:
+                self._active_operations -= 1
+            if self._closed and self._active_operations == 0:
+                close_later = list(self._retired_clients)
+                self._retired_clients.clear()
+            self._lifecycle.notify_all()
+        for client in close_later:
+            self._close_client(client)
+
+    def _is_closed(self) -> bool:
+        with self._lifecycle:
+            return self._closed
+
+    def get_similar_examples(
+        self,
+        query: str,
+        k: int = 3,
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> str:
         """Retrieves similar gold-set examples via hybrid ranking.
 
         Combines dense (Qdrant cosine) and sparse (BM25 keyword)
@@ -206,12 +363,14 @@ class RAGRetriever:
         ``self.hybrid_alpha``.  When BM25 is unavailable, falls back
         to pure semantic search.
 
-        Embedding is performed in a background thread to avoid
-        blocking the Qt main loop.
+        This method performs embedding and vector search synchronously. The
+        controller uses ``RAGRetrieverLifecycle`` to run it off the GUI thread.
 
         Args:
             query: The user's input text to find similar examples for.
             k: Maximum number of examples to retrieve.
+            allowed_tool_names: Exact request-scoped tools whose examples may
+                be injected. ``None`` keeps standalone retrieval behavior.
 
         Returns:
             A formatted string of similar examples suitable for prompt
@@ -219,22 +378,27 @@ class RAGRetriever:
             matches are found.
 
         """
-        if not self.client or not self.embeddings:
+        if infer_user_intent(query) in _NON_ACTION_INTENTS:
             return ""
-
+        lease = self._acquire_retrieval_lease()
+        if lease is None:
+            return ""
         try:
             # ── 1. Dense (semantic) retrieval ──
-            future = self._executor.submit(self.embeddings.embed_query, query)
-            query_vector = future.result(timeout=30)
+            query_vector = lease.embeddings.embed_query(query)
+            if self._is_closed():
+                return ""
 
             # Fetch more candidates for re-ranking
             dense_k = max(k * 3, 10)
-            search_result = self.client.query_points(
+            search_result = lease.client.query_points(
                 collection_name=RAGConfig.COLLECTION_NAME,
                 query=query_vector,
                 limit=dense_k,
                 with_payload=True,
             ).points
+            if self._is_closed():
+                return ""
 
             if not search_result:
                 return ""
@@ -248,7 +412,10 @@ class RAGRetriever:
             candidates: dict[str, dict] = {}
             for p in search_result:
                 payload = p.payload or {}
-                content = payload.get("page_content", "") or payload.get("input", "")
+                content = payload.get("page_content", "") or payload.get(
+                    "input",
+                    "",
+                )
                 doc_id = str(p.id)
                 norm_dense = (p.score - s_min) / s_range
                 candidates[doc_id] = {
@@ -260,12 +427,17 @@ class RAGRetriever:
             candidates = {
                 doc_id: candidate
                 for doc_id, candidate in candidates.items()
-                if is_primary_workflow_example(candidate.get("metadata", {}))
+                if self._example_is_allowed(
+                    candidate.get("metadata", {}),
+                    allowed_tool_names=allowed_tool_names,
+                )
             }
 
             # ── 3. BM25 sparse scoring (if available) ──
-            if self.bm25_index is not None:
-                bm25_results = self.bm25_index.query(query, k=dense_k)
+            if lease.bm25_index is not None:
+                bm25_results = lease.bm25_index.query(query, k=dense_k)
+                if self._is_closed():
+                    return ""
                 if bm25_results:
                     bm25_max = bm25_results[0][0]  # already sorted desc
                     for score, bm_id, bm_text, bm_meta in bm25_results:
@@ -287,29 +459,52 @@ class RAGRetriever:
                             }
 
             # ── 4. Hybrid interpolation ──
-            alpha = self.hybrid_alpha
+            alpha = lease.hybrid_alpha
             ranked: list[tuple[float, str, dict]] = []
             for c in candidates.values():
-                if not is_primary_workflow_example(c.get("metadata", {})):
+                if not self._example_is_allowed(
+                    c.get("metadata", {}),
+                    allowed_tool_names=allowed_tool_names,
+                ):
                     continue
                 hybrid = alpha * c["dense_score"] + (1 - alpha) * c["bm25_score"]
                 ranked.append((hybrid, c["content"], c["metadata"]))
 
             ranked.sort(key=lambda x: x[0], reverse=True)
-            if not ranked:
+            if not ranked or self._is_closed():
                 return ""
 
             # ── 5. Format top-k ──
             result_str = "\n### Similar Examples:\n"
             for i, (_score, content, meta) in enumerate(ranked[:k], 1):
-                tool_calls_json = (
-                    meta.get("tool_calls", "[]") if isinstance(meta, dict) else "[]"
-                )
+                prompt_call = prompt_tool_call_from_metadata(meta)
+                if prompt_call is None:
+                    continue
                 result_str += f"\nExample {i}:\n"
                 result_str += f'User: "{content}"\n'
-                result_str += f"Assistant: ```json\n{tool_calls_json}\n```\n"
+                result_str += "Assistant:\n"
+                result_str += json.dumps(
+                    prompt_call,
+                    ensure_ascii=False,
+                )
+                result_str += "\n"
         except Exception as e:
             logger.error("Hybrid retrieval failed: %s", e)
             return ""
         else:
             return result_str
+        finally:
+            self._release_retrieval_lease()
+
+    @staticmethod
+    def _example_is_allowed(
+        metadata: dict,
+        *,
+        allowed_tool_names: frozenset[str] | None,
+    ) -> bool:
+        prompt_call = prompt_tool_call_from_metadata(metadata)
+        if prompt_call is None:
+            return False
+        if allowed_tool_names is None:
+            return True
+        return prompt_call["tool_name"] in allowed_tool_names

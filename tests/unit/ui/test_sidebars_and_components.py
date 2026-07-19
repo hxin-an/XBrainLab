@@ -7,7 +7,12 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QWidget
+from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QMessageBox, QWidget
+
+from XBrainLab.ui.application_capabilities import (
+    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+)
+from XBrainLab.ui.interaction_outcome import InteractionStatus
 
 
 def _command_result(**diagnostics):
@@ -18,6 +23,21 @@ def _command_result(**diagnostics):
         failed=False,
         message="ok",
         diagnostics=diagnostics,
+    )
+
+
+def _usable_epoch_dialog_context(
+    epoch_handoff: dict[str, Any] | None = None,
+):
+    from XBrainLab.backend.application import CommandCapability
+    from XBrainLab.backend.application.epoch_context import EpochDialogContext
+
+    return EpochDialogContext(
+        capability=CommandCapability(command_name="create_epoch", enabled=True),
+        epoch_handoff=dict(epoch_handoff or {}),
+        publication_generation=1,
+        usable=True,
+        unavailable_reason=None,
     )
 
 
@@ -34,6 +54,15 @@ def _split_config_payload() -> dict[str, object]:
     }
 
 
+def _usable_training_epoch_data() -> MagicMock:
+    epoch_data = MagicMock()
+    epoch_data.epoch_count = 6
+    epoch_data.event_id = {"left": 0, "right": 1}
+    epoch_data.data = SimpleNamespace(shape=(6, 4, 33))
+    epoch_data.sfreq = 128.0
+    return epoch_data
+
+
 def _make_panel_mock():
     p = MagicMock()
     p.controller = MagicMock()
@@ -45,6 +74,15 @@ def _make_panel_mock():
     p.controller.has_data.return_value = True
     p.controller.is_epoched.return_value = False
     return p
+
+
+def _running_trainer():
+    """Return a contract-valid trainer whose liveness reads as active."""
+    from XBrainLab.backend.training import Trainer
+
+    trainer = Trainer([])
+    cast(Any, trainer).is_running = MagicMock(return_value=True)
+    return trainer
 
 
 # ============ PreprocessSidebar ============
@@ -120,6 +158,29 @@ class TestPreprocessSidebar:
         sidebar.update_sidebar()
 
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
+
+    def test_update_sidebar_reads_one_atomic_capability_publication(self, sidebar):
+        from XBrainLab.backend.application import get_application_service
+        from XBrainLab.backend.study import Study
+
+        publication = get_application_service(Study()).get_view_publication()
+
+        class Runtime:
+            def __init__(self) -> None:
+                self.publication_reads = 0
+
+            def get_view_publication(self):
+                self.publication_reads += 1
+                return publication
+
+        runtime = Runtime()
+        with patch(
+            "XBrainLab.ui.application_capabilities.application_ui_runtime",
+            return_value=runtime,
+        ):
+            sidebar.update_sidebar()
+
+        assert runtime.publication_reads == 1
 
     def test_check_lock_unlocked(self, sidebar):
         # check_lock returns False when NOT epoched (action is allowed)
@@ -326,6 +387,40 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.apply_filter.assert_not_called()
         mock_info.assert_not_called()
 
+    def test_open_filtering_binds_dialog_to_reviewed_publication(self, sidebar):
+        from XBrainLab.backend.application import CommandCapability
+        from XBrainLab.ui.application_capabilities import CommandReviewContext
+
+        review_context = CommandReviewContext(
+            capability=CommandCapability(
+                command_name="preprocess",
+                enabled=True,
+            ),
+            publication_generation=61,
+        )
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_command_review_context",
+                return_value=review_context,
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as dialog,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
+                return_value=False,
+            ) as execute_async,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as execute,
+        ):
+            dialog.return_value.exec.return_value = True
+            dialog.return_value.get_params.return_value = (1.0, 40.0, [50.0])
+
+            sidebar.open_filtering()
+
+        assert execute_async.call_args.kwargs["expected_publication_generation"] == 61
+        assert execute.call_args.kwargs["expected_publication_generation"] == 61
+
     def test_open_resample_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
@@ -394,7 +489,12 @@ class TestPreprocessSidebar:
             AssertionError("stale preprocessed list should not be read")
         )
 
-        def execute_for(_, command, refresh=True):
+        def execute_for(
+            _,
+            command,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
             if isinstance(command, QueryStateCommand):
                 return _command_result(preprocessed_data_list=query_data)
             if isinstance(command, PreprocessCommand):
@@ -426,6 +526,68 @@ class TestPreprocessSidebar:
         MockDlg.assert_called_once_with(sidebar, query_data)
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
         sidebar.panel.controller.apply_rereference.assert_not_called()
+
+    def test_open_rereference_binds_query_and_apply_to_reviewed_publication(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import (
+            CommandCapability,
+            PreprocessCommand,
+            QueryStateCommand,
+        )
+        from XBrainLab.ui.application_capabilities import CommandReviewContext
+
+        review_context = CommandReviewContext(
+            capability=CommandCapability(
+                command_name="preprocess",
+                enabled=True,
+            ),
+            publication_generation=62,
+        )
+        calls = []
+
+        def execute_for(
+            _,
+            command,
+            *,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
+            calls.append((command, refresh, expected_publication_generation))
+            if isinstance(command, QueryStateCommand):
+                return _command_result(preprocessed_data_list=[MagicMock()])
+            if isinstance(command, PreprocessCommand):
+                return _command_result()
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_command_review_context",
+                return_value=review_context,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.RereferenceDialog",
+            ) as dialog,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
+                return_value=False,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                side_effect=execute_for,
+            ),
+        ):
+            dialog.return_value.exec.return_value = True
+            dialog.return_value.get_params.return_value = ["Cz"]
+
+            sidebar.open_rereference()
+
+        assert [type(command) for command, _, _ in calls] == [
+            QueryStateCommand,
+            PreprocessCommand,
+        ]
+        assert [generation for _, _, generation in calls] == [62, 62]
 
     def test_open_normalize_without_command_service_does_not_mutate_controller(
         self,
@@ -472,8 +634,6 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from XBrainLab.backend.application import CreateEpochCommand, QueryStateCommand
-
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
             patch(
@@ -491,18 +651,110 @@ class TestPreprocessSidebar:
                 1.0,
             )
             sidebar.panel.controller.apply_epoching.return_value = True
-            sidebar.open_epoching()
+            outcome = sidebar.open_epoching()
 
-        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
-        command = mock_execute.call_args_list[1].args[1]
-        assert isinstance(command, CreateEpochCommand)
-        assert command.t_min == -0.5
-        assert command.t_max == 1.0
-        assert command.baseline == (None, 0)
-        assert command.event_ids == ["left", "right"]
+        assert outcome.status is InteractionStatus.BLOCKED
+        mock_execute.assert_not_called()
+        MockDlg.assert_not_called()
         sidebar.panel.controller.apply_epoching.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Epoching Blocked"
+
+    def test_open_epoching_dialog_rejection_returns_cancelled(self, sidebar):
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=_usable_epoch_dialog_context(),
+            ),
+            patch.object(
+                sidebar,
+                "_preprocessed_data_list_for_epoching",
+                return_value=[MagicMock()],
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            outcome = sidebar.open_epoching()
+
+        assert outcome.status is InteractionStatus.CANCELLED
+
+    def test_open_epoching_async_dispatch_reports_scheduled_without_completion(
+        self,
+        sidebar,
+    ):
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=_usable_epoch_dialog_context(),
+            ),
+            patch.object(
+                sidebar,
+                "_preprocessed_data_list_for_epoching",
+                return_value=[MagicMock()],
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as dialog,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar."
+                "execute_application_command_async",
+                return_value=True,
+            ),
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_params.return_value = (
+                None,
+                ["left"],
+                -0.5,
+                1.0,
+            )
+            outcome = sidebar.open_epoching()
+
+        assert outcome.status is InteractionStatus.ACCEPTED
+
+    def test_open_epoching_nonrecoverable_command_failure_returns_failed(
+        self,
+        sidebar,
+    ):
+        failure = SimpleNamespace(
+            failed=True,
+            recoverable=False,
+            message="epoch command failed",
+        )
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=_usable_epoch_dialog_context(),
+            ),
+            patch.object(
+                sidebar,
+                "_preprocessed_data_list_for_epoching",
+                return_value=[MagicMock()],
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as dialog,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar."
+                "execute_application_command_async",
+                return_value=False,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.has_real_application_context",
+                return_value=False,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=failure,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.critical"),
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_params.return_value = (
+                None,
+                ["left"],
+                -0.5,
+                1.0,
+            )
+            outcome = sidebar.open_epoching()
+
+        assert outcome.status is InteractionStatus.FAILED
 
     def test_open_epoching_without_command_service_skips_shared_status(self, sidebar):
         sidebar.panel.main_window.update_info_panel = MagicMock()
@@ -539,33 +791,31 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from XBrainLab.backend.application import (
-            CommandName,
-            CreateEpochCommand,
-            QueryStateCommand,
-        )
-
-        def capability_for(_, command_name):
-            if command_name == CommandName.CREATE_EPOCH:
-                return SimpleNamespace(enabled=True, reasons=[])
-            if command_name == CommandName.PREPROCESS:
-                return SimpleNamespace(
-                    enabled=False,
-                    reasons=["Load raw data before preprocessing."],
-                )
-            return None
+        from XBrainLab.backend.application import CreateEpochCommand, QueryStateCommand
 
         sidebar.panel.controller.get_preprocessed_data_list.return_value = [MagicMock()]
 
-        def execute_for(_, command, refresh=True):
+        def execute_for(
+            _,
+            command,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
             if isinstance(command, QueryStateCommand):
                 return _command_result(preprocessed_data_list=[MagicMock()])
+            assert expected_publication_generation == 1
             return _command_result()
 
         with (
             patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=_usable_epoch_dialog_context(),
+            ),
+            patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                side_effect=capability_for,
+                side_effect=AssertionError(
+                    "epoching performed a second capability read"
+                ),
             ),
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
             patch(
@@ -582,8 +832,9 @@ class TestPreprocessSidebar:
                 -0.5,
                 1.0,
             )
-            sidebar.open_epoching()
+            outcome = sidebar.open_epoching()
 
+        assert outcome.status is InteractionStatus.COMPLETED
         mock_warning.assert_not_called()
         assert isinstance(mock_execute.call_args.args[1], CreateEpochCommand)
         sidebar.panel.controller.apply_epoching.assert_not_called()
@@ -602,7 +853,13 @@ class TestPreprocessSidebar:
             AssertionError("stale preprocessed list should not be read")
         )
 
-        def execute_for(_, command, refresh=True):
+        def execute_for(
+            _,
+            command,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
+            assert expected_publication_generation == 1
             if isinstance(command, QueryStateCommand):
                 return _command_result(preprocessed_data_list=query_data)
             if isinstance(command, CreateEpochCommand):
@@ -611,8 +868,8 @@ class TestPreprocessSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=_usable_epoch_dialog_context(),
             ),
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
             patch(
@@ -639,41 +896,65 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.apply_epoching.assert_not_called()
 
     def test_open_epoching_passes_import_handoff_to_dialog(self, sidebar):
-        from XBrainLab.backend.application import CreateEpochCommand, QueryStateCommand
+        from XBrainLab.backend.application import (
+            CommandCapability,
+            CreateEpochCommand,
+            QueryStateCommand,
+        )
+        from XBrainLab.backend.application.epoch_context import EpochDialogContext
 
         query_data = [MagicMock()]
-        sidebar.panel.main_window.study = SimpleNamespace()
-        sidebar.panel.main_window.study._application_service = SimpleNamespace(
-            get_state=MagicMock(
-                return_value=SimpleNamespace(
-                    interpretation=SimpleNamespace(
-                        epoch_handoff={
-                            "ready": True,
-                            "default_epoch_events": ["Left hand", "Right hand"],
-                            "label_source": "bids_events",
-                        }
-                    )
-                )
-            )
+        epoch_handoff = {
+            "ready": True,
+            "default_epoch_events": ["Left hand", "Right hand"],
+            "label_source": "bids_events",
+        }
+        assistant_suggestions = {
+            "target_event": "Left hand",
+            "t_min": "-0.5",
+        }
+        dialog_context = EpochDialogContext(
+            capability=CommandCapability(
+                command_name="create_epoch",
+                enabled=True,
+            ),
+            epoch_handoff=epoch_handoff,
+            publication_generation=7,
+            usable=True,
+            unavailable_reason=None,
         )
+        executed_commands = []
 
-        def execute_for(_, command, refresh=True):
+        def execute_for(
+            _,
+            command,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
+            executed_commands.append(command)
             if isinstance(command, QueryStateCommand):
                 return _command_result(preprocessed_data_list=query_data)
             if isinstance(command, CreateEpochCommand):
+                assert expected_publication_generation == 7
                 return _command_result()
             raise AssertionError(f"unexpected command: {command!r}")
 
         with (
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
+                side_effect=AssertionError(
+                    "epoch dialog must not perform a second capability read"
+                ),
             ),
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 side_effect=execute_for,
             ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=dialog_context,
+            ) as read_dialog_context,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -683,7 +964,10 @@ class TestPreprocessSidebar:
                 -0.5,
                 1.0,
             )
-            sidebar.open_epoching()
+            MockDlg.return_value.get_confirmation_receipt.return_value = (
+                "backend-epoch-receipt"
+            )
+            sidebar.open_epoching(suggested_values=assistant_suggestions)
 
         MockDlg.assert_called_once_with(
             sidebar,
@@ -693,7 +977,186 @@ class TestPreprocessSidebar:
                 "default_epoch_events": ["Left hand", "Right hand"],
                 "label_source": "bids_events",
             },
+            assistant_suggestions=assistant_suggestions,
         )
+        read_dialog_context.assert_called_once_with(sidebar)
+        epoch_command = next(
+            command
+            for command in executed_commands
+            if isinstance(command, CreateEpochCommand)
+        )
+        assert epoch_command.confirmation_receipt == "backend-epoch-receipt"
+
+    def test_open_epoching_reads_exactly_one_publication_snapshot(self, sidebar):
+        from dataclasses import replace
+
+        from XBrainLab.backend.application import (
+            CapabilityPolicy,
+            CommandCapability,
+            CommandName,
+            QueryStateCommand,
+            get_application_service,
+        )
+        from XBrainLab.backend.study import Study
+
+        publication = get_application_service(Study()).get_view_publication()
+        capabilities = dict(publication.capabilities.capabilities)
+        capabilities[CommandName.CREATE_EPOCH.value] = CommandCapability(
+            command_name=CommandName.CREATE_EPOCH.value,
+            enabled=True,
+        )
+        publication = replace(
+            publication,
+            capabilities=CapabilityPolicy(capabilities),
+        )
+        query_data = [MagicMock()]
+
+        class Runtime:
+            def __init__(self) -> None:
+                self.publication_reads = 0
+                self.commands: list[object] = []
+
+            def get_view_publication(self):
+                self.publication_reads += 1
+                return publication
+
+            def execute(
+                self,
+                command,
+                *,
+                expected_publication_generation=None,
+            ):
+                assert expected_publication_generation == publication.generation
+                self.commands.append(command)
+                return _command_result(preprocessed_data_list=query_data)
+
+        runtime = Runtime()
+        with (
+            patch(
+                "XBrainLab.ui.application_capabilities.application_ui_runtime",
+                return_value=runtime,
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            outcome = sidebar.open_epoching()
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        assert runtime.publication_reads == 1
+        assert len(runtime.commands) == 1
+        assert isinstance(runtime.commands[0], QueryStateCommand)
+        dialog.assert_called_once_with(sidebar, query_data)
+
+    def test_epoch_confirmation_binds_generation_and_stale_result_requires_review(
+        self,
+        sidebar,
+    ):
+        from dataclasses import replace
+
+        from XBrainLab.backend.application import (
+            ChangedState,
+            CommandName,
+            CommandResult,
+            ErrorType,
+        )
+
+        dialog_context = replace(
+            _usable_epoch_dialog_context(),
+            publication_generation=23,
+        )
+        stale_result = CommandResult.failure_result(
+            command_name=CommandName.CREATE_EPOCH.value,
+            message=(
+                "Workflow state changed while this confirmed action was pending. "
+                "Review the action again before continuing."
+            ),
+            state=None,
+            changed_state=ChangedState(),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            diagnostics={"stale_publication": True},
+        )
+        callback_outcomes = []
+
+        def fake_async(_context, _command, *, on_result, **kwargs):
+            assert kwargs["expected_publication_generation"] == 23
+            callback_outcomes.append(on_result(stale_result))
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=dialog_context,
+            ),
+            patch.object(
+                sidebar,
+                "_preprocessed_data_list_for_epoching",
+                return_value=[MagicMock()],
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as dialog,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar."
+                "execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch.object(QMessageBox, "warning") as warning,
+            patch.object(QMessageBox, "critical") as critical,
+            patch.object(sidebar, "_handle_epoch_command_success") as success,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_params.return_value = (
+                None,
+                ["left"],
+                -0.5,
+                1.0,
+            )
+            outcome = sidebar.open_epoching()
+
+        assert outcome.status is InteractionStatus.ACCEPTED
+        assert callback_outcomes[0].status is InteractionStatus.BLOCKED
+        warning.assert_called_once_with(
+            sidebar,
+            "Review Epoching Again",
+            stale_result.message,
+        )
+        critical.assert_not_called()
+        success.assert_not_called()
+
+    def test_open_epoching_blocks_typed_unavailable_context_without_defaults(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application.epoch_context import EpochDialogContext
+
+        unavailable = EpochDialogContext(
+            capability=None,
+            epoch_handoff=None,
+            publication_generation=11,
+            usable=False,
+            unavailable_reason="Workflow state is temporarily unavailable.",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=unavailable,
+            ) as read_dialog_context,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command"
+            ) as execute_command,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog"
+            ) as epoch_dialog,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as warning,
+        ):
+            outcome = sidebar.open_epoching()
+
+        assert outcome.status is InteractionStatus.BLOCKED
+        read_dialog_context.assert_called_once_with(sidebar)
+        execute_command.assert_not_called()
+        epoch_dialog.assert_not_called()
+        warning.assert_called_once()
+        assert "temporarily unavailable" in warning.call_args.args[2]
 
     def test_open_epoching_refuses_real_study_query_none_controller_fallback(
         self,
@@ -710,8 +1173,8 @@ class TestPreprocessSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                return_value=None,
+                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
+                return_value=_usable_epoch_dialog_context(),
             ),
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
@@ -766,6 +1229,66 @@ class TestPreprocessSidebar:
 
         sidebar.panel.controller.reset_preprocess.assert_not_called()
         sidebar.panel.update_panel.assert_not_called()
+
+    def test_reset_preprocess_binds_generation_and_stale_result_requires_review(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import (
+            ChangedState,
+            CommandName,
+            CommandResult,
+            ErrorType,
+            get_application_service,
+        )
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        study.data_manager.preprocessed_data_list = [raw]
+        sidebar.panel.main_window.study = study
+        publication = get_application_service(study).get_view_publication()
+        stale_result = CommandResult.failure_result(
+            command_name=CommandName.RESET_PREPROCESS.value,
+            message=(
+                "Workflow state changed while this confirmed action was pending. "
+                "Review the action again before continuing."
+            ),
+            state=publication.state,
+            changed_state=ChangedState(),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            diagnostics={"stale_publication": True},
+        )
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=stale_result,
+            ) as execute,
+            patch.object(QMessageBox, "warning") as warning,
+            patch.object(QMessageBox, "critical") as critical,
+            patch.object(sidebar, "_show_status") as show_status,
+        ):
+            sidebar.reset_preprocess()
+
+        assert execute.call_args.kwargs["expected_publication_generation"] == (
+            publication.generation
+        )
+        warning.assert_called_once_with(
+            sidebar,
+            "Review Reset Preprocessing Again",
+            stale_result.message,
+        )
+        critical.assert_not_called()
+        show_status.assert_not_called()
 
     def test_reset_preprocess_uses_reset_capability_when_preprocess_locked(
         self,
@@ -892,6 +1415,31 @@ class TestTrainingSidebar:
     def test_creates(self, sidebar):
         assert isinstance(sidebar, QWidget)
 
+    def test_model_selection_dialog_canonicalizes_only_existing_initial_model(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.ui.dialogs.training import ModelSelectionDialog
+
+        selected = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            initial_model_name="sccnet",
+        )
+        qtbot.addWidget(selected)
+        assert selected.model_combo is not None
+        assert selected.model_combo.currentText() == "SCCNet"
+
+        unknown = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            initial_model_name="not-a-real-model",
+        )
+        qtbot.addWidget(unknown)
+        assert unknown.model_combo is not None
+        assert unknown.model_combo.currentText() == unknown.model_list[0]
+        assert unknown.model_combo.findText("not-a-real-model") == -1
+
     def test_check_ready_to_train_not_ready(self, sidebar):
         result = sidebar.check_ready_to_train()
         # Without datasets/model/option, not ready
@@ -969,11 +1517,244 @@ class TestTrainingSidebar:
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
-            sidebar.split_data()
+            outcome = sidebar.split_data()
 
+        assert outcome.status is InteractionStatus.BLOCKED
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
+
+    def test_split_data_dialog_rejection_returns_cancelled(self, sidebar):
+        suggestions = {
+            "training_mode": "individual",
+            "split_strategy": "subject",
+        }
+        with (
+            patch.object(sidebar, "_data_splitting_blocked", return_value=False),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch.object(
+                sidebar,
+                "_data_splitting_dialog_context",
+                return_value={"epoch_data": MagicMock()},
+            ),
+            patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            outcome = sidebar.split_data(suggested_values=suggestions)
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        assert dialog.call_args.kwargs["initial_values"] == suggestions
+
+    def test_split_data_binds_reviewed_generation_and_stale_result_is_recoverable(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import (
+            ChangedState,
+            CommandCapability,
+            CommandName,
+            CommandResult,
+            ErrorType,
+        )
+
+        generation = 31
+        capability = CommandCapability(
+            command_name=CommandName.GENERATE_DATASET.value,
+            enabled=True,
+        )
+        publication = SimpleNamespace(
+            generation=generation,
+            effective_capabilities=SimpleNamespace(
+                get=lambda command_name: (
+                    capability
+                    if command_name
+                    in {
+                        CommandName.GENERATE_DATASET,
+                        CommandName.GENERATE_DATASET.value,
+                    }
+                    else None
+                )
+            ),
+        )
+        stale_result = CommandResult.failure_result(
+            command_name=CommandName.GENERATE_DATASET.value,
+            message=(
+                "Workflow state changed while this confirmed action was pending. "
+                "Review the action again before continuing."
+            ),
+            state=None,
+            changed_state=ChangedState(),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            diagnostics={"stale_publication": True},
+        )
+        callback_outcomes = []
+
+        def fake_async(_context, _command, *, on_result, **kwargs):
+            assert kwargs["expected_publication_generation"] == generation
+            callback_outcomes.append(on_result(stale_result))
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=publication,
+                create=True,
+            ) as get_publication,
+            patch.object(
+                sidebar,
+                "_data_splitting_dialog_context",
+                return_value={"epoch_data": MagicMock()},
+            ) as dialog_context,
+            patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar."
+                "execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch.object(sidebar, "_show_message_box") as message_box,
+            patch.object(sidebar, "_show_status") as show_status,
+            patch.object(sidebar, "_check_ready_after_command_result") as check_ready,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_result.return_value = _split_config_payload()
+            outcome = sidebar.split_data()
+
+        assert outcome.status is InteractionStatus.ACCEPTED
+        assert callback_outcomes[0].status is InteractionStatus.BLOCKED
+        get_publication.assert_called_once_with(sidebar)
+        dialog_context.assert_called_once_with(
+            expected_publication_generation=generation,
+        )
+        message_box.assert_called_once_with(
+            QMessageBox.Icon.Warning,
+            "Review Data Splitting Again",
+            stale_result.message,
+        )
+        show_status.assert_not_called()
+        check_ready.assert_not_called()
+
+    def test_clear_history_binds_confirmation_generation_and_reviews_stale_result(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import (
+            ChangedState,
+            CommandCapability,
+            CommandName,
+            CommandResult,
+            ErrorType,
+        )
+
+        generation = 43
+        capability = CommandCapability(
+            command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+            enabled=True,
+            destructive=True,
+            confirmation_required=True,
+        )
+        publication = SimpleNamespace(
+            generation=generation,
+            effective_capabilities=SimpleNamespace(
+                get=lambda command_name: (
+                    capability
+                    if command_name
+                    in {
+                        CommandName.CLEAR_TRAINING_HISTORY,
+                        CommandName.CLEAR_TRAINING_HISTORY.value,
+                    }
+                    else None
+                )
+            ),
+        )
+        stale_result = CommandResult.failure_result(
+            command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+            message=(
+                "Workflow state changed while this confirmed action was pending. "
+                "Review the action again before continuing."
+            ),
+            state=None,
+            changed_state=ChangedState(),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            diagnostics={"stale_publication": True},
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=publication,
+            ),
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=stale_result,
+            ) as execute,
+            patch.object(QMessageBox, "warning") as warning,
+            patch.object(sidebar, "_show_status") as show_status,
+            patch.object(sidebar, "_check_ready_after_command_result") as check_ready,
+        ):
+            sidebar.clear_history()
+
+        assert execute.call_args.kwargs["expected_publication_generation"] == generation
+        warning.assert_called_once_with(
+            sidebar,
+            "Review Clear History Again",
+            stale_result.message,
+        )
+        show_status.assert_not_called()
+        check_ready.assert_not_called()
+
+    def test_split_data_nonrecoverable_command_failure_returns_failed(self, sidebar):
+        failure = SimpleNamespace(
+            failed=True,
+            recoverable=False,
+            message="generation failed",
+        )
+        with (
+            patch.object(sidebar, "_data_splitting_blocked", return_value=False),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch.object(
+                sidebar,
+                "_data_splitting_dialog_context",
+                return_value={"epoch_data": MagicMock()},
+            ),
+            patch.object(
+                sidebar,
+                "_requires_dataset_replacement_confirmation",
+                return_value=False,
+            ),
+            patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar."
+                "execute_application_command_async",
+                return_value=False,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
+                return_value=False,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=failure,
+            ),
+            patch.object(sidebar, "_show_message_box"),
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_result.return_value = _split_config_payload()
+            outcome = sidebar.split_data()
+
+        assert outcome.status is InteractionStatus.FAILED
 
     def test_split_data_service_success_does_not_fallback_to_controller(
         self,
@@ -982,7 +1763,6 @@ class TestTrainingSidebar:
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            ClearDatasetsCommand,
             GenerateDatasetCommand,
             QueryStateCommand,
         )
@@ -1006,22 +1786,25 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=_command_result(),
-            ) as mock_execute,
+            ) as mock_execute_sync,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                return_value=True,
+            ) as mock_execute_async,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
-            sidebar.split_data()
+            outcome = sidebar.split_data()
 
-        commands = [call.args[1] for call in mock_execute.call_args_list]
-        assert isinstance(commands[0], QueryStateCommand)
-        split_commands = [
-            command
-            for command in commands
-            if not isinstance(command, QueryStateCommand)
-        ]
-        assert isinstance(split_commands[0], ClearDatasetsCommand)
-        assert isinstance(split_commands[1], GenerateDatasetCommand)
+        assert outcome.status is InteractionStatus.ACCEPTED
+        sync_commands = [call.args[1] for call in mock_execute_sync.call_args_list]
+        async_commands = [call.args[1] for call in mock_execute_async.call_args_list]
+        assert isinstance(sync_commands[0], QueryStateCommand)
+        assert len(sync_commands) == 1
+        assert isinstance(async_commands[0], GenerateDatasetCommand)
+        assert async_commands[0].replacement_mode == "replace_existing"
+        assert async_commands[0].confirmed is True
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
 
@@ -1074,7 +1857,11 @@ class TestTrainingSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
                 return_value=None,
             ),
             patch(
@@ -1099,7 +1886,6 @@ class TestTrainingSidebar:
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            ClearDatasetsCommand,
             GenerateDatasetCommand,
             QueryStateCommand,
         )
@@ -1110,7 +1896,7 @@ class TestTrainingSidebar:
         raw.is_raw.return_value = True
         study.data_manager.loaded_data_list = [raw]
         study.data_manager.preprocessed_data_list = [raw]
-        study.data_manager.epoch_data = MagicMock()
+        study.data_manager.epoch_data = _usable_training_epoch_data()
         study.data_manager.datasets = [MagicMock()]
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.has_datasets.return_value = True
@@ -1124,6 +1910,15 @@ class TestTrainingSidebar:
             return True
 
         with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=SimpleNamespace(
+                    enabled=True,
+                    reasons=["This wording may change without changing policy."],
+                    requires_confirmation=True,
+                    decision_boundary="replace_generated_datasets",
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
@@ -1145,18 +1940,79 @@ class TestTrainingSidebar:
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
-            sidebar.split_data()
+            outcome = sidebar.split_data()
 
+        assert outcome.status is InteractionStatus.ACCEPTED
         mock_warning.assert_not_called()
         commands = [call.args[1] for call in mock_execute.call_args_list]
         assert isinstance(commands[0], QueryStateCommand)
-        split_commands = [
-            command
-            for command in commands
-            if not isinstance(command, QueryStateCommand)
-        ]
-        assert isinstance(split_commands[0], ClearDatasetsCommand)
+        assert len(commands) == 1
         assert isinstance(async_commands[0], GenerateDatasetCommand)
+        assert async_commands[0].replacement_mode == "replace_existing"
+        assert async_commands[0].confirmed is True
+
+    def test_split_data_replacement_cancel_preserves_backend_state(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import CommandName, QueryStateCommand
+        from XBrainLab.backend.study import Study
+
+        old_datasets = [MagicMock(name="existing_dataset")]
+        old_generator = MagicMock(name="existing_generator")
+        old_trainer = MagicMock(name="existing_trainer")
+        study = Study()
+        sidebar.panel.main_window.study = study
+        study.data_manager.datasets = cast(Any, old_datasets)
+        study.data_manager.dataset_generator = old_generator
+        study.training_manager.trainer = old_trainer
+        generate_capability = SimpleNamespace(
+            enabled=True,
+            reasons=["Display copy is not policy."],
+            requires_confirmation=True,
+            decision_boundary="replace_generated_datasets",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=SimpleNamespace(
+                    generation=41,
+                    effective_capabilities={
+                        CommandName.GENERATE_DATASET: generate_capability,
+                    },
+                ),
+            ),
+            patch.object(
+                sidebar,
+                "_data_splitting_dialog_context",
+                return_value={"epoch_data": MagicMock()},
+            ),
+            patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.No,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command"
+            ) as execute_sync,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async"
+            ) as execute_async,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_result.return_value = _split_config_payload()
+            outcome = sidebar.split_data()
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        assert not any(
+            not isinstance(call.args[1], QueryStateCommand)
+            for call in execute_sync.call_args_list
+        )
+        execute_async.assert_not_called()
+        assert study.data_manager.datasets == old_datasets
+        assert study.data_manager.dataset_generator is old_generator
+        assert study.training_manager.trainer is old_trainer
 
     def test_split_data_uses_backend_replacement_boundary_when_controller_stale(
         self,
@@ -1165,7 +2021,6 @@ class TestTrainingSidebar:
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            ClearDatasetsCommand,
             GenerateDatasetCommand,
             QueryStateCommand,
         )
@@ -1176,7 +2031,7 @@ class TestTrainingSidebar:
         raw.is_raw.return_value = True
         study.data_manager.loaded_data_list = [raw]
         study.data_manager.preprocessed_data_list = [raw]
-        study.data_manager.epoch_data = MagicMock()
+        study.data_manager.epoch_data = _usable_training_epoch_data()
         study.data_manager.datasets = [MagicMock()]
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.has_datasets.return_value = False
@@ -1199,13 +2054,13 @@ class TestTrainingSidebar:
                 return_value=QMessageBox.StandardButton.Yes,
             ) as mock_question,
             patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=_command_result(),
-            ) as mock_execute,
-            patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 side_effect=fake_async,
-            ),
+            ) as mock_execute_async,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute_sync,
             patch.object(QMessageBox, "warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
@@ -1215,15 +2070,13 @@ class TestTrainingSidebar:
 
         mock_warning.assert_not_called()
         mock_question.assert_called_once()
-        commands = [call.args[1] for call in mock_execute.call_args_list]
-        assert isinstance(commands[0], QueryStateCommand)
-        split_commands = [
-            command
-            for command in commands
-            if not isinstance(command, QueryStateCommand)
-        ]
-        assert isinstance(split_commands[0], ClearDatasetsCommand)
+        sync_commands = [call.args[1] for call in mock_execute_sync.call_args_list]
+        assert isinstance(sync_commands[0], QueryStateCommand)
+        assert len(sync_commands) == 1
         assert isinstance(async_commands[0], GenerateDatasetCommand)
+        assert async_commands[0].replacement_mode == "replace_existing"
+        assert async_commands[0].confirmed is True
+        assert isinstance(mock_execute_async.call_args.args[1], GenerateDatasetCommand)
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
 
@@ -1244,7 +2097,7 @@ class TestTrainingSidebar:
         raw.is_raw.return_value = True
         study.data_manager.loaded_data_list = [raw]
         study.data_manager.preprocessed_data_list = [raw]
-        study.data_manager.epoch_data = MagicMock(name="service_epoch_data")
+        study.data_manager.epoch_data = _usable_training_epoch_data()
         study.data_manager.dataset_generator = MagicMock(name="service_generator")
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.get_epoch_data.side_effect = AssertionError(
@@ -1320,6 +2173,10 @@ class TestTrainingSidebar:
                 return_value=SimpleNamespace(enabled=True, reasons=[]),
             ),
             patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=None,
+            ),
+            patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ),
@@ -1381,6 +2238,10 @@ class TestTrainingSidebar:
                 return_value=SimpleNamespace(enabled=True, reasons=[]),
             ),
             patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=None,
+            ),
+            patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
             ) as mock_dialog,
             patch(
@@ -1406,14 +2267,14 @@ class TestTrainingSidebar:
         mock_info.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_split_data_refuses_real_study_clear_none_controller_fallback(
+    def test_split_data_refuses_sync_fallback_when_replacement_dispatch_fails(
         self,
         sidebar,
     ):
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            ClearDatasetsCommand,
+            GenerateDatasetCommand,
             QueryStateCommand,
         )
         from XBrainLab.backend.study import Study
@@ -1439,19 +2300,25 @@ class TestTrainingSidebar:
             if isinstance(command, QueryStateCommand):
                 assert refresh is False
                 return query_result
-            if isinstance(command, ClearDatasetsCommand):
-                return None
+            if isinstance(command, GenerateDatasetCommand):
+                raise AssertionError(
+                    "real Study replacement must not fall back to sync execution",
+                )
             raise AssertionError(f"unexpected command: {command!r}")
 
         with (
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
+                return_value=SimpleNamespace(
+                    enabled=True,
+                    reasons=[],
+                    requires_confirmation=True,
+                    decision_boundary="replace_generated_datasets",
+                ),
             ),
-            patch.object(
-                sidebar,
-                "_should_clear_datasets_before_split",
-                return_value=True,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=None,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
@@ -1459,6 +2326,10 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 side_effect=execute_for,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                return_value=False,
             ),
             patch.object(
                 QMessageBox,
@@ -1476,10 +2347,218 @@ class TestTrainingSidebar:
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
         mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Reset Training Data Blocked"
+        assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
+
+    def test_select_model_dialog_rejection_returns_cancelled_and_passes_suggestion(
+        self,
+        sidebar,
+    ):
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            outcome = sidebar.select_model("sccnet")
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        dialog.assert_called_once_with(
+            sidebar,
+            sidebar.controller,
+            initial_model_name="sccnet",
+        )
+
+    def test_configure_training_handoff_second_dialog_cancel_is_atomic(self, sidebar):
+        model_holder = MagicMock()
+        model_holder.target_model.__name__ = "EEGNet"
+        model_holder.model_params_map = {"dropout": 0.25}
+        model_holder.pretrained_weight_path = None
+
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch.object(sidebar, "_training_option_snapshot", return_value={}),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as model_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as setting_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command"
+            ) as execute_command,
+        ):
+            model_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            model_dialog.return_value.get_result.return_value = model_holder
+            setting_dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+
+            outcome = sidebar.configure_training(
+                suggested_model="EEGNet",
+                suggested_values={"batch_size": "32"},
+            )
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        execute_command.assert_not_called()
+        sidebar.panel.controller.set_model_holder.assert_not_called()
+        sidebar.panel.controller.set_training_option.assert_not_called()
+
+    def test_configure_training_handoff_cancel_preserves_real_study_state(
+        self,
+        sidebar,
+    ):
+        import torch
+
+        from XBrainLab.backend.study import Study
+        from XBrainLab.backend.training import (
+            ModelHolder,
+            TrainingEvaluation,
+            TrainingOption,
+        )
+
+        study = Study()
+        existing_model = ModelHolder(
+            torch.nn.Linear,
+            {"in_features": 2, "out_features": 2},
+        )
+        existing_option = TrainingOption(
+            "./existing-output",
+            torch.optim.Adam,
+            {},
+            True,
+            None,
+            4,
+            8,
+            0.001,
+            0,
+            TrainingEvaluation.LAST_EPOCH,
+            1,
+        )
+        study.training_manager.model_holder = existing_model
+        study.training_manager.training_option = existing_option
+        before_model = study.training_manager.model_holder
+        before_option = study.training_manager.training_option
+        sidebar.panel.main_window.study = study
+
+        model_holder = MagicMock()
+        model_holder.target_model.__name__ = "EEGNet"
+        model_holder.model_params_map = {}
+        model_holder.pretrained_weight_path = None
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch.object(sidebar, "_training_option_snapshot", return_value={}),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as model_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as setting_dialog,
+        ):
+            model_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            model_dialog.return_value.get_result.return_value = model_holder
+            setting_dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+
+            outcome = sidebar.configure_training()
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        after_model = study.training_manager.model_holder
+        after_option = study.training_manager.training_option
+        assert after_model is not None and before_model is not None
+        assert after_model.target_model is before_model.target_model
+        assert after_model.model_params_map == before_model.model_params_map
+        assert after_model.pretrained_weight_path == before_model.pretrained_weight_path
+        assert after_option is not None and before_option is not None
+        assert after_option.output_dir == before_option.output_dir
+        assert after_option.epoch == before_option.epoch
+        assert after_option.bs == before_option.bs
+        assert after_option.lr == before_option.lr
+        assert after_option.evaluation_option is before_option.evaluation_option
+
+    def test_configure_training_handoff_commits_both_choices_once(self, sidebar):
+        from XBrainLab.backend.application import ConfigureTrainingCommand
+
+        model_holder = MagicMock()
+        model_holder.target_model.__name__ = "EEGNet"
+        model_holder.model_params_map = {"dropout": 0.25}
+        model_holder.pretrained_weight_path = "/tmp/eegnet.pt"
+        option = SimpleNamespace(
+            epoch=12,
+            bs=32,
+            lr=0.001,
+            repeat_num=2,
+            use_cpu=False,
+            gpu_idx=1,
+            optim=type("Adam", (), {}),
+            optim_params={"weight_decay": 0.01},
+            checkpoint_epoch=3,
+            output_dir="./atomic-output",
+            evaluation_option=SimpleNamespace(value="val_acc"),
+        )
+
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch.object(sidebar, "_training_option_snapshot", return_value={}),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as model_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as setting_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as execute_command,
+        ):
+            model_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            model_dialog.return_value.get_result.return_value = model_holder
+            setting_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            setting_dialog.return_value.get_result.return_value = option
+
+            outcome = sidebar.configure_training(
+                suggested_model="EEGNet",
+                suggested_values={"batch_size": "32", "learning_rate": "0.001"},
+            )
+
+        assert outcome.status is InteractionStatus.COMPLETED
+        execute_command.assert_called_once()
+        command = execute_command.call_args.args[1]
+        assert isinstance(command, ConfigureTrainingCommand)
+        assert command.model_name == "EEGNet"
+        assert command.model_params == {"dropout": 0.25}
+        assert command.pretrained_weight_path == "/tmp/eegnet.pt"
+        assert command.epoch == 12
+        assert command.batch_size == 32
+        assert command.learning_rate == 0.001
+        assert command.repeat == 2
+        assert command.device == "cuda:1"
+        assert command.optimizer == "Adam"
+        assert command.optimizer_params == {"weight_decay": 0.01}
+        assert command.save_checkpoints_every == 3
+        assert command.output_dir == "./atomic-output"
+        assert command.evaluation_option == "val_acc"
+        sidebar.panel.controller.set_model_holder.assert_not_called()
+        sidebar.panel.controller.set_training_option.assert_not_called()
+
+    def test_select_model_button_click_does_not_forward_checked_state(
+        self,
+        sidebar,
+    ):
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            sidebar.btn_model.click()
+
+        dialog.assert_called_once_with(
+            sidebar,
+            sidebar.controller,
+            initial_model_name=None,
+        )
 
     def test_select_model_without_command_service_does_not_mutate_controller(
         self,
@@ -1510,8 +2589,9 @@ class TestTrainingSidebar:
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_result.return_value = mock_holder
-            sidebar.select_model()
+            outcome = sidebar.select_model()
 
+        assert outcome.status is InteractionStatus.BLOCKED
         command = mock_execute.call_args.args[1]
         assert isinstance(command, ConfigureTrainingCommand)
         assert command.model_name == "EEGNet"
@@ -1548,8 +2628,9 @@ class TestTrainingSidebar:
         ):
             mock_dialog.return_value.exec.return_value = True
             mock_dialog.return_value.get_result.return_value = mock_holder
-            sidebar.select_model()
+            outcome = sidebar.select_model()
 
+        assert outcome.status is InteractionStatus.COMPLETED
         command = mock_execute.call_args.args[1]
         assert isinstance(command, ConfigureTrainingCommand)
         assert command.model_name == "EEGNet"
@@ -1558,6 +2639,36 @@ class TestTrainingSidebar:
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
         sidebar.panel.show_status_message.assert_called_with("Model selected: EEGNet")
+
+    def test_select_model_nonrecoverable_command_failure_returns_failed(
+        self,
+        sidebar,
+    ):
+        failure = SimpleNamespace(
+            failed=True,
+            recoverable=False,
+            message="model configuration failed",
+        )
+        mock_holder = MagicMock()
+        mock_holder.target_model.__name__ = "EEGNet"
+        mock_holder.model_params_map = {}
+        mock_holder.pretrained_weight_path = None
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=failure,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.critical"),
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_result.return_value = mock_holder
+            outcome = sidebar.select_model()
+
+        assert outcome.status is InteractionStatus.FAILED
 
     def test_select_model_refuses_real_study_controller_fallback(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
@@ -1589,8 +2700,9 @@ class TestTrainingSidebar:
         ):
             mock_dialog.return_value.exec.return_value = True
             mock_dialog.return_value.get_result.return_value = mock_holder
-            sidebar.select_model()
+            outcome = sidebar.select_model()
 
+        assert outcome.status is InteractionStatus.BLOCKED
         sidebar.panel.controller.set_model_holder.assert_not_called()
         sidebar.panel.controller.get_model_holder.assert_not_called()
         mock_warning.assert_called_once()
@@ -1608,9 +2720,7 @@ class TestTrainingSidebar:
         from XBrainLab.backend.study import Study
 
         study = Study()
-        trainer = MagicMock()
-        trainer.is_running.return_value = True
-        study.training_manager.trainer = trainer
+        study.training_manager.trainer = _running_trainer()
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.is_training.return_value = False
 
@@ -1620,8 +2730,9 @@ class TestTrainingSidebar:
             ) as mock_dialog,
             patch.object(QMessageBox, "warning") as mock_warning,
         ):
-            sidebar.select_model()
+            outcome = sidebar.select_model()
 
+        assert outcome.status is InteractionStatus.BLOCKED
         mock_dialog.assert_not_called()
         mock_warning.assert_called_once_with(
             sidebar,
@@ -1644,7 +2755,7 @@ class TestTrainingSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
                 return_value=None,
             ),
             patch(
@@ -1690,9 +2801,7 @@ class TestTrainingSidebar:
         from XBrainLab.backend.study import Study
 
         study = Study()
-        trainer = MagicMock()
-        trainer.is_running.return_value = True
-        study.training_manager.trainer = trainer
+        study.training_manager.trainer = _running_trainer()
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.is_training.return_value = False
 
@@ -1715,9 +2824,7 @@ class TestTrainingSidebar:
         from XBrainLab.backend.study import Study
 
         study = Study()
-        trainer = MagicMock()
-        trainer.is_running.return_value = True
-        study.training_manager.trainer = trainer
+        study.training_manager.trainer = _running_trainer()
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.is_training.return_value = True
 
@@ -1874,6 +2981,10 @@ class TestTrainingSidebar:
                     confirmation_required=True,
                 ),
             ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=None,
+            ),
             patch.object(
                 QMessageBox,
                 "question",
@@ -1907,6 +3018,10 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=None,
             ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+                return_value=None,
+            ),
             patch.object(QMessageBox, "question") as mock_question,
             patch.object(QMessageBox, "warning") as mock_warning,
         ):
@@ -1922,28 +3037,172 @@ class TestTrainingSidebar:
     def test_training_setting_while_training(self, sidebar):
         sidebar.panel.controller.is_training.return_value = True
         with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.training_setting()
+            outcome = sidebar.training_setting()
+
+        assert outcome.status is InteractionStatus.BLOCKED
+
+    def test_training_setting_dialog_rejection_returns_cancelled(self, sidebar):
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch.object(sidebar, "_training_option_snapshot", return_value={}),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            outcome = sidebar.training_setting()
+
+        assert outcome.status is InteractionStatus.CANCELLED
+
+    def test_training_setting_stops_when_state_snapshot_is_unavailable(self, sidebar):
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as dialog,
+            patch.object(QMessageBox, "warning") as warning,
+        ):
+            outcome = sidebar.training_setting({"batch_size": "32"})
+
+        assert outcome.status is InteractionStatus.BLOCKED
+        dialog.assert_not_called()
+        warning.assert_called_once_with(
+            sidebar,
+            "Training Settings Blocked",
+            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+        )
+
+    @pytest.mark.parametrize(
+        ("recoverable", "expected_status", "expected_title"),
+        [
+            (True, InteractionStatus.BLOCKED, "Training Settings Blocked"),
+            (False, InteractionStatus.FAILED, "Training Settings Failed"),
+        ],
+    )
+    def test_training_setting_stops_when_state_snapshot_query_fails(
+        self,
+        sidebar,
+        recoverable,
+        expected_status,
+        expected_title,
+    ):
+        failure = SimpleNamespace(
+            failed=True,
+            recoverable=recoverable,
+            message="Training state is unavailable.",
+        )
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=failure,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as dialog,
+            patch.object(QMessageBox, "warning") as warning,
+        ):
+            outcome = sidebar.training_setting()
+
+        assert outcome.status is expected_status
+        dialog.assert_not_called()
+        warning.assert_called_once_with(
+            sidebar,
+            expected_title,
+            "Training state is unavailable.",
+        )
+
+    def test_training_setting_merges_snapshot_with_allowed_suggestions(
+        self,
+        sidebar,
+    ):
+        snapshot = {
+            "epoch": 7,
+            "batch_size": 16,
+            "learning_rate": 0.002,
+            "repeat": 3,
+            "optimizer": "Adam",
+            "device": "cpu",
+            "checkpoint_epoch": 2,
+            "output_dir": "./saved-output",
+            "evaluation_option": "val_loss",
+        }
+        suggestions = {
+            "epoch": "12",
+            "batch_size": "64",
+            "learning_rate": "0.0005",
+            "repeat": "4",
+            "optimizer": "SGD",
+            "device": "cuda:0",
+            "output_dir": "./suggested-output",
+            "training_algorithm": "replacement",
+        }
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch.object(
+                sidebar,
+                "_training_option_snapshot",
+                return_value=snapshot,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            outcome = sidebar.training_setting(suggestions)
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        initial_option = dialog.call_args.kwargs["initial_option"]
+        assert initial_option == {
+            "epoch": "12",
+            "batch_size": "64",
+            "learning_rate": "0.0005",
+            "repeat": "4",
+            "optimizer": "SGD",
+            "device": "cuda:0",
+            "checkpoint_epoch": 2,
+            "output_dir": "./saved-output",
+            "evaluation_option": "val_loss",
+        }
+        assert snapshot["epoch"] == 7
+
+    def test_training_setting_nonrecoverable_command_failure_returns_failed(
+        self,
+        sidebar,
+    ):
+        failure = SimpleNamespace(
+            failed=True,
+            recoverable=False,
+            message="training settings failed",
+        )
+        option = SimpleNamespace(use_cpu=True)
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=False),
+            patch.object(sidebar, "_training_option_snapshot", return_value={}),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=failure,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.critical"),
+        ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_result.return_value = option
+            outcome = sidebar.training_setting()
+
+        assert outcome.status is InteractionStatus.FAILED
 
     def test_training_setting_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
-        from XBrainLab.backend.application import ConfigureTrainingCommand
-
         sidebar.panel.controller.is_training.return_value = False
-        option = SimpleNamespace(
-            epoch=11,
-            bs=32,
-            lr=0.001,
-            repeat_num=2,
-            use_cpu=True,
-            gpu_idx=None,
-            optim=None,
-            optim_params={"weight_decay": 0.01},
-            checkpoint_epoch=3,
-            output_dir="./legacy-output",
-            evaluation_option=SimpleNamespace(value="val_acc"),
-        )
         with (
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
@@ -1954,31 +3213,18 @@ class TestTrainingSidebar:
             ) as MockDlg,
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                side_effect=[None, None],
+                return_value=None,
             ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_result.return_value = option
-            sidebar.training_setting()
+            outcome = sidebar.training_setting()
 
-        command = mock_execute.call_args_list[1].args[1]
-        assert isinstance(command, ConfigureTrainingCommand)
-        assert command.epoch == 11
-        assert command.batch_size == 32
-        assert command.learning_rate == 0.001
-        assert command.repeat == 2
-        assert command.device == "cpu"
-        assert command.optimizer == "adam"
-        assert command.optimizer_params == {"weight_decay": 0.01}
-        assert command.save_checkpoints_every == 3
-        assert command.output_dir == "./legacy-output"
-        assert command.evaluation_option == "val_acc"
+        assert outcome.status is InteractionStatus.BLOCKED
+        assert mock_execute.call_count == 1
+        MockDlg.assert_not_called()
         sidebar.panel.controller.set_training_option.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Training Settings Blocked"
-        mock_info.assert_not_called()
 
     def test_training_setting_uses_state_snapshot_defaults_before_stale_controller(
         self,
@@ -2052,8 +3298,9 @@ class TestTrainingSidebar:
             ),
             patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
-            sidebar.training_setting()
+            outcome = sidebar.training_setting()
 
+        assert outcome.status is InteractionStatus.COMPLETED
         sidebar.panel.controller.get_training_option.assert_not_called()
         commands = [call.args[1] for call in mock_execute.call_args_list]
         assert isinstance(commands[0], QueryStateCommand)
@@ -2087,7 +3334,13 @@ class TestTrainingSidebar:
             evaluation_option=SimpleNamespace(value="val_acc"),
         )
 
-        def execute_for(_, command, refresh=True):
+        def execute_for(
+            _,
+            command,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
+            assert expected_publication_generation == 1
             if isinstance(command, QueryStateCommand):
                 assert refresh is False
                 return _command_result(state={"training": {}})
@@ -2097,8 +3350,11 @@ class TestTrainingSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
+                "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+                return_value=SimpleNamespace(
+                    capability=SimpleNamespace(enabled=True, reasons=[]),
+                    publication_generation=1,
+                ),
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
@@ -2131,9 +3387,7 @@ class TestTrainingSidebar:
         from XBrainLab.backend.study import Study
 
         study = Study()
-        trainer = MagicMock()
-        trainer.is_running.return_value = True
-        study.training_manager.trainer = trainer
+        study.training_manager.trainer = _running_trainer()
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.is_training.return_value = False
 
@@ -2184,11 +3438,19 @@ class TestTrainingSidebar:
             requires_confirmation=True,
             confirmation_required=False,
         )
+        sidebar.panel.controller.get_resource_preflight_context.return_value = {
+            "datasets": [],
+            "training_option": SimpleNamespace(use_cpu=True, bs=32),
+            "model_holder": None,
+        }
 
         with (
             patch(
-                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-                return_value=capability,
+                "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+                return_value=SimpleNamespace(
+                    capability=capability,
+                    publication_generation=1,
+                ),
             ),
             patch.object(
                 QMessageBox,
@@ -2196,8 +3458,8 @@ class TestTrainingSidebar:
                 return_value=QMessageBox.StandardButton.No,
             ) as mock_question,
             patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=_command_result(),
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                return_value=True,
             ) as mock_execute,
         ):
             sidebar.start_training_ui_action()
@@ -2234,10 +3496,12 @@ class TestTrainingSidebar:
                 return_value=QMessageBox.StandardButton.Yes,
             ),
             patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=_command_result(),
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async"
             ) as mock_execute,
         ):
+            mock_execute.side_effect = lambda *_args, on_result, **_kwargs: (
+                on_result(_command_result()) or True
+            )
             sidebar.start_training_ui_action()
 
         assert isinstance(mock_execute.call_args.args[1], TrainCommand)
@@ -2260,12 +3524,15 @@ class TestTrainingSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-                return_value=capability,
+                "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+                return_value=SimpleNamespace(
+                    capability=capability,
+                    publication_generation=1,
+                ),
             ),
             patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=None,
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                return_value=False,
             ),
             patch.object(QMessageBox, "warning") as mock_warning,
             patch.object(QMessageBox, "critical") as mock_critical,
@@ -2298,11 +3565,13 @@ class TestTrainingSidebar:
                 return_value=capability,
             ),
             patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=_command_result(),
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async"
             ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
         ):
+            mock_execute.side_effect = lambda *_args, on_result, **_kwargs: (
+                on_result(_command_result()) or True
+            )
             sidebar.start_training_ui_action()
 
         assert isinstance(mock_execute.call_args.args[1], TrainCommand)
@@ -2334,11 +3603,13 @@ class TestTrainingSidebar:
                 return_value=QMessageBox.StandardButton.Yes,
             ),
             patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=_command_result(),
-            ),
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async"
+            ) as mock_execute,
             patch.object(sidebar, "check_ready_to_train") as mock_check_ready,
         ):
+            mock_execute.side_effect = lambda *_args, on_result, **_kwargs: (
+                on_result(_command_result()) or True
+            )
             sidebar.start_training_ui_action()
 
         mock_check_ready.assert_not_called()
@@ -2472,8 +3743,8 @@ class TestDatasetSidebar:
         assert sb.reload_recipe_btn.toolTip() == (
             "Review a saved import recipe before applying it"
         )
-        assert sb.clear_btn.isEnabled() is False
-        assert "Create epochs" in sb.clear_btn.toolTip()
+        assert sb.clear_btn.isEnabled() is True
+        assert sb.clear_btn.toolTip() == "Clear all loaded data and start over."
         assert sb.smart_parse_btn.isEnabled()
         assert sb.smart_parse_btn.toolTip() == (
             "Auto-extract Subject/Session from filenames"
@@ -2593,6 +3864,10 @@ class TestDatasetSidebar:
                 return_value=SimpleNamespace(enabled=True, reasons=[]),
             ),
             patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+                return_value=None,
+            ),
+            patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
             ) as mock_dialog,
             patch(
@@ -2631,11 +3906,17 @@ class TestDatasetSidebar:
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
 
-        def execute_for(_, command, refresh=True):
+        def execute_for(
+            _,
+            command,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
             if isinstance(command, QueryStateCommand):
                 assert refresh is False
                 return _command_result(loaded_data_list=[raw])
             if isinstance(command, PreprocessCommand):
+                assert expected_publication_generation is None
                 return None
             raise AssertionError(f"unexpected command: {command!r}")
 
@@ -2648,6 +3929,10 @@ class TestDatasetSidebar:
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
                 return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+                return_value=None,
             ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
@@ -2696,6 +3981,10 @@ class TestDatasetSidebar:
             ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
                 return_value=None,
             ),
             patch(
@@ -2776,9 +4065,9 @@ class TestDatasetSidebar:
             sidebar.clear_dataset()
             sidebar.panel.controller.clean_dataset.assert_not_called()
             mock_warning.assert_called_once()
-            assert mock_warning.call_args.args[1] == "Clear Dataset Blocked"
+            assert mock_warning.call_args.args[1] == "Reset Session Blocked"
 
-    def test_clear_dataset_uses_reset_session_capability_before_confirm(
+    def test_reset_session_clears_loaded_eeg_instead_of_only_training_splits(
         self,
         qtbot,
     ):
@@ -2809,23 +4098,30 @@ class TestDatasetSidebar:
 
         mock_question.assert_called_once()
         mock_info.assert_not_called()
-        assert panel.main_window.statusBar().currentMessage() == "Dataset cleared"
+        assert panel.main_window.statusBar().currentMessage() == "Session reset"
+        assert study.data_manager.loaded_data_list == []
+        assert study.data_manager.epoch_data is None
         panel.controller.clean_dataset.assert_not_called()
         panel.update_panel.assert_not_called()
 
     def test_clear_dataset_refuses_real_study_controller_fallback(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
-        from XBrainLab.backend.application import QueryStateCommand
+        from XBrainLab.backend.application import ResetSessionCommand
         from XBrainLab.backend.application.capabilities import CommandCapability
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
 
-        def execute_for(_, command, refresh=True):
-            if isinstance(command, QueryStateCommand):
-                return _command_result(state={"epoch": {"exists": True}})
-            return None
+        def execute_for(
+            _,
+            command,
+            refresh=True,
+            expected_publication_generation=None,
+        ):
+            assert isinstance(command, ResetSessionCommand)
+            assert command.confirmed is True
+            assert expected_publication_generation is None
 
         with (
             patch(
@@ -2836,6 +4132,10 @@ class TestDatasetSidebar:
                     destructive=True,
                     confirmation_required=True,
                 ),
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+                return_value=None,
             ),
             patch.object(
                 QMessageBox,
@@ -2853,7 +4153,7 @@ class TestDatasetSidebar:
 
         sidebar.panel.controller.clean_dataset.assert_not_called()
         mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Clear Dataset Blocked"
+        assert mock_warning.call_args.args[1] == "Reset Session Blocked"
         mock_critical.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
 

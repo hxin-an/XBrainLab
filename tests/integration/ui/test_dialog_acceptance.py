@@ -6,6 +6,7 @@ import torch
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QGroupBox, QLabel
 
+from XBrainLab.backend.application.epoch_context import build_epoching_context
 from XBrainLab.ui.dialogs.dataset.event_filter_dialog import EventFilterDialog
 from XBrainLab.ui.dialogs.dataset.label_mapping_dialog import LabelMappingDialog
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
@@ -145,6 +146,106 @@ def test_epoching_dialog_uses_import_interval_defaults(qtbot):
         and check_item.checkState() == Qt.CheckState.Checked
     ]
     assert checked == ["Left hand", "Right hand"]
+
+
+def test_epoching_dialog_displays_and_returns_backend_duration_requirement(
+    qtbot,
+):
+    data = MagicMock()
+    data.get_event_list.return_value = (
+        None,
+        {"left": 1, "right": 2},
+    )
+    data.get_sfreq.return_value = 100.0
+    data.get_runtime_detail.return_value = {
+        "source": "BIDS events.tsv",
+        "placement_method": "interval",
+        "label_field": "trial_type",
+        "time_field": "onset",
+        "duration_field": "duration",
+        "duration_stats": {"numeric_count": 2, "min": 0.25, "max": 12.0},
+        "class_map": {"left": "left", "right": "right"},
+    }
+    dialog = EpochingDialog(None, [data])
+    _show_dialog(qtbot, dialog)
+
+    requirement = dialog.confirmation_requirement
+    assert requirement is not None
+    assert dialog.warning_label is not None
+    assert requirement["message"] in dialog.warning_label.text()
+    assert dialog.confirmation_check is not None
+    assert dialog.confirmation_check.text() == requirement["confirmation_label"]
+
+    with patch(
+        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+    ) as warning:
+        dialog.accept()
+    warning.assert_called_once_with(
+        dialog,
+        requirement["title"],
+        requirement["message"],
+    )
+    assert dialog.get_params() is None
+    assert dialog.get_confirmation_receipt() is None
+
+    dialog.confirmation_check.setChecked(True)
+    initial_receipt = requirement["receipt"]
+    assert dialog.tmax_spin is not None
+    dialog.tmax_spin.setValue(10.0)
+    assert dialog.confirmation_check.isChecked() is False
+    assert dialog.confirmation_requirement is not None
+    assert dialog.confirmation_requirement["receipt"] != initial_receipt
+
+    window_receipt = dialog.confirmation_requirement["receipt"]
+    dialog.confirmation_check.setChecked(True)
+    assert dialog.event_list is not None
+    for row in range(dialog.event_list.rowCount()):
+        event_item = dialog.event_list.item(row, 1)
+        check_item = dialog.event_list.item(row, 0)
+        if (
+            event_item is not None
+            and check_item is not None
+            and event_item.text() == "right"
+        ):
+            check_item.setCheckState(Qt.CheckState.Unchecked)
+            break
+    assert dialog.confirmation_check.isChecked() is False
+    assert dialog.confirmation_requirement is not None
+    assert dialog.confirmation_requirement["receipt"] != window_receipt
+
+    dialog.confirmation_check.setChecked(True)
+    dialog.accept()
+
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert (
+        dialog.get_confirmation_receipt()
+        == (dialog.confirmation_requirement["receipt"])
+    )
+
+
+def test_epoching_dialog_preserves_sample_aligned_bids_tmax_precision(qtbot):
+    data = MagicMock()
+    data.get_event_list.return_value = (None, {"late_event": 1})
+    data.get_sfreq.return_value = 250.0
+    data.get_runtime_detail.return_value = {
+        "source": "BIDS events.tsv",
+        "placement_method": "interval",
+        "label_field": "trial_type",
+        "time_field": "onset",
+        "duration_field": "duration",
+        "duration_stats": {"numeric_count": 1, "min": 0.5, "max": 0.5},
+        "class_map": {"late_event": "late_event"},
+    }
+    context = build_epoching_context([data])
+
+    dialog = EpochingDialog(None, [data], epoch_context=context)
+    _show_dialog(qtbot, dialog)
+
+    assert dialog.tmax_spin is not None
+    assert dialog.duration_label is not None
+    assert context["suggested_t_max"] == 0.496
+    assert dialog.tmax_spin.value() == 0.496
+    assert "0.50 s window" in dialog.duration_label.text()
 
 
 def test_epoching_dialog_uses_card_sections_not_groupbox_legends(qtbot):

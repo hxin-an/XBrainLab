@@ -7,7 +7,19 @@ parameters.  Concrete (mock or real) implementations must override
 
 from typing import Any
 
+from XBrainLab.backend.training.input_contract import (
+    REQUIRED_TRAINING_FIELDS,
+    TRAINING_DEVICE_NAMES,
+    TRAINING_EVALUATION_NAMES,
+    TRAINING_MODEL_NAMES,
+    TRAINING_OPTIMIZER_NAMES,
+    non_negative_integer_parameter_schema,
+    positive_integer_parameter_schema,
+    training_parameter_schema,
+)
+
 from ..base import BaseTool
+from ..result_contract import ToolExecutionResult
 
 
 class BaseSetModelTool(BaseTool):
@@ -32,13 +44,13 @@ class BaseSetModelTool(BaseTool):
             "properties": {
                 "model_name": {
                     "type": "string",
-                    "enum": ["EEGNet", "ShallowConvNet", "SCCNet"],
+                    "enum": list(TRAINING_MODEL_NAMES),
                 },
             },
             "required": ["model_name"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -46,7 +58,8 @@ class BaseConfigureTrainingTool(BaseTool):
     """Configure training hyperparameters.
 
     Includes epoch count, batch size, learning rate, optimizer,
-    device selection, checkpoint settings, and output directory.
+    device selection, and checkpoint settings. The output directory remains
+    owned by the application unless the host verifies an explicit user path.
     """
 
     @property
@@ -59,26 +72,39 @@ class BaseConfigureTrainingTool(BaseTool):
 
     @property
     def parameters(self) -> dict[str, Any]:
+        training_properties = training_parameter_schema()
         return {
             "type": "object",
             "properties": {
-                "epoch": {"type": "integer"},
-                "batch_size": {"type": "integer"},
-                "learning_rate": {"type": "number"},
-                "repeat": {"type": "integer", "default": 1},
-                "device": {"type": "string", "enum": ["cpu", "cuda"]},
+                "model_name": {
+                    "type": "string",
+                    "enum": list(TRAINING_MODEL_NAMES),
+                },
+                **training_properties,
+                "repeat": positive_integer_parameter_schema(default=1),
+                "device": {
+                    "type": "string",
+                    "enum": list(TRAINING_DEVICE_NAMES),
+                },
                 "optimizer": {
                     "type": "string",
-                    "enum": ["adam", "sgd", "adamw"],
+                    "enum": list(TRAINING_OPTIMIZER_NAMES),
                     "default": "adam",
                 },
-                "save_checkpoints_every": {"type": "integer", "default": 0},
-                "output_dir": {"type": "string", "default": "./output"},
+                "evaluation_option": {
+                    "type": "string",
+                    "enum": list(TRAINING_EVALUATION_NAMES),
+                    "default": "last_epoch",
+                },
+                "save_checkpoints_every": non_negative_integer_parameter_schema(
+                    default=0
+                ),
             },
-            "required": ["epoch", "batch_size", "learning_rate"],
+            "required": list(REQUIRED_TRAINING_FIELDS),
+            "additionalProperties": False,
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -105,5 +131,24 @@ class BaseStartTrainingTool(BaseTool):
         """Training is a long-running GPU operation and requires confirmation."""
         return True
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+        raise NotImplementedError
+
+
+class BaseStopTrainingTool(BaseTool):
+    """Request that the currently active training run stop."""
+
+    @property
+    def name(self) -> str:
+        return "stop_training"
+
+    @property
+    def description(self) -> str:
+        return "Stop the active training run without starting a new run."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}}
+
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError

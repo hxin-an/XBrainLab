@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+from itertools import pairwise
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -143,6 +145,111 @@ class TestConfusionMatrix:
         assert w.fig is None
         assert w.canvas is None
 
+    @pytest.mark.parametrize("canvas_width", [270, 390])
+    def test_narrow_canvas_keeps_class_labels_inside_figure(
+        self,
+        qtbot,
+        canvas_width,
+    ):
+        from matplotlib.figure import Figure
+
+        from XBrainLab.ui.panels.evaluation.confusion_matrix import (
+            ConfusionMatrixWidget,
+        )
+
+        class NarrowPlotRecord:
+            @staticmethod
+            def get_confusion_figure(show_percentage=False):
+                del show_percentage
+                figure = Figure(figsize=(6.4, 4.8), dpi=100)
+                axes = figure.add_subplot(111)
+                image = axes.imshow(np.array([[1, 0], [0, 1]]), cmap="magma")
+                figure.colorbar(image)
+                axes.set_xlabel("Predicted Label", labelpad=10)
+                axes.set_ylabel("True Label", labelpad=10)
+                labels = ["Left hand", "Right hand"]
+                axes.set_xticks(range(2), labels)
+                axes.set_yticks(range(2), labels)
+                figure.tight_layout()
+                return figure
+
+        widget = ConfusionMatrixWidget()
+        qtbot.addWidget(widget)
+        widget.setFixedSize(canvas_width, 350)
+        widget.show()
+        qtbot.wait(20)
+
+        widget.update_plot(NarrowPlotRecord())
+        qtbot.wait(20)
+        assert widget.canvas is not None
+        assert widget.fig is not None
+        # Match the product path: the Evaluation panel starts wide, then the
+        # Assistant dock narrows the plot canvas.
+        widget.canvas.setFixedSize(530, 320)
+        widget.fit_plot_to_canvas()
+        widget.canvas.setFixedSize(canvas_width, 280)
+        widget.fit_plot_to_canvas()
+        assert widget.canvas.width() == canvas_width
+        widget.canvas.draw()
+        renderer = widget.canvas.get_renderer()
+
+        label_bounds = [
+            label.get_window_extent(renderer)
+            for label in widget.fig.axes[0].get_yticklabels()
+        ]
+        assert label_bounds
+        assert min(bounds.x0 for bounds in label_bounds) >= 0
+        x_tick_bounds = [
+            label.get_window_extent(renderer)
+            for label in widget.fig.axes[0].get_xticklabels()
+        ]
+        x_tick_rows = [
+            (label.get_text(), bounds.x0, bounds.x1)
+            for label, bounds in zip(
+                widget.fig.axes[0].get_xticklabels(),
+                x_tick_bounds,
+                strict=True,
+            )
+        ]
+        assert all(
+            left.x1 + 6 <= right.x0 for left, right in pairwise(x_tick_bounds)
+        ), x_tick_rows
+        decorated_text = [
+            widget.fig.axes[0].xaxis.label,
+            widget.fig.axes[0].yaxis.label,
+            widget.fig.axes[0].title,
+        ]
+        decorated_bounds = [text.get_window_extent(renderer) for text in decorated_text]
+        assert min(bounds.x0 for bounds in decorated_bounds) >= 0, decorated_bounds
+        assert max(bounds.x1 for bounds in decorated_bounds) <= widget.canvas.width()
+        assert min(bounds.y0 for bounds in decorated_bounds) >= 0
+        assert max(bounds.y1 for bounds in decorated_bounds) <= widget.canvas.height()
+
+    def test_responsive_layout_contains_known_tight_layout_warning(self, qtbot):
+        from XBrainLab.ui.panels.evaluation.confusion_matrix import (
+            ConfusionMatrixWidget,
+        )
+
+        widget = ConfusionMatrixWidget()
+        qtbot.addWidget(widget)
+        assert widget.canvas is not None
+
+        def warn_about_transient_geometry(*args, **kwargs):
+            del args, kwargs
+            warnings.warn(
+                "Tight layout not applied. The left and right margins cannot be made large enough.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        widget.fig.tight_layout = warn_about_transient_geometry
+
+        with warnings.catch_warnings(record=True) as escaped_warnings:
+            warnings.simplefilter("always")
+            widget.fit_plot_to_canvas()
+
+        assert escaped_warnings == []
+
 
 class TestMetricsBarChart:
     def test_creates(self, qtbot):
@@ -162,6 +269,22 @@ class TestMetricsBarChart:
         w = MetricsBarChartWidget()
         qtbot.addWidget(w)
         w.update_plot(None)
+
+    def test_update_plot_draws_without_queued_qt_callback(self, qtbot):
+        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
+            MetricsBarChartWidget,
+        )
+
+        w = MetricsBarChartWidget()
+        qtbot.addWidget(w)
+        assert w.canvas is not None
+        w.canvas.draw = MagicMock()
+        w.canvas.draw_idle = MagicMock()
+
+        w.update_plot(None)
+
+        w.canvas.draw.assert_called_once_with()
+        w.canvas.draw_idle.assert_not_called()
 
     def test_close_releases_figure_and_canvas(self, qtbot):
         import matplotlib.pyplot as plt
@@ -186,6 +309,57 @@ class TestMetricsBarChart:
         assert old_canvas._draw_pending is False
         assert w.fig is None
         assert w.canvas is None
+
+    def test_repeated_parent_teardown_has_no_deleted_canvas_callback(
+        self,
+        qtbot,
+    ):
+        import gc
+        import weakref
+
+        from PyQt6 import sip
+        from PyQt6.QtCore import QCoreApplication, QEvent
+
+        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
+            MetricsBarChartWidget,
+        )
+
+        figure_refs = []
+        metrics = {
+            0: {"precision": 0.8, "recall": 0.7, "f1-score": 0.75},
+            1: {"precision": 0.6, "recall": 0.5, "f1-score": 0.55},
+        }
+        for _ in range(10):
+            parent = QWidget()
+            qtbot.addWidget(parent)
+            chart = MetricsBarChartWidget(parent)
+            canvas = chart.canvas
+            figure = chart.fig
+            assert canvas is not None
+            assert figure is not None
+            figure_refs.append(weakref.ref(figure))
+            chart.update_plot(metrics)
+
+            parent.deleteLater()
+            QCoreApplication.sendPostedEvents(
+                None,
+                QEvent.Type.DeferredDelete,
+            )
+            QCoreApplication.processEvents()
+
+            assert sip.isdeleted(canvas)
+            del figure
+            del canvas
+            del chart
+            del parent
+
+        gc.collect()
+        QCoreApplication.processEvents()
+
+        # pytest-qt turns uncaught Qt callback exceptions into test failures.
+        # Keep the lifecycle assertions direct so this gate also runs when the
+        # test temp root is a Windows-mounted path.
+        assert all(reference() is None for reference in figure_refs)
 
     def test_update_plot_layout_failure_is_not_logged_as_error(self, qtbot):
         from XBrainLab.ui.panels.evaluation import metrics_bar_chart

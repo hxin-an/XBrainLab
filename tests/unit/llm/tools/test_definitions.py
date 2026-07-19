@@ -32,6 +32,7 @@ from XBrainLab.llm.tools.definitions.preprocess_def import (
     BaseNotchFilterTool,
     BaseRereferenceTool,
     BaseResampleTool,
+    BaseResetPreprocessTool,
     BaseSetMontageTool,
     BaseStandardPreprocessTool,
 )
@@ -39,6 +40,7 @@ from XBrainLab.llm.tools.definitions.training_def import (
     BaseConfigureTrainingTool,
     BaseSetModelTool,
     BaseStartTrainingTool,
+    BaseStopTrainingTool,
 )
 from XBrainLab.llm.tools.definitions.ui_control_def import BaseSwitchPanelTool
 
@@ -69,6 +71,7 @@ def _get_all_def_classes():
         BaseVisualizeTool,
         BaseSaliencyTool,
         BaseStandardPreprocessTool,
+        BaseResetPreprocessTool,
         BaseBandPassFilterTool,
         BaseNotchFilterTool,
         BaseResampleTool,
@@ -80,6 +83,7 @@ def _get_all_def_classes():
         BaseSetModelTool,
         BaseConfigureTrainingTool,
         BaseStartTrainingTool,
+        BaseStopTrainingTool,
         BaseSwitchPanelTool,
     ]
 
@@ -199,6 +203,12 @@ EXPECTED_TOOL_CONTRACTS = {
         ),
         "required": (),
     },
+    BaseResetPreprocessTool: {
+        "name": "reset_preprocess",
+        "description_markers": ("Reset preprocessing", "loaded raw data"),
+        "properties": (),
+        "required": (),
+    },
     BaseBandPassFilterTool: {
         "name": "apply_bandpass_filter",
         "description_markers": ("single bandpass filter",),
@@ -257,20 +267,27 @@ EXPECTED_TOOL_CONTRACTS = {
         "name": "configure_training",
         "description_markers": ("training hyperparameters",),
         "properties": (
+            "model_name",
             "epoch",
             "batch_size",
             "learning_rate",
             "repeat",
             "device",
             "optimizer",
+            "evaluation_option",
             "save_checkpoints_every",
-            "output_dir",
         ),
         "required": ("epoch", "batch_size", "learning_rate"),
     },
     BaseStartTrainingTool: {
         "name": "start_training",
         "description_markers": ("Start the training process",),
+        "properties": (),
+        "required": (),
+    },
+    BaseStopTrainingTool: {
+        "name": "stop_training",
+        "description_markers": ("Stop the active training",),
         "properties": (),
         "required": (),
     },
@@ -335,8 +352,9 @@ class TestSwitchPanelEnums:
     def test_panel_enum_values(self):
         params = _property_value(BaseSwitchPanelTool.parameters)
         panel_enum = params["properties"]["panel_name"]["enum"]
-        assert "dashboard" in panel_enum
+        assert "dashboard" not in panel_enum
         assert "dataset" in panel_enum
+        assert "preprocess" in panel_enum
         assert "training" in panel_enum
         assert "visualization" in panel_enum
         assert "evaluation" in panel_enum
@@ -357,11 +375,39 @@ class TestGenerateDatasetEnums:
 
 
 class TestConfigureTrainingDefinitions:
-    def test_output_dir_is_optional_schema_parameter(self):
+    def test_core_numeric_schema_matches_backend_positive_contract(self):
+        params = _property_value(BaseConfigureTrainingTool.parameters)
+        properties = params["properties"]
+
+        assert properties["epoch"]["type"] == "integer"
+        assert properties["epoch"]["minimum"] == 1
+        assert properties["batch_size"]["type"] == "integer"
+        assert properties["batch_size"]["minimum"] == 1
+        assert properties["learning_rate"]["type"] == "number"
+        assert properties["learning_rate"]["exclusiveMinimum"] == 0
+        assert "maximum" not in properties["learning_rate"]
+
+    def test_optional_integer_schema_does_not_advertise_coercible_strings(self):
+        params = _property_value(BaseConfigureTrainingTool.parameters)
+        properties = params["properties"]
+
+        assert properties["repeat"]["type"] == "integer"
+        assert properties["save_checkpoints_every"]["type"] == "integer"
+
+    def test_evaluation_option_uses_backend_supported_names(self):
         params = _property_value(BaseConfigureTrainingTool.parameters)
 
-        assert params["properties"]["output_dir"]["type"] == "string"
-        assert "output_dir" not in params.get("required", [])
+        assert params["properties"]["evaluation_option"]["enum"] == [
+            "val_loss",
+            "val_auc",
+            "val_acc",
+            "last_epoch",
+        ]
+
+    def test_output_dir_is_not_model_facing(self):
+        params = _property_value(BaseConfigureTrainingTool.parameters)
+
+        assert "output_dir" not in params["properties"]
 
 
 class TestAnalysisDefinitions:

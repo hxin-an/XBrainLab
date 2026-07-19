@@ -7,13 +7,13 @@ strategies such as subject-wise, session-wise, or trial-wise splits.
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
-from unittest.mock import Mock
+from typing import Any, Protocol
 
 import numpy as np
 from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter
 from PyQt6.QtWidgets import (
+    QWIDGETSIZE_MAX,
     QBoxLayout,
     QCheckBox,
     QComboBox,
@@ -52,10 +52,21 @@ _CHEVRON_DOWN_ICON = (
 ).as_posix()
 
 
+class _DataSplittingControllerPort(Protocol):
+    """Compatibility controller contract for standalone dialog contexts."""
+
+    def get_epoch_data(self) -> Any: ...
+
+    def get_dataset_generator(self) -> Any: ...
+
+
 def _is_real_study_context(parent: Any, controller: Any) -> bool:
     """Return whether the dialog is running in a real Study-backed UI context."""
-    study = find_study(parent) or find_study(controller)
-    return isinstance(study, Study) and not isinstance(study, Mock)
+    return any(
+        isinstance(find_study(context), Study)
+        for context in (parent, controller)
+        if context is not None
+    )
 
 
 class DrawColor(Enum):
@@ -385,11 +396,18 @@ class DataSplittingDialog(BaseDialog):
     def __init__(
         self,
         parent,
-        controller,
+        controller: _DataSplittingControllerPort | None,
         dataset_generator: Any = _UNSET,
         epoch_data: Any = _UNSET,
+        *,
+        initial_values: dict[str, str] | None = None,
     ):
         self.controller = controller
+        self.initial_values = {
+            str(key): str(value)
+            for key, value in (initial_values or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
         allow_controller_fallback = not _is_real_study_context(parent, controller)
 
         if epoch_data is _UNSET:
@@ -546,6 +564,7 @@ class DataSplittingDialog(BaseDialog):
         self.val_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Validation"), 2, 0)
         form_layout.addWidget(self.val_combo, 2, 1)
+        self._apply_initial_values()
         right_layout.addLayout(form_layout)
 
         self.cv_check = QCheckBox("Cross validation")
@@ -594,19 +613,25 @@ class DataSplittingDialog(BaseDialog):
             if is_narrow
             else QBoxLayout.Direction.LeftToRight
         )
-        if self.content_layout.direction() == direction:
-            return
+        if self.content_layout.direction() != direction:
+            self.content_layout.setDirection(direction)
 
-        self.content_layout.setDirection(direction)
-        self.options_group.setMaximumWidth(300)
-        self.options_group.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Maximum,
-        )
-        alignment = Qt.AlignmentFlag.AlignTop
         if is_narrow:
-            alignment |= Qt.AlignmentFlag.AlignLeft
-        self.content_layout.setAlignment(self.options_group, alignment)
+            self.options_group.setMaximumWidth(QWIDGETSIZE_MAX)
+            self.options_group.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Maximum,
+            )
+        else:
+            self.options_group.setMaximumWidth(300)
+            self.options_group.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Maximum,
+            )
+        self.content_layout.setAlignment(
+            self.options_group,
+            Qt.AlignmentFlag.AlignTop,
+        )
         self.content_layout.invalidate()
 
     @staticmethod
@@ -614,6 +639,30 @@ class DataSplittingDialog(BaseDialog):
         combo.setMinimumWidth(148)
         combo.setMaximumWidth(178)
         combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def _apply_initial_values(self) -> None:
+        """Prefill only choices explicitly supplied by an assistant handoff."""
+        train_type_combo = self.train_type_combo
+        test_combo = self.test_combo
+        val_combo = self.val_combo
+        if train_type_combo is None or test_combo is None or val_combo is None:
+            return
+
+        training_mode = self.initial_values.get("training_mode", "").casefold()
+        if training_mode == "individual":
+            train_type_combo.setCurrentText(TrainingType.IND.value)
+        elif training_mode == "full":
+            train_type_combo.setCurrentText(TrainingType.FULL.value)
+
+        strategy = self.initial_values.get("split_strategy", "").casefold()
+        strategy_text = {
+            "trial": (SplitByType.TRIAL.value, ValSplitByType.TRIAL.value),
+            "session": (SplitByType.SESSION.value, ValSplitByType.SESSION.value),
+            "subject": (SplitByType.SUBJECT.value, ValSplitByType.SUBJECT.value),
+        }.get(strategy)
+        if strategy_text is not None:
+            test_combo.setCurrentText(strategy_text[0])
+            val_combo.setCurrentText(strategy_text[1])
 
     def update_preview(self, *args):
         """Recalculate and redraw the split preview based on current settings."""
@@ -776,6 +825,7 @@ class DataSplittingDialog(BaseDialog):
             "Data Splitting Step 2",
             self.epoch_data,
             config,
+            initial_values=self.initial_values,
         )
         if self.step2_window.exec():
             self.split_result = self.step2_window.get_result()

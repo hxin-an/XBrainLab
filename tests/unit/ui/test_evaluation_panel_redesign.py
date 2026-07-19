@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QTableWidget,
+    QTabWidget,
     QWidget,
 )
 
@@ -168,6 +169,33 @@ def test_evaluation_panel_layout(qtbot):
     )
 
 
+def test_evaluation_tabs_do_not_draw_platform_base_line(qtbot):
+    panel = EvaluationPanel(controller=MagicMock(), parent=None)
+    qtbot.addWidget(panel)
+
+    assert panel.chart_tabs.tabBar().drawBase() is False
+    assert panel.bottom_tabs.tabBar().drawBase() is False
+
+
+def test_evaluation_metric_views_use_dataset_class_names(qtbot):
+    metrics = MockEvalRecord().get_per_class_metrics()
+    class_names = {0: "Left hand", 1: "Right hand"}
+    chart = MetricsBarChartWidget()
+    table = MetricsTableWidget()
+    qtbot.addWidget(chart)
+    qtbot.addWidget(table)
+
+    chart.update_plot(metrics, class_names=class_names)
+    table.update_data(metrics, class_names=class_names)
+
+    assert [label.get_text() for label in chart.ax.get_xticklabels()] == [
+        "Left hand",
+        "Right hand",
+    ]
+    assert table.item(0, 0).text() == "Left hand"
+    assert table.item(1, 0).text() == "Right hand"
+
+
 def test_evaluation_controls_are_compact_toolbar(qtbot):
     main_window = MockMainWindow()
     controller = main_window.study.get_controller("evaluation")
@@ -208,8 +236,9 @@ def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
     panel.model_combo.blockSignals(False)
     panel.run_combo.blockSignals(False)
 
-    panel.resize(720, 620)
     panel.show()
+    panel.setFixedWidth(520)
+    panel.resize(520, 620)
     qtbot.wait(50)
 
     assert panel.evaluation_controls_bar.is_wrapped() is True
@@ -229,6 +258,107 @@ def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
     assert panel.run_combo.elided_current_text() != long_run
     assert panel.model_combo.toolTip() == long_model
     assert panel.run_combo.toolTip() == long_run
+
+
+def test_evaluation_controls_wrap_before_assistant_dock_clips_common_values(qtbot):
+    panel = EvaluationPanel(controller=MagicMock(), parent=None)
+    qtbot.addWidget(panel)
+    panel.model_combo.blockSignals(True)
+    panel.run_combo.blockSignals(True)
+    panel.model_combo.addItem("Fold 2: EEGNet", object())
+    panel.run_combo.addItem("Average (Finished Runs)", "average")
+    panel.model_combo.blockSignals(False)
+    panel.run_combo.blockSignals(False)
+
+    panel.setFixedWidth(640)
+    panel.resize(640, 620)
+    panel.show()
+    qtbot.wait(50)
+
+    assert panel.evaluation_controls_bar.is_wrapped() is True
+    assert panel.model_combo.y() < panel.run_combo.y()
+    assert panel.model_combo.elided_current_text() == "Fold 2: EEGNet"
+    assert panel.run_combo.elided_current_text() == "Average (Finished Runs)"
+
+
+def test_evaluation_charts_use_tabs_when_assistant_reduces_content_width(qtbot):
+    panel = EvaluationPanel(controller=MagicMock(), parent=None)
+    qtbot.addWidget(panel)
+    panel.resize(760, 700)
+    panel.show()
+    qtbot.wait(50)
+
+    chart_tabs = panel.findChild(QTabWidget, "EvaluationChartTabs")
+
+    assert chart_tabs is not None
+    assert chart_tabs.isVisible()
+    assert chart_tabs.count() == 2
+    assert chart_tabs.currentWidget() is panel.matrix_widget
+    assert panel.matrix_widget.width() >= 400
+
+    panel.resize(1280, 760)
+    qtbot.wait(50)
+
+    assert chart_tabs.isVisible() is False
+    assert panel.matrix_widget.isVisible()
+    assert panel.bar_chart.isVisible()
+
+
+def test_evaluation_moves_data_summary_into_tabs_when_sidebar_would_squeeze_plots(
+    qtbot,
+):
+    panel = EvaluationPanel(controller=MagicMock(), parent=None)
+    qtbot.addWidget(panel)
+
+    panel.resize(760, 700)
+    panel.show()
+    qtbot.wait(50)
+
+    info_index = panel.bottom_tabs.indexOf(panel.info_tab)
+    assert info_index >= 0
+    assert panel.bottom_tabs.tabText(info_index) == "Data Summary"
+    assert panel.info_panel.parentWidget() is panel.info_tab_scroll.content
+    assert panel.info_tab_scroll.parentWidget() is panel.info_tab
+    assert panel.right_panel.isVisible() is False
+    plots_group = next(
+        group
+        for group in panel.findChildren(QGroupBox)
+        if group.title() == "EVALUATION PLOTS"
+    )
+    assert plots_group.height() > panel.bottom_tabs.height()
+
+    panel.bottom_tabs.setCurrentWidget(panel.info_tab)
+    panel.resize(1000, 720)
+    qtbot.wait(50)
+
+    assert panel.bottom_tabs.indexOf(panel.info_tab) == -1
+    assert panel.bottom_tabs.currentWidget() is panel.metrics_tab
+    assert panel.info_panel.parentWidget() is panel.right_panel
+    assert panel.right_panel.isVisible()
+
+
+def test_evaluation_preserves_readable_plot_height_at_product_minimum(qtbot):
+    panel = EvaluationPanel(controller=MagicMock(), parent=None)
+    qtbot.addWidget(panel)
+    panel.resize(440, 470)
+    panel.show()
+    qtbot.wait(80)
+
+    assert panel.chart_tabs.isVisible()
+    assert panel.bottom_tabs.isVisible() is False
+    assert [
+        panel.chart_tabs.tabText(index) for index in range(panel.chart_tabs.count())
+    ] == ["Confusion", "Per Class", "Metrics", "Model", "Data"]
+    assert panel.matrix_widget.height() >= 240
+
+    panel.resize(760, 700)
+    qtbot.wait(80)
+
+    assert panel.bottom_tabs.isVisible()
+    assert panel.chart_tabs.count() == 2
+    assert panel.bottom_tabs.indexOf(panel.metrics_tab) == 0
+    assert panel.bottom_tabs.indexOf(panel.summary_tab) == 1
+    assert panel.bottom_tabs.indexOf(panel.info_tab) == 2
 
 
 def test_metrics_table_selection_uses_dark_theme(qtbot):

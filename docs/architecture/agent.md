@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-07-10`
+最後更新：`2026-07-15`
 
 ## 範圍
 
@@ -179,12 +179,12 @@ applied         -> loaded raw data / preprocess
 - Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 primary / fallback 選型。
 - 優先考慮非中國來源、授權清楚、可本地部署的模型。
 
-2026-05-30 local runtime truth：
+2026-07-15 local runtime truth：
 
 | role | model | provider | estimated download | cache status | smoke |
 | --- | --- | --- | ---: | --- | --- |
-| primary | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | missing cache | not run in current worktree |
-| fallback | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | missing cache | not run in current worktree |
+| primary | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | cached | real GPU ChatPanel workflow PASS |
+| fallback | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | cached | cache/preflight present; no current full ChatPanel run |
 
 cache 位置：
 
@@ -192,11 +192,11 @@ cache 位置：
 XBrainLab/llm/core/models
 ```
 
-`scripts/dev/inspect_local_assistant_runtime.py --format markdown` currently reports
-`classification: missing-cache`, `has_local_cache: False`, and cache usage `0.00 GB`.
-The current claim is therefore preflight/download-plan readiness only. Prompt smoke
-and structured-output smoke require installing an approved local model cache first.
-舊 Qwen cache 已刪除。
+`scripts/dev/inspect_local_assistant_runtime.py --format markdown` reports
+`classification: gpu-ready`, `has_local_cache: True`, and cache usage `15.34 GB` against the
+20 GB product limit. The active model is Phi-4 mini. The real ChatPanel artifact covers one
+state-query tool turn and one normal answer turn; it is not a long-session or fallback-model claim.
+舊 Qwen cache 已刪除，catalog / architecture guards 會阻止被禁用來源重新進入 product path。
 
 新增 runtime policy：
 
@@ -227,12 +227,11 @@ and structured-output smoke require installing an approved local model cache fir
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前 worktree 的 primary / fallback local LLM cache 是 missing；不能宣稱 GPU prompt smoke 或
-structured-output smoke 已在本輪 release-candidate gate 通過。歷史 tool-call benchmark artifact
-曾記錄 deterministic、primary local、fallback local 的 `121 / 121` slice 和 fallback resource
-pressure，但那是歷史 benchmark evidence，不是目前本機 runtime readiness。它不可替代
-ChatPanel 長時間 workflow、Windows launcher、UI usability、human desktop acceptance，或目前
-cache missing 狀態下的 local model smoke。
+目前 primary / fallback cache 都存在，且 primary GPU ChatPanel workflow 已通過。新的 unassisted
+raw candidate score 是 `6/12`；host-assisted product policy score 是 `12/12`，因為 host 會執行
+request admission、normalization、verification 和 capability blocking。後者不能替代 raw-model
+accuracy，也不能把歷史 `117/117` 或 `121/121` artifact 恢復成 thesis claim。兩種分數都不能
+替代長時間 ChatPanel workflow、Windows launcher、UI usability 或 human desktop acceptance。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -398,8 +397,8 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 已在本輪 runtime 驗證的部分：
 
 - local model catalog、download preflight 和 health-check script 存在。
-- `scripts/dev/inspect_local_assistant_runtime.py --format markdown` 回報 missing cache；
-  因此目前只支撐 preflight / unavailable-state claim。
+- runtime inspection 回報 Phi-4 mini `gpu-ready`，兩個 approved model cache 共 `15.34 GB`。
+- 真 ChatPanel workflow 已完成 state-query tool turn 和一般回答 turn，並正常回 idle / shutdown。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
 - assistant product UI 已改成使用者語言：workflow stage、local model status、next steps 和
@@ -411,11 +410,10 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 尚未在本輪完整驗證的部分：
 
 - RAG corpus 的品質和可用性。
-- 多步 tool-call loop 在真實使用者 workflow 中是否穩定。
+- 長時間、多步 tool-call loop 在真實使用者 workflow 中是否穩定。
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
-- local model cache 目前 missing；本輪只證明 preflight / unavailable-state，不證明真 local
-  model ChatPanel walkthrough 或長時間真人桌面 session。
+- fallback model 的完整 ChatPanel run、長時間真人桌面 session 與跨重啟 cache lifecycle。
 
 ## 架構評斷
 
@@ -432,15 +430,18 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 - destructive / long-running 操作有 confirmation 機制。
 - runtime 已開始用 structured config 管理，而不是靠 UI label 判斷。
 
-主要問題：
+主要問題 / 明確邊界：
 
 - local-only runtime 已是 product path；remote runtime 若日後作歷史 fixture，必須保持 optional 且
   product code 不 import。
 - `BackendFacade` 已移除；若重新加入 wrapper，agent 會回到分裂 workflow truth。
-- tool result 和 UI request 主要靠字串協定，型別邊界不夠清楚。
+- 舊 UI request 相容路徑仍有字串協定；新 workflow handoff / interaction outcome 已有 typed
+  contract，但不能宣稱所有 UI side effect 都完成 typed migration。
 - `CommandParser` 是從 LLM 文字中掃 JSON，不是 host-native structured tool calling。
-- `VerificationLayer` 已有基本檢查，但還不是完整的 tool contract validation。
-- `AgentManager` 同時處理 UI wiring 和 agent request，長期會讓 UI side effect 難測。
+- `VerificationLayer`、request admission 與 strict-envelope recovery 已能守住目前 product
+  contracts；raw local model 在 candidate slice 仍只有 50%，所以模型判斷本身不是完成狀態。
+- `AgentManager` 已抽出 presentation、runtime lifecycle、workflow handoff 與 montage coordinator，
+  但仍是偏大的 Qt orchestrator，後續應按責任切片而不是新增 fallback。
 - RAG 已接入 controller，但本輪尚未驗證資料來源和品質。
 
 ## 目標架構
@@ -483,9 +484,10 @@ Data / Training / Evaluation / Persistence
 
 ## 文件狀態
 
-這份文件目前是 `partially-verified`。
+這份文件目前是 `verified engineering checkpoint`。
 
-它已經對照主要 source code，但還沒有證明 local LLM runtime、RAG 品質、真實多步 tool-call workflow 都可穩定運作。
+它已對照主要 source code、真 Phi-4 ChatPanel workflow 與 candidate eval；仍沒有證明 RAG 品質、
+長時間多步 tool-call workflow、fallback model UI session 或 thesis-grade raw accuracy。
 
 local-only runtime cleanup 已對齊 product source：remote backend modules、remote key handling、
 model settings remote UI 和 product remote switch path 已移除；剩餘驗證重點是長時間 local model

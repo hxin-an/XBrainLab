@@ -15,35 +15,31 @@ from XBrainLab.backend.application import (
     CommandName,
     QueryStateCommand,
     SaliencyCommand,
-    VisualizeCommand,
+    SaliencyRunIdentity,
 )
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
-    execute_application_command_async,
     get_command_capability,
-    local_result_payload,
+    get_command_review_context,
+    is_stale_publication_result,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.dialogs.visualization import (
-    ExportSaliencyDialog,
     PickMontageDialog,
     SaliencySettingDialog,
 )
+from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.montage_positions import normalize_montage_positions
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class ControlSidebar(QWidget):
-    """Sidebar for Visualization Panel configuration.
-
-    Saliency export is kept as a backend action but no longer shown as a
-    first-layer operation until the saliency workflow has a complete round trip.
-    """
+    """Sidebar for Visualization Panel configuration."""
 
     def __init__(self, panel, parent=None):
         """Initialize the control sidebar.
@@ -119,14 +115,6 @@ class ControlSidebar(QWidget):
 
         layout.addWidget(config_group)
         layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
-
-        self.btn_export = QPushButton("Export Saliency", self)
-        self.btn_export.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.btn_export.setToolTip(
-            "Hidden until the saliency workflow has a complete import/export path.",
-        )
-        self.btn_export.clicked.connect(self.export_saliency)
-        self.btn_export.setVisible(False)
         layout.addStretch()
 
     def update_info(self):
@@ -142,86 +130,139 @@ class ControlSidebar(QWidget):
         if result is None and self.panel and hasattr(self.panel, "on_update"):
             self.panel.on_update()
 
-    def set_montage(self):
-        """Open the montage-picker dialog and apply channel positions."""
-        capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
+    def set_montage(
+        self,
+        _checked: bool = False,
+        *,
+        default_montage: str | None = None,
+        warning: str = "",
+    ) -> InteractionOutcome:
+        """Open the montage picker and return its observed product outcome."""
+        review_context = get_command_review_context(
+            self,
+            CommandName.APPLY_MONTAGE,
+        )
+        capability = (
+            review_context.capability
+            if review_context is not None
+            else get_command_capability(self, CommandName.APPLY_MONTAGE)
+        )
         if capability is not None and not capability.enabled:
-            QMessageBox.warning(
-                self,
-                "Montage blocked",
-                blocked_reason(capability, "Create epochs before applying a montage."),
+            message = blocked_reason(
+                capability,
+                "Create epochs before applying a montage.",
             )
-            return
+            QMessageBox.warning(self, "Montage blocked", message)
+            return InteractionOutcome.blocked(message)
 
         if capability is None:
             has_epoch_data = self._compatibility_has_epoch_data_for_montage()
             if has_epoch_data is None:
                 self._show_compatibility_fallback_warning("Montage blocked")
-                return
+                return InteractionOutcome.blocked(
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+                )
             if not has_epoch_data:
-                QMessageBox.warning(self, "Warning", "No epoch data available.")
-                return
+                message = "No epoch data available."
+                QMessageBox.warning(self, "Warning", message)
+                return InteractionOutcome.blocked(message)
 
+        reviewed_generation = (
+            review_context.publication_generation
+            if review_context is not None
+            else None
+        )
         channel_query = execute_application_command(
             self,
             QueryStateCommand(query="state"),
             refresh=False,
+            expected_publication_generation=reviewed_generation,
         )
         if channel_query is not None and channel_query.failed:
+            title = (
+                "Review Montage Again"
+                if is_stale_publication_result(channel_query)
+                else "Montage blocked"
+                if channel_query.recoverable
+                else "Montage failed"
+            )
             QMessageBox.warning(
                 self,
-                "Montage blocked" if channel_query.recoverable else "Montage failed",
+                title,
                 channel_query.message,
             )
-            return
+            if channel_query.recoverable:
+                return InteractionOutcome.blocked(channel_query.message)
+            return InteractionOutcome.failed(channel_query.message)
 
         try:
-            chs = self._montage_channel_names(channel_query)
+            channels = self._montage_channel_names(channel_query)
         except ControllerCompatibilityUnavailableError:
             self._show_compatibility_fallback_warning("Montage blocked")
-            return
-        if not chs:
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+        if not channels:
+            message = "No epoch channel names are available for montage setup."
+            QMessageBox.warning(self, "Montage blocked", message)
+            return InteractionOutcome.blocked(message)
+
+        normalized_warning = " ".join(str(warning or "").split())
+        if normalized_warning:
+            self._show_status(normalized_warning)
+        dialog_kwargs = {"default_montage": default_montage} if default_montage else {}
+        dialog = PickMontageDialog(self, channels, **dialog_kwargs)
+        if not dialog.exec():
+            return InteractionOutcome.cancelled("Montage setup was cancelled.")
+
+        selected_channels, positions = dialog.get_result()
+        if selected_channels is None or positions is None:
+            message = "No valid montage configuration was selected."
+            QMessageBox.warning(self, "Montage blocked", message)
+            return InteractionOutcome.blocked(message)
+        try:
+            normalized_positions = normalize_montage_positions(
+                selected_channels,
+                positions,
+            )
+        except Exception as exc:
+            message = f"Montage setup failed: {exc}"
+            QMessageBox.critical(self, "Error", message)
+            return InteractionOutcome.failed(message)
+
+        result = execute_application_command(
+            self,
+            ApplyMontageCommand(
+                channels=list(selected_channels),
+                positions=normalized_positions,
+            ),
+            expected_publication_generation=reviewed_generation,
+        )
+        if result is None:
+            self._show_compatibility_fallback_warning("Montage blocked")
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+        if result.failed:
+            title = (
+                "Review Montage Again"
+                if is_stale_publication_result(result)
+                else "Montage blocked"
+                if result.recoverable
+                else "Montage failed"
+            )
             QMessageBox.warning(
                 self,
-                "Montage blocked",
-                "No epoch channel names are available for montage setup.",
+                title,
+                result.message,
             )
-            return
-        win = PickMontageDialog(self, chs)
-        if win.exec():
-            chs, positions = win.get_result()
-            if chs is not None and positions is not None:
-                try:
-                    normalized_positions = normalize_montage_positions(
-                        chs,
-                        positions,
-                    )
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Montage setup failed: {e}")
-                    return
+            if result.recoverable:
+                return InteractionOutcome.blocked(result.message)
+            return InteractionOutcome.failed(result.message)
 
-                result = execute_application_command(
-                    self,
-                    ApplyMontageCommand(
-                        channels=list(chs),
-                        positions=normalized_positions,
-                    ),
-                )
-                if result is None:
-                    self._show_compatibility_fallback_warning("Montage blocked")
-                    return
-                elif result.failed:
-                    QMessageBox.warning(
-                        self,
-                        "Montage blocked" if result.recoverable else "Montage failed",
-                        result.message,
-                    )
-                    return
-
-                self._show_status("Montage set")
-
-                # Notify parent to refresh view
-                self._on_update_after_command_result(result)
+        self._show_status("Montage set")
+        self._on_update_after_command_result(result)
+        return InteractionOutcome.completed("Montage set.")
 
     def _montage_channel_names(self, query_result) -> list[str]:
         if query_result is None:
@@ -253,74 +294,135 @@ class ControlSidebar(QWidget):
             self.controller.get_channel_names,
         )
 
-    def set_saliency(self):
-        """Open the saliency-settings dialog and apply parameters."""
-        capability = get_command_capability(self, CommandName.SALIENCY)
+    def set_saliency(self) -> InteractionOutcome:
+        """Stage saliency settings without starting computation."""
+        review_context = get_command_review_context(
+            self,
+            CommandName.SALIENCY,
+        )
+        capability = (
+            review_context.capability
+            if review_context is not None
+            else get_command_capability(self, CommandName.SALIENCY)
+        )
         if capability is not None and not capability.enabled:
+            message = blocked_reason(
+                capability,
+                "Saliency analysis is not ready yet.",
+            )
             QMessageBox.warning(
                 self,
                 "Saliency blocked",
-                blocked_reason(
-                    capability,
-                    "Saliency analysis is not ready yet.",
-                ),
+                message,
             )
-            return
+            return InteractionOutcome.blocked(message)
 
+        reviewed_generation = (
+            review_context.publication_generation
+            if review_context is not None
+            else None
+        )
         query_result = execute_application_command(
             self,
             SaliencyCommand(),
             refresh=False,
+            expected_publication_generation=reviewed_generation,
         )
         if query_result is not None and query_result.failed:
+            title = (
+                "Review Saliency Settings Again"
+                if is_stale_publication_result(query_result)
+                else "Saliency blocked"
+                if query_result.recoverable
+                else "Saliency failed"
+            )
             QMessageBox.warning(
                 self,
-                "Saliency blocked" if query_result.recoverable else "Saliency failed",
+                title,
                 query_result.message,
             )
-            return
+            if bool(getattr(query_result, "recoverable", False)):
+                return InteractionOutcome.blocked(query_result.message)
+            return InteractionOutcome.failed(query_result.message)
         configuration_block_reason = self._saliency_configuration_block_reason(
             query_result,
         )
         if configuration_block_reason is not None:
             QMessageBox.warning(self, "Saliency blocked", configuration_block_reason)
-            return
+            return InteractionOutcome.blocked(configuration_block_reason)
         try:
             dialog_params = self._saliency_dialog_params(query_result)
         except ControllerCompatibilityUnavailableError:
             self._show_compatibility_fallback_warning("Saliency blocked")
-            return
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+
+        reviewed_target: tuple[int, SaliencyRunIdentity, str] | None = None
+        target_reader = getattr(self.panel, "saliency_settings_target", None)
+        if reviewed_generation is not None:
+            candidate_target = target_reader() if callable(target_reader) else None
+            if (
+                not isinstance(candidate_target, tuple)
+                or len(candidate_target) != 3
+                or candidate_target[0] != reviewed_generation
+                or not isinstance(candidate_target[1], SaliencyRunIdentity)
+                or not isinstance(candidate_target[2], str)
+            ):
+                message = (
+                    "Visualization results or the selected run changed. "
+                    "Refresh Visualization, then review Saliency Settings again."
+                )
+                QMessageBox.warning(
+                    self,
+                    "Review Saliency Settings Again",
+                    message,
+                )
+                return InteractionOutcome.blocked(message)
+            reviewed_target = candidate_target
 
         win = SaliencySettingDialog(
             self,
             dialog_params,
         )
-        if win.exec():
-            params = win.get_result()
-            if params:
-                started = execute_application_command_async(
-                    self,
-                    SaliencyCommand(params=dict(params)),
-                    on_result=self._on_saliency_configured,
-                    on_error=self._on_saliency_configuration_error,
-                )
-                if not started:
-                    self._show_compatibility_fallback_warning("Saliency blocked")
-                    return
-
-    def _on_saliency_configured(self, result) -> None:
-        if result.failed:
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Saliency setup failed: {result.message}",
+        if not win.exec():
+            return InteractionOutcome.cancelled("Saliency settings were cancelled.")
+        params = win.get_result()
+        if not params:
+            return InteractionOutcome.accepted(
+                "The saliency dialog was accepted without an applicable change."
             )
-            return
-        self._show_status("Saliency parameters set")
-
-    def _on_saliency_configuration_error(self, error: tuple) -> None:
-        message = error[1] if len(error) > 1 else error
-        QMessageBox.critical(self, "Error", f"Saliency setup failed: {message}")
+        stage_params = getattr(self.panel, "stage_saliency_params", None)
+        if not callable(stage_params):
+            self._show_compatibility_fallback_warning("Saliency blocked")
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+        if reviewed_target is None:
+            staged = stage_params(dict(params))
+        else:
+            target_generation, run_identity, model_name = reviewed_target
+            staged = stage_params(
+                dict(params),
+                publication_generation=target_generation,
+                run_identity=run_identity,
+                model_name=model_name,
+            )
+        if staged is False:
+            message = (
+                "Visualization results or the selected run changed while settings "
+                "were open. Review Saliency Settings again."
+            )
+            QMessageBox.warning(
+                self,
+                "Review Saliency Settings Again",
+                message,
+            )
+            return InteractionOutcome.blocked(message)
+        self._show_status("Saliency settings ready")
+        return InteractionOutcome.accepted(
+            "Saliency settings are ready for an explicit compute action."
+        )
 
     def _saliency_dialog_params(self, query_result) -> dict | None:
         if query_result is None:
@@ -354,73 +456,6 @@ class ControlSidebar(QWidget):
             self,
             self.controller.get_saliency_params,
         )
-
-    def export_saliency(self):
-        """Open the saliency-export dialog to save computed saliency data."""
-        result = execute_application_command(
-            self,
-            SaliencyCommand(),
-            refresh=False,
-        )
-        block_reason = self._saliency_export_block_reason(result)
-        if block_reason is not None:
-            QMessageBox.warning(self, "Export Saliency Blocked", block_reason)
-            return
-
-        trainers = self._saliency_export_trainers()
-        if trainers is None:
-            try:
-                trainers = self._compatibility_export_trainers()
-            except ControllerCompatibilityUnavailableError:
-                self._show_compatibility_fallback_warning("Export Saliency Blocked")
-                return
-
-        if not trainers:
-            QMessageBox.warning(self, "Warning", "No training results available.")
-            return
-        win = ExportSaliencyDialog(self, trainers)
-        win.exec()
-
-    def _saliency_export_trainers(self):
-        result = execute_application_command(
-            self,
-            VisualizeCommand(view="summary", include_objects=True),
-            refresh=False,
-        )
-        if result is None:
-            return None
-        if result.failed:
-            QMessageBox.warning(
-                self,
-                "Export Saliency Blocked",
-                result.message,
-            )
-            return []
-        diagnostics = getattr(result, "diagnostics", {}) or {}
-        if diagnostics.get("payload_type") != "visualization_summary":
-            return []
-        trainers = local_result_payload(result).get("trainer_objects")
-        if not isinstance(trainers, list):
-            return []
-        return list(trainers)
-
-    def _compatibility_export_trainers(self):
-        if self.panel and hasattr(self.panel, "get_trainers"):
-            return run_controller_compatibility_call(self, self.panel.get_trainers)
-        return run_controller_compatibility_call(self, self.controller.get_trainers)
-
-    @staticmethod
-    def _saliency_export_block_reason(result) -> str | None:
-        if result is None:
-            return None
-        if result.failed:
-            return result.message
-        diagnostics = getattr(result, "diagnostics", {}) or {}
-        if diagnostics.get("payload_type") != "saliency_summary":
-            return None
-        if diagnostics.get("saliency_available") is True:
-            return None
-        return "Saliency output is not ready to export."
 
     def _show_compatibility_fallback_warning(self, title: str) -> None:
         QMessageBox.warning(self, title, CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)

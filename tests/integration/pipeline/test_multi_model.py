@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
-from XBrainLab.llm.core.config import AssistantRuntimeSelection, LLMConfig
+from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
+from XBrainLab.llm.core.config import LLMConfig
 
 
 def test_model_switching(test_app, qtbot):
@@ -9,50 +10,62 @@ def test_model_switching(test_app, qtbot):
     correctly handles model switching at runtime.
     Mocks LLMEngine to avoid real PyTorch initialization/crash on Windows.
     """
-    # Patch LLMEngine at the source where AgentWorker imports it
-    # AgentWorker is in XBrainLab.llm.agent.worker
-    selection = AssistantRuntimeSelection(
-        backend_mode="local",
-        model_id=LLMConfig.default_local_model_id(),
-        ui_active_mode="local",
+    primary_model = LLMConfig.default_local_model_id()
+    fallback_model = LLMConfig.fallback_local_model_id()
+    config = LLMConfig()
+    config.local_model_enabled = True
+    config.model_name = primary_model
+    config.inference_mode = "local"
+    config.active_mode = "local"
+    config.local_backend_ready = lambda _model=None: True  # type: ignore[method-assign]
+    config.local_backend_status_message = (  # type: ignore[method-assign]
+        lambda _model=None: "Local runtime ready."
     )
+
     with (
         patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEngine,
-        patch(
-            "XBrainLab.llm.agent.worker.AgentWorker._resolve_local_runtime",
-            return_value=(selection, "Local runtime ready.", True),
-        ),
+        patch.object(LLMConfig, "load_from_file", return_value=config),
+        patch.object(LLMConfig, "save_to_file"),
     ):
-        # Mock instance
         mock_engine_instance = MockEngine.return_value
+        agent_mgr = None
+        try:
+            test_app.init_agent()
+            agent_mgr = test_app.agent_manager
+            agent_mgr.start_system()
 
-        # 1. Initialize Agent System
-        test_app.init_agent()
-        agent_mgr = test_app.agent_manager
+            assert agent_mgr.agent_controller is not None
+            qtbot.waitUntil(
+                lambda: agent_mgr.assistant_runtime.current.phase
+                is AssistantRuntimePhase.READY,
+                timeout=2_000,
+            )
+            assert agent_mgr.assistant_runtime.current.model_id == primary_model
 
-        # Needs explicit start
-        agent_mgr.start_system()
+            with qtbot.waitSignal(
+                agent_mgr.agent_controller.sig_reinit,
+                timeout=1_000,
+            ):
+                agent_mgr.set_model(fallback_model)
 
-        # Wait for lazy init
-        qtbot.wait(200)
-        assert agent_mgr.agent_controller is not None
+            qtbot.waitUntil(
+                lambda: mock_engine_instance.switch_backend.called,
+                timeout=2_000,
+            )
+            qtbot.waitUntil(
+                lambda: agent_mgr.assistant_runtime.current.phase
+                is AssistantRuntimePhase.READY,
+                timeout=2_000,
+            )
 
-        # 2. Trigger Switch to Gemini
-        # "Gemini 2.0 Flash" -> gemini-2.0-flash-exp
-        with qtbot.waitSignal(agent_mgr.agent_controller.sig_reinit, timeout=1000):
-            agent_mgr.set_model("Gemini 2.0 Flash")
-
-        # Wait for worker to process
-        qtbot.waitUntil(
-            lambda: mock_engine_instance.switch_backend.called,
-            timeout=1000,
-        )
-
-        # 3. Verify Switch Attempt
-        # AgentWorker should have re-instantiated or called a method on Engine
-        # The worker's `reinitialize_agent` calls `self.engine.switch_backend(mode)`
-        # or creates new engine if not existing.
-
-        # Verify Mock interaction
-        assert MockEngine.called
-        mock_engine_instance.switch_backend.assert_called_once_with("local")
+            assert MockEngine.called
+            mock_engine_instance.switch_backend.assert_called_once_with("local")
+            assert agent_mgr.assistant_runtime.current.model_id == fallback_model
+        finally:
+            if agent_mgr is not None:
+                agent_mgr.close()
+                qtbot.waitUntil(
+                    lambda: agent_mgr.assistant_runtime.state.value == "closed",
+                    timeout=5_000,
+                )
+                assert agent_mgr.close() is True

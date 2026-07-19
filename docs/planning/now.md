@@ -1,16 +1,16 @@
 # XBrainLab Now
 
-最後更新：`2026-07-11`
+最後更新：`2026-07-19`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Close the 2026-07-11 product, scientific-correctness, and agent reliability audit.**
+**Close and publish the validated Desktop MVP integration candidate.**
 
-新的 source/runtime/artifact 稽核發現先前 gate 有假陽性與 current-HEAD traceability 缺口，
-因此目前不是 Windows acceptance 階段。先逐一修復 blocker、用短 task branch 合回
-`stabilize/desktop-mvp`，最後重跑完整 handoff gate，才交給使用者手測。
+先前稽核列出的 product、scientific correctness、Qt lifecycle 與 agent host-safety blocker 已完成
+實作和 current dirty-tree 回歸，獨立 reviewer re-gate 也已 PASS。現在不再擴張功能；重點是
+clean commit / push、exact-commit dashboard，然後才進 Windows acceptance。
 
 ## 本輪 To-do
 
@@ -27,10 +27,11 @@
 | Done | Desktop MVP blocker repair | ApplicationService serialization、assistant refresh/lifecycle、Data Import review truth、real GDF event/evaluation evidence、validation matrix truth、narrow UI artifacts 已修復。 |
 | Invalidated | Previous handoff candidate | 舊 dashboard、walkthrough 與 reviewer 結論未完整綁定目前 HEAD，已撤銷 handoff-ready claim；只保留為歷史 checkpoint。 |
 | Done | Validation truth reset | Windows launcher 已改指向唯一 active repo；walkthrough 要求 reload/reapply、training completion、evaluation、visualization 真成功，scripted assistant transcript 只算 layout evidence。 |
-| In progress | Scientific training correctness | 已完成 validation-only checkpoint、模型固定後 final evaluation、split provenance、undefined AUC=N/A 與 saliency-before-finish isolation；historical test curves 僅保留 private read compatibility。仍要補 overlapping-window leakage、BIDS event bounds 與 run mapping。 |
-| Next | Non-blocking application view / shutdown | 長 mutation 期間 UI navigation/query 不等待 command lock；state read error 與 post-state failure fail closed；修正 shutdown fence thread-pool 空窗、cancel recovery 與 full-unit Qt callback segmentation fault。 |
-| Next | Agent verified turn loop | tool-only envelope、repair context、turn-scoped loop guard、user-safe error text與真 runtime evidence。 |
-| Pending | Windows user acceptance | 只在 current-HEAD dashboard、完整 unit、multi-dataset、產品 walkthrough 與 reviewer gates 全數重建後進行。 |
+| Done | Scientific training correctness | validation-only checkpoint、final test evaluation、split provenance、undefined AUC、BIDS bounds/run mapping、overlapping-window leakage 與 saliency atomicity都有 regression。 |
+| Done | Non-blocking application view / shutdown | 原子 publication、non-blocking query、recovery path、background snapshot generation、owner-bound Qt receiver 與 native teardown regression 已通過。 |
+| Done | Agent verified host loop | strict envelope、repair context、turn guard、request admission、confirmation / UI handoff 與真 Phi-4 ChatPanel workflow 已完成；raw model accuracy 仍明確列為 research gap。 |
+| In progress | Candidate closure | canonical docs 已更新；完整 unit `9006`、integration `388`、靜態 / architecture / docs gate 與兩個獨立 reviewer re-gate 全數 PASS。剩餘 commit / push 與 exact-commit dashboard。 |
+| Pending | Windows user acceptance | 只在 candidate closure 完成後進行；不直接合併 `main`。 |
 
 ## 2026-07-04 Rebaseline 結論
 
@@ -41,7 +42,7 @@
 | Active repo | `/mnt/d/workspace_v2/projects/lab/xbrainlab` |
 | Registered git worktrees | 只有目前這個 worktree。之前的混亂主要是歷史 branches，不是多個仍掛載的 worktree。 |
 | Current rebaseline checkpoint | `docs/rebaseline-drop-mcp` 的 latest pushed checkpoint。 |
-| Next engineering base | `stabilize/desktop-mvp`，已從 rebaseline checkpoint 建立並 push，用來修 Desktop MVP blockers。 |
+| Current integration branch | `fix/nonblocking-state-shutdown-lifecycle`；完成後 fast-forward `stabilize/desktop-mvp`，只保留一個手測入口。 |
 | Main branch | `main` / `origin/main` 都落後目前 integration line；不要在 Desktop MVP gate 前直接把現在狀態推回 main。 |
 
 目前只有三個 local branches 沒有併入 rebaseline checkpoint：
@@ -52,20 +53,17 @@
 | `docs/development-process-rules` | 舊 governance 線，差異很大，會倒退目前 docs / tests 的 current truth。 | 不整支 merge。 |
 | `wip/data-import-controller-dirty-checkpoint` | 舊大型 WIP，混合 Data Import、UI、backend、artifacts、tests，不能作為乾淨整合來源。 | 保留作歷史參考；不要整支 merge。 |
 
-### Desktop MVP blocker board
+### Desktop MVP residual-risk board
 
-這些是 audit seed，不代表都一定仍存在；audit 要主動重現、用 artifact 確認，並補充未列出的
-產品 bug 或 code quality issue。
+原 blocker 已由 regression、multi-dataset 與 walkthrough 重建；這裡只保留仍需真人或後續研究
+才能關閉的風險，不把已修問題繼續寫成 open blocker。
 
-| Area | Blocker / risk | Gate before handoff |
+| Area | Remaining risk | Boundary / next gate |
 | --- | --- | --- |
-| Data Import / labels | Remove label 後再 load 同一檔可能重複；auto-detected 與 user-added label source 移除語意容易混淆；Match Labels 可能沒同步 reload 後的 label state。 | focused label reload regression、Data Import wizard format matrix、多資料集 gate、wizard screenshot review。 |
-| Review and Import | 第一層已改成 import summary + blocker / decision cards；warning、format、recipe trace 收到 `View import report`。仍需在整合線手測確認語氣是否夠新手友善。 | structured action item tests、review screenshot artifact、Data Import format matrix、多資料集 gate。 |
-| Epoch / preprocess | 先前出現過切頁或 PSD / time-series preview 造成 Qt native crash；epoch dialog 曾有背景色與 layout overflow。 | crash reproduction sweep、figure lifecycle / UI-thread guard、epoch/preprocess screenshots。 |
-| Dataset split | Step layout、preview title overlap、table dark background、confirm pattern、disabled select column、combo arrow 視覺一致性需要重新驗證。 | dataset split UI tests、screenshot review、same-class dialog sweep。 |
-| Model selection / training | model selection scroll、parameters layout、pretrained weights controls、training 完成後不要用 blocking dialog 打斷。 | model-selection dialog screenshot、training smoke、status-bar behavior check。 |
-| Evaluation | metrics / per-class tables 曾出現白底白字、初始選取不合理、model summary 空或卡住。 | evaluation panel UI tests、table palette guard、tiny trained-record walkthrough。 |
-| Visualization / saliency | saliency readiness、label mapping、fold switch、3D centering / availability、Matplotlib figure cleanup 需要 current branch verification。 | visualization render walkthrough、saliency focused tests、3D runtime probe、figure-count guard。 |
+| Windows desktop UX | Xvfb screenshots不能證明實際 Windows DPI、遠端桌面、雙螢幕和長時間互動。 | 使用者在單一 stabilization branch 做真人 click-through。 |
+| Interactive 3D | headless gate只能驗證 unavailable / framing boundary，不能操作 OpenGL 視圖。 | Windows GPU 桌面手測。 |
+| Local agent accuracy | raw Phi-4 candidate目前 `6/12`；backend policy雖使產品安全分數達 `12/12`，但不是模型準確率。 | 後續獨立 research protocol，至少 50/100 cases 與 3 repeats。 |
+| Architecture debt | Data Import dialog、LLM controller 等 orchestrator 仍偏大；目前有 focused helpers 和 source guards，但未宣稱 target architecture fully complete。 | 下一輪按責任切片，不在 handoff 前做純行數型重構。 |
 
 ### Handoff gate reset
 
@@ -109,6 +107,7 @@ roadmap / architecture` 沒有每次同步，所以 canonical truth 慢慢落後
 1. `ruff`、`basedpyright`、architecture guard、focused regression 和 full quality dashboard 通過。
 2. required multi-dataset / format matrix / cross-source training gate 通過。
 3. Data Import、assistant、Data Splitting、Saliency 等可見 artifact 由主 agent 實際看過。
-4. architecture / clean code、UI product、test / EEG 三個獨立 reviewer 全數通過；退件必須修復。
+4. architecture / clean code、UI product、test / EEG 三個獨立 reviewer 在修復後全數通過；第一輪
+   reviewer 已退回具體問題，不能沿用修復前結論。
 5. canonical docs 與 current code / validation truth 一致，`mkdocs build --strict` 通過。
 6. branch clean commit 並 push；回報仍需 Windows 真人 acceptance，不誇大為 product complete。

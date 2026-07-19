@@ -38,13 +38,15 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
     def _sync_label_placement_after_label_sources_changed(self) -> None:
         """Refresh Match Labels state after Load Labels mutates label sources."""
         if hasattr(self, "label_carrier_tree"):
-            self.label_carrier_tree.clear()
             self._label_carrier_items.clear()
             self._label_target_widgets.clear()
             self._label_choice_widgets.clear()
             self._label_carrier_remap_widgets.clear()
+            self.label_carrier_tree.clear()
             self._populate_label_carrier_tree()
             self._fit_label_carrier_tree_height()
+        if self.event_value_editor is not None:
+            self.event_value_editor.set_carrier_plans(self._event_value_carrier_plans())
         if hasattr(self, "label_pairing_rows_layout"):
             self._populate_pairing_rows()
         if hasattr(self, "label_source_mode_combo") and not self._label_carrier_items:
@@ -75,16 +77,27 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         values_grid.setContentsMargins(0, 0, 0, 0)
         values_grid.setHorizontalSpacing(10)
         values_grid.setVerticalSpacing(8)
-        values_grid.addWidget(
-            self._rule_control("Read labels from", self.rule_label_field_combo),
-            0,
-            0,
+        label_field_control = self._rule_control(
+            "Read labels from",
+            self.rule_label_field_combo,
+        )
+        carrier_use_control = self._rule_control("Use as", self.rule_use_as_combo)
+        has_value_decisions = any(
+            isinstance(plan.get("value_decisions"), dict)
+            and bool(plan.get("value_decisions"))
+            for plan in self._event_value_carrier_plans()
         )
         values_grid.addWidget(
-            self._rule_control("Use as", self.rule_use_as_combo),
+            label_field_control,
+            0,
             0,
             1,
+            2 if has_value_decisions else 1,
         )
+        if not has_value_decisions:
+            values_grid.addWidget(carrier_use_control, 0, 1)
+        else:
+            carrier_use_control.deleteLater()
         self.label_values_status_label = QLabel(self._label_values_status_text())
         self.label_values_status_label.setObjectName("DataImportRuleStatus")
         self.label_values_status_label.setWordWrap(True)

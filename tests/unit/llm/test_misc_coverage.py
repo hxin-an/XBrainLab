@@ -90,15 +90,32 @@ class TestRemovedRemoteBackends:
 class TestModelDownloaderCoverage:
     """Cover thread state and start_download guard."""
 
-    def test_on_failed_resets_thread(self):
-        from XBrainLab.llm.core.downloader import ModelDownloader
+    def test_failure_is_published_only_after_thread_terminal(self):
+        from XBrainLab.llm.core.downloader import (
+            ModelDownloader,
+            ModelDownloadStatus,
+        )
 
         d = ModelDownloader()
-        d._thread = MagicMock()
+        thread = MagicMock()
+        d._thread = thread
+        d.worker = MagicMock()
+        d._active_target = MagicMock(repo_id="repo/id")
         d.failed = MagicMock()
-        d._on_failed("error msg")
+        d.terminal = MagicMock()
+
+        d._record_failure("error msg")
+
+        assert d._thread is thread
+        d.failed.emit.assert_not_called()
+
+        d._on_thread_finished()
+
         assert d._thread is None
-        d.failed.emit.assert_called_once_with("error msg")
+        outcome = d.terminal.emit.call_args.args[0]
+        assert outcome.status is ModelDownloadStatus.FAILED
+        assert outcome.target.repo_id == "repo/id"
+        d.failed.emit.assert_called_once_with(outcome)
 
     def test_start_download_when_already_running(self):
         from XBrainLab.llm.core.downloader import ModelDownloader

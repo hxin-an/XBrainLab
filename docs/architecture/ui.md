@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-07-10`
+最後更新：`2026-07-18`
 
 ## 範圍
 
@@ -34,7 +34,7 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 | Panel bootstrap / observer bridge | `controller_compatibility_bootstrap.py`、`BasePanel`、`QtObserverBridge` | observer bridge adapter，支撐現有 backend `Observable` event 到 Qt slot。 | 不能宣稱 UI 已完全不依賴 controllers。 |
 | Command fallback compatibility | sidebar / panel `_compatibility_*` helpers、`run_controller_compatibility_call()` | mock / compatibility non-`Study` only；real `Study` product path 若 command helper 不可用應 blocked/error，而不是 silent fallback。 | 不能把 fallback test 當 product success。 |
 | Human request orchestration | montage picker、label import target selection、dialog-local validation | UI request path；confirmed action 才送進 command，例如 montage apply、smart parse、label import。 | 不能把 dialog orchestration 誤寫成 backend source-of-truth。 |
-| Readonly display fallback | Evaluation / Visualization / Preprocess / Dataset panel display helpers | real `Study` 已優先用 typed command/query gate；no-service mock context 才讀 controller lists/plans/trainers。 | 不能宣稱所有 lower-level integration tests 都已改成 query truth。 |
+| Readonly display fallback | Evaluation / Preprocess / Dataset panel display helpers | real `Study` 已優先用 typed command/query gate；no-service mock context 才讀 controller lists/plans/trainers。Visualization saliency render 已改讀 immutable publication，不再保留 live Trainer/Plan/EvalRecord/Dataset UI path。 | 不能宣稱所有其他 lower-level integration tests 都已改成 query truth。 |
 | Assistant UI wiring | `AgentManager` | status / montage channel defaults 走 state query；compatibility montage apply/channel fallback 只給 mock / compatibility context。 | 不能宣稱 local LLM 長時間桌面 session 已人工驗收。 |
 | Aggregate info | `InfoPanelService` | product runtime 不自行訂閱 controller events，資料列表透過 `QueryStateCommand(data_lists)`。 | 這不代表其他 panel observer adapters 已全部消失。 |
 
@@ -52,7 +52,7 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 | `refresh_coordinator.refresh_after_*()` 呼叫 `update_panel()` / `update_info_panel()` / `refresh_backend_status()` | refresh surface | 這些 call 是 UI repaint entry，不是 backend truth。post-command refresh 由 `CommandResult.changed_state` 決定範圍，known observer event 由 owner panel 進 coordinator。 | 讓 panel `update_panel()` 內部完全讀 query/view-model，不再需要 controller render fallback。 |
 | `InfoPanelService` controller reads | aggregate mock fallback | real `Study` 資料列表透過 `QueryStateCommand(data_lists)`；controller reads 只在 mock / compatibility context。 | 測試改注入 query result 後，可移除 direct controller fallback。 |
 | `AgentManager` montage fallback / status reads | assistant UI adapter | product status 讀 `ApplicationService.get_state()` / capabilities；montage channels 讀 `QueryStateCommand(state)`，legacy montage apply 只給 mock / compatibility context。 | assistant montage flow 改成完整 command-backed dialog service 後，移除 fallback channel/apply helper。 |
-| `plot_figure_window.py`、`export_saliency_dialog.py` 的 `plan.get_plans()` | lower-level domain object presentation | 這是在已取得 trainer/plan 後讀 domain object，不是重新從 `Study` 或 controller 判斷 product readiness。 | 若 evaluation/visualization view model 穩定，可把圖表資料也收進 typed result。 |
+| `plot_figure_window.py` 的 plan / record reads | lower-level domain object presentation | 這是在通用 figure window 已取得 domain object 後讀圖表資料；Visualization 的隱藏 export dialog 與未引用 Model Summary dialog 已移除。 | 通用 figure window 後續可再改吃 typed plot publication；不可把 live object path接回 Visualization UI。 |
 | `product_language.py` 的 `has_datasets` / `has_model` / `has_training_option` | state snapshot language | 這些是 `ApplicationState` 欄位，不是 controller readiness method。 | 保持只吃 state snapshot，避免未來直接接回 controller。 |
 
 目前判斷：UI refresh / readiness 的 product truth 已經靠 command result、capability policy 和
@@ -109,8 +109,10 @@ constructor 還需要 controller adapter、部分 display fallback 為了 mock /
 `XBrainLab.ui.refresh_coordinator.refresh_after_navigation()` 依 navigation index 刷新目標
 panel、aggregate info panel 和 assistant backend status。因此 tab-switch refresh 的 panel mapping
 與 shared status refresh 不再散在 `MainWindow` 內。Navigation refresh 現在也有 same-main-window
-re-entrancy guard，避免 nested tab-switch refresh 對同一個 main window 重複刷新；但 refresh
-來源仍有兩種：使用者切換頁面，以及 backend event 經 observer bridge 觸發。
+re-entrancy guard，避免 nested tab-switch refresh 對同一個 main window 重複刷新。command
+正在執行時也不觸發 object-bearing panel/shared refresh；status hint 讀 non-blocking
+`QueryStateCommand(state)` publication。Refresh 來源仍有兩種：使用者切換頁面，以及 backend
+event 經 observer bridge 觸發。
 頁面切換完成後，`MainWindow` 會立即並在下一個 Qt event-loop turn 重繪 nav 與 current panel，
 避免 XCB / WSLg 下 stacked-page transition 留下 partial backing store；human-like walkthrough 會以
 main-nav 與 visible `RightPanel` 像素 guard 保護這個可見 regression。
@@ -170,7 +172,7 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 | Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed command；desktop button click is the user confirmation, while agent/headless paths still obey backend confirmation policy。controller running checks 只在 no-capability fallback。 |
 | Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | typed readonly command 先決定 display gate；blocked/unavailable 會清空 stale controller display。 |
 | Montage | `QueryStateCommand(state)`、`apply_montage` | dialog channel defaults 走 state query；confirmed positions 走 `ApplyMontageCommand`；picker/matching 仍是 UI request。 |
-| Chat diagnostics | `get_state()`、`get_capabilities()` | assistant status 使用 backend state/capability snapshot，不把 missing capability 顯示成 debug error。 |
+| Chat diagnostics | `ApplicationViewPublication` | assistant status、decision context、tool policy 讀同一 generation 的 state/capability，不把 missing capability 顯示成 debug error。 |
 
 ### Assistant refresh 與 UI request
 
@@ -182,6 +184,9 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
   surface。UI request 打開後 workflow 停在明確 waiting state，不在 chat 裡重做第二套表單。
 - MainWindow 關閉時若 assistant worker 尚未安全停止，會拒絕第一次 close 並重試 teardown；
   不會在仍存活的 QThread 上直接銷毀 worker/QTimer。
+- QThreadPool command 的 result/error 綁到 owner-child QObject receiver；owner 被 Qt 刪除時 queued
+  delivery 自動斷線。獨立 cleanup receiver 保留到 terminal `finished`，才解除 observer
+  suppression、busy state 與 active-worker ownership，避免 pytest-qt/WSLg teardown 的 native crash。
 - worker thread 結束時由 Qt owner-thread lifecycle 執行 `deleteLater()`；UI 只讀 controller 發布的
   runtime snapshot，不再讀 worker/engine internals。architecture guard 保護這條邊界。
 
@@ -199,6 +204,9 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 - product-success integration tests 不可用 `BackendFacade`、controller compatibility helper、direct
   mutable `Study` state、positive `study.get_controller()` assertion、no-crash / generic string
   當成功證據。
+- Visualization UI 不可呼叫 `get_trainers()`、`get_plans()`、`get_eval_record()`、
+  `get_dataset()` 或保存 live Trainer/Plan/EvalRecord/Dataset；architecture guard 要求它只保存
+  typed identity 與 immutable Application/render publication。
 
 這些 guard 是 **product runtime fallback boundary**，不是 full zero-controller UI 證明。
 

@@ -16,6 +16,10 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QPushButton, QWidget
 
+from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+    RuntimeActivationResult,
+    RuntimeActivationStatus,
+)
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
@@ -65,6 +69,20 @@ def _checked_state_for(index: int) -> list[bool]:
 
 def _tab_texts(tab_widget):
     return [tab_widget.tabText(index) for index in range(tab_widget.count())]
+
+
+def _wait_for_panel(qtbot, test_app, index: int) -> None:
+    qtbot.waitUntil(
+        lambda: index in test_app._loaded_panel_indices,
+        timeout=5_000,
+    )
+
+
+def _assert_unique_tab_owner(page, expected_labels, *tab_widgets) -> None:
+    owners = [tabs for tabs in tab_widgets if tabs.indexOf(page) >= 0]
+    assert len(owners) == 1
+    owner = owners[0]
+    assert owner.tabText(owner.indexOf(page)) in expected_labels
 
 
 # ---------------------------------------------------------------------------
@@ -126,14 +144,20 @@ class TestAIAssistantDock:
         """AI assistant should be OFF by default."""
         assert not test_app.ai_btn.isChecked()
 
-    def test_toggle_ai_dock(self, test_app, qtbot):
+    def test_toggle_ai_dock(self, test_app, qtbot, monkeypatch):
         """Toggling the AI button should change its checked state."""
 
-        def _fake_start_system():
-            test_app.agent_manager.agent_initialized = True
-
         test_app.init_agent()
-        test_app.agent_manager.start_system = _fake_start_system
+        runtime = test_app.agent_manager.assistant_runtime
+        monkeypatch.setattr(runtime, "load_config", lambda: object())
+        monkeypatch.setattr(runtime, "needs_first_run", lambda _config: False)
+        monkeypatch.setattr(
+            runtime,
+            "activate",
+            lambda _config, *, execution_mode: RuntimeActivationResult(
+                RuntimeActivationStatus.STARTED,
+            ),
+        )
         _click(qtbot, test_app.ai_btn)
         assert test_app.ai_btn.isChecked()
         assert test_app.agent_manager.chat_dock.isVisible()
@@ -145,9 +169,10 @@ class TestAIAssistantDock:
 class TestPanelWidgets:
     """Verify that key widgets exist inside each panel."""
 
-    def test_panel_types_match_stack_order(self, test_app):
+    def test_panel_types_match_stack_order(self, test_app, qtbot):
         for index in range(test_app.stack.count()):
             test_app.switch_page(index)
+            _wait_for_panel(qtbot, test_app, index)
 
         panels = [
             test_app.stack.widget(index) for index in range(test_app.stack.count())
@@ -164,11 +189,24 @@ class TestPanelWidgets:
 
     def test_evaluation_panel_tabs(self, test_app, qtbot):
         _click(qtbot, test_app.nav_btns[3])
+        _wait_for_panel(qtbot, test_app, 3)
         ep = test_app.evaluation_panel
-        assert _tab_texts(ep.bottom_tabs) == EXPECTED_EVALUATION_TABS
+        _assert_unique_tab_owner(
+            ep.metrics_tab,
+            {"Metrics Summary", "Metrics"},
+            ep.bottom_tabs,
+            ep.chart_tabs,
+        )
+        _assert_unique_tab_owner(
+            ep.summary_tab,
+            {"Model Summary", "Model"},
+            ep.bottom_tabs,
+            ep.chart_tabs,
+        )
 
     def test_visualization_panel_tabs(self, test_app, qtbot):
         _click(qtbot, test_app.nav_btns[4])
+        _wait_for_panel(qtbot, test_app, 4)
         vp = test_app.visualization_panel
         assert _tab_texts(vp.tabs) == EXPECTED_VISUALIZATION_TABS
 

@@ -1,15 +1,28 @@
-"""State snapshot and read-only query services for the command spine."""
+"""State snapshot service and compatibility exports for the command spine."""
 
 from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from typing import Any, cast
 
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyStatus,
+    TrainingReadBoundary,
+    TrainingTerminalOutcome,
+)
 from XBrainLab.backend.utils.logger import logger
 
-from .commands import Command, QueryStateCommand
 from .errors import PreconditionError
+from .pipeline_stage import pipeline_stage_from_snapshots
+from .query_state_service import HandlerResult, QueryStateCommandService
+from .saliency_coverage import (
+    SaliencyCoverageProjector,
+    saliency_coverage_for_eval_record,
+    saliency_label_items_from_epoch,
+    saliency_method_coverage,
+)
 from .serialization import serialize_json_value
 from .state import (
     ActiveDatasetSnapshot,
@@ -22,11 +35,22 @@ from .state import (
     InterpretationStateSnapshot,
     PreprocessedStateSnapshot,
     RawStateSnapshot,
+    SaliencyRunCoverageSnapshot,
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from .training_runtime import TrainingStateReadPort
 
-HandlerResult = str | tuple[str, dict[str, Any]]
+__all__ = [
+    "HandlerResult",
+    "QueryStateCommandService",
+    "StateSnapshotService",
+    "saliency_coverage_for_eval_record",
+    "saliency_label_items_from_epoch",
+    "saliency_method_coverage",
+]
+
+_BACKGROUND_SNAPSHOT_ATTEMPTS = 3
 
 
 class StateSnapshotService:
@@ -39,11 +63,13 @@ class StateSnapshotService:
         dataset: Any,
         preprocess: Any,
         training: Any,
+        training_runtime: TrainingStateReadPort,
         evaluation: Any,
         visualization: Any,
         dataset_generation: Any,
         training_commands: Any,
         interpretation: Any,
+        saliency_coverage_projector: SaliencyCoverageProjector,
         training_state: Any | None = None,
         evaluation_state: Any | None = None,
     ) -> None:
@@ -51,6 +77,7 @@ class StateSnapshotService:
         self.dataset = dataset
         self.preprocess = preprocess
         self.training = training
+        self.training_runtime = training_runtime
         self.training_state = training_state or training
         self.evaluation = evaluation
         self.evaluation_state = evaluation_state or evaluation
@@ -58,11 +85,77 @@ class StateSnapshotService:
         self.dataset_generation = dataset_generation
         self.training_commands = training_commands
         self.interpretation = interpretation
+        self.saliency_coverage_projector = saliency_coverage_projector
 
     def build(
         self,
         *,
         last_error: ErrorSnapshot | None = None,
+    ) -> ApplicationStateSnapshot:
+        """Return a snapshot that did not straddle a training transition."""
+        latest: ApplicationStateSnapshot | None = None
+        for _attempt in range(_BACKGROUND_SNAPSHOT_ATTEMPTS):
+            before = self._training_snapshot_token()
+            latest = self._build_once(
+                last_error=last_error,
+                training_read_generation=before.token.generation,
+            )
+            after = self._training_snapshot_token()
+            if before == after and after.token.stable:
+                identity_error = self._training_identity_error(latest, after)
+                if identity_error is not None:
+                    return self._fail_closed_training_snapshot(
+                        latest,
+                        identity_error,
+                    )
+                return latest
+
+        if latest is None:
+            raise RuntimeError("Application state snapshot was not attempted")
+        return self._fail_closed_training_snapshot(
+            latest,
+            "training state changed during snapshot",
+        )
+
+    @staticmethod
+    def _training_identity_error(
+        snapshot: ApplicationStateSnapshot,
+        boundary: TrainingReadBoundary,
+    ) -> str | None:
+        """Reject a run outcome that came from another trainer generation."""
+        run = snapshot.training.terminal_outcome.run
+        if run is None:
+            return None
+        if boundary.trainer_identity is None:
+            return (
+                "training terminal outcome identity does not match the read "
+                "boundary: no trainer is active"
+            )
+        if run.trainer_id != boundary.trainer_identity:
+            return "training terminal outcome identity does not match the read boundary"
+        return None
+
+    @staticmethod
+    def _fail_closed_training_snapshot(
+        snapshot: ApplicationStateSnapshot,
+        error: str,
+    ) -> ApplicationStateSnapshot:
+        """Make an inconsistent training read unusable for command admission."""
+        return replace(
+            snapshot,
+            pipeline_stage="unavailable",
+            training=replace(snapshot.training, is_running=True),
+            active_training=replace(snapshot.active_training, is_running=True),
+            state_reliable=False,
+            training_liveness_reliable=False,
+            read_errors=[*snapshot.read_errors, error],
+        )
+
+    def _build_once(
+        self,
+        *,
+        last_error: ErrorSnapshot | None = None,
+        training_read_generation: int = 0,
     ) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
         read_errors: list[str] = []
@@ -70,24 +163,47 @@ class StateSnapshotService:
         preprocessed = list(getattr(self.study, "preprocessed_data_list", []) or [])
         epoch_data = getattr(self.study, "epoch_data", None)
         datasets = list(getattr(self.study, "datasets", []) or [])
-        trainer = getattr(self.study, "trainer", None)
-        model_holder = getattr(self.study, "model_holder", None)
-        training_option = getattr(self.study, "training_option", None)
+        training_configuration = self.training_runtime.configuration_snapshot()
+        has_trainer = self.training_runtime.has_trainer()
+        model_holder = training_configuration.model_holder
+        training_option = training_configuration.training_option
 
         raw_diagnostics = (
-            self._safe_call_dict(self.dataset.get_runtime_diagnostics)
+            self._read_optional_dict(
+                self.dataset.get_runtime_diagnostics,
+                label="dataset.runtime_diagnostics",
+            )
             if raw_data
             else {}
         )
         preprocess_diagnostics = (
-            self._safe_call_dict(self.preprocess.get_runtime_diagnostics)
+            self._read_optional_dict(
+                self.preprocess.get_runtime_diagnostics,
+                label="preprocess.runtime_diagnostics",
+            )
             if preprocessed
             else {}
         )
         event_info = (
-            self._safe_call_dict(self.dataset.get_event_info) if raw_data else {}
+            self._read_optional_dict(
+                self.dataset.get_event_info,
+                label="dataset.event_summary",
+            )
+            if raw_data
+            else {}
         )
-        evaluation = self._evaluation_snapshot(read_errors)
+        evaluation, saliency_coverage = self._evaluation_snapshot(
+            read_errors,
+            label_items=self.saliency_coverage_projector.label_items_from_epoch(
+                epoch_data,
+            ),
+        )
+        post_training_saliency = self._post_training_saliency_status(read_errors)
+        saliency_output_available = any(
+            method.available and method.complete
+            for run in saliency_coverage
+            for method in run.methods
+        )
 
         raw = RawStateSnapshot(
             loaded=bool(raw_data),
@@ -100,7 +216,7 @@ class StateSnapshotService:
             unique_events=[
                 str(item) for item in event_info.get("unique_labels", []) or []
             ],
-            locked=self._read_bool(
+            locked=self._read_authoritative_bool(
                 getattr(self.study, "is_locked", lambda: False),
                 label="dataset.is_locked",
                 errors=read_errors,
@@ -114,16 +230,25 @@ class StateSnapshotService:
             count=len(preprocessed),
             files=[self.data_filename(item) for item in preprocessed],
             is_epoched=(
-                self._safe_bool(self.preprocess.is_epoched)
+                self._read_authoritative_bool(
+                    getattr(self.preprocess, "is_epoched", None),
+                    label="preprocess.is_epoched",
+                    errors=read_errors,
+                    default=False,
+                )
                 if has_preprocess_context
                 else False
             ),
             channel_names=(
-                self._safe_list(self.preprocess.get_channel_names)
+                self._read_authoritative_list(
+                    getattr(self.preprocess, "get_channel_names", None),
+                    label="preprocess.channel_names",
+                    errors=read_errors,
+                )
                 if has_preprocess_context
                 else []
             ),
-            operations=self._preprocess_history(preprocessed),
+            operations=self._preprocess_history(preprocessed, read_errors),
             diagnostics=preprocess_diagnostics,
         )
         epoch = EpochStateSnapshot(
@@ -131,8 +256,8 @@ class StateSnapshotService:
             exists=epoch_data is not None,
             epoch_count=self._epoch_count(epoch_data),
             n_channels=self._epoch_n_channels(epoch_data),
-            n_times=self._epoch_n_times(epoch_data),
-            sfreq=self._epoch_sfreq(epoch_data),
+            n_times=self._epoch_n_times(epoch_data, read_errors),
+            sfreq=self._epoch_sfreq(epoch_data, read_errors),
             event_names=self._epoch_event_names(epoch_data),
             event_ids=self._epoch_event_ids(epoch_data),
             channel_names=self._epoch_channel_names(epoch_data),
@@ -153,9 +278,9 @@ class StateSnapshotService:
             training_option=self.training_commands.training_option_snapshot(
                 training_option,
             ),
-            has_trainer=trainer is not None,
-            is_running=self._read_bool(
-                self.training_state.is_training,
+            has_trainer=has_trainer,
+            is_running=self._read_authoritative_bool(
+                getattr(self.training_state, "is_training", None),
                 label="training.is_running",
                 errors=read_errors,
                 default=True,
@@ -163,24 +288,32 @@ class StateSnapshotService:
             plan_count=evaluation.total_plans,
             run_count=evaluation.total_runs,
             finished_run_count=evaluation.finished_runs,
-            progress_message=self._safe_string_call(
+            read_generation=training_read_generation,
+            progress_message=self._read_optional_string(
                 getattr(self.training, "get_progress_text", None),
+                label="training.progress",
             ),
-            missing_requirements=self._safe_list(
-                self.training_state.get_missing_requirements,
+            terminal_outcome=self._training_terminal_outcome(),
+            missing_requirements=self._read_authoritative_list(
+                getattr(self.training_state, "get_missing_requirements", None),
+                label="training.missing_requirements",
+                errors=read_errors,
             ),
         )
-        saliency_params = getattr(self.study, "saliency_params", None)
+
+        saliency_params = training_configuration.saliency_params
         visualization = VisualizationStateSnapshot(
             saliency_configured=bool(saliency_params),
             saliency_available=evaluation.finished_runs > 0
-            and self._saliency_output_available(),
+            and saliency_output_available,
             montage_available=self._montage_available(epoch_data),
             channel_positions_available=self._channel_positions_available(epoch_data),
             channel_count=len(epoch.channel_names),
             saliency_params=self._json_mapping(saliency_params),
             montage_channels=list(epoch.channel_names),
             montage_positions=self._montage_positions(epoch_data),
+            saliency_coverage=saliency_coverage,
+            post_training_saliency=post_training_saliency,
         )
         interpretation = self._interpretation_snapshot()
         active_dataset = ActiveDatasetSnapshot(
@@ -195,14 +328,15 @@ class StateSnapshotService:
             has_training_option=training.has_training_option,
             has_trainer=training.has_trainer,
             is_running=training.is_running,
+            finished_run_count=training.finished_run_count,
         )
         training_liveness_reliable = not any(
             error.startswith("training.is_running:") for error in read_errors
         )
-        pipeline_stage = self._pipeline_stage_from_snapshots(
+        pipeline_stage = pipeline_stage_from_snapshots(
             active_dataset,
             active_training,
-        )
+        ).value
         return ApplicationStateSnapshot(
             pipeline_stage=pipeline_stage,
             raw=raw,
@@ -221,11 +355,43 @@ class StateSnapshotService:
             read_errors=sorted(read_errors),
         )
 
+    def _training_terminal_outcome(self) -> TrainingTerminalOutcome:
+        """Read typed trainer truth; never infer it from progress display text."""
+        return self.training_runtime.terminal_outcome()
+
+    def _post_training_saliency_status(
+        self,
+        read_errors: list[str],
+    ) -> PostTrainingSaliencyStatus:
+        """Read the immutable background saliency lifecycle from its owner."""
+        try:
+            status = self.training_runtime.saliency_status()
+        except Exception as exc:
+            read_errors.append(f"visualization.post_training_saliency: {exc}")
+            return PostTrainingSaliencyStatus.idle()
+        if not isinstance(status, PostTrainingSaliencyStatus):
+            read_errors.append(
+                "visualization.post_training_saliency: invalid status contract"
+            )
+            return PostTrainingSaliencyStatus.idle()
+        return status
+
+    def capture_training_read_boundary(self) -> TrainingReadBoundary:
+        """Return the identity/generation guarding an object-bearing read."""
+        return self._training_snapshot_token()
+
+    def _training_snapshot_token(self) -> TrainingReadBoundary:
+        """Return trainer identity/generation around one snapshot attempt."""
+        return self.training_runtime.capture_read_boundary()
+
     def data_summary_from_state(
         self,
         state: ApplicationStateSnapshot,
     ) -> dict[str, Any]:
-        data_list = self._safe_call_list(self.dataset.get_loaded_data_list)
+        data_list = self._read_optional_list(
+            self.dataset.get_loaded_data_list,
+            label="dataset.loaded_data_summary",
+        )
         summary: dict[str, Any] = {
             "count": len(data_list) if data_list else state.raw.count,
             "files": [self.data_filename(item) for item in data_list]
@@ -243,8 +409,16 @@ class StateSnapshotService:
             "total": state.raw.event_total,
             "unique_count": len(state.raw.unique_events),
             "unique_labels": state.raw.unique_events,
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": [],
         }
-        summary.update(self._safe_call_dict(self.dataset.get_event_info))
+        summary.update(
+            self._read_optional_dict(
+                self.dataset.get_event_info,
+                label="dataset.event_summary",
+            )
+        )
         summary.update(state.raw.diagnostics)
         return summary
 
@@ -292,23 +466,6 @@ class StateSnapshotService:
 
     def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
         return self.interpretation.snapshot()
-
-    @staticmethod
-    def _pipeline_stage_from_snapshots(
-        active_dataset: ActiveDatasetSnapshot,
-        active_training: ActiveTrainingSnapshot,
-    ) -> str:
-        if active_training.is_running:
-            return "training"
-        if active_training.has_trainer:
-            return "trained"
-        if active_dataset.has_datasets:
-            return "dataset_ready"
-        if active_dataset.has_epoch_data:
-            return "preprocessed"
-        if active_dataset.has_raw_data:
-            return "data_loaded"
-        return "empty"
 
     @staticmethod
     def _raw_formats(raw_data: list[Any]) -> list[str]:
@@ -377,9 +534,13 @@ class StateSnapshotService:
             return str(data)
 
     @staticmethod
-    def _preprocess_history(preprocessed: list[Any]) -> list[str]:
+    def _preprocess_history(
+        preprocessed: list[Any],
+        read_errors: list[str],
+    ) -> list[str]:
+        """Read capability-driving preprocess history without hiding failures."""
         history: list[str] = []
-        for item in preprocessed:
+        for index, item in enumerate(preprocessed):
             getter = getattr(item, "get_preprocess_history", None)
             if not callable(getter):
                 continue
@@ -392,6 +553,7 @@ class StateSnapshotService:
                     if text and text not in history:
                         history.append(text)
             except Exception as exc:
+                read_errors.append(f"preprocess.history[{index}]: {exc}")
                 logger.debug(
                     "Failed to read preprocess history from %s: %s",
                     StateSnapshotService.data_filename(item),
@@ -411,13 +573,16 @@ class StateSnapshotService:
             try:
                 return str(getter())
             except Exception:
-                pass
+                logger.debug("Dataset name lookup failed", exc_info=True)
         return f"Dataset {idx + 1}"
 
     def _evaluation_snapshot(
         self,
         read_errors: list[str],
-    ) -> EvaluationStateSnapshot:
+        *,
+        label_items: Iterable[tuple[object, object]] | None = None,
+    ) -> tuple[EvaluationStateSnapshot, list[SaliencyRunCoverageSnapshot]]:
+        """Read evaluation truth once and record every plan/run read failure."""
         try:
             plans = list(self.evaluation_state.get_plans() or [])
         except Exception as exc:
@@ -426,76 +591,64 @@ class StateSnapshotService:
         total_runs = 0
         finished_runs = 0
         metrics_available = False
-        for plan in plans:
-            runs = self._safe_plan_runs(plan)
+        saliency_coverage: list[SaliencyRunCoverageSnapshot] = []
+        for plan_index, plan in enumerate(plans):
+            runs = self._read_plan_runs(plan, plan_index, read_errors)
             total_runs += len(runs)
-            for run in runs:
-                if self._run_finished(run):
+            for run_index, run in enumerate(runs):
+                run_context = f"evaluation.plan[{plan_index}].run[{run_index}]"
+                try:
+                    is_finished = self._run_finished(run)
+                except Exception as exc:
+                    read_errors.append(f"{run_context}.is_finished: {exc}")
+                    is_finished = False
+                try:
+                    eval_record = getattr(run, "eval_record", None)
+                except Exception as exc:
+                    read_errors.append(f"{run_context}.eval_record: {exc}")
+                    eval_record = None
+                if is_finished:
                     finished_runs += 1
-                if getattr(run, "eval_record", None) is not None:
+                if eval_record is not None:
                     metrics_available = True
-        return EvaluationStateSnapshot(
-            available=finished_runs > 0,
-            total_plans=len(plans),
-            total_runs=total_runs,
-            finished_runs=finished_runs,
-            metrics_available=metrics_available,
+                if is_finished and eval_record is not None:
+                    try:
+                        saliency_coverage.append(
+                            replace(
+                                self.saliency_coverage_projector.project_run(
+                                    eval_record,
+                                    plan_index=plan_index,
+                                    run_index=run_index,
+                                    label_items=label_items,
+                                ),
+                                plan_name=self._safe_plan_name(plan, plan_index),
+                                model_name=self._plan_model_name(plan),
+                                run_name=f"Run {run_index + 1}",
+                            )
+                        )
+                    except Exception as exc:
+                        read_errors.append(f"{run_context}.saliency: {exc}")
+        return (
+            EvaluationStateSnapshot(
+                available=finished_runs > 0,
+                total_plans=len(plans),
+                total_runs=total_runs,
+                finished_runs=finished_runs,
+                metrics_available=metrics_available,
+            ),
+            saliency_coverage,
         )
 
-    def _saliency_output_available(self) -> bool:
-        """Return true only when a finished run contains real saliency arrays."""
-        plans = self._safe_call_list(self.evaluation_state.get_plans)
-        for plan in plans:
-            for run in self._safe_plan_runs(plan):
-                if not self._run_finished(run):
-                    continue
-                eval_record = getattr(run, "eval_record", None)
-                if eval_record is None:
-                    continue
-                if self._eval_record_has_saliency(eval_record):
-                    return True
-        return False
-
     @staticmethod
-    def _eval_record_has_saliency(eval_record: Any) -> bool:
-        for attr in (
-            "gradient",
-            "gradient_input",
-            "smoothgrad",
-            "smoothgrad_sq",
-            "vargrad",
-        ):
-            store = getattr(eval_record, attr, None)
-            if StateSnapshotService._saliency_store_has_data(store):
-                return True
-        return False
-
-    @staticmethod
-    def _saliency_store_has_data(store: Any) -> bool:
-        if store is None:
-            return False
-        values = store.values() if isinstance(store, dict) else store
+    def _read_plan_runs(
+        plan: Any,
+        plan_index: int,
+        read_errors: list[str],
+    ) -> list[Any]:
         try:
-            iterator = iter(values)
-        except TypeError:
-            return False
-        for value in iterator:
-            if StateSnapshotService._has_nonempty_value(value):
-                return True
-        return False
-
-    @staticmethod
-    def _has_nonempty_value(value: Any) -> bool:
-        try:
-            return len(value) > 0
-        except TypeError:
-            return False
-
-    @staticmethod
-    def _safe_plan_runs(plan: Any) -> list[Any]:
-        try:
-            return list(plan.get_plans())
-        except Exception:
+            return list(plan.get_plans() or [])
+        except Exception as exc:
+            read_errors.append(f"evaluation.plan[{plan_index}].runs: {exc}")
             return []
 
     @staticmethod
@@ -506,11 +659,14 @@ class StateSnapshotService:
             return f"Plan {idx + 1}"
 
     @staticmethod
+    def _plan_model_name(plan: Any) -> str:
+        model_holder = getattr(plan, "model_holder", None)
+        target_model = getattr(model_holder, "target_model", None)
+        return str(getattr(target_model, "__name__", "Unknown model"))
+
+    @staticmethod
     def _run_finished(run: Any) -> bool:
-        try:
-            return bool(run.is_finished())
-        except Exception:
-            return False
+        return bool(run.is_finished())
 
     @staticmethod
     def _shape(value: Any) -> tuple[int, ...] | None:
@@ -541,7 +697,7 @@ class StateSnapshotService:
                 if shape:
                     return shape[0]
             except Exception:
-                pass
+                logger.debug("Epoch data shape lookup failed", exc_info=True)
         try:
             return len(epoch_data)
         except Exception:
@@ -559,7 +715,7 @@ class StateSnapshotService:
             if isinstance(event_ids, dict):
                 return sorted(str(name) for name in event_ids)
         except Exception:
-            pass
+            logger.debug("Epoch event-list lookup failed", exc_info=True)
         return []
 
     @staticmethod
@@ -581,24 +737,54 @@ class StateSnapshotService:
         return None
 
     @staticmethod
-    def _epoch_n_times(epoch_data: Any) -> int | None:
+    def _epoch_n_times(
+        epoch_data: Any,
+        read_errors: list[str],
+    ) -> int | None:
+        """Read model-compatibility sample count without hiding malformed state."""
         if epoch_data is None:
             return None
-        shape = StateSnapshotService._shape(getattr(epoch_data, "data", None))
+        try:
+            data = getattr(epoch_data, "data", None)
+            raw_shape = getattr(data, "shape", None)
+        except Exception as exc:
+            read_errors.append(f"epoch.n_times: {exc}")
+            return None
+        if raw_shape is None:
+            return None
+        if not isinstance(raw_shape, (list, tuple)):
+            # Compatibility wrappers may expose a placeholder ``shape`` object
+            # while intentionally omitting concrete epoch dimensions.
+            return None
+        try:
+            shape = tuple(int(dim) for dim in raw_shape)
+        except Exception:
+            read_errors.append(f"epoch.n_times: invalid shape {raw_shape!r}")
+            return None
         if shape and len(shape) >= 3:
             return shape[2]
+        read_errors.append(f"epoch.n_times: expected 3D shape, got {shape!r}")
         return None
 
     @staticmethod
-    def _epoch_sfreq(epoch_data: Any) -> float | None:
+    def _epoch_sfreq(
+        epoch_data: Any,
+        read_errors: list[str],
+    ) -> float | None:
+        """Read model-compatibility sampling rate when the field is present."""
         if epoch_data is None:
             return None
-        value = getattr(epoch_data, "sfreq", None)
+        try:
+            value = getattr(epoch_data, "sfreq", None)
+        except Exception as exc:
+            read_errors.append(f"epoch.sfreq: {exc}")
+            return None
         if value is None:
             return None
         try:
             return float(value)
         except (TypeError, ValueError):
+            read_errors.append(f"epoch.sfreq: invalid value {value!r}")
             return None
 
     @staticmethod
@@ -612,7 +798,7 @@ class StateSnapshotService:
                     values = cast(Iterable[Any], method())
                     return [str(ch) for ch in values]
                 except Exception:
-                    pass
+                    logger.debug("Epoch channel-name lookup failed", exc_info=True)
         try:
             return [str(ch) for ch in epoch_data.get_mne().ch_names]
         except Exception:
@@ -660,44 +846,63 @@ class StateSnapshotService:
         return cast(dict[str, Any], serialize_json_value(value))
 
     @staticmethod
-    def _safe_call_dict(call: Callable[[], Any]) -> dict[str, Any]:
+    def _read_optional_dict(
+        call: Callable[[], Any],
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        """Read display-only diagnostics without invalidating workflow truth."""
         try:
             value = call()
-        except Exception:
+        except Exception as exc:
+            logger.debug("Optional state read %s failed: %s", label, exc)
             return {}
         return value if isinstance(value, dict) else {}
 
     @staticmethod
-    def _safe_call_list(call: Callable[[], Any]) -> list[Any]:
-        try:
-            value = call()
-        except Exception:
-            return []
-        return list(value) if value is not None else []
-
-    @staticmethod
-    def _safe_list(call: Callable[[], Any]) -> list[Any]:
-        try:
-            value = call()
-        except Exception:
-            return []
-        return list(value) if value is not None else []
-
-    @staticmethod
-    def _safe_bool(call: Callable[[], Any]) -> bool:
-        try:
-            return bool(call())
-        except Exception:
-            return False
-
-    @staticmethod
-    def _read_bool(
+    def _read_optional_list(
         call: Callable[[], Any],
+        *,
+        label: str,
+    ) -> list[Any]:
+        """Read a best-effort query summary that does not drive capabilities."""
+        try:
+            value = call()
+        except Exception as exc:
+            logger.debug("Optional state read %s failed: %s", label, exc)
+            return []
+        return list(value) if value is not None else []
+
+    @staticmethod
+    def _read_authoritative_list(
+        call: Callable[[], Any] | None,
+        *,
+        label: str,
+        errors: list[str],
+    ) -> list[Any]:
+        """Read workflow truth and label failures so policy can fail closed."""
+        if not callable(call):
+            errors.append(f"{label}: reader unavailable")
+            return []
+        try:
+            value = call()
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+            return []
+        return list(value) if value is not None else []
+
+    @staticmethod
+    def _read_authoritative_bool(
+        call: Callable[[], Any] | None,
         *,
         label: str,
         errors: list[str],
         default: bool,
     ) -> bool:
+        """Read workflow truth and use a conservative value after failure."""
+        if not callable(call):
+            errors.append(f"{label}: reader unavailable")
+            return default
         try:
             return bool(call())
         except Exception as exc:
@@ -705,106 +910,20 @@ class StateSnapshotService:
             return default
 
     @staticmethod
-    def _safe_string_call(call: Callable[[], Any] | None) -> str | None:
+    def _read_optional_string(
+        call: Callable[[], Any] | None,
+        *,
+        label: str,
+    ) -> str | None:
+        """Read presentation text without treating its absence as state failure."""
         if not callable(call):
             return None
         try:
             value = call()
-        except Exception:
+        except Exception as exc:
+            logger.debug("Optional state read %s failed: %s", label, exc)
             return None
         if value is None:
             return None
         text = str(value)
         return text if text else None
-
-
-class QueryStateCommandService:
-    """Handle read-only query_state commands through the command spine."""
-
-    def __init__(
-        self,
-        *,
-        study: Any,
-        dataset: Any,
-        state_builder: StateSnapshotService,
-        get_state: Callable[[], ApplicationStateSnapshot],
-        get_capabilities: Callable[[], Any],
-    ) -> None:
-        self.study = study
-        self.dataset = dataset
-        self.state_builder = state_builder
-        self.get_state = get_state
-        self.get_capabilities = get_capabilities
-
-    def handle_query_state(self, command: Command) -> HandlerResult:
-        if not isinstance(command, QueryStateCommand):
-            raise TypeError("Invalid command for query_state")
-
-        query = str(command.query or "state").lower()
-        if query == "state":
-            state = self.get_state()
-            return (
-                "Application state snapshot ready.",
-                {
-                    "state": state.to_dict(),
-                    "capabilities": self.get_capabilities().to_dict(),
-                },
-            )
-        if query == "data_lists":
-            state = self.get_state()
-            loaded = list(getattr(self.study, "loaded_data_list", []) or [])
-            preprocessed = list(
-                getattr(self.study, "preprocessed_data_list", []) or [],
-            )
-            diagnostics: dict[str, Any] = {
-                "raw_count": len(loaded),
-                "preprocessed_count": len(preprocessed),
-                "raw_files": state.raw.files,
-                "preprocessed_files": state.preprocessed.files,
-            }
-            if command.include_objects:
-                diagnostics["loaded_data_list"] = loaded
-                diagnostics["preprocessed_data_list"] = preprocessed
-            return "Data list query ready.", diagnostics
-        if query == "dataset_generation_context":
-            epoch_data = getattr(self.study, "epoch_data", None)
-            dataset_generator = getattr(self.study, "dataset_generator", None)
-            diagnostics = {
-                "payload_type": "dataset_generation_context",
-                "epoch_available": epoch_data is not None,
-                "generator_exists": dataset_generator is not None,
-            }
-            if command.include_objects:
-                diagnostics["epoch_data"] = epoch_data
-                diagnostics["dataset_generator"] = dataset_generator
-            return "Dataset generation context ready.", diagnostics
-        if query == "data_summary":
-            state = self.get_state()
-            return "Dataset summary ready.", self.state_builder.data_summary_from_state(
-                state,
-            )
-        if query == "preprocess_diagnostics":
-            state = self.get_state()
-            return (
-                "Preprocess diagnostics ready.",
-                dict(state.preprocessed.diagnostics),
-            )
-        if query == "smart_filter_suggestions":
-            suggestions = self.state_builder.smart_filter_suggestions(command.params)
-            return (
-                "Smart filter suggestions ready.",
-                {"suggestions": suggestions},
-            )
-        if query == "training_history":
-            rows = self.state_builder.training_history(
-                include_objects=command.include_objects,
-            )
-            return (
-                "Training history query ready.",
-                {
-                    "payload_type": "training_history",
-                    "row_count": len(rows),
-                    "rows": rows,
-                },
-            )
-        raise ValueError(f"Unknown query_state request: {command.query}")

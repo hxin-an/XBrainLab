@@ -4,8 +4,13 @@ from typing import Any
 
 import mne
 import numpy as np
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 
 from .base import Visualizer
+from .saliency_semantics import saliency_color_scale
+
+SPARSE_INTERPOLATION_CHANNEL_LIMIT = 8
+TOPOGRAPHIC_COLORBAR_RECT = (0.87, 0.20, 0.018, 0.60)
 
 
 class SaliencyTopoMapViz(Visualizer):
@@ -49,6 +54,15 @@ class SaliencyTopoMapViz(Visualizer):
             pos_array = pos_array.reshape(1, -1)
 
         chs = self.epoch_data.get_channel_names()
+        if pos_array.ndim != 2 or pos_array.shape[1] < 2:
+            raise ValueError(
+                "Montage positions must contain one 2-D or 3-D coordinate per channel.",
+            )
+        if len(chs) != len(pos_array):
+            raise ValueError(
+                "The number of channel names and montage positions must match "
+                f"({len(chs)} names, {len(pos_array)} positions).",
+            )
         saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
             ax = fig.add_subplot(111)
@@ -60,39 +74,86 @@ class SaliencyTopoMapViz(Visualizer):
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
 
-        for plot_index, (_label_key, label_name, raw_saliency) in enumerate(
-            saliency_by_label,
+        display_by_label = []
+        for label_key, label_name, raw_saliency in saliency_by_label:
+            if absolute:
+                saliency = np.abs(raw_saliency).mean(axis=0)
+            else:
+                saliency = raw_saliency.mean(axis=0)
+
+            # average over time
+            data = saliency.mean(axis=1)
+            data_channel_count = int(data.shape[0]) if data.ndim >= 1 else 0
+            if data.ndim != 1 or data_channel_count != len(chs):
+                raise ValueError(
+                    "Saliency channels must match the configured montage "
+                    f"({data_channel_count} saliency channels, "
+                    f"{len(chs)} montage channels).",
+                )
+
+            display_by_label.append((label_key, label_name, data))
+
+        cmap, color_min, color_max = saliency_color_scale(
+            method,
+            [data for _label_key, _label_name, data in display_by_label],
+            absolute=absolute,
+        )
+        plot_axes = []
+        image = None
+        for plot_index, (_label_key, label_name, data) in enumerate(
+            display_by_label,
         ):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
+            plot_axes.append(ax)
             kwargs = {
                 "pos": pos_array[:, 0:2],
                 "ch_type": "eeg",
-                "sensors": False,
-                "names": chs,
+                "sensors": True,
+                "names": (
+                    chs if len(chs) <= SPARSE_INTERPOLATION_CHANNEL_LIMIT else None
+                ),
                 "axes": ax,
                 "show": False,
                 "extrapolate": "local",
                 "outlines": "head",
                 "sphere": (0.0, -0.02, 0.0, 0.12),
             }
+            kwargs["vlim"] = (color_min, color_max)
+            if float(np.ptp(data)) <= 1e-12:
+                kwargs["contours"] = 0
 
-            if absolute:
-                saliency = np.abs(raw_saliency).mean(axis=0)
-                cmap = "Reds"
-            else:
-                saliency = raw_saliency.mean(axis=0)
-                cmap = "coolwarm"
-
-            # average over time
-            data = saliency.mean(axis=1)
-
-            # Handle constant data to prevent RuntimeWarning in MNE
-            if np.std(data) < 1e-10:
-                data += np.random.normal(0, 1e-10, data.shape)
-
-            im, _ = mne.viz.plot_topomap(data=data, cmap=cmap, **kwargs)
-            cbar = fig.colorbar(im, ax=ax, orientation="vertical")
-            cbar.ax.get_yaxis().set_ticks([])
-            ax.set_title(f"Saliency Map of class {label_name}", color="white")
-        fig.tight_layout()
+            image, _ = mne.viz.plot_topomap(data=data, cmap=cmap, **kwargs)
+            ax.set_title(str(label_name), color="white")
+        if len(chs) <= SPARSE_INTERPOLATION_CHANNEL_LIMIT:
+            fig.text(
+                0.5,
+                0.02,
+                f"Sparse {len(chs)}-channel interpolation · sensor locations shown",
+                color="#cccccc",
+                ha="center",
+                fontsize=8,
+            )
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.83,
+            bottom=0.10,
+            top=0.90,
+            wspace=0.30,
+            hspace=0.40,
+        )
+        if image is not None:
+            colorbar_axis = fig.add_axes(TOPOGRAPHIC_COLORBAR_RECT)
+            colorbar = fig.colorbar(
+                image,
+                cax=colorbar_axis,
+                orientation="vertical",
+            )
+            formatter = ScalarFormatter(useMathText=True, useOffset=False)
+            formatter.set_scientific(True)
+            formatter.set_powerlimits((-2, 2))
+            colorbar.formatter = formatter
+            colorbar.locator = MaxNLocator(nbins=5)
+            colorbar.update_ticks()
+            colorbar.ax.tick_params(labelsize=7, pad=1)
+            colorbar.ax.yaxis.get_offset_text().set_fontsize(7)
         return fig

@@ -1,9 +1,22 @@
+from threading import Event, Thread
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+import torch
 
-from XBrainLab.backend.controller.training_controller import TrainingController
+from XBrainLab.backend.controller.training_controller import (
+    TrainingController,
+    TrainingLifecycleEvent,
+)
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingRunIdentity,
+    TrainingStateToken,
+    TrainingTerminalOutcome,
+)
 
 
 class TestTrainingController:
@@ -31,7 +44,7 @@ class TestTrainingController:
 
         with patch("threading.Thread") as MockThread:
             thread_instance = MockThread.return_value
-            controller.start_training()
+            generation = controller.start_training()
 
             mock_study.generate_plan.assert_called_once_with(
                 force_update=True, append=True
@@ -42,6 +55,52 @@ class TestTrainingController:
             # Verify monitoring started
             MockThread.assert_called_once()
             thread_instance.start.assert_called_once()
+            assert generation == 1
+
+    def test_interactive_start_publishes_typed_generation_without_ordering_threads(
+        self,
+        controller,
+        mock_study,
+    ):
+        """UI consumers receive identity they can reconcile across Qt threads."""
+        mock_study.is_training.return_value = False
+        run = TrainingRunIdentity(trainer_id="trainer-1", run_id=1)
+        trainer = MagicMock()
+        trainer.get_state_snapshot_token.return_value = TrainingStateToken(
+            generation=7,
+            stable=True,
+        )
+        trainer.get_terminal_outcome.return_value = TrainingTerminalOutcome(
+            state=TrainingOutcomeState.RUNNING,
+            run=run,
+        )
+        mock_study.trainer = trainer
+        lifecycle: list[str] = []
+        typed_events: list[TrainingLifecycleEvent] = []
+        controller.subscribe(
+            "training_started",
+            lambda: lifecycle.append("started"),
+        )
+        controller.subscribe("training_started_state", typed_events.append)
+        mock_study.train.side_effect = lambda **_kwargs: lifecycle.append("train")
+
+        with patch.object(
+            controller,
+            "_start_monitoring",
+            side_effect=lambda _generation: lifecycle.append("monitor"),
+        ):
+            controller.start_training(interactive=True)
+
+        assert lifecycle == ["train", "started", "monitor"]
+        assert typed_events == [
+            TrainingLifecycleEvent(
+                token=TrainingStateToken(generation=7, stable=True),
+                outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.RUNNING,
+                    run=run,
+                ),
+            )
+        ]
 
     def test_start_training_sync_honors_command_options(self, controller, mock_study):
         mock_study.is_training.return_value = False
@@ -67,11 +126,131 @@ class TestTrainingController:
         mock_study.is_training.return_value = True
         mock_callback = MagicMock()
         controller.subscribe("training_started", mock_callback)
+        existing = controller._reserve_terminal_handoff()
 
-        controller.start_training()
+        with pytest.raises(RuntimeError, match="already running"):
+            controller.start_training()
 
         mock_study.generate_plan.assert_not_called()
         mock_callback.assert_not_called()
+        assert not controller.wait_for_terminal_notification(
+            existing.generation,
+            timeout=0.0,
+        )
+
+    def test_monitor_failure_wakes_exact_terminal_handoff_waiter(
+        self,
+        controller,
+        mock_study,
+    ):
+        mock_study.is_training.side_effect = RuntimeError("monitor read failed")
+        handoff = controller._reserve_terminal_handoff()
+        waiting = Event()
+        results: list[bool] = []
+
+        def wait_for_handoff() -> None:
+            waiting.set()
+            results.append(
+                controller.wait_for_terminal_notification(
+                    handoff.generation,
+                    timeout=5.0,
+                )
+            )
+
+        waiter = Thread(target=wait_for_handoff, name="terminal-handoff-waiter")
+        waiter.start()
+        assert waiting.wait(timeout=1.0)
+
+        controller._monitor_loop(handoff.generation)
+        waiter.join(timeout=1.0)
+
+        assert not waiter.is_alive()
+        assert results == [False]
+
+    def test_shutdown_wakes_pending_terminal_handoff_waiter(
+        self,
+        controller,
+    ):
+        handoff = controller._reserve_terminal_handoff()
+        waiting = Event()
+        results: list[bool] = []
+
+        def wait_for_handoff() -> None:
+            waiting.set()
+            results.append(
+                controller.wait_for_terminal_notification(
+                    handoff.generation,
+                    timeout=5.0,
+                )
+            )
+
+        waiter = Thread(target=wait_for_handoff, name="shutdown-handoff-waiter")
+        waiter.start()
+        assert waiting.wait(timeout=1.0)
+
+        controller.shutdown()
+        waiter.join(timeout=1.0)
+
+        assert not waiter.is_alive()
+        assert results == [False]
+
+    def test_terminal_handoffs_are_owned_by_exact_generation(
+        self,
+        controller,
+    ):
+        first = controller._reserve_terminal_handoff()
+        controller._publish_training_stopped(first.generation)
+        second = controller._reserve_terminal_handoff()
+
+        assert controller.wait_for_terminal_notification(
+            first.generation,
+            timeout=0.0,
+        )
+        assert not controller.wait_for_terminal_notification(
+            second.generation,
+            timeout=0.0,
+        )
+
+    def test_restart_wait_releases_monitor_before_reporting_safe(
+        self,
+        controller,
+        mock_study,
+    ):
+        mock_study.is_training.return_value = False
+        callback_entered = Event()
+        release_callback = Event()
+        handoff = controller._reserve_terminal_handoff()
+
+        def publish_terminal() -> None:
+            callback_entered.set()
+            assert release_callback.wait(timeout=5.0)
+
+        controller.subscribe("training_stopped", publish_terminal)
+        monitor = Thread(
+            target=controller._monitor_loop,
+            args=(handoff.generation,),
+            name="training-monitor-under-test",
+        )
+        controller._monitor_thread = monitor
+        monitor.start()
+        assert callback_entered.wait(timeout=1.0)
+
+        safe: list[bool] = []
+        waiter = Thread(
+            target=lambda: safe.append(controller.wait_until_restart_safe(timeout=5.0)),
+            name="training-restart-waiter",
+        )
+        waiter.start()
+        assert waiter.is_alive()
+
+        release_callback.set()
+        waiter.join(timeout=1.0)
+        monitor.join(timeout=1.0)
+
+        assert safe == [True]
+        assert not waiter.is_alive()
+        assert not monitor.is_alive()
+        assert controller._monitor_thread is None
 
     def test_stop_training(self, controller, mock_study):
         mock_study.is_training.return_value = True
@@ -158,6 +337,48 @@ class TestTrainingController:
 
         mock_study.set_training_option.assert_called_once_with(option)
         cb.assert_called_once()
+
+    def test_invalid_mutated_option_does_not_replace_state_or_notify(self):
+        study = Study()
+        controller = TrainingController(study)
+        existing = TrainingOption(
+            "test",
+            torch.optim.Adam,
+            {},
+            True,
+            None,
+            10,
+            32,
+            0.001,
+            0,
+            TrainingEvaluation.VAL_ACC,
+            1,
+        )
+        invalid = TrainingOption(
+            "test",
+            torch.optim.Adam,
+            {},
+            True,
+            None,
+            10,
+            32,
+            0.001,
+            0,
+            TrainingEvaluation.VAL_ACC,
+            1,
+        )
+        cast(Any, invalid).epoch = 2.5
+        study.set_training_option(existing)
+        callback = MagicMock()
+        controller.subscribe("config_changed", callback)
+
+        with pytest.raises(ValueError):
+            controller.set_training_option(invalid)
+
+        published = study.training_option
+        assert published is not None
+        assert published.epoch == existing.epoch
+        callback.assert_not_called()
 
     def test_apply_configuration_notifies_once(self, controller, mock_study):
         cb = MagicMock()

@@ -6,6 +6,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
 from XBrainLab.ui.components.vram_checker import (
     PANEL_VISUALIZATION,
     VIZ_TAB_3D_PLOT,
@@ -24,15 +28,19 @@ def mock_main_window():
 
 @pytest.fixture()
 def make_checker(mock_main_window):
-    def _factory(controller=None):
-        return VRAMConflictChecker(mock_main_window, lambda: controller)
+    def _factory(snapshot=None):
+        runtime = snapshot or AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.IDLE,
+            initialized=False,
+        )
+        return VRAMConflictChecker(mock_main_window, lambda: runtime)
 
     return _factory
 
 
 class TestVRAMConflictChecker:
     def test_no_warning_when_not_local(self, make_checker):
-        checker = make_checker(controller=None)
+        checker = make_checker()
         with patch.object(VRAMConflictChecker, "_is_local_mode", return_value=False):
             checker.check(switching_to_local=False, switching_to_3d=True)
         # No QMessageBox should be shown — no error
@@ -74,25 +82,25 @@ class TestVRAMConflictChecker:
         assert checker._is_local_mode(switching_to_local=True) is True
 
     def test_is_local_mode_from_controller(self, make_checker):
-        ctrl = MagicMock()
-        ctrl.runtime_snapshot.return_value = {
-            "initialized": True,
-            "backend_mode": "local",
-        }
-        checker = make_checker(controller=ctrl)
+        snapshot = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+        )
+        checker = make_checker(snapshot=snapshot)
         assert checker._is_local_mode(switching_to_local=False) is True
 
     def test_is_local_mode_prefers_inference_mode(self, make_checker):
-        ctrl = MagicMock()
-        ctrl.runtime_snapshot.return_value = {
-            "initialized": True,
-            "backend_mode": "local",
-        }
-        checker = make_checker(controller=ctrl)
+        snapshot = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+        )
+        checker = make_checker(snapshot=snapshot)
         assert checker._is_local_mode(switching_to_local=False) is True
 
     def test_is_local_mode_no_controller(self, make_checker):
-        checker = make_checker(controller=None)
+        checker = make_checker()
         assert checker._is_local_mode(switching_to_local=False) is False
 
     def test_is_3d_active_switching(self, make_checker, mock_main_window):

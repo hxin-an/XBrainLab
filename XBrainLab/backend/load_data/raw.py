@@ -13,6 +13,35 @@ from ..utils import validate_type
 from ..utils.filename_parser import FilenameParser
 from ..utils.logger import logger
 
+SOURCE_CONTENT_IDENTITY_RUNTIME_KEY = "source_content_identity"
+_SHA256_HEX_LENGTH = 64
+
+
+def normalize_source_content_identity(identity: object) -> dict[str, Any]:
+    """Return the canonical reviewed source identity or reject malformed data."""
+    if not isinstance(identity, dict):
+        raise TypeError("Source content identity must be a dict")
+    algorithm = str(identity.get("algorithm") or "").strip().casefold()
+    digest = str(identity.get("sha256") or "").strip().lower()
+    file_bytes = identity.get("file_bytes")
+    if algorithm != "sha256":
+        raise ValueError("Source content identity must use SHA-256")
+    if len(digest) != _SHA256_HEX_LENGTH or any(
+        character not in "0123456789abcdef" for character in digest
+    ):
+        raise ValueError("Source content identity has an invalid SHA-256 digest")
+    if (
+        not isinstance(file_bytes, int)
+        or isinstance(file_bytes, bool)
+        or file_bytes < 0
+    ):
+        raise ValueError("Source content identity has an invalid file size")
+    return {
+        "algorithm": "sha256",
+        "sha256": digest,
+        "file_bytes": file_bytes,
+    }
+
 
 class Raw:
     """Wrapper around MNE data objects with metadata and event tracking.
@@ -105,6 +134,20 @@ class Raw:
     def get_runtime_details(self) -> dict[str, Any]:
         """Return all structured runtime details."""
         return copy.deepcopy(self.runtime_details)
+
+    def set_source_content_identity(self, identity: dict[str, Any]) -> None:
+        """Bind the reviewed source-file content identity to this wrapper."""
+        self.set_runtime_detail(
+            SOURCE_CONTENT_IDENTITY_RUNTIME_KEY,
+            normalize_source_content_identity(identity),
+        )
+
+    def get_source_content_identity(self) -> dict[str, Any] | None:
+        """Return the reviewed source-file content identity, when available."""
+        identity = self.get_runtime_detail(SOURCE_CONTENT_IDENTITY_RUNTIME_KEY)
+        if identity is None:
+            return None
+        return normalize_source_content_identity(identity)
 
     def has_runtime_detail(self, name: str) -> bool:
         """Return whether a named structured runtime detail exists."""

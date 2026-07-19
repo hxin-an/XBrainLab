@@ -14,6 +14,20 @@ from .data_interpretation_metadata import (
     file_metadata_from_dict,
 )
 
+IMPORT_RECIPE_MAX_BYTES = 1_048_576
+
+
+class ImportRecipeTooLargeError(ValueError):
+    """Raised when the authoritative recipe reader reaches its byte cap."""
+
+    def __init__(self, *, path: Path, file_bytes_at_least: int) -> None:
+        self.path = path
+        self.file_bytes_at_least = file_bytes_at_least
+        super().__init__(
+            "Import recipe exceeds the bounded "
+            f"{IMPORT_RECIPE_MAX_BYTES}-byte input limit: {path}.",
+        )
+
 
 @dataclass(frozen=True)
 class ImportRecipe:
@@ -40,6 +54,7 @@ class ImportRecipe:
     internal_event_selection: dict[str, Any] = dc_field(default_factory=dict)
     run_event_mappings: dict[str, dict[str, str]] = dc_field(default_factory=dict)
     label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
+    content_identity: dict[str, Any] = dc_field(default_factory=dict)
     warnings: list[str] = dc_field(default_factory=list)
     recipe_trace: list[str] = dc_field(default_factory=list)
 
@@ -56,8 +71,18 @@ class ImportRecipe:
 
 
 def load_import_recipe(path: str) -> ImportRecipe:
-    """Load an import recipe from a JSON file."""
-    payload = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    """Load one recipe through a single bounded binary read."""
+    target = Path(path).expanduser()
+    with target.open("rb") as handle:
+        encoded = handle.read(IMPORT_RECIPE_MAX_BYTES + 1)
+    if len(encoded) > IMPORT_RECIPE_MAX_BYTES:
+        raise ImportRecipeTooLargeError(
+            path=target,
+            file_bytes_at_least=len(encoded),
+        )
+    payload = json.loads(encoded.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Import recipe JSON must contain an object.")
     return import_recipe_from_dict(payload)
 
 
@@ -122,6 +147,11 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
             for item in payload.get("label_imports", [])
             if isinstance(item, dict)
         ],
+        content_identity={}
+        if skip_labels
+        else dict(payload.get("content_identity") or {})
+        if isinstance(payload.get("content_identity"), dict)
+        else {},
         warnings=[str(item) for item in payload.get("warnings", [])],
         recipe_trace=[str(item) for item in payload.get("recipe_trace", [])],
     )
@@ -132,6 +162,7 @@ def build_import_recipe(
     recipe_id: str,
     applied: Any,
     warnings: list[str],
+    content_identity: dict[str, Any] | None = None,
 ) -> ImportRecipe:
     """Build a recipe from an applied interpretation-like object."""
     skip_labels = bool(getattr(applied, "skip_labels", False))
@@ -174,6 +205,7 @@ def build_import_recipe(
         label_imports=[]
         if skip_labels
         else [dict(item) for item in applied.label_imports],
+        content_identity={} if skip_labels else dict(content_identity or {}),
         warnings=list(warnings),
         recipe_trace=[*applied.recipe_trace, f"recipe:{recipe_id}"],
     )
@@ -203,12 +235,17 @@ def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
         choices["metadata_overrides"] = metadata_overrides
     label_carrier_choices = _label_carrier_choices_from_recipe(
         recipe.label_carrier_plan if include_label_choices else [],
+        legacy_class_map=recipe.class_map,
+        label_imports=recipe.label_imports if include_label_choices else [],
     )
     if label_carrier_choices:
         choices["label_carrier_choices"] = label_carrier_choices
     if include_label_choices and recipe.event_roles:
         choices["event_roles"] = dict(recipe.event_roles)
-    if include_label_choices and recipe.class_map:
+    internal_event_recipe = bool(recipe.internal_event_selection) or (
+        recipe.label_carrier == "embedded_events"
+    )
+    if include_label_choices and recipe.class_map and internal_event_recipe:
         choices["class_map"] = dict(recipe.class_map)
     if include_label_choices and recipe.internal_event_selection:
         choices["internal_event_selection"] = dict(recipe.internal_event_selection)
@@ -255,6 +292,9 @@ def _metadata_overrides_from_recipe(
 
 def _label_carrier_choices_from_recipe(
     label_carrier_plan: list[dict[str, Any]],
+    *,
+    legacy_class_map: dict[str, str] | None = None,
+    label_imports: list[dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, Any]]:
     choices: dict[str, dict[str, Any]] = {}
     field_map = {
@@ -276,6 +316,13 @@ def _label_carrier_choices_from_recipe(
             for recipe_key, choice_key in field_map.items()
             if str(carrier.get(recipe_key) or "").strip()
         }
+        target_files = [
+            str(item).strip()
+            for item in carrier.get("selected_target_files", [])
+            if str(item).strip()
+        ]
+        if target_files:
+            carrier_choices["target_files"] = list(dict.fromkeys(target_files))
         target_event_codes = [
             str(item).strip()
             for item in carrier.get("selected_target_event_codes", [])
@@ -283,9 +330,140 @@ def _label_carrier_choices_from_recipe(
         ]
         if target_event_codes:
             carrier_choices["target_event_codes"] = target_event_codes
+        raw_value_decisions = carrier.get("value_decisions")
+        value_decisions = (
+            {
+                str(raw_value): dict(decision)
+                for raw_value, decision in raw_value_decisions.items()
+                if isinstance(decision, dict)
+            }
+            if isinstance(raw_value_decisions, dict)
+            else {}
+        )
+        if value_decisions:
+            carrier_choices["value_decisions"] = value_decisions
+        elif legacy_class_map:
+            carrier_choices["value_decisions"] = {
+                str(raw_value): {
+                    "suggested_name": str(class_name),
+                    "decision_source": "legacy_recipe_class_map_suggestion",
+                    "provenance": "legacy_recipe:class_map",
+                }
+                for raw_value, class_name in legacy_class_map.items()
+                if str(raw_value).strip() and str(class_name).strip()
+            }
         if carrier_choices:
             choices[path] = carrier_choices
+    _merge_label_import_audit_choices(choices, label_imports or [])
     return choices
+
+
+def _merge_label_import_audit_choices(
+    choices: dict[str, dict[str, Any]],
+    label_imports: list[dict[str, Any]],
+) -> None:
+    """Replay complete legacy label-import choices retained in recipe audit rows."""
+    for record in label_imports:
+        if not isinstance(record, dict):
+            continue
+        raw_file_mapping = record.get("file_mapping")
+        file_mapping = (
+            {
+                str(target).strip(): str(carrier).strip()
+                for target, carrier in raw_file_mapping.items()
+                if str(target).strip() and str(carrier).strip()
+            }
+            if isinstance(raw_file_mapping, dict)
+            else {}
+        )
+        raw_configs = record.get("label_configs")
+        label_configs = (
+            {
+                str(carrier).strip(): config
+                for carrier, config in raw_configs.items()
+                if str(carrier).strip() and isinstance(config, dict)
+            }
+            if isinstance(raw_configs, dict)
+            else {}
+        )
+        carriers = list(
+            dict.fromkeys(
+                [
+                    str(item).strip()
+                    for item in record.get("label_carriers", [])
+                    if str(item).strip()
+                ]
+                + list(file_mapping.values())
+                + list(label_configs)
+            )
+        )
+        selected_events = sorted(
+            {
+                str(item).strip()
+                for item in record.get("selected_event_names", [])
+                if str(item).strip()
+            }
+        )
+        raw_class_map = record.get("class_map")
+        class_map = (
+            {
+                str(raw_value): str(class_name)
+                for raw_value, class_name in raw_class_map.items()
+                if str(raw_value).strip() and str(class_name).strip()
+            }
+            if isinstance(raw_class_map, dict)
+            else {}
+        )
+        for carrier in carriers:
+            carrier_choices = choices.setdefault(carrier, {})
+            config = label_configs.get(carrier, {})
+            for source_key, choice_key in (
+                ("label_field", "label_field"),
+                ("anchor", "anchor"),
+                ("duration_field", "duration_field"),
+            ):
+                value = str(config.get(source_key) or "").strip()
+                if value:
+                    carrier_choices[choice_key] = value
+            targets = sorted(
+                target
+                for target, mapped_carrier in file_mapping.items()
+                if mapped_carrier == carrier
+            )
+            if targets:
+                carrier_choices["target_files"] = targets
+                if len(targets) == 1:
+                    carrier_choices["target_file"] = targets[0]
+                else:
+                    carrier_choices.pop("target_file", None)
+            if "selected_event_names" in record:
+                if selected_events:
+                    carrier_choices["target_event_codes"] = selected_events
+                else:
+                    carrier_choices.pop("target_event_codes", None)
+            if class_map:
+                audit_decisions = {
+                    raw_value: {
+                        "role": "stimulus",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": class_name,
+                        "suggested_name": class_name,
+                        "decision": "resolved",
+                        "decision_source": "external_label_mapping",
+                        "provenance": "label_import",
+                    }
+                    for raw_value, class_name in class_map.items()
+                }
+                reviewed_decisions = carrier_choices.get("value_decisions")
+                carrier_choices["value_decisions"] = {
+                    **audit_decisions,
+                    **(
+                        reviewed_decisions
+                        if isinstance(reviewed_decisions, dict)
+                        else {}
+                    ),
+                }
 
 
 def _string_mapping(payload: Any) -> dict[str, str]:

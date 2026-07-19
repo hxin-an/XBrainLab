@@ -14,38 +14,117 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
 import time
+import uuid
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from html import escape
+from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image, ImageStat
-from PyQt6.QtCore import QPoint, QSize, Qt, QThreadPool, QTimer
-from PyQt6.QtTest import QTest
+from PyQt6.QtCore import (
+    QBuffer,
+    QIODevice,
+    QPoint,
+    QRect,
+    QSize,
+    Qt,
+    QThreadPool,
+    QTimer,
+)
+from PyQt6.QtGui import QPixmap, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QApplication,
     QComboBox,
+    QDockWidget,
     QLabel,
     QLineEdit,
+    QMainWindow,
     QTextBrowser,
     QWidget,
 )
 
-from scripts.dev.capture_chatpanel_local_walkthrough import collect_visible_messages
 from scripts.dev.capture_data_interpretation_replay import (
+    LABEL_PATH,
     SOURCE_DIR,
     SOURCE_PATH,
     apply_replay_review_choices,
+    pairing_rows,
+    pairing_rows_state,
     show_dialog_step,
     table_state,
     tree_rows,
     tree_state,
     write_synthetic_raw_fif,
 )
+from scripts.dev.human_like_walkthrough import capture as assistant_capture
+from scripts.dev.human_like_walkthrough.capture import AssistantCaptureDependencies
+from scripts.dev.human_like_walkthrough.contract import (
+    ASSISTANT_BLOCKED_REQUEST,
+    ASSISTANT_CLARIFICATION_REQUEST,
+    ASSISTANT_ERROR_REQUEST,
+    ASSISTANT_EVIDENCE_CONTRACT_VERSION,
+    ASSISTANT_NARROW_DOCK_WIDTH,
+    ASSISTANT_NORMAL_REQUEST,
+    ASSISTANT_PROCESSING_REQUEST,
+    ASSISTANT_RAW_TRACEBACK,
+    ASSISTANT_RECOVERY_REQUEST,
+    ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS,
+    ASSISTANT_REQUIRED_PHASES,
+    ASSISTANT_REQUIRED_SCREENSHOTS,
+    ASSISTANT_SCREENSHOT_NAMES,
+    ASSISTANT_STANDARD_DOCK_WIDTH,
+    ASSISTANT_SUCCESS_REQUEST,
+    build_artifact_contract,
+    walkthrough_source_fingerprint,
+)
+from scripts.dev.human_like_walkthrough.driver import (
+    append_chat_transcript,
+    drive_assistant_request,
+    install_walkthrough_assistant,
+)
+from scripts.dev.human_like_walkthrough.evidence import chat_panel_geometry
+from scripts.dev.human_like_walkthrough.readiness import (
+    assert_consecutive_complete_frames as _assert_consecutive_complete_frames,
+)
+from scripts.dev.human_like_walkthrough.readiness import (
+    assert_region_has_no_unpainted_block as _assert_region_has_no_unpainted_block,
+)
+from scripts.dev.human_like_walkthrough.readiness import (
+    assert_region_matches_reference as _assert_region_matches_reference,
+)
+from scripts.dev.human_like_walkthrough.readiness import (
+    frame_readiness_payload,
+)
+from scripts.dev.human_like_walkthrough.validation import (
+    ASSISTANT_REVIEW_KEYS,
+    assistant_contract_findings,
+    build_assistant_claim_contract_review,
+    build_assistant_contract_reviews,
+    build_assistant_dock_contract_review,
+    build_assistant_error_contract_review,
+    build_assistant_full_window_contract_review,
+    build_assistant_interaction_contract_review,
+    build_assistant_notice_contract_review,
+    build_assistant_processing_contract_review,
+    build_assistant_runtime_contract_review,
+    build_assistant_settings_recovery_review,
+    build_assistant_signal_path_review,
+    build_assistant_stage_copy_review,
+    build_chat_geometry_review,
+    required_assistant_screenshot_failures,
+    validate_assistant_payload,
+    validate_recorded_assistant_reviews,
+)
+from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -57,7 +136,6 @@ from XBrainLab.backend.application import (
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
-    QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     SaliencyCommand,
     SaveInterpretationRecipeCommand,
@@ -65,13 +143,45 @@ from XBrainLab.backend.application import (
     TrainCommand,
     ValidateInterpretationCommand,
     VisualizeCommand,
+    get_application_service,
 )
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
+from XBrainLab.ui.application_capabilities import local_result_payload
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
+
+__all__ = (
+    "ASSISTANT_BLOCKED_REQUEST",
+    "ASSISTANT_CLARIFICATION_REQUEST",
+    "ASSISTANT_ERROR_REQUEST",
+    "ASSISTANT_EVIDENCE_CONTRACT_VERSION",
+    "ASSISTANT_NARROW_DOCK_WIDTH",
+    "ASSISTANT_NORMAL_REQUEST",
+    "ASSISTANT_PROCESSING_REQUEST",
+    "ASSISTANT_RAW_TRACEBACK",
+    "ASSISTANT_RECOVERY_REQUEST",
+    "ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS",
+    "ASSISTANT_REQUIRED_SCREENSHOTS",
+    "ASSISTANT_STANDARD_DOCK_WIDTH",
+    "ASSISTANT_SUCCESS_REQUEST",
+    "build_assistant_claim_contract_review",
+    "build_assistant_dock_contract_review",
+    "build_assistant_error_contract_review",
+    "build_assistant_full_window_contract_review",
+    "build_assistant_interaction_contract_review",
+    "build_assistant_notice_contract_review",
+    "build_assistant_processing_contract_review",
+    "build_assistant_runtime_contract_review",
+    "build_assistant_settings_recovery_review",
+    "build_assistant_signal_path_review",
+    "build_assistant_stage_copy_review",
+    "chat_panel_geometry",
+    "install_walkthrough_assistant",
+    "walkthrough_source_fingerprint",
+)
 
 try:
     import resource
@@ -84,9 +194,13 @@ except ModuleNotFoundError:  # pragma: no cover - psutil is optional in script e
     psutil = None
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "human-like-walkthrough"
+DEFAULT_OUTPUT_DIR = (
+    ROOT / "artifacts" / "ui" / "human-like-walkthrough-runs" / "current"
+)
 WINDOW_SIZE = QSize(1280, 800)
-NARROW_WINDOW_SIZE = QSize(900, 760)
+# Match MainWindow.MINIMUM_SIZE so responsive evidence exercises the narrowest
+# product surface we claim to support, not a comfortable surrogate.
+NARROW_WINDOW_SIZE = QSize(760, 520)
 JSON_ARTIFACT = "human-like-walkthrough.json"
 MD_ARTIFACT = "human-like-walkthrough.md"
 RECIPE_ARTIFACT = "walkthrough-import.recipe.json"
@@ -106,12 +220,8 @@ SCREENSHOT_NAMES: dict[str, str] = {
     "dataset_ready": "09-dataset-ready.png",
     "training_readiness": "10-training-readiness.png",
     "analysis_readiness": "11-analysis-readiness.png",
-    "assistant_empty": "12-assistant-empty.png",
-    "assistant_normal": "13-assistant-normal.png",
-    "assistant_clarification": "14-assistant-clarification.png",
-    "assistant_blocked": "15-assistant-blocked.png",
-    "assistant_success": "16-assistant-success.png",
-    "assistant_narrow": "17-assistant-narrow.png",
+    "visualization_readiness": "11b-visualization-readiness.png",
+    **ASSISTANT_SCREENSHOT_NAMES,
     "reset_boundary": "18-reset-boundary.png",
     "error_recovery": "19-error-recovery.png",
     "eval_dashboard": "20-eval-dashboard.png",
@@ -136,13 +246,8 @@ REQUIRED_PHASES = (
     "dataset_generation",
     "training_readiness",
     "evaluation_visualization_saliency_readiness",
-    "assistant_empty_state",
-    "assistant_normal_message",
-    "assistant_missing_input_clarification",
-    "assistant_blocked_command",
-    "assistant_successful_tool_result",
-    "assistant_repeated_open_close",
-    "assistant_narrow_panel",
+    "visualization_readiness",
+    *ASSISTANT_REQUIRED_PHASES,
     "reset_new_session_boundary",
     "error_recovery",
     "eval_dashboard_report",
@@ -152,6 +257,8 @@ VISIBLE_FORBIDDEN = (
     "tool_name",
     "Tool Output:",
     "Tool Call:",
+    "```json",
+    "command_name",
     "Traceback",
     "ApplicationService",
     "BackendFacade",
@@ -178,9 +285,37 @@ VISIBLE_TRACE_TOKEN_PATTERN = re.compile(
     r"label_carrier|class_map|recipe):[A-Za-z0-9_.<>/-]+",
 )
 
+DATA_IMPORT_STEP_TITLES = (
+    "Choose EEG Data",
+    "Load Labels",
+    "Review Metadata",
+    "Match Labels",
+    "Review and Import",
+)
+DATA_IMPORT_COMPACT_STEP_TITLES = (
+    "EEG Data",
+    "Labels",
+    "Metadata",
+    "Match",
+    "Review",
+)
+MAIN_NAVIGATION_TITLES = (
+    "Dataset",
+    "Preprocess",
+    "Training",
+    "Evaluation",
+    "Visualization",
+)
+ASSISTANT_MODE_TITLES = ("One step", "Guided workflow")
+
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
 GEOMETRY_WIDTH_TOLERANCE_PX = 8
+WALKTHROUGH_EVENT_ROWS = tuple(
+    f"{0.1 + index * 0.55:.2f}\t0.2\t{'left' if index % 2 == 0 else 'right'}"
+    for index in range(10)
+)
+_CAPTURE_FRAME_READINESS: dict[str, dict[str, object]] = {}
 
 
 def main() -> int:
@@ -193,23 +328,174 @@ def main() -> int:
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    run_id = _new_artifact_run_id()
+    staging_dir = _artifact_staging_dir(output_dir, run_id)
+    staging_dir.mkdir(parents=True, exist_ok=False)
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    payload = capture_walkthrough(app, output_dir)
-    write_artifacts(output_dir, payload)
-    print(f"Wrote {output_dir / JSON_ARTIFACT}")
-    print(f"Wrote {output_dir / MD_ARTIFACT}")
+    payload = capture_walkthrough(app, staging_dir)
+    published_dir = publish_artifact_run(
+        staging_dir=staging_dir,
+        output_dir=output_dir,
+        payload=payload,
+        run_id=run_id,
+    )
+    print(f"Wrote {published_dir / JSON_ARTIFACT}")
+    print(f"Wrote {published_dir / MD_ARTIFACT}")
     return 0 if payload["status"] == "passed" else 1
+
+
+def _new_artifact_run_id() -> str:
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return f"{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
+def _artifact_staging_dir(output_dir: Path, run_id: str) -> Path:
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    return output_dir.parent / f".{output_dir.name}-staging-{run_id}"
+
+
+def publish_artifact_run(
+    *,
+    staging_dir: Path,
+    output_dir: Path,
+    payload: dict[str, Any],
+    run_id: str,
+) -> Path:
+    """Publish one internally consistent walkthrough run.
+
+    Failed runs are retained separately and never overwrite the last successful
+    product evidence. A successful run replaces the whole latest directory, so
+    screenshots and reports cannot come from different executions.
+    """
+    passed = payload.get("status") == "passed"
+    destination = output_dir if passed else _failed_artifact_run_dir(output_dir, run_id)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    relocated = _relocate_artifact_payload(payload, staging_dir, destination)
+    relocated["artifact_run"] = _build_artifact_run_manifest(
+        relocated,
+        staging_dir=staging_dir,
+        run_id=run_id,
+    )
+    payload.clear()
+    payload.update(relocated)
+    write_artifacts(staging_dir, payload)
+    if passed:
+        _replace_artifact_directory(staging_dir, destination, run_id=run_id)
+    else:
+        if destination.exists():
+            shutil.rmtree(destination)
+        staging_dir.replace(destination)
+    return destination
+
+
+def _failed_artifact_run_dir(output_dir: Path, run_id: str) -> Path:
+    if output_dir.name == "current" and output_dir.parent.name.endswith("-runs"):
+        return output_dir.parent / run_id
+    return output_dir.parent / f"{output_dir.name}-runs" / run_id
+
+
+def _relocate_artifact_payload(
+    payload: dict[str, Any],
+    source_dir: Path,
+    destination_dir: Path,
+) -> dict[str, Any]:
+    source_prefix = str(source_dir)
+    destination_prefix = str(destination_dir)
+
+    def relocate(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: relocate(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [relocate(item) for item in value]
+        if isinstance(value, tuple):
+            return [relocate(item) for item in value]
+        if isinstance(value, str) and value.startswith(source_prefix):
+            return destination_prefix + value[len(source_prefix) :]
+        return value
+
+    relocated = relocate(payload)
+    return cast(dict[str, Any], relocated)
+
+
+def _build_artifact_run_manifest(
+    payload: dict[str, Any],
+    *,
+    staging_dir: Path,
+    run_id: str,
+) -> dict[str, Any]:
+    hashes: dict[str, str] = {}
+    for key, path_value in payload.get("screenshots", {}).items():
+        candidate = staging_dir / Path(str(path_value)).name
+        if candidate.is_file():
+            hashes[str(key)] = hashlib.sha256(candidate.read_bytes()).hexdigest()
+    return {
+        "run_id": run_id,
+        "generated_at_utc": datetime.now(UTC).isoformat(),
+        "status": payload.get("status"),
+        "source_fingerprint": walkthrough_source_fingerprint(),
+        "git_revision": _git_revision(),
+        "working_tree_dirty": _git_worktree_dirty(),
+        "screenshot_sha256": hashes,
+    }
+
+
+def _replace_artifact_directory(
+    staging_dir: Path,
+    destination: Path,
+    *,
+    run_id: str,
+) -> None:
+    backup = destination.parent / f".{destination.name}-backup-{run_id}"
+    if backup.exists():
+        shutil.rmtree(backup)
+    if destination.exists():
+        destination.replace(backup)
+    try:
+        staging_dir.replace(destination)
+    except Exception:
+        if backup.exists() and not destination.exists():
+            backup.replace(destination)
+        raise
+    if backup.exists():
+        shutil.rmtree(backup)
+
+
+def _git_revision() -> str:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return "unknown"
+    completed = subprocess.run(  # noqa: S603 - executable resolved from PATH
+        [git_executable, "rev-parse", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "unknown"
+
+
+def _git_worktree_dirty() -> bool | None:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return None
+    completed = subprocess.run(  # noqa: S603 - executable resolved from PATH
+        [git_executable, "status", "--porcelain"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    return bool(completed.stdout.strip()) if completed.returncode == 0 else None
 
 
 def capture_walkthrough(app: QApplication, output_dir: Path) -> dict[str, Any]:
     """Run the walkthrough and return the artifact payload."""
     started_at = time.monotonic()
+    source_fingerprint_at_start = walkthrough_source_fingerprint()
     result: dict[str, Any] = {"payload": None}
 
     def run() -> None:
-        window: MainWindow | None = None
         try:
             result["payload"] = _run_walkthrough_steps(app, output_dir, started_at)
         except Exception as exc:  # pragma: no cover - artifact failure path
@@ -225,8 +511,8 @@ def capture_walkthrough(app: QApplication, output_dir: Path) -> dict[str, Any]:
                 },
             }
         finally:
-            if window is not None:
-                window.close()
+            for widget in app.topLevelWidgets():
+                widget.close()
             app.quit()
 
     QTimer.singleShot(1000, run)
@@ -244,7 +530,97 @@ def capture_walkthrough(app: QApplication, output_dir: Path) -> dict[str, Any]:
                 "failed_checks": ["payload missing"],
             },
         }
+    payload = _record_capture_source_stability(
+        payload,
+        started=source_fingerprint_at_start,
+        completed=walkthrough_source_fingerprint(),
+    )
+    return finalize_walkthrough_after_close(app, payload, started_at=started_at)
+
+
+def _record_capture_source_stability(
+    payload: dict[str, Any],
+    *,
+    started: str,
+    completed: str,
+) -> dict[str, Any]:
+    """Fail a run whose loaded capture sources changed during Qt replay."""
+    payload["capture_source"] = {
+        "fingerprint_at_start": started,
+        "fingerprint_at_completion": completed,
+        "stable": bool(started and started == completed),
+    }
+    if started and started == completed:
+        return payload
+    reason = "Product source changed during human-like capture; discard this run."
+    payload["status"] = "failed"
+    payload["failure_reason"] = reason
+    summary = dict(payload.get("pass_fail_summary", {}))
+    failed_checks = [str(item) for item in summary.get("failed_checks", [])]
+    summary["passed"] = False
+    summary["failed_checks"] = [reason, *failed_checks]
+    payload["pass_fail_summary"] = summary
     return payload
+
+
+def finalize_walkthrough_after_close(
+    app: QApplication,
+    payload: dict[str, Any],
+    *,
+    started_at: float,
+) -> dict[str, Any]:
+    """Finalize resource evidence after walkthrough-owned Qt objects are released."""
+    root_failure = (
+        str(payload.get("failure_reason") or "").strip()
+        if payload.get("status") == "failed"
+        else ""
+    )
+    for _ in range(3):
+        app.sendPostedEvents()
+        app.processEvents()
+        gc.collect()
+    resource_notes = list(payload.get("resource_notes", []))
+    resource_notes.append(
+        {
+            **resource_snapshot("after_close"),
+            "measurement_boundary": "after_walkthrough_return_and_qt_cleanup",
+        }
+    )
+    phases = list(payload.get("phases", []))
+    screenshots = dict(payload.get("screenshots", {}))
+    pass_fail_summary = build_pass_fail_summary(
+        phases,
+        screenshots,
+        resource_notes=resource_notes,
+    )
+    ui_quality_review = payload.get("ui_quality_review")
+    if not isinstance(ui_quality_review, dict):
+        ui_quality_review = build_ui_quality_review(phases, screenshots)
+    pass_fail_summary = merge_ui_quality_into_pass_fail_summary(
+        pass_fail_summary,
+        ui_quality_review,
+    )
+    if root_failure:
+        failed_checks = list(pass_fail_summary.get("failed_checks", []))
+        pass_fail_summary["failed_checks"] = [
+            root_failure,
+            *(item for item in failed_checks if item != root_failure),
+        ]
+        pass_fail_summary["passed"] = False
+    status = "passed" if pass_fail_summary["passed"] else "failed"
+    return {
+        **payload,
+        "status": status,
+        "failure_reason": (
+            ""
+            if status == "passed"
+            else root_failure or "; ".join(pass_fail_summary["failed_checks"])
+        ),
+        "resource_notes": resource_notes,
+        "ui_quality_review": ui_quality_review,
+        "pass_fail_summary": pass_fail_summary,
+        "elapsed_seconds": round(time.monotonic() - started_at, 3),
+    }
 
 
 def _run_walkthrough_steps(
@@ -261,9 +637,13 @@ def _run_walkthrough_steps(
     recipe_path = output_dir / RECIPE_ARTIFACT
 
     source_path = write_synthetic_raw_fif()
+    LABEL_PATH.write_text(
+        "onset\tduration\ttrial_type\n" + "\n".join(WALKTHROUGH_EVENT_ROWS) + "\n",
+        encoding="utf-8",
+    )
     study = Study()
-    service = ApplicationService(study)
-    window = MainWindow(study)
+    service = get_application_service(study)
+    window = cast(Any, MainWindow(study))
     set_window_geometry(window, WINDOW_SIZE)
     window.show()
     settle_window_geometry_for_capture(app, window, WINDOW_SIZE)
@@ -273,12 +653,13 @@ def _run_walkthrough_steps(
         screenshot_key: str,
         *,
         widget: QWidget | None = None,
-        notes: dict[str, Any] | None = None,
+        notes: dict[str, Any] | Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         target = widget or window
         screenshot_path = output_dir / SCREENSHOT_NAMES[screenshot_key]
         settle_widget_for_capture(app, target)
         capture_widget(target, screenshot_path)
+        resolved_notes = notes() if callable(notes) else notes
         screenshots[screenshot_key] = str(screenshot_path)
         phases.append(
             {
@@ -287,7 +668,7 @@ def _run_walkthrough_steps(
                 "visible_text": visible_text_snapshot(target),
                 "button_state": button_state_snapshot(target),
                 "workflow_state": compact_state(service.get_state()),
-                "notes": notes or {},
+                "notes": resolved_notes or {},
             }
         )
 
@@ -296,12 +677,12 @@ def _run_walkthrough_steps(
         "main_initial",
         notes={"window_title": window.windowTitle(), "startup": "MainWindow shown"},
     )
-    window.switch_page(0)
+    open_workflow_panel(window, 0)
     app.processEvents()
     capture_step(
         "main_window_initial_state",
         "dataset_page",
-        notes={
+        notes=lambda: {
             "current_panel": "Dataset",
             "ui_geometry": dataset_page_geometry(window),
         },
@@ -309,7 +690,7 @@ def _run_walkthrough_steps(
     capture_step(
         "data_source_selection",
         "source_selection",
-        notes={
+        notes=lambda: {
             "selected_source": sanitize_path(str(source_path)),
             "input_mode": "file",
             "source_button": window.dataset_panel.sidebar.import_btn.text(),
@@ -335,15 +716,30 @@ def _run_walkthrough_steps(
         ValidateInterpretationCommand(),
         command_results,
     )
+    scan_payload = _required_command_payload(
+        scan,
+        expected_payload_type="scan_result",
+        required_fields=("scan_result",),
+    )
+    preview_payload = _required_command_payload(
+        preview,
+        expected_payload_type="interpretation_preview",
+        required_fields=("preview",),
+    )
+    validation_payload = _required_command_payload(
+        validation,
+        expected_payload_type="validation_decision",
+        required_fields=("validation_decision",),
+    )
     tool_transcript.extend(
         command_summary(item) for item in [scan, preview, validation]
     )
 
     dialog = DataInterpretationPreviewDialog(
         window.dataset_panel,
-        scan_result=scan.diagnostics["scan_result"],
-        preview=preview.diagnostics["preview"],
-        validation_decision=validation.diagnostics["validation_decision"],
+        scan_result=scan_payload["scan_result"],
+        preview=preview_payload["preview"],
+        validation_decision=validation_payload["validation_decision"],
     )
     dialog.show()
     app.processEvents()
@@ -351,11 +747,11 @@ def _run_walkthrough_steps(
         "data_interpretation_scan_result",
         "wizard_preview",
         widget=dialog,
-        notes={
+        notes=lambda: {
             "active_step": active_dialog_step(dialog),
-            "decision": validation.diagnostics["validation_decision"]["decision"],
-            "eeg_files": len(scan.diagnostics["scan_result"]["eeg_files"]),
-            "label_carriers": len(scan.diagnostics["scan_result"]["label_carriers"]),
+            "decision": validation_payload["validation_decision"]["decision"],
+            "eeg_files": len(scan_payload["scan_result"]["eeg_files"]),
+            "label_carriers": len(scan_payload["scan_result"]["label_carriers"]),
             "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
         },
     )
@@ -370,7 +766,7 @@ def _run_walkthrough_steps(
         "data_interpretation_preview",
         "wizard_metadata",
         widget=dialog,
-        notes={
+        notes=lambda: {
             "active_step": active_dialog_step(dialog),
             "review_choices": sanitize(review_choices),
             "metadata_rows": tree_rows(dialog.file_tree),
@@ -383,9 +779,9 @@ def _run_walkthrough_steps(
         "data_interpretation_confirm_metadata_labels",
         "wizard_confirm",
         widget=dialog,
-        notes={
+        notes=lambda: {
             "active_step": active_dialog_step(dialog),
-            "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
+            "file_pairing_rows": pairing_rows(dialog),
             "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
         },
     )
@@ -395,7 +791,7 @@ def _run_walkthrough_steps(
         "data_interpretation_review_and_import",
         "wizard_review",
         widget=dialog,
-        notes={
+        notes=lambda: {
             "active_step": active_dialog_step(dialog),
             "apply_enabled": dialog.apply_button.isEnabled(),
             "review_summary_rows": tree_rows(dialog.review_tree),
@@ -412,7 +808,7 @@ def _run_walkthrough_steps(
     reviewed_preview = execute_recorded(
         service,
         PreviewInterpretationCommand(
-            scan_id=scan.diagnostics["scan_result"]["scan_id"],
+            scan_id=scan_payload["scan_result"]["scan_id"],
             choices=review_choices if isinstance(review_choices, dict) else {},
         ),
         command_results,
@@ -421,6 +817,11 @@ def _run_walkthrough_steps(
         service,
         ValidateInterpretationCommand(),
         command_results,
+    )
+    reviewed_validation_payload = _required_command_payload(
+        reviewed_validation,
+        expected_payload_type="validation_decision",
+        required_fields=("validation_decision",),
     )
     apply_without_confirmation = execute_recorded(
         service,
@@ -461,16 +862,14 @@ def _run_walkthrough_steps(
     )
 
     window.dataset_panel.update_panel()
-    window.switch_page(0)
+    open_workflow_panel(window, 0)
     app.processEvents()
     capture_step(
         "data_interpretation_decisions",
         "applied",
         notes={
             "safe": safe_probe,
-            "needs_confirmation": reviewed_validation.diagnostics[
-                "validation_decision"
-            ],
+            "needs_confirmation": reviewed_validation_payload["validation_decision"],
             "blocked": blocked_probe,
             "unconfirmed_apply": command_summary(apply_without_confirmation),
             "ui_geometry": dataset_page_geometry(window),
@@ -493,11 +892,16 @@ def _run_walkthrough_steps(
         service,
         {"recipe": command_summary(save_recipe)},
     )
+    reload_payload = _required_command_payload(
+        reload_recipe,
+        expected_payload_type="recipe_reload_preview",
+        required_fields=("scan_result", "preview", "validation_decision"),
+    )
     reload_dialog = DataInterpretationPreviewDialog(
         window.dataset_panel,
-        scan_result=reload_recipe.diagnostics["scan_result"],
-        preview=reload_recipe.diagnostics["preview"],
-        validation_decision=reload_recipe.diagnostics["validation_decision"],
+        scan_result=reload_payload["scan_result"],
+        preview=reload_payload["preview"],
+        validation_decision=reload_payload["validation_decision"],
         initial_step="Review and Import",
     )
     reload_dialog.show()
@@ -506,7 +910,7 @@ def _run_walkthrough_steps(
         "data_interpretation_reload_recipe",
         "recipe_reloaded",
         widget=reload_dialog,
-        notes={
+        notes=lambda: {
             "reload": command_summary(reload_recipe),
             "reapply": command_summary(reload_apply),
             "review_summary_rows": tree_rows(reload_dialog.review_tree),
@@ -537,7 +941,7 @@ def _run_walkthrough_steps(
     )
     epoch = execute_recorded(
         service,
-        CreateEpochCommand(t_min=0.0, t_max=1.3, event_ids=None),
+        CreateEpochCommand(t_min=0.0, t_max=0.51, event_ids=None),
         command_results,
     )
     dataset = execute_recorded(
@@ -546,7 +950,7 @@ def _run_walkthrough_steps(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
-            training_mode="group",
+            training_mode="individual",
         ),
         command_results,
     )
@@ -554,14 +958,14 @@ def _run_walkthrough_steps(
         command_summary(item) for item in [preprocess, epoch, dataset]
     )
 
-    window.switch_page(1)
+    open_workflow_panel(window, 1)
     app.processEvents()
     capture_step(
         "preprocessing",
         "preprocess",
         notes={"preprocess": command_summary(preprocess)},
     )
-    window.switch_page(2)
+    open_workflow_panel(window, 2)
     app.processEvents()
     capture_step(
         "epoch_creation",
@@ -583,7 +987,7 @@ def _run_walkthrough_steps(
     configure_training = execute_recorded(
         service,
         ConfigureTrainingCommand(
-            model_name="EEGNet",
+            model_name="SCCNet",
             epoch=1,
             batch_size=2,
             learning_rate=0.001,
@@ -609,7 +1013,7 @@ def _run_walkthrough_steps(
         command_summary(item)
         for item in [configure_training, train, evaluate, visualize, saliency]
     )
-    window.switch_page(2)
+    open_workflow_panel(window, 2)
     app.processEvents()
     capture_step(
         "training_readiness",
@@ -620,13 +1024,23 @@ def _run_walkthrough_steps(
             "training_wait": training_wait,
         },
     )
-    window.switch_page(3)
+    open_workflow_panel(window, 3)
     app.processEvents()
     capture_step(
         "evaluation_visualization_saliency_readiness",
         "analysis_readiness",
         notes={
             "evaluate": command_summary(evaluate),
+            "visualize": command_summary(visualize),
+            "saliency": command_summary(saliency),
+        },
+    )
+    open_workflow_panel(window, 4)
+    app.processEvents()
+    capture_step(
+        "visualization_readiness",
+        "visualization_readiness",
+        notes={
             "visualize": command_summary(visualize),
             "saliency": command_summary(saliency),
         },
@@ -658,7 +1072,7 @@ def _run_walkthrough_steps(
     )
     window.dataset_panel.update_panel()
     window.agent_manager.refresh_backend_status()
-    window.switch_page(0)
+    open_workflow_panel(window, 0)
     app.processEvents()
     capture_step(
         "reset_new_session_boundary",
@@ -683,19 +1097,16 @@ def _run_walkthrough_steps(
         command_summary(item) for item in [preview_missing_scan, recovery_scan]
     )
     window.agent_manager.refresh_backend_status()
-    add_chat_message(
-        window,
-        user_transcript,
-        "user",
-        "Preview the selected data again.",
-    )
-    add_chat_message(
-        window,
-        user_transcript,
-        "assistant",
-        "I need a source scan before previewing. I scanned the selected source again.",
+    drive_assistant_request(
+        app,
+        window.agent_manager,
+        ASSISTANT_RECOVERY_REQUEST,
     )
     app.processEvents()
+    append_chat_transcript(
+        user_transcript,
+        window.agent_manager.chat_controller.messages,
+    )
     capture_step(
         "error_recovery",
         "error_recovery",
@@ -724,8 +1135,6 @@ def _run_walkthrough_steps(
     resource_notes.append(resource_snapshot("before_close"))
     window.close()
     app.processEvents()
-    gc.collect()
-    resource_notes.append(resource_snapshot("after_close"))
 
     pass_fail_summary = build_pass_fail_summary(
         phases,
@@ -738,13 +1147,13 @@ def _run_walkthrough_steps(
         pass_fail_summary,
         ui_quality_review,
     )
-    status = "passed" if pass_fail_summary["passed"] else "failed"
     return {
-        "status": status,
-        "failure_reason": ""
-        if status == "passed"
-        else "; ".join(pass_fail_summary["failed_checks"]),
+        # The after-close resource sample is collected by
+        # ``finalize_walkthrough_after_close`` before a pass/fail claim is made.
+        "status": "captured",
+        "failure_reason": "",
         "claim_boundary": claim_boundary(),
+        "artifact_contract": build_artifact_contract(),
         "source_path": sanitize_path(str(source_path.parent)),
         "recipe_path": str(recipe_path),
         "phases": phases,
@@ -772,200 +1181,51 @@ def run_chatpanel_walkthrough(
     user_transcript: list[dict[str, str]],
     tool_transcript: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Drive user-visible ChatPanel states without starting a local model."""
-    if window.agent_manager is None:
-        window.init_agent()
-        app.processEvents()
-    manager = window.agent_manager
-    if manager is None:
-        raise RuntimeError("Agent manager was not initialized.")
-    panel = manager.chat_panel
-    dock = manager.chat_dock
-    if panel is None or dock is None:
-        raise RuntimeError("ChatPanel was not initialized.")
-
-    open_close_states: list[dict[str, Any]] = []
-    dock.show()
-    app.processEvents()
-    for index in range(2):
-        open_close_states.append(
-            {"step": f"open-{index + 1}", "visible": dock.isVisible()}
-        )
-        dock.close()
-        app.processEvents()
-        open_close_states.append(
-            {"step": f"close-{index + 1}", "visible": dock.isVisible()}
-        )
-        dock.show()
-        app.processEvents()
-    screenshots["assistant_empty"] = capture_named(
-        panel,
-        output_dir,
-        "assistant_empty",
+    """Delegate assistant capture while this entry orchestrates the product flow."""
+    dependencies = AssistantCaptureDependencies(
+        capture_named,
+        visible_text_snapshot,
+        button_state_snapshot,
+        compact_state,
+        command_summary,
+        set_window_geometry,
+        settle_widget_for_capture,
+        WINDOW_SIZE,
+        NARROW_WINDOW_SIZE,
     )
-    phases.append(
-        chat_phase(
-            "assistant_empty_state",
-            screenshots["assistant_empty"],
-            panel,
-            service,
-            {"open_close": open_close_states},
-        )
-    )
-    phases.append(
-        chat_phase(
-            "assistant_repeated_open_close",
-            screenshots["assistant_empty"],
-            panel,
-            service,
-            {"open_close": open_close_states},
-        )
-    )
-
-    add_chat_message(window, user_transcript, "user", "Hello.")
-    add_chat_message(
+    return assistant_capture.run_assistant_walkthrough(
+        app,
         window,
+        service,
+        screenshots,
+        phases,
+        output_dir,
         user_transcript,
-        "assistant",
-        "I can help interpret EEG data and prepare a training-ready dataset.",
+        tool_transcript,
+        dependencies=dependencies,
     )
-    app.processEvents()
-    screenshots["assistant_normal"] = capture_named(
-        panel,
-        output_dir,
-        "assistant_normal",
-    )
-    phases.append(
-        chat_phase(
-            "assistant_normal_message",
-            screenshots["assistant_normal"],
-            panel,
-            service,
-            {},
-        )
-    )
-
-    add_chat_message(window, user_transcript, "user", "Show details for a file.")
-    add_chat_message(
-        window,
-        user_transcript,
-        "assistant",
-        "Which loaded EEG file should I summarize?",
-    )
-    app.processEvents()
-    screenshots["assistant_clarification"] = capture_named(
-        panel,
-        output_dir,
-        "assistant_clarification",
-    )
-    phases.append(
-        chat_phase(
-            "assistant_missing_input_clarification",
-            screenshots["assistant_clarification"],
-            panel,
-            service,
-            {"clarification": "missing file selection"},
-        )
-    )
-
-    add_chat_message(window, user_transcript, "user", "Import another dataset now.")
-    add_chat_message(
-        window,
-        user_transcript,
-        "assistant",
-        "Start a new session before importing another dataset into this completed workflow.",
-    )
-    app.processEvents()
-    screenshots["assistant_blocked"] = capture_named(
-        panel,
-        output_dir,
-        "assistant_blocked",
-    )
-    phases.append(
-        chat_phase(
-            "assistant_blocked_command",
-            screenshots["assistant_blocked"],
-            panel,
-            service,
-            {"blocked_reason": "active workflow replacement boundary"},
-        )
-    )
-
-    query_state = service.execute(QueryStateCommand())
-    tool_transcript.append(command_summary(query_state))
-    add_chat_message(window, user_transcript, "user", "What is ready now?")
-    add_chat_message(
-        window,
-        user_transcript,
-        "assistant",
-        "Training is complete. Evaluation and visualization are ready.",
-    )
-    app.processEvents()
-    screenshots["assistant_success"] = capture_named(
-        panel,
-        output_dir,
-        "assistant_success",
-    )
-    phases.append(
-        chat_phase(
-            "assistant_successful_tool_result",
-            screenshots["assistant_success"],
-            panel,
-            service,
-            {"query_state": command_summary(query_state)},
-        )
-    )
-
-    set_window_geometry(window, NARROW_WINDOW_SIZE)
-    dock.setMinimumWidth(320)
-    dock.resize(340, max(620, window.height() - 80))
-    app.processEvents()
-    screenshots["assistant_narrow"] = capture_named(
-        panel,
-        output_dir,
-        "assistant_narrow",
-    )
-    phases.append(
-        chat_phase(
-            "assistant_narrow_panel",
-            screenshots["assistant_narrow"],
-            panel,
-            service,
-            {"width": window.width(), "dock_width": dock.width()},
-        )
-    )
-    set_window_geometry(window, WINDOW_SIZE)
-    app.processEvents()
-
-    visible_messages = [message.__dict__ for message in collect_visible_messages(panel)]
-    send_button_text = panel.send_btn.text()
-    send_button_enabled = panel.send_btn.isEnabled()
-    input_enabled = panel.input_field.isEnabled()
-    processing = manager.chat_controller.is_processing
-
-    manager.start_new_conversation()
-    app.processEvents()
-    return {
-        "open_close_states": open_close_states,
-        "visible_messages": visible_messages,
-        "send_button_text": send_button_text,
-        "send_button_enabled": send_button_enabled,
-        "input_enabled": input_enabled,
-        "processing": processing,
-    }
 
 
 def apply_review_choices(dialog: DataInterpretationPreviewDialog) -> None:
     """Apply deterministic human-like review choices to the wizard."""
     apply_replay_review_choices(dialog)
-    carrier = dialog.label_carrier_tree.topLevelItem(0)
-    if carrier is None:
-        return
-    target_selector = dialog._label_target_widgets.get(id(carrier))
-    if isinstance(target_selector, QComboBox):
-        index = target_selector.findData(SOURCE_PATH.name)
-        if index >= 0:
-            target_selector.setCurrentIndex(index)
+    editor = dialog.event_value_editor
+    if editor is not None and editor.has_rows():
+        unresolved = set(editor.unresolved_values())
+        expected_values = {"left", "right"}
+        unexpected = sorted(unresolved - expected_values, key=str.casefold)
+        if unexpected:
+            raise RuntimeError(
+                "Walkthrough fixture exposed unexpected unresolved label value(s): "
+                + ", ".join(unexpected)
+            )
+        for raw_value in sorted(unresolved, key=str.casefold):
+            editor.set_value_decision(
+                raw_value,
+                role="stimulus",
+                use="class",
+                class_name=raw_value,
+            )
     dialog._refresh_pairing_status()
 
 
@@ -975,7 +1235,7 @@ def active_dialog_step(dialog: DataInterpretationPreviewDialog) -> str:
     return dialog._step_titles[index] if 0 <= index < len(dialog._step_titles) else ""
 
 
-def dataset_page_geometry(window: MainWindow) -> dict[str, Any]:
+def dataset_page_geometry(window: Any) -> dict[str, Any]:
     """Return geometry evidence for the Dataset page main table and sidebar summary."""
     return {
         "dataset_table": table_state(
@@ -1000,10 +1260,9 @@ def interpretation_dialog_geometry(
             "Review Metadata",
             dialog.file_tree,
         ),
-        "label_carriers": tree_state_for_visible_dialog_step(
+        "file_pairing": pairing_rows_state_for_visible_dialog_step(
             dialog,
             "Match Labels",
-            dialog.label_carrier_tree,
         ),
         "events": tree_state_for_visible_dialog_step(
             dialog,
@@ -1040,7 +1299,26 @@ def tree_state_for_visible_dialog_step(
         dialog._go_to_step(current_index)
         if app is not None:
             app.processEvents()
-        dialog._fit_all_tree_columns_to_viewport()
+
+
+def pairing_rows_state_for_visible_dialog_step(
+    dialog: DataInterpretationPreviewDialog,
+    step_title: str,
+) -> dict[str, Any]:
+    """Measure the visible EEG-to-label pairing rows on their owning step."""
+    app = QApplication.instance()
+    current_index = dialog.step_stack.currentIndex()
+    try:
+        step_titles = getattr(dialog, "_step_titles", [])
+        if step_title in step_titles:
+            dialog._go_to_step(step_titles.index(step_title))
+        if app is not None:
+            app.processEvents()
+        return pairing_rows_state(dialog)
+    finally:
+        dialog._go_to_step(current_index)
+        if app is not None:
+            app.processEvents()
 
 
 def data_interpretation_decision_probe(
@@ -1048,15 +1326,55 @@ def data_interpretation_decision_probe(
     choices: dict[str, Any],
 ) -> dict[str, Any]:
     """Probe one decision boundary on a separate service."""
-    service = ApplicationService(Study())
+    service = get_application_service(Study())
     scan = service.execute(ScanSourceCommand(source_path=source_path))
     preview = service.execute(PreviewInterpretationCommand(choices=choices))
     validation = service.execute(ValidateInterpretationCommand())
+    validation_payload = _required_command_payload(
+        validation,
+        expected_payload_type="validation_decision",
+        required_fields=("validation_decision",),
+    )
     return {
         "scan": command_summary(scan),
         "preview": command_summary(preview),
-        "validation": validation.diagnostics.get("validation_decision", {}),
+        "validation": validation_payload["validation_decision"],
     }
+
+
+def _required_command_payload(
+    result: Any,
+    *,
+    expected_payload_type: str,
+    required_fields: tuple[str, ...],
+) -> dict[str, Any]:
+    """Read and validate one command's serializable/local result payload."""
+    payload = local_result_payload(result)
+    command_name = str(getattr(result, "command_name", "command") or "command")
+    if not bool(getattr(result, "success", False)):
+        error_type = getattr(getattr(result, "error_type", None), "value", "unknown")
+        message = str(
+            getattr(result, "error_message", None) or getattr(result, "message", "")
+        )
+        raise RuntimeError(
+            f"{command_name} failed ({error_type}) before walkthrough payload "
+            f"'{expected_payload_type}' was available: {message}"
+        )
+    actual_payload_type = payload.get("payload_type")
+    if actual_payload_type != expected_payload_type:
+        raise RuntimeError(
+            f"{command_name} expected payload_type '{expected_payload_type}', "
+            f"received {actual_payload_type!r}; available fields: "
+            f"{sorted(str(key) for key in payload)}"
+        )
+    missing = tuple(field for field in required_fields if field not in payload)
+    if missing:
+        raise RuntimeError(
+            f"{command_name} payload '{expected_payload_type}' is missing required "
+            f"field(s): {', '.join(missing)}; available fields: "
+            f"{sorted(str(key) for key in payload)}"
+        )
+    return payload
 
 
 def execute_recorded(
@@ -1110,44 +1428,6 @@ def command_summary(result: CommandResult) -> dict[str, Any]:
         "error_message": result.error_message,
         "changed_state": result.changed_state.to_dict(),
         "diagnostics_keys": sorted(result.diagnostics.keys()),
-    }
-
-
-def add_chat_message(
-    window: MainWindow,
-    transcript: list[dict[str, str]],
-    role: str,
-    text: str,
-) -> None:
-    """Add a visible ChatPanel message through the real ChatController."""
-    controller = window.agent_manager.chat_controller
-    if role == "user":
-        controller.add_user_message(text)
-    else:
-        controller.add_agent_message(text)
-    transcript.append({"role": role, "text": text})
-
-
-def chat_phase(
-    phase: str,
-    screenshot: str,
-    panel: QWidget,
-    service: ApplicationService,
-    notes: dict[str, Any],
-) -> dict[str, Any]:
-    """Build a ChatPanel phase payload."""
-    phase_notes = dict(notes)
-    phase_notes.setdefault("evidence_scope", "scripted_chat_layout_only")
-    chat_geometry = chat_panel_geometry(panel)
-    if chat_geometry:
-        phase_notes["chat_geometry"] = chat_geometry
-    return {
-        "phase": phase,
-        "screenshot": screenshot,
-        "visible_text": visible_text_snapshot(panel),
-        "button_state": button_state_snapshot(panel),
-        "workflow_state": compact_state(service.get_state()),
-        "notes": phase_notes,
     }
 
 
@@ -1426,101 +1706,908 @@ def _format_inline_markdown(text: str) -> str:
 def capture_named(window: QWidget, output_dir: Path, key: str) -> str:
     """Capture a named screenshot and return its path."""
     path = output_dir / SCREENSHOT_NAMES[key]
+    app = QApplication.instance()
+    if isinstance(app, QApplication):
+        settle_widget_for_capture(app, window)
     capture_widget(window, path)
     return str(path)
 
 
 def capture_widget(widget: QWidget, output_path: Path) -> None:
-    """Capture a nonblank widget screenshot."""
+    """Capture a stable pair of complete widget frames and publish the second."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    screen = widget.screen() or QApplication.primaryScreen()
-    if widget.isWindow() and screen is not None:
-        pixmap = screen.grabWindow(
-            int(widget.winId()),
-            0,
-            0,
-            widget.width(),
-            widget.height(),
+    app = QApplication.instance()
+    last_render_error: RuntimeError | None = None
+    first_frame = output_path.with_name(f".{output_path.stem}-frame-1.png")
+    for attempt in range(3):
+        try:
+            if isinstance(app, QApplication):
+                settle_widget_for_capture(
+                    app,
+                    widget,
+                    wait_ms=180 if attempt else 100,
+                )
+            _grab_widget_to_path(widget, first_frame)
+            _assert_capture_frame_rendered(
+                widget,
+                first_frame,
+                logical_name=output_path.name,
+            )
+            if isinstance(app, QApplication):
+                settle_widget_for_capture(app, widget, wait_ms=80)
+            _grab_widget_to_path(widget, output_path)
+            _assert_capture_frame_rendered(
+                widget,
+                output_path,
+                logical_name=output_path.name,
+            )
+            changed_ratio = _assert_consecutive_complete_frames(
+                first_frame,
+                output_path,
+            )
+        except RuntimeError as error:
+            last_render_error = error
+            continue
+        finally:
+            first_frame.unlink(missing_ok=True)
+        _CAPTURE_FRAME_READINESS[str(output_path.resolve())] = frame_readiness_payload(
+            changed_pixel_ratio=changed_ratio,
+            required_regions=_required_capture_region_names(widget),
         )
-    else:
-        pixmap = widget.grab()
-    if pixmap.isNull():
-        raise RuntimeError(f"Could not grab screenshot for {output_path.name}.")
-    if not pixmap.save(str(output_path)):
-        raise RuntimeError(f"Could not save screenshot {output_path}.")
+        return
+    if last_render_error is not None:
+        raise last_render_error
+
+
+def _assert_capture_frame_rendered(
+    widget: QWidget,
+    output_path: Path,
+    *,
+    logical_name: str | None = None,
+) -> None:
+    """Require one complete frame before it can count toward the two-frame gate."""
     if is_nearly_black(output_path):
         raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
     _assert_step_navigation_rendered(widget, output_path)
     _assert_main_navigation_rendered(widget, output_path)
     _assert_right_panels_rendered(widget, output_path)
+    _assert_assistant_dock_rendered(
+        widget,
+        output_path,
+        logical_name=logical_name,
+    )
+
+
+def _required_capture_region_names(widget: QWidget) -> list[str]:
+    regions: list[str] = []
+    if getattr(widget, "step_labels", None):
+        regions.extend(
+            ["Import Review stepper", "Import Review summary", "Import footer"]
+        )
+    if getattr(widget, "nav_btns", None):
+        regions.append("Main navigation")
+    if widget.findChildren(QWidget, "RightPanel"):
+        regions.append("Workflow sidebar")
+    panel = (
+        widget
+        if widget.objectName() == "AssistantPanel"
+        else widget.findChild(QWidget, "AssistantPanel")
+    )
+    if panel is not None:
+        regions.extend(["Assistant composer", "Assistant modes", "Assistant feedback"])
+    return regions or ["Complete widget"]
+
+
+def _grab_widget_to_path(widget: QWidget, output_path: Path) -> None:
+    """Write one widget frame without weakening the post-capture checks."""
+    pixmap = _grab_docked_widget_from_composed_window(widget)
+    if pixmap is None:
+        screen = widget.screen() or QApplication.primaryScreen()
+        platform_name = QApplication.platformName()
+        if _use_native_window_capture(
+            is_window=widget.isWindow(),
+            platform_name=platform_name,
+            screen_available=screen is not None,
+        ):
+            if screen is None:
+                raise RuntimeError(
+                    "Native widget capture requires an available screen."
+                )
+            pixmap = screen.grabWindow(
+                widget.winId(),
+                0,
+                0,
+                widget.width(),
+                widget.height(),
+            )
+        else:
+            pixmap = widget.grab()
+    if pixmap.isNull():
+        raise RuntimeError(f"Could not grab screenshot for {output_path.name}.")
+    if not pixmap.save(str(output_path)):
+        raise RuntimeError(f"Could not save screenshot {output_path}.")
+
+
+def _pixmap_image(pixmap: QPixmap) -> Image.Image:
+    """Convert one live Qt render into a detached PIL reference image."""
+    if pixmap.isNull():
+        raise RuntimeError("Could not create a live widget reference.")
+    buffer = QBuffer()
+    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+        raise RuntimeError("Could not open the live widget reference buffer.")
+    if not pixmap.save(buffer, "PNG"):
+        raise RuntimeError("Could not encode the live widget reference.")
+    data = bytes(cast(Any, buffer.data()))
+    buffer.close()
+    with Image.open(BytesIO(data)) as source:
+        image = source.convert("RGB")
+        image.load()
+    return image
+
+
+def _grab_docked_widget_from_composed_window(widget: QWidget) -> QPixmap | None:
+    """Crop a dock from its composed main-window frame when one is available.
+
+    On Linux and offscreen Qt platforms, ``QDockWidget.grab()`` can expose an
+    incomplete native backing store even though the owning ``QMainWindow`` is
+    fully composed. Floating docks and invalid crop geometry deliberately fall
+    back to the regular widget capture path.
+    """
+    if (
+        not isinstance(widget, QDockWidget)
+        or widget.isFloating()
+        or not widget.isVisible()
+    ):
+        return None
+    main_window = _owning_visible_main_window(widget)
+    if main_window is None:
+        return None
+    try:
+        composed = _grab_capture_surface(main_window)
+    except RuntimeError:
+        return None
+    if composed.isNull():
+        return None
+    return _crop_composed_pixmap(
+        composed,
+        surface=main_window,
+        target=widget,
+    )
+
+
+def _owning_visible_main_window(dock: QDockWidget) -> QMainWindow | None:
+    candidate = dock.window()
+    if isinstance(candidate, QMainWindow) and candidate.isVisible():
+        return candidate
+    parent = dock.parentWidget()
+    while parent is not None:
+        if isinstance(parent, QMainWindow) and parent.isVisible():
+            return parent
+        parent = parent.parentWidget()
+    return None
+
+
+def _grab_capture_surface(widget: QWidget) -> QPixmap:
+    screen = widget.screen() or QApplication.primaryScreen()
+    if _use_native_window_capture(
+        is_window=widget.isWindow(),
+        platform_name=QApplication.platformName(),
+        screen_available=screen is not None,
+    ):
+        if screen is None:
+            return QPixmap()
+        return screen.grabWindow(
+            widget.winId(),
+            0,
+            0,
+            widget.width(),
+            widget.height(),
+        )
+    return widget.grab()
+
+
+def _crop_composed_pixmap(
+    pixmap: QPixmap,
+    *,
+    surface: QWidget,
+    target: QWidget,
+) -> QPixmap | None:
+    """Map a logical child rect into the composed pixmap's physical pixels."""
+    if (
+        pixmap.isNull()
+        or surface.width() <= 0
+        or surface.height() <= 0
+        or target.width() <= 0
+        or target.height() <= 0
+    ):
+        return None
+    top_left = target.mapTo(surface, QPoint(0, 0))
+    logical_rect = QRect(top_left, target.size())
+    if not surface.rect().contains(logical_rect):
+        return None
+
+    # QPixmap dimensions are physical pixels. Deriving each scale from the
+    # captured surface handles both high-DPI devicePixelRatio and platform
+    # plugins that return a backing store with a backend-specific pixel size.
+    scale_x = pixmap.width() / surface.width()
+    scale_y = pixmap.height() / surface.height()
+    left = round(logical_rect.left() * scale_x)
+    top = round(logical_rect.top() * scale_y)
+    right = round((logical_rect.left() + logical_rect.width()) * scale_x)
+    bottom = round((logical_rect.top() + logical_rect.height()) * scale_y)
+    physical_rect = QRect(left, top, right - left, bottom - top)
+    if (
+        physical_rect.width() <= 0
+        or physical_rect.height() <= 0
+        or not pixmap.rect().contains(physical_rect)
+    ):
+        return None
+    cropped = pixmap.copy(physical_rect)
+    return None if cropped.isNull() else cropped
+
+
+def _use_native_window_capture(
+    *,
+    is_window: bool,
+    platform_name: str,
+    screen_available: bool,
+) -> bool:
+    """Use native capture only on desktop platforms with reliable composition."""
+    if not is_window or not screen_available:
+        return False
+    # X11/Xvfb native grabs can let a native plotting child overpaint the
+    # surrounding Qt backing store, producing a black or partially rendered
+    # false-positive artifact. QWidget.grab() is deterministic for the Linux
+    # product walkthrough while Windows/macOS benefit from native composition.
+    return platform_name.strip().lower() in {"windows", "cocoa"}
 
 
 def _assert_step_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
-    """Reject wizard evidence when a visible step label was not painted."""
+    """Require the complete Import Review stepper and footer to be painted."""
     step_labels = getattr(widget, "step_labels", [])
     if not isinstance(step_labels, list) or not step_labels:
-        return
-    with Image.open(screenshot) as captured:
-        rgb = captured.convert("RGB")
-        for label in step_labels:
-            if not isinstance(label, QLabel) or not label.isVisible():
-                continue
-            top_left = label.mapTo(widget, QPoint(0, 0))
-            bounds = (
-                max(top_left.x(), 0),
-                max(top_left.y(), 0),
-                min(top_left.x() + label.width(), rgb.width),
-                min(top_left.y() + label.height(), rgb.height),
+        if widget.objectName() == "DataImportWizardDialog":
+            raise RuntimeError(
+                "Import Review capture is missing its step navigation owner."
             )
-            region = rgb.crop(bounds)
-            border_margin = min(4, region.width // 4, region.height // 4)
-            if border_margin:
-                region = region.crop(
-                    (
-                        border_margin,
-                        border_margin,
-                        region.width - border_margin,
-                        region.height - border_margin,
-                    )
-                )
-            histogram = region.convert("L").histogram()
-            pixel_count = sum(histogram)
-            glyph_pixels = sum(histogram[110:])
-            if not pixel_count or glyph_pixels < pixel_count * 0.01:
+        return
+    if len(step_labels) != len(DATA_IMPORT_STEP_TITLES):
+        raise RuntimeError(
+            "Wizard step navigation contract requires all five Import Review labels."
+        )
+    for index, (label, full_title, compact_title) in enumerate(
+        zip(
+            step_labels,
+            DATA_IMPORT_STEP_TITLES,
+            DATA_IMPORT_COMPACT_STEP_TITLES,
+            strict=True,
+        ),
+        start=1,
+    ):
+        if not isinstance(label, QLabel) or not label.isVisibleTo(widget):
+            raise RuntimeError(
+                f"Wizard step navigation is missing visible step {index}: {full_title}."
+            )
+        expected_labels = {f"{index}. {full_title}", f"{index}. {compact_title}"}
+        actual_label = " ".join(label.text().split())
+        if actual_label not in expected_labels:
+            raise RuntimeError(
+                f"Wizard step navigation has stale label {index}: {label.text()!r}."
+            )
+        if actual_label == f"{index}. {compact_title}" and compact_title != full_title:
+            if label.toolTip() != full_title:
                 raise RuntimeError(
-                    "Wizard step navigation was not fully rendered in "
-                    f"{screenshot.name}: {label.text()}"
+                    f"Wizard compact step {index} does not preserve {full_title!r}."
                 )
+
+    cancel = getattr(widget, "cancel_button", None)
+    next_button = getattr(widget, "next_button", None)
+    apply_button = getattr(widget, "apply_button", None)
+    if (
+        not isinstance(cancel, QAbstractButton)
+        or not cancel.isVisibleTo(widget)
+        or cancel.text() != "Cancel"
+    ):
+        raise RuntimeError(
+            "Import Review capture is missing the visible Cancel action."
+        )
+    primary_actions = [
+        control
+        for control in (next_button, apply_button)
+        if isinstance(control, QAbstractButton) and control.isVisibleTo(widget)
+    ]
+    if len(primary_actions) != 1:
+        raise RuntimeError(
+            "Import Review capture must show exactly one visible primary action."
+        )
+    primary = primary_actions[0]
+    allowed_primary = primary.text().startswith("Next: ") or primary.text() in {
+        "Import EEG Data",
+        "Confirm and Import",
+        "Apply Remap",
+    }
+    if not allowed_primary or primary.objectName() != "DataImportPrimaryButton":
+        raise RuntimeError(
+            "Import Review capture has an invalid or stale primary action."
+        )
+    summary = getattr(widget, "summary_label", None)
+    if (
+        not isinstance(summary, QLabel)
+        or not summary.isVisibleTo(widget)
+        or not summary.text().strip()
+    ):
+        raise RuntimeError("Import Review capture is missing its visible summary.")
+    _assert_text_controls_rendered(
+        widget,
+        screenshot,
+        [*step_labels, summary, cancel, primary],
+        surface_name="Import Review controls",
+    )
 
 
 def _assert_main_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
-    """Reject main-window evidence with missing navigation buttons."""
+    """Require every workflow destination or the compact selector to be painted."""
     nav_buttons = getattr(widget, "nav_btns", [])
-    _assert_widget_regions_painted(
+    if not isinstance(nav_buttons, list) or not nav_buttons:
+        if isinstance(widget, QMainWindow):
+            raise RuntimeError("Main product capture is missing navigation controls.")
+        return
+    observed_titles = tuple(
+        " ".join(button.text().split())
+        for button in nav_buttons
+        if isinstance(button, QAbstractButton)
+    )
+    if observed_titles != MAIN_NAVIGATION_TITLES:
+        raise RuntimeError(
+            "Main navigation does not expose the five workflow destinations."
+        )
+    visible_buttons = [
+        button
+        for button in nav_buttons
+        if isinstance(button, QAbstractButton) and button.isVisibleTo(widget)
+    ]
+    compact = getattr(widget, "compact_nav_combo", None)
+    compact_visible = isinstance(compact, QComboBox) and compact.isVisibleTo(widget)
+    if visible_buttons:
+        if len(visible_buttons) != len(MAIN_NAVIGATION_TITLES) or compact_visible:
+            raise RuntimeError(
+                "Main navigation mixes incomplete full and compact controls."
+            )
+        _assert_button_text_rendered(
+            widget,
+            screenshot,
+            visible_buttons,
+            surface_name="Main navigation",
+        )
+        return
+    if not compact_visible or not isinstance(compact, QComboBox):
+        raise RuntimeError("Main navigation has no visible workflow selector.")
+    compact_items = tuple(compact.itemText(index) for index in range(compact.count()))
+    if compact_items != MAIN_NAVIGATION_TITLES:
+        raise RuntimeError("Compact navigation has a stale workflow destination list.")
+    if compact.currentText() not in MAIN_NAVIGATION_TITLES:
+        raise RuntimeError("Compact navigation has no current workflow destination.")
+    _assert_combo_text_rendered(
         widget,
         screenshot,
-        nav_buttons if isinstance(nav_buttons, list) else [],
-        surface_name="Main navigation",
-        brightness_threshold=150,
-        minimum_ratio=0.005,
+        compact,
+        surface_name="Compact main navigation",
     )
+
+
+def _assert_button_text_rendered(
+    root: QWidget,
+    screenshot: Path,
+    controls: Sequence[QWidget],
+    *,
+    surface_name: str,
+) -> None:
+    """Reject captures where a button painted only part of its visible text."""
+    _assert_text_controls_rendered(
+        root,
+        screenshot,
+        controls,
+        surface_name=surface_name,
+    )
+
+
+def _assert_text_controls_rendered(
+    root: QWidget,
+    screenshot: Path,
+    controls: Sequence[QWidget],
+    *,
+    surface_name: str,
+) -> None:
+    """Verify expected control text through geometry and glyph-pixel span."""
+    if not controls:
+        raise RuntimeError(f"{surface_name} has no expected visible controls.")
+    with Image.open(screenshot) as captured:
+        grayscale = captured.convert("L")
+        for control in controls:
+            if not isinstance(control, (QAbstractButton, QLabel)):
+                raise RuntimeError(
+                    f"{surface_name} includes a non-text capture control."
+                )
+            if not control.isVisibleTo(root):
+                name = control.objectName() or control.__class__.__name__
+                raise RuntimeError(f"{surface_name} control is hidden: {name}.")
+            text = (
+                control.text().replace("&&", "\0").replace("&", "").replace("\0", "&")
+            )
+            if not text:
+                raise RuntimeError(f"{surface_name} includes an empty text control.")
+            top_left = control.mapTo(root, QPoint(0, 0))
+            if isinstance(control, QAbstractButton):
+                # Sidebar and action buttons intentionally left-align their text.
+                # Probe the interior text band instead of assuming centered copy.
+                metrics = control.fontMetrics()
+                expected_width = max(metrics.horizontalAdvance(text), 1)
+                expected_height = max(metrics.height(), 1)
+                local_left = 4
+                probe_width = max(control.width() - 8, 1)
+                local_top = max((control.height() - expected_height) // 2 - 3, 0)
+                probes = [
+                    (
+                        QRect(local_left, local_top, probe_width, expected_height + 6),
+                        expected_width,
+                    )
+                ]
+            else:
+                probes = _label_text_line_probes(
+                    control, text, surface_name=surface_name
+                )
+            scale_x = grayscale.width / max(root.width(), 1)
+            scale_y = grayscale.height / max(root.height(), 1)
+            control_bounds = (
+                max(round(top_left.x() * scale_x), 0),
+                max(round(top_left.y() * scale_y), 0),
+                min(round((top_left.x() + control.width()) * scale_x), grayscale.width),
+                min(
+                    round((top_left.y() + control.height()) * scale_y),
+                    grayscale.height,
+                ),
+            )
+            _assert_region_has_no_unpainted_block(
+                screenshot,
+                control_bounds,
+                surface_name=surface_name,
+            )
+            for local_probe, expected_width in probes:
+                bounds = _physical_text_probe_bounds(
+                    root=root,
+                    screenshot=grayscale,
+                    top_left=top_left,
+                    local_probe=local_probe,
+                )
+                if bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
+                    name = control.objectName() or control.__class__.__name__
+                    raise RuntimeError(
+                        f"{surface_name} control is outside {screenshot.name}: {name}."
+                    )
+                region = grayscale.crop(bounds)
+                histogram = region.histogram()
+                background = max(range(256), key=histogram.__getitem__)
+                painted_columns = [
+                    x
+                    for x in range(region.width)
+                    if any(
+                        abs(cast(int, region.getpixel((x, y))) - background) >= 18
+                        for y in range(region.height)
+                    )
+                ]
+                painted_span = (
+                    painted_columns[-1] - painted_columns[0] + 1
+                    if painted_columns
+                    else 0
+                )
+                expected_pixel_width = expected_width * scale_x
+                minimum_span = max(int(expected_pixel_width * 0.55), 3)
+                if painted_span < minimum_span:
+                    ratio = painted_span / max(expected_pixel_width, 1)
+                    name = control.objectName() or (
+                        f"{control.__class__.__name__}({text!r})"
+                    )
+                    raise RuntimeError(
+                        f"{surface_name} was not fully rendered in "
+                        f"{screenshot.name}: {name} ({ratio:.1%} text width painted)"
+                    )
+
+
+def _label_text_line_probes(
+    label: QLabel,
+    text: str,
+    *,
+    surface_name: str,
+) -> list[tuple[QRect, int]]:
+    """Return one content-margin and alignment-aware probe for each label line."""
+    content_rect = label.contentsRect()
+    if content_rect.width() <= 0 or content_rect.height() <= 0:
+        raise RuntimeError(f"{surface_name} label has no usable contents rectangle.")
+
+    layout = QTextLayout(text, label.font())
+    options = QTextOption()
+    options.setWrapMode(
+        QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+        if label.wordWrap()
+        else QTextOption.WrapMode.NoWrap
+    )
+    layout.setTextOption(options)
+    layout.beginLayout()
+    lines = []
+    try:
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(float(content_rect.width()))
+            lines.append(line)
+    finally:
+        layout.endLayout()
+    if not lines:
+        raise RuntimeError(f"{surface_name} label has no text layout lines.")
+
+    metrics = label.fontMetrics()
+    line_heights = [max(round(line.height()), metrics.height()) for line in lines]
+    required_height = sum(line_heights)
+    if label.wordWrap() and required_height > content_rect.height():
+        raise RuntimeError(f"{surface_name} label text is vertically clipped.")
+
+    horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
+    vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
+    if vertical_alignment == Qt.AlignmentFlag.AlignBottom:
+        local_y = content_rect.y() + content_rect.height() - required_height
+    elif vertical_alignment == Qt.AlignmentFlag.AlignTop:
+        local_y = content_rect.y()
+    else:
+        local_y = content_rect.y() + (content_rect.height() - required_height) // 2
+
+    probes: list[tuple[QRect, int]] = []
+    for line, line_height in zip(lines, line_heights, strict=True):
+        text_width = max(round(line.naturalTextWidth()), 1)
+        if not label.wordWrap() and text_width > content_rect.width():
+            raise RuntimeError(f"{surface_name} label text is horizontally clipped.")
+        if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
+            local_x = content_rect.x() + content_rect.width() - text_width
+        elif horizontal_alignment == Qt.AlignmentFlag.AlignHCenter:
+            local_x = content_rect.x() + (content_rect.width() - text_width) // 2
+        else:
+            # QLabel's default horizontal alignment is left when no explicit
+            # horizontal flag is present.
+            local_x = content_rect.x()
+        probe = QRect(local_x - 3, local_y - 3, text_width + 6, line_height + 6)
+        probes.append((probe.intersected(content_rect), text_width))
+        local_y += line_height
+    return probes
+
+
+def _physical_text_probe_bounds(
+    *,
+    root: QWidget,
+    screenshot: Image.Image,
+    top_left: QPoint,
+    local_probe: QRect,
+) -> tuple[int, int, int, int]:
+    scale_x = screenshot.width / max(root.width(), 1)
+    scale_y = screenshot.height / max(root.height(), 1)
+    return (
+        max(round((top_left.x() + local_probe.x()) * scale_x), 0),
+        max(round((top_left.y() + local_probe.y()) * scale_y), 0),
+        min(
+            round((top_left.x() + local_probe.x() + local_probe.width()) * scale_x),
+            screenshot.width,
+        ),
+        min(
+            round((top_left.y() + local_probe.y() + local_probe.height()) * scale_y),
+            screenshot.height,
+        ),
+    )
+
+
+def _assert_combo_text_rendered(
+    root: QWidget,
+    screenshot: Path,
+    control: QComboBox,
+    *,
+    surface_name: str,
+) -> None:
+    """Verify a compact selector has nonuniform pixels across its current text."""
+    if not control.isVisibleTo(root) or not control.currentText():
+        raise RuntimeError(f"{surface_name} is hidden or empty.")
+    with Image.open(screenshot) as captured:
+        grayscale = captured.convert("L")
+        scale_x = grayscale.width / max(root.width(), 1)
+        scale_y = grayscale.height / max(root.height(), 1)
+        expected_width = control.fontMetrics().horizontalAdvance(control.currentText())
+        expected_height = control.fontMetrics().height()
+        top_left = control.mapTo(root, QPoint(0, 0))
+        bounds = (
+            max(round((top_left.x() + 8) * scale_x), 0),
+            max(
+                round(
+                    (top_left.y() + (control.height() - expected_height) / 2 - 3)
+                    * scale_y
+                ),
+                0,
+            ),
+            min(round((top_left.x() + 14 + expected_width) * scale_x), grayscale.width),
+            min(
+                round(
+                    (top_left.y() + (control.height() + expected_height) / 2 + 3)
+                    * scale_y
+                ),
+                grayscale.height,
+            ),
+        )
+        region = grayscale.crop(bounds)
+        histogram = region.histogram()
+        background = max(range(256), key=histogram.__getitem__)
+        columns = [
+            x
+            for x in range(region.width)
+            if any(
+                abs(cast(int, region.getpixel((x, y))) - background) >= 18
+                for y in range(region.height)
+            )
+        ]
+        painted_span = columns[-1] - columns[0] + 1 if columns else 0
+        if painted_span < max(int(expected_width * scale_x * 0.55), 3):
+            raise RuntimeError(
+                f"{surface_name} was not fully rendered in {screenshot.name}."
+            )
 
 
 def _assert_right_panels_rendered(widget: QWidget, screenshot: Path) -> None:
-    """Reject main-window evidence with a partially painted workflow sidebar."""
+    """Require the current workflow sidebar and its visible actions to paint."""
     right_panels = [
         panel
         for panel in widget.findChildren(QWidget, "RightPanel")
-        if panel.isVisible()
+        if panel.isVisibleTo(widget)
     ]
+    is_main_window_capture = bool(
+        getattr(widget, "nav_btns", None) and getattr(widget, "stack", None)
+    )
+    compact_navigation = getattr(widget, "compact_nav_combo", None)
+    compact_layout_active = bool(
+        isinstance(compact_navigation, QComboBox)
+        and compact_navigation.isVisibleTo(widget)
+    )
+    if is_main_window_capture and not right_panels and not compact_layout_active:
+        raise RuntimeError("Main product capture is missing its workflow sidebar.")
+    if not right_panels:
+        return
+    visible_actions: list[QWidget] = []
+    for panel in right_panels:
+        declared_actions = [
+            action
+            for action in panel.findChildren(QAbstractButton)
+            if action.text().strip() and _widget_inside_capture(widget, action)
+        ]
+        # Evaluation and other read-only pages reuse RightPanel for aggregate
+        # information and intentionally declare no workflow actions.
+        if not declared_actions:
+            continue
+        panel_actions = [
+            action for action in declared_actions if action.isVisibleTo(widget)
+        ]
+        if not panel_actions:
+            raise RuntimeError("Workflow sidebar has no visible action contract.")
+        visible_actions.extend(panel_actions)
+    for panel in right_panels:
+        top_left = panel.mapTo(widget, QPoint(0, 0))
+        bounds = (
+            top_left.x(),
+            top_left.y(),
+            top_left.x() + panel.width(),
+            top_left.y() + panel.height(),
+        )
+        _assert_region_matches_reference(
+            screenshot,
+            bounds,
+            _pixmap_image(panel.grab()),
+            surface_name="Right panel",
+            minimum_edge_recall=0.70,
+            maximum_changed_pixel_ratio=0.55,
+            content_inset=2,
+        )
+    if visible_actions:
+        _assert_text_controls_rendered(
+            widget,
+            screenshot,
+            visible_actions,
+            surface_name="Workflow sidebar actions",
+        )
+
+
+def _assert_assistant_dock_rendered(
+    widget: QWidget,
+    screenshot: Path,
+    *,
+    logical_name: str | None = None,
+) -> None:
+    """Require assistant modes and the current Send/Stop action to be painted."""
+    panel = (
+        widget
+        if widget.objectName() == "AssistantPanel"
+        else widget.findChild(QWidget, "AssistantPanel")
+    )
+    if panel is None:
+        if isinstance(widget, QDockWidget):
+            raise RuntimeError("Assistant dock capture is missing AssistantPanel.")
+        return
+    with Image.open(screenshot) as captured:
+        top_left = panel.mapTo(widget, QPoint(0, 0))
+        scale_x = captured.width / max(widget.width(), 1)
+        scale_y = captured.height / max(widget.height(), 1)
+        panel_bounds = (
+            max(round(top_left.x() * scale_x), 0),
+            max(round(top_left.y() * scale_y), 0),
+            min(round((top_left.x() + panel.width()) * scale_x), captured.width),
+            min(round((top_left.y() + panel.height()) * scale_y), captured.height),
+        )
+    _assert_region_foreground_content(
+        screenshot,
+        panel_bounds,
+        surface_name="Assistant content",
+    )
+    _assert_region_has_no_unpainted_block(
+        screenshot,
+        panel_bounds,
+        surface_name="Assistant content",
+    )
+    title = widget.findChild(QWidget, "AssistantDockTitle")
+    control_panel = panel.findChild(QWidget, "ControlPanel")
+    send_button = getattr(panel, "send_btn", None)
+    ask_mode = getattr(panel, "ask_mode_btn", None)
+    workflow_mode = getattr(panel, "workflow_mode_btn", None)
+    expected_controls = (ask_mode, workflow_mode, send_button)
+    if not all(isinstance(control, QAbstractButton) for control in expected_controls):
+        raise RuntimeError(
+            "Assistant capture is missing its mode selector or Send/Stop action."
+        )
+    mode_titles = (
+        str(cast(QAbstractButton, ask_mode).text()),
+        str(cast(QAbstractButton, workflow_mode).text()),
+    )
+    if mode_titles != ASSISTANT_MODE_TITLES:
+        raise RuntimeError("Assistant capture uses stale mode selector labels.")
+    is_processing = bool(getattr(panel, "is_processing", False))
+    expected_action = "Stop" if is_processing else "Send"
+    if cast(QAbstractButton, send_button).text() != expected_action:
+        raise RuntimeError(
+            f"Assistant capture expected {expected_action}, got "
+            f"{cast(QAbstractButton, send_button).text()!r}."
+        )
+    paint_controls = [
+        cast(QWidget, ask_mode),
+        cast(QWidget, workflow_mode),
+        cast(QWidget, send_button),
+    ]
+    empty_action = getattr(panel, "empty_state_action_button", None)
+    empty_action_visible = isinstance(
+        empty_action,
+        QAbstractButton,
+    ) and empty_action.isVisibleTo(widget)
+    if (logical_name or screenshot.name) == SCREENSHOT_NAMES[
+        "assistant_empty"
+    ] and not empty_action_visible:
+        raise RuntimeError(
+            "Assistant empty-state capture is missing its visible action button."
+        )
+    if isinstance(empty_action, QAbstractButton) and empty_action_visible:
+        action_text = " ".join(empty_action.text().split())
+        if not action_text or empty_action.accessibleName() != action_text:
+            raise RuntimeError(
+                "Assistant empty-state action is visible without current action copy."
+            )
+        paint_controls.append(empty_action)
+    _assert_text_controls_rendered(
+        widget,
+        screenshot,
+        paint_controls,
+        surface_name="Assistant mode and primary controls",
+    )
     _assert_widget_regions_painted(
         widget,
         screenshot,
-        right_panels,
-        surface_name="Right panel",
-        brightness_threshold=40,
-        minimum_ratio=0.70,
+        [title] if title is not None else [],
+        surface_name="Assistant title",
+        brightness_threshold=80,
+        minimum_ratio=0.02,
     )
+    _assert_widget_regions_painted(
+        widget,
+        screenshot,
+        [control_panel] if control_panel is not None else [],
+        surface_name="Assistant composer",
+        brightness_threshold=20,
+        minimum_ratio=0.85,
+    )
+    _assert_widget_regions_painted(
+        widget,
+        screenshot,
+        [send_button] if isinstance(send_button, QWidget) else [],
+        surface_name="Assistant Send action",
+        brightness_threshold=60,
+        minimum_ratio=0.05,
+    )
+    input_field = getattr(panel, "input_field", None)
+    if not isinstance(input_field, QWidget) or not input_field.isVisibleTo(widget):
+        raise RuntimeError("Assistant capture is missing its visible composer input.")
+    _assert_widget_regions_painted(
+        widget,
+        screenshot,
+        [input_field],
+        surface_name="Assistant composer input",
+        brightness_threshold=20,
+        minimum_ratio=0.65,
+    )
+    _assert_assistant_feedback_rendered(
+        widget,
+        panel,
+        screenshot,
+        logical_name=logical_name or screenshot.name,
+    )
+
+
+def _assert_assistant_feedback_rendered(
+    root: QWidget,
+    panel: QWidget,
+    screenshot: Path,
+    *,
+    logical_name: str,
+) -> None:
+    """Require the state-specific activity, runtime, error, or result feedback."""
+    required_widgets: list[QWidget] = []
+    is_processing = bool(getattr(panel, "is_processing", False))
+    activity = getattr(panel, "turn_activity_widget", None)
+    if is_processing:
+        if not isinstance(activity, QWidget) or not activity.isVisibleTo(root):
+            raise RuntimeError(
+                "Assistant processing capture is missing activity feedback."
+            )
+        required_widgets.append(activity)
+
+    runtime_phase = getattr(getattr(panel, "_runtime_phase", None), "value", "")
+    runtime_state = getattr(panel, "runtime_state_widget", None)
+    if runtime_phase in {"idle", "loading", "failed"}:
+        if not isinstance(runtime_state, QWidget) or not runtime_state.isVisibleTo(
+            root
+        ):
+            raise RuntimeError(
+                f"Assistant {runtime_phase} capture is missing runtime feedback."
+            )
+        required_widgets.append(runtime_state)
+
+    transcript_names = {
+        SCREENSHOT_NAMES["assistant_success"],
+        SCREENSHOT_NAMES["assistant_error"],
+    }
+    if logical_name in transcript_names:
+        bubbles = [
+            bubble
+            for bubble in panel.findChildren(MessageBubble)
+            if bubble.isVisibleTo(root) and not bubble.is_user
+        ]
+        if not bubbles:
+            raise RuntimeError(
+                "Assistant result/error capture is missing transcript feedback."
+            )
+        required_widgets.append(bubbles[-1])
+
+    _assert_widget_regions_painted(
+        root,
+        screenshot,
+        required_widgets,
+        surface_name="Assistant feedback",
+        brightness_threshold=35,
+        minimum_ratio=0.015,
+    )
+
+
+def _widget_inside_capture(root: QWidget, control: QWidget) -> bool:
+    top_left = control.mapTo(root, control.rect().topLeft())
+    bottom_right = control.mapTo(root, control.rect().bottomRight())
+    return root.rect().contains(top_left) and root.rect().contains(bottom_right)
 
 
 def _assert_widget_regions_painted(
@@ -1536,15 +2623,28 @@ def _assert_widget_regions_painted(
         return
     with Image.open(screenshot) as captured:
         grayscale = captured.convert("L")
+        scale_x = grayscale.width / max(root.width(), 1)
+        scale_y = grayscale.height / max(root.height(), 1)
         for control in controls:
             if not control.isVisible():
                 continue
             top_left = control.mapTo(root, QPoint(0, 0))
             bounds = (
-                max(top_left.x(), 0),
-                max(top_left.y(), 0),
-                min(top_left.x() + control.width(), grayscale.width),
-                min(top_left.y() + control.height(), grayscale.height),
+                max(round(top_left.x() * scale_x), 0),
+                max(round(top_left.y() * scale_y), 0),
+                min(
+                    round((top_left.x() + control.width()) * scale_x),
+                    grayscale.width,
+                ),
+                min(
+                    round((top_left.y() + control.height()) * scale_y),
+                    grayscale.height,
+                ),
+            )
+            _assert_region_has_no_unpainted_block(
+                screenshot,
+                bounds,
+                surface_name=surface_name,
             )
             histogram = grayscale.crop(bounds).histogram()
             pixel_count = sum(histogram)
@@ -1556,6 +2656,111 @@ def _assert_widget_regions_painted(
                     f"{surface_name} was not fully rendered in "
                     f"{screenshot.name}: {name} ({ratio:.1%} painted)"
                 )
+
+
+def _assert_region_foreground_content(
+    screenshot: Path,
+    bounds: tuple[int, int, int, int],
+    *,
+    surface_name: str,
+    minimum_foreground_ratio: float = 0.012,
+    minimum_component_count: int = 3,
+) -> None:
+    """Reject sparse line noise that does not resemble painted UI content."""
+    _assert_region_has_no_unpainted_block(
+        screenshot,
+        bounds,
+        surface_name=surface_name,
+    )
+    with Image.open(screenshot) as captured:
+        grayscale = captured.convert("L")
+        left, top, right, bottom = bounds
+        left = max(left, 0)
+        top = max(top, 0)
+        right = min(right, grayscale.width)
+        bottom = min(bottom, grayscale.height)
+        if right <= left or bottom <= top:
+            raise RuntimeError(f"{surface_name} region is outside the capture.")
+        region = grayscale.crop((left, top, right, bottom))
+
+    histogram = region.histogram()
+    background = max(range(256), key=histogram.__getitem__)
+    width, height = region.size
+    foreground = bytearray(width * height)
+    foreground_count = 0
+    occupied_rows: set[int] = set()
+    occupied_columns: set[int] = set()
+    for y in range(height):
+        for x in range(width):
+            pixel = cast(int, region.getpixel((x, y)))
+            if abs(pixel - background) < 18:
+                continue
+            index = y * width + x
+            foreground[index] = 1
+            foreground_count += 1
+            occupied_rows.add(y)
+            occupied_columns.add(x)
+
+    pixel_count = max(width * height, 1)
+    foreground_ratio = foreground_count / pixel_count
+    if foreground_ratio < minimum_foreground_ratio:
+        raise RuntimeError(
+            f"{surface_name} foreground coverage is too sparse in "
+            f"{screenshot.name}: {foreground_ratio:.2%}."
+        )
+    row_ratio = len(occupied_rows) / max(height, 1)
+    column_ratio = len(occupied_columns) / max(width, 1)
+    if row_ratio < 0.08 or column_ratio < 0.12:
+        raise RuntimeError(
+            f"{surface_name} glyph paint span is incomplete in {screenshot.name}: "
+            f"rows={row_ratio:.1%}, columns={column_ratio:.1%}."
+        )
+
+    visited = bytearray(width * height)
+    meaningful_components = 0
+    meaningful_pixels = 0
+    for start in range(width * height):
+        if not foreground[start] or visited[start]:
+            continue
+        stack = [start]
+        visited[start] = 1
+        area = 0
+        min_x = width
+        max_x = 0
+        min_y = height
+        max_y = 0
+        while stack:
+            index = stack.pop()
+            y, x = divmod(index, width)
+            area += 1
+            min_x = min(min_x, x)
+            max_x = max(max_x, x)
+            min_y = min(min_y, y)
+            max_y = max(max_y, y)
+            for next_x, next_y in (
+                (x - 1, y),
+                (x + 1, y),
+                (x, y - 1),
+                (x, y + 1),
+            ):
+                if not (0 <= next_x < width and 0 <= next_y < height):
+                    continue
+                next_index = next_y * width + next_x
+                if foreground[next_index] and not visited[next_index]:
+                    visited[next_index] = 1
+                    stack.append(next_index)
+        component_width = max_x - min_x + 1
+        component_height = max_y - min_y + 1
+        if area >= 4 and component_width >= 2 and component_height >= 2:
+            meaningful_components += 1
+            meaningful_pixels += area
+
+    component_ratio = meaningful_pixels / pixel_count
+    if meaningful_components < minimum_component_count or component_ratio < 0.004:
+        raise RuntimeError(
+            f"{surface_name} component paint is incomplete in {screenshot.name}: "
+            f"components={meaningful_components}, coverage={component_ratio:.2%}."
+        )
 
 
 def settle_widget_for_capture(
@@ -1572,7 +2777,10 @@ def settle_widget_for_capture(
         if child.isVisible():
             child.update()
     app.processEvents()
-    QTest.qWait(max(wait_ms, 0))
+    deadline = time.monotonic() + max(wait_ms, 0) / 1000
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
     app.processEvents()
 
 
@@ -1630,38 +2838,6 @@ def button_state_snapshot(widget: QWidget) -> list[dict[str, Any]]:
             }
         )
     return states[:120]
-
-
-def chat_panel_geometry(widget: QWidget) -> dict[str, Any]:
-    """Return geometry evidence for ChatPanel transcript/composer overlap."""
-    scroll_area = getattr(widget, "scroll_area", None)
-    control_panel = getattr(widget, "control_panel", None)
-    if scroll_area is None or control_panel is None:
-        return {}
-    bubbles = [
-        bubble
-        for bubble in widget.findChildren(MessageBubble)
-        if bubble.isVisible() and bubble.height() > 0
-    ]
-    if not bubbles:
-        return {}
-    latest = bubbles[-1]
-    latest_bottom_y = latest.mapTo(widget, QPoint(0, latest.height())).y()
-    composer_top_y = control_panel.mapTo(widget, QPoint(0, 0)).y()
-    scrollbar = scroll_area.verticalScrollBar()
-    scrollbar_value = scrollbar.value() if scrollbar else 0
-    scrollbar_max = scrollbar.maximum() if scrollbar else 0
-    return {
-        "visible_bubble_count": len(bubbles),
-        "latest_message_text": latest.get_text(),
-        "latest_message_bottom_y": latest_bottom_y,
-        "composer_top_y": composer_top_y,
-        "bottom_clearance_px": composer_top_y - latest_bottom_y,
-        "scrollbar_value": scrollbar_value,
-        "scrollbar_max": scrollbar_max,
-        "latest_message_clear_of_composer": latest_bottom_y <= composer_top_y - 4,
-        "scrollbar_at_bottom": scrollbar_value >= scrollbar_max - 1,
-    }
 
 
 def compact_state(state: ApplicationStateSnapshot) -> dict[str, Any]:
@@ -1741,6 +2917,9 @@ def build_pass_fail_summary(
             failed.append(f"{phase.get('phase')} is missing button state")
         if "workflow_state" not in phase:
             failed.append(f"{phase.get('phase')} is missing workflow state")
+    assistant_reviews = build_assistant_contract_reviews(phases)
+    failed.extend(assistant_contract_findings(assistant_reviews))
+    failed.extend(required_assistant_screenshot_failures(screenshots))
     failed.extend(build_workflow_contract_failures(phases))
     failed.extend(_data_import_visual_evidence_failures(phases))
     resource_smoke = build_resource_smoke_summary(resource_notes)
@@ -1753,6 +2932,7 @@ def build_pass_fail_summary(
         "screenshot_count": len(set(screenshots.values())),
         "human_desktop_acceptance": "not performed",
         "resource_smoke": resource_smoke,
+        **{key: assistant_reviews[key] for key in ASSISTANT_REVIEW_KEYS},
     }
 
 
@@ -1797,6 +2977,7 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
             "visualize",
             "saliency",
         ),
+        "visualization_readiness": ("visualize", "saliency"),
         "reset_new_session_boundary": ("confirmed",),
         "error_recovery": ("recovery_scan",),
     }.items():
@@ -2000,6 +3181,12 @@ def build_observable_evidence_summary(
     phase_screenshots: dict[str, str] = {}
     ui_geometry: dict[str, dict[str, Any]] = {}
     chat_geometry: dict[str, dict[str, Any]] = {}
+    assistant_processing: dict[str, dict[str, Any]] = {}
+    assistant_runtime: dict[str, dict[str, Any]] = {}
+    assistant_dock: dict[str, dict[str, Any]] = {}
+    assistant_main_window: dict[str, dict[str, Any]] = {}
+    assistant_notice: dict[str, dict[str, Any]] = {}
+    assistant_signal_path: dict[str, dict[str, Any]] = {}
     for phase in phases:
         name = str(phase.get("phase", ""))
         if not name:
@@ -2015,6 +3202,20 @@ def build_observable_evidence_summary(
             ui_geometry[name] = dict(notes["ui_geometry"])
         if isinstance(notes, dict) and isinstance(notes.get("chat_geometry"), dict):
             chat_geometry[name] = dict(notes["chat_geometry"])
+        if isinstance(notes, dict) and isinstance(
+            notes.get("assistant_processing"),
+            dict,
+        ):
+            assistant_processing[name] = dict(notes["assistant_processing"])
+        for note_name, destination in (
+            ("assistant_runtime", assistant_runtime),
+            ("assistant_dock", assistant_dock),
+            ("assistant_main_window", assistant_main_window),
+            ("assistant_notice", assistant_notice),
+            ("assistant_signal_path", assistant_signal_path),
+        ):
+            if isinstance(notes, dict) and isinstance(notes.get(note_name), dict):
+                destination[name] = dict(notes[note_name])
     return {
         "visible_text_snapshots": visible_text,
         "button_states": button_states,
@@ -2023,6 +3224,12 @@ def build_observable_evidence_summary(
         "phase_screenshots": phase_screenshots,
         "ui_geometry_snapshots": ui_geometry,
         "chat_geometry_snapshots": chat_geometry,
+        "assistant_processing_snapshots": assistant_processing,
+        "assistant_runtime_snapshots": assistant_runtime,
+        "assistant_dock_snapshots": assistant_dock,
+        "assistant_main_window_snapshots": assistant_main_window,
+        "assistant_notice_snapshots": assistant_notice,
+        "assistant_signal_path_snapshots": assistant_signal_path,
     }
 
 
@@ -2045,6 +3252,10 @@ def build_ui_quality_review(
                 "automated_review": "nonblank"
                 if exists and not nearly_black
                 else "failed",
+                "frame_readiness": _CAPTURE_FRAME_READINESS.get(
+                    str(path.resolve()),
+                    {},
+                ),
             }
         )
     forbidden_rows = [
@@ -2055,7 +3266,7 @@ def build_ui_quality_review(
         for phase in phases
     ]
     forbidden_rows = [row for row in forbidden_rows if row["offenders"]]
-    all_phases_have_snapshots = all(
+    all_phases_have_snapshots = bool(phases) and all(
         "visible_text" in phase
         and "button_state" in phase
         and "workflow_state" in phase
@@ -2064,17 +3275,28 @@ def build_ui_quality_review(
     )
     table_geometry_review = build_table_geometry_review(phases)
     chat_geometry_review = build_chat_geometry_review(phases)
+    assistant_reviews = build_assistant_contract_reviews(phases)
+    frame_readiness_coverage = bool(screenshot_rows) and all(
+        row["frame_readiness"].get("consecutive_complete_frames") == 2
+        and row["frame_readiness"].get("stable") is True
+        and bool(row["frame_readiness"].get("required_regions"))
+        for row in screenshot_rows
+    )
     return {
         "automated_checks_passed": not forbidden_rows
         and all(row["nonblank"] for row in screenshot_rows)
         and all_phases_have_snapshots
+        and frame_readiness_coverage
         and table_geometry_review["passed"]
-        and chat_geometry_review["passed"],
+        and chat_geometry_review["passed"]
+        and all(review["passed"] for review in assistant_reviews.values()),
         "screenshot_review": screenshot_rows,
         "forbidden_visible_text": forbidden_rows,
         "phase_snapshot_coverage": all_phases_have_snapshots,
+        "frame_readiness_coverage": frame_readiness_coverage,
         "table_geometry_review": table_geometry_review,
         "chat_geometry_review": chat_geometry_review,
+        **assistant_reviews,
         "visible_text_boundary": (
             "Checks visible widget text for raw tool syntax, schema, traceback, "
             "selected snake_case command leakage, and recipe trace tokens."
@@ -2083,49 +3305,6 @@ def build_ui_quality_review(
             "This is automated UI-observable evidence. It does not replace a "
             "human desktop review of Windows launcher, dual-monitor/DPI, or "
             "long local-model sessions."
-        ),
-    }
-
-
-def build_chat_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
-    """Check ChatPanel evidence for latest-message clipping near the composer."""
-    rows: list[dict[str, Any]] = []
-    findings: list[dict[str, Any]] = []
-    for phase in phases:
-        phase_name = str(phase.get("phase", ""))
-        notes = phase.get("notes", {})
-        if not isinstance(notes, dict):
-            continue
-        state = notes.get("chat_geometry")
-        if not isinstance(state, dict):
-            continue
-        row = {
-            "phase": phase_name,
-            "visible_bubble_count": geometry_int(state, "visible_bubble_count"),
-            "latest_message_bottom_y": geometry_int(
-                state,
-                "latest_message_bottom_y",
-            ),
-            "composer_top_y": geometry_int(state, "composer_top_y"),
-            "bottom_clearance_px": geometry_int(state, "bottom_clearance_px"),
-            "scrollbar_value": geometry_int(state, "scrollbar_value"),
-            "scrollbar_max": geometry_int(state, "scrollbar_max"),
-            "latest_message_clear_of_composer": bool(
-                state.get("latest_message_clear_of_composer")
-            ),
-            "scrollbar_at_bottom": bool(state.get("scrollbar_at_bottom")),
-        }
-        rows.append(row)
-        if not row["latest_message_clear_of_composer"]:
-            findings.append(row)
-    return {
-        "passed": not findings,
-        "checked_widgets": len(rows),
-        "findings": findings,
-        "boundary": (
-            "Automated ChatPanel geometry checks whether the latest visible bubble "
-            "is clear of the composer. Human review still checks typography and "
-            "visual comfort."
         ),
     }
 
@@ -2264,6 +3443,9 @@ def forbidden_visible_text(texts: list[str]) -> list[str]:
     for text in texts:
         normalized = str(text)
         lowered = normalized.lower()
+        if lowered.lstrip().startswith("request:"):
+            offenders.append(normalized)
+            continue
         if any(marker.lower() in lowered for marker in VISIBLE_FORBIDDEN):
             offenders.append(normalized)
             continue
@@ -2280,7 +3462,7 @@ def validate_walkthrough_payload(
     *,
     require_files: bool = True,
 ) -> tuple[bool, str]:
-    """Validate a human-like walkthrough payload."""
+    """Validate the product artifact and delegate assistant contracts."""
     if payload.get("status") != "passed":
         return False, str(payload.get("failure_reason") or "status is not passed")
     summary = payload.get("pass_fail_summary", {})
@@ -2290,17 +3472,32 @@ def validate_walkthrough_payload(
     missing = [phase for phase in REQUIRED_PHASES if phase not in phases]
     if missing:
         return False, f"missing phases: {', '.join(missing)}"
+
+    assistant_ok, assistant_reason = validate_assistant_payload(
+        payload,
+        forbidden_visible_text=forbidden_visible_text,
+    )
+    if not assistant_ok:
+        return False, assistant_reason
+
+    screenshots = payload.get("screenshots", {})
     if require_files:
-        for path in payload.get("screenshots", {}).values():
+        for path in screenshots.values():
             if not Path(path).exists():
                 return False, f"missing screenshot file: {path}"
     if not payload.get("observable_evidence"):
         return False, "observable evidence summary is missing"
-    if not payload.get("ui_quality_review"):
+    ui_quality_review = payload.get("ui_quality_review")
+    if not isinstance(ui_quality_review, dict):
         return False, "ui quality review is missing"
-    if not payload["ui_quality_review"].get("automated_checks_passed"):
+    if not ui_quality_review.get("automated_checks_passed"):
         return False, "ui quality review did not pass"
-    geometry_review = payload["ui_quality_review"].get("table_geometry_review", {})
+    recorded_ok, recorded_reason = validate_recorded_assistant_reviews(
+        ui_quality_review
+    )
+    if not recorded_ok:
+        return False, recorded_reason
+    geometry_review = ui_quality_review.get("table_geometry_review", {})
     if not geometry_review.get("passed"):
         return False, "table geometry review did not pass"
     if "not human Windows desktop acceptance" not in payload.get(
@@ -2395,8 +3592,9 @@ def claim_boundary() -> str:
     """Return the validation claim boundary."""
     return (
         "Automated UI-observable PyQt replay; not human Windows desktop "
-        "acceptance. Assistant messages in this artifact are scripted layout "
-        "evidence, not local-model or tool-call correctness evidence. Windows "
+        "acceptance. Assistant states use AgentManager and Qt signals with a "
+        "deterministic controller, not direct ChatController injection. This is "
+        "product-surface evidence, not local-model or tool-call correctness evidence. Windows "
         "launcher click-through, dual-monitor/DPI behavior, and long real local-model "
         "desktop sessions remain human verification."
     )
@@ -2404,12 +3602,30 @@ def claim_boundary() -> str:
 
 def render_markdown(payload: dict[str, Any]) -> str:
     """Render a compact Markdown report."""
+    contract = payload.get("artifact_contract", {})
+    run = payload.get("artifact_run", {})
+    if not isinstance(contract, dict):
+        contract = {}
+    if not isinstance(run, dict):
+        run = {}
+    source_fingerprint = contract.get("source_fingerprint") or run.get(
+        "source_fingerprint",
+        "",
+    )
     lines = [
         "# Human-Like Product Walkthrough",
         "",
         f"- status: `{payload.get('status')}`",
+        f"- run ID: `{run.get('run_id', '')}`",
+        f"- generated at: `{run.get('generated_at_utc', '')}`",
+        f"- Git revision: `{run.get('git_revision', '')}`",
+        f"- working tree dirty: `{run.get('working_tree_dirty', '')}`",
+        f"- screenshot hashes: `{len(run.get('screenshot_sha256', {}))}`",
         f"- failure reason: {payload.get('failure_reason') or 'none'}",
         f"- claim boundary: {payload.get('claim_boundary')}",
+        f"- evidence contract: `{contract.get('version', '')}`",
+        f"- assistant driver: `{contract.get('assistant_driver', '')}`",
+        f"- source fingerprint: `{source_fingerprint}`",
         f"- elapsed seconds: `{payload.get('elapsed_seconds', 0)}`",
         f"- source: `{payload.get('source_path', '')}`",
         f"- recipe: `{payload.get('recipe_path', '')}`",
@@ -2471,6 +3687,39 @@ def render_markdown(payload: dict[str, Any]) -> str:
                 f"- chat geometry findings: `{len(chat_geometry.get('findings', []))}`",
             ]
         )
+    processing_review = quality.get("assistant_processing_contract_review", {})
+    if processing_review:
+        processing_evidence = processing_review.get("evidence", {})
+        turn_activity = processing_evidence.get("turn_activity", {})
+        primary_status = turn_activity.get("primary_status", {})
+        stopping_state = processing_evidence.get("stopping_state", {})
+        stopping_activity = stopping_state.get("turn_activity", {})
+        stop_button = processing_evidence.get("stop_button", {})
+        lines.extend(
+            [
+                f"- assistant processing contract passed: `{processing_review.get('passed')}`",
+                f"- processing status: `{primary_status.get('text', '')}`; "
+                f"visible `{primary_status.get('visible')}`; "
+                f"fits `{primary_status.get('fits_height')}`",
+                f"- processing action: `{stop_button.get('text', '')}`; visible `{stop_button.get('visible')}`; enabled `{stop_button.get('enabled')}`",
+                f"- stopping state: `{stopping_activity.get('phase', '')}`; "
+                f"cancelability `{stopping_activity.get('cancelability', '')}`",
+                f"- composer enabled while processing: `{processing_evidence.get('composer_input_enabled')}`",
+            ]
+        )
+    for label, key in (
+        ("assistant runtime", "assistant_runtime_contract_review"),
+        ("assistant full dock", "assistant_dock_contract_review"),
+        ("assistant notices", "assistant_notice_contract_review"),
+        ("assistant signal path", "assistant_signal_path_review"),
+        ("assistant error sanitization", "assistant_error_contract_review"),
+        ("assistant backend claims", "assistant_claim_contract_review"),
+        ("assistant interactions", "assistant_interaction_contract_review"),
+        ("assistant settings recovery", "assistant_settings_recovery_review"),
+    ):
+        review = quality.get(key, {})
+        if review:
+            lines.append(f"- {label} passed: `{review.get('passed')}`")
     lines.extend(["", "## Observable Evidence", ""])
     evidence = payload.get("observable_evidence", {})
     lines.extend(
@@ -2480,6 +3729,10 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- workflow/backend snapshots: `{len(evidence.get('backend_state_snapshots', {}))}` phases",
             f"- UI geometry snapshots: `{len(evidence.get('ui_geometry_snapshots', {}))}` phases",
             f"- ChatPanel geometry snapshots: `{len(evidence.get('chat_geometry_snapshots', {}))}` phases",
+            f"- assistant processing snapshots: `{len(evidence.get('assistant_processing_snapshots', {}))}` phases",
+            f"- assistant runtime snapshots: `{len(evidence.get('assistant_runtime_snapshots', {}))}` phases",
+            f"- assistant full-dock snapshots: `{len(evidence.get('assistant_dock_snapshots', {}))}` phases",
+            f"- assistant signal-path snapshots: `{len(evidence.get('assistant_signal_path_snapshots', {}))}` phases",
         ]
     )
     lines.extend(["", "## Phases", ""])

@@ -12,8 +12,13 @@ from pathlib import Path
 from threading import Thread
 from typing import Any, cast
 
-from XBrainLab.backend.application import ApplicationService
+import numpy as np
+import torch
+
+from XBrainLab.backend.application import ApplicationService, get_application_service
+from XBrainLab.backend.dataset.epochs import EpochWindowProvenance
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.mcp.http_server import build_http_server
 from XBrainLab.mcp.server import PROTOCOL_VERSION
 
@@ -293,26 +298,93 @@ def _sanitized(value: Any, source_dir: Path) -> Any:
 
 def _training_ready_service(source: Path) -> ApplicationService:
     """Build a service state where train capability reaches job boundary."""
-    service = ApplicationService(Study())
+    service = get_application_service(Study())
     cast(Any, service.study).loaded_data_list = [_RawStub(source)]
-    cast(Any, service.study).datasets = [object()]
-    cast(Any, service.study).model_holder = object()
-    cast(Any, service.study).training_option = object()
-    running = {"value": False}
+    cast(Any, service.study).datasets = [_DatasetStub()]
+    service.study.model_holder = ModelHolder(torch.nn.Identity, {})
+    service.study.training_option = TrainingOption(
+        str(Path(tempfile.gettempdir()) / "xbrainlab-mcp-walkthrough"),
+        torch.optim.Adam,
+        {},
+        True,
+        None,
+        1,
+        2,
+        0.001,
+        0,
+        TrainingEvaluation.VAL_ACC,
+        1,
+    )
+    service.get_state()
+    running = {"value": False, "generation": 0}
 
-    def start_training(*_args: Any, **_kwargs: Any) -> None:
+    def start_training(*_args: Any, **_kwargs: Any) -> int:
+        running["generation"] += 1
         running["value"] = True
+        return int(running["generation"])
 
-    def stop_training(*_args: Any, **_kwargs: Any) -> None:
+    def stop_training(*_args: Any, **_kwargs: Any) -> bool:
         running["value"] = False
+        return True
 
     def is_training() -> bool:
         return running["value"]
 
     service.training.start_training = start_training
-    service.training.stop_training = stop_training
     service.training.is_training = is_training
+    service.training_runtime.stop_training = stop_training  # type: ignore[method-assign]
+    service.training_runtime.is_training = is_training  # type: ignore[method-assign]
+    service.training_state.is_training = is_training
     return service
+
+
+class _EpochDataStub:
+    def __init__(self) -> None:
+        self._data = np.zeros((4, 1, 8), dtype=np.float32)
+
+    def get_data(self) -> np.ndarray:
+        return self._data
+
+    def get_label_list(self) -> np.ndarray:
+        return np.asarray([0, 1, 0, 1])
+
+    def get_label_number(self) -> int:
+        return 2
+
+    def get_model_args(self) -> dict[str, Any]:
+        return {}
+
+    def get_epoch_window_provenance(
+        self,
+    ) -> tuple[EpochWindowProvenance, ...]:
+        return tuple(
+            EpochWindowProvenance(
+                source_recording_id=f"path-sha256:{'a' * 64}",
+                event_sample=index * 20,
+                window_start_sample=index * 20,
+                window_end_sample_exclusive=index * 20 + 8,
+                source_sfreq=100.0,
+                epoch_sfreq=100.0,
+                tmin_seconds=0.0,
+                tmax_seconds=0.07,
+                source_coordinates_verified=True,
+            )
+            for index in range(len(self._data))
+        )
+
+
+class _DatasetStub:
+    def __init__(self) -> None:
+        self._epoch_data = _EpochDataStub()
+        self.train_mask = np.asarray([True, True, False, False])
+        self.val_mask = np.asarray([False, False, True, False])
+        self.test_mask = np.asarray([False, False, False, True])
+
+    def get_epoch_data(self) -> _EpochDataStub:
+        return self._epoch_data
+
+    def get_name(self) -> str:
+        return "walkthrough dataset"
 
 
 class _RawStub:

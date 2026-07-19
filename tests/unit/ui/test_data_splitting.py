@@ -164,6 +164,30 @@ class TestPreviewCanvas:
 # ============ DataSplittingDialog ============
 
 
+class FakeEpochData:
+    def __init__(self) -> None:
+        self.subject_map = {
+            "S01": list(range(50)),
+            "S02": list(range(50, 100)),
+        }
+        self.session_map = {"sess1": list(range(100))}
+
+    def get_data_length(self) -> int:
+        return 100
+
+
+class FakeDataSplittingController:
+    def __init__(self) -> None:
+        self.epoch_data = FakeEpochData()
+        self.dataset_generator = object()
+
+    def get_epoch_data(self) -> FakeEpochData:
+        return self.epoch_data
+
+    def get_dataset_generator(self) -> object:
+        return self.dataset_generator
+
+
 class TestDataSplittingDialog:
     @pytest.fixture
     def dlg(self, qtbot):
@@ -171,13 +195,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        ctrl = MagicMock()
-        epoch = MagicMock()
-        epoch.get_data_length.return_value = 100
-        epoch.subject_map = {"S01": list(range(50)), "S02": list(range(50, 100))}
-        epoch.session_map = {"sess1": list(range(100))}
-        ctrl.get_epoch_data.return_value = epoch
-        ctrl.get_dataset_generator.return_value = MagicMock()
+        ctrl = FakeDataSplittingController()
 
         d = DataSplittingDialog(None, ctrl)
         qtbot.addWidget(d)
@@ -610,6 +628,7 @@ class TestDataSplittingPreviewDialogSplitters:
         ):
             dlg.preview()
             worker = dlg.preview_worker
+            assert worker is not None
             worker.join(timeout=1.0)
 
         assert worker.is_alive() is False

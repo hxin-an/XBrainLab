@@ -1,5 +1,8 @@
 """Tests for shared saliency command/UI policy."""
 
+import subprocess
+import sys
+
 from XBrainLab.backend.application.saliency_policy import (
     ADVANCED_SALIENCY_METHODS,
     ALL_SALIENCY_METHODS,
@@ -18,6 +21,27 @@ from XBrainLab.backend.visualization import (
 def test_policy_methods_follow_visualization_supported_method_names():
     assert list(ADVANCED_SALIENCY_METHODS) == supported_saliency_methods
     assert list(ALL_SALIENCY_METHODS) == all_saliency_methods
+
+
+def test_policy_import_does_not_cold_start_visualization_stack() -> None:
+    probe = subprocess.run(  # noqa: S603 - fixed interpreter and inline probe
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "import XBrainLab.backend.application.saliency_policy; "
+                "assert 'XBrainLab.backend.visualization' not in sys.modules; "
+                "assert 'matplotlib.pyplot' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert probe.returncode == 0, probe.stderr
 
 
 def test_recommended_profile_selects_fast_baseline_methods():

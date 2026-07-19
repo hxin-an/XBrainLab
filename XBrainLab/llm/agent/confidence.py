@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-from XBrainLab.llm.tools.schema_contract import TOOL_TAXONOMY
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 
 
 def _collect_known_tools() -> frozenset[str]:
@@ -28,7 +28,7 @@ def _collect_known_tools() -> frozenset[str]:
     workflow. Confidence scoring still needs to recognize compatibility tools
     that can appear in parser tests or legacy repair paths.
     """
-    return frozenset(TOOL_TAXONOMY)
+    return AGENT_ACTION_CONTRACTS.tool_names()
 
 
 #: Tool names derived from the schema taxonomy.

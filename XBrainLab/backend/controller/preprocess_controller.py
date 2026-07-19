@@ -220,6 +220,78 @@ class PreprocessController(Observable):
         """
         return self._apply_processor(preprocessor.Normalize, norm=method)
 
+    def apply_standard_pipeline(
+        self,
+        *,
+        l_freq: float,
+        h_freq: float,
+        notch_freq: float | None = None,
+        rate: float | None = None,
+        ref_channels: str | list[str] | None = None,
+        normalization: str | None = None,
+    ) -> bool:
+        """Apply the standard preprocessing recipe as one atomic mutation.
+
+        Every processor runs against a private working list. The study and
+        observers are updated only after the complete recipe succeeds.
+        """
+        data_list = self.study.preprocessed_data_list
+        if not data_list:
+            raise ValueError("No data to preprocess.")
+
+        try:
+            working_list = [data.copy() for data in data_list]
+            working_list = self._process_working_list(
+                working_list,
+                preprocessor.Filtering,
+                l_freq,
+                h_freq,
+                notch_freqs=None,
+            )
+            if notch_freq:
+                working_list = self._process_working_list(
+                    working_list,
+                    preprocessor.Filtering,
+                    None,
+                    None,
+                    notch_freqs=[notch_freq],
+                )
+            if rate:
+                working_list = self._process_working_list(
+                    working_list,
+                    preprocessor.Resample,
+                    rate,
+                )
+            if ref_channels:
+                working_list = self._process_working_list(
+                    working_list,
+                    preprocessor.Rereference,
+                    ref_channels=ref_channels,
+                )
+            if normalization:
+                working_list = self._process_working_list(
+                    working_list,
+                    preprocessor.Normalize,
+                    norm=normalization,
+                )
+        except Exception as exc:
+            logger.error("Standard preprocessing pipeline failed: %s", exc)
+            raise
+
+        self.study.set_preprocessed_data_list(working_list, force_update=True)
+        self.notify("preprocess_changed")
+        return True
+
+    @staticmethod
+    def _process_working_list(
+        working_list: list[Any],
+        processor_class: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> list[Any]:
+        processor = processor_class(working_list)
+        return list(processor.data_preprocess(*args, **kwargs))
+
     def get_unique_events(self):
         """Return unique event names across all preprocessed files.
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -35,6 +36,13 @@ BASELINE_WINDOW_SIZE = QSize(1280, 800)
 DEFAULT_PROMPT = (
     "In one short user-facing sentence, explain what EEG preprocessing does. "
     "Do not use tools."
+)
+_BACKEND_STATUS_ASSIGNMENT = re.compile(
+    r"\b(?:decision|status|state|validation|result)\b"
+    r"(?:\s+(?:decision|status|state|validation|result)\b)?"
+    r"\s*[\"']?\s*(?::|=)\s*[\"']?"
+    r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b",
+    re.IGNORECASE,
 )
 
 
@@ -155,7 +163,6 @@ def run_walkthrough(
             if _capture_current_window(window, response_path) == 0:
                 state["response_screenshot"] = str(response_path)
         window.close()
-        app.quit()
 
     def open_assistant() -> None:
         window.ai_btn.click()
@@ -306,6 +313,8 @@ def has_raw_debug_text(texts: list[str]) -> bool:
     for text in texts:
         lowered = text.lower()
         if any(marker.lower() in lowered for marker in markers):
+            return True
+        if _BACKEND_STATUS_ASSIGNMENT.search(text):
             return True
     return False
 

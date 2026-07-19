@@ -173,7 +173,13 @@ def test_label_carrier_plan_counts_label_rows_and_values(tmp_path):
 
     plan = build_label_carrier_plan(
         [str(labels)],
-        {labels.name: {"label_field": "label", "anchor": "sample"}},
+        {
+            labels.name: {
+                "label_field": "label",
+                "anchor": "sample",
+                "role": "class labels",
+            }
+        },
     )
 
     assert plan[0]["label_row_count"] == 3
@@ -292,7 +298,13 @@ def test_infer_class_map_from_tabular_label_carrier_plan(tmp_path):
 
     plan = build_label_carrier_plan(
         [str(labels)],
-        {labels.name: {"label_field": "label", "anchor": "sample"}},
+        {
+            labels.name: {
+                "label_field": "label",
+                "anchor": "sample",
+                "role": "class labels",
+            }
+        },
     )
 
     assert infer_class_map_from_label_carrier_plan(plan) == {
@@ -301,7 +313,7 @@ def test_infer_class_map_from_tabular_label_carrier_plan(tmp_path):
     }
 
 
-def test_infer_class_map_uses_bids_events_json_levels(tmp_path):
+def test_bids_events_json_levels_are_suggestions_not_classes(tmp_path):
     events = tmp_path / "sub-01_task-mi_events.tsv"
     sidecar = tmp_path / "sub-01_task-mi_events.json"
     events.write_text(
@@ -318,14 +330,18 @@ def test_infer_class_map_uses_bids_events_json_levels(tmp_path):
         {events.name: {"label_field": "trial_type", "anchor": "onset"}},
     )
 
-    assert infer_class_map_from_label_carrier_plan(plan) == {
-        "left": "Left hand",
-        "right": "Right hand",
-    }
+    assert infer_class_map_from_label_carrier_plan(plan) == {}
+    assert plan[0]["value_decisions"]["left"]["suggested_name"] == "Left hand"
+    assert plan[0]["value_decisions"]["right"]["suggested_name"] == "Right hand"
 
 
-def test_infer_class_map_uses_inherited_bids_events_json_levels(tmp_path):
+def test_inherited_bids_levels_are_suggestions_not_classes(tmp_path):
     bids_root = tmp_path / "bids"
+    bids_root.mkdir()
+    (bids_root / "dataset_description.json").write_text(
+        '{"Name":"label-carrier-test","BIDSVersion":"1.11.1"}',
+        encoding="utf-8",
+    )
     eeg_dir = bids_root / "sub-01" / "eeg"
     eeg_dir.mkdir(parents=True)
     events = eeg_dir / "sub-01_task-mi_run-1_events.tsv"
@@ -344,10 +360,9 @@ def test_infer_class_map_uses_inherited_bids_events_json_levels(tmp_path):
         {events.name: {"label_field": "trial_type", "anchor": "onset"}},
     )
 
-    assert infer_class_map_from_label_carrier_plan(plan) == {
-        "left": "Left hand",
-        "right": "Right hand",
-    }
+    assert infer_class_map_from_label_carrier_plan(plan) == {}
+    assert plan[0]["value_decisions"]["left"]["suggested_name"] == "Left hand"
+    assert plan[0]["value_decisions"]["right"]["suggested_name"] == "Right hand"
 
 
 def test_infer_class_map_from_mat_label_carrier_plan(tmp_path):

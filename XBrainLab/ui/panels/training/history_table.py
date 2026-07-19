@@ -3,10 +3,11 @@
 import time
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
+from PyQt6.QtWidgets import QHeaderView, QLabel, QTableWidget, QTableWidgetItem
 
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 
 class TrainingHistoryTable(QTableWidget):
@@ -24,6 +25,11 @@ class TrainingHistoryTable(QTableWidget):
     """
 
     selection_changed_record = pyqtSignal(object)  # Emits record object
+    content_height_changed = pyqtSignal(int)
+    MAX_VISIBLE_ROWS = 6
+    EMPTY_VIEWPORT_HEIGHT = 52
+    KEY_COLUMN_PADDING = 26
+    KEY_COLUMN_MAX_WIDTHS = (220, 180, 190, 120)
 
     def __init__(self, parent=None):
         """Initialize the training history table.
@@ -34,26 +40,36 @@ class TrainingHistoryTable(QTableWidget):
         """
         super().__init__(parent)
         self.row_map = {}  # Map row -> (plan, record)
+        self._last_content_height = -1
         self._init_ui()
+        self.empty_state_label = QLabel("No training runs yet", self.viewport())
+        self.empty_state_label.setObjectName("TrainingHistoryEmptyState")
+        self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+        )
+        self.empty_state_label.setStyleSheet(
+            f"background: transparent; color: {Theme.TEXT_SECONDARY}; font-size: 13px;"
+        )
+        self._sync_content_height()
 
     def _init_ui(self):
         """Configure columns, headers, widths, and styling for the table."""
+        header_labels = [
+            "Group",
+            "Run",
+            "Model",
+            "Status",
+            "Epochs",
+            "Train Loss",
+            "Train Acc",
+            "Val Loss",
+            "Val Acc",
+            "LR",
+            "Time",
+        ]
         self.setColumnCount(11)
-        self.setHorizontalHeaderLabels(
-            [
-                "Group",
-                "Run",
-                "Model",
-                "Status",
-                "Epochs",
-                "Train Loss",
-                "Train Acc",
-                "Val Loss",
-                "Val Acc",
-                "LR",
-                "Time",
-            ],
-        )
+        self.setHorizontalHeaderLabels(header_labels)
 
         self.setStyleSheet(Stylesheets.HISTORY_TABLE)
 
@@ -70,19 +86,68 @@ class TrainingHistoryTable(QTableWidget):
             for i in range(11):
                 header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
 
-        self.setColumnWidth(0, 70)  # Group
-        self.setColumnWidth(1, 70)  # Run
-        self.setColumnWidth(2, 130)  # Model
-        self.setColumnWidth(3, 90)  # Status
-        self.setColumnWidth(4, 70)  # Progress
-        # Metrics
-        for i in range(5, 11):
-            self.setColumnWidth(i, 78)
+        preferred_widths = [70, 70, 130, 90, 70, 88, 88, 82, 82, 70, 82]
+        header_metrics = (
+            header.fontMetrics() if header is not None else self.fontMetrics()
+        )
+        for column, preferred_width in enumerate(preferred_widths):
+            header_item = self.horizontalHeaderItem(column)
+            header_text = (
+                header_item.text() if header_item is not None else header_labels[column]
+            )
+            readable_width = header_metrics.horizontalAdvance(header_text) + 28
+            self.setColumnWidth(column, max(preferred_width, readable_width))
 
         if header:
             header.setStretchLastSection(True)
 
         self.itemSelectionChanged.connect(self._on_selection_changed)
+
+    def resizeEvent(self, event):  # noqa: N802
+        super().resizeEvent(event)
+        self._position_empty_state()
+
+    def preferred_content_height(self) -> int:
+        """Return the intentional viewport height for the current row count."""
+        header = self.horizontalHeader()
+        header_height = header.height() if header is not None else 0
+        visible_rows = min(self.rowCount(), self.MAX_VISIBLE_ROWS)
+        if visible_rows:
+            viewport_height = sum(self.rowHeight(row) for row in range(visible_rows))
+        else:
+            viewport_height = self.EMPTY_VIEWPORT_HEIGHT
+        scrollbar = self.horizontalScrollBar()
+        scrollbar_height = scrollbar.sizeHint().height() if scrollbar is not None else 0
+        return (
+            header_height
+            + viewport_height
+            + scrollbar_height
+            + self.frameWidth() * 2
+            + 2
+        )
+
+    def _sync_content_height(self) -> None:
+        has_overflow = self.rowCount() > self.MAX_VISIBLE_ROWS
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            if has_overflow
+            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        target_height = self.preferred_content_height()
+        self.setFixedHeight(target_height)
+        if target_height != self._last_content_height:
+            self._last_content_height = target_height
+            self.content_height_changed.emit(target_height)
+        self.empty_state_label.setVisible(self.rowCount() == 0)
+        self._position_empty_state()
+        self.updateGeometry()
+
+    def _position_empty_state(self) -> None:
+        viewport = self.viewport()
+        if viewport is None or not hasattr(self, "empty_state_label"):
+            return
+        self.empty_state_label.setGeometry(viewport.rect())
+        self.empty_state_label.raise_()
 
     def _on_selection_changed(self):
         """Emit the selected record when the table selection changes."""
@@ -100,6 +165,7 @@ class TrainingHistoryTable(QTableWidget):
         """Remove all rows and reset the internal row mapping."""
         self.setRowCount(0)
         self.row_map.clear()
+        self._sync_content_height()
 
     def update_table(self, target_rows):
         """Alias for ``update_history`` to satisfy the panel interface.
@@ -123,6 +189,7 @@ class TrainingHistoryTable(QTableWidget):
         """
         if self.rowCount() != len(target_rows):
             self.setRowCount(len(target_rows))
+        self.row_map.clear()
 
         for row_idx, data in enumerate(target_rows):
             plan = data["plan"]
@@ -151,7 +218,7 @@ class TrainingHistoryTable(QTableWidget):
             ):
                 status = "Failed"
             elif record.is_finished():
-                status = "Done"
+                status = "Completed"
             elif is_current_run:
                 status = "Running"
             elif record.epoch == 0:
@@ -210,3 +277,21 @@ class TrainingHistoryTable(QTableWidget):
                 time_str = f"{h:02d}:{m:02d}:{s:02d}"
 
             set_item(10, time_str)
+
+        self._fit_key_columns_to_content()
+        self._sync_content_height()
+
+    def _fit_key_columns_to_content(self) -> None:
+        """Keep identity and lifecycle text readable without removing scrolling."""
+        for column, maximum_width in enumerate(self.KEY_COLUMN_MAX_WIDTHS):
+            required_width = self.columnWidth(column)
+            for row in range(self.rowCount()):
+                item = self.item(row, column)
+                if item is None:
+                    continue
+                required_width = max(
+                    required_width,
+                    self.fontMetrics().horizontalAdvance(item.text())
+                    + self.KEY_COLUMN_PADDING,
+                )
+            self.setColumnWidth(column, min(required_width, maximum_width))

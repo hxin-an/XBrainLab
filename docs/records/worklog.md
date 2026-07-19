@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-07-04`
+最後更新：`2026-07-19`
 
 ## 這份文件的用途
 
@@ -34,6 +34,47 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-07-19
+
+### 23:30 Final regression and reviewer re-gate
+
+- 做了什麼：
+  - 修正 public `QueryStateCommand` 非阻塞測試的 watchdog 假通過漏洞；測試會在 holder 仍持有
+    mutation lock 時要求 public query 於 `0.2s` 內完成，之後才釋放 holder。
+  - 將 human-like walkthrough 直接重跑到正式 `current/`，並由主 agent檢查 Import Review、
+    Visualization 與窄視窗 Assistant / Evaluation 畫面。
+  - 重跑完整 unit / integration、Ruff、BasedPyright、architecture compliance 與 MkDocs。
+- 結果：
+  - full unit `9006 passed, 1 skipped`；integration `388 passed`。
+  - Ruff lint PASS；Ruff formatter `943/943` clean；BasedPyright
+    `0 errors / 0 warnings / 0 notes`；architecture compliance PASS；`mkdocs build --strict` PASS。
+  - human-like walkthrough `40/40` phases、42 screenshots、resource smoke PASS，正式 artifact
+    沒有殘留 `current-candidate` 路徑。
+  - agent/runtime reviewer 與 test-quality reviewer re-gate 均 PASS；原 public query
+    non-blocking evidence blocker 已關閉。
+- 接續 / 本輪剩餘：
+  - 排除使用者本機 `settings.json` 後 commit / push，再於 exact commit 重跑 dashboard。
+  - 真實 Phi-4 mid-generation shutdown、real deferred startup、Windows 互動式 3D 與真人
+    Windows click-through 保留為 claim / acceptance boundary。
+
+### 22:50 Final candidate evidence refresh
+
+- 做了什麼：
+  - 修正 local assistant 空 streaming chunk 與 controller / worker / generation-thread shutdown
+    ownership，新增真實組合 lifecycle regression。
+  - 將 real Phi-4 ChatPanel walkthrough 補成關閉後 terminal contract，並重跑完整 human-like、
+    multi-dataset、unit、integration 與 fast dashboard。
+- 結果：
+  - full unit `9005 passed, 1 skipped`；integration `388 passed`（此結果已由 23:30 的
+    `9006 / 388` 最終回歸取代）。
+  - strict dataset matrix `20/20` lifecycle、`14/14` formats；cross-source runner `4/4`。
+  - human-like walkthrough `40/40` phases、42 screenshots；real Phi-4 workflow PASS，post-close
+    runtime / dispatcher `closed`、controller released、generation threads `0`。
+  - fast dashboard 所有實質 checks PASS；overall 僅因尚未 commit 的 dirty candidate 為 WARN。
+- 接續 / 本輪剩餘：
+  - 完成 reviewer re-gate、artifact hygiene、commit / push 與 clean dashboard。
+  - Windows 真人 click-through 仍是 handoff 後的 acceptance，不在自動化 evidence 內。
 
 ## 2026-07-04
 
@@ -15981,3 +16022,456 @@
   strict cross-source `4 passed`、human-like walkthrough `27/27` PASS、MkDocs strict PASS。
 - claim boundary：仍需 Windows 真人 click-through；不宣稱 full BIDS validator、BIDS events
   inheritance、長時間訓練、任意資料格式或 scientific accuracy。
+
+### 2026-07-12 AgentManager montage command-surface cleanup
+
+- scope：
+  - Extracted the assistant montage dialog workflow out of `AgentManager` into
+    `XBrainLab/ui/components/montage_interaction_coordinator.py`.
+  - Kept AgentManager responsible for chat/debug handoff only.
+- completed：
+  - Removed AgentManager preprocess-controller lookup and montage compatibility helpers.
+  - Channel names now come only from `QueryStateCommand(query="state")` diagnostics.
+  - Montage apply now uses `ApplyMontageCommand` result only; missing UI runtime fails with the
+    shared explicit blocked message instead of falling back to a controller or Study epoch object.
+  - Updated AgentManager montage tests to use explicit ApplicationService/runtime fakes.
+- same-class sweep：
+  - `rg` over `XBrainLab/ui/components/agent_manager.py` and
+    `XBrainLab/ui/components/montage_interaction_coordinator.py` found no
+    `preprocess_controller`, `run_controller_compatibility_call`,
+    `get_controller_for_compatibility_context`, direct `Study.epoch_data`, or `get_mne()` montage
+    reads.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py -q`
+    -> `239 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run ruff check XBrainLab/ui/components/agent_manager.py XBrainLab/ui/components/montage_interaction_coordinator.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright XBrainLab/ui/components/agent_manager.py XBrainLab/ui/components/montage_interaction_coordinator.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- claim boundary：
+  - This is a focused AgentManager montage cleanup, not full zero-controller UI.
+  - No backend or `application_capabilities.py` files were changed.
+
+### 2026-07-15 Desktop MVP integrated candidate rebuild
+
+- scope：
+  - Consolidated the accumulated backend, Data Interpretation, BIDS epoch, training/saliency,
+    Qt lifecycle, UI polish, and local-assistant work in the single active worktree.
+  - Did not reopen MCP, model architecture, training algorithm, or thesis experiments.
+- implementation / quality closure：
+  - Non-blocking `ApplicationViewPublication`, owner-bound async receivers, command shutdown fence,
+    strict agent request admission/recovery, BIDS event bounds/run mapping, overlapping-window split
+    protection, post-training saliency atomicity, and resource preflight are present in the candidate.
+  - Removed the project-wide Ruff `S110` exemption and replaced remaining silent exception handlers
+    with diagnostic logging or explicit script output.
+  - Removed failed/stale walkthrough run directories and retained one `current` artifact entrance per
+    product walkthrough. Generated run directories are ignored except the checked-in current entry.
+  - Changed the human-like walkthrough default publication target to
+    `artifacts/ui/human-like-walkthrough-runs/current`; failed runs are stored beside `current` by run
+    id and cannot overwrite the latest passing evidence. Removed the ignored legacy duplicate.
+- validation：
+  - full unit -> `6908 passed, 2 skipped`.
+  - full integration -> `261 passed`.
+  - UI integration -> `68 passed`.
+  - architecture / walkthrough source guards -> `195 passed`.
+  - Ruff -> PASS; BasedPyright -> `0 errors, 0 warnings, 0 notes`.
+  - Data Interpretation strict lifecycle -> `20/20`; 14 format paths, 7 public cases / 5 source
+    families, 7 external-placement contracts, 4 internal-event profiles, 11 label/event apply cases.
+  - required IO/BIDS/cross-source integration -> `36 passed`; strict runner -> `4/4`.
+  - human-like desktop walkthrough -> `40/40` phases, `42` screenshots, resource smoke PASS.
+  - real Phi-4 mini ChatPanel workflow -> PASS on CUDA with one `query_state` turn and one normal
+    concept-answer turn.
+  - local raw tool-call candidate -> `6/12`; host-assisted product-policy score -> `12/12`.
+  - Dashboard loader now prefers provenance-bearing v4 `state_capability_unassisted` evidence over
+    legacy 117/121-case artifacts. The visible dashboard reports raw and host-assisted scores
+    separately, renders excluded metrics as `N/A`, and no longer emits the stale thesis-candidate
+    claim.
+- architecture / clean-code boundary：
+  - Architecture guards are clean and no new silent fallback was accepted. Large orchestrators such
+    as the Data Import dialog and LLM controller remain explicit nonblocking debt; they were not
+    mechanically split immediately before handoff because that would add risk without changing a
+    product boundary.
+- claim boundary：
+  - This remains a dirty-tree checkpoint until commit, push, and clean dashboard rerun are complete.
+  - Independent architecture/UI/test-EEG reviewer agents could not be spawned because the agent
+    service returned `thread limit reached`; main-agent review is not reported as an independent gate.
+  - Windows human click-through, interactive 3D acceptance, long local-model sessions, full BIDS
+    validation, arbitrary proprietary formats, thesis-grade tool-call accuracy, and scientific model
+    quality remain outside this evidence.
+
+### 2026-07-15 Candidate evidence hardening follow-up
+
+- completed：
+  - Data Interpretation parser reads now use the same admitted file identity as resource preflight;
+    label carriers, embedded EEG events, strict BIDS run review, and BIDS metadata materialization
+    reject files changed after admission.
+  - Visualization render walkthrough now waits for the requested tab generation and visible result;
+    duplicate 2D-tab screenshots fail validation. Current saliency, spectrogram, topomap, and headless
+    3D-blocked artifacts have distinct hashes.
+  - Format capability matrix was regenerated with artifact output: real lifecycle `20/20`, 14/14
+    required formats, 7 public cases / 5 source families, 7/7 external placement contracts, 4/4
+    internal profiles, and 11/11 reviewed label workflows.
+  - RTX 5070 Ti bounded calibration measured EEGNet, SCCNet, and ShallowConvNet; all conservative
+    estimates covered observed allocated peak in the documented probe scope.
+  - Phi-4 baseline and anti-overfit sets were rerun for 3 repeats. Baseline is raw `6/12`, host
+    `12/12`; anti-overfit is raw `1/7`, host `7/7`. Dashboard now reports robustness separately.
+- claim boundary：
+  - Host policy safety is not raw-model accuracy.
+  - Resource calibration is bounded, not a universal full-training peak guarantee.
+  - Candidate remains dirty until final gates, commit, push, and clean-dashboard rerun.
+
+### 2026-07-18 Training runtime and terminal-publication stabilization
+
+- completed：
+  - Introduced a typed training-runtime boundary so application state, commands, and lifecycle
+    services no longer depend on private controller or manager internals.
+  - Made published training state atomic and query reads side-effect free; a closed
+    `ApplicationService` now rejects later commands and direct reads consistently.
+  - Reworked terminal training-result delivery into a retained, finite-retry ledger: failed
+    notifications are not silently lost, newer runs do not erase older undelivered runs, and
+    shutdown no longer waits indefinitely on an external callback.
+  - Synchronous training now reports a recoverable failure when training finishes but final
+    application updates cannot be delivered, instead of falsely reporting full success.
+- validation：
+  - Full application unit suite -> `1025 passed`.
+  - Focused terminal-publication and synchronous-train delivery suite -> `17 passed`.
+- next：
+  - Close the remaining Trainer start/stop race, publication identity guard, and training-runtime
+    ownership findings before rerunning the full product gates.
+- claim boundary：
+  - This is an implementation checkpoint, not yet a manual-test candidate.
+
+### 2026-07-19 Exact training handoff and shutdown admission
+
+- completed：
+  - Replaced the shared training-completion signal with run-scoped handoff generations so each
+    synchronous Train command waits for its own terminal publication.
+  - Serialized Train admission through terminal delivery while keeping Stop reachable; duplicate
+    starts are rejected instead of sharing another run's completion state.
+  - Added explicit failure, shutdown, and close wakeups. Once close begins, queued Train commands are
+    fenced before they can enter the handler.
+  - Prevented shutdown-time saliency terminal callbacks from waiting behind the command lock; the
+    retained terminal identity is reconciled after the shutdown fence is released.
+  - Strengthened concurrent observer-batch ownership so saliency and other command publications keep
+    their own generation and result ledger under parallel execution.
+  - Updated application/controller contracts and affected test doubles to use the typed handoff
+    identity instead of private or legacy controller behavior.
+  - Redirected pytest and Python test temporaries to a repo-specific WSL shared-memory root, with a
+    portable workspace fallback and explicit override, so large test runs neither expand the
+    C-drive WSL VHD through `/tmp` nor stall on Windows-mounted workspace I/O.
+- validation：
+  - Full application unit suite -> `1062 passed`.
+  - Focused lifecycle/controller suites -> `38 passed`; adjacent application, agent, and HTTP
+    regressions -> `179 passed`.
+  - Wider training-manager and saliency-publication lifecycle suite -> `146 passed`.
+  - Test temporary-root and runner regressions -> `7 passed`; previously stalled Data Interpretation
+    scan cases completed in `0.28s` each, and the 15 GB logical cache fixture allocated only `76 KB`
+    in WSL shared memory; Ruff and BasedPyright -> PASS.
+  - Isolated `run_tests.py regression` entrypoint -> `5 passed`; WSL `/tmp` remained at `4.7 MB`.
+  - Independent close-race reproducer -> `0/10` queued Train commands admitted after close;
+    `10/10` correctly fenced.
+  - Shutdown-fence regression -> `7 passed`; real saliency lifecycle adjacency -> `2 passed`.
+  - Architecture guard, Ruff, BasedPyright, and focused Mypy checks -> PASS.
+- next：
+  - Resolve independent-review blockers in local-model cancellation, deferred UI handoff
+    correlation, Data Interpretation rollback, and low-mock visible workflows.
+  - Then run the wider product workflow, multi-dataset, visible UI, and documentation gates before
+    preparing a manual-test candidate.
+- claim boundary：
+  - This is a validated backend lifecycle checkpoint, not yet a product handoff or manual-test
+    candidate.
+  - Linux free blocks were trimmed online, but reclaiming the already-expanded Windows VHDX
+    allocation still requires a later user-approved offline compact operation.
+
+### 2026-07-19 Lazy workflow handoff correlation
+
+- completed：
+  - Kept an assistant workflow request pending while its target panel is loaded lazily, then opened
+    the requested dialog with the same request and completion session.
+  - Made dialog completion, cancellation, failure, Stop-before-ready, and duplicate ready callbacks
+    settle at most one correlated terminal outcome.
+  - Preserved panel-only navigation as a terminal UI handoff instead of treating it as a pending
+    modal workflow.
+- validation：
+  - Focused lazy-handoff lifecycle suite -> `47 passed`.
+  - Adjacent assistant manager/runtime/dispatcher regression suite -> `163 passed`.
+  - Ruff and scoped BasedPyright -> PASS.
+- claim boundary：
+  - This closes the host-side lazy-panel correlation defect. A typed panel-preparation failure
+    callback is still needed before failure followed by a later manual retry can be distinguished
+    end to end.
+  - This is a validated UI-agent lifecycle checkpoint, not yet a product handoff candidate.
+
+### 2026-07-19 Per-study application-service lifecycle
+
+- completed：
+  - Replaced the cross-study application-service lifecycle critical section with a lock owned by
+    each `Study`.
+  - Preserved atomic reuse, close, and replacement for the same `Study` while allowing an unrelated
+    `Study` to create its service during a slow close.
+- validation：
+  - Test-first cross-study close/create concurrency regression -> PASS.
+  - Runtime lifecycle suite -> `9 passed`; adjacent close/shutdown regressions -> `19 passed`.
+  - Ruff and scoped BasedPyright -> PASS.
+- claim boundary：
+  - This removes one verified cross-study contention path; it is not a general performance or
+    multi-study product-completeness claim.
+
+### 2026-07-19 Local-model generation ownership
+
+- completed：
+  - Added a per-generation local-model lease with its own cancellation event and retained
+    model/tokenizer ownership until the native generation thread actually exits.
+  - Blocked overlapping generation, model switching, unload, and worker shutdown from clearing
+    resources still used by a live generation.
+  - Propagated cancellation failure through the engine and Qt worker instead of reporting a false
+    successful stop.
+- validation：
+  - Main-agent rerun of adjacent local backend, engine, and worker lifecycle tests -> `88 passed`.
+  - Ruff and scoped BasedPyright -> PASS.
+- claim boundary：
+  - Python cannot safely force-kill a model/driver call that ignores stopping criteria. In that
+    case XBrainLab now remains explicitly blocked and retains resources until the thread exits.
+  - No long-session real-model or GPU-driver acceptance was run in this slice.
+
+### 2026-07-19 Atomic timestamp-label failure semantics
+
+- completed：
+  - Restricted reviewed timestamp-label application to the staged `Raw` path and removed the
+    per-target compatibility fallback.
+  - Restored every target after a commit error and retained structured commit/rollback diagnostics.
+  - Converted incomplete rollback into a non-recoverable `state_unknown` application failure;
+    ApplicationService now marks its published state unreliable even when the partially mutated
+    state remains structurally readable.
+- validation：
+  - Main-agent rerun of timestamp/BIDS/label unit coverage -> `68 passed`.
+  - ApplicationService workflow integration -> `20 passed`; focused combined regression after
+    command-envelope hardening -> `50 passed`.
+  - Ruff and scoped BasedPyright -> PASS.
+- claim boundary：
+  - The current Raw graph still uses multi-target commit with compensation rather than a single
+    no-fail graph swap. Compensation failure is now explicit and fail-closed, not impossible.
+  - The full multi-dataset gate remains pending.
+
+### 2026-07-19 Data Interpretation reader lifecycle
+
+- completed：
+  - Closed MNE header readers, embedded-event readers, and bounded directory iterators on success,
+    fallback, early exit, and read failure.
+  - Kept cleanup best-effort so a close failure cannot hide the original metadata or scan error.
+- validation：
+  - Main-agent rerun of adjacent scan, candidate, resource-guard, and lifecycle tests ->
+    `119 passed`.
+  - Ruff, scoped BasedPyright, and scoped diff check -> PASS.
+- claim boundary：
+  - This closes the verified reader-leak paths; long Windows descriptor-stress and the full
+    multi-dataset product gate remain pending.
+
+### 2026-07-19 Lazy-panel failure correlation
+
+- completed：
+  - Added a typed panel-preparation failure callback and cleared stale ready callbacks before a
+    failed first open can be retried.
+  - Correlated assistant handoffs now fail once; a later manual panel retry cannot open the old
+    request's dialog.
+- validation：
+  - Main-agent rerun across handoff host, MainWindow, AgentManager, and Qt integration ->
+    `255 passed`.
+  - Ruff, scoped BasedPyright, and scoped diff check -> PASS.
+- claim boundary：
+  - Legacy non-MainWindow navigation doubles that expose only `on_ready` cannot publish a typed
+    terminal preparation failure.
+
+### 2026-07-19 Correlated diagnostic-tool turns
+
+- completed：
+  - Routed debug-script tools through the same `generation + turn_id` admission lease as normal
+    assistant turns.
+  - Added an immutable diagnostic request envelope, queued delivery acknowledgement, stale-request
+    rejection, and UI admission tracking.
+- validation：
+  - Adjacent dispatcher, lifecycle, AgentManager, controller, and debug integration suite ->
+    `417 passed`.
+  - Ruff, scoped BasedPyright, and scoped diff check -> PASS.
+- claim boundary：
+  - This secures the diagnostic transport identity; it does not claim local-model tool-selection
+    accuracy or replace the later product walkthrough gate.
+
+### 2026-07-19 Backend regression-gate convergence
+
+- completed：
+  - Replaced stale timestamp-label `MagicMock` targets with minimal real MNE `RawArray` fixtures, so
+    reviewed timestamp, sample-index, multi-file, anchored, and interval imports exercise the
+    atomic product path.
+  - Corrected the Study training lifecycle test to use the explicit interactive/nonblocking mode
+    it was intended to verify.
+- validation：
+  - Full backend unit gate -> `4118 passed, 1 skipped`.
+  - Focused real-Raw and Study lifecycle rerun -> `6 passed`.
+  - Ruff, format check, and scoped diff check -> PASS.
+- claim boundary：
+  - The skipped invalid-device-index case is intentionally not run while CUDA is available.
+  - This is backend regression evidence, not yet the required multi-dataset or visible product
+    handoff gate.
+
+### 2026-07-19 User-safe unexpected error boundary
+
+- completed：
+  - Centralized unexpected Training and Data Import exception presentation so technical exception
+    text, paths, and tracebacks remain in logs while dialogs show stable recovery guidance.
+  - Preserved structured backend/domain messages for expected blocked, validation, resource, and
+    recoverable failure outcomes.
+- validation：
+  - Focused privacy and real async-worker regressions -> `9 passed`.
+  - Adjacent Training and Data Import UI suite -> `238 passed`.
+  - Ruff, format check, scoped BasedPyright, and scoped diff check -> PASS.
+- claim boundary：
+  - This sweep covers the Training sidebar and Dataset action surfaces, not every dialog in the
+    GUI; native Windows message-box and DPI acceptance remains pending.
+
+### 2026-07-19 Test temporary-storage safety
+
+- completed：
+  - Kept automated test temporary files on the Linux temporary runtime path instead of the
+    Windows-mounted workspace, preventing repeated test runs from continuously consuming C-drive
+    space.
+  - Audited the current WSL storage footprint and retained active environments, local models, and
+    Codex session data rather than deleting user-relevant caches indiscriminately.
+- validation：
+  - Temporary-path regression and runtime-path unit gate -> `6 passed`.
+  - Current snapshots: C drive has about `46 GB` available; `/dev/shm` uses less than `6 MB`.
+- claim boundary：
+  - Existing WSL virtual-disk allocation is not automatically returned to Windows after files are
+    removed; no WSL shutdown or virtual-disk compaction was performed.
+
+### 2026-07-19 Current multi-dataset product gate
+
+- completed：
+  - Revalidated downloaded public EEG fixtures and the Data Interpretation lifecycle across GDF,
+    EDF/BDF, CNT, EEGLAB SET, BrainVision, FIF, BIDS EEG, and external MAT/CSV/TSV/TXT labels.
+  - Exercised class-grounded one-epoch training on PhysioNet EDF and BBCI GDF, plus explicit
+    load/preprocess/epoch-only boundaries for SCCN EEGLAB and MNE CNT.
+- validation：
+  - Fixture integrity -> all required public fixtures verified.
+  - Strict interpretation matrix -> `20/20` workflows, `14/14` required formats, `11/11`
+    reviewed label/event cases, and `5` public source families passed.
+  - Real IO, public BIDS, and cross-source integration -> `36 passed`.
+  - Strict cross-source runner -> `4/4` required cases passed.
+- claim boundary：
+  - Converted formats from one source do not count as independent dataset diversity.
+  - CNT and the SCCN tutorial fixture provide epoch evidence only, not supervised-class claims.
+  - This gate does not replace current UI walkthrough, native Windows, or Saliency lifecycle
+    acceptance.
+
+### 2026-07-19 Assistant stop lifecycle
+
+- completed：
+  - Made one user Stop request issue exactly one backend cancellation; generation-thread completion
+    now only releases ownership and publishes the correlated terminal acknowledgement.
+  - Preserved the single cancelled response and rejection of late model text.
+- validation：
+  - Real Qt stop and close-during-generation regressions -> `2 passed`.
+  - Adjacent worker lifecycle tests -> `59 passed`; focused post-format rerun -> `7 passed`.
+  - Ruff lint and format checks -> PASS.
+- claim boundary：
+  - This closes the verified duplicate-cancel lifecycle path; the full UI and local-LLM product
+    gates remain pending.
+
+### 2026-07-19 Application publication lifecycle boundary
+
+- completed：
+  - Moved training/saliency observer registration, terminal publication delivery, retry
+    reconciliation, and observer cleanup out of `ApplicationService` into a focused lifecycle
+    component.
+  - Kept thin compatibility delegates so existing command, shutdown, and headless workflows retain
+    the same behavior.
+- validation：
+  - Publication, runtime-close, ApplicationService, and saliency lifecycle regression suite ->
+    `224 passed`.
+  - Ruff and scoped BasedPyright -> PASS.
+- claim boundary：
+  - This is one validated architecture slice; ApplicationService construction ownership and the
+    remaining command-orchestration size still require separate closure.
+
+### 2026-07-19 Explicit ApplicationService runtime ownership
+
+- completed：
+  - Removed the constructor metaclass that silently returned a Study-cached service.
+  - Made `get_application_service()` the sole product owner of shared service creation and added an
+    architecture guard against direct product construction.
+- validation：
+  - Runtime atomicity, observer cleanup, service/saliency lifecycle, architecture, MCP adapter, and
+    walkthrough-script regressions -> `439 passed`.
+  - Ruff and scoped BasedPyright -> PASS.
+- claim boundary：
+  - Direct construction remains available for isolated tests; shared UI/agent/headless product
+    sessions must use the runtime factory.
+
+### 2026-07-19 Publication, architecture, and 3D Saliency stabilization
+
+- completed：
+  - Strengthened the architecture guard to follow common aliases, containers, `getattr`, `cast`,
+    and compatibility-gate forwarding instead of checking only direct calls.
+  - Kept external-label preview and final import on one reviewed application publication, including
+    preview retries and stale-review recovery.
+  - Reused one bounded, file-identity-aware 3D mesh cache so repeated Saliency rendering no longer
+    reloads and triangulates the same native assets every cycle.
+- validation：
+  - Architecture tests -> `232 passed`; standalone product guard, Ruff, and BasedPyright -> PASS.
+  - Real A01T/MAT label-preview workflow plus adjacent UI/backend regressions -> `66 passed`.
+  - WSLg/xcb 3D stress -> `2` warm-up + `12` measured cycles, `14/14` closes, `0` late callbacks,
+    about `12.5 MiB` steady RSS growth; focused native suite -> `61 passed`.
+- claim boundary：
+  - Static guards cannot prove arbitrary runtime reflection, and WSLg evidence does not replace
+    native Windows acceptance. The broader handoff walkthrough remains pending.
+
+### 2026-07-19 Dataset identity and local-model lifecycle
+
+- completed：
+  - Bound Dataset row actions to publication generation plus canonical file identity, so delayed
+    metadata edits, removal, and recipe actions fail closed after reorder or refresh.
+  - Bound Saliency settings to the exact result publication/run/model and rejected stale dialogs.
+  - Moved local-model inspection out of dialog construction and made download-thread start failure,
+    close, and broken-cache cleanup terminal and owner-safe.
+- validation：
+  - Main-agent focused reruns -> Dataset `258 passed`, Saliency `180 passed`, model lifecycle
+    `206 passed`.
+  - Ruff and scoped BasedPyright -> PASS.
+- claim boundary：
+  - These guards protect the verified publication and Qt ownership paths; final local-model
+    long-session and native Windows acceptance remain pending.
+
+### 2026-07-19 Actionable label failure and training restart
+
+- completed：
+  - Preserved the exact reviewed timestamp-label validation reason through atomic rollback instead
+    of replacing it with a generic `0/1 files` failure; unexpected internal exceptions remain
+    sanitized.
+  - Removed the OOM retry lock inversion by waiting for terminal notification and monitor
+    retirement before entering the application command lock. Cleanup timeout now returns a
+    recoverable precondition instead of starting an overlapping run.
+- validation：
+  - Main-agent label failure/rollback rerun -> `5 passed`.
+  - Main-agent OOM restart, monitor lifecycle, and training UI compatibility rerun -> `26 passed`.
+  - Architecture tests -> `232 passed`; standalone architecture guard, Ruff, and scoped
+    BasedPyright -> PASS.
+- claim boundary：
+  - The final complete unit/integration rerun and current UI walkthrough are still required before
+    this branch can be called a handoff candidate.
+
+### 2026-07-19 Current UI and resource evidence refresh
+
+- completed：
+  - Re-rendered and visually reviewed Saliency empty/single/multi-method states, Data Splitting
+    Step 2, and Model Selection from the current source tree.
+  - Regenerated the bounded RTX 5070 Ti calibration after resource-estimator source changes.
+- validation：
+  - Saliency empty state is complete, single-method mode has no tabs, multi-method mode uses
+    compact tabs, and all reviewed surfaces are free of the prior stray vertical-line artifacts.
+  - EEGNet, SCCNet, and ShallowConvNet observed single-step peaks remain covered by their
+    conservative estimates; the calibration source digest is current.
+  - Visible Data Import format/BIDS gate -> `10 passed`.
+- claim boundary：
+  - The focused screenshots do not replace the final full product walkthrough or human Windows
+    click-through.

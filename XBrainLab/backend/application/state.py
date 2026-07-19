@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyStatus,
+    TrainingOutcomeState,
+    TrainingTerminalOutcome,
+)
+
 from .serialization import serialize_json_value
 
 
@@ -78,7 +84,13 @@ class TrainingStateSnapshot:
     plan_count: int = 0
     run_count: int = 0
     finished_run_count: int = 0
+    read_generation: int = 0
     progress_message: str | None = None
+    terminal_outcome: TrainingTerminalOutcome = field(
+        default_factory=lambda: TrainingTerminalOutcome(
+            state=TrainingOutcomeState.UNKNOWN,
+        )
+    )
     missing_requirements: list[str] = field(default_factory=list)
 
 
@@ -94,6 +106,40 @@ class EvaluationStateSnapshot:
 
 
 @dataclass(frozen=True)
+class SaliencyClassCoverageSnapshot:
+    """Availability of one renderable saliency method/class combination."""
+
+    class_index: int
+    display_name: str
+    event_code: Any | None = None
+    store_key: Any | None = None
+    available: bool = False
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class SaliencyMethodCoverageSnapshot:
+    """Per-class coverage for one saliency method in one finished run."""
+
+    method: str
+    available: bool = False
+    complete: bool = False
+    classes: list[SaliencyClassCoverageSnapshot] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SaliencyRunCoverageSnapshot:
+    """Structured saliency coverage for one plan/run evaluation record."""
+
+    plan_index: int
+    run_index: int
+    plan_name: str = ""
+    model_name: str = ""
+    run_name: str = ""
+    methods: list[SaliencyMethodCoverageSnapshot] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class VisualizationStateSnapshot:
     """Snapshot of visualization readiness."""
 
@@ -105,6 +151,12 @@ class VisualizationStateSnapshot:
     saliency_params: dict[str, Any] = field(default_factory=dict)
     montage_channels: list[str] = field(default_factory=list)
     montage_positions: list[list[float]] = field(default_factory=list)
+    saliency_coverage: list[SaliencyRunCoverageSnapshot] = field(
+        default_factory=list,
+    )
+    post_training_saliency: PostTrainingSaliencyStatus = field(
+        default_factory=PostTrainingSaliencyStatus.idle,
+    )
 
 
 @dataclass(frozen=True)
@@ -164,6 +216,7 @@ class ActiveTrainingSnapshot:
     has_training_option: bool = False
     has_trainer: bool = False
     is_running: bool = False
+    finished_run_count: int = 0
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from XBrainLab.backend.application.data_interpretation_metadata import (
+    DATASET_DESCRIPTION_MAX_BYTES,
     FileMetadataResolution,
     MetadataFieldResolution,
     bids_summary,
@@ -76,6 +79,28 @@ def test_bids_summary_collects_entities_and_dataset_description(tmp_path: Path):
     assert summary["participants"] == [
         {"participant_id": "sub-01", "age": "29", "sex": "F"}
     ]
+
+
+def test_bids_summary_bounds_dataset_description_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    description = tmp_path / "dataset_description.json"
+    description.write_text("{}", encoding="utf-8")
+    with description.open("ab") as handle:
+        handle.truncate(DATASET_DESCRIPTION_MAX_BYTES + 1)
+    original_read_text = Path.read_text
+
+    def _guarded_read_text(path: Path, *args, **kwargs):
+        if path == description:
+            pytest.fail("dataset_description.json used unbounded read_text")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _guarded_read_text)
+
+    summary = bids_summary(tmp_path, "bids", [], [])
+
+    assert summary["dataset"] == {}
 
 
 def test_file_metadata_from_dict_round_trips_minimal_payload():

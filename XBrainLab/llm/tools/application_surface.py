@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Any
-from unittest.mock import Mock
+from dataclasses import dataclass, field, replace
+from typing import Any, Protocol, cast
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -23,57 +22,172 @@ from XBrainLab.backend.application import (
     PreviewInterpretationCommand,
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
+    ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
+    StopTrainingCommand,
     TrainCommand,
     ValidateInterpretationCommand,
     VisualizeCommand,
     get_application_service,
 )
-from XBrainLab.backend.application.capabilities import CommandCapability
+from XBrainLab.backend.application.capabilities import (
+    UNRELIABLE_STATE_ALLOWED_COMMAND_NAMES,
+    CapabilityPolicy,
+    CommandCapability,
+    build_capability_policy,
+)
+from XBrainLab.backend.application.view_publication import (
+    PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
+    ApplicationViewPublication,
+)
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training.input_contract import (
+    TrainingInputContractError,
+    normalize_non_negative_integer,
+    normalize_positive_integer,
+    normalize_strict_boolean,
+    normalize_training_input,
+)
+from XBrainLab.llm.action_contracts import (
+    AGENT_ACTION_CONTRACTS,
+    AgentExecutionKind,
+)
+
+from .result_contract import (
+    APPLICATION_TOOL_RUNTIME_REQUIRED_FAILURE,
+    ToolResult,
+    UiRequest,
+    public_safe_result_projection,
+)
 
 
 class CapabilityPolicyUnavailableError(RuntimeError):
-    """Raised when a non-production Study object cannot provide real policy."""
+    """Raised when no application runtime can provide capability policy."""
 
 
 CapabilityPolicyUnavailable = CapabilityPolicyUnavailableError
 
 
-TOOL_TO_COMMAND: dict[str, CommandName] = {
-    "scan_source": CommandName.SCAN_SOURCE,
-    "preview_interpretation": CommandName.PREVIEW_INTERPRETATION,
-    "validate_interpretation": CommandName.VALIDATE_INTERPRETATION,
-    "apply_interpretation": CommandName.APPLY_INTERPRETATION,
-    "save_interpretation_recipe": CommandName.SAVE_INTERPRETATION_RECIPE,
-    "reload_interpretation_recipe": CommandName.RELOAD_INTERPRETATION_RECIPE,
-    "load_data": CommandName.LOAD_DATA,
-    "attach_labels": CommandName.ATTACH_LABELS,
-    "apply_standard_preprocess": CommandName.PREPROCESS,
-    "apply_bandpass_filter": CommandName.PREPROCESS,
-    "apply_notch_filter": CommandName.PREPROCESS,
-    "resample_data": CommandName.PREPROCESS,
-    "normalize_data": CommandName.PREPROCESS,
-    "set_reference": CommandName.PREPROCESS,
-    "select_channels": CommandName.PREPROCESS,
-    "set_montage": CommandName.APPLY_MONTAGE,
-    "epoch_data": CommandName.CREATE_EPOCH,
-    "generate_dataset": CommandName.GENERATE_DATASET,
-    "set_model": CommandName.CONFIGURE_TRAINING,
-    "configure_training": CommandName.CONFIGURE_TRAINING,
-    "start_training": CommandName.TRAIN,
-    "evaluate": CommandName.EVALUATE,
-    "visualize": CommandName.VISUALIZE,
-    "saliency": CommandName.SALIENCY,
-    "clear_dataset": CommandName.RESET_SESSION,
-    "query_state": CommandName.QUERY_STATE,
-}
+class HostAuthorizedToolParameter(str):
+    """Marker for values created by host policy rather than model JSON."""
 
-READ_ONLY_TOOLS = frozenset({"list_files", "get_dataset_info", "switch_panel"})
-UI_REQUEST_TOOLS = frozenset({"set_montage"})
+
+class UserProvidedTrainingOutputDir(HostAuthorizedToolParameter):
+    """Output directory authorized against the current user-authored turn."""
+
+
+class AuthoritativeConfirmationParameter(HostAuthorizedToolParameter):
+    """Display-only confirmation value projected from backend state."""
+
+
+@dataclass(frozen=True, slots=True)
+class StartTrainingConfirmationTruth:
+    """Backend-owned values that must be shown before training starts."""
+
+    output_directory: str
+    checkpoint_epoch: int
+
+    @property
+    def checkpoint_policy(self) -> str:
+        if self.checkpoint_epoch == 0:
+            return "Disabled"
+        suffix = "" if self.checkpoint_epoch == 1 else "s"
+        return f"Every {self.checkpoint_epoch} epoch{suffix}"
+
+    def as_host_parameters(
+        self,
+    ) -> dict[str, AuthoritativeConfirmationParameter]:
+        return {
+            "output_directory": AuthoritativeConfirmationParameter(
+                self.output_directory
+            ),
+            "checkpoint_policy": AuthoritativeConfirmationParameter(
+                self.checkpoint_policy
+            ),
+        }
+
+
+def start_training_confirmation_truth(
+    state: dict[str, Any] | None,
+) -> StartTrainingConfirmationTruth | None:
+    """Read confirmation values from one authoritative backend state snapshot."""
+    if not isinstance(state, dict):
+        return None
+    training = state.get("training")
+    if not isinstance(training, dict):
+        return None
+    option = training.get("training_option")
+    if not isinstance(option, dict):
+        return None
+    output_directory = option.get("output_dir")
+    checkpoint_epoch = option.get("checkpoint_epoch")
+    if not isinstance(output_directory, str) or not output_directory.strip():
+        return None
+    if (
+        isinstance(checkpoint_epoch, bool)
+        or not isinstance(checkpoint_epoch, int)
+        or checkpoint_epoch < 0
+    ):
+        return None
+    return StartTrainingConfirmationTruth(
+        output_directory=output_directory,
+        checkpoint_epoch=checkpoint_epoch,
+    )
+
+
+class ApplicationToolRuntime(Protocol):
+    """Application command boundary required by the agent tool surface."""
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        """Return one committed state/capability publication."""
+        ...
+
+    def execute(self, command: Command) -> CommandResult:
+        """Execute a command through the application command spine."""
+        ...
+
+
+@dataclass(frozen=True)
+class _StudyApplicationToolRuntime:
+    """Production adapter from a real Study to ApplicationService."""
+
+    study: Study
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        return get_application_service(self.study).get_view_publication()
+
+    def execute(self, command: Command) -> CommandResult:
+        return get_application_service(self.study).execute(command)
+
+
+def application_tool_runtime(study: Any) -> ApplicationToolRuntime | None:
+    """Return the production runtime only for a genuine Study implementation."""
+    if not issubclass(type(study), Study):
+        return None
+    return _StudyApplicationToolRuntime(cast(Study, study))
+
+
+def _resolve_application_tool_runtime(
+    study: Any,
+    runtime: ApplicationToolRuntime | None,
+) -> ApplicationToolRuntime | None:
+    return runtime if runtime is not None else application_tool_runtime(study)
+
+
+TOOL_TO_COMMAND: dict[str, CommandName] = AGENT_ACTION_CONTRACTS.tool_to_command()
+
+APPLICATION_COMMAND_TOOLS = AGENT_ACTION_CONTRACTS.tool_names_for_kind(
+    AgentExecutionKind.APPLICATION_COMMAND
+)
+READ_ONLY_TOOLS = AGENT_ACTION_CONTRACTS.tool_names_for_kind(
+    AgentExecutionKind.READ_ONLY
+)
+UI_REQUEST_TOOLS = AGENT_ACTION_CONTRACTS.tool_names_for_kind(
+    AgentExecutionKind.UI_REQUEST
+)
 
 
 @dataclass(frozen=True)
@@ -123,6 +237,17 @@ class ToolAvailability:
 
 
 @dataclass(frozen=True)
+class ToolAvailabilityContext:
+    """One tool policy decision and state from the same publication."""
+
+    availability: ToolAvailability
+    state: dict[str, Any] | None
+    generation: int | None
+    policy_error: str | None = None
+    capabilities: CapabilityPolicy | None = None
+
+
+@dataclass(frozen=True)
 class ToolCommandResult:
     """Agent-facing structured result for ApplicationService-backed tools."""
 
@@ -132,12 +257,24 @@ class ToolCommandResult:
     command_name: str | None = None
     raw_result: Any = None
     error_type: str | None = None
+    error_code: str | None = None
+    recovery_action: str | None = None
     recoverable: bool = True
     blocked_reason: str | None = None
     state: dict[str, Any] | None = None
     capability: dict[str, Any] | None = None
     diagnostics: dict[str, Any] = field(default_factory=dict)
     changed_state: dict[str, bool] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.ok:
+            return
+        projection = public_safe_result_projection(
+            message=self.message,
+            blocked_reason=self.blocked_reason,
+        )
+        object.__setattr__(self, "message", projection.message)
+        object.__setattr__(self, "blocked_reason", projection.blocked_reason)
 
     def __str__(self) -> str:
         return self.message
@@ -153,6 +290,7 @@ class ToolCommandResult:
         tool_name: str,
         availability: ToolAvailability,
         state: dict[str, Any] | None = None,
+        diagnostics: dict[str, Any] | None = None,
     ) -> ToolCommandResult:
         """Build a failed result from a shared capability-policy block."""
         reason = availability.reason_text or "Tool is not available right now."
@@ -172,6 +310,7 @@ class ToolCommandResult:
             blocked_reason=reason,
             state=state,
             capability=availability.to_dict(),
+            diagnostics=dict(diagnostics or {}),
         )
 
     @classmethod
@@ -184,9 +323,13 @@ class ToolCommandResult:
         capability: dict[str, Any] | None = None,
         raw_result: Any = None,
         error_type: str = "runtime",
+        error_code: str | None = None,
+        recovery_action: str | None = None,
         recoverable: bool = True,
+        diagnostics: dict[str, Any] | None = None,
+        changed_state: dict[str, bool] | None = None,
     ) -> ToolCommandResult:
-        """Build a failed structured result for a legacy tool failure."""
+        """Build a failed structured tool result."""
         return cls(
             ok=False,
             tool_name=tool_name,
@@ -194,9 +337,13 @@ class ToolCommandResult:
             message=message,
             raw_result=raw_result,
             error_type=error_type,
+            error_code=error_code,
+            recovery_action=recovery_action,
             recoverable=recoverable,
             state=state,
             capability=capability,
+            diagnostics=dict(diagnostics or {}),
+            changed_state=dict(changed_state or {}),
         )
 
     @classmethod
@@ -216,68 +363,112 @@ class ToolCommandResult:
             error_type=result.error_type.value,
             recoverable=result.recoverable,
             blocked_reason=result.error_message if result.failed else None,
-            state=result.state.to_dict() if hasattr(result.state, "to_dict") else None,
+            state=(
+                result.state.to_dict()
+                if hasattr(result.state, "to_dict")
+                else dict(result.state)
+                if isinstance(result.state, dict)
+                else None
+            ),
             capability=capability,
             diagnostics=result.diagnostics,
             changed_state=result.changed_state.to_dict(),
         )
 
     @classmethod
-    def from_compatibility_result(
+    def from_tool_result(
         cls,
         tool_name: str,
-        raw_result: Any,
+        result: ToolResult,
         availability: ToolAvailability | None = None,
         state: dict[str, Any] | None = None,
     ) -> ToolCommandResult:
-        """Wrap a compatibility string/object tool result with stable semantics."""
-        message = str(raw_result) if raw_result is not None else ""
-        ok = legacy_tool_result_succeeded(message)
-        error_type = None if ok else legacy_tool_error_type(message)
+        """Convert an explicit non-ApplicationService tool result."""
+        diagnostics = dict(result.diagnostics)
+        if not diagnostics and isinstance(result.payload, dict):
+            diagnostics = dict(result.payload)
         return cls(
-            ok=ok,
+            ok=result.ok,
             tool_name=tool_name,
-            command_name=(
+            command_name=result.command_name
+            or (
                 availability.command_name
                 if availability
                 else _command_name_for_tool(tool_name)
             ),
-            message=message,
-            raw_result=raw_result,
-            error_type=error_type,
-            recoverable=True,
-            blocked_reason=None if ok else message,
-            state=state,
-            capability=availability.to_dict() if availability else None,
+            message=result.message,
+            raw_result=result.payload,
+            error_type=result.error_type,
+            error_code=result.error_code,
+            recovery_action=result.recovery_action,
+            recoverable=result.recoverable,
+            blocked_reason=None if result.ok else result.message,
+            state=result.state if result.state is not None else state,
+            capability=(
+                result.capability
+                if result.capability is not None
+                else availability.to_dict()
+                if availability
+                else None
+            ),
+            diagnostics=diagnostics,
+            changed_state=dict(result.changed_state),
         )
 
     def to_payload(self) -> dict[str, Any]:
         """Return JSON-friendly payload for the next agent turn."""
+        projection = public_safe_result_projection(
+            message=self.message,
+            blocked_reason=self.blocked_reason,
+            raw_result=self.raw_result,
+            state=self.state,
+            capability=self.capability,
+            diagnostics=self.diagnostics,
+        )
         return {
             "ok": self.ok,
             "tool_name": self.tool_name,
             "command_name": self.command_name,
-            "message": self.message,
+            "message": projection.message,
             "error_type": self.error_type,
+            "error_code": self.error_code,
+            "recovery_action": self.recovery_action,
             "recoverable": self.recoverable,
-            "blocked_reason": self.blocked_reason,
-            "state": self.state,
-            "capability": self.capability,
-            "diagnostics": self.diagnostics,
-            "raw_result": self.raw_result,
+            "blocked_reason": projection.blocked_reason,
+            "state": projection.state,
+            "capability": projection.capability,
+            "diagnostics": projection.diagnostics,
+            "changed_state": self.changed_state,
+            "raw_result": projection.raw_result,
         }
 
 
-def build_agent_tool_policy(study: Any) -> dict[str, ToolAvailability]:
+def build_agent_tool_policy(
+    study: Any,
+    *,
+    publication: ApplicationViewPublication | None = None,
+    runtime: ApplicationToolRuntime | None = None,
+) -> dict[str, ToolAvailability]:
     """Return agent tool availability from the ApplicationService policy."""
-    if not isinstance(study, Study) or isinstance(study, Mock):
+    application_runtime = _resolve_application_tool_runtime(study, runtime)
+    if application_runtime is None:
         raise CapabilityPolicyUnavailableError(
-            "ApplicationService policy requires a real Study instance.",
+            "ApplicationService policy requires a genuine Study or an explicit "
+            "ApplicationToolRuntime.",
         )
 
-    service = get_application_service(study)
-    app_policy = service.get_capabilities()
-    state = service.get_state()
+    current = publication
+    if current is None:
+        current = application_runtime.get_view_publication()
+    return _build_agent_tool_policy_from_publication(current)
+
+
+def _build_agent_tool_policy_from_publication(
+    publication: ApplicationViewPublication,
+) -> dict[str, ToolAvailability]:
+    """Build one tool policy from a single committed application generation."""
+    app_policy = publication.effective_capabilities
+    state = publication.state
 
     tool_policy: dict[str, ToolAvailability] = {}
     for tool_name, command_name in TOOL_TO_COMMAND.items():
@@ -303,26 +494,66 @@ def build_agent_tool_policy(study: Any) -> dict[str, ToolAvailability]:
         ),
         read_only=True,
     )
+    if not publication.usable:
+        reason = publication.public_unavailable_reason or (
+            PUBLIC_VIEW_UNAVAILABLE_MESSAGE
+        )
+        tool_policy = {
+            name: (
+                availability
+                if (availability.command_name in UNRELIABLE_STATE_ALLOWED_COMMAND_NAMES)
+                else replace(
+                    availability,
+                    enabled=False,
+                    reasons=(reason,),
+                    can_auto_execute=False,
+                )
+            )
+            for name, availability in tool_policy.items()
+        }
     return tool_policy
 
 
 def get_application_context(
     study: Any,
     tool_name: str,
-) -> tuple[ToolAvailability | None, dict[str, Any] | None]:
+    *,
+    runtime: ApplicationToolRuntime | None = None,
+) -> ToolAvailabilityContext | None:
     """Return availability and current state for a tool, when available."""
-    try:
-        availability = get_tool_availability(study, tool_name)
-    except CapabilityPolicyUnavailableError:
-        return None, None
+    application_runtime = _resolve_application_tool_runtime(study, runtime)
+    if application_runtime is None:
+        return None
+    publication = application_runtime.get_view_publication()
+    policy = _build_agent_tool_policy_from_publication(publication)
+    availability = policy.get(
+        tool_name,
+        ToolAvailability(
+            tool_name=tool_name,
+            enabled=False,
+            reasons=("Tool is not part of the unified ApplicationService surface.",),
+        ),
+    )
+    policy_error = None
+    if not publication.usable:
+        policy_error = publication.public_unavailable_reason
+    return ToolAvailabilityContext(
+        availability=availability,
+        state=publication.state.to_dict(),
+        generation=publication.generation,
+        policy_error=policy_error,
+        capabilities=publication.effective_capabilities,
+    )
 
-    state = _state_snapshot_dict(study)
-    return availability, state
 
-
-def get_tool_availability(study: Any, tool_name: str) -> ToolAvailability:
+def get_tool_availability(
+    study: Any,
+    tool_name: str,
+    *,
+    runtime: ApplicationToolRuntime | None = None,
+) -> ToolAvailability:
     """Return a single tool availability record."""
-    policy = build_agent_tool_policy(study)
+    policy = build_agent_tool_policy(study, runtime=runtime)
     if tool_name in policy:
         return policy[tool_name]
     return ToolAvailability(
@@ -337,14 +568,23 @@ def normalize_tool_result(
     tool_name: str,
     raw_result: Any,
     availability: ToolAvailability | None = None,
-) -> ToolCommandResult:
+    state: dict[str, Any] | None = None,
+    *,
+    runtime: ApplicationToolRuntime | None = None,
+) -> ToolCommandResult | UiRequest:
     """Convert a real tool return value into a structured agent result."""
     if isinstance(raw_result, ToolCommandResult):
+        return raw_result
+    if isinstance(raw_result, UiRequest):
         return raw_result
 
     if availability is None:
         try:
-            availability = get_tool_availability(study, tool_name)
+            availability = get_tool_availability(
+                study,
+                tool_name,
+                runtime=runtime,
+            )
         except CapabilityPolicyUnavailableError:
             availability = None
 
@@ -356,11 +596,32 @@ def normalize_tool_result(
             capability=capability,
         )
 
-    return ToolCommandResult.from_compatibility_result(
+    if not isinstance(raw_result, ToolResult):
+        return ToolCommandResult.failure(
+            tool_name,
+            "The assistant tool returned an invalid result contract.",
+            command_name=(
+                availability.command_name
+                if availability
+                else _command_name_for_tool(tool_name)
+            ),
+            state=(
+                state
+                if state is not None
+                else _state_snapshot_dict(study, runtime=runtime)
+            ),
+            capability=capability,
+            error_type="contract",
+            recoverable=False,
+            diagnostics={"returned_type": type(raw_result).__name__},
+        )
+    return ToolCommandResult.from_tool_result(
         tool_name,
         raw_result,
         availability=availability,
-        state=_state_snapshot_dict(study),
+        state=(
+            state if state is not None else _state_snapshot_dict(study, runtime=runtime)
+        ),
     )
 
 
@@ -369,29 +630,66 @@ def execute_application_tool_command(
     tool_name: str,
     params: dict[str, Any],
     availability: ToolAvailability | None = None,
+    state: dict[str, Any] | None = None,
+    *,
+    runtime: ApplicationToolRuntime | None = None,
 ) -> ToolCommandResult | None:
     """Execute a tool through ApplicationService when a direct command exists.
 
-    ``None`` means the tool still needs the legacy real-tool path, either
-    because it is read-only/UI-side or because the study is not a real
-    ApplicationService-backed runtime. Real mapped workflow tools fail closed
-    with a typed input result when arguments cannot build a command.
+    ``None`` is reserved for tools outside the mapped product surface and for
+    mapped UI-request adapters when a runtime is present. A mapped product tool
+    without an application runtime fails closed before arguments are inspected.
     """
-    if not isinstance(study, Study) or isinstance(study, Mock):
+    contract = AGENT_ACTION_CONTRACTS.contract_for(tool_name)
+    if contract is None:
+        return None
+    if contract.execution_kind is not AgentExecutionKind.APPLICATION_COMMAND:
         return None
 
-    command = _command_for_tool(tool_name, params)
-    if command is None:
-        if tool_name in UI_REQUEST_TOOLS:
-            return None
+    application_runtime = _resolve_application_tool_runtime(study, runtime)
+    if application_runtime is None:
+        mapped_command = contract.capability_command
+        if mapped_command is None:  # guarded by registry validation
+            raise RuntimeError(
+                f"Application tool '{tool_name}' has no capability command."
+            )
+        failure = APPLICATION_TOOL_RUNTIME_REQUIRED_FAILURE
+        return ToolCommandResult.failure(
+            tool_name,
+            failure.message,
+            command_name=mapped_command.value,
+            state=state,
+            capability=availability.to_dict() if availability else None,
+            error_type=failure.error_type,
+            error_code=failure.code,
+            recovery_action=failure.recovery_action,
+            recoverable=failure.recoverable,
+            diagnostics={
+                "boundary": "application_tool_runtime",
+                "mapped_product_tool": True,
+            },
+        )
 
-        mapped_command = TOOL_TO_COMMAND.get(tool_name)
-        if mapped_command is None:
-            return None
+    input_error: str | None = None
+    try:
+        command = _command_for_tool(tool_name, params, state=state)
+    except TrainingInputContractError as exc:
+        command = None
+        input_error = str(exc)
+    if command is None:
+        mapped_command = contract.capability_command
+        if mapped_command is None:  # guarded by registry validation
+            raise RuntimeError(
+                f"Application tool '{tool_name}' has no capability command."
+            )
 
         if availability is None:
             try:
-                availability = get_tool_availability(study, tool_name)
+                availability = get_tool_availability(
+                    study,
+                    tool_name,
+                    runtime=application_runtime,
+                )
             except CapabilityPolicyUnavailableError:
                 return None
 
@@ -399,14 +697,22 @@ def execute_application_tool_command(
             return ToolCommandResult.blocked(
                 tool_name,
                 availability,
-                state=_state_snapshot_dict(study),
+                state=(
+                    state
+                    if state is not None
+                    else _state_snapshot_dict(study, runtime=application_runtime)
+                ),
             )
 
         return ToolCommandResult.failure(
             tool_name,
-            "Required inputs are missing for this workflow command.",
+            input_error or "Required inputs are missing for this workflow command.",
             command_name=mapped_command.value,
-            state=_state_snapshot_dict(study),
+            state=(
+                state
+                if state is not None
+                else _state_snapshot_dict(study, runtime=application_runtime)
+            ),
             capability=availability.to_dict(),
             error_type="input",
             recoverable=True,
@@ -414,73 +720,127 @@ def execute_application_tool_command(
 
     if availability is None:
         try:
-            availability = get_tool_availability(study, tool_name)
+            availability = get_tool_availability(
+                study,
+                tool_name,
+                runtime=application_runtime,
+            )
         except CapabilityPolicyUnavailableError:
             availability = None
 
-    result = get_application_service(study).execute(command)
+    result = application_runtime.execute(command)
+    result_availability = availability
+    mapped_command = TOOL_TO_COMMAND.get(tool_name)
+    if mapped_command is not None and hasattr(result.state, "state_reliable"):
+        capability = build_capability_policy(result.state).get(mapped_command)
+        result_availability = _from_capability(
+            tool_name,
+            mapped_command,
+            capability,
+        )
     return ToolCommandResult.from_command_result(
         tool_name,
         result,
-        capability=availability.to_dict() if availability else None,
+        capability=result_availability.to_dict() if result_availability else None,
     )
 
 
-def legacy_tool_result_succeeded(message: str) -> bool:
-    """Infer success from legacy string-only tool output."""
-    text = message.strip().lower()
-    if not text:
-        return True
-    failure_prefixes = (
-        "error:",
-        "failed",
-        "failure:",
-        "preprocessing failed",
-        "dataset generation failed",
-        "epoching failed",
-        "bandpass filter failed",
-        "notch filter failed",
-        "resample failed",
-        "normalization failed",
-        "re-reference failed",
-        "channel selection failed",
-        "failed to",
+def build_standard_preprocess_command(params: dict[str, Any]) -> PreprocessCommand:
+    """Translate standard-preprocess tool arguments into one canonical command."""
+    rereference = _optional_str(params.get("rereference"))
+    return PreprocessCommand(
+        operation=PreprocessOperation.STANDARD,
+        low_freq=_optional_float(params.get("l_freq")),
+        high_freq=_optional_float(params.get("h_freq")),
+        notch_freq=_optional_float(params.get("notch_freq")),
+        rate=_optional_int(params.get("resample_rate")),
+        method=_optional_str(params.get("normalize_method")),
+        channels=[rereference] if rereference is not None else None,
     )
-    if text.startswith(failure_prefixes):
-        return False
-    return " failed:" not in text
 
 
-def legacy_tool_error_type(message: str) -> str:
-    """Classify legacy string-only failures into product-level buckets."""
-    text = message.strip().lower()
-    if any(
-        marker in text
-        for marker in (
-            "is required",
-            "cannot be empty",
-            "does not exist",
-            "no valid files",
-            "path does not exist",
-        )
-    ):
-        return "input"
-    if any(
-        marker in text
-        for marker in (
-            "no data loaded",
-            "before training",
-            "before preprocessing",
-            "before generating",
-            "requires confirmation",
-            "not available",
-        )
-    ):
-        return "precondition"
-    return "runtime"
+def build_preview_interpretation_command(
+    params: dict[str, Any],
+) -> PreviewInterpretationCommand:
+    """Translate preview arguments, including host-only resource consent."""
+    choices = params.get("choices")
+    return PreviewInterpretationCommand(
+        scan_id=_optional_str(params.get("scan_id")),
+        choices=dict(choices) if isinstance(choices, dict) else {},
+        resource_preflight_confirmed=_boolean_param(
+            params,
+            "resource_preflight_confirmed",
+        ),
+        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
+    )
 
 
-def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
+def build_reload_interpretation_recipe_command(
+    params: dict[str, Any],
+) -> ReloadInterpretationRecipeCommand | None:
+    """Translate recipe reload arguments through the canonical agent owner."""
+    recipe_path = params.get("recipe_path")
+    if not recipe_path:
+        return None
+    return ReloadInterpretationRecipeCommand(
+        recipe_path=str(recipe_path),
+        resource_preflight_confirmed=_boolean_param(
+            params,
+            "resource_preflight_confirmed",
+        ),
+        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
+    )
+
+
+def build_load_data_command(params: dict[str, Any]) -> LoadDataCommand | None:
+    """Translate legacy direct-load arguments through one canonical owner."""
+    paths = params.get("paths")
+    if not isinstance(paths, list) or not paths:
+        return None
+    expanded_paths = _expand_load_paths([str(path) for path in paths])
+    if not expanded_paths:
+        return None
+    return LoadDataCommand(
+        paths=expanded_paths,
+        allow_append=_boolean_param(params, "allow_append", default=True),
+        resource_preflight_confirmed=_boolean_param(
+            params,
+            "resource_preflight_confirmed",
+        ),
+        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
+    )
+
+
+def build_attach_labels_command(
+    params: dict[str, Any],
+) -> AttachLabelsCommand | None:
+    """Translate legacy label paths without dropping resource receipts."""
+    mapping = params.get("mapping")
+    if not isinstance(mapping, dict) or not mapping:
+        return None
+    normalized_mapping = {
+        str(key): str(value) for key, value in mapping.items() if str(value).strip()
+    }
+    if not normalized_mapping:
+        return None
+    return AttachLabelsCommand(
+        mapping=normalized_mapping,
+        label_paths=list(dict.fromkeys(normalized_mapping.values())),
+        label_format=_optional_str(params.get("label_format")),
+        resource_preflight_confirmed=_boolean_param(
+            params,
+            "resource_preflight_confirmed",
+        ),
+        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
+    )
+
+
+def _command_for_tool(
+    tool_name: str,
+    params: dict[str, Any],
+    *,
+    state: dict[str, Any] | None = None,
+) -> Command | None:
     """Build an ApplicationService command for a supported agent tool."""
     if tool_name == "scan_source":
         source_path = params.get("source_path")
@@ -499,11 +859,7 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         )
 
     if tool_name == "preview_interpretation":
-        choices = params.get("choices")
-        return PreviewInterpretationCommand(
-            scan_id=_optional_str(params.get("scan_id")),
-            choices=dict(choices) if isinstance(choices, dict) else {},
-        )
+        return build_preview_interpretation_command(params)
 
     if tool_name == "validate_interpretation":
         return ValidateInterpretationCommand(
@@ -513,7 +869,14 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
     if tool_name == "apply_interpretation":
         return ApplyInterpretationCommand(
             candidate_id=_optional_str(params.get("candidate_id")),
-            confirmed=bool(params.get("confirmed", False)),
+            confirmed=_boolean_param(params, "confirmed"),
+            resource_preflight_confirmed=_boolean_param(
+                params,
+                "resource_preflight_confirmed",
+            ),
+            resource_preflight_token=_optional_str(
+                params.get("resource_preflight_token")
+            ),
         )
 
     if tool_name == "save_interpretation_recipe":
@@ -522,35 +885,16 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         )
 
     if tool_name == "reload_interpretation_recipe":
-        recipe_path = params.get("recipe_path")
-        if not recipe_path:
-            return None
-        return ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path))
+        return build_reload_interpretation_recipe_command(params)
 
     if tool_name == "load_data":
-        paths = params.get("paths")
-        if not isinstance(paths, list) or not paths:
-            return None
-        expanded_paths = _expand_load_paths([str(path) for path in paths])
-        if not expanded_paths:
-            return None
-        return LoadDataCommand(paths=expanded_paths)
+        return build_load_data_command(params)
 
     if tool_name == "attach_labels":
-        mapping = params.get("mapping")
-        if not isinstance(mapping, dict) or not mapping:
-            return None
-        return AttachLabelsCommand(mapping={str(k): str(v) for k, v in mapping.items()})
+        return build_attach_labels_command(params)
 
     if tool_name == "apply_standard_preprocess":
-        return PreprocessCommand(
-            operation=PreprocessOperation.STANDARD,
-            low_freq=_optional_float(params.get("l_freq")),
-            high_freq=_optional_float(params.get("h_freq")),
-            notch_freq=_optional_float(params.get("notch_freq")),
-            rate=_optional_int(params.get("resample_rate")),
-            method=_optional_str(params.get("normalize_method")),
-        )
+        return build_standard_preprocess_command(params)
 
     if tool_name == "apply_bandpass_filter":
         low_freq = params.get("low_freq")
@@ -608,6 +952,11 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
             channels=[str(channel) for channel in channels],
         )
 
+    if tool_name == "reset_preprocess":
+        return ResetPreprocessCommand(
+            confirmed=_boolean_param(params, "confirmed"),
+        )
+
     if tool_name == "epoch_data":
         t_min = params.get("t_min")
         t_max = params.get("t_max")
@@ -621,11 +970,15 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         )
 
     if tool_name == "generate_dataset":
+        split_strategy = params.get("split_strategy")
+        training_mode = params.get("training_mode")
+        if not split_strategy or not training_mode:
+            return None
         return GenerateDatasetCommand(
             test_ratio=float(params.get("test_ratio", 0.2)),
             val_ratio=float(params.get("val_ratio", 0.2)),
-            split_strategy=str(params.get("split_strategy", "trial")),
-            training_mode=str(params.get("training_mode", "individual")),
+            split_strategy=str(split_strategy),
+            training_mode=str(training_mode),
         )
 
     if tool_name == "set_model":
@@ -635,20 +988,56 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         return ConfigureTrainingCommand(model_name=str(model_name))
 
     if tool_name == "configure_training":
-        output_dir = params.get("output_dir") or "./output"
+        training_input = normalize_training_input(params)
+        output_dir_param = params.get("output_dir")
+        if output_dir_param is not None and not isinstance(
+            output_dir_param,
+            UserProvidedTrainingOutputDir,
+        ):
+            return None
+        if isinstance(output_dir_param, UserProvidedTrainingOutputDir):
+            if not output_dir_param.strip():
+                return None
+            output_dir = str(output_dir_param)
+        else:
+            current = start_training_confirmation_truth(state)
+            output_dir = (
+                current.output_directory
+                if current is not None
+                else ConfigureTrainingCommand().output_dir
+            )
         return ConfigureTrainingCommand(
-            epoch=int(params.get("epoch", 10)),
-            batch_size=int(params.get("batch_size", 32)),
-            learning_rate=float(params.get("learning_rate", 0.001)),
-            repeat=int(params.get("repeat", 1)),
+            model_name=_optional_str(params.get("model_name")),
+            epoch=training_input.epoch,
+            batch_size=training_input.batch_size,
+            learning_rate=training_input.learning_rate,
+            repeat=normalize_positive_integer("repeat", params.get("repeat", 1)),
             device=str(params.get("device", "cpu")),
             optimizer=str(params.get("optimizer", "adam")),
-            save_checkpoints_every=int(params.get("save_checkpoints_every", 0)),
+            evaluation_option=str(params.get("evaluation_option", "last_epoch")),
+            save_checkpoints_every=normalize_non_negative_integer(
+                "save_checkpoints_every",
+                params.get("save_checkpoints_every", 0),
+            ),
             output_dir=str(output_dir),
         )
 
     if tool_name == "start_training":
-        return TrainCommand(confirmed=bool(params.get("confirmed", False)))
+        return TrainCommand(
+            append=_boolean_param(params, "append", default=True),
+            interactive=_boolean_param(params, "interactive", default=True),
+            confirmed=_boolean_param(params, "confirmed"),
+            resource_preflight_confirmed=_boolean_param(
+                params,
+                "resource_preflight_confirmed",
+            ),
+            resource_preflight_token=_optional_str(
+                params.get("resource_preflight_token")
+            ),
+        )
+
+    if tool_name == "stop_training":
+        return StopTrainingCommand()
 
     if tool_name == "evaluate":
         return EvaluateCommand(target=_optional_str(params.get("target")))
@@ -664,7 +1053,7 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         )
 
     if tool_name == "clear_dataset":
-        return ResetSessionCommand(confirmed=bool(params.get("confirmed", False)))
+        return ResetSessionCommand(confirmed=_boolean_param(params, "confirmed"))
 
     if tool_name == "query_state":
         return QueryStateCommand(
@@ -672,7 +1061,7 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
             params=dict(params.get("params", {}))
             if isinstance(params.get("params"), dict)
             else {},
-            include_objects=bool(params.get("include_objects", False)),
+            include_objects=_boolean_param(params, "include_objects"),
         )
 
     return None
@@ -714,20 +1103,47 @@ def _optional_int(value: Any) -> int | None:
     return int(value)
 
 
-def enabled_tool_names(study: Any) -> list[str]:
+def _boolean_param(
+    params: dict[str, Any],
+    name: str,
+    *,
+    default: bool = False,
+) -> bool:
+    return normalize_strict_boolean(name, params.get(name, default))
+
+
+def enabled_tool_names(
+    study: Any,
+    *,
+    publication: ApplicationViewPublication | None = None,
+    runtime: ApplicationToolRuntime | None = None,
+) -> list[str]:
     """Return tool names that are currently available to the agent."""
     return [
         tool_name
-        for tool_name, availability in build_agent_tool_policy(study).items()
+        for tool_name, availability in build_agent_tool_policy(
+            study,
+            publication=publication,
+            runtime=runtime,
+        ).items()
         if availability.enabled
     ]
 
 
-def blocked_tool_reasons(study: Any) -> dict[str, str]:
+def blocked_tool_reasons(
+    study: Any,
+    *,
+    publication: ApplicationViewPublication | None = None,
+    runtime: ApplicationToolRuntime | None = None,
+) -> dict[str, str]:
     """Return blocked tool names and reasons for prompt diagnostics."""
     return {
         _blocked_prompt_name(availability): availability.reason_text
-        for availability in build_agent_tool_policy(study).values()
+        for availability in build_agent_tool_policy(
+            study,
+            publication=publication,
+            runtime=runtime,
+        ).values()
         if not availability.enabled and availability.reasons
     }
 
@@ -766,10 +1182,16 @@ def _command_name_for_tool(tool_name: str) -> str | None:
     return command_name.value if command_name else None
 
 
-def _state_snapshot_dict(study: Any) -> dict[str, Any] | None:
-    if not isinstance(study, Study) or isinstance(study, Mock):
+def _state_snapshot_dict(
+    study: Any,
+    *,
+    runtime: ApplicationToolRuntime | None = None,
+) -> dict[str, Any] | None:
+    application_runtime = _resolve_application_tool_runtime(study, runtime)
+    if application_runtime is None:
         return None
     try:
-        return get_application_service(study).get_state().to_dict()
+        publication = application_runtime.get_view_publication()
+        return publication.state.to_dict()
     except Exception:
         return None

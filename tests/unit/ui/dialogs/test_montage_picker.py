@@ -118,6 +118,44 @@ class TestPickMontageInit:
             assert button is not None
             assert button.icon().isNull()
 
+    def test_small_channel_list_fits_table_and_dialog_to_content(
+        self,
+        qtbot,
+        montage_positions,
+        monkeypatch,
+        tmp_path,
+    ):
+        """A short channel list must not leave a large empty table viewport."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-small"))
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=["standard_1020"],
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                return_value={"ch_pos": montage_positions},
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+                return_value=montage_positions,
+            ),
+        ):
+            from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+                PickMontageDialog,
+            )
+
+            dlg = PickMontageDialog(
+                parent=None,
+                channel_names=["F3", "F4", "C3", "C4", "P3"],
+            )
+        qtbot.addWidget(dlg)
+        dlg.show()
+        qtbot.waitExposed(dlg)
+
+        assert dlg.table.height() <= 240
+        assert dlg.height() <= 420
+
 
 class TestMontageSelection:
     def test_on_montage_select(self, dialog):

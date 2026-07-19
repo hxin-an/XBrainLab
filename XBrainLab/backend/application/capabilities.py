@@ -6,9 +6,38 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from XBrainLab.backend.model_requirements import minimum_samples_for_model
+from XBrainLab.backend.supervised_readiness import (
+    MINIMUM_SUPERVISED_CLASS_COUNT,
+    has_minimum_usable_classes,
+    insufficient_usable_classes_message,
+)
 
 from .commands import CommandName
+from .epoch_handoff_blockers import (
+    EpochHandoffBlockerCode,
+    decode_epoch_handoff_blocker_codes,
+)
 from .state import ApplicationStateSnapshot
+
+RECOVERY_COMMAND_NAMES = frozenset(
+    {
+        CommandName.STOP_TRAINING.value,
+        CommandName.RESET_SESSION.value,
+        CommandName.NEW_SESSION.value,
+    }
+)
+UNRELIABLE_STATE_ALLOWED_COMMAND_NAMES = frozenset(
+    {CommandName.QUERY_STATE.value, *RECOVERY_COMMAND_NAMES}
+)
+SALIENCY_TRAINING_ACTIVE_REASON = (
+    "Wait for training to finish before configuring saliency."
+)
+_MISSING_IMPORT_DEFAULT_BLOCKER_CODES = frozenset(
+    {
+        EpochHandoffBlockerCode.MISSING_CLASS_LABELS,
+        EpochHandoffBlockerCode.MISSING_REVIEWED_TARGET,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -237,19 +266,28 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     )
 
     dataset_reasons = []
-    if not active_dataset.has_epoch_data:
+    if not _has_usable_epoch_payload(state):
         dataset_reasons.append("Create epochs before generating datasets.")
     dataset_reasons.extend(_supervised_label_blockers(state))
     if active_training.is_running:
         dataset_reasons.append("Stop training before changing data splitting.")
-    if active_dataset.has_datasets or active_training.has_trainer:
-        dataset_reasons.append(
-            "Reset the session or start a new session before generating a new "
-            "dataset from an existing active dataset."
-        )
-    capabilities[CommandName.GENERATE_DATASET.value] = _cap(
-        CommandName.GENERATE_DATASET,
-        dataset_reasons,
+    dataset_replacement = (
+        active_dataset.has_datasets
+        or state.dataset.generator_exists
+        or active_training.has_trainer
+    )
+    dataset_replacement_confirmation = not dataset_reasons and dataset_replacement
+    capabilities[CommandName.GENERATE_DATASET.value] = CommandCapability(
+        command_name=CommandName.GENERATE_DATASET.value,
+        enabled=not dataset_reasons,
+        reasons=dataset_reasons,
+        destructive=dataset_replacement,
+        confirmation_required=dataset_replacement_confirmation,
+        requires_confirmation=dataset_replacement_confirmation,
+        can_auto_execute=not dataset_replacement_confirmation,
+        decision_boundary=(
+            "replace_generated_datasets" if dataset_replacement_confirmation else None
+        ),
     )
 
     clear_dataset_reasons = []
@@ -257,7 +295,11 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         clear_dataset_reasons.append(
             "Stop training before clearing generated datasets.",
         )
-    if not active_dataset.has_datasets and not active_training.has_trainer:
+    if (
+        not active_dataset.has_datasets
+        and not state.dataset.generator_exists
+        and not active_training.has_trainer
+    ):
         clear_dataset_reasons.append(
             "No generated datasets or training plans to clear.",
         )
@@ -341,6 +383,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     evaluate_reasons = []
     if state.evaluation.total_plans == 0:
         evaluate_reasons.append("Create a training plan before evaluating results.")
+    elif state.evaluation.finished_runs == 0:
+        evaluate_reasons.append(
+            "Complete at least one training run before evaluating results."
+        )
     capabilities[CommandName.EVALUATE.value] = _cap(
         CommandName.EVALUATE,
         evaluate_reasons,
@@ -373,6 +419,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
             "Create epochs, generate datasets, or select a model and training "
             "settings before querying saliency readiness."
         )
+    if active_training.is_running:
+        saliency_reasons.append(SALIENCY_TRAINING_ACTIVE_REASON)
     capabilities[CommandName.SALIENCY.value] = _cap(
         CommandName.SALIENCY,
         saliency_reasons,
@@ -444,28 +492,46 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         else None,
     )
 
+    policy = CapabilityPolicy(capabilities)
     if not state.state_reliable:
-        _fail_closed_for_unreliable_state(capabilities, state.read_errors)
+        return fail_closed_capability_policy(
+            policy,
+            _unreliable_state_reason(state.read_errors),
+        )
+    return policy
 
-    return CapabilityPolicy(capabilities)
 
-
-def _fail_closed_for_unreliable_state(
-    capabilities: dict[str, CommandCapability],
-    read_errors: list[str],
-) -> None:
-    """Block commands that could act on an uncertain backend snapshot."""
-    allowed_during_recovery = {
-        CommandName.QUERY_STATE.value,
-        CommandName.STOP_TRAINING.value,
+def fail_closed_capability_policy(
+    policy: CapabilityPolicy,
+    reason: str,
+) -> CapabilityPolicy:
+    """Disable uncertain actions while preserving conservative recovery commands."""
+    capabilities: dict[str, CommandCapability] = {}
+    destructive_recovery = {
         CommandName.RESET_SESSION.value,
         CommandName.NEW_SESSION.value,
     }
-    reason = "Backend state could not be verified. Refresh or reset the session."
-    if read_errors:
-        reason = f"{reason} ({read_errors[0]})"
-    for name, capability in tuple(capabilities.items()):
-        if name in allowed_during_recovery:
+    for name, capability in policy.capabilities.items():
+        if name in destructive_recovery:
+            capabilities[name] = replace(
+                capability,
+                enabled=True,
+                reasons=[],
+                destructive=True,
+                confirmation_required=True,
+                requires_confirmation=True,
+                can_auto_execute=False,
+                decision_boundary=(
+                    capability.decision_boundary or "recovery_confirmation"
+                ),
+            )
+            continue
+        if name in UNRELIABLE_STATE_ALLOWED_COMMAND_NAMES:
+            capabilities[name] = replace(
+                capability,
+                enabled=True,
+                reasons=[],
+            )
             continue
         capabilities[name] = replace(
             capability,
@@ -473,6 +539,14 @@ def _fail_closed_for_unreliable_state(
             reasons=[reason, *capability.reasons],
             can_auto_execute=False,
         )
+    return CapabilityPolicy(capabilities)
+
+
+def _unreliable_state_reason(read_errors: list[str]) -> str:
+    reason = "Backend state could not be verified. Refresh or reset the session."
+    if read_errors:
+        reason = f"{reason} ({read_errors[0]})"
+    return reason
 
 
 def _cap(
@@ -595,11 +669,109 @@ def _model_epoch_blockers(state: ApplicationStateSnapshot) -> list[str]:
 
 def _supervised_label_blockers(state: ApplicationStateSnapshot) -> list[str]:
     handoff = state.interpretation.epoch_handoff
+    normalized_blockers: list[str] = []
+    blocker_codes: tuple[EpochHandoffBlockerCode, ...] | None = None
+    if state.interpretation.has_applied_interpretation and handoff:
+        if bool(handoff.get("supervised_ready")):
+            return []
+        blockers = handoff.get("supervised_blockers")
+        normalized_blockers = (
+            [str(item).strip() for item in blockers if str(item).strip()]
+            if isinstance(blockers, list)
+            else []
+        )
+        blocker_codes = decode_epoch_handoff_blocker_codes(
+            handoff.get("supervised_blocker_codes"),
+            expected_count=len(normalized_blockers),
+        )
+        if normalized_blockers and not _only_missing_import_defaults(blocker_codes):
+            return normalized_blockers
+
+    epoch_blockers = _epoch_supervised_class_blockers(state)
+    if epoch_blockers:
+        return epoch_blockers
     if not state.interpretation.has_applied_interpretation or not handoff:
         return []
-    if bool(handoff.get("supervised_ready")):
+    if _has_authoritative_supervised_epoch_contract(
+        state
+    ) and _only_missing_import_defaults(blocker_codes):
+        # An explicit epoch selection replaces absent import defaults. Unknown
+        # or unresolved import blockers remain fail-closed below.
         return []
-    blockers = handoff.get("supervised_blockers")
-    if isinstance(blockers, list) and blockers:
-        return [str(item) for item in blockers if str(item).strip()]
+    if normalized_blockers:
+        return normalized_blockers
     return ["No class labels are available for supervised workflows."]
+
+
+def _epoch_supervised_class_blockers(
+    state: ApplicationStateSnapshot,
+) -> list[str]:
+    if not _has_usable_epoch_payload(state):
+        return []
+    event_ids = state.epoch.event_ids
+    if not isinstance(event_ids, dict):
+        return ["Epoch class label mapping is incomplete or invalid."]
+    labels = [str(label).strip() for label in event_ids if str(label).strip()]
+    if not has_minimum_usable_classes(labels):
+        return [insufficient_usable_classes_message(labels)]
+    if not _has_authoritative_supervised_epoch_contract(state):
+        return ["Epoch class label mapping is incomplete or invalid."]
+    return []
+
+
+def _has_usable_epoch_payload(state: ApplicationStateSnapshot) -> bool:
+    epoch_count = state.epoch.epoch_count
+    return bool(
+        state.active_dataset.has_epoch_data
+        and state.epoch.available
+        and state.epoch.exists
+        and isinstance(epoch_count, int)
+        and not isinstance(epoch_count, bool)
+        and epoch_count > 0
+    )
+
+
+def _has_authoritative_supervised_epoch_contract(
+    state: ApplicationStateSnapshot,
+) -> bool:
+    epoch = state.epoch
+    if not _has_usable_epoch_payload(state):
+        return False
+
+    event_ids = epoch.event_ids
+    if not isinstance(event_ids, dict):
+        return False
+
+    labels: list[str] = []
+    identifiers: list[int] = []
+    for raw_label, raw_identifier in event_ids.items():
+        label = str(raw_label).strip()
+        if (
+            not label
+            or not isinstance(raw_identifier, int)
+            or isinstance(raw_identifier, bool)
+        ):
+            return False
+        labels.append(label)
+        identifiers.append(raw_identifier)
+
+    if (
+        len(set(labels)) < MINIMUM_SUPERVISED_CLASS_COUNT
+        or len(set(identifiers)) < MINIMUM_SUPERVISED_CLASS_COUNT
+    ):
+        return False
+
+    event_names = [str(name).strip() for name in epoch.event_names]
+    return (
+        all(event_names)
+        and len(event_names) == len(set(event_names))
+        and set(event_names) == set(labels)
+    )
+
+
+def _only_missing_import_defaults(
+    blocker_codes: tuple[EpochHandoffBlockerCode, ...] | None,
+) -> bool:
+    return bool(blocker_codes) and all(
+        blocker in _MISSING_IMPORT_DEFAULT_BLOCKER_CODES for blocker in blocker_codes
+    )

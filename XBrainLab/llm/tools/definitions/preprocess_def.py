@@ -8,6 +8,7 @@ parameters.  Concrete (mock or real) implementations must override
 from typing import Any
 
 from ..base import BaseTool
+from ..result_contract import ToolExecutionResult
 
 
 class BaseStandardPreprocessTool(BaseTool):
@@ -44,7 +45,29 @@ class BaseStandardPreprocessTool(BaseTool):
             },
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+        raise NotImplementedError
+
+
+class BaseResetPreprocessTool(BaseTool):
+    """Reset derived preprocessing state while retaining loaded raw EEG data."""
+
+    @property
+    def name(self) -> str:
+        return "reset_preprocess"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Reset preprocessing and downstream derived state to the loaded raw data. "
+            "This does not clear the loaded EEG files or reset the session."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}}
+
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -70,7 +93,7 @@ class BaseBandPassFilterTool(BaseTool):
             "required": ["low_freq", "high_freq"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -93,7 +116,7 @@ class BaseNotchFilterTool(BaseTool):
             "required": ["freq"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -116,7 +139,7 @@ class BaseResampleTool(BaseTool):
             "required": ["rate"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -141,7 +164,7 @@ class BaseNormalizeTool(BaseTool):
             "required": ["method"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -164,7 +187,7 @@ class BaseRereferenceTool(BaseTool):
             "required": ["method"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -187,7 +210,7 @@ class BaseChannelSelectionTool(BaseTool):
             "required": ["channels"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -210,7 +233,7 @@ class BaseSetMontageTool(BaseTool):
             "required": ["montage_name"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError
 
 
@@ -238,5 +261,5 @@ class BaseEpochDataTool(BaseTool):
             "required": ["t_min", "t_max"],
         }
 
-    def execute(self, study: Any, **kwargs) -> str:
+    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError

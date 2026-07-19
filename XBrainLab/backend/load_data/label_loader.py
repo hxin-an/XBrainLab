@@ -2,6 +2,7 @@
 
 import contextlib
 import os
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,7 @@ def load_label_file(
     anchor: str | None = None,
     duration_field: str | None = None,
     sequence_only: bool = False,
+    resource_reader: Any | None = None,
 ) -> Any:
     """Load label data from a file.
 
@@ -53,29 +55,72 @@ def load_label_file(
         ValueError: If the file format is unsupported or loading fails.
 
     """
+    if resource_reader is not None:
+        with resource_reader.open_binary(
+            filepath,
+            purpose="external label payload materialization",
+        ) as source:
+            return _load_label_source(
+                filepath,
+                source,
+                label_field=label_field,
+                anchor=anchor,
+                duration_field=duration_field,
+                sequence_only=sequence_only,
+            )
+
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
+    return _load_label_source(
+        filepath,
+        filepath,
+        label_field=label_field,
+        anchor=anchor,
+        duration_field=duration_field,
+        sequence_only=sequence_only,
+    )
 
-    if filepath.endswith(".txt"):
-        return _load_txt(filepath)
-    if filepath.endswith((".csv", ".tsv")):
+
+def _load_label_source(
+    filepath: str,
+    source: Any,
+    *,
+    label_field: str | None,
+    anchor: str | None,
+    duration_field: str | None,
+    sequence_only: bool,
+) -> Any:
+    suffix = Path(filepath).suffix.lower()
+
+    if suffix == ".txt":
+        return _load_txt(source, display_path=filepath)
+    if suffix in {".csv", ".tsv"}:
         return _load_csv_tsv(
-            filepath,
+            source,
+            display_path=filepath,
             label_field=label_field,
             anchor=anchor,
             duration_field=duration_field,
             sequence_only=sequence_only,
         )
-    if filepath.endswith(".mat"):
-        return _load_mat(filepath, label_field=label_field, anchor=anchor)
+    if suffix == ".mat":
+        return _load_mat(
+            source,
+            display_path=filepath,
+            label_field=label_field,
+            anchor=anchor,
+            duration_field=duration_field,
+        )
+    if suffix == ".npy":
+        return _load_npy(source, display_path=filepath)
     raise ValueError(f"Unsupported file format: {filepath}")
 
 
-def _load_txt(path: str) -> np.ndarray:
+def _load_txt(source: Any, *, display_path: str) -> np.ndarray:
     """Load labels from a text file containing space-separated integers.
 
     Args:
-        path: Path to the text file.
+        source: Path or admitted binary stream for the text file.
 
     Returns:
         1D array of integer labels.
@@ -86,31 +131,37 @@ def _load_txt(path: str) -> np.ndarray:
     """
     labels = []
     try:
-        with open(path) as f:
-            for line in f:
-                parts = line.strip().split()
-                for p in parts:
-                    with contextlib.suppress(ValueError):
-                        labels.append(int(p))
+        if isinstance(source, (str, os.PathLike)):
+            with open(source, encoding="utf-8") as f:
+                lines = list(f)
+        else:
+            lines = source.read().decode("utf-8").splitlines()
+        for line in lines:
+            parts = line.strip().split()
+            for p in parts:
+                with contextlib.suppress(ValueError):
+                    labels.append(int(p))
         return np.array(labels)
     except Exception as e:
-        logger.error("Failed to load txt file %s: %s", path, e)
+        logger.error("Failed to load txt file %s: %s", display_path, e)
         raise ValueError(f"Failed to load txt file: {e}") from e
 
 
 def _load_mat(
-    path: str,
+    source: Any,
     *,
+    display_path: str,
     label_field: str | None = None,
     anchor: str | None = None,
-) -> np.ndarray:
+    duration_field: str | None = None,
+) -> np.ndarray | list[dict[str, int]]:
     """Load labels from a MATLAB ``.mat`` file.
 
     Handles common shapes including ``(n,)``, ``(n, 1)``, ``(1, n)``,
     and MNE-format ``(n, 3)`` arrays.
 
     Args:
-        path: Path to the ``.mat`` file.
+        source: Path or admitted binary stream for the ``.mat`` file.
 
     Returns:
         1D array of integer labels.
@@ -120,7 +171,7 @@ def _load_mat(
 
     """
     try:
-        mat = scipy.io.loadmat(path)
+        mat = scipy.io.loadmat(source)
         # Filter out __header__, __version__, __globals__
         variables = [k for k in mat if not k.startswith("__")]
 
@@ -133,13 +184,40 @@ def _load_mat(
 
         if anchor is not None and str(anchor).strip():
             anchor_name = _resolve_mat_variable(mat, variables, anchor)
-            return _mat_sample_anchor_events(data, mat[anchor_name])
+            selected_duration = str(duration_field or "").strip()
+            duration_name = (
+                _resolve_mat_variable(mat, variables, selected_duration)
+                if selected_duration
+                else None
+            )
+            return _mat_sample_anchor_events(
+                data,
+                mat[anchor_name],
+                duration_data=mat[duration_name] if duration_name else None,
+                duration_field=duration_name,
+            )
 
         return _mat_label_array(data)
 
     except Exception as e:
-        logger.error("Failed to load mat file %s: %s", path, e)
+        logger.error("Failed to load mat file %s: %s", display_path, e)
         raise ValueError(f"Invalid .mat file: {e}") from e
+
+
+def _load_npy(source: Any, *, display_path: str) -> np.ndarray:
+    """Load a non-pickled NumPy label array from a path or admitted stream."""
+    try:
+        data = np.load(source, allow_pickle=False)
+        return _mat_label_array(_require_npy_array(data))
+    except Exception as exc:
+        logger.error("Failed to load npy file %s: %s", display_path, exc)
+        raise ValueError(f"Invalid .npy file: {exc}") from exc
+
+
+def _require_npy_array(data: Any) -> np.ndarray:
+    if not isinstance(data, np.ndarray):
+        raise ValueError("NumPy label file did not contain one array.")
+    return data
 
 
 def _resolve_mat_variable(
@@ -186,7 +264,13 @@ def _mat_label_array(data: Any) -> np.ndarray:
     return label_list.flatten()
 
 
-def _mat_sample_anchor_events(label_data: Any, anchor_data: Any) -> np.ndarray:
+def _mat_sample_anchor_events(
+    label_data: Any,
+    anchor_data: Any,
+    *,
+    duration_data: Any | None = None,
+    duration_field: str | None = None,
+) -> np.ndarray | list[dict[str, int]]:
     """Build MNE event rows from reviewed MAT label and sample-anchor variables."""
     labels = _mat_label_array(label_data).astype(np.int32).flatten()
     anchors = np.array(anchor_data).squeeze().flatten()
@@ -203,6 +287,46 @@ def _mat_sample_anchor_events(label_data: Any, anchor_data: Any) -> np.ndarray:
     if not np.all(np.equal(np.mod(anchor_values, 1), 0)):
         raise ValueError("MAT anchor variable must contain integer sample indexes.")
     samples = anchor_values.astype(np.int64)
+    if duration_data is not None:
+        durations = np.array(duration_data).squeeze().flatten()
+        if durations.size != labels.size:
+            raise ValueError(
+                "MAT duration variable length does not match selected label variable.",
+            )
+        try:
+            duration_values = durations.astype(float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("MAT duration variable must be numeric.") from exc
+        if not np.all(np.isfinite(duration_values)):
+            raise ValueError("MAT duration variable contains non-finite values.")
+        if str(duration_field or "").strip().lower() in {
+            "end",
+            "end_time",
+            "stop",
+            "stop_time",
+            "offset",
+        }:
+            duration_values = duration_values - anchor_values
+        if np.any(duration_values < 0):
+            raise ValueError("MAT duration variable contains a negative interval.")
+        if not np.all(np.equal(np.mod(duration_values, 1), 0)):
+            raise ValueError(
+                "MAT sample-index duration variable must contain integer values.",
+            )
+        sample_durations = duration_values.astype(np.int64)
+        return [
+            {
+                "onset": int(sample),
+                "duration": int(duration),
+                "label": int(label),
+            }
+            for sample, duration, label in zip(
+                samples,
+                sample_durations,
+                labels,
+                strict=True,
+            )
+        ]
     zeros = np.zeros(labels.size, dtype=np.int64)
     return np.column_stack([samples, zeros, labels.astype(np.int64)]).astype(np.int32)
 
@@ -247,8 +371,9 @@ def _select_mat_variable(mat: dict[str, Any], variables: list[str]) -> str:
 
 
 def _load_csv_tsv(
-    path: str,
+    source: Any,
     *,
+    display_path: str,
     label_field: str | None = None,
     anchor: str | None = None,
     duration_field: str | None = None,
@@ -260,7 +385,7 @@ def _load_csv_tsv(
     ``time``, ``latency``) or sequence data (single column of labels).
 
     Args:
-        path: Path to the CSV/TSV file.
+        source: Path or admitted binary stream for the CSV/TSV file.
 
     Returns:
         np.ndarray: 1D label array for Sequence Mode.
@@ -272,8 +397,8 @@ def _load_csv_tsv(
 
     """
     try:
-        sep = "\t" if path.endswith(".tsv") else ","
-        df = pd.read_csv(path, sep=sep)
+        sep = "\t" if Path(display_path).suffix.lower() == ".tsv" else ","
+        df = pd.read_csv(source, sep=sep)
 
         # Normalize column names
         df.columns = [c.lower().strip() for c in df.columns]
@@ -325,7 +450,7 @@ def _load_csv_tsv(
         return df.iloc[:, 0].values
 
     except Exception as e:
-        logger.error("Failed to load csv/tsv file %s: %s", path, e)
+        logger.error("Failed to load csv/tsv file %s: %s", display_path, e)
         raise ValueError(f"Failed to load csv/tsv file: {e}") from e
 
 

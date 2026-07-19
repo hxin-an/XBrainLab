@@ -6,12 +6,19 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
+from weakref import ReferenceType, ref
+
+from PyQt6 import sip
 
 from XBrainLab.backend.application.results import ChangedState
 from XBrainLab.backend.utils.logger import logger
 
 _REFRESHING_MAIN_WINDOWS: set[int] = set()
 _COMMAND_EXECUTING_MAIN_WINDOWS: dict[int, int] = {}
+_DEFERRED_TERMINAL_REFRESHES: dict[
+    int,
+    dict[tuple[int, str], _DeferredObserverRefresh],
+] = {}
 _PANEL_NAMES_BY_INDEX = (
     "dataset_panel",
     "preprocess_panel",
@@ -34,6 +41,15 @@ class _ChangedState:
     visualization_changed: bool = False
     interpretation_changed: bool = False
     error_changed: bool = False
+    state_unknown: bool = False
+
+
+@dataclass(frozen=True)
+class _DeferredObserverRefresh:
+    """Weak observer delivery retained until the command suppression lease ends."""
+
+    context_ref: ReferenceType[Any]
+    event_name: str
 
 
 _OBSERVER_EVENT_REFRESH_ROUTES = {
@@ -44,6 +60,17 @@ _OBSERVER_EVENT_REFRESH_ROUTES = {
     ),
     "training_started": ("training_panel", _ChangedState(training_changed=True)),
     "training_stopped": ("training_panel", _ChangedState(training_changed=True)),
+    "training_terminal_published": (
+        "training_panel",
+        _ChangedState(training_changed=True),
+    ),
+    "training_analysis_published": (
+        "training_panel",
+        # The paired saliency_changed event owns the visualization refresh.
+        # This typed publication only reconciles lifecycle generation and shared
+        # status, so it intentionally has no workflow-panel changed state.
+        _ChangedState(),
+    ),
     "training_updated": ("training_panel", _ChangedState(training_changed=True)),
     "config_changed": ("training_panel", _ChangedState(training_changed=True)),
     "history_cleared": ("training_panel", _ChangedState(training_changed=True)),
@@ -98,12 +125,9 @@ def refresh_after_serialized_command(
     changed_state: dict[str, Any] | None,
 ) -> bool:
     """Refresh UI from an agent-safe serialized ``ChangedState`` payload."""
-    if not isinstance(changed_state, dict):
+    normalized = _normalize_serialized_changed_state(changed_state)
+    if normalized is None:
         return False
-    field_names = ChangedState.__dataclass_fields__
-    normalized = ChangedState(
-        **{name: bool(changed_state.get(name, False)) for name in field_names}
-    )
     if not normalized.any_changed():
         return False
 
@@ -114,12 +138,53 @@ def refresh_after_serialized_command(
     return refresh_after_command(context, _SerializedResult(normalized))
 
 
+def complete_command_refresh_suppression(
+    context: Any,
+    changed_state: dict[str, Any] | None,
+) -> bool:
+    """Complete one agent command with a single coalesced panel refresh.
+
+    Terminal observers carry renderer-specific semantics that a generic changed
+    state cannot replace.  Merge both sources by target panel so the terminal
+    renderer is preserved without repainting evaluation, visualization, or
+    shared status twice.
+    """
+    normalized = _normalize_serialized_changed_state(changed_state)
+    main_window = find_main_window(context)
+    if main_window is None:
+        end_command_refresh_suppression(context)
+        return False
+
+    main_window_id = id(main_window)
+    released, deferred = _release_command_refresh_suppression_for(main_window_id)
+    if not released:
+        return False
+    return _refresh_completed_command(
+        main_window,
+        normalized,
+        deferred,
+    )
+
+
+def _normalize_serialized_changed_state(
+    changed_state: dict[str, Any] | None,
+) -> ChangedState | None:
+    if not isinstance(changed_state, dict):
+        return None
+    field_names = ChangedState.__dataclass_fields__
+    return ChangedState(
+        **{name: bool(changed_state.get(name, False)) for name in field_names}
+    )
+
+
 def refresh_after_navigation(main_window: Any, index: int) -> bool:
     """Refresh the visible workflow panel selected by top-level navigation."""
     if index < 0 or index >= len(_PANEL_NAMES_BY_INDEX):
         return False
 
     main_window_id = id(main_window)
+    if _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0) > 0:
+        return False
     if main_window_id in _REFRESHING_MAIN_WINDOWS:
         return False
 
@@ -140,6 +205,7 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
 
     main_window_id = id(main_window)
     if _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0) > 0:
+        _defer_terminal_observer_refresh(main_window_id, context, event_name)
         return False
     if main_window_id in _REFRESHING_MAIN_WINDOWS:
         return False
@@ -152,7 +218,7 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
             source_panel_name, changed_state = route
             source_panel = getattr(main_window, source_panel_name, None)
             if source_panel is None:
-                refreshed = refresh_panel(context, mark_dirty=True)
+                refreshed = _refresh_panel_after_observer(context, event_name)
                 if _should_refresh_shared_status(event_name):
                     return _refresh_shared_status(main_window) or refreshed
                 return refreshed
@@ -161,7 +227,9 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
             panel_names = _panel_names_for_observer_event(event_name, changed_state)
             for panel_name in panel_names:
                 panel = getattr(main_window, panel_name, None)
-                refreshed = refresh_panel(panel, mark_dirty=True) or refreshed
+                refreshed = (
+                    _refresh_panel_after_observer(panel, event_name) or refreshed
+                )
         else:
             refreshed = refresh_panel(context, mark_dirty=True)
         if _should_refresh_shared_status(event_name):
@@ -228,12 +296,148 @@ def end_command_refresh_suppression(context: Any) -> bool:
 
 def _end_command_refresh_suppression_for(main_window_id: int) -> bool:
     """Decrement suppression without dereferencing a possibly deleted Qt object."""
+    released, deferred = _release_command_refresh_suppression_for(main_window_id)
+    if released:
+        _replay_deferred_terminal_refreshes(main_window_id, deferred)
+    return released
+
+
+def _release_command_refresh_suppression_for(
+    main_window_id: int,
+) -> tuple[bool, dict[tuple[int, str], _DeferredObserverRefresh]]:
+    """Release the final suppression lease and return its deferred publications."""
     active_count = _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0)
-    if active_count <= 1:
-        _COMMAND_EXECUTING_MAIN_WINDOWS.pop(main_window_id, None)
-    else:
+    if active_count > 1:
         _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = active_count - 1
-    return active_count > 0
+        return False, {}
+    _COMMAND_EXECUTING_MAIN_WINDOWS.pop(main_window_id, None)
+    if active_count == 1:
+        return True, _DEFERRED_TERMINAL_REFRESHES.pop(main_window_id, {})
+    _DEFERRED_TERMINAL_REFRESHES.pop(main_window_id, None)
+    return False, {}
+
+
+def _defer_terminal_observer_refresh(
+    main_window_id: int,
+    context: Any,
+    event_name: str | None,
+) -> None:
+    """Coalesce terminal publication delivery without retaining its Qt owner."""
+    normalized_event = str(event_name)
+    if normalized_event not in {
+        "training_terminal_published",
+        "training_analysis_published",
+        "saliency_changed",
+    }:
+        return
+    try:
+        context_ref = ref(context)
+    except TypeError:
+        return
+    pending = _DEFERRED_TERMINAL_REFRESHES.setdefault(main_window_id, {})
+    pending[(id(context), normalized_event)] = _DeferredObserverRefresh(
+        context_ref=context_ref,
+        event_name=normalized_event,
+    )
+
+
+def _replay_deferred_terminal_refreshes(
+    main_window_id: int,
+    pending: dict[tuple[int, str], _DeferredObserverRefresh] | None = None,
+) -> None:
+    """Replay terminal observer delivery after the final suppression lease."""
+    deferred_refreshes = (
+        _DEFERRED_TERMINAL_REFRESHES.pop(main_window_id, {})
+        if pending is None
+        else pending
+    )
+    for deferred in deferred_refreshes.values():
+        context = deferred.context_ref()
+        if context is None or _qt_object_deleted(context):
+            continue
+        try:
+            refresh_after_observer(context, event_name=deferred.event_name)
+        except Exception:
+            logger.debug("Deferred terminal UI refresh failed", exc_info=True)
+
+
+def _refresh_completed_command(
+    main_window: Any,
+    changed_state: ChangedState | None,
+    deferred: dict[tuple[int, str], _DeferredObserverRefresh],
+) -> bool:
+    """Refresh each command-affected panel once after observer suppression."""
+    main_window_id = id(main_window)
+    if main_window_id in _REFRESHING_MAIN_WINDOWS:
+        return False
+
+    panel_events: dict[str, str | None] = {}
+    if changed_state is not None and changed_state.any_changed():
+        panel_events.update(dict.fromkeys(_panel_names_for(changed_state)))
+
+    refresh_shared_status = bool(
+        changed_state is not None and changed_state.any_changed()
+    )
+    standalone_contexts: dict[str, Any] = {}
+    for publication in deferred.values():
+        context = publication.context_ref()
+        if context is None or _qt_object_deleted(context):
+            continue
+        event_name = publication.event_name
+        route = _OBSERVER_EVENT_REFRESH_ROUTES.get(event_name)
+        if route is None:
+            continue
+        source_panel_name, event_changed_state = route
+        source_panel = getattr(main_window, source_panel_name, None)
+        if source_panel is not None and not _is_source_context(context, source_panel):
+            continue
+        if source_panel is None:
+            standalone_contexts[source_panel_name] = context
+        for panel_name in _panel_names_for_observer_event(
+            event_name,
+            event_changed_state,
+        ):
+            if event_name == "training_terminal_published" and (
+                panel_name == "training_panel"
+            ):
+                panel_events[panel_name] = event_name
+            else:
+                panel_events.setdefault(panel_name, None)
+        refresh_shared_status = (
+            _should_refresh_shared_status(event_name) or refresh_shared_status
+        )
+
+    if not panel_events and not refresh_shared_status:
+        return False
+
+    _REFRESHING_MAIN_WINDOWS.add(main_window_id)
+    try:
+        refreshed = False
+        for panel_name in _PANEL_NAMES_BY_INDEX:
+            if panel_name not in panel_events:
+                continue
+            panel = getattr(main_window, panel_name, None)
+            if panel is None:
+                panel = standalone_contexts.get(panel_name)
+            event_name = panel_events[panel_name]
+            if event_name is None:
+                refreshed = refresh_panel(panel, mark_dirty=True) or refreshed
+            else:
+                refreshed = (
+                    _refresh_panel_after_observer(panel, event_name) or refreshed
+                )
+        if refresh_shared_status:
+            refreshed = _refresh_shared_status(main_window) or refreshed
+        return refreshed
+    finally:
+        _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
+
+
+def _qt_object_deleted(target: Any) -> bool:
+    try:
+        return bool(sip.isdeleted(target))
+    except (TypeError, RuntimeError):
+        return False
 
 
 def _command_refresh_suppression_key(context: Any) -> int | None:
@@ -246,6 +450,19 @@ def refresh_panel(panel: Any, *, mark_dirty: bool = False) -> bool:
     """Refresh one workflow panel through the shared safe call boundary."""
     if mark_dirty:
         _call_noarg(panel, "mark_refresh_dirty")
+    return _call_noarg(panel, "update_panel")
+
+
+def _refresh_panel_after_observer(
+    panel: Any,
+    event_name: str | None,
+) -> bool:
+    """Use the terminal renderer only at its authoritative observer boundary."""
+    _call_noarg(panel, "mark_refresh_dirty")
+    if str(event_name) == "training_terminal_published" and callable(
+        getattr(panel, "refresh_terminal_publication", None)
+    ):
+        return _call_noarg(panel, "refresh_terminal_publication")
     return _call_noarg(panel, "update_panel")
 
 
@@ -288,6 +505,8 @@ def find_main_window(context: Any) -> Any | None:
 
 
 def _panel_names_for(changed: Any) -> tuple[str, ...]:
+    if bool(getattr(changed, "state_unknown", False)):
+        return _PANEL_NAMES_BY_INDEX
     panel_names: list[str] = []
     if changed.raw_changed or changed.interpretation_changed:
         panel_names.append("dataset_panel")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable
 from typing import Any
 
@@ -12,6 +11,15 @@ from XBrainLab.backend.model_base.EEGNet import EEGNet
 from XBrainLab.backend.model_base.SCCNet import SCCNet
 from XBrainLab.backend.model_base.ShallowConvNet import ShallowConvNet
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.backend.training.input_contract import (
+    normalize_non_negative_integer,
+    normalize_positive_integer,
+    normalize_training_input,
+)
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingTerminalOutcome,
+)
 from XBrainLab.backend.utils.logger import logger
 
 from .commands import (
@@ -21,9 +29,17 @@ from .commands import (
     StopTrainingCommand,
     TrainCommand,
 )
-from .errors import PreconditionError
-from .resource_guard import check_training_resource_preflight
+from .errors import ApplicationError, PreconditionError
+from .resource_guard import (
+    ResourcePreflightResult,
+    check_training_resource_preflight,
+)
+from .results import ErrorType
 from .state import ApplicationStateSnapshot
+from .training_resource_receipt import (
+    TrainingResourceReceiptAuthority,
+)
+from .training_runtime import TrainingCommandRuntimePort
 from .training_snapshot import (
     model_name as snapshot_model_name,
 )
@@ -44,26 +60,17 @@ class TrainingCommandService:
         self,
         *,
         training: Any,
+        training_runtime: TrainingCommandRuntimePort,
         get_state: Callable[[], ApplicationStateSnapshot],
     ) -> None:
         self.training = training
+        self.training_runtime = training_runtime
         self._get_state = get_state
+        self._resource_receipts = TrainingResourceReceiptAuthority()
 
     def handle_configure_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, ConfigureTrainingCommand):
             raise TypeError("Invalid command for configure_training")
-        if command.training_option is not None:
-            self.training.apply_configuration(
-                model_holder=None,
-                training_option=command.training_option,
-                update_model=False,
-                update_option=True,
-            )
-            return "Training configured.", {
-                "training_option": self.training_option_snapshot(
-                    command.training_option,
-                ),
-            }
 
         option_values = (command.epoch, command.batch_size, command.learning_rate)
         wants_option = any(value is not None for value in option_values)
@@ -76,19 +83,21 @@ class TrainingCommandService:
                 "epoch, batch_size, and learning_rate are required.",
             )
 
+        repeat = normalize_positive_integer("repeat", command.repeat)
+        save_checkpoints_every = normalize_non_negative_integer(
+            "save_checkpoints_every",
+            command.save_checkpoints_every,
+        )
+        optim_class = self._resolve_optimizer(command.optimizer)
+        use_cpu, gpu_idx = self._resolve_training_device(command.device)
+        evaluation_option = self._resolve_training_evaluation(
+            command.evaluation_option,
+        )
+
         option: TrainingOption | None = None
         if wants_option:
-            (
-                epoch,
-                batch_size,
-                learning_rate,
-                save_checkpoints_every,
-                repeat,
-            ) = self._normalize_training_numbers(command)
-            optim_class = self._resolve_optimizer(command.optimizer)
-            use_cpu, gpu_idx = self._resolve_training_device(command.device)
-            evaluation_option = self._resolve_training_evaluation(
-                command.evaluation_option,
+            epoch, batch_size, learning_rate = self._normalize_training_numbers(
+                command,
             )
             option = TrainingOption(
                 output_dir=command.output_dir,
@@ -128,48 +137,162 @@ class TrainingCommandService:
             diagnostics["model_name"] = self.model_name(holder)
         return "Training configured.", diagnostics
 
-    def handle_train(self, command: Command) -> HandlerResult:
+    def handle_train(
+        self,
+        command: Command,
+        *,
+        defer_synchronous_completion: bool = False,
+    ) -> HandlerResult:
         if not isinstance(command, TrainCommand):
             raise TypeError("Invalid command for train")
+        preflight, receipt_reused = self._resolve_resource_preflight(
+            command,
+        )
+        handoff_generation = self.training.start_training(
+            append=command.append,
+            interactive=command.interactive or defer_synchronous_completion,
+        )
+        if (
+            isinstance(handoff_generation, bool)
+            or not isinstance(handoff_generation, int)
+            or handoff_generation < 1
+        ):
+            raise RuntimeError(
+                "Training controller returned an invalid terminal handoff generation."
+            )
+        completion_diagnostics: dict[str, Any] = {}
+        if defer_synchronous_completion and not command.interactive:
+            completion_diagnostics["synchronous_completion_deferred"] = True
+        elif not command.interactive:
+            _message, completion_diagnostics = self.complete_synchronous_training()
+        return (
+            (
+                "Training started."
+                if command.interactive or defer_synchronous_completion
+                else "Training completed."
+            ),
+            {
+                "append": command.append,
+                "interactive": command.interactive,
+                "training_handoff_generation": handoff_generation,
+                "resource_preflight": {
+                    **preflight.to_diagnostics(),
+                    "confirmation_receipt_reused": receipt_reused,
+                },
+                **completion_diagnostics,
+            },
+        )
+
+    def complete_synchronous_training(self) -> tuple[str, dict[str, Any]]:
+        """Verify one deferred synchronous run after its worker has exited."""
+        self._raise_for_synchronous_training_failure()
+        outcome = self._training_terminal_outcome()
+        return (
+            "Training completed.",
+            {
+                "terminal_outcome": outcome.state.value,
+                "training_run": (
+                    outcome.run.to_dict() if outcome.run is not None else None
+                ),
+            },
+        )
+
+    def _raise_for_synchronous_training_failure(self) -> None:
+        """Require typed completion before publishing synchronous success."""
+        outcome = self._training_terminal_outcome()
+        if outcome.state is TrainingOutcomeState.COMPLETED:
+            return
+        if outcome.state is TrainingOutcomeState.FAILED:
+            failure = outcome.detail or "Training failed."
+        elif outcome.state is TrainingOutcomeState.CANCELLED:
+            failure = "Training was cancelled."
+        elif outcome.state is TrainingOutcomeState.STOP_REQUESTED:
+            failure = "Training stop was requested, but the worker has not exited."
+        elif outcome.state is TrainingOutcomeState.RUNNING:
+            failure = "Training did not reach a terminal outcome."
+        else:
+            failure = "Training outcome could not be verified."
+        raise ApplicationError(
+            message=failure,
+            error_type=ErrorType.TRAINING,
+            recoverable=True,
+            diagnostics={
+                "training_failed": True,
+                "cuda_oom": "out of memory" in failure.lower(),
+                "terminal_outcome": outcome.state.value,
+                "training_run": (
+                    outcome.run.to_dict() if outcome.run is not None else None
+                ),
+            },
+        )
+
+    def _training_terminal_outcome(self) -> TrainingTerminalOutcome:
+        return self.training_runtime.terminal_outcome()
+
+    def get_resource_preflight(self) -> ResourcePreflightResult:
+        """Check the current application-owned training configuration."""
         context = self._resource_preflight_context()
+        return self._build_resource_preflight(TrainCommand(), context)
+
+    def _build_resource_preflight(
+        self,
+        command: TrainCommand,
+        context: dict[str, Any],
+    ) -> ResourcePreflightResult:
+        """Build preflight diagnostics and fingerprints for one train command."""
         preflight = check_training_resource_preflight(
             context.get("datasets", []),
             context.get("training_option"),
             context.get("model_holder"),
         )
-        if not preflight.ok:
-            raise PreconditionError(
-                preflight.message,
-                diagnostics={"resource_preflight": preflight.diagnostics},
-            )
-        self.training.start_training(
-            append=command.append,
-            interactive=command.interactive,
-        )
-        return (
-            "Training started.",
-            {
-                "append": command.append,
-                "interactive": command.interactive,
-                "resource_preflight": preflight.diagnostics,
-            },
+        option = context.get("training_option")
+        diagnostics = {
+            **preflight.diagnostics,
+            "payload_type": "training_resource_preflight",
+            "model_name": self.model_name(context.get("model_holder")),
+            "training_batch_size": getattr(option, "bs", None),
+        }
+        return self._resource_receipts.annotate(
+            command,
+            context,
+            ResourcePreflightResult(
+                issues=preflight.issues,
+                warnings=preflight.warnings,
+                unknowns=preflight.unknowns,
+                diagnostics=diagnostics,
+            ),
         )
 
     def _resource_preflight_context(self) -> dict[str, Any]:
-        getter = getattr(self.training, "get_resource_preflight_context", None)
-        if callable(getter):
-            value = getter()
-            if isinstance(value, dict):
-                return dict(value)
-        return {"datasets": [], "training_option": None}
+        return self.training_runtime.resource_context().to_mapping()
+
+    def _resolve_resource_preflight(
+        self,
+        command: TrainCommand,
+    ) -> tuple[ResourcePreflightResult, bool]:
+        """Atomically validate and consume one exact warning receipt."""
+        context = self._resource_preflight_context()
+        preflight = self._build_resource_preflight(command, context)
+        receipt_reused = self._resource_receipts.authorize(command, preflight)
+        return preflight, receipt_reused
 
     def handle_stop_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, StopTrainingCommand):
             raise TypeError("Invalid command for stop_training")
-        stopped = self.training.stop_training(wait_timeout=command.wait_timeout)
+        stopped = self.training_runtime.stop_training(
+            wait_timeout=command.wait_timeout,
+        )
+        outcome = self._training_terminal_outcome()
         return (
             "Training stopped." if stopped else "Training stop requested.",
-            {"stopped": bool(stopped), "wait_timeout": command.wait_timeout},
+            {
+                "stopped": bool(stopped),
+                "wait_timeout": command.wait_timeout,
+                "terminal_outcome": outcome.state.value,
+                "training_run": (
+                    outcome.run.to_dict() if outcome.run is not None else None
+                ),
+            },
         )
 
     def handle_clear_training_history(self, command: Command) -> HandlerResult:
@@ -189,18 +312,6 @@ class TrainingCommandService:
                 "finished_run_count_before": before.finished_runs,
             },
         )
-
-    def clear_configuration(self, training_manager: Any | None) -> None:
-        """Clear model/training/saliency configuration for the active dataset."""
-        if training_manager is None:
-            return
-        training_manager.model_holder = None
-        training_manager.training_option = None
-        training_manager.saliency_params = None
-        try:
-            self.training.notify("config_changed")
-        except Exception:
-            logger.debug("Training config reset notification failed", exc_info=True)
 
     @staticmethod
     def model_name(model_holder: Any) -> str | None:
@@ -290,50 +401,17 @@ class TrainingCommandService:
     @staticmethod
     def _normalize_training_numbers(
         command: ConfigureTrainingCommand,
-    ) -> tuple[int, int, float, int, int]:
-        def positive_int(name: str, value: Any) -> int:
-            if isinstance(value, bool):
-                raise ValueError(f"{name} must be greater than zero")
-            try:
-                parsed = int(value)
-                numeric = float(value)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise ValueError(f"{name} must be greater than zero") from exc
-            if not math.isfinite(numeric) or parsed <= 0 or numeric != parsed:
-                raise ValueError(f"{name} must be greater than zero")
-            return parsed
-
-        epoch = positive_int("epoch", command.epoch)
-        batch_size = positive_int("batch_size", command.batch_size)
-        repeat = positive_int("repeat", command.repeat)
-
-        learning_rate_value: Any = command.learning_rate
-        if isinstance(learning_rate_value, bool):
-            raise ValueError("learning_rate must be greater than zero")
-        try:
-            learning_rate = float(learning_rate_value)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError("learning_rate must be greater than zero") from exc
-        if not math.isfinite(learning_rate) or learning_rate <= 0:
-            raise ValueError("learning_rate must be greater than zero")
-
-        try:
-            save_checkpoints_every = int(command.save_checkpoints_every)
-            checkpoint_numeric = float(command.save_checkpoints_every)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError("save_checkpoints_every cannot be negative") from exc
-        if (
-            isinstance(command.save_checkpoints_every, bool)
-            or not math.isfinite(checkpoint_numeric)
-            or save_checkpoints_every < 0
-            or checkpoint_numeric != save_checkpoints_every
-        ):
-            raise ValueError("save_checkpoints_every cannot be negative")
+    ) -> tuple[int, int, float]:
+        training_input = normalize_training_input(
+            {
+                "epoch": command.epoch,
+                "batch_size": command.batch_size,
+                "learning_rate": command.learning_rate,
+            }
+        )
 
         return (
-            epoch,
-            batch_size,
-            learning_rate,
-            save_checkpoints_every,
-            repeat,
+            training_input.epoch,
+            training_input.batch_size,
+            training_input.learning_rate,
         )

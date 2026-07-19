@@ -2,7 +2,138 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+from PIL import Image, ImageDraw
+from PyQt6.QtCore import QPoint, Qt
+
 import scripts.dev.capture_data_import_wizard_steps as capture_script
+
+
+@pytest.mark.parametrize(
+    "spec",
+    capture_script._canonical_capture_specs(),
+    ids=lambda spec: spec.filename,
+)
+def test_every_canonical_artifact_renders_required_text(spec):
+    screenshot = capture_script.OUTPUT_DIR / spec.filename
+    assert screenshot.is_file()
+    capture_script._assert_canonical_png_artifact(screenshot, spec)
+
+
+def test_canonical_capture_specs_cover_the_complete_png_inventory():
+    specs = capture_script._canonical_capture_specs()
+    specified_names = {spec.filename for spec in specs}
+    artifact_names = {path.name for path in capture_script.OUTPUT_DIR.glob("*.png")}
+
+    assert len(specs) == len(specified_names)
+    assert specified_names == artifact_names
+    assert [spec.filename for spec in specs if not spec.has_wizard_chrome] == [
+        "04-match-labels-conversion-table-format-dialog.png"
+    ]
+
+
+def test_capture_specs_cover_responsive_and_semantic_review_evidence():
+    specs = capture_script._canonical_capture_specs()
+    wizard_specs = [spec for spec in specs if spec.has_wizard_chrome]
+
+    assert {760, 1040, 1220} <= {spec.expected_size[0] for spec in wizard_specs}
+    assert any(spec.label_carrier_count >= 12 for spec in wizard_specs)
+    assert any(spec.bids_events for spec in wizard_specs)
+    assert any(spec.expanded_report for spec in wizard_specs)
+    assert all(
+        f"{spec.expected_size[0]}px" in spec.filename
+        for spec in wizard_specs
+        if spec.expected_size[0] != 1220
+    )
+
+
+def test_required_region_guard_rejects_large_black_unpainted_block(tmp_path):
+    screenshot = tmp_path / "partial-repaint.png"
+    image = Image.new("RGB", (760, 520), "#242424")
+    ImageDraw.Draw(image).rectangle((180, 100, 700, 430), fill="#000000")
+    image.save(screenshot)
+
+    with pytest.raises(RuntimeError, match="unpainted block"):
+        capture_script._assert_region_has_no_unpainted_block(
+            screenshot,
+            (120, 70, 730, 470),
+            surface_name="Wizard content",
+        )
+
+
+def test_consecutive_frame_guard_rejects_partial_repaint_transition(tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    Image.new("RGB", (320, 240), "#2b3440").save(first)
+    changed = Image.new("RGB", (320, 240), "#2b3440")
+    ImageDraw.Draw(changed).rectangle((120, 30, 319, 239), fill="#000000")
+    changed.save(second)
+
+    with pytest.raises(RuntimeError, match="consecutive complete frames"):
+        capture_script._assert_consecutive_complete_frames(first, second)
+
+
+def test_reference_crop_guard_rejects_two_identical_same_theme_damaged_frames(
+    tmp_path,
+):
+    reference = Image.new("RGB", (260, 80), "#1e1e1e")
+    draw = ImageDraw.Draw(reference)
+    draw.rectangle((8, 8, 251, 71), outline="#5b7db1", width=2)
+    for left, width in ((24, 18), (50, 30), (88, 22), (120, 34), (164, 20)):
+        draw.rectangle((left, 30, left + width, 45), fill="#f2f2f2")
+    screenshot = Image.new("RGB", (320, 140), "#1e1e1e")
+    screenshot.paste(reference, (30, 30))
+    first = tmp_path / "damaged-first.png"
+    second = tmp_path / "damaged-second.png"
+    damaged = screenshot.copy()
+    ImageDraw.Draw(damaged).rectangle((30, 30, 289, 109), fill="#1e1e1e")
+    damaged.save(first)
+    damaged.save(second)
+
+    assert capture_script._assert_consecutive_complete_frames(first, second) == 0.0
+    for frame in (first, second):
+        with pytest.raises(RuntimeError, match="reference render"):
+            capture_script._assert_region_matches_reference(
+                frame,
+                (30, 30, 290, 110),
+                reference,
+                surface_name="Required action text",
+            )
+
+
+@pytest.mark.parametrize(
+    ("damage", "bounds", "expected_error"),
+    [
+        ("first step", (20, 18, 250, 52), "step label '1. Choose EEG Data'"),
+        ("summary prefix", (20, 68, 80, 86), "summary prefix"),
+        ("title", (20, 98, 450, 123), "title 'Load Labels'"),
+        ("Cancel", (20, 1268, 90, 1306), "Cancel action"),
+        (
+            "primary action",
+            (940, 1268, 1200, 1306),
+            "primary action 'Next: Review Metadata'",
+        ),
+    ],
+)
+def test_many_labels_artifact_guard_rejects_missing_required_text(
+    tmp_path,
+    damage,
+    bounds,
+    expected_error,
+):
+    spec = next(
+        spec
+        for spec in capture_script._canonical_capture_specs()
+        if spec.filename == "02-load-labels-many.png"
+    )
+    damaged = tmp_path / spec.filename
+    with Image.open(capture_script.OUTPUT_DIR / spec.filename) as source:
+        image = source.convert("RGB")
+    ImageDraw.Draw(image).rectangle(bounds, fill="#1e1e1e")
+    image.save(damaged)
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        capture_script._assert_canonical_png_artifact(damaged, spec)
 
 
 def test_data_import_capture_script_only_targets_canonical_step_folder():
@@ -14,20 +145,139 @@ def test_data_import_capture_script_only_targets_canonical_step_folder():
     assert "BIDS_PRESET_DIR" not in vars(capture_script)
 
 
+def test_data_import_capture_uses_xcb_window_surface():
+    source = inspect.getsource(capture_script._capture) + inspect.getsource(
+        capture_script._assert_complete_capture_frame
+    )
+    grab_source = inspect.getsource(capture_script._grab_window)
+    save_source = inspect.getsource(capture_script._save_window_capture)
+
+    assert "grabWindow" in grab_source
+    assert "root_window = cast(Any, 0)" in grab_source
+    assert "mapToGlobal" in grab_source
+    assert "widget.grab()" not in source
+    assert "widget.grab()" not in grab_source
+    assert "_settle_window_for_capture" in source
+    assert "_assert_review_surface_rendered" in source
+    assert "_normalize_png_for_artifact" in save_source
+
+
+def test_data_import_capture_flushes_deferred_dialog_deletes_between_specs():
+    source = inspect.getsource(capture_script._capture_specs_in_process)
+
+    assert "QCoreApplication.sendPostedEvents" in source
+    assert "QEvent.Type.DeferredDelete" in source
+
+
+def test_complete_capture_stages_each_spec_in_an_isolated_child_process(
+    monkeypatch,
+    tmp_path,
+):
+    specs = capture_script._canonical_capture_specs()[:2]
+    calls: list[list[str]] = []
+    server_commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        (tmp_path / command[-1]).write_bytes(b"png")
+        return type("Completed", (), {"returncode": 0})()
+
+    class FakeServer:
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            return None
+
+        def wait(self, *, timeout=None):
+            return 0
+
+    def fake_start_xvfb(executable):
+        server_commands.append([executable])
+        return FakeServer(), ":99"
+
+    monkeypatch.setattr(capture_script.shutil, "which", lambda _name: "/usr/bin/Xvfb")
+    monkeypatch.setattr(capture_script, "_start_xvfb", fake_start_xvfb)
+    monkeypatch.setattr(
+        capture_script.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("isolated capture must use _start_xvfb"),
+    )
+    monkeypatch.setattr(capture_script.subprocess, "run", fake_run)
+
+    capture_script._capture_specs_in_isolated_processes(specs, tmp_path)
+
+    assert [command[-1] for command in calls] == [spec.filename for spec in specs]
+    assert all("--only" in command for command in calls)
+    assert all(command[0] == capture_script.sys.executable for command in calls)
+    assert len(server_commands) == len(specs)
+    assert server_commands == [["/usr/bin/Xvfb"]] * len(specs)
+
+
+def test_data_import_capture_rejects_non_xcb_platforms():
+    capture_script._require_xcb_capture("xcb")
+
+    with pytest.raises(RuntimeError, match="xcb"):
+        capture_script._require_xcb_capture("offscreen")
+
+
+def test_capture_png_normalization_writes_plain_rgb(tmp_path):
+    screenshot = tmp_path / "qt-capture.png"
+    Image.new("RGBA", (12, 8), (12, 34, 56, 120)).save(
+        screenshot,
+        dpi=(96, 96),
+    )
+
+    capture_script._normalize_png_for_artifact(screenshot)
+
+    with Image.open(screenshot) as normalized:
+        assert normalized.mode == "RGB"
+        assert normalized.size == (12, 8)
+        assert "dpi" not in normalized.info
+
+    normalization_source = inspect.getsource(capture_script._normalize_png_for_artifact)
+    assert "optimize=True" in normalization_source
+
+
 def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
     dialog = capture_script._review_import_dialog()
     qtbot.addWidget(dialog)
+    dialog.resize(capture_script.WINDOW_SIZE)
     dialog.show()
+    dialog.resize(capture_script.WINDOW_SIZE)
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+    qtbot.wait(1)
 
-    assert dialog.apply_button.isEnabled()
-    assert not dialog.review_actions_panel.isVisibleTo(dialog)
-    assert dialog.review_tree.topLevelItemCount() > 0
-    report_steps = {
-        dialog.review_tree.topLevelItem(index).text(0)
-        for index in range(dialog.review_tree.topLevelItemCount())
+    review_specs = {
+        spec.primary_action
+        for spec in capture_script._canonical_capture_specs()
+        if spec.step_title == "Review and Import"
     }
+    assert review_specs == {dialog.apply_button.text()} == {"Import EEG Data"}
+    assert dialog.apply_button.isEnabled()
+    assert dialog.apply_button.isVisibleTo(dialog)
+    assert not dialog.review_actions_panel.isVisibleTo(dialog)
+    assert (
+        dialog.scroll_area.verticalScrollBarPolicy()
+        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    vertical = dialog.scroll_area.verticalScrollBar()
+    assert vertical is not None
+    assert vertical.maximum() == 0
+    assert (
+        dialog._review_summary_value_labels["Resource check"].text()
+        == "Estimated RAM 2.0 GB / Available RAM 24.0 GB"
+    )
+    assert dialog.review_tree.topLevelItemCount() > 0
+    report_steps: set[str] = set()
+    report_issues: set[str] = set()
+    for index in range(dialog.review_tree.topLevelItemCount()):
+        item = dialog.review_tree.topLevelItem(index)
+        assert item is not None
+        report_steps.add(item.text(0))
+        report_issues.add(item.text(1))
     assert "Match Labels" not in report_steps
+    assert report_issues == {"Optional session values were inferred"}
 
 
 def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
@@ -38,6 +288,7 @@ def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
     qtbot.waitExposed(dialog)
 
     horizontal = dialog.scroll_area.horizontalScrollBar()
+    assert horizontal is not None
     horizontal.setValue(horizontal.maximum())
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
     qtbot.wait(1)
@@ -47,3 +298,158 @@ def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
         dialog,
         capture_script.OUTPUT_DIR / "test-review.png",
     )
+
+
+def test_capture_pixel_guard_rejects_styled_but_unpainted_step_navigation(
+    qtbot,
+    tmp_path,
+):
+    dialog = capture_script._review_import_dialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.show()
+    qtbot.wait(1)
+    screenshot = tmp_path / "missing-step-labels.png"
+    image = Image.new(
+        "RGB",
+        (dialog.width(), dialog.height()),
+        "#1e1e1e",
+    )
+    draw = ImageDraw.Draw(image)
+    for label in dialog.step_labels:
+        top_left = label.mapTo(dialog, QPoint(0, 0))
+        draw.rectangle(
+            (
+                top_left.x(),
+                top_left.y(),
+                top_left.x() + label.width() - 1,
+                top_left.y() + label.height() - 1,
+            ),
+            fill="#23303a",
+            outline="#5b7db1",
+        )
+    image.save(screenshot)
+
+    with pytest.raises(RuntimeError, match=r"reference render|not fully rendered"):
+        capture_script._assert_key_text_rendered(dialog, screenshot)
+
+
+def test_required_region_guard_rejects_large_same_theme_content_erasure(
+    qtbot,
+    tmp_path,
+):
+    dialog = capture_script._review_import_dialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.show()
+    dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+    qtbot.wait(20)
+    screenshot = tmp_path / "erased-content.png"
+    assert dialog.grab().save(str(screenshot))
+    capture_script._normalize_png_for_artifact(screenshot)
+    with Image.open(screenshot) as captured:
+        damaged = captured.convert("RGB")
+    top_left = dialog.scroll_area.mapTo(dialog, QPoint(0, 0))
+    ImageDraw.Draw(damaged).rectangle(
+        (
+            top_left.x(),
+            top_left.y(),
+            top_left.x() + dialog.scroll_area.width() - 1,
+            top_left.y() + dialog.scroll_area.height() - 1,
+        ),
+        fill="#1e1e1e",
+    )
+    damaged.save(screenshot)
+
+    with pytest.raises(RuntimeError, match="reference render"):
+        capture_script._assert_required_capture_regions(dialog, screenshot)
+
+
+def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
+    spec = next(
+        spec
+        for spec in capture_script._canonical_capture_specs()
+        if spec.filename == "05-review-and-import.png"
+    )
+    dialog = capture_script._review_import_dialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.show()
+    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+    qtbot.wait(20)
+
+    capture_script._assert_text_controls_rendered(
+        dialog,
+        capture_script.OUTPUT_DIR / spec.filename,
+        [dialog.apply_button],
+        surface_name="Review primary action",
+    )
+
+
+def test_expanded_report_guard_rejects_blank_review_header(qtbot, tmp_path):
+    dialog = capture_script._review_import_dialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.show()
+    dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+    dialog.import_report_toggle.click()
+    qtbot.wait(1)
+
+    screenshot = tmp_path / "blank-review-header.png"
+    image = Image.new(
+        "RGB",
+        (dialog.width(), dialog.height()),
+        "#1e1e1e",
+    )
+    draw = ImageDraw.Draw(image)
+    for widget in (dialog.import_report_toggle, dialog.review_tree):
+        top_left = widget.mapTo(dialog, QPoint(0, 0))
+        draw.rectangle(
+            (
+                top_left.x(),
+                top_left.y(),
+                top_left.x() + widget.width() - 1,
+                top_left.y() + widget.height() - 1,
+            ),
+            fill="#242424",
+            outline="#5b7db1",
+        )
+    draw.text(
+        (
+            dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).x() + 8,
+            dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).y() + 8,
+        ),
+        "Hide import report",
+        fill="#ffffff",
+    )
+    image.save(screenshot)
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"Review header.*(reference render|not fully rendered)",
+    ):
+        capture_script._assert_review_surface_rendered(dialog, screenshot)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "05-review-and-import.png",
+        "05-review-and-import-report.png",
+    ],
+)
+def test_canonical_review_artifacts_have_full_review_header(filename):
+    screenshot = capture_script.OUTPUT_DIR / filename
+    assert screenshot.is_file()
+    capture_script._assert_canonical_review_artifact(screenshot)
+
+
+def test_review_artifact_guard_rejects_qt_dpi_metadata(tmp_path):
+    source = capture_script.OUTPUT_DIR / "05-review-and-import-report.png"
+    screenshot = tmp_path / "qt-encoded-report.png"
+    with Image.open(source) as captured:
+        captured.convert("RGB").save(screenshot, dpi=(96, 96))
+
+    with pytest.raises(RuntimeError, match="DPI metadata"):
+        capture_script._assert_canonical_review_artifact(screenshot)

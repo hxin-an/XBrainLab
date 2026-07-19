@@ -1,13 +1,17 @@
+import threading
+import time
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6 import sip
+from PyQt6.QtCore import QCoreApplication, QObject, QRunnable, Qt, QThread, QThreadPool
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
 from XBrainLab.backend.application import StopTrainingCommand
+from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.main_window import MainWindow
 
 
@@ -85,6 +89,7 @@ def test_switch_page_checks_only_active_nav_button(main_window):
     checked_states = [btn.isChecked() for btn in main_window.nav_btns]
 
     assert checked_states == [False, False, False, True, False]
+    assert main_window.compact_nav_combo.currentIndex() == 3
 
 
 def test_switch_page_only_updates_target_panel(main_window):
@@ -118,27 +123,73 @@ def test_switch_page_status_uses_backend_state_when_agent_absent(main_window):
         failed=False,
         diagnostics={
             "state": {
+                "pipeline_stage": "data_loaded",
                 "active_training": {"is_running": False},
                 "evaluation": {"finished_runs": 0},
                 "active_dataset": {
-                    "has_datasets": False,
-                    "has_epoch_data": False,
-                    "has_preprocessed_data": False,
+                    "has_datasets": True,
+                    "has_epoch_data": True,
+                    "has_preprocessed_data": True,
                     "has_raw_data": True,
                 },
             },
         },
     )
 
-    with patch(
-        "XBrainLab.ui.main_window.execute_application_command",
-        return_value=result,
-    ) as execute:
+    with (
+        patch(
+            "XBrainLab.ui.main_window.application_runtime_initialized",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.execute_application_command",
+            return_value=result,
+        ) as execute,
+    ):
         main_window.switch_page(0)
 
     execute.assert_called_once()
     assert main_window.statusBar().currentMessage() == (
-        "EEG data loaded · Preprocess data"
+        "Ready for preprocessing · Preprocess data"
+    )
+
+
+def test_switch_page_does_not_present_stale_backend_state_as_current(main_window):
+    """A retained publication is diagnostic evidence, not current workflow truth."""
+    result = SimpleNamespace(
+        failed=False,
+        diagnostics={
+            "view_stale": True,
+            "view_verified": True,
+            "publication_generation": 12,
+            "state": {
+                "active_training": {"is_running": False},
+                "evaluation": {"finished_runs": 0},
+                "active_dataset": {
+                    "has_datasets": True,
+                    "has_epoch_data": True,
+                    "has_preprocessed_data": True,
+                    "has_raw_data": True,
+                },
+            },
+        },
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.application_runtime_initialized",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.execute_application_command",
+            return_value=result,
+        ),
+    ):
+        main_window.switch_page(0)
+
+    assert (
+        main_window.statusBar().currentMessage()
+        == "Workflow status unavailable · Try again"
     )
 
 
@@ -161,6 +212,10 @@ def test_close_shutdown_requests_nonblocking_training_stop(main_window):
             "XBrainLab.ui.main_window.execute_application_command_async",
             side_effect=fake_async,
         ),
+        patch(
+            "XBrainLab.ui.main_window.application_background_tasks_idle",
+            return_value=True,
+        ),
         patch("XBrainLab.ui.main_window.QTimer.singleShot") as retry,
     ):
         main_window._closing_in_progress = True
@@ -178,6 +233,38 @@ def test_close_shutdown_requests_nonblocking_training_stop(main_window):
     retry.assert_called_once()
 
 
+def test_close_retries_until_backend_background_tasks_are_idle(main_window):
+    result = SimpleNamespace(failed=False, diagnostics={"stopped": True})
+    callbacks = {}
+
+    def fake_async(_context, _command, *, on_result, **_kwargs):
+        callbacks["result"] = on_result
+        return True
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.execute_application_command_async",
+            side_effect=fake_async,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.application_background_tasks_idle",
+            return_value=False,
+        ),
+        patch.object(main_window, "_schedule_close_retry") as retry,
+    ):
+        main_window._closing_in_progress = True
+        assert main_window._stop_training_for_close() is False
+        callbacks["result"](result)
+
+    assert main_window._training_close_ready is False
+    assert main_window._training_close_check_in_flight is False
+    retry.assert_called_once_with()
+
+
 def test_close_waits_when_training_thread_does_not_stop(main_window):
     main_window.agent_manager = MagicMock()
     event = QCloseEvent()
@@ -192,6 +279,244 @@ def test_close_waits_when_training_thread_does_not_stop(main_window):
     main_window.agent_manager.close.assert_not_called()
     retry.assert_not_called()
     assert "Training is still stopping" in main_window.statusBar().currentMessage()
+
+
+@pytest.mark.parametrize(
+    ("prewarm_worker", "panel_workers", "active_index"),
+    [
+        (object(), {}, None),
+        (None, {1: (object(), object())}, 1),
+        (None, {}, 2),
+    ],
+)
+def test_close_waits_for_owned_ui_background_work(
+    main_window,
+    prewarm_worker,
+    panel_workers,
+    active_index,
+):
+    main_window._startup_prewarm_worker = prewarm_worker
+    main_window._panel_prepare_workers = panel_workers
+    main_window._panel_prepare_active_index = active_index
+    event = QCloseEvent()
+
+    with (
+        patch.object(
+            main_window, "_ensure_shutdown_fence_for_close", return_value=True
+        ),
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(main_window, "_close_assistant_for_shutdown") as close_assistant,
+        patch.object(main_window, "_schedule_close_retry") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    close_assistant.assert_not_called()
+    retry.assert_called_once_with()
+    assert "background interface work" in main_window.statusBar().currentMessage()
+
+
+def test_close_waits_for_active_visualization_native_render(main_window):
+    visualization_panel = SimpleNamespace(
+        begin_native_render_shutdown=MagicMock(),
+        native_render_work_idle=MagicMock(return_value=False),
+    )
+    main_window.visualization_panel = visualization_panel
+    event = QCloseEvent()
+
+    with (
+        patch.object(
+            main_window, "_ensure_shutdown_fence_for_close", return_value=True
+        ),
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(main_window, "_close_assistant_for_shutdown") as close_assistant,
+        patch.object(main_window, "_schedule_close_retry") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    visualization_panel.begin_native_render_shutdown.assert_called_once_with()
+    visualization_panel.native_render_work_idle.assert_called()
+    close_assistant.assert_not_called()
+    retry.assert_called_once_with()
+
+
+def test_close_finalizes_native_resources_after_workers_idle_before_accept(
+    main_window,
+):
+    call_order: list[str] = []
+    visualization_panel = SimpleNamespace(
+        begin_native_render_shutdown=MagicMock(),
+        native_render_work_idle=MagicMock(return_value=True),
+        finalize_native_render_resources=MagicMock(
+            side_effect=lambda: call_order.append("finalize") or True,
+        ),
+    )
+    main_window.visualization_panel = visualization_panel
+    event = QCloseEvent()
+
+    with (
+        patch.object(
+            main_window,
+            "_ensure_shutdown_fence_for_close",
+            return_value=True,
+        ),
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(
+            main_window,
+            "_close_assistant_for_shutdown",
+            side_effect=lambda: call_order.append("assistant") or True,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "persist_before_close",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_delegate_close_event_if_alive",
+            side_effect=lambda _event: call_order.append("accept") or True,
+        ),
+    ):
+        main_window.closeEvent(event)
+
+    assert call_order == ["finalize", "assistant", "accept"]
+    visualization_panel.finalize_native_render_resources.assert_called_once_with()
+
+
+def test_unrelated_global_qthreadpool_work_does_not_block_app_owned_close(
+    main_window,
+    qtbot,
+):
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    class _UnrelatedWork(QRunnable):
+        def run(self) -> None:
+            started.set()
+            release.wait(timeout=3.0)
+            finished.set()
+
+    pool = QThreadPool.globalInstance()
+    assert pool is not None
+    work = _UnrelatedWork()
+    pool.start(work)
+    qtbot.waitUntil(started.is_set, timeout=1000)
+    assert pool.activeThreadCount() >= 1
+
+    visualization_panel = SimpleNamespace(
+        begin_native_render_shutdown=MagicMock(),
+        native_render_work_idle=MagicMock(return_value=True),
+        finalize_native_render_resources=MagicMock(return_value=True),
+    )
+    main_window.visualization_panel = visualization_panel
+    event = QCloseEvent()
+
+    try:
+        with (
+            patch.object(
+                main_window,
+                "_ensure_shutdown_fence_for_close",
+                return_value=True,
+            ),
+            patch.object(main_window, "_stop_training_for_close", return_value=True),
+            patch.object(
+                main_window,
+                "_close_assistant_for_shutdown",
+                return_value=True,
+            ),
+            patch.object(
+                main_window.window_geometry,
+                "persist_before_close",
+                return_value=True,
+            ),
+            patch.object(
+                main_window,
+                "_delegate_close_event_if_alive",
+                return_value=True,
+            ) as delegate,
+        ):
+            main_window.closeEvent(event)
+
+        visualization_panel.finalize_native_render_resources.assert_called_once_with()
+        delegate.assert_called_once_with(event)
+        assert pool.activeThreadCount() >= 1
+    finally:
+        release.set()
+        qtbot.waitUntil(finished.is_set, timeout=1000)
+
+
+def test_close_retries_when_native_resource_finalizer_is_not_terminal(main_window):
+    visualization_panel = SimpleNamespace(
+        begin_native_render_shutdown=MagicMock(),
+        native_render_work_idle=MagicMock(return_value=True),
+        finalize_native_render_resources=MagicMock(return_value=False),
+    )
+    main_window.visualization_panel = visualization_panel
+    event = QCloseEvent()
+
+    with (
+        patch.object(
+            main_window,
+            "_ensure_shutdown_fence_for_close",
+            return_value=True,
+        ),
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(main_window, "_close_assistant_for_shutdown") as close_assistant,
+        patch.object(main_window, "_delegate_close_event_if_alive") as accept_close,
+        patch.object(main_window, "_schedule_close_retry") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    visualization_panel.finalize_native_render_resources.assert_called_once_with()
+    close_assistant.assert_not_called()
+    accept_close.assert_not_called()
+    retry.assert_called_once_with()
+
+
+def test_cancelled_close_resumes_visualization_rendering(main_window):
+    visualization_panel = SimpleNamespace(
+        cancel_native_render_shutdown=MagicMock(),
+    )
+    main_window.visualization_panel = visualization_panel
+    main_window._closing_in_progress = True
+
+    main_window._restore_close_interaction()
+
+    visualization_panel.cancel_native_render_shutdown.assert_called_once_with()
+    assert main_window._closing_in_progress is False
+
+
+def test_force_close_still_waits_for_owned_ui_background_work(main_window):
+    main_window._force_shutdown_requested = True
+    main_window._startup_prewarm_worker = object()
+    event = QCloseEvent()
+
+    with (
+        patch.object(main_window, "_close_assistant_for_shutdown") as close_assistant,
+        patch.object(main_window, "_delegate_close_event_if_alive") as delegate,
+        patch.object(main_window, "_schedule_close_retry") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    close_assistant.assert_not_called()
+    delegate.assert_not_called()
+    retry.assert_called_once_with()
+
+
+def test_cancelled_close_preserves_pending_panel_request(main_window):
+    callback = MagicMock()
+    main_window._panel_prepare_queue[:] = [2]
+    main_window._panel_ready_callbacks[2] = [callback]
+
+    main_window._begin_close_attempt()
+    main_window._restore_close_interaction()
+
+    assert main_window._panel_prepare_queue == [2]
+    assert main_window._panel_ready_callbacks == {2: [callback]}
 
 
 def test_close_disables_all_ui_before_training_check(main_window):
@@ -422,7 +747,7 @@ def test_force_shutdown_bypasses_failed_state_verification(main_window):
     main_window.agent_manager.close.assert_called_once_with()
 
 
-def test_failed_stop_result_from_broken_snapshot_releases_close_fence(qtbot):
+def test_failed_stop_result_retains_close_fence_until_snapshot_recovers(qtbot):
     from XBrainLab.backend.application import get_application_service
     from XBrainLab.backend.study import Study
 
@@ -456,6 +781,7 @@ def test_failed_stop_result_from_broken_snapshot_releases_close_fence(qtbot):
 
     assert event.isAccepted() is False
     assert service._shutdown_fenced is True
+    original_build_state = service.state_snapshot.build
     service.state_snapshot.build = MagicMock(
         side_effect=RuntimeError("state backend unavailable"),
     )
@@ -464,11 +790,21 @@ def test_failed_stop_result_from_broken_snapshot_releases_close_fence(qtbot):
 
     callbacks["result"](result)
 
-    assert service._shutdown_fenced is False
-    assert window._closing_in_progress is False
-    assert window._shutdown_fence_active is False
+    assert service._shutdown_fenced is True
+    assert window._closing_in_progress is True
+    assert window._shutdown_fence_active is True
+    assert window._shutdown_release_retry_pending is True
     central_widget = window.centralWidget()
     assert central_widget is not None
+    assert central_widget.isEnabled() is False
+    assert dock.isEnabled() is False
+
+    service.state_snapshot.build = original_build_state
+    qtbot.waitUntil(lambda: service._shutdown_fenced is False, timeout=2000)
+
+    assert window._closing_in_progress is False
+    assert window._shutdown_fence_active is False
+    assert window._shutdown_release_retry_pending is False
     assert central_widget.isEnabled() is True
     assert dock.isEnabled() is True
 
@@ -593,12 +929,13 @@ def test_real_close_retry_completes_without_manual_teardown_flags(qtbot):
     assert window._training_close_ready is True
     assert window._training_close_check_in_flight is False
     assert get_application_service(study)._shutdown_fenced is True
-    assert getattr(window, "_xbrainlab_active_application_workers", []) == []
+    assert application_command_registry().active_count(window) == 0
 
 
 def test_close_waits_when_assistant_thread_ownership_is_not_released(main_window):
     main_window.agent_manager = MagicMock()
     main_window.agent_manager.close.return_value = False
+    main_window.agent_manager.assistant_runtime = None
     event = QCloseEvent()
 
     with (
@@ -667,12 +1004,14 @@ def test_init_panels_uses_compatibility_bootstrap_helper(mock_study, qtbot):
         window = MainWindow(mock_study)
         assert loaded_classes == []
         window.switch_page(0)
-        window.switch_page(2)
+        ready_panels = []
+        window.switch_page(2, on_ready=ready_panels.append)
+        qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=1_000)
 
     qtbot.addWidget(window)
     bootstrap.assert_called_once_with(mock_study)
     mock_study.get_controller.assert_not_called()
-    assert loaded_classes == ["DatasetPanel", "TrainingPanel"]
+    assert sorted(loaded_classes) == ["DatasetPanel", "TrainingPanel"]
     assert window.stack.count() == 5
     assert load_panel_class.call_count == 2
 
@@ -782,6 +1121,439 @@ def test_startup_prewarm_result_does_not_reload_dataset(mock_study, qtbot):
     assert window._loaded_panel_indices == {0}
 
 
+def test_startup_prewarm_start_failure_releases_worker_for_retry(
+    mock_study,
+    qtbot,
+):
+    """A thread-pool setup fault must not permanently disable prewarming."""
+
+    class _FailingPool:
+        def start(self, _worker):
+            raise RuntimeError("injected prewarm start failure")
+
+    class _AcceptingPool:
+        def __init__(self):
+            self.workers = []
+
+        def start(self, worker):
+            self.workers.append(worker)
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(mock_study)
+    qtbot.addWidget(window)
+
+    with patch(
+        "XBrainLab.ui.main_window.QThreadPool.globalInstance",
+        return_value=_FailingPool(),
+    ):
+        window._start_startup_prewarm()
+
+    assert window._startup_prewarm_worker is None
+
+    accepting_pool = _AcceptingPool()
+    with patch(
+        "XBrainLab.ui.main_window.QThreadPool.globalInstance",
+        return_value=accepting_pool,
+    ):
+        window._start_startup_prewarm()
+
+    assert window._startup_prewarm_worker is not None
+    assert accepting_pool.workers == [window._startup_prewarm_worker]
+
+
+def test_startup_prewarm_does_not_start_during_shutdown(mock_study, qtbot):
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(mock_study)
+    qtbot.addWidget(window)
+    window._closing_in_progress = True
+
+    with (
+        patch("XBrainLab.ui.main_window.Worker") as worker,
+        patch("XBrainLab.ui.main_window._require_global_thread_pool") as thread_pool,
+    ):
+        window._start_startup_prewarm()
+
+    worker.assert_not_called()
+    thread_pool.assert_not_called()
+    assert window._startup_prewarm_worker is None
+
+
+def test_panel_prepare_start_failure_is_visible_and_retryable(mock_study, qtbot):
+    """A failed worker start must release the panel slot for the next click."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+
+    class _FailingPool:
+        def start(self, _worker):
+            raise RuntimeError("injected panel start failure")
+
+    class _AcceptingPool:
+        def __init__(self):
+            self.workers = []
+
+        def start(self, worker):
+            self.workers.append(worker)
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+    ):
+        window = MainWindow(mock_study)
+    qtbot.addWidget(window)
+
+    with patch(
+        "XBrainLab.ui.main_window.QThreadPool.globalInstance",
+        return_value=_FailingPool(),
+    ):
+        window._request_panel_prepare(1)
+
+    assert window._panel_prepare_workers == {}
+    assert "Could not open Preprocess" in window.statusBar().currentMessage()
+
+    accepting_pool = _AcceptingPool()
+    with patch(
+        "XBrainLab.ui.main_window.QThreadPool.globalInstance",
+        return_value=accepting_pool,
+    ):
+        window._request_panel_prepare(1)
+
+    assert 1 in window._panel_prepare_workers
+    assert accepting_pool.workers == [window._panel_prepare_workers[1][0]]
+
+
+@pytest.mark.parametrize("failure_kind", ["constructor", "type"])
+def test_prepared_panel_materialization_failure_rolls_back_and_can_retry(
+    mock_study,
+    qtbot,
+    failure_kind,
+):
+    """A bad prepared class must not poison the cache or replace its placeholder."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+    wrong_type_objects: list[QObject] = []
+
+    class _ConstructorFailure(QWidget):
+        def __init__(self, *_args):
+            super().__init__()
+            raise RuntimeError("injected constructor failure")
+
+    def _wrong_type(*args):
+        wrong_type = QObject(args[-1])
+        wrong_type_objects.append(wrong_type)
+        return wrong_type
+
+    class _AcceptingPool:
+        def __init__(self):
+            self.workers = []
+
+        def start(self, worker):
+            self.workers.append(worker)
+
+    class _RetryPanel(QWidget):
+        def __init__(self, *_args):
+            super().__init__()
+
+    bad_prepared_class = (
+        _ConstructorFailure if failure_kind == "constructor" else _wrong_type
+    )
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+    ):
+        window = MainWindow(mock_study)
+    qtbot.addWidget(window)
+    window._show_page(1)
+
+    window._on_panel_prepare_result(1, bad_prepared_class)
+    qtbot.waitUntil(
+        lambda: 1 not in window._panel_materialization_pending,
+        timeout=1_000,
+    )
+
+    assert 1 not in window._prepared_panel_classes
+    assert 1 not in window._loaded_panel_indices
+    assert window.stack.count() == 5
+    assert window.stack.widget(1) is window.preprocess_panel
+    assert window.preprocess_panel.__class__.__name__ == "_LazyPanelPlaceholder"
+    assert "Select it again to retry" in window.preprocess_panel.detail.text()
+    if wrong_type_objects:
+        assert sip.isdeleted(wrong_type_objects[0])
+
+    accepting_pool = _AcceptingPool()
+    with patch(
+        "XBrainLab.ui.main_window.QThreadPool.globalInstance",
+        return_value=accepting_pool,
+    ):
+        assert window.switch_page(1) is False
+
+    assert 1 in window._panel_prepare_workers
+    assert accepting_pool.workers == [window._panel_prepare_workers[1][0]]
+
+    retry_delivery = window._panel_prepare_workers[1][1]
+    window._on_panel_prepare_result(1, _RetryPanel)
+    qtbot.waitUntil(lambda: 1 in window._loaded_panel_indices, timeout=1_000)
+    retry_delivery.handle_finished()
+
+    assert isinstance(window.preprocess_panel, _RetryPanel)
+    assert window._prepared_panel_classes == {}
+    assert window._panel_prepare_workers == {}
+
+
+def test_main_window_background_worker_construction_failures_release_ownership(
+    mock_study,
+    qtbot,
+):
+    """Worker construction faults must leave both background paths retryable."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+    ):
+        window = MainWindow(mock_study)
+    qtbot.addWidget(window)
+
+    with patch(
+        "XBrainLab.ui.main_window.Worker",
+        side_effect=RuntimeError("injected worker construction failure"),
+    ):
+        window._start_startup_prewarm()
+        window._request_panel_prepare(1)
+
+    assert window._startup_prewarm_worker is None
+    assert window._panel_prepare_workers == {}
+    assert "Could not open Preprocess" in window.statusBar().currentMessage()
+
+
+@pytest.mark.parametrize("panel_index", [1, 2])
+def test_navigation_button_returns_before_slow_panel_prepare_and_builds_on_gui_thread(
+    mock_study,
+    qtbot,
+    panel_index,
+):
+    """A first click may show a placeholder, but it must never import on the GUI thread."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+    construction_threads: list[QThread] = []
+    load_calls: list[str] = []
+
+    class _PreparedPanel(QWidget):
+        def __init__(self, *_args):
+            super().__init__()
+            application = QCoreApplication.instance()
+            assert application is not None
+            construction_threads.append(QThread.currentThread())
+
+    def slow_panel_load(_module: str, class_name: str):
+        load_calls.append(class_name)
+        time.sleep(0.18)
+        return _PreparedPanel
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+        patch(
+            "XBrainLab.ui.main_window._load_panel_class",
+            side_effect=slow_panel_load,
+        ),
+    ):
+        window = MainWindow(mock_study)
+        qtbot.addWidget(window)
+
+        started_at = time.perf_counter()
+        window.nav_btns[panel_index].click()
+        click_elapsed = time.perf_counter() - started_at
+
+        assert click_elapsed < 0.05
+        assert window.stack.currentIndex() == panel_index
+        assert panel_index not in window._loaded_panel_indices
+
+        # A second click while preparation is active must reuse the same job.
+        window.nav_btns[panel_index].click()
+        qtbot.waitUntil(
+            lambda: panel_index in window._loaded_panel_indices,
+            timeout=2_000,
+        )
+
+    application = QCoreApplication.instance()
+    assert application is not None
+    assert construction_threads == [application.thread()]
+    assert len(load_calls) == 1
+
+
+def test_public_switch_page_prepares_unloaded_panel_without_blocking_gui_thread(
+    mock_study,
+    qtbot,
+):
+    """Programmatic navigation must use the same async first-open path as a click."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+    construction_threads: list[QThread] = []
+    load_calls: list[str] = []
+
+    class _PreparedPanel(QWidget):
+        def __init__(self, *_args):
+            super().__init__()
+            construction_threads.append(QThread.currentThread())
+
+    def slow_panel_load(_module: str, class_name: str):
+        load_calls.append(class_name)
+        time.sleep(0.18)
+        return _PreparedPanel
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+        patch(
+            "XBrainLab.ui.main_window._load_panel_class",
+            side_effect=slow_panel_load,
+        ),
+    ):
+        window = MainWindow(mock_study)
+        qtbot.addWidget(window)
+
+        ready_panels = []
+        started_at = time.perf_counter()
+        materialized = window.switch_page(2, on_ready=ready_panels.append)
+        call_elapsed = time.perf_counter() - started_at
+
+        assert materialized is False
+        assert call_elapsed < 0.05
+        assert window.stack.currentIndex() == 2
+        assert construction_threads == []
+
+        qtbot.waitUntil(
+            lambda: len(ready_panels) == 1,
+            timeout=2_000,
+        )
+
+    application = QCoreApplication.instance()
+    assert application is not None
+    assert ready_panels == [window.training_panel]
+    assert construction_threads == [application.thread()]
+    assert load_calls == ["TrainingPanel"]
+
+
+def test_panel_prepare_result_is_dropped_after_window_deletion(mock_study, qtbot):
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+    constructed: list[bool] = []
+
+    class _PreparedPanel(QWidget):
+        def __init__(self, *_args):
+            super().__init__()
+            constructed.append(True)
+
+    def slow_panel_load(_module: str, _class_name: str):
+        time.sleep(0.15)
+        return _PreparedPanel
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+        patch(
+            "XBrainLab.ui.main_window._load_panel_class",
+            side_effect=slow_panel_load,
+        ),
+    ):
+        window = MainWindow(mock_study)
+        qtbot.addWidget(window)
+        window.nav_btns[2].click()
+        window.deleteLater()
+        qtbot.waitUntil(lambda: sip.isdeleted(window), timeout=1_000)
+        qtbot.wait(250)
+
+    assert constructed == []
+
+
+def test_navigation_does_not_prepare_panels_during_shutdown(mock_study, qtbot):
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window._load_panel_class") as load_panel,
+    ):
+        window = MainWindow(mock_study)
+        qtbot.addWidget(window)
+        window._closing_in_progress = True
+        window._request_page_from_navigation(2)
+
+    load_panel.assert_not_called()
+    assert window._panel_prepare_workers == {}
+
+
 def test_agent_manager_is_lazy_until_ai_toggle(mock_study, qtbot):
     """The AI assistant stack should not import/init during MainWindow startup."""
 
@@ -825,6 +1597,83 @@ def test_agent_manager_is_lazy_until_ai_toggle(mock_study, qtbot):
     load_agent_manager.assert_called_once()
     assert window.agent_manager is not None
     assert window.agent_manager.toggled is True
+
+
+def test_agent_manager_init_failure_rolls_back_and_second_click_opens_dock(
+    mock_study,
+    qtbot,
+):
+    """A failed first assistant construction must leave the button retryable."""
+
+    class _Signal:
+        def connect(self, _callback):
+            return None
+
+    class _AgentManager:
+        status_message_received = _Signal()
+        instances: ClassVar[list[Any]] = []
+
+        def __init__(self, main_window, _study):
+            self.main_window = main_window
+            self.chat_panel = None
+            self.chat_dock = None
+            self.closed = False
+            self.fail_init = not self.instances
+            self.instances.append(self)
+
+        def init_ui(self):
+            self.chat_dock = QDockWidget("Assistant", self.main_window)
+            self.chat_dock.setWidget(QWidget())
+            self.main_window.addDockWidget(
+                Qt.DockWidgetArea.RightDockWidgetArea,
+                self.chat_dock,
+            )
+            if self.fail_init:
+                raise RuntimeError("simulated first construction failure")
+            self.chat_dock.hide()
+
+        def toggle(self):
+            assert self.chat_dock is not None
+            self.chat_dock.show()
+
+        def close(self):
+            self.closed = True
+            assert self.chat_dock is not None
+            self.chat_dock.close()
+            return True
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window._load_agent_manager_class",
+            return_value=_AgentManager,
+        ),
+    ):
+        window = MainWindow(mock_study)
+        qtbot.addWidget(window)
+        window.show()
+
+        window.ai_btn.click()
+
+        first_manager = _AgentManager.instances[0]
+        assert window.agent_manager is None
+        assert first_manager.closed is True
+        assert first_manager.chat_dock.isVisible() is False
+        assert window.ai_btn.isChecked() is False
+        status_bar = window.statusBar()
+        assert status_bar is not None
+        assert "Try again" in status_bar.currentMessage()
+
+        window.ai_btn.click()
+
+    assert len(_AgentManager.instances) == 2
+    second_manager = _AgentManager.instances[1]
+    assert window.agent_manager is second_manager
+    assert second_manager.chat_dock.isVisible() is True
+    assert window.ai_btn.isChecked() is True
 
 
 def test_update_info_panel_keeps_compatibility_direct_panel_fallback(main_window):

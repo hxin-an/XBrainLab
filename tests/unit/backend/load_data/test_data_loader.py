@@ -99,6 +99,38 @@ def test_raw_data_loader_append_error():
         raw_data_loader.append(raw_miss_duration)
 
 
+def test_raw_data_loader_rejects_swapped_channel_identity() -> None:
+    reference = Raw(
+        "tests/reference.fif",
+        _generate_mne(500, ["C3", "C4"], "eeg"),
+    )
+    swapped = Raw(
+        "tests/swapped.fif",
+        _generate_mne(500, ["C4", "C3"], "eeg"),
+    )
+
+    loader = RawDataLoader([reference])
+
+    with pytest.raises(DataMismatchError, match="channel names or order"):
+        loader.append(swapped)
+
+
+def test_raw_data_loader_rejects_changed_channel_types() -> None:
+    reference = Raw(
+        "tests/reference.fif",
+        _generate_mne(500, ["C3", "EOG"], ["eeg", "eog"]),
+    )
+    changed_type = Raw(
+        "tests/changed-type.fif",
+        _generate_mne(500, ["C3", "EOG"], ["eeg", "eeg"]),
+    )
+
+    loader = RawDataLoader([reference])
+
+    with pytest.raises(DataMismatchError, match="channel types"):
+        loader.append(changed_type)
+
+
 def test_apply():
     raw_mne = _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg")
     raw = Raw("test/mt.fif", raw_mne)

@@ -61,21 +61,24 @@ def resolve_label_file_pairing(
         if not carrier_path:
             errors.append("Reviewed label carrier is missing a usable path.")
             continue
-        selected_target = str(plan.get("selected_target_file") or "").strip()
-        if not selected_target:
+        selected_targets = _reviewed_target_files(plan)
+        if not selected_targets:
             remaining_plans.append((carrier_path, label_mapping_key(carrier_path)))
             continue
-        target = _resolve_target_file(targets, selected_target)
-        if target is None:
-            errors.append(
-                "Reviewed label carrier target file does not match a selected EEG "
-                f"file: {selected_target}."
-            )
-            continue
-        if target in mapping:
-            errors.append("Multiple reviewed label carriers target the same EEG file.")
-            continue
-        mapping[target] = carrier_path
+        for selected_target in selected_targets:
+            target = _resolve_target_file(targets, selected_target)
+            if target is None:
+                errors.append(
+                    "Reviewed label carrier target file does not match a selected "
+                    f"EEG file: {selected_target}."
+                )
+                continue
+            if target in mapping:
+                errors.append(
+                    "Multiple reviewed label carriers target the same EEG file."
+                )
+                continue
+            mapping[target] = carrier_path
 
     remaining_targets = [target for target in targets if target not in mapping]
     carrier_by_key: dict[str, list[str]] = {}
@@ -119,6 +122,19 @@ def _resolve_target_file(targets: list[str], selected_target: str) -> str | None
         return exact[0]
     by_name = [target for target in targets if Path(target).name == Path(selected).name]
     return by_name[0] if len(by_name) == 1 else None
+
+
+def _reviewed_target_files(plan: dict[str, Any]) -> list[str]:
+    raw_targets = plan.get("selected_target_files")
+    targets = (
+        [str(item).strip() for item in raw_targets if str(item).strip()]
+        if isinstance(raw_targets, (list, tuple, set))
+        else []
+    )
+    selected_target = str(plan.get("selected_target_file") or "").strip()
+    if selected_target:
+        targets.append(selected_target)
+    return list(dict.fromkeys(targets))
 
 
 def label_mapping_key(path: str | Path) -> str:

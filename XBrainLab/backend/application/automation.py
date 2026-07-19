@@ -198,7 +198,11 @@ def command_specs(
     service: ApplicationService | None = None,
 ) -> list[AutomationCommandSpec]:
     """Return all command schemas with optional live capability policy."""
-    capabilities = service.get_capabilities() if service is not None else None
+    capabilities = (
+        service.get_view_publication().effective_capabilities
+        if service is not None
+        else None
+    )
     specs: list[AutomationCommandSpec] = []
     for command_name in CommandName:
         command_type = COMMAND_TYPES[command_name]
@@ -272,9 +276,14 @@ def execute_automation_payload(
     payload: dict[str, Any],
 ) -> AutomationExecution:
     """Execute one automation payload through ApplicationService."""
-    state_before = service.get_state()
+    publication = service.get_view_publication()
+    state_before = publication.state
     command_name = _payload_command_name(payload)
-    capability = _capability_for_payload(service, command_name)
+    capability = (
+        publication.effective_capabilities.get(command_name)
+        if command_name is not None
+        else None
+    )
     verification: dict[str, Any] = {
         "schema_valid": False,
         "capability_enabled": capability.enabled if capability else False,
@@ -337,10 +346,35 @@ def _construct_command(command_name: CommandName, arguments: dict[str, Any]) -> 
             f"{command_name.value} missing required arguments: {', '.join(missing)}"
         )
 
+    training_properties = (
+        _command_input_schema(command_type)["properties"]
+        if command_name
+        in {
+            CommandName.CONFIGURE_TRAINING,
+            CommandName.TRAIN,
+        }
+        else None
+    )
     values: dict[str, Any] = {}
     for name, value in arguments.items():
+        if _is_confirmation_field(name) and type(value) is not bool:
+            raise AutomationPayloadError(
+                f"{command_name.value} argument {name} must be a boolean; "
+                f"received {type(value).__name__}."
+            )
+        if training_properties is not None:
+            _validate_training_argument_against_published_schema(
+                command_name,
+                name,
+                value,
+                training_properties[name],
+            )
         values[name] = _coerce_value(name, value)
     return command_type(**values)
+
+
+def _is_confirmation_field(name: str) -> bool:
+    return name == "confirmed" or name.endswith("_confirmed")
 
 
 def _coerce_value(name: str, value: Any) -> Any:
@@ -351,6 +385,129 @@ def _coerce_value(name: str, value: Any) -> Any:
             MetadataUpdate(**item) if isinstance(item, dict) else item for item in value
         ]
     return value
+
+
+def _validate_training_argument_against_published_schema(
+    command_name: CommandName,
+    field_name: str,
+    value: Any,
+    schema: dict[str, Any],
+) -> None:
+    """Enforce the training schema that ``command_specs`` publishes."""
+    if value is None:
+        if schema.get("nullable") is True or schema.get("type") == "null":
+            return
+        _raise_schema_type_error(
+            command_name,
+            field_name,
+            schema.get("type"),
+            value,
+        )
+
+    alternatives = schema.get("anyOf")
+    if isinstance(alternatives, list):
+        if any(
+            isinstance(alternative, dict)
+            and _matches_training_schema(value, alternative)
+            for alternative in alternatives
+        ):
+            return
+        raise AutomationPayloadError(
+            f"{command_name.value} argument {field_name} does not match any "
+            "allowed schema."
+        )
+
+    expected_type = schema.get("type")
+    if isinstance(expected_type, str) and not _matches_json_type(
+        value,
+        expected_type,
+    ):
+        _raise_schema_type_error(command_name, field_name, expected_type, value)
+
+    enum_values = schema.get("enum")
+    if isinstance(enum_values, list) and value not in enum_values:
+        allowed = ", ".join(repr(item) for item in enum_values)
+        raise AutomationPayloadError(
+            f"{command_name.value} argument {field_name} must be one of: {allowed}."
+        )
+
+    _validate_numeric_bounds(
+        command_name,
+        value,
+        schema,
+        field_name=field_name,
+    )
+
+
+def _matches_training_schema(value: Any, schema: dict[str, Any]) -> bool:
+    if value is None:
+        return schema.get("nullable") is True or schema.get("type") == "null"
+    expected_type = schema.get("type")
+    if isinstance(expected_type, str) and not _matches_json_type(value, expected_type):
+        return False
+    enum_values = schema.get("enum")
+    return not isinstance(enum_values, list) or value in enum_values
+
+
+def _validate_numeric_bounds(
+    command_name: CommandName,
+    value: Any,
+    schema: dict[str, Any],
+    *,
+    field_name: str,
+) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return
+    minimum = schema.get("minimum")
+    if isinstance(minimum, (int, float)) and value < minimum:
+        raise AutomationPayloadError(
+            f"{command_name.value} argument {field_name} must be at least {minimum}."
+        )
+    exclusive_minimum = schema.get("exclusiveMinimum")
+    if isinstance(exclusive_minimum, (int, float)) and value <= exclusive_minimum:
+        raise AutomationPayloadError(
+            f"{command_name.value} argument {field_name} must be greater than "
+            f"{exclusive_minimum}."
+        )
+
+
+def _matches_json_type(value: Any, expected_type: str) -> bool:
+    if expected_type == "boolean":
+        return type(value) is bool
+    if expected_type == "integer":
+        return type(value) is int
+    if expected_type == "number":
+        return not isinstance(value, bool) and isinstance(value, (int, float))
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "null":
+        return value is None
+    return True
+
+
+def _raise_schema_type_error(
+    command_name: CommandName,
+    path: str,
+    expected_type: Any,
+    value: Any,
+) -> None:
+    descriptions = {
+        "array": "an array",
+        "boolean": "a boolean",
+        "integer": "an integer",
+        "number": "a number",
+        "object": "an object",
+        "string": "a string",
+    }
+    expected = descriptions.get(expected_type, str(expected_type or "a valid value"))
+    raise AutomationPayloadError(
+        f"{command_name.value} argument {path} must be {expected}; "
+        f"received {type(value).__name__}."
+    )
 
 
 def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
@@ -574,15 +731,6 @@ def _payload_command_name(payload: dict[str, Any]) -> CommandName | None:
         return CommandName(value)
     except ValueError:
         return None
-
-
-def _capability_for_payload(
-    service: ApplicationService,
-    command_name: CommandName | None,
-) -> CommandCapability | None:
-    if command_name is None:
-        return None
-    return service.get_capabilities().get(command_name)
 
 
 def _confirmation_required(capability: CommandCapability | None) -> bool:

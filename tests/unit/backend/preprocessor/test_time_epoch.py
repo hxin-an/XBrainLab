@@ -83,6 +83,55 @@ class TestTimeEpoch:
         new_mne = args[0]
         assert len(new_mne) == 1  # Duplicate dropped
 
+    def test_time_epoch_blocks_window_that_would_drop_boundary_event(self, mock_raw):
+        raw, _, event_id = mock_raw
+        raw.get_event_list.return_value = (
+            np.array([[9500, 0, event_id["Event1"]]]),
+            event_id,
+        )
+        time_epoch = TimeEpoch([raw])
+
+        with pytest.raises(
+            ValueError,
+            match=r"Epoch window .* exceeds recording bounds for 1 selected event",
+        ):
+            time_epoch._data_preprocess(
+                raw,
+                selected_event_names=["Event1"],
+                tmin=0.0,
+                tmax=1.0,
+                baseline=None,
+            )
+
+        raw.set_mne.assert_not_called()
+
+    def test_time_epoch_rejects_when_mne_drops_every_selected_event(self, mock_raw):
+        raw, _, event_id = mock_raw
+        mne_raw = raw.get_mne()
+        mne_raw.set_annotations(
+            mne.Annotations(
+                onset=[0.0],
+                duration=[float(mne_raw.times[-1])],
+                description=["BAD_motion"],
+            )
+        )
+        raw.get_event_list.return_value = (
+            np.array([[1000, 0, event_id["Event1"]]]),
+            event_id,
+        )
+        time_epoch = TimeEpoch([raw])
+
+        with pytest.raises(ValueError, match=r"No usable epochs remain"):
+            time_epoch._data_preprocess(
+                raw,
+                selected_event_names=["Event1"],
+                tmin=-0.1,
+                tmax=0.5,
+                baseline=None,
+            )
+
+        raw.set_mne.assert_not_called()
+
     def test_time_epoch_already_epoched(self, mock_raw):
         raw, _, _ = mock_raw
         raw.is_raw.return_value = False
@@ -91,3 +140,16 @@ class TestTimeEpoch:
             ValueError, match=r"Only raw data can be epoched, got epochs"
         ):
             TimeEpoch([raw])
+
+    def test_time_epoch_requires_one_sampling_frequency(self, mock_raw):
+        raw, events, event_id = mock_raw
+        other = MagicMock(spec=Raw)
+        other.get_sfreq.return_value = 256.0
+        other.is_raw.return_value = True
+        other.get_event_list.return_value = (events, event_id)
+
+        with pytest.raises(
+            ValueError,
+            match=r"different sampling frequencies .*Resample them to one shared rate",
+        ):
+            TimeEpoch([raw, other])

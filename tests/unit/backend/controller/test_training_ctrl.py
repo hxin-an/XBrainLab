@@ -5,6 +5,8 @@ from __future__ import annotations
 import threading
 from unittest.mock import MagicMock
 
+import pytest
+
 from XBrainLab.backend.controller.training_controller import TrainingController
 
 
@@ -28,14 +30,16 @@ class TestMonitorLoop:
         study.is_training.return_value = False
         events = []
         ctrl.subscribe("training_stopped", lambda: events.append("stopped"))
-        ctrl._monitor_loop()
+        handoff = ctrl._reserve_terminal_handoff()
+        ctrl._monitor_loop(handoff.generation)
         assert "stopped" in events
 
     def test_loop_breaks_on_shutdown(self):
         ctrl, study = _make_ctrl()
         study.is_training.return_value = True
+        handoff = ctrl._reserve_terminal_handoff()
         ctrl._shutdown_event.set()
-        ctrl._monitor_loop()
+        ctrl._monitor_loop(handoff.generation)
 
     def test_loop_emits_updated_then_stops(self):
         ctrl, study = _make_ctrl()
@@ -52,24 +56,30 @@ class TestMonitorLoop:
         events = []
         ctrl.subscribe("training_updated", lambda: events.append("updated"))
         ctrl.subscribe("training_stopped", lambda: events.append("stopped"))
-        ctrl._monitor_loop()
+        handoff = ctrl._reserve_terminal_handoff()
+        ctrl._monitor_loop(handoff.generation)
         assert "updated" in events
 
 
 class TestStartMonitoring:
     def test_starts_new_thread(self):
         ctrl, _study = _make_ctrl()
-        ctrl._start_monitoring()
+        handoff = ctrl._reserve_terminal_handoff()
+        ctrl._start_monitoring(handoff.generation)
         assert ctrl._monitor_thread is not None
         ctrl._shutdown_event.set()
         ctrl._monitor_thread.join(timeout=2.0)
 
-    def test_noop_if_alive(self):
+    def test_rejects_live_previous_monitor(self):
         ctrl, _ = _make_ctrl()
         existing = MagicMock()
         existing.is_alive.return_value = True
         ctrl._monitor_thread = existing
-        ctrl._start_monitoring()
+        handoff = ctrl._reserve_terminal_handoff()
+
+        with pytest.raises(RuntimeError, match="previous training monitor"):
+            ctrl._start_monitoring(handoff.generation)
+
         assert ctrl._monitor_thread is existing
 
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
 import csv
-import json
 import math
 from collections import Counter
 from collections.abc import Iterable
@@ -14,6 +14,18 @@ from typing import Any
 import numpy as np
 from scipy.io import loadmat
 
+from .data_interpretation_bids_resources import (
+    BidsEventsJsonReader,
+    bids_events_json_candidates,
+    bids_events_json_resource_paths,
+)
+from .data_interpretation_event_values import (
+    class_map_from_value_decisions,
+    derive_class_views,
+    review_event_values,
+)
+from .data_interpretation_resource_reader import AdmittedResourceReader
+
 NEEDS_CONFIRMATION = "needs_confirmation"
 
 
@@ -22,53 +34,78 @@ def build_label_carrier_plan(
     choices_payload: Any,
     *,
     carrier_sources: dict[str, str] | None = None,
+    sidecar_reader: BidsEventsJsonReader | None = None,
+    resource_reader: AdmittedResourceReader | None = None,
 ) -> list[dict[str, Any]]:
     """Build reviewable label-carrier rows for interpretation preview."""
     choices = normalize_label_carrier_choices(choices_payload)
     carrier_sources = dict(carrier_sources or {})
-    return [
-        _label_carrier_plan_for_path(
-            Path(carrier),
-            choices,
-            raw_path=str(carrier),
-            source_location=carrier_sources.get(str(carrier), ""),
+    rows: list[dict[str, Any]] = []
+    for carrier in label_carriers:
+        path = Path(carrier)
+        guard = (
+            resource_reader.guard([path], purpose="label carrier preview")
+            if resource_reader is not None
+            else contextlib.nullcontext()
         )
-        for carrier in label_carriers
-    ]
+        with guard:
+            rows.append(
+                _label_carrier_plan_for_path(
+                    path,
+                    choices,
+                    raw_path=str(carrier),
+                    source_location=carrier_sources.get(str(carrier), ""),
+                    sidecar_reader=sidecar_reader,
+                )
+            )
+    return rows
 
 
 def infer_class_map_from_label_carrier_plan(
     label_carrier_plan: list[dict[str, Any]],
     *,
     limit: int = 20,
+    sidecar_reader: BidsEventsJsonReader | None = None,
+    resource_reader: AdmittedResourceReader | None = None,
 ) -> dict[str, str]:
-    """Return observed tabular label values for human review in the wizard."""
-    class_map: dict[str, str] = {}
-    for carrier in label_carrier_plan:
-        remaining = max(limit - len(class_map), 0)
-        if remaining <= 0:
-            break
-        for value, label in _observed_class_map_entries(carrier, limit=remaining):
-            if value not in class_map:
-                class_map[value] = label
-    return class_map
+    """Return the collision-safe class view selected by value decisions."""
+    del sidecar_reader, resource_reader
+    class_map, _run_maps = derive_class_views(label_carrier_plan)
+    return dict(list(class_map.items())[: max(int(limit), 0)])
+
+
+def observed_class_map_for_label_carrier(
+    carrier: dict[str, Any],
+    *,
+    sidecar_reader: BidsEventsJsonReader | None = None,
+) -> dict[str, str]:
+    """Return the selected class view for one carrier."""
+    del sidecar_reader
+    decisions = carrier.get("value_decisions")
+    return class_map_from_value_decisions(
+        decisions if isinstance(decisions, dict) else {}
+    )
 
 
 def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, Any]]:
     """Return cleaned wizard choices keyed by carrier path or file name."""
     if not isinstance(payload, dict):
         return {}
-    result: dict[str, dict[str, str]] = {}
+    result: dict[str, dict[str, Any]] = {}
     allowed = {
         "label_field",
         "anchor",
         "time_model",
+        "sample_index_base",
+        "sample_index_origin",
         "granularity",
         "role",
         "target_file",
+        "target_files",
         "placement_method",
         "duration_field",
         "target_event_codes",
+        "value_decisions",
     }
     for carrier_key, carrier_choices in payload.items():
         if not isinstance(carrier_choices, dict):
@@ -78,10 +115,15 @@ def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, Any]]:
             key_text = str(key)
             if key_text not in allowed:
                 continue
-            if key_text == "target_event_codes":
+            if key_text in {"target_event_codes", "target_files"}:
                 values = _string_list(value)
                 if values:
                     cleaned[key_text] = values
+                continue
+            if key_text == "value_decisions":
+                decisions = _normalize_value_decision_choices(value)
+                if decisions:
+                    cleaned[key_text] = decisions
                 continue
             value_text = str(value).strip()
             if value_text:
@@ -97,6 +139,7 @@ def _label_carrier_plan_for_path(
     *,
     raw_path: str | None = None,
     source_location: str = "",
+    sidecar_reader: BidsEventsJsonReader | None = None,
 ) -> dict[str, Any]:
     source_path = raw_path or str(path)
     carrier_choice = _choice_for_label_carrier(path, choices, source_path)
@@ -115,6 +158,8 @@ def _label_carrier_plan_for_path(
     time_model = carrier_choice.get("time_model") or _default_time_model(
         path, anchor_candidates
     )
+    sample_index_base = str(carrier_choice.get("sample_index_base") or "").strip()
+    sample_index_origin = str(carrier_choice.get("sample_index_origin") or "").strip()
     granularity = carrier_choice.get("granularity") or _default_granularity(path)
     selected_duration = carrier_choice.get("duration_field") or _default_duration_field(
         duration_candidates
@@ -143,6 +188,26 @@ def _label_carrier_plan_for_path(
     if selected_target_event_codes and selected_anchor in {"", "trial order"}:
         selected_anchor = selected_target_event_codes[0]
     label_stats = _observed_label_stats(path, selected_label)
+    level_suggestions = (
+        _bids_event_level_labels(
+            path,
+            selected_label,
+            sidecar_reader=sidecar_reader,
+        )
+        if _is_bids_events_file(path)
+        else {}
+    )
+    value_review = review_event_values(
+        value_counts=label_stats["value_counts"],
+        selected_field=selected_label,
+        carrier_format=_label_carrier_format(path),
+        carrier_role=str(carrier_choice.get("role") or "external labels"),
+        suggested_names=level_suggestions,
+        choices=carrier_choice.get("value_decisions")
+        if isinstance(carrier_choice.get("value_decisions"), dict)
+        else {},
+    )
+    run_class_map = class_map_from_value_decisions(value_review.decisions)
     anchor_stats = _observed_field_stats(path, selected_anchor)
     duration_stats = _observed_field_stats(path, selected_duration)
     event_code_label_counts = _event_code_label_counts(
@@ -163,7 +228,8 @@ def _label_carrier_plan_for_path(
         time_field_candidates=time_field_candidates,
         duration_candidates=duration_candidates,
     )
-    return {
+    warnings.extend(value_review.warnings)
+    plan = {
         "path": source_path,
         "name": path.name,
         "format": _label_carrier_format(path),
@@ -183,6 +249,9 @@ def _label_carrier_plan_for_path(
         "selected_duration_field": selected_duration,
         "label_row_count": label_stats["row_count"],
         "label_value_counts": label_stats["value_counts"],
+        "value_decisions": value_review.decisions,
+        "unresolved_values": value_review.unresolved_values,
+        "missing_value_decisions": value_review.missing_values,
         "selected_anchor_stats": anchor_stats,
         "selected_duration_stats": duration_stats,
         "event_code_label_counts": event_code_label_counts,
@@ -190,13 +259,19 @@ def _label_carrier_plan_for_path(
         "bids_event_columns": bids_event_columns,
         "warnings": warnings,
         "time_model": time_model,
+        "sample_index_base": sample_index_base,
+        "sample_index_origin": sample_index_origin,
         "granularity": granularity,
         "placement_method": placement_method,
         "role": carrier_choice.get("role") or "external labels",
         "selected_target_file": carrier_choice.get("target_file", ""),
+        "selected_target_files": carrier_choice.get("target_files", []),
         "decision": NEEDS_CONFIRMATION,
         "reason": _label_carrier_reason(path, label_candidates, anchor_candidates),
     }
+    if run_class_map:
+        plan["run_class_map"] = run_class_map
+    return plan
 
 
 def _choice_for_label_carrier(
@@ -254,6 +329,10 @@ def _label_candidates_for_carrier(path: Path) -> list[str]:
                 "label",
                 "labels",
                 "class",
+                "classlabel",
+                "classlabels",
+                "class_label",
+                "class_labels",
                 "target",
                 "condition",
                 "event",
@@ -272,6 +351,46 @@ def _label_candidates_for_carrier(path: Path) -> list[str]:
     if suffix == ".txt":
         return ["line label sequence"]
     return []
+
+
+def _normalize_value_decision_choices(payload: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return {}
+    allowed = {
+        "role",
+        "keep_event",
+        "use_as_class",
+        "class_name",
+        "suggested_name",
+        "decision",
+        "decision_source",
+        "provenance",
+        "count",
+    }
+    result: dict[str, dict[str, Any]] = {}
+    for raw_value, raw_decision in payload.items():
+        value = str(raw_value).strip()
+        if not value or not isinstance(raw_decision, dict):
+            continue
+        decision: dict[str, Any] = {}
+        for raw_key, raw_item in raw_decision.items():
+            key = str(raw_key)
+            if key not in allowed:
+                continue
+            if key in {"keep_event", "use_as_class"}:
+                if isinstance(raw_item, bool):
+                    decision[key] = raw_item
+                continue
+            if key == "count":
+                if isinstance(raw_item, int) and not isinstance(raw_item, bool):
+                    decision[key] = max(raw_item, 0)
+                continue
+            item = str(raw_item).strip()
+            if item:
+                decision[key] = item
+        if decision:
+            result[value] = decision
+    return result
 
 
 def _anchor_candidates_for_carrier(
@@ -425,22 +544,6 @@ def _tabular_columns(path: Path) -> list[str]:
     except (OSError, UnicodeDecodeError, csv.Error, StopIteration):
         return []
     return [str(column).strip() for column in header if str(column).strip()]
-
-
-def _observed_label_values(carrier: dict[str, Any], *, limit: int) -> list[str]:
-    if limit <= 0:
-        return []
-    path = Path(str(carrier.get("path") or ""))
-    label_field = str(carrier.get("selected_label_field") or "").strip()
-    if not label_field:
-        return []
-    if path.suffix.lower() in {".csv", ".tsv"} or _is_bids_events_file(path):
-        return _tabular_label_values(path, label_field, limit=limit)
-    if path.suffix.lower() == ".mat":
-        return _mat_label_values(path, label_field, limit=limit)
-    if path.suffix.lower() == ".txt":
-        return _text_label_values(path, limit=limit)
-    return []
 
 
 def _observed_label_stats(path: Path, label_field: str) -> dict[str, Any]:
@@ -801,111 +904,23 @@ def _label_stats_from_counts(counts: Counter[str]) -> dict[str, Any]:
     return {"row_count": sum(ordered.values()), "value_counts": ordered}
 
 
-def _observed_class_map_entries(
-    carrier: dict[str, Any],
+def _bids_event_level_labels(
+    path: Path,
+    label_field: str,
     *,
-    limit: int,
-) -> list[tuple[str, str]]:
-    values = _observed_label_values(carrier, limit=limit)
-    if not values:
-        return []
-    path = Path(str(carrier.get("path") or ""))
-    label_field = str(carrier.get("selected_label_field") or "").strip()
-    level_labels = (
-        _bids_event_level_labels(path, label_field)
-        if _is_bids_events_file(path)
-        else {}
-    )
-    return [(value, level_labels.get(value, value)) for value in values]
-
-
-def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[str]:
-    delimiter = (
-        "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
-    )
-    values: list[str] = []
-    try:
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter=delimiter)
-            if not reader.fieldnames or label_field not in reader.fieldnames:
-                return []
-            for row in reader:
-                value = _clean_label_value(row.get(label_field))
-                if not value or value in values:
-                    continue
-                values.append(value)
-                if len(values) >= limit:
-                    break
-    except (OSError, UnicodeDecodeError, csv.Error):
-        return []
-    return values
-
-
-def _text_label_values(path: Path, *, limit: int) -> list[str]:
-    values: list[str] = []
-    try:
-        with path.open("r", encoding="utf-8-sig") as handle:
-            for line in handle:
-                value = _clean_label_value(line)
-                if not value or value in values:
-                    continue
-                values.append(value)
-                if len(values) >= limit:
-                    break
-    except (OSError, UnicodeDecodeError):
-        return []
-    return values
-
-
-def _bids_event_level_labels(path: Path, label_field: str) -> dict[str, str]:
+    sidecar_reader: BidsEventsJsonReader | None = None,
+) -> dict[str, str]:
     if not label_field:
         return {}
-    for sidecar in _bids_events_json_candidates(path):
-        payload = _json_object(sidecar)
+    reader = sidecar_reader or BidsEventsJsonReader.from_paths(
+        bids_events_json_resource_paths([str(path)]),
+    )
+    for sidecar in bids_events_json_candidates(path):
+        payload = reader.read_object(sidecar)
         levels = _levels_for_field(payload, label_field)
         if levels:
             return levels
     return {}
-
-
-def _bids_events_json_candidates(path: Path) -> list[Path]:
-    names = _bids_event_sidecar_names(path)
-    candidates: list[Path] = []
-    for directory in [path.parent, *path.parents[1:8]]:
-        for name in names:
-            candidate = directory / name
-            if candidate not in candidates:
-                candidates.append(candidate)
-    return candidates
-
-
-def _bids_event_sidecar_names(path: Path) -> list[str]:
-    names: list[str] = []
-    if path.name.endswith(".tsv"):
-        stem = path.name[: -len(".tsv")]
-        names.append(f"{stem}.json")
-    prefix = path.name.removesuffix(".tsv").removesuffix("_events")
-    parts = [part for part in prefix.split("_") if part]
-    semantic_parts = [
-        part for part in parts if not part.startswith(("sub-", "ses-", "run-"))
-    ]
-    if semantic_parts:
-        names.append("_".join([*semantic_parts, "events"]) + ".json")
-    names.append("events.json")
-    result: list[str] = []
-    for name in names:
-        if name not in result:
-            result.append(name)
-    return result
-
-
-def _json_object(path: Path) -> dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8-sig") as handle:
-            payload = json.load(handle)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
 
 
 def _levels_for_field(payload: dict[str, Any], label_field: str) -> dict[str, str]:
@@ -959,28 +974,6 @@ def _clean_label_value(value: Any) -> str:
     if not text or text.lower() in {"n/a", "na", "nan", "null"}:
         return ""
     return text
-
-
-def _mat_label_values(path: Path, label_field: str, *, limit: int) -> list[str]:
-    try:
-        payload = loadmat(str(path), squeeze_me=True, struct_as_record=False)
-    except Exception:
-        return []
-    value = _mat_variable(payload, label_field)
-    if value is None:
-        return []
-    array = np.asarray(value)
-    if array.dtype.names is not None or array.dtype == object:
-        return []
-    values: list[str] = []
-    for item in array.reshape(-1):
-        label = _clean_label_value(item.item() if hasattr(item, "item") else item)
-        if not label or label in values:
-            continue
-        values.append(label)
-        if len(values) >= limit:
-            break
-    return values
 
 
 def _mat_variable(payload: dict[str, Any], label_field: str) -> Any | None:
@@ -1175,6 +1168,16 @@ def _label_carrier_warnings(
 def _existing_bids_events_json_candidates(path: Path) -> list[Path]:
     return [
         candidate
-        for candidate in _bids_events_json_candidates(path)
+        for candidate in bids_events_json_candidates(path)
         if candidate.exists()
     ]
+
+
+def _sidecar_reader_for_plan(
+    label_carrier_plan: list[dict[str, Any]],
+) -> BidsEventsJsonReader:
+    return BidsEventsJsonReader.from_paths(
+        bids_events_json_resource_paths(
+            str(carrier.get("path") or "") for carrier in label_carrier_plan
+        ),
+    )

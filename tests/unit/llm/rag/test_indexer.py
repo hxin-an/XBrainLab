@@ -24,7 +24,9 @@ def test_load_gold_set(mock_indexer):
             "id": "test_01",
             "category": "test",
             "input": "User Input",
-            "expected_tool_calls": [{"tool": "test"}],
+            "expected_tool_calls": [
+                {"tool_name": "get_dataset_info", "parameters": {}}
+            ],
         }
     ]
 

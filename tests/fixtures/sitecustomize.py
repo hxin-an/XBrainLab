@@ -6,7 +6,10 @@
 #
 # Usage: Set PYTHONPATH=tests/fixtures before running pytest with --cov
 
+import logging
 import sys
+
+LOGGER = logging.getLogger(__name__)
 
 _original_import = (
     __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
@@ -36,7 +39,7 @@ def _patched_import(name, *args, **kwargs):
 
             _C._add_docstr = idempotent_add_docstr
         except Exception:
-            pass
+            LOGGER.debug("Unable to install the PyTorch docstring patch", exc_info=True)
 
     return module
 
@@ -54,4 +57,4 @@ if (
 
         builtins.__import__ = _patched_import
     except Exception:
-        pass
+        LOGGER.debug("Unable to install the coverage import hook", exc_info=True)

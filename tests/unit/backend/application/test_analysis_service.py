@@ -12,11 +12,11 @@ from XBrainLab.backend.application.analysis_service import (
     HandlerResult,
 )
 from XBrainLab.backend.application.commands import (
-    ApplyMontageCommand,
     EvaluateCommand,
     SaliencyCommand,
     VisualizeCommand,
 )
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -29,6 +29,17 @@ from XBrainLab.backend.application.state import (
     RawStateSnapshot,
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
+)
+from XBrainLab.backend.training_manager import (
+    PostTrainingSaliencyTarget,
+    TrainingManager,
+    post_training_saliency_target,
+)
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyPhase,
+    PostTrainingSaliencyScheduleDisposition,
+    PostTrainingSaliencyScheduleReason,
+    TrainingRunIdentity,
 )
 
 
@@ -119,19 +130,6 @@ class _BrokenAveragedRecordController(_VisualizationController):
         raise RuntimeError("averaged record failed")
 
 
-class _PreprocessController:
-    def __init__(self) -> None:
-        self.applied_montage: tuple[list[str], list[tuple[float, float, float]]] | None
-        self.applied_montage = None
-
-    def apply_montage(
-        self,
-        channels: list[str],
-        positions: list[tuple[float, float, float]],
-    ) -> None:
-        self.applied_montage = (channels, positions)
-
-
 def _state(
     *,
     has_epoch: bool = True,
@@ -187,16 +185,14 @@ def _service(
     *,
     state: ApplicationStateSnapshot | None = None,
     evaluation: _EvaluationController | None = None,
-) -> tuple[AnalysisCommandService, _VisualizationController, _PreprocessController]:
+) -> tuple[AnalysisCommandService, _VisualizationController]:
     visualization = _VisualizationController()
-    preprocess = _PreprocessController()
     service = AnalysisCommandService(
         evaluation=evaluation or _EvaluationController([]),
         visualization=visualization,
-        preprocess=preprocess,
         get_state=lambda: state or _state(),
     )
-    return service, visualization, preprocess
+    return service, visualization
 
 
 def _expect_payload(result: HandlerResult) -> tuple[str, dict[str, Any]]:
@@ -206,7 +202,7 @@ def _expect_payload(result: HandlerResult) -> tuple[str, dict[str, Any]]:
 
 def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
     plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
-    service, _visualization, _preprocess = _service(
+    service, _visualization = _service(
         evaluation=_EvaluationController([plan]),
     )
 
@@ -235,7 +231,7 @@ def test_analysis_service_reports_validation_fallback_provenance() -> None:
             _Run(finished=True, evaluation_split="test"),
         ],
     )
-    service, _visualization, _preprocess = _service(
+    service, _visualization = _service(
         evaluation=_EvaluationController([plan]),
     )
 
@@ -248,7 +244,7 @@ def test_analysis_service_reports_validation_fallback_provenance() -> None:
 
 
 def test_analysis_service_reports_no_results_without_facade() -> None:
-    service, _visualization, _preprocess = _service(
+    service, _visualization = _service(
         evaluation=_EvaluationController([]),
     )
 
@@ -266,7 +262,7 @@ def test_analysis_service_reports_no_results_without_facade() -> None:
 
 
 def test_analysis_service_does_not_turn_evaluation_failure_into_empty_success() -> None:
-    service, _visualization, _preprocess = _service(
+    service, _visualization = _service(
         evaluation=_BrokenEvaluationController([]),
     )
 
@@ -281,7 +277,6 @@ def test_analysis_service_does_not_turn_visualization_failure_into_empty_success
     service = AnalysisCommandService(
         evaluation=_EvaluationController([]),
         visualization=visualization,
-        preprocess=_PreprocessController(),
         get_state=_state,
     )
 
@@ -291,7 +286,7 @@ def test_analysis_service_does_not_turn_visualization_failure_into_empty_success
 
 def test_analysis_service_does_not_hide_requested_model_summary_failure() -> None:
     plan = _Plan("Plan A", [_Run(finished=True)])
-    service, _visualization, _preprocess = _service(
+    service, _visualization = _service(
         evaluation=_BrokenModelSummaryController([plan]),
     )
 
@@ -304,7 +299,6 @@ def test_analysis_service_does_not_hide_requested_averaged_record_failure() -> N
     service = AnalysisCommandService(
         evaluation=_EvaluationController([]),
         visualization=visualization,
-        preprocess=_PreprocessController(),
         get_state=lambda: _state(finished_runs=1),
     )
 
@@ -317,7 +311,7 @@ def test_analysis_service_does_not_hide_requested_averaged_record_failure() -> N
 def test_analysis_service_reports_training_active_without_facade() -> None:
     plan_a = _Plan("Plan A", [_Run(finished=True)])
     plan_b = _Plan("Plan B", [_Run(finished=True)])
-    service, _visualization, _preprocess = _service(
+    service, _visualization = _service(
         state=_state(is_training=True, finished_runs=2),
         evaluation=_EvaluationController([plan_a, plan_b]),
     )
@@ -334,7 +328,7 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
 
 def test_analysis_service_can_return_ui_evaluation_objects() -> None:
     plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
-    service, _visualization, _preprocess = _service(
+    service, _visualization = _service(
         evaluation=_EvaluationController([plan]),
     )
 
@@ -361,7 +355,7 @@ def test_analysis_service_targets_requested_model_summary_only() -> None:
     plan_a = _Plan("Plan A", [_Run(finished=True), _Run(finished=True)])
     plan_b = _Plan("Plan B", [_Run(finished=True)])
     evaluation = _EvaluationController([plan_a, plan_b])
-    service, _visualization, _preprocess = _service(evaluation=evaluation)
+    service, _visualization = _service(evaluation=evaluation)
 
     _message, diagnostics = _expect_payload(
         service.handle_evaluate(
@@ -383,7 +377,7 @@ def test_analysis_service_targets_requested_model_summary_only() -> None:
 def test_analysis_service_can_skip_heavy_evaluation_payloads() -> None:
     plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
     evaluation = _EvaluationController([plan])
-    service, _visualization, _preprocess = _service(evaluation=evaluation)
+    service, _visualization = _service(evaluation=evaluation)
 
     _message, diagnostics = _expect_payload(
         service.handle_evaluate(
@@ -399,9 +393,9 @@ def test_analysis_service_can_skip_heavy_evaluation_payloads() -> None:
     assert evaluation.model_summary_calls == 0
 
 
-def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:
+def test_analysis_service_visualize_and_saliency_handlers() -> None:
     state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
-    service, visualization, preprocess = _service(state=state)
+    service, visualization = _service(state=state)
 
     _visualize_message, visualize = _expect_payload(
         service.handle_visualize(VisualizeCommand(view="summary")),
@@ -411,16 +405,6 @@ def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:
             SaliencyCommand(method="Gradient", params={"nt_samples": 2}),
         ),
     )
-    montage_message, montage = _expect_payload(
-        service.handle_apply_montage(
-            ApplyMontageCommand(
-                channels=["Cz"],
-                positions=[(0.0, 0.0, 0.0)],
-                montage_name="standard_1020",
-            ),
-        ),
-    )
-
     assert visualize["payload_type"] == "visualization_summary"
     assert "saliency map" in visualize["available_views"]
     assert saliency["payload_type"] == "saliency_configuration"
@@ -428,14 +412,63 @@ def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:
     assert saliency["params"]["_methods"] == ["Gradient"]
     assert saliency["params"]["SmoothGrad"]["nt_samples"] == 2
     assert visualization.params is not None
-    assert preprocess.applied_montage == (["Cz"], [(0.0, 0.0, 0.0)])
-    assert montage_message == "Applied montage 'standard_1020' to 1 channel(s)."
-    assert montage == {"channel_count": 1, "montage_name": "standard_1020"}
+
+
+def test_analysis_service_rejects_automatic_scheduler_noop_with_terminal_status() -> (
+    None
+):
+    manager = TrainingManager()
+
+    class _ManagerVisualizationController(_VisualizationController):
+        def set_saliency_params(self, params: dict[str, Any]):
+            self.params = params
+            return manager.set_saliency_params(params)
+
+        def get_saliency_params(self) -> dict[str, Any] | None:
+            return manager.get_saliency_params()
+
+    visualization = _ManagerVisualizationController()
+    service = AnalysisCommandService(
+        evaluation=_EvaluationController([]),
+        visualization=visualization,
+        get_state=lambda: _state(has_trainer=True, finished_runs=1),
+    )
+    run = TrainingRunIdentity(trainer_id="missing-trainer", run_id=1)
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=True,
+    )
+
+    with (
+        post_training_saliency_target(target),
+        pytest.raises(PreconditionError) as raised,
+    ):
+        service.handle_saliency(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+            )
+        )
+
+    schedule = target.schedule_outcome
+    assert schedule is not None
+    assert schedule.disposition is PostTrainingSaliencyScheduleDisposition.STALE
+    assert schedule.reason is PostTrainingSaliencyScheduleReason.TRAINER_UNAVAILABLE
+    assert schedule.status.phase is PostTrainingSaliencyPhase.CANCELLED
+    assert str(raised.value) == schedule.status.message == schedule.message
+    assert raised.value.diagnostics["post_training_saliency_schedule"] == (
+        schedule.to_dict()
+    )
 
 
 def test_analysis_service_settings_params_select_only_advanced_methods() -> None:
     state = _state(saliency_available=False, saliency_configured=False, finished_runs=1)
-    service, visualization, _preprocess = _service(state=state)
+    service, visualization = _service(state=state)
 
     _message, saliency = _expect_payload(
         service.handle_saliency(
@@ -470,7 +503,7 @@ def test_analysis_service_reports_saliency_configuration_readiness() -> None:
         has_training_option=False,
         has_trainer=False,
     )
-    service, _visualization, _preprocess = _service(state=state)
+    service, _visualization = _service(state=state)
 
     _message, saliency = _expect_payload(service.handle_saliency(SaliencyCommand()))
 
@@ -488,7 +521,7 @@ def test_analysis_service_reports_montage_setup_without_plot_views() -> None:
         saliency_configured=False,
         finished_runs=0,
     )
-    service, _visualization, _preprocess = _service(state=state)
+    service, _visualization = _service(state=state)
 
     _message, visualize = _expect_payload(
         service.handle_visualize(VisualizeCommand(view="summary")),
@@ -508,7 +541,7 @@ def test_analysis_service_requires_channel_positions_for_3d_plot() -> None:
         montage_available=False,
         channel_positions_available=False,
     )
-    service, _visualization, _preprocess = _service(state=state)
+    service, _visualization = _service(state=state)
 
     _message, visualize = _expect_payload(
         service.handle_visualize(VisualizeCommand(view="summary")),
@@ -525,7 +558,7 @@ def test_analysis_service_can_return_ui_visualization_objects_without_averaging(
     None
 ):
     state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
-    service, visualization, _preprocess = _service(state=state)
+    service, visualization = _service(state=state)
 
     _message, diagnostics = _expect_payload(
         service.handle_visualize(
@@ -540,7 +573,7 @@ def test_analysis_service_can_return_ui_visualization_objects_without_averaging(
 
 def test_analysis_service_returns_averaged_records_only_when_requested() -> None:
     state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
-    service, visualization, _preprocess = _service(state=state)
+    service, visualization = _service(state=state)
 
     _message, diagnostics = _expect_payload(
         service.handle_visualize(

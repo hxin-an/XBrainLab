@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
@@ -22,7 +23,10 @@ def test_visualizer():
     eval_record = EvalRecord(
         label, output, gradient, gradient_input, smoothgrad, smoothgrad_sq, vargrad
     )
-    visualizer = Visualizer(eval_record, cast(Any, None))
+    visualizer = Visualizer(
+        eval_record,
+        cast(Any, SimpleNamespace(label_map={0: "0", 1: "1"})),
+    )
     with pytest.raises(NotImplementedError):
         visualizer.get_plt()
 
@@ -51,7 +55,10 @@ def test_visualizer_closes_owned_figure_when_plotting_fails():
         {},
         {},
     )
-    visualizer = FailingVisualizer(eval_record, cast(Any, None))
+    visualizer = FailingVisualizer(
+        eval_record,
+        cast(Any, SimpleNamespace(label_map={0: "0"})),
+    )
 
     with pytest.raises(RuntimeError, match="boom"):
         visualizer.get_plt()
@@ -86,6 +93,32 @@ def test_iter_saliency_by_label_uses_label_order_when_class_keys_are_zero_based(
     ]
 
 
+def test_iter_saliency_by_label_does_not_confuse_one_based_event_codes_with_class_keys():
+    """Normalized class keys must not collide with one-based EEG event codes."""
+    eval_record = EvalRecord(
+        np.array([0, 1]),
+        np.array([[0.8, 0.2], [0.2, 0.8]]),
+        {
+            0: np.ones((1, 2, 3, 4)),
+            1: np.ones((1, 2, 3, 4)) * 2,
+        },
+        {},
+        {},
+        {},
+        {},
+    )
+    epoch_data = cast(Any, type("EpochData", (), {})())
+    epoch_data.label_map = {1: "left", 2: "right"}
+    visualizer = Visualizer(eval_record, epoch_data)
+
+    labels = visualizer.iter_saliency_by_label("Gradient")
+
+    assert [(key, name) for key, name, _saliency in labels] == [
+        (0, "left"),
+        (1, "right"),
+    ]
+
+
 def test_iter_saliency_by_label_prefers_actual_saliency_keys_over_extra_labels():
     """Non-class EEG events in label_map must not hide computed saliency data."""
     eval_record = EvalRecord(
@@ -114,7 +147,7 @@ def test_iter_saliency_by_label_prefers_actual_saliency_keys_over_extra_labels()
     assert all(saliency.size > 0 for _key, _name, saliency in labels)
 
 
-def test_iter_saliency_by_label_skips_empty_class_arrays():
+def test_iter_saliency_by_label_rejects_empty_class_arrays():
     eval_record = EvalRecord(
         np.array([1]),
         np.array([[0.2, 0.8]]),
@@ -131,9 +164,26 @@ def test_iter_saliency_by_label_skips_empty_class_arrays():
     epoch_data.label_map = {0: "class 0", 1: "class 1"}
     visualizer = Visualizer(eval_record, epoch_data)
 
-    labels = visualizer.iter_saliency_by_label("Gradient")
+    with pytest.raises(ValueError, match=r"missing.*class 0"):
+        visualizer.iter_saliency_by_label("Gradient")
 
-    assert [(key, name) for key, name, _saliency in labels] == [(1, "class 1")]
+
+def test_iter_saliency_by_label_rejects_incomplete_class_coverage():
+    eval_record = EvalRecord(
+        np.array([0, 1]),
+        np.array([[0.8, 0.2], [0.2, 0.8]]),
+        {0: np.ones((1, 2, 3, 4))},
+        {},
+        {},
+        {},
+        {},
+    )
+    epoch_data = cast(Any, type("EpochData", (), {})())
+    epoch_data.label_map = {0: "class 0", 1: "class 1"}
+    visualizer = Visualizer(eval_record, epoch_data)
+
+    with pytest.raises(ValueError, match=r"expected 2 classes.*found 1"):
+        visualizer.iter_saliency_by_label("Gradient")
 
 
 def test_visualizer_resolves_string_saliency_keys():
@@ -152,7 +202,10 @@ def test_visualizer_resolves_string_saliency_keys():
         gradient.copy(),
         gradient.copy(),
     )
-    visualizer = Visualizer(eval_record, None)
+    visualizer = Visualizer(
+        eval_record,
+        cast(Any, SimpleNamespace(label_map={0: "0", 1: "1"})),
+    )
 
     assert np.array_equal(
         visualizer.get_saliency("Gradient", 1), np.ones((10, 2, 3, 4))
@@ -180,7 +233,7 @@ def test_visualizer_iterates_available_saliency_without_zero_based_assumption():
         gradient.copy(),
         gradient.copy(),
     )
-    visualizer = Visualizer(eval_record, epoch_data)
+    visualizer = Visualizer(eval_record, cast(Any, epoch_data))
 
     saliency_by_label = visualizer.iter_saliency_by_label("Gradient")
 

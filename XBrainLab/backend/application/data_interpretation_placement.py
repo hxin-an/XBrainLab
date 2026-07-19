@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+@dataclass(frozen=True)
+class _AppliedEventScope:
+    evidence_present: bool
+    is_valid: bool
+    event_count: int | None = None
+    counts_by_target: dict[str, int] = field(default_factory=dict)
+    decision_code: str = ""
+    summary: str = ""
 
 
 def annotate_label_carrier_placements(
@@ -47,6 +59,25 @@ def placement_confirmation_items(
     return sorted(set(items))
 
 
+def placement_blocked_reasons(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    """Return carrier-scoped reasons for placement states that cannot be applied."""
+    reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        review = carrier.get("placement_review")
+        if not isinstance(review, dict):
+            continue
+        if str(review.get("status") or "").strip() != "blocked":
+            continue
+        name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
+        summary = str(review.get("summary") or "Label placement is blocked.").strip()
+        reason = f"{name}: {summary}" if name else summary
+        if reason not in reasons:
+            reasons.append(reason)
+    return reasons
+
+
 def _eeg_event_order_review(
     carrier: dict[str, Any],
     event_rows: list[dict[str, Any]],
@@ -58,6 +89,102 @@ def _eeg_event_order_review(
     review["target_events"] = target_codes
     review["label_rows"] = label_rows
     review["excluded_eeg_events"] = _excluded_event_count(event_rows)
+    applied_scope = _applied_event_scope(carrier)
+    if applied_scope.evidence_present:
+        if applied_scope.counts_by_target:
+            review["selected_eeg_events_by_target"] = applied_scope.counts_by_target
+        review["selected_eeg_events"] = applied_scope.event_count
+        if not applied_scope.is_valid:
+            review.update(
+                {
+                    "status": "blocked",
+                    "decision_code": applied_scope.decision_code,
+                    "summary": applied_scope.summary,
+                    "next_action": (
+                        "Review the committed target paths and per-target event "
+                        "counts before using these labels."
+                    ),
+                }
+            )
+            return review
+        committed_label_rows = _committed_positive_int(
+            carrier.get("label_row_count"),
+        )
+        if committed_label_rows is None:
+            label_count_is_zero = _is_integer_zero(carrier.get("label_row_count"))
+            review.update(
+                {
+                    "status": "blocked",
+                    "decision_code": (
+                        "post_commit_label_scope_empty"
+                        if label_count_is_zero
+                        else "post_commit_label_count_invalid"
+                    ),
+                    "summary": (
+                        "The committed label import contains zero label rows; the "
+                        "applied label scope must contain at least one label row."
+                        if label_count_is_zero
+                        else (
+                            "The committed label import contains an invalid label "
+                            "row count; it must be a positive integer."
+                        )
+                    ),
+                    "next_action": (
+                        "Review the imported labels before using this applied scope."
+                    ),
+                }
+            )
+            return review
+        label_rows = committed_label_rows
+        review["label_rows"] = label_rows
+        applied_event_count = applied_scope.event_count
+        if applied_event_count is None:
+            review.update(
+                {
+                    "status": "blocked",
+                    "decision_code": "post_commit_event_scope_inconsistent",
+                    "summary": (
+                        "The committed label import does not provide one consistent "
+                        "event count for every selected target."
+                    ),
+                    "next_action": (
+                        "Review the imported target scope before using these labels."
+                    ),
+                }
+            )
+            return review
+        matched = min(label_rows, applied_event_count)
+        review["matched"] = matched
+        review["unmatched_label_rows"] = max(label_rows - applied_event_count, 0)
+        review["unlabeled_eeg_events"] = max(applied_event_count - label_rows, 0)
+        if label_rows != applied_event_count:
+            review.update(
+                {
+                    "status": "blocked",
+                    "decision_code": "post_commit_event_count_mismatch",
+                    "summary": (
+                        "The committed label count does not match the applied EEG "
+                        f"event scope ({label_rows} label rows, "
+                        f"{applied_event_count} applied events per target)."
+                    ),
+                    "next_action": (
+                        "Review the imported labels and target event selection."
+                    ),
+                }
+            )
+            return review
+        review.update(
+            {
+                "status": "ready",
+                "matched": matched,
+                "summary": (
+                    f"{matched} label rows were applied to {applied_event_count} EEG "
+                    "events for each selected target."
+                ),
+                "next_action": "Review the imported class mapping.",
+            }
+        )
+        return review
     if not target_codes:
         review.update(
             {
@@ -80,17 +207,13 @@ def _eeg_event_order_review(
             }
         )
         return review
-    event_counts = [
-        _event_count_for_carrier(event, carrier)
-        for _code, event in events
-        if event is not None
-    ]
-    event_count = (
-        sum(value for value in event_counts if value is not None)
-        if all(value is not None for value in event_counts)
-        else None
+    event_count, scoped_event_counts = _event_scope_for_carrier(
+        [event for _code, event in events if event is not None],
+        carrier,
     )
     review["selected_eeg_events"] = event_count
+    if scoped_event_counts:
+        review["selected_eeg_events_by_target"] = scoped_event_counts
     if label_rows is None or event_count is None:
         review.update(
             {
@@ -178,6 +301,23 @@ def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
             "time_model": str(carrier.get("time_model") or ""),
         }
     )
+    excluded_class_names = _mne_excluded_class_names(carrier)
+    if excluded_class_names:
+        review.update(
+            {
+                "status": "blocked",
+                "decision_code": "mne_excluded_class_description",
+                "summary": (
+                    "MNE excludes supervised class descriptions beginning with "
+                    "Bad or Edge: " + ", ".join(excluded_class_names) + "."
+                ),
+                "next_action": (
+                    "Rename the class, or mark the value as an artifact or boundary "
+                    "instead of a supervised class."
+                ),
+            }
+        )
+        return review
     if not field:
         review.update(
             {
@@ -187,6 +327,32 @@ def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
             }
         )
         return review
+    time_model = str(carrier.get("time_model") or "").strip().lower()
+    if time_model == "sample_index":
+        sample_index_base = str(carrier.get("sample_index_base") or "").strip()
+        sample_index_origin = str(carrier.get("sample_index_origin") or "").strip()
+        review["sample_index_contract"] = {
+            "base": sample_index_base,
+            "origin": sample_index_origin,
+        }
+        if sample_index_base not in {"zero_based", "one_based"} or (
+            sample_index_origin not in {"recording_relative", "absolute"}
+        ):
+            review.update(
+                {
+                    "status": "blocked",
+                    "decision_code": "sample_index_contract_required",
+                    "summary": (
+                        "Sample indexes need an explicit zero- or one-based "
+                        "contract and a recording-relative or absolute origin."
+                    ),
+                    "next_action": (
+                        "Choose the sample index base and origin before applying "
+                        "labels."
+                    ),
+                }
+            )
+            return review
     numeric_rows = int(review["numeric_rows"])
     if not numeric_rows:
         review.update(
@@ -206,6 +372,24 @@ def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
         }
     )
     return review
+
+
+def _mne_excluded_class_names(carrier: dict[str, Any]) -> list[str]:
+    decisions = _dict(carrier.get("value_decisions"))
+    result: list[str] = []
+    for value in decisions.values():
+        if not isinstance(value, dict):
+            continue
+        class_name = str(value.get("class_name") or "").strip()
+        if (
+            value.get("decision") == "resolved"
+            and value.get("keep_event") is True
+            and value.get("use_as_class") is True
+            and class_name.casefold().startswith(("bad", "edge"))
+            and class_name not in result
+        ):
+            result.append(class_name)
+    return sorted(result, key=str.casefold)
 
 
 def _interval_review(carrier: dict[str, Any]) -> dict[str, Any]:
@@ -493,40 +677,220 @@ def _event_count(row: dict[str, Any]) -> int | None:
     return None
 
 
-def _event_count_for_carrier(
+def _event_scope_for_carrier(
+    rows: list[dict[str, Any]],
+    carrier: dict[str, Any],
+) -> tuple[int | None, dict[str, int]]:
+    """Return one per-target event scope for a carrier replayed across files."""
+    if not rows:
+        return None, {}
+    explicit_targets = _selected_target_file_identities(carrier)
+    if explicit_targets:
+        counts_by_target: dict[str, int] = {}
+        for target_path in explicit_targets:
+            target_total = 0
+            for row in rows:
+                file_counts = _dict(row.get("file_counts"))
+                value = _target_file_count(
+                    file_counts,
+                    target_path=target_path,
+                    all_target_paths=explicit_targets,
+                )
+                if value is None:
+                    return None, {}
+                target_total += value
+            counts_by_target[target_path] = target_total
+        distinct_counts = set(counts_by_target.values())
+        event_count = next(iter(distinct_counts)) if len(distinct_counts) == 1 else None
+        return event_count, counts_by_target
+
+    event_counts = [_event_count_for_unscoped_carrier(row, carrier) for row in rows]
+    event_count = (
+        sum(value for value in event_counts if value is not None)
+        if all(value is not None for value in event_counts)
+        else None
+    )
+    return event_count, {}
+
+
+def _applied_event_scope(
+    carrier: dict[str, Any],
+) -> _AppliedEventScope:
+    evidence_key = "applied_event_counts_by_target"
+    if evidence_key not in carrier:
+        return _AppliedEventScope(evidence_present=False, is_valid=False)
+
+    raw_counts = carrier.get(evidence_key)
+    target_paths = _selected_target_file_identities(carrier)
+    if not isinstance(raw_counts, dict) or not raw_counts:
+        return _invalid_applied_event_scope(
+            "post_commit_event_scope_not_per_target",
+            "The committed label import does not provide per-target event counts.",
+        )
+    if not target_paths:
+        return _invalid_applied_event_scope(
+            "post_commit_event_scope_target_mismatch",
+            "The committed label import has event counts but no selected target paths.",
+        )
+
+    normalized_counts: dict[str, int] = {}
+    for path, raw_count in raw_counts.items():
+        if not str(path).strip():
+            return _invalid_applied_event_scope(
+                "post_commit_event_scope_invalid",
+                "The committed label import contains an invalid target path.",
+            )
+        path_key = _path_identity(path)
+        if path_key in normalized_counts:
+            return _invalid_applied_event_scope(
+                "post_commit_event_scope_invalid",
+                "The committed label import contains duplicate target identities.",
+            )
+        if _is_integer_zero(raw_count):
+            return _invalid_applied_event_scope(
+                "post_commit_event_scope_empty",
+                (
+                    "The committed label import contains a target with zero applied "
+                    "EEG events; every selected target must have at least one applied "
+                    "EEG event."
+                ),
+            )
+        count = _committed_positive_int(raw_count)
+        if count is None:
+            return _invalid_applied_event_scope(
+                "post_commit_event_scope_invalid",
+                (
+                    "The committed label import contains an invalid per-target "
+                    "event count; it must be a positive integer."
+                ),
+            )
+        normalized_counts[path_key] = count
+
+    normalized_targets = [_path_identity(path) for path in target_paths]
+    if len(set(normalized_targets)) != len(normalized_targets):
+        return _invalid_applied_event_scope(
+            "post_commit_event_scope_invalid",
+            "The selected label targets contain duplicate path identities.",
+        )
+    if set(normalized_targets) != set(normalized_counts):
+        return _invalid_applied_event_scope(
+            "post_commit_event_scope_target_mismatch",
+            (
+                "The committed per-target event counts do not match every selected "
+                "target by full path identity."
+            ),
+        )
+
+    counts_by_target = {
+        target_path: normalized_counts[target_key]
+        for target_path, target_key in zip(
+            target_paths,
+            normalized_targets,
+            strict=True,
+        )
+    }
+    distinct_counts = set(counts_by_target.values())
+    event_count = next(iter(distinct_counts)) if len(distinct_counts) == 1 else None
+    return _AppliedEventScope(
+        evidence_present=True,
+        is_valid=True,
+        event_count=event_count,
+        counts_by_target=counts_by_target,
+    )
+
+
+def _invalid_applied_event_scope(
+    decision_code: str,
+    summary: str,
+) -> _AppliedEventScope:
+    return _AppliedEventScope(
+        evidence_present=True,
+        is_valid=False,
+        decision_code=decision_code,
+        summary=summary,
+    )
+
+
+def _event_count_for_unscoped_carrier(
     row: dict[str, Any],
     carrier: dict[str, Any],
 ) -> int | None:
-    """Use per-file counts when a label carrier maps to one EEG file."""
+    """Use a same-stem per-file count when no explicit target scope was saved."""
     file_counts = _dict(row.get("file_counts"))
     if not file_counts:
         return _event_count(row)
-    target_name = _target_file_name_for_carrier(carrier, file_counts)
-    if target_name:
-        value = _positive_int(file_counts.get(target_name))
+    label_stem = Path(
+        str(carrier.get("path") or carrier.get("name") or ""),
+    ).stem.casefold()
+    if not label_stem:
+        return _event_count(row)
+    matches = [
+        name for name in file_counts if Path(str(name)).stem.casefold() == label_stem
+    ]
+    if len(matches) == 1:
+        value = _positive_int(file_counts.get(matches[0]))
         if value is not None:
             return value
     return _event_count(row)
 
 
-def _target_file_name_for_carrier(
-    carrier: dict[str, Any],
-    file_counts: dict[str, Any],
-) -> str:
+def _selected_target_file_identities(carrier: dict[str, Any]) -> list[str]:
+    raw_targets = carrier.get("selected_target_files")
+    if isinstance(raw_targets, str):
+        values: Iterable[Any] = raw_targets.split(",")
+    elif isinstance(raw_targets, (list, tuple, set)):
+        values = raw_targets
+    else:
+        values = []
+    targets = [text for value in values if (text := str(value).strip())]
     explicit = str(carrier.get("selected_target_file") or "").strip()
     if explicit:
-        name = Path(explicit).name
-        if name in file_counts:
-            return name
-    label_stem = Path(
-        str(carrier.get("path") or carrier.get("name") or ""),
-    ).stem.casefold()
-    if not label_stem:
-        return ""
-    matches = [
-        name for name in file_counts if Path(str(name)).stem.casefold() == label_stem
+        targets.append(explicit)
+    return list(dict.fromkeys(targets))
+
+
+def _target_file_count(
+    file_counts: dict[str, Any],
+    *,
+    target_path: str,
+    all_target_paths: list[str],
+) -> int | None:
+    direct = _positive_int(file_counts.get(target_path))
+    if direct is not None:
+        return direct
+
+    normalized_target = _path_identity(target_path)
+    normalized_matches = [
+        value
+        for path, value in file_counts.items()
+        if _path_identity(path) == normalized_target
     ]
-    return matches[0] if len(matches) == 1 else ""
+    if len(normalized_matches) == 1:
+        return _positive_int(normalized_matches[0])
+
+    target_name = Path(target_path).name
+    if sum(Path(path).name == target_name for path in all_target_paths) != 1:
+        return None
+    basename_matches = [
+        value for path, value in file_counts.items() if Path(path).name == target_name
+    ]
+    if len(basename_matches) == 1:
+        return _positive_int(basename_matches[0])
+    return None
+
+
+def _path_identity(path: Any) -> str:
+    return os.path.normcase(str(Path(str(path)).expanduser().resolve()))
+
+
+def _committed_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return int(value)
+
+
+def _is_integer_zero(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == 0
 
 
 def _excluded_event_count(rows: list[dict[str, Any]]) -> int:

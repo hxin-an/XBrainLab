@@ -41,7 +41,8 @@ required multi-dataset handoff gate：
 ```bash
 poetry run python scripts/dev/fetch_public_eeg_fixtures.py
 poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
+  --strict --format json --write-artifacts
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/io/test_io_integration.py \
   tests/integration/io/test_public_bids_fixture.py \

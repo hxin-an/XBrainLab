@@ -4,6 +4,8 @@ Provides a high-level interface for importing, removing, and preprocessing
 EEG data files, as well as label management and channel selection.
 """
 
+from collections.abc import Sequence
+from copy import copy
 from importlib import import_module
 from typing import Any
 
@@ -317,16 +319,69 @@ class DatasetController(Observable):
         """
         current_list = self.study.loaded_data_list
         if 0 <= index < len(current_list):
-            data = current_list[index]
+            self.update_metadata_batch([(index, subject, session)])
+
+    def update_metadata_batch(
+        self,
+        updates: Sequence[tuple[int, str | None, str | None]],
+    ) -> int:
+        """Apply metadata changes on copies, then reset preprocessing once.
+
+        A setter failure leaves the loaded rows and every downstream data
+        reference untouched because no Study-owned state is changed until all
+        requested row updates have succeeded.
+        """
+        changes = list(updates)
+        if not changes:
+            return 0
+
+        current_list = self.study.loaded_data_list
+        invalid = [
+            index
+            for index, _subject, _session in changes
+            if not 0 <= index < len(current_list)
+        ]
+        if invalid:
+            raise IndexError(f"Metadata row index out of range: {invalid[0]}")
+
+        working_list = [copy(data) for data in current_list]
+        for index, subject, session in changes:
+            data = working_list[index]
             if subject is not None:
                 data.set_subject_name(subject)
             if session is not None:
                 data.set_session_name(session)
 
-            # Sync to study to trigger updates if necessary
-            # (often metadata-only doesn't strictly require it,
-            # but resetting preprocess ensures consistency)
+        self._commit_metadata_rows(working_list)
+        return len(changes)
+
+    def _commit_metadata_rows(self, working_list: list[Any]) -> None:
+        original_loaded = self.study.loaded_data_list
+        original_preprocessed = self.study.preprocessed_data_list
+        manager = vars(self.study).get("data_manager")
+        manager_state = None
+        if manager is not None:
+            manager_state = {
+                "loaded_data_list": manager.loaded_data_list,
+                "backup_loaded_data_list": manager.backup_loaded_data_list,
+                "preprocessed_data_list": manager.preprocessed_data_list,
+                "epoch_data": manager.epoch_data,
+                "datasets": manager.datasets,
+                "dataset_generator": manager.dataset_generator,
+                "dataset_locked": manager.dataset_locked,
+            }
+
+        try:
+            self.study.loaded_data_list = working_list
             self.study.reset_preprocess(force_update=True)
+        except Exception:
+            if manager_state is None:
+                self.study.loaded_data_list = original_loaded
+                self.study.preprocessed_data_list = original_preprocessed
+            else:
+                for name, value in manager_state.items():
+                    setattr(manager, name, value)
+            raise
 
     def apply_smart_parse(self, results):
         """Apply smart-parser results to the dataset.
@@ -344,8 +399,8 @@ class DatasetController(Observable):
 
         """
         data_list = self.study.loaded_data_list
-        count = 0
-        for data in data_list:
+        updates: list[tuple[int, str | None, str | None]] = []
+        for index, data in enumerate(data_list):
             path = data.get_filepath()
             if path in results:
                 value = results[path]
@@ -354,15 +409,20 @@ class DatasetController(Observable):
                     sess = str(value.get("session") or "-")
                 else:
                     sub, sess = value[:2]
-                if sub != "-":
-                    data.set_subject_name(sub)
-                if sess != "-":
-                    data.set_session_name(sess)
-                count += 1
+                updates.append(
+                    (
+                        index,
+                        None if sub == "-" else str(sub),
+                        None if sess == "-" else str(sess),
+                    )
+                )
 
-        if count > 0:
-            self.reset_preprocess()
+        if not updates:
+            return 0
 
+        count = self.update_metadata_batch(updates)
+        self.notify("data_changed")
+        self.notify("dataset_locked", False)
         return count
 
     def apply_channel_selection(self, selected_channels):

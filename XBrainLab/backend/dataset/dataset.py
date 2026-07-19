@@ -54,6 +54,7 @@ class Dataset:
         self.val_mask = np.zeros(data_length, dtype=bool)
         self.test_mask = np.zeros(data_length, dtype=bool)
         self.is_selected = True
+        self._resource_fingerprint_revision = 0
 
     def get_epoch_data(self) -> Epochs:
         """Get the epoch data of the dataset."""
@@ -66,6 +67,15 @@ class Dataset:
     def get_ori_name(self) -> str:
         """Get the original name of the dataset."""
         return self.name
+
+    def get_resource_fingerprint_revision(self) -> int:
+        """Return the monotonic revision for training-admission freshness."""
+        return int(getattr(self, "_resource_fingerprint_revision", 0))
+
+    def _mark_resource_fingerprint_mutation(self) -> None:
+        self._resource_fingerprint_revision = (
+            self.get_resource_fingerprint_revision() + 1
+        )
 
     def get_all_trial_numbers(self) -> tuple:
         """Get each number of trials in train, validation and test set.
@@ -104,6 +114,7 @@ class Dataset:
 
         """
         self.is_selected = select
+        self._mark_resource_fingerprint_mutation()
 
     def set_name(self, name: str):
         """Set the dataset name.
@@ -113,6 +124,7 @@ class Dataset:
 
         """
         self.name = name
+        self._mark_resource_fingerprint_mutation()
 
     def has_set_empty(self) -> bool:
         """Check whether any split (train, val, or test) is empty.
@@ -133,6 +145,7 @@ class Dataset:
         """
         self.test_mask = mask & self.remaining_mask
         self.remaining_mask &= np.logical_not(mask)
+        self._mark_resource_fingerprint_mutation()
 
     def set_val(self, mask: np.ndarray) -> None:
         """Set the validation set mask and update the remaining mask.
@@ -143,11 +156,13 @@ class Dataset:
         """
         self.val_mask = mask & self.remaining_mask
         self.remaining_mask &= np.logical_not(mask)
+        self._mark_resource_fingerprint_mutation()
 
     def set_remaining_to_train(self) -> None:
         """Set the remaining trials as training set."""
         self.train_mask |= self.remaining_mask
         self.remaining_mask &= False
+        self._mark_resource_fingerprint_mutation()
 
     def get_remaining_mask(self) -> np.ndarray:
         """Return the mask for remaining trials."""
@@ -180,6 +195,7 @@ class Dataset:
         """
         subject_mask = self.epoch_data.pick_subject_mask_by_idx(subject_idx)
         self.remaining_mask &= subject_mask
+        self._mark_resource_fingerprint_mutation()
 
     def discard_remaining_mask(self, mask: np.ndarray) -> None:
         """Remove masked trials from the remaining mask.
@@ -189,6 +205,7 @@ class Dataset:
 
         """
         self.remaining_mask &= np.logical_not(mask)
+        self._mark_resource_fingerprint_mutation()
 
     # train
     def get_training_data(self) -> tuple[np.ndarray, np.ndarray]:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,9 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageStat
 
 from scripts.dev.capture_ui_baseline import CAPTURE_STEPS, is_nearly_black
+from scripts.dev.resource_calibration_contract import (
+    strict_calibration_failure_reasons,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 QUALITY_DIR = ROOT / "artifacts" / "quality"
@@ -35,6 +39,8 @@ DEFAULT_FRESH_MINUTES = 60
 MAX_UI_MEAN_DIFF = 1.5
 MAX_UI_CHANGED_RATIO = 0.02
 PIXEL_DIFF_THRESHOLD = 12
+RESOURCE_CALIBRATION_PATH = ROOT / "artifacts" / "resource_guard" / "calibration.json"
+PROTECTED_LOCAL_CONFIG_PATHS = frozenset({"settings.json"})
 
 
 @dataclass
@@ -62,6 +68,13 @@ class GitState:
     status_summary: list[str]
     dirty_count: int = 0
     status_truncated: bool = False
+    worktree_fingerprint: str = "unavailable"
+    protected_local_changes: tuple[str, ...] = ()
+
+    @property
+    def unprotected_dirty_count(self) -> int:
+        """Return changed paths that are not declared local configuration."""
+        return max(self.dirty_count - len(self.protected_local_changes), 0)
 
     def as_report_dict(self) -> dict[str, object]:
         return {
@@ -71,6 +84,9 @@ class GitState:
             "status_summary": self.status_summary,
             "dirty_count": self.dirty_count,
             "status_truncated": self.status_truncated,
+            "worktree_fingerprint": self.worktree_fingerprint,
+            "protected_local_changes": list(self.protected_local_changes),
+            "unprotected_dirty_count": self.unprotected_dirty_count,
         }
 
 
@@ -81,7 +97,11 @@ def configure_headless_env(*, ui: bool) -> dict[str, str]:
     env.setdefault("MPLCONFIGDIR", str(HEADLESS_CACHE_DIR))
     Path(env["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
     if ui:
-        env.setdefault("QT_QPA_PLATFORM", "offscreen")
+        # The dashboard imports desktop capture helpers, which may select xcb for
+        # an interactive WSLg parent process. Unit/integration UI checks must not
+        # inherit that native platform because it makes their Qt lifecycle
+        # nondeterministic and can trigger native backing-store crashes.
+        env["QT_QPA_PLATFORM"] = "offscreen"
     return env
 
 
@@ -137,6 +157,11 @@ def collect_git_state() -> GitState:
     commit = _git_output(["rev-parse", "--short=12", "HEAD"])
     status_output = _git_output(["status", "--short"])
     full_status = [] if status_output == "unknown" else status_output.splitlines()
+    protected_local_changes = tuple(
+        path
+        for entry in full_status
+        if (path := _status_entry_path(entry)) in PROTECTED_LOCAL_CONFIG_PATHS
+    )
     return GitState(
         branch=branch,
         commit=commit,
@@ -144,18 +169,111 @@ def collect_git_state() -> GitState:
         status_summary=full_status[:40],
         dirty_count=len(full_status),
         status_truncated=len(full_status) > 40,
+        worktree_fingerprint=_worktree_fingerprint(ROOT),
+        protected_local_changes=protected_local_changes,
     )
+
+
+def _status_entry_path(entry: str) -> str:
+    """Extract a path from one human-readable porcelain-v1 status entry."""
+    payload = entry[3:] if len(entry) > 3 else ""
+    if " -> " in payload:
+        payload = payload.rsplit(" -> ", maxsplit=1)[1]
+    return payload.strip().strip('"')
+
+
+def _worktree_fingerprint(repo_root: Path) -> str:
+    """Hash source changes while excluding declared machine-local configuration."""
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return "unavailable"
+    tracked = _run_git_bytes(
+        git_executable,
+        repo_root,
+        "diff",
+        "--binary",
+        "--no-ext-diff",
+        "HEAD",
+        "--",
+        ".",
+        ":(exclude,literal)settings.json",
+    )
+    untracked = _run_git_bytes(
+        git_executable,
+        repo_root,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    )
+    if tracked is None or untracked is None:
+        return "unavailable"
+
+    digest = hashlib.sha256()
+    digest.update(b"tracked-diff\0")
+    digest.update(tracked)
+    digest.update(b"untracked-files\0")
+    for raw_path in sorted(path for path in untracked.split(b"\0") if path):
+        try:
+            relative = raw_path.decode("utf-8", errors="surrogateescape")
+            if relative in PROTECTED_LOCAL_CONFIG_PATHS:
+                continue
+            path = repo_root / relative
+            digest.update(len(raw_path).to_bytes(8, "big"))
+            digest.update(raw_path)
+            if path.is_symlink():
+                content = os.readlink(path).encode("utf-8", errors="surrogateescape")
+                digest.update(b"symlink\0")
+                digest.update(content)
+            elif path.is_file():
+                digest.update(b"file\0")
+                with path.open("rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(chunk)
+            else:
+                digest.update(b"missing\0")
+        except OSError:
+            return "unavailable"
+    return digest.hexdigest()
+
+
+def _run_git_bytes(
+    git_executable: str,
+    repo_root: Path,
+    *args: str,
+) -> bytes | None:
+    try:
+        completed = subprocess.run(  # noqa: S603 - resolved git binary, no shell.
+            [git_executable, *args],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return completed.stdout if completed.returncode == 0 else None
 
 
 def workspace_traceability_check(git_state: GitState) -> CheckResult:
     """Return a non-command check that marks dirty release evidence as not clean."""
-    status = "warn" if git_state.dirty else "pass"
-    summary = (
-        f"Dirty worktree has {git_state.dirty_count} changed path(s); "
-        "commit and rerun before claiming release-candidate clean evidence."
-        if git_state.dirty
-        else f"Clean worktree at {git_state.commit}."
-    )
+    if not git_state.dirty:
+        status = "pass"
+        summary = f"Clean worktree at {git_state.commit}."
+    elif git_state.unprotected_dirty_count == 0:
+        status = "pass"
+        paths = ", ".join(git_state.protected_local_changes)
+        summary = (
+            "Tracked source is clean; declared local configuration remains "
+            f"visible and unstaged: {paths}."
+        )
+    else:
+        status = "warn"
+        summary = (
+            f"Dirty worktree has {git_state.unprotected_dirty_count} unprotected "
+            f"changed path(s) ({git_state.dirty_count} total); commit source changes "
+            "and rerun before claiming release-candidate clean evidence."
+        )
     return CheckResult(
         key="workspace_traceability",
         label="Workspace Traceability",
@@ -166,6 +284,45 @@ def workspace_traceability_check(git_state: GitState) -> CheckResult:
         returncode=0,
         summary=summary,
         output_excerpt="\n".join(git_state.status_summary),
+    )
+
+
+def resource_calibration_evidence_check() -> CheckResult:
+    """Require current, complete strict CUDA calibration evidence."""
+    command = (
+        "poetry run python scripts/dev/calibrate_resource_guard.py --strict "
+        "--output artifacts/resource_guard/calibration.json"
+    )
+    if not RESOURCE_CALIBRATION_PATH.is_file():
+        failures = ["resource calibration artifact is missing"]
+    else:
+        try:
+            payload = json.loads(RESOURCE_CALIBRATION_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            failures = [f"resource calibration artifact is unreadable: {exc}"]
+        else:
+            failures = strict_calibration_failure_reasons(
+                payload,
+                repo_root=ROOT,
+                validate_source=True,
+                validate_freshness=True,
+            )
+    status = "fail" if failures else "pass"
+    summary = (
+        "; ".join(failures[:3])
+        if failures
+        else "Resource guard strict calibration evidence is current."
+    )
+    return CheckResult(
+        key="resource_calibration_evidence",
+        label="Resource Calibration Evidence",
+        category="resource",
+        command=command,
+        status=status,
+        duration_seconds=0.0,
+        returncode=1 if failures else 0,
+        summary=summary,
+        output_excerpt="",
     )
 
 
@@ -359,6 +516,23 @@ def validate_pytest_like(returncode: int, output: str) -> tuple[str, str]:
     return ("pass", summary) if returncode == 0 else ("fail", summary)
 
 
+def validate_required_pytest_matrix(returncode: int, output: str) -> tuple[str, str]:
+    """Require every case in a mandatory pytest matrix to execute and pass."""
+    status, summary = validate_pytest_like(returncode, output)
+    if status != "pass":
+        return status, summary
+    incomplete = re.search(
+        r"\b\d+\s+(?:skipped|deselected|xfailed|xpassed)\b",
+        output,
+        flags=re.IGNORECASE,
+    )
+    if incomplete:
+        return "fail", f"Required pytest matrix was incomplete: {summary}"
+    if not re.search(r"\b\d+\s+passed\b", output, flags=re.IGNORECASE):
+        return "fail", "Required pytest matrix reported no passing cases."
+    return "pass", summary
+
+
 def extract_unhandled_exception_summary(output: str) -> str | None:
     """Detect uncaught exceptions in wrappers that can still exit with code 0."""
     lines = [line.strip() for line in output.splitlines() if line.strip()]
@@ -434,6 +608,13 @@ def latest_is_fresh(
         return False
     if bool(payload_git.get("status_truncated")) != current_git.status_truncated:
         return False
+    payload_fingerprint = str(payload_git.get("worktree_fingerprint") or "")
+    if (
+        payload_fingerprint in {"", "unavailable"}
+        or current_git.worktree_fingerprint in {"", "unavailable"}
+        or payload_fingerprint != current_git.worktree_fingerprint
+    ):
+        return False
     payload_status = payload_git.get("status_summary")
     if not isinstance(payload_status, list):
         return False
@@ -472,6 +653,8 @@ def render_markdown(report: dict) -> str:
                 f"- Git branch: `{git.get('branch', 'unknown')}`",
                 f"- Git commit: `{git.get('commit', 'unknown')}`",
                 f"- Dirty worktree: `{'yes' if git.get('dirty') else 'no'}`",
+                f"- Worktree fingerprint: "
+                f"`{git.get('worktree_fingerprint', 'unavailable')}`",
             ]
         )
         status_summary = git.get("status_summary") or []
@@ -481,6 +664,12 @@ def render_markdown(report: dict) -> str:
             lines.append(f"- Dirty summary: `{dirty_count}` path(s){truncated}")
             for item in status_summary[:12]:
                 lines.append(f"  - `{item}`")
+        protected_local_changes = git.get("protected_local_changes") or []
+        if protected_local_changes:
+            lines.append(
+                "- Protected local configuration (visible, never staged): "
+                + ", ".join(f"`{path}`" for path in protected_local_changes)
+            )
     lines.extend(
         [
             "",
@@ -561,6 +750,7 @@ def build_checks() -> list[CheckResult]:
 def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
     """Run the dashboard checks for the requested speed profile."""
     checks = [
+        resource_calibration_evidence_check(),
         run_check(
             key="ruff_lint",
             label="Ruff Lint",
@@ -601,7 +791,10 @@ def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
             key="startup_smoke",
             label="Startup Smoke",
             category="runtime",
-            command=f"timeout 25s xvfb-run -a {POETRY} run python run.py",
+            command=(
+                "timeout 25s xvfb-run -a env QT_QPA_PLATFORM=xcb "
+                f"{POETRY} run python run.py"
+            ),
             ui=True,
             validator=validate_startup,
         ),
@@ -609,7 +802,10 @@ def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
             key="ui_baseline_capture",
             label="UI Baseline Capture",
             category="ui",
-            command=f"xvfb-run -a {POETRY} run python scripts/dev/capture_ui_baseline.py",
+            command=(
+                "xvfb-run -a env QT_QPA_PLATFORM=xcb "
+                f"{POETRY} run python scripts/dev/capture_ui_baseline.py"
+            ),
             ui=True,
             validator=validate_ui_baseline,
         ),
@@ -631,6 +827,17 @@ def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
             ),
             ui=True,
             validator=validate_pytest_like,
+        ),
+        run_check(
+            key="public_bids_visible_ui_wizard_format_matrix",
+            label="Public BIDS Visible UI Wizard Format Matrix",
+            category="ui",
+            command=(
+                f"{POETRY} run pytest --capture=sys "
+                "tests/integration/ui/test_data_import_wizard_format_matrix.py -q"
+            ),
+            ui=True,
+            validator=validate_required_pytest_matrix,
         ),
         run_check(
             key="ui_unit_suite",

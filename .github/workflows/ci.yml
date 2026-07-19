@@ -51,7 +51,7 @@ jobs:
           product=false
           while IFS= read -r file; do
             case "$file" in
-              XBrainLab/*|tests/*|scripts/*|pyproject.toml|poetry.lock)
+              XBrainLab/*|tests/*|scripts/*|.github/workflows/ci.yml|pyproject.toml|poetry.lock)
                 product=true
                 ;;
             esac
@@ -139,34 +139,38 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      # Coverage only on Linux — pytest-cov conflicts with PyTorch on Windows
-      - name: Run tests with coverage
+      # Coverage only on Linux. Every test family still runs in a fresh process
+      # so Qt, Matplotlib, MNE, and PyTorch native state cannot leak between
+      # otherwise unrelated domains.
+      - name: Run isolated test gates with coverage
         if: runner.os == 'Linux'
+        env:
+          XBL_TEST_COVERAGE: "1"
+          XBL_TEST_JUNIT_DIR: test-results
+          XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
-          poetry run pytest tests/ \
-            --deselect tests/unit/ui/test_visualization.py::TestSaliency3DEngine \
-            --tb=short \
-            --junitxml=test-results.xml \
-            --cov=XBrainLab \
-            --cov-report=xml:coverage.xml \
-            --cov-report=term-missing \
-            -q
+          mkdir -p test-results
+          poetry run coverage erase
+          poetry run python scripts/dev/run_tests.py all
+          poetry run coverage xml -o coverage.xml
+          poetry run coverage report
 
-      - name: Run tests
+      - name: Run isolated test gates
         if: runner.os != 'Linux'
+        shell: bash
+        env:
+          XBL_TEST_JUNIT_DIR: test-results
+          XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
-          poetry run pytest tests/ \
-            --deselect tests/unit/ui/test_visualization.py::TestSaliency3DEngine \
-            --tb=short \
-            --junitxml=test-results.xml \
-            -q
+          mkdir -p test-results
+          poetry run python scripts/dev/run_tests.py all
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: test-results.xml
+          path: test-results/*.xml
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -174,3 +178,93 @@ jobs:
         with:
           name: coverage-py${{ matrix.python-version }}
           path: coverage.xml
+
+  public-dataset-gate:
+    name: Required Public Multi-Dataset Gate
+    needs: [changes, lint]
+    if: needs.changes.outputs.product == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1 libegl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: public-dataset-venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            public-dataset-venv-${{ runner.os }}-3.11-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Cache pinned public EEG fixtures
+        uses: actions/cache@v4
+        with:
+          path: tests/fixtures/data/public
+          key: public-eeg-fixtures-v1-${{ hashFiles('scripts/dev/fetch_public_eeg_fixtures.py') }}
+          restore-keys: |
+            public-eeg-fixtures-v1-
+
+      - name: Fetch pinned size-bounded public fixtures
+        run: poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
+
+      - name: Verify public fixture manifest
+        run: poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci --verify-only
+
+      - name: Verify required dataset matrix
+        run: |
+          set -o pipefail
+          poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json | tee dataset-validation-matrix.json
+
+      - name: Verify Data Interpretation format and lifecycle matrix
+        run: |
+          set -o pipefail
+          poetry run python scripts/dev/report_data_interpretation_format_matrix.py --strict --format json | tee data-interpretation-format-matrix.json
+
+      - name: Run public BIDS visible UI wizard format matrix
+        run: QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q
+
+      - name: Run required public dataset integration tests
+        run: |
+          poetry run pytest --capture=sys \
+            tests/integration/io/test_io_integration.py \
+            tests/integration/io/test_public_bids_fixture.py \
+            tests/integration/pipeline/test_public_cross_source_training_smoke.py \
+            -q
+
+      - name: Run strict public cross-source training smoke
+        run: |
+          set -o pipefail
+          poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict | tee public-cross-source-smoke.json
+
+      - name: Upload public dataset gate reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-dataset-gate-reports
+          path: |
+            dataset-validation-matrix.json
+            data-interpretation-format-matrix.json
+            public-cross-source-smoke.json
+          if-no-files-found: warn

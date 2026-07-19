@@ -44,8 +44,14 @@ def test_study_set_training_option_updates_training_manager():
 
     study.set_training_option(option)
 
-    assert study.training_option is option
-    assert study.training_manager.training_option is option
+    published = study.training_option
+    manager_published = study.training_manager.training_option
+    assert published is not None
+    assert manager_published is not None
+    assert published is not option
+    assert manager_published is not option
+    assert published.epoch == option.epoch
+    assert manager_published.epoch == option.epoch
     assert option.epoch == 5
     assert option.lr == 0.001
     assert option.optim == torch.optim.Adam

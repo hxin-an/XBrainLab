@@ -188,17 +188,14 @@ def write_synthetic_training_raw_fif() -> Path:
     sfreq = 128
     ch_names = ["C3", "C4", "Cz", "Pz"]
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    data = np.random.default_rng(43).normal(size=(len(ch_names), sfreq * 14))
+    data = np.random.default_rng(43).normal(size=(len(ch_names), sfreq * 25))
     raw = mne.io.RawArray(data, info)
-    events = np.array(
+    events = np.asarray(
         [
-            [128, 0, 1],
-            [384, 0, 2],
-            [640, 0, 1],
-            [896, 0, 2],
-            [1152, 0, 1],
-            [1408, 0, 2],
+            [sfreq * second, 0, 1 if index % 2 == 0 else 2]
+            for index, second in enumerate(range(1, 24, 2))
         ],
+        dtype=int,
     )
     raw.set_annotations(
         mne.annotations_from_events(
@@ -348,7 +345,6 @@ def run_training_completion_walkthrough(
             state["input_enabled"] = panel.input_field.isEnabled()
         if controller is not None:
             state["executed_tools"] = collect_executed_tools(controller.metrics)
-            controller.close()
         try:
             state["final_state"] = get_application_service(study).get_state().to_dict()
         except Exception:
@@ -362,7 +358,6 @@ def run_training_completion_walkthrough(
             state["status"] = "passed" if ok else "failed"
             state["failure_reason"] = "" if ok else reason
         window.close()
-        app.quit()
 
     def open_assistant() -> None:
         if not dataset_preparation.get("ok"):

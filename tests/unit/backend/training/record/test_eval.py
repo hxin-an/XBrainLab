@@ -4,7 +4,32 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from XBrainLab.backend.training.record.eval import EvalRecord, calculate_confusion
+from XBrainLab.backend.training.record.eval import (
+    EvalRecord,
+    SaliencyArtifactContext,
+    SaliencyProducerIdentity,
+    calculate_confusion,
+)
+
+
+def _saliency_context() -> SaliencyArtifactContext:
+    producer_identity = SaliencyProducerIdentity.from_components(
+        dataset={"name": "test"},
+        split={"name": "test"},
+        run={"name": "test"},
+        model={"name": "test"},
+    )
+    return SaliencyArtifactContext(
+        class_map=(("123", "test"),),
+        channel_names=("Cz",),
+        sampling_frequency_hz=1.0,
+        epoch_start_seconds=0.0,
+        epoch_end_seconds=0.0,
+        epoch_sample_count=1,
+        montage_fingerprint=None,
+        epoch_data_fingerprint=producer_identity.dataset_fingerprint,
+        producer_identity=producer_identity,
+    )
 
 
 @pytest.mark.parametrize(
@@ -101,7 +126,7 @@ def test_auc(label, output, expected):
 
 def test_export():
     with patch("torch.save") as torch_mock:
-        gradient = {"123": "test"}
+        gradient = {0: np.array([1.0], dtype=np.float32)}
         label = [1, 2]
         output = [1]
         eval_record = EvalRecord(
@@ -113,21 +138,19 @@ def test_export():
             {},
             {},
             evaluation_split="test",
+            saliency_context=_saliency_context(),
         )
         eval_record.export("target_path")
-        torch_mock.assert_called_once_with(
-            {
-                "label": label,
-                "output": output,
-                "gradient": gradient,
-                "gradient_input": {},
-                "smoothgrad": {},
-                "smoothgrad_sq": {},
-                "vargrad": {},
-                "evaluation_split": "test",
-            },
-            os.path.join("target_path", "eval"),
-        )
+        torch_mock.assert_called_once()
+        payload, path = torch_mock.call_args.args
+        assert path == os.path.join("target_path", "eval")
+        assert payload["artifact_schema_version"] == 4
+        assert payload["label"] == label
+        assert payload["output"] == output
+        assert payload["gradient"] == gradient
+        assert payload["evaluation_split"] == "test"
+        assert payload["saliency_context"] == _saliency_context().to_payload()
+        assert payload["saliency_integrity_manifest"]["manifest_sha256"]
 
 
 def test_export_csv(tmp_path):

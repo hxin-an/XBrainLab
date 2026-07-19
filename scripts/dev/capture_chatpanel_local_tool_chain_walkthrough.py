@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import mne
 import numpy as np
@@ -27,13 +27,15 @@ from scripts.dev.capture_chatpanel_local_walkthrough import (
     collect_executed_tools,
     collect_visible_messages,
     has_raw_debug_text,
-    is_nearly_black,
 )
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     _has_runtime_error_text,
 )
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.llm.core.config import LLMConfig
+
+if TYPE_CHECKING:
+    from XBrainLab.ui.components.agent_manager import AgentManager
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-tool-chain"
@@ -187,6 +189,9 @@ def run_tool_chain(
         "elapsed_seconds": 0.0,
     }
 
+    def current_agent_manager() -> AgentManager | None:
+        return window.agent_manager
+
     def fail(reason: str) -> None:
         state["status"] = "failed"
         state["failure_reason"] = reason
@@ -194,9 +199,9 @@ def run_tool_chain(
 
     def finish() -> None:
         state["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
-        manager = window.agent_manager
-        panel = manager.chat_panel
-        controller = manager.agent_controller
+        manager = current_agent_manager()
+        panel = manager.chat_panel if manager is not None else None
+        controller = manager.agent_controller if manager is not None else None
         if panel is not None:
             state["visible_messages"] = [
                 message.__dict__ for message in collect_visible_messages(panel)
@@ -206,7 +211,6 @@ def run_tool_chain(
             state["input_enabled"] = panel.input_field.isEnabled()
         if controller is not None:
             state["executed_tools"] = collect_executed_tools(controller.metrics)
-            controller.close()
         try:
             app_state = get_application_service(study).get_state().to_dict()
             interpretation = app_state.get("interpretation")
@@ -215,7 +219,9 @@ def run_tool_chain(
             )
         except Exception:
             state["final_interpretation_state"] = {}
-        state["chat_processing"] = bool(manager.chat_controller.is_processing)
+        state["chat_processing"] = bool(
+            manager is not None and manager.chat_controller.is_processing
+        )
         state["controller_processing"] = bool(
             controller and getattr(controller, "is_processing", False)
         )
@@ -227,14 +233,16 @@ def run_tool_chain(
             state["status"] = "passed" if ok else "failed"
             state["failure_reason"] = "" if ok else reason
         window.close()
-        app.quit()
 
     def open_assistant() -> None:
         window.ai_btn.click()
         QTimer.singleShot(2500, capture_ready)
 
     def capture_ready() -> None:
-        manager = window.agent_manager
+        manager = current_agent_manager()
+        if manager is None:
+            fail("Assistant manager did not initialize.")
+            return
         panel = manager.chat_panel
         if panel is None or not manager.chat_dock or not manager.chat_dock.isVisible():
             fail("Assistant dock did not open.")
@@ -247,7 +255,10 @@ def run_tool_chain(
         send_prompt(0)
 
     def send_prompt(index: int) -> None:
-        manager = window.agent_manager
+        manager = current_agent_manager()
+        if manager is None:
+            fail("Assistant manager disappeared during tool-chain walkthrough.")
+            return
         panel = manager.chat_panel
         if panel is None:
             fail("ChatPanel disappeared during tool-chain walkthrough.")
@@ -276,7 +287,10 @@ def run_tool_chain(
             fail(f"Timed out after {timeout_seconds} seconds.")
             return
 
-        manager = window.agent_manager
+        manager = current_agent_manager()
+        if manager is None:
+            fail("Assistant manager disappeared during tool-chain walkthrough.")
+            return
         panel = manager.chat_panel
         controller = manager.agent_controller
         if panel is None:
@@ -543,18 +557,14 @@ def _write_artifacts(output_dir: Path, payload: dict[str, Any]) -> None:
 
 
 def _capture_current_window(window: Any, output_path: Path) -> int:
-    pixmap = window.grab()
-    if pixmap.isNull():
-        print("Failed to grab the main window pixmap.", file=sys.stderr)
-        return 3
-    if not pixmap.save(str(output_path)):
-        print("Failed to save the grabbed main window pixmap.", file=sys.stderr)
-        return 4
-    if is_nearly_black(output_path):
-        print(
-            f"Captured screenshot is nearly all black: {output_path.name}",
-            file=sys.stderr,
-        )
+    from scripts.dev.capture_human_like_product_walkthrough import (
+        capture_widget,
+    )
+
+    try:
+        capture_widget(window, output_path)
+    except RuntimeError as exc:
+        print(f"Failed to capture {output_path.name}: {exc}", file=sys.stderr)
         return 2
     print(f"Saved screenshot to {output_path}")
     return 0

@@ -108,6 +108,46 @@ def test_state_and_capability_queries_do_not_load_training_stack() -> None:
     assert "PASS" in output
 
 
+def test_session_reset_does_not_materialize_training_stack() -> None:
+    """Lightweight lifecycle reset must not import torch or command training code."""
+    output = _run_import_probe(
+        """
+        import sys
+
+        from XBrainLab.backend.application.commands import ResetSessionCommand
+        from XBrainLab.backend.application.runtime import get_application_service
+        from XBrainLab.backend.study import Study
+
+        bad_roots = (
+            "torch",
+            "sklearn",
+            "matplotlib",
+            "XBrainLab.backend.application.training_service",
+            "XBrainLab.backend.training",
+            "XBrainLab.backend.model_base",
+        )
+
+        study = Study()
+        baseline = set(sys.modules)
+        service = get_application_service(study)
+        result = service.execute(ResetSessionCommand(confirmed=True))
+        loaded = sorted(
+            module
+            for module in set(sys.modules) - baseline
+            if any(
+                module == root or module.startswith(root + ".")
+                for root in bad_roots
+            )
+        )
+        assert result.ok, result.message
+        assert service.training_commands._service_instance is None
+        assert not loaded, loaded
+        print("PASS")
+        """,
+    )
+    assert "PASS" in output
+
+
 def test_dataset_controller_import_does_not_load_io_or_preprocessor_stack() -> None:
     """Controller construction must not load EEG IO until import/preprocess actions."""
     output = _run_import_probe(

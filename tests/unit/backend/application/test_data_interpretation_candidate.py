@@ -1,19 +1,30 @@
 from pathlib import Path
 
+import pytest
+
 from XBrainLab.backend.application import data_interpretation_internal_events
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
     build_interpretation_candidate,
+    resolve_interpretation_resource_scope,
 )
 from XBrainLab.backend.application.data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
+)
+from XBrainLab.backend.application.data_interpretation_resource_reader import (
+    AdmittedResourceReader,
 )
 from XBrainLab.backend.application.data_interpretation_review import (
     build_interpretation_preview,
     validate_interpretation_candidate,
 )
 from XBrainLab.backend.application.data_interpretation_scan import ScanResult
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.resource_guard import (
+    ResourceChecker,
+    check_import_resource_preflight,
+)
 
 
 def _field(name: str, value: str | None = None) -> MetadataFieldResolution:
@@ -24,6 +35,15 @@ def _field(name: str, value: str | None = None) -> MetadataFieldResolution:
         decision="safe" if value else "needs_confirmation",
         reason="test",
     )
+
+
+def _class_value_decision(class_name: str) -> dict[str, object]:
+    return {
+        "role": "stimulus",
+        "keep_event": True,
+        "use_as_class": True,
+        "class_name": class_name,
+    }
 
 
 def _scan(**overrides) -> ScanResult:
@@ -53,18 +73,155 @@ def _scan(**overrides) -> ScanResult:
     return ScanResult(**data)
 
 
-def test_build_interpretation_candidate_applies_user_choices_and_recipe_trace():
+def _admitted_reader(paths: list[str], monkeypatch) -> AdmittedResourceReader:
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 10**12,
+                "total_bytes": 10**12,
+                "used_bytes": 0,
+            }
+        ),
+    )
+    return AdmittedResourceReader.from_resource_preflight(
+        paths,
+        check_import_resource_preflight(paths),
+    )
+
+
+def test_candidate_rejects_label_carrier_changed_after_resource_admission(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    eeg_path = tmp_path / "signal.npy"
+    label_path = tmp_path / "labels.csv"
+    eeg_path.write_bytes(b"eeg")
+    label_path.write_text("label\nleft\n", encoding="utf-8")
+    paths = [str(eeg_path), str(label_path)]
+    reader = _admitted_reader(paths, monkeypatch)
+    label_path.write_text("label\nchanged\n", encoding="utf-8")
+
+    with pytest.raises(PreconditionError) as raised:
+        build_interpretation_candidate(
+            candidate_id="candidate-admission-label",
+            scan=_scan(
+                source_kind="folder",
+                eeg_files=[str(eeg_path)],
+                label_carriers=[str(label_path)],
+                label_carrier_sources={str(label_path): "auto"},
+                bids={"is_bids": False},
+                metadata=[],
+            ),
+            resource_reader=reader,
+        )
+
+    assert raised.value.diagnostics["purpose"] == "label carrier preview"
+
+
+def test_bids_review_rejects_eeg_changed_after_resource_admission(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_eeg.fif"
+    events_path = tmp_path / "sub-01_task-mi_events.tsv"
+    eeg_path.write_bytes(b"not-yet-materialized")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\n0\t1\tleft\n",
+        encoding="utf-8",
+    )
+    paths = [str(eeg_path), str(events_path)]
+    reader = _admitted_reader(paths, monkeypatch)
+    eeg_path.write_bytes(b"changed-after-admission")
+
+    with pytest.raises(PreconditionError) as raised:
+        build_interpretation_candidate(
+            candidate_id="candidate-admission-bids",
+            scan=_scan(
+                source_path=str(tmp_path),
+                eeg_files=[str(eeg_path)],
+                label_carriers=[str(events_path)],
+                label_carrier_sources={str(events_path): "auto"},
+                metadata=[],
+                bids={
+                    "is_bids": True,
+                    "events_files": [str(events_path)],
+                    "layout": [
+                        {
+                            "file": str(eeg_path),
+                            "subject": "01",
+                            "task": "mi",
+                            "run": "",
+                            "datatype": "eeg",
+                            "events_file": str(events_path),
+                            "channels_file": "",
+                        }
+                    ],
+                },
+            ),
+            choices={
+                "label_carrier_choices": {
+                    str(events_path): {"label_field": "trial_type"}
+                }
+            },
+            resource_reader=reader,
+        )
+
+    assert raised.value.diagnostics["purpose"] == "BIDS run review"
+
+
+def test_internal_event_preview_rejects_eeg_changed_after_resource_admission(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    eeg_path = tmp_path / "embedded-events.gdf"
+    eeg_path.write_bytes(b"original-header")
+    reader = _admitted_reader([str(eeg_path)], monkeypatch)
+    eeg_path.write_bytes(b"changed-header!")
+
+    with pytest.raises(PreconditionError) as raised:
+        build_interpretation_candidate(
+            candidate_id="candidate-admission-embedded",
+            scan=_scan(
+                source_kind="folder",
+                eeg_files=[str(eeg_path)],
+                label_carriers=[],
+                label_carrier_sources={},
+                bids={"is_bids": False},
+                metadata=[],
+            ),
+            choices={"label_carrier": "embedded_events"},
+            resource_reader=reader,
+        )
+
+    assert raised.value.diagnostics["purpose"] == "embedded EEG event preview"
+
+
+def test_build_interpretation_candidate_applies_user_choices_and_recipe_trace(
+    tmp_path,
+):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
-        scan=_scan(),
+        scan=_scan(
+            label_carriers=[str(events)],
+            label_carrier_sources={str(events): "auto"},
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
         choices={
             "metadata_overrides": {
                 "sub-01_task-mi_raw.fif": {"subject": "S01"},
             },
-            "class_map": {"left": "0"},
             "event_roles": {"trial_type": "class cue"},
             "label_carrier_choices": {
-                "sub-01_task-mi_events.tsv": {"label_field": "trial_type"},
+                str(events): {
+                    "label_field": "trial_type",
+                    "value_decisions": {
+                        "left": _class_value_decision("0"),
+                    },
+                },
             },
         },
     )
@@ -74,18 +231,28 @@ def test_build_interpretation_candidate_applies_user_choices_and_recipe_trace():
     assert candidate.metadata[0].subject.source == "user_override"
     assert candidate.event_roles["trial_type"] == "class cue"
     assert candidate.class_map == {"left": "0"}
-    assert candidate.class_map_source == "user_choices"
+    assert candidate.class_map_source == "value_decisions"
     assert "choices:metadata_overrides" in candidate.recipe_trace
-    assert "choices:class_map" in candidate.recipe_trace
+    assert "choices:class_map" not in candidate.recipe_trace
     assert "choices:event_roles" in candidate.recipe_trace
     assert "choices:label_carriers" in candidate.recipe_trace
 
 
-def test_build_interpretation_candidate_recomputes_bids_scope_for_selected_files():
-    selected_file = "/data/sub-01_task-mi_run-1_raw.fif"
-    skipped_file = "/data/sub-01_task-mi_run-2_raw.fif"
-    selected_events = "/data/sub-01_task-mi_run-1_events.tsv"
-    skipped_events = "/data/sub-01_task-mi_run-2_events.tsv"
+def test_build_interpretation_candidate_recomputes_bids_scope_for_selected_files(
+    tmp_path,
+):
+    selected_file = str(tmp_path / "sub-01_task-mi_run-1_raw.fif")
+    skipped_file = str(tmp_path / "sub-01_task-mi_run-2_raw.fif")
+    selected_events = str(tmp_path / "sub-01_task-mi_run-1_events.tsv")
+    skipped_events = str(tmp_path / "sub-01_task-mi_run-2_events.tsv")
+    Path(selected_events).write_text(
+        "onset\tduration\ttrial_type\n0\t0\tleft\n",
+        encoding="utf-8",
+    )
+    Path(skipped_events).write_text(
+        "onset\tduration\ttrial_type\n0\t0\tright\n",
+        encoding="utf-8",
+    )
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
         scan=_scan(
@@ -285,7 +452,7 @@ def test_bids_candidate_accepts_unique_events_tsv_for_each_selected_run(tmp_path
     )
 
 
-def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_path):
+def test_build_interpretation_candidate_blocks_unresolved_bids_label_values(tmp_path):
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(
         "onset\tduration\ttrial_type\n"
@@ -304,12 +471,13 @@ def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_
     )
 
     assert candidate.label_carrier_plan[0]["selected_label_field"] == "trial_type"
-    assert candidate.class_map == {"left": "left", "right": "right"}
-    assert candidate.class_map_source == "label_carriers"
-    assert (
-        "Confirm label carrier alignment, anchor event, and class map before applying."
-        in candidate.confirmation_items
-    )
+    assert candidate.class_map == {}
+    assert candidate.class_map_source == ""
+    assert candidate.label_carrier_plan[0]["unresolved_values"] == [
+        "left",
+        "right",
+    ]
+    assert any("left, right" in reason for reason in candidate.blocked_reasons)
     assert "choices:class_map" not in candidate.recipe_trace
 
 
@@ -364,6 +532,10 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
     assert candidate.internal_event_preview["candidate_label_events"][0][
         "evidence"
     ].startswith("Repeated count")
+    assert candidate.internal_event_selection["label_event_counts"] == {
+        "769": 18,
+        "770": 18,
+    }
     assert [
         row["event_code"] for row in candidate.internal_event_preview["not_used_events"]
     ] == ["768", "1023"]
@@ -399,7 +571,37 @@ def test_build_interpretation_candidate_excludes_removed_label_carrier(tmp_path)
     assert "choices:excluded_label_carriers" in candidate.recipe_trace
 
 
-def test_build_interpretation_candidate_previews_bids_level_labels(tmp_path):
+def test_excluded_label_carrier_full_path_does_not_remove_duplicate_basename(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first" / "events.tsv"
+    second = tmp_path / "second" / "events.tsv"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text("label\nleft\n", encoding="utf-8")
+    second.write_text("label\nright\n", encoding="utf-8")
+    scan = _scan(
+        label_carriers=[str(first), str(second)],
+        label_carrier_sources={str(first): "auto", str(second): "auto"},
+        bids={"is_bids": False, "events_files": []},
+    )
+
+    exact = build_interpretation_candidate(
+        candidate_id="candidate-exact",
+        scan=scan,
+        choices={"excluded_label_carriers": [str(first)]},
+    )
+    ambiguous_legacy = build_interpretation_candidate(
+        candidate_id="candidate-legacy",
+        scan=scan,
+        choices={"excluded_label_carriers": [first.name]},
+    )
+
+    assert exact.label_carriers == [str(second)]
+    assert ambiguous_legacy.label_carriers == [str(first), str(second)]
+
+
+def test_build_interpretation_candidate_uses_bids_levels_as_suggestions_only(tmp_path):
     events = tmp_path / "sub-01_task-mi_events.tsv"
     sidecar = tmp_path / "sub-01_task-mi_events.json"
     events.write_text(
@@ -419,10 +621,11 @@ def test_build_interpretation_candidate_previews_bids_level_labels(tmp_path):
         ),
     )
 
-    assert candidate.class_map == {
-        "left": "Left hand",
-        "right": "Right hand",
-    }
+    assert candidate.class_map == {}
+    decisions = candidate.label_carrier_plan[0]["value_decisions"]
+    assert decisions["left"]["suggested_name"] == "Left hand"
+    assert decisions["right"]["suggested_name"] == "Right hand"
+    assert decisions["left"]["decision"] == "unresolved"
     assert "choices:class_map" not in candidate.recipe_trace
 
 
@@ -479,7 +682,10 @@ def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path
                     "label_field": "classlabel",
                     "anchor": "cue_onset",
                     "time_model": "sample_index",
+                    "sample_index_base": "zero_based",
+                    "sample_index_origin": "recording_relative",
                     "granularity": "trial",
+                    "role": "class labels",
                 }
             },
         },
@@ -488,10 +694,10 @@ def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path
     assert candidate.label_carrier_plan[0]["format"] == "MAT"
     assert candidate.label_carrier_plan[0]["selected_label_field"] == "classlabel"
     assert candidate.class_map == {"1": "1", "2": "2"}
-    assert candidate.class_map_source == "label_carriers"
-    assert (
-        "Confirm label carrier alignment, anchor event, and class map before applying."
-        in candidate.confirmation_items
+    assert candidate.class_map_source == "value_decisions"
+    assert not any(
+        "Confirm label carrier alignment" in item
+        for item in candidate.confirmation_items
     )
     assert "choices:class_map" not in candidate.recipe_trace
 
@@ -534,7 +740,12 @@ def test_build_interpretation_candidate_reviews_bids_interval_placement(tmp_path
 def test_build_interpretation_candidate_blocks_empty_selection():
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
-        scan=_scan(eeg_files=[]),
+        scan=_scan(
+            eeg_files=[],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": True, "events_files": []},
+        ),
         choices={"selected_eeg_files": []},
     )
 
@@ -545,7 +756,12 @@ def test_build_interpretation_candidate_blocks_empty_selection():
 def test_build_interpretation_candidate_blocks_selected_files_missing_from_scan():
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
-        scan=_scan(eeg_files=["/data/sub-01_task-mi_raw.fif"]),
+        scan=_scan(
+            eeg_files=["/data/sub-01_task-mi_raw.fif"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": True, "events_files": []},
+        ),
         choices={
             "recipe_id": "recipe-1",
             "selected_eeg_files": [
@@ -555,8 +771,223 @@ def test_build_interpretation_candidate_blocks_selected_files_missing_from_scan(
         },
     )
 
-    assert "missing_raw.fif" in candidate.blocked_reasons[0]
-    assert "not found in the current scan" in candidate.blocked_reasons[0]
+    assert any(
+        "missing_raw.fif" in reason and "not found in the current scan" in reason
+        for reason in candidate.blocked_reasons
+    )
+
+
+def test_resource_scope_keeps_missing_selection_but_only_materializes_scanned_files():
+    scanned = "/data/sub-01_task-mi_raw.fif"
+    missing = "/data/missing_raw.fif"
+
+    scope = resolve_interpretation_resource_scope(
+        _scan(eeg_files=[scanned], label_carriers=[]),
+        {"selected_eeg_files": [scanned, missing]},
+    )
+
+    assert scope.selected_eeg_files == [scanned, missing]
+    assert scope.materializable_eeg_files == [scanned]
+    assert scope.paths == [scanned]
+
+
+def test_duplicate_basename_recipe_selection_is_ambiguous_and_blocks_import():
+    saved = "/recipe/old/run_raw.fif"
+    scanned = ["/scan/site-a/run_raw.fif", "/scan/site-b/run_raw.fif"]
+    scan = _scan(
+        source_kind="folder",
+        eeg_files=scanned,
+        label_carriers=[],
+        label_carrier_sources={},
+        bids={"is_bids": False},
+        metadata=[],
+    )
+
+    scope = resolve_interpretation_resource_scope(
+        scan,
+        {"recipe_id": "recipe-1", "selected_eeg_files": [saved]},
+    )
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-ambiguous",
+        scan=scan,
+        choices={"recipe_id": "recipe-1", "selected_eeg_files": [saved]},
+    )
+    preview = build_interpretation_preview(
+        preview_id="preview-ambiguous",
+        candidate=candidate,
+        scan=scan,
+    )
+
+    assert scope.selected_eeg_files == [saved]
+    assert scope.materializable_eeg_files == []
+    assert any(
+        "ambiguous" in reason.lower()
+        and "/scan/site-a/run_raw.fif" in reason
+        and "/scan/site-b/run_raw.fif" in reason
+        for reason in candidate.blocked_reasons
+    )
+    assert any(
+        item["severity"] == "blocked" and item["target_step"] == "Choose EEG Data"
+        for item in preview.action_items
+    )
+
+
+def test_duplicate_basename_required_label_carrier_requires_explicit_remap(
+    tmp_path: Path,
+):
+    saved = "/recipe/old/events.tsv"
+    first = tmp_path / "site-a" / "events.tsv"
+    second = tmp_path / "site-b" / "events.tsv"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    for path in (first, second):
+        path.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
+    scan = _scan(
+        source_kind="folder",
+        label_carriers=[str(first), str(second)],
+        label_carrier_sources={str(first): "auto", str(second): "auto"},
+        bids={"is_bids": False},
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-label-ambiguous",
+        scan=scan,
+        choices={
+            "recipe_id": "recipe-1",
+            "required_label_carriers": [saved],
+        },
+    )
+
+    assert any(
+        "ambiguous" in reason.lower() and str(first) in reason and str(second) in reason
+        for reason in candidate.blocked_reasons
+    )
+
+
+def test_resource_scope_includes_referenced_eeglab_external_data(tmp_path: Path):
+    from scipy.io import savemat
+
+    set_path = tmp_path / "subject.set"
+    fdt_path = tmp_path / "Signal-Case.FDT"
+    fdt_path.write_bytes(b"\0" * (2 * 20 * 4))
+    savemat(
+        set_path,
+        {
+            "EEG": {
+                "data": fdt_path.name,
+                "nbchan": 2.0,
+                "pnts": 20.0,
+                "trials": 1.0,
+            }
+        },
+        do_compression=True,
+    )
+
+    scope = resolve_interpretation_resource_scope(
+        _scan(eeg_files=[str(set_path)], label_carriers=[]),
+    )
+
+    assert scope.materializable_eeg_files == [str(set_path)]
+    assert scope.eeg_dependency_files == [str(fdt_path)]
+    assert scope.paths == [str(set_path), str(fdt_path)]
+
+
+def test_resource_scope_includes_all_brainvision_parser_dependencies_without_opening_payloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vhdr_path = tmp_path / "subject.vhdr"
+    eeg_path = tmp_path / "subject-data.eeg"
+    vmrk_path = tmp_path / "subject-markers.vmrk"
+    eeg_path.write_bytes(b"eeg payload must not be opened for dependency discovery")
+    vmrk_path.write_text(
+        "Brain Vision Data Exchange Marker File, Version 1.0\n",
+        encoding="utf-8",
+    )
+    vhdr_path.write_text(
+        "\n".join(
+            (
+                "Brain Vision Data Exchange Header File Version 1.0",
+                "[Common Infos]",
+                "Codepage=UTF-8",
+                f"DataFile={eeg_path.name}",
+                f"MarkerFile={vmrk_path.name}",
+            )
+        ),
+        encoding="utf-8",
+    )
+    real_open = Path.open
+    opened_paths: list[Path] = []
+
+    def _observed_open(path: Path, *args, **kwargs):
+        resolved = path.resolve(strict=False)
+        opened_paths.append(resolved)
+        if resolved in {eeg_path.resolve(), vmrk_path.resolve()}:
+            raise AssertionError("dependency discovery must not open EEG payloads")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _observed_open)
+
+    scope = resolve_interpretation_resource_scope(
+        _scan(eeg_files=[str(vhdr_path)], label_carriers=[]),
+    )
+
+    assert scope.eeg_dependency_files == [str(eeg_path), str(vmrk_path)]
+    assert scope.eeg_dependencies_by_file == {
+        str(vhdr_path): [str(eeg_path), str(vmrk_path)]
+    }
+    assert scope.paths == [str(vhdr_path), str(eeg_path), str(vmrk_path)]
+    assert opened_paths == [vhdr_path.resolve()]
+
+
+def test_candidate_rebinds_changed_brainvision_reference_to_admitted_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture_root = (
+        Path(__file__).resolve().parents[4]
+        / "tests"
+        / "fixtures"
+        / "data"
+        / "multiformat"
+    )
+    stem = "A01T-mini-real"
+    copied_paths: list[str] = []
+    for suffix in (".vhdr", ".eeg", ".vmrk"):
+        source = fixture_root / f"{stem}{suffix}"
+        target = tmp_path / source.name
+        target.write_bytes(source.read_bytes())
+        copied_paths.append(str(target))
+    vhdr_path = tmp_path / f"{stem}.vhdr"
+    changed_eeg_path = tmp_path / "changed.eeg"
+    changed_eeg_path.write_bytes((tmp_path / f"{stem}.eeg").read_bytes())
+    reader = _admitted_reader(copied_paths, monkeypatch)
+    vhdr_path.write_text(
+        vhdr_path.read_text(encoding="utf-8").replace(
+            f"DataFile={stem}.eeg",
+            f"DataFile={changed_eeg_path.name}",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PreconditionError) as raised:
+        build_interpretation_candidate(
+            candidate_id="candidate-brainvision-reference-change",
+            scan=_scan(
+                source_kind="folder",
+                eeg_files=[str(vhdr_path)],
+                label_carriers=[],
+                label_carrier_sources={},
+                bids={"is_bids": False},
+                metadata=[],
+            ),
+            choices={"label_carrier": "embedded_events"},
+            resource_reader=reader,
+        )
+
+    assert raised.value.diagnostics["code"] == "interpretation_resource_not_admitted"
+    assert raised.value.diagnostics["owner_path"] == str(vhdr_path)
+    assert raised.value.diagnostics["missing_paths"] == [str(changed_eeg_path)]
 
 
 def test_build_interpretation_candidate_filters_metadata_to_selected_files():
@@ -591,6 +1022,9 @@ def test_build_interpretation_candidate_filters_metadata_to_selected_files():
                     run=_field("run", "1"),
                 ),
             ],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False},
         ),
         choices={
             "selected_eeg_files": [
@@ -691,21 +1125,31 @@ def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices()
     assert "choices:eeg_file_remap" in candidate.recipe_trace
 
 
-def test_build_interpretation_candidate_blocks_required_label_carriers_missing_from_scan():
+def test_build_interpretation_candidate_blocks_required_label_carriers_missing_from_scan(
+    tmp_path,
+):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
-        scan=_scan(label_carriers=["/data/sub-01_task-mi_events.tsv"]),
+        scan=_scan(
+            label_carriers=[str(events)],
+            label_carrier_sources={str(events): "auto"},
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
         choices={
             "recipe_id": "recipe-1",
             "required_label_carriers": [
-                "/data/sub-01_task-mi_events.tsv",
+                str(events),
                 "/data/missing_events.tsv",
             ],
         },
     )
 
-    assert "missing_events.tsv" in candidate.blocked_reasons[0]
-    assert "label/event carrier" in candidate.blocked_reasons[0]
+    missing_reason = next(
+        reason for reason in candidate.blocked_reasons if "missing_events.tsv" in reason
+    )
+    assert "label/event carrier" in missing_reason
     assert "choices:label_carriers" in candidate.recipe_trace
 
 
@@ -785,6 +1229,10 @@ def test_build_interpretation_candidate_remaps_saved_label_carrier_choices(tmp_p
                     "time_model": "seconds",
                     "granularity": "trial",
                     "role": "class cue labels",
+                    "value_decisions": {
+                        "left": _class_value_decision("left"),
+                        "right": _class_value_decision("right"),
+                    },
                 }
             },
         },
@@ -798,32 +1246,38 @@ def test_build_interpretation_candidate_remaps_saved_label_carrier_choices(tmp_p
     assert "choices:label_carrier_remap" in candidate.recipe_trace
 
 
-def test_build_interpretation_candidate_preserves_user_added_label_sources():
+def test_build_interpretation_candidate_preserves_user_added_label_sources(tmp_path):
+    auto_events = tmp_path / "sub-01_task-mi_events.tsv"
+    external_dir = tmp_path / "external"
+    external_dir.mkdir()
+    external_labels = external_dir / "sub-01_task-mi_labels.tsv"
+    auto_events.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
+    external_labels.write_text("onset\tlabel\n0\tleft\n", encoding="utf-8")
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
         scan=_scan(
             label_carriers=[
-                "/data/sub-01_task-mi_events.tsv",
-                "/external/sub-01_task-mi_labels.tsv",
+                str(auto_events),
+                str(external_labels),
             ],
-            label_sources=["/external"],
+            label_sources=[str(external_dir)],
             label_carrier_sources={
-                "/data/sub-01_task-mi_events.tsv": "auto",
-                "/external/sub-01_task-mi_labels.tsv": "/external",
+                str(auto_events): "auto",
+                str(external_labels): str(external_dir),
+            },
+            bids={
+                "is_bids": True,
+                "events_files": [str(auto_events), str(external_labels)],
             },
         ),
     )
 
     plans = {item["path"]: item for item in candidate.label_carrier_plan}
 
-    assert candidate.label_sources == ["/external"]
-    assert plans["/data/sub-01_task-mi_events.tsv"]["source_kind"] == (
-        "auto_discovered"
-    )
-    assert plans["/external/sub-01_task-mi_labels.tsv"]["source_kind"] == ("user_added")
-    assert plans["/external/sub-01_task-mi_labels.tsv"]["source_location"] == (
-        "/external"
-    )
+    assert candidate.label_sources == [str(external_dir)]
+    assert plans[str(auto_events)]["source_kind"] == ("auto_discovered")
+    assert plans[str(external_labels)]["source_kind"] == "user_added"
+    assert plans[str(external_labels)]["source_location"] == str(external_dir)
 
 
 def test_build_interpretation_candidate_uses_real_internal_event_evidence(

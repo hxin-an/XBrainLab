@@ -1,11 +1,31 @@
 """Training option and configuration classes for model training."""
 
+import os
+from collections.abc import Callable
 from enum import Enum
+from typing import Any
 
 import torch
 from torch import nn
 
 from XBrainLab.backend.utils.logger import logger
+
+from .input_contract import (
+    TrainingInputContractError,
+    normalize_non_negative_finite_float,
+    normalize_non_negative_integer,
+    normalize_positive_finite_float,
+    normalize_positive_integer,
+)
+
+
+def _normalize_output_dir(value: Any) -> str:
+    """Return one non-empty filesystem path string or reject the value."""
+    if isinstance(value, os.PathLike):
+        value = os.fspath(value)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Output directory not set")
+    return value
 
 
 class TrainingEvaluation(Enum):
@@ -204,49 +224,88 @@ class TrainingOption:
 
         """
         errors: list[str] = []
-        if self.output_dir is None:
+        normalized_output_dir: str | None = None
+        try:
+            normalized_output_dir = _normalize_output_dir(self.output_dir)
+        except ValueError:
             errors.append("Output directory not set")
-        if self.optim is None or self.optim_params is None:
+        if (
+            not isinstance(self.optim, type)
+            or not issubclass(self.optim, torch.optim.Optimizer)
+            or not isinstance(self.optim_params, dict)
+        ):
             errors.append("Optimizer not set")
-        if self.use_cpu is None:
+        if not isinstance(self.use_cpu, bool):
             errors.append("Device not set")
         if not self.use_cpu and self.gpu_idx is None:
             errors.append("Device not set")
-        if self.evaluation_option is None:
+        if not isinstance(self.evaluation_option, TrainingEvaluation):
             errors.append("Evaluation option not set")
 
-        def check_num(i):
-            """Return True if *i* is not a valid number."""
-            try:
-                float(i)
-            except (TypeError, ValueError):
-                return True
-            else:
-                return False
+        normalized: dict[str, int | float] = {}
 
-        if self.gpu_idx is not None and check_num(self.gpu_idx):
-            errors.append("Invalid gpu_idx")
-        if check_num(self.epoch) or int(self.epoch) <= 0:
-            errors.append("Invalid epoch (must be a positive integer)")
-        if check_num(self.bs) or int(self.bs) <= 0:
-            errors.append("Invalid batch size (must be a positive integer)")
-        if check_num(self.lr) or float(self.lr) <= 0:
-            errors.append("Invalid learning rate (must be positive)")
-        if check_num(self.checkpoint_epoch):
-            errors.append("Invalid checkpoint epoch")
-        if check_num(self.repeat_num) or int(self.repeat_num) <= 0:
-            errors.append("Invalid repeat number")
+        def normalize_value(
+            key: str,
+            message: str,
+            normalizer: Callable[[str, Any], int | float],
+            value: Any,
+        ) -> None:
+            try:
+                normalized[key] = normalizer(key, value)
+            except TrainingInputContractError:
+                errors.append(message)
+
+        if self.gpu_idx is not None:
+            normalize_value(
+                "gpu_idx",
+                "Invalid gpu_idx",
+                normalize_non_negative_integer,
+                self.gpu_idx,
+            )
+        normalize_value(
+            "epoch",
+            "Invalid epoch (must be a positive integer)",
+            normalize_positive_integer,
+            self.epoch,
+        )
+        normalize_value(
+            "bs",
+            "Invalid batch size (must be a positive integer)",
+            normalize_positive_integer,
+            self.bs,
+        )
+        normalize_value(
+            "lr",
+            "Invalid learning rate (must be positive)",
+            normalize_positive_finite_float,
+            self.lr,
+        )
+        normalize_value(
+            "checkpoint_epoch",
+            "Invalid checkpoint epoch",
+            normalize_non_negative_integer,
+            self.checkpoint_epoch,
+        )
+        normalize_value(
+            "repeat_num",
+            "Invalid repeat number",
+            normalize_positive_integer,
+            self.repeat_num,
+        )
 
         if errors:
             raise ValueError("; ".join(errors))
 
-        self.epoch = int(self.epoch)
-        self.bs = int(self.bs)
-        self.lr = float(self.lr)
-        self.checkpoint_epoch = int(self.checkpoint_epoch)
-        self.repeat_num = int(self.repeat_num)
+        if normalized_output_dir is None:
+            raise ValueError("output_dir must be a non-empty path.")
+        self.output_dir = normalized_output_dir
+        self.epoch = int(normalized["epoch"])
+        self.bs = int(normalized["bs"])
+        self.lr = float(normalized["lr"])
+        self.checkpoint_epoch = int(normalized["checkpoint_epoch"])
+        self.repeat_num = int(normalized["repeat_num"])
         if self.gpu_idx is not None:
-            self.gpu_idx = int(self.gpu_idx)
+            self.gpu_idx = int(normalized["gpu_idx"])
 
     def get_optim(self, model: torch.nn.Module) -> torch.optim.Optimizer:
         """Create and return an optimizer instance for the given model.
@@ -393,42 +452,85 @@ class TestOnlyOption(TrainingOption):
         self.validate()
 
     def validate(self) -> None:
-        """Validate test-only options
+        """Validate test-only options and their fixed runtime semantics.
 
         Raises:
             ValueError: If any option is invalid or not set
 
         """
-        reason = None
-        if self.output_dir is None:
-            reason = "Output directory not set"
-        if self.use_cpu is None:
-            reason = "Device not set"
+        errors: list[str] = []
+        normalized_output_dir: str | None = None
+        try:
+            normalized_output_dir = _normalize_output_dir(self.output_dir)
+        except ValueError:
+            errors.append("Output directory not set")
+        if not isinstance(self.use_cpu, bool):
+            errors.append("Device not set")
         if not self.use_cpu and self.gpu_idx is None:
-            reason = "Device not set"
+            errors.append("Device not set")
 
-        def check_num(i):
-            """Return True if i is not a number"""
-            try:
-                float(i)
-            except (ValueError, TypeError):
-                return True
-            else:
-                return False
-
-        if self.gpu_idx is not None and check_num(self.gpu_idx):
-            reason = "Invalid gpu_idx"
-        if check_num(self.bs):
-            reason = "Invalid batch size"
-
-        if reason:
-            raise ValueError(reason)
-
-        self.epoch = int(self.epoch)
-        self.bs = int(self.bs)
-        self.repeat_num = int(self.repeat_num)
+        normalized_gpu_idx: int | None = None
         if self.gpu_idx is not None:
-            self.gpu_idx = int(self.gpu_idx)
+            try:
+                normalized_gpu_idx = normalize_non_negative_integer(
+                    "gpu_idx",
+                    self.gpu_idx,
+                )
+            except TrainingInputContractError:
+                errors.append("Invalid gpu_idx")
+        try:
+            normalized_batch_size = normalize_positive_integer("bs", self.bs)
+        except TrainingInputContractError:
+            normalized_batch_size = 0
+            errors.append("Invalid batch size")
+
+        fixed_integer_fields = (
+            ("epoch", self.epoch, 0),
+            ("checkpoint_epoch", self.checkpoint_epoch, 0),
+            ("repeat_num", self.repeat_num, 1),
+        )
+        normalized_fixed: dict[str, int] = {}
+        for field, value, expected in fixed_integer_fields:
+            try:
+                normalized_value = normalize_non_negative_integer(field, value)
+            except TrainingInputContractError:
+                errors.append(f"Invalid {field}")
+                continue
+            if normalized_value != expected:
+                errors.append(f"Invalid {field}")
+                continue
+            normalized_fixed[field] = normalized_value
+
+        try:
+            normalized_learning_rate = normalize_non_negative_finite_float(
+                "lr",
+                self.lr,
+            )
+        except TrainingInputContractError:
+            normalized_learning_rate = 0.0
+            errors.append("Invalid lr")
+        else:
+            if normalized_learning_rate != 0:
+                errors.append("Invalid lr")
+
+        if self.optim is not None or self.optim_params is not None:
+            errors.append("Optimizer must not be set for test-only mode")
+        if self.evaluation_option is not TrainingEvaluation.LAST_EPOCH:
+            errors.append("Invalid evaluation option for test-only mode")
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        if normalized_output_dir is None:
+            raise ValueError("output_dir must be a non-empty path.")
+        self.output_dir = normalized_output_dir
+        self.epoch = normalized_fixed["epoch"]
+        self.bs = normalized_batch_size
+        self.lr = normalized_learning_rate
+        self.checkpoint_epoch = normalized_fixed["checkpoint_epoch"]
+        self.repeat_num = normalized_fixed["repeat_num"]
+        if self.gpu_idx is not None:
+            self.gpu_idx = normalized_gpu_idx
 
     def get_optim(self, model):
         """Return ``None`` since test-only mode does not use an optimizer.

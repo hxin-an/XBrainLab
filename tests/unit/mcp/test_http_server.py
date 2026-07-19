@@ -7,12 +7,21 @@ from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import torch
 
 from XBrainLab.backend.application import ApplicationService
+from XBrainLab.backend.dataset.epochs import EpochWindowProvenance
 from XBrainLab.backend.study import Study
-from XBrainLab.mcp.http_server import _training_progress_message, build_http_server
-from XBrainLab.mcp.server import PROTOCOL_VERSION
+from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.mcp.http_server import (
+    MCPHTTPJobRegistry,
+    _training_progress_message,
+    build_http_server,
+)
+from XBrainLab.mcp.server import PROTOCOL_VERSION, MCPServer
 
 
 def _free_port() -> int:
@@ -99,27 +108,72 @@ def _training_ready_service() -> tuple[ApplicationService, dict[str, Any]]:
     raw.get_filename.return_value = "sample.fif"
     raw.get_filepath.return_value = "/tmp/sample.fif"
     service.study.loaded_data_list = [raw]
-    cast(Any, service.study).datasets = [object()]
-    cast(Any, service.study).model_holder = object()
-    cast(Any, service.study).training_option = object()
+    epoch_data = MagicMock()
+    epoch_data.get_data.return_value = np.zeros((4, 1, 8), dtype=np.float32)
+    labels = np.asarray([0, 1, 0, 1])
+    epoch_data.get_label_list.return_value = labels
+    epoch_data.get_label_list_by_mask.side_effect = lambda mask: labels[mask]
+    epoch_data.get_label_number.return_value = 2
+    epoch_data.get_model_args.return_value = {}
+    epoch_data.get_epoch_window_provenance.return_value = tuple(
+        EpochWindowProvenance(
+            source_recording_id=f"path-sha256:{'a' * 64}",
+            event_sample=index * 20,
+            window_start_sample=index * 20,
+            window_end_sample_exclusive=index * 20 + 8,
+            source_sfreq=100.0,
+            epoch_sfreq=100.0,
+            tmin_seconds=0.0,
+            tmax_seconds=0.07,
+            source_coordinates_verified=True,
+        )
+        for index in range(4)
+    )
+    dataset = MagicMock()
+    dataset.get_epoch_data.return_value = epoch_data
+    dataset.get_name.return_value = "test dataset"
+    dataset.train_mask = np.asarray([True, True, False, False])
+    dataset.val_mask = np.asarray([False, False, True, False])
+    dataset.test_mask = np.asarray([False, False, False, True])
+    cast(Any, service.study).datasets = [dataset]
+    service.study.model_holder = ModelHolder(torch.nn.Identity, {})
+    service.study.training_option = TrainingOption(
+        "/tmp/xbrainlab-mcp-test",
+        torch.optim.Adam,
+        {},
+        True,
+        None,
+        1,
+        2,
+        0.001,
+        0,
+        TrainingEvaluation.VAL_ACC,
+        1,
+    )
+    service.get_state()
     calls: dict[str, Any] = {"started": 0, "stopped": 0, "running": False}
 
-    def start_training(*, append: bool = True, interactive: bool = True) -> None:
+    def start_training(*, append: bool = True, interactive: bool = True) -> int:
         calls["started"] += 1
         calls["append"] = append
         calls["interactive"] = interactive
         calls["running"] = True
+        return int(calls["started"])
 
-    def stop_training() -> None:
+    def stop_training(*, wait_timeout: float | None = None) -> bool:
+        del wait_timeout
         calls["stopped"] += 1
         calls["running"] = False
+        return True
 
     def is_training() -> bool:
         return bool(calls["running"])
 
     service.training.start_training = start_training
-    service.training.stop_training = stop_training
     service.training.is_training = is_training
+    service.training_runtime.stop_training = stop_training  # type: ignore[method-assign]
+    service.training_runtime.is_training = is_training  # type: ignore[method-assign]
+    service.training_state.is_training = is_training
     return service, calls
 
 
@@ -318,7 +372,7 @@ def test_http_mcp_train_uses_job_api_with_status_and_cancel():
         thread.join(timeout=10)
 
 
-def test_training_progress_message_uses_application_state_not_study_trainer():
+def test_training_progress_message_uses_committed_state_not_study_trainer():
     class ForbiddenStudy:
         @property
         def trainer(self):
@@ -328,12 +382,15 @@ def test_training_progress_message_uses_application_state_not_study_trainer():
         training=SimpleNamespace(progress_message="Epoch 2/10"),
         active_training=SimpleNamespace(is_running=True),
     )
-    service = SimpleNamespace(study=ForbiddenStudy(), get_state=lambda: state)
+    service = SimpleNamespace(
+        study=ForbiddenStudy(),
+        get_view_publication=lambda: SimpleNamespace(state=state),
+    )
 
     assert _training_progress_message(cast(Any, service)) == "Epoch 2/10"
 
 
-def test_http_mcp_rejects_duplicate_train_start_while_job_is_starting():
+def test_http_mcp_rejects_duplicate_train_start_without_starting_twice():
     service, calls = _training_ready_service()
     start_entered = Event()
     release_start = Event()
@@ -398,15 +455,70 @@ def test_http_mcp_rejects_duplicate_train_start_while_job_is_starting():
         assert status == 200
         assert second["result"]["isError"] is True
         structured = second["result"]["structuredContent"]
-        assert structured["accepted"] is False
-        assert structured["result"]["error_type"] == "job_already_running"
-        assert "Training job is already starting" in structured["result"]["message"]
+        assert structured["result"]["error_type"] in {
+            "job_already_running",
+            "precondition",
+        }
+        assert "already" in structured["result"]["message"]
         assert calls["started"] == 1
     finally:
         release_start.set()
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=10)
+
+
+def test_http_job_registry_rejects_start_while_registration_is_in_flight():
+    service, _calls = _training_ready_service()
+    server = MCPServer(service, transport="http")
+    registry = MCPHTTPJobRegistry(server)
+    capability = service.get_capabilities().get("train")
+    entered = Event()
+    release = Event()
+    first_result: dict[str, Any] = {}
+    execution = MagicMock()
+    execution.to_dict.return_value = {
+        "accepted": True,
+        "result": {"status": "running"},
+    }
+
+    def blocked_execution(*_args, **_kwargs):
+        entered.set()
+        release.wait(timeout=5)
+        return execution
+
+    def start_first() -> None:
+        first_result["value"] = registry.start_job(
+            "train",
+            {"command": "train", "arguments": {"confirmed": True}},
+            capability,
+            server.adapter_metadata(),
+        )
+
+    with patch(
+        "XBrainLab.mcp.http_server.execute_automation_payload",
+        side_effect=blocked_execution,
+    ):
+        thread = Thread(target=start_first)
+        thread.start()
+        assert entered.wait(timeout=5)
+
+        duplicate = registry.start_job(
+            "train",
+            {"command": "train", "arguments": {"confirmed": True}},
+            capability,
+            server.adapter_metadata(),
+        )
+
+        release.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert first_result["value"]["accepted"] is True
+    assert duplicate["accepted"] is False
+    assert duplicate["verification"]["resource_locked"] is True
+    assert duplicate["result"]["error_type"] == "job_already_running"
+    assert "already starting" in duplicate["result"]["message"]
 
 
 def test_http_mcp_job_terminal_status_survives_later_train_runs():

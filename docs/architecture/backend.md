@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-07-10`
+最後更新：`2026-07-12`
 
 ## 快速讀法
 
@@ -14,7 +14,7 @@
 | `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
 | UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / compatibility compatibility、部分 readonly display fallback。 |
 | product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、controller compatibility、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
-| UI 和 assistant 同時下 command 怎麼辦？ | lock 由 `Study` 擁有；同一個 Study 上即使出現多個 `ApplicationService` instance，也會共用 reentrant lock，序列化 `execute()`、state snapshot 與 capability snapshot。cached service 的首次建立另有 process-local lock，避免競態建立兩個入口。 |
+| UI 和 assistant 同時下 command 怎麼辦？ | mutation lock 由 `Study` 擁有，序列化 state-changing command。UI、assistant 與 headless preflight 讀同一份 `ApplicationViewPublication(state, capabilities, generation)`；lock 空閒時刷新背景 truth，mutation 進行中則立即回最後一份已驗證 publication，不等待長命令。 |
 
 ## Current Target Gap
 
@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。MCP job progress 是歷史 adapter evidence，不是 active roadmap。 |
 | Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；saliency method policy 由 `backend.application.saliency_policy` 共用，training resource guard 只吃明確 dataset / option context。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
-| State truth | `StateSnapshotService` / `QueryStateCommandService` 是 UI / assistant 判斷狀態的主要讀法。 | 少數 lower-level domain / fixture tests 仍直接 setup/read `Study`，不能當 product smoke。 |
+| State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、UI、assistant、headless preflight 共用這個 view。 | object-bearing data/history query 仍序列化；少數 lower-level domain / fixture tests 直接 setup/read `Study`，不能當 product smoke。 |
 | Result boundary | `CommandResult.diagnostics` 只放可序列化 evidence；trainer、history row、figure 等 in-process object 放在 `CommandResult.runtime`。 | 新 consumer 不可再從 diagnostics 偷拿 runtime object；headless/assistant payload 不應意外序列化 Qt/domain object。 |
 | UI boundary | product action method 不可直接呼叫 controller compatibility helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
 | Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
@@ -170,6 +170,14 @@ also stores whether its data came from test, validation, or training fallback. S
 may be saved before training, but recomputation is restricted to finished records so it cannot
 open the test split before checkpoint selection is complete.
 
+2026-07-11 non-blocking view/lifecycle hardening added `ApplicationViewPublication` as the
+shared read model for UI, assistant, and headless preflight. A reader opportunistically rebuilds
+and atomically publishes state/capabilities when the Study command lock is idle, so background
+training completion is visible. If a mutation owns the lock, the reader returns the last verified
+generation immediately. Mutable object-bearing queries remain serialized. A mutation is no longer
+reported successful when its post-state cannot be verified; the result fails closed and records that
+the command effect may already have applied.
+
 Follow-up command-spine hardening on 2026-05-12 fixed three product-runtime contract
 gaps. UI command execution now suppresses controller observer-driven refresh while
 `ApplicationService.execute(...)` is running, so synchronous controller notifications wait for
@@ -182,13 +190,14 @@ Unsupported command objects passed to `ApplicationService.execute(...)` now retu
 architecture guard now also rejects UI code that bypasses `execute_application_command()` by
 calling `get_application_service(...).execute(...)` directly.
 
-2026-05-13 LLM pipeline-stage cleanup closed another product-runtime bypass. Real `Study`
-instances now derive assistant stage from the shared ApplicationService state snapshot only; if
-that snapshot is unavailable or invalid, stage calculation fails closed to `EMPTY` instead of
-guessing from mutable `Study.loaded_data_list`, `epoch_data`, `datasets`, or `trainer`. Direct
-Study-shaped stage fallback remains only for mock / compatibility compatibility tests, and architecture
-compliance now rejects LLM product code that adds new direct mutable `Study` stage/state reads
-outside explicit compatibility / fallback helpers.
+2026-07-12 pipeline-stage ownership cleanup removed the unused `Study.pipeline_stage` property.
+For a real `Study`, `compute_pipeline_stage(...)` now accepts only a caller-supplied
+`ApplicationViewPublication`; a missing, invalid, or unknown publication fails closed to `EMPTY`
+without importing or calling the application runtime. Direct Study-shaped derivation remains only
+for fake / compatibility objects. The preprocess epoch dialog now reads `epoch_handoff` through
+`ApplicationUiRuntime.get_view_publication()` instead of inspecting `Study._application_service` or
+calling blocking `get_state()`. Architecture compliance protects the private service cache,
+`Study -> application.runtime` direction, and the no-service-locator pipeline-stage boundary.
 
 ## 一句話架構
 
@@ -307,8 +316,9 @@ action 已不再直接呼叫 controller，而是先經過 UI command adapter 進
 - Epoching readiness 先讀 `create_epoch` capability。
 - Training sidebar 的 Start Training enabled / tooltip / click-time guard 先讀 `train`
   capability，不再自己重寫一套 dataset/model/training option 判斷。
-- Chat panel / AgentManager 的 compact backend diagnostics 透過
-  `get_application_service(study)` 讀 `get_state()` 和 `get_capabilities()`。
+- Chat panel / AgentManager 的 compact backend diagnostics，以及 Preprocess epoch dialog 的
+  `epoch_handoff`，都讀同一份 `ApplicationViewPublication`；UI helper 不自行拼接 state / capability
+  或檢查 private service cache。
 
 同一批 high-value execution 也已接 service-backed command adapter：
 
@@ -534,6 +544,8 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
 - `ApplicationService.get_capabilities()`：由 backend state 產生 capability policy，
   阻擋缺前置條件的 command，例如沒有 raw data 不能 preprocess、epoch/dataset 後不能
   一般性 `load_data`、沒有 dataset/model/training option 不能 train。
+- `ApplicationService.get_view_publication()`：原子回傳同一 generation 的 state 與 capability；
+  command lock 空閒時先刷新，lock 忙碌時不等待並回最後一份已驗證 publication。
 - `ApplicationService.execute(command)`：回傳 `CommandResult`，包含
   status、command name、message、changed state、error type、recoverable 和 diagnostics。
 - 已接上的核心 commands：
@@ -551,7 +563,8 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   `AnalysisCommandService`。
 - State snapshot assembly 和 `query_state` diagnostics 的實作位置現在是
   `StateSnapshotService` / `QueryStateCommandService`。`ApplicationService` 仍提供
-  `get_state()` / `get_capabilities()` 入口，但不再直接承接 snapshot helper 細節。
+  strict/fresh `get_state()` / `get_capabilities()` 給 command 內部驗證；一般 state query 與
+  product read surface 使用 publication，避免長 mutation 卡住 GUI。
 - `configure_training`、`train`、`stop_training`、`clear_training_history` 和 reset-time
   training config clear 的 handler 實作位置現在是 `TrainingCommandService`。它 owns model
   holder 建立、optimizer / device / evaluation option resolve、training option snapshot 和
@@ -672,9 +685,8 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
 - 快取 controllers，確保同一個 `Study` 內 controller 是 singleton-like。
 - 提供舊屬性相容層，例如 `study.loaded_data_list` 實際委派到 `study.data_manager.loaded_data_list`。
 - 提供清理 cascade，例如清 raw data 時也清 datasets / trainer。
-- 提供 `pipeline_stage` computed property；real `Study` 會透過 cached
-  `ApplicationService.get_state().pipeline_stage` 取得 shared snapshot truth，mock /
-  legacy non-product callers 才 fallback 到 direct Study-shaped reads。
+- 擁有 application service cache slot 與 command lock；service/runtime lifecycle owner 負責讀寫
+  cache。`Study` 本身不 import application runtime，也不暴露 `pipeline_stage` property。
 
 重要判斷：`Study` 仍是新舊架構混合點。它已經把資料與訓練狀態拆給 manager，但仍保留大量 delegation property 來維持 UI 和 tests 相容。
 
@@ -796,7 +808,7 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 - `Study` live state
 - `DataManager` data lifecycle state
 - `TrainingManager` training lifecycle state
-- `Study.pipeline_stage` computed property
+- `ApplicationViewPublication.state.pipeline_stage` 與同 generation capability policy
 - controller observer events
 - quality dashboard / targeted tests
 

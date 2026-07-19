@@ -1,6 +1,6 @@
 # Validation Architecture
 
-最後更新：`2026-05-03`
+最後更新：`2026-07-15`
 
 ## 範圍
 
@@ -148,15 +148,16 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 | real-data IO integration | real EEG formats / fixture paths 是否能進入 IO facade？ | `tests/integration/io/test_io_integration.py` |
 | required multi-dataset gate | handoff 前是否跨不同資料集來源驗證？ | `fetch_public_eeg_fixtures.py`、`report_dataset_validation_matrix.py --strict`、public BIDS / cross-source smoke |
 | tiny E2E pipeline smoke | `dataset -> train -> evaluate` 是否能閉環？ | tiny CPU training smoke，1-2 epoch，metrics 存在 |
-| public fixture pipeline smoke | public event-rich fixtures 是否能走到 training smoke？ | public fixture commands / artifacts |
+| public fixture pipeline smoke | 有 protocol class semantics 的 public fixtures 是否能走到 training；其餘 reviewed events 是否能走到 epoch？ | public fixture commands / artifacts |
 | scientific validation | 結果是否可重現且支撐 thesis claim？ | fixed protocol、baselines、statistics、threat analysis |
 
 目前的判讀：
 
 - Real-data IO integration 只證明特定資料或 fixture 能走過預期 IO path。
 - Required multi-dataset gate 是手測 / release-candidate handoff 前的必跑項目；它要求
-  checked-in GDF+MAT、compact multiformat、public event-rich source diversity、以及 public
-  BIDS EEG fixture。只測同一資料集的不同副檔名不算通過。
+  checked-in GDF+MAT、compact multiformat、2 個 class-grounded public training sources、
+  2 個 public IO/epoch-only sources，以及 public BIDS EEG fixture。只測同一資料集的不同
+  副檔名不算通過。
 - Tiny E2E smoke 只證明小型 train/evaluate loop 沒有 shape、metric、輸出路徑等基本錯誤。
 - 兩者都不能直接當作 scientific validation。
 
@@ -172,7 +173,7 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 | chat product-flow tests | normal input / empty response / worker error / local unavailable 有可見 feedback | 真 local model 長時間穩定性或人工 click-through 完整體驗 |
 | product UI walkthrough tests | assistant layout / panel navigation / synthetic pipeline button path 有 regression protection | 真 Windows launcher 人工驗收或長時間 local model UX |
 | real-data IO tests | 特定 real-data / fixture import paths | 完整 data pipeline reproducibility |
-| required multi-dataset gate | 不同 dataset source 的 import / label / BIDS / public training-smoke preflight | full BIDS validator compliance、所有資料集、model quality |
+| required multi-dataset gate | 不同 dataset source 的 import / label / BIDS、class-grounded training 與 IO/epoch-only preflight | full BIDS validator compliance、所有資料集、SCCN/CNT scientific class semantics、model quality |
 | tiny pipeline smoke | 小型 train/evaluate path 能閉環 | model quality 或 thesis reproducibility |
 | split audit artifact tests | split indices schema、index overlap、subject/session group leakage | model quality 或完整 external dataset experiment |
 | quality dashboard | fast engineering health | thesis conclusion |
@@ -210,15 +211,18 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
 - 2026-05-02 已建立 local model catalog / preflight / health check。
 - primary `microsoft/Phi-4-mini-instruct` 和 fallback
   `microsoft/Phi-3.5-mini-instruct` 是目前允許的 non-China local catalog candidates。
-- 目前 inspect evidence 是 `classification: missing-cache`，cache 用量 `0.00 GB`；不能宣稱
-  CUDA prompt smoke 或 structured-output smoke 已在目前 worktree 通過。
+- 目前 inspect evidence 是 `classification: gpu-ready`，兩個 approved cache 共 `15.34 GB`；
+  primary Phi-4 mini 的真 ChatPanel state-query / general-answer workflow 已通過。
 - Qwen cache 已刪除；中國公司或中國來源模型不列入 local validation 候選。
-- local agent runtime 還沒有被接受為 dashboard evidence。
+- local agent runtime 是獨立的 candidate evidence，不塞進 fast dashboard 以免每次工程檢查都載入
+  7B 級模型。
 - assistant product runtime 已完成 local-only cleanup：remote backend modules 已從 product
   package 移除，legacy API/Gemini selection 會 migrate local 或 fail closed。
 - `openai` / `google-genai` 不在 default dependencies，只保留於 optional
   `legacy-remote-llm` dependency group。
-- 真 local LLM 長時間 ChatPanel walkthrough 尚未跑；目前 smoke 不能取代完整 product acceptance。
+- 長時間 ChatPanel、fallback model、Windows human acceptance 尚未跑；目前兩個 turn 的 workflow
+  不能取代完整 product acceptance。Raw candidate 是 `6/12`，host-assisted product policy 是
+  `12/12`；兩者必須分開報告。
 
 後續 local-only validation 應該覆蓋：
 

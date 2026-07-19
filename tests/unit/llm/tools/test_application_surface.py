@@ -2,22 +2,81 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import mne
+import numpy as np
 import pytest
 
-from XBrainLab.backend.application import CommandName, get_application_service
+from XBrainLab.backend.application import (
+    ActiveDatasetSnapshot,
+    ActiveTrainingSnapshot,
+    AttachLabelsCommand,
+    ChangedState,
+    Command,
+    CommandName,
+    CommandResult,
+    LoadDataCommand,
+    PreprocessedStateSnapshot,
+    PreviewInterpretationCommand,
+    QueryStateCommand,
+    ReloadInterpretationRecipeCommand,
+    ResetPreprocessCommand,
+    StopTrainingCommand,
+    get_application_service,
+)
+from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.action_contracts import (
+    AGENT_ACTION_CONTRACTS,
+    AgentExecutionKind,
+)
+from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import (
+    APPLICATION_COMMAND_TOOLS,
+    READ_ONLY_TOOLS,
+    TOOL_TO_COMMAND,
+    UI_REQUEST_TOOLS,
     CapabilityPolicyUnavailable,
+    ToolAvailability,
     ToolCommandResult,
+    UserProvidedTrainingOutputDir,
+    _command_for_tool,
     blocked_tool_reasons,
     build_agent_tool_policy,
     execute_application_tool_command,
-    legacy_tool_result_succeeded,
+    get_application_context,
     normalize_tool_result,
 )
+from XBrainLab.llm.tools.result_contract import ToolResult
+from XBrainLab.llm.tools.schema_contract import TOOL_TAXONOMY
+
+
+class _ApplicationRuntimeFake:
+    def __init__(
+        self,
+        *,
+        publication: ApplicationViewPublication,
+        command_result: CommandResult | None = None,
+    ) -> None:
+        self._publication = publication
+        self._command_result = command_result
+        self.publication_reads = 0
+        self.commands: list[Command] = []
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        self.publication_reads += 1
+        return self._publication
+
+    def execute(self, command: Command) -> CommandResult:
+        self.commands.append(command)
+        if self._command_result is None:
+            raise AssertionError("this fake was not configured for command execution")
+        return self._command_result
 
 
 def _assert_tool_command_result(
@@ -52,6 +111,133 @@ def _state(result: ToolCommandResult) -> dict[str, Any]:
     return result.state
 
 
+def test_agent_action_contract_registry_has_unique_tools_and_intent_aliases():
+    contracts = AGENT_ACTION_CONTRACTS.contracts
+    tool_names = [contract.canonical_tool for contract in contracts]
+    intent_aliases = [
+        alias for contract in contracts for alias in contract.intent_aliases
+    ]
+
+    assert len(contracts) == 31
+    assert len(tool_names) == len(set(tool_names))
+    assert len(intent_aliases) == len(set(intent_aliases))
+
+
+def test_tool_to_command_compatibility_view_does_not_drift_from_registry():
+    expected = {
+        "scan_source": CommandName.SCAN_SOURCE,
+        "preview_interpretation": CommandName.PREVIEW_INTERPRETATION,
+        "validate_interpretation": CommandName.VALIDATE_INTERPRETATION,
+        "apply_interpretation": CommandName.APPLY_INTERPRETATION,
+        "save_interpretation_recipe": CommandName.SAVE_INTERPRETATION_RECIPE,
+        "reload_interpretation_recipe": CommandName.RELOAD_INTERPRETATION_RECIPE,
+        "load_data": CommandName.LOAD_DATA,
+        "attach_labels": CommandName.ATTACH_LABELS,
+        "apply_standard_preprocess": CommandName.PREPROCESS,
+        "apply_bandpass_filter": CommandName.PREPROCESS,
+        "apply_notch_filter": CommandName.PREPROCESS,
+        "resample_data": CommandName.PREPROCESS,
+        "normalize_data": CommandName.PREPROCESS,
+        "set_reference": CommandName.PREPROCESS,
+        "select_channels": CommandName.PREPROCESS,
+        "reset_preprocess": CommandName.RESET_PREPROCESS,
+        "set_montage": CommandName.APPLY_MONTAGE,
+        "epoch_data": CommandName.CREATE_EPOCH,
+        "generate_dataset": CommandName.GENERATE_DATASET,
+        "set_model": CommandName.CONFIGURE_TRAINING,
+        "configure_training": CommandName.CONFIGURE_TRAINING,
+        "start_training": CommandName.TRAIN,
+        "stop_training": CommandName.STOP_TRAINING,
+        "evaluate": CommandName.EVALUATE,
+        "visualize": CommandName.VISUALIZE,
+        "saliency": CommandName.SALIENCY,
+        "clear_dataset": CommandName.RESET_SESSION,
+        "query_state": CommandName.QUERY_STATE,
+    }
+
+    assert expected == TOOL_TO_COMMAND
+    assert AGENT_ACTION_CONTRACTS.tool_to_command() == TOOL_TO_COMMAND
+
+
+def test_action_contract_registry_is_the_complete_runtime_and_prompt_boundary():
+    expected = AGENT_ACTION_CONTRACTS.tool_names()
+
+    assert frozenset(TOOL_TAXONOMY) == expected
+    assert frozenset(tool.name for tool in get_all_tools("mock")) == expected
+    assert frozenset(tool.name for tool in get_all_tools("real")) == expected
+    assert (
+        AGENT_ACTION_CONTRACTS.tool_names_for_kind(
+            AgentExecutionKind.APPLICATION_COMMAND
+        )
+        == APPLICATION_COMMAND_TOOLS
+    )
+    assert (
+        AGENT_ACTION_CONTRACTS.tool_names_for_kind(AgentExecutionKind.UI_REQUEST)
+        == UI_REQUEST_TOOLS
+    )
+    assert (
+        AGENT_ACTION_CONTRACTS.tool_names_for_kind(AgentExecutionKind.READ_ONLY)
+        == READ_ONLY_TOOLS
+    )
+
+
+def test_every_application_tool_builder_matches_its_declared_command():
+    valid_params = {
+        "scan_source": {"source_path": "recording.edf"},
+        "preview_interpretation": {},
+        "validate_interpretation": {},
+        "apply_interpretation": {},
+        "save_interpretation_recipe": {},
+        "reload_interpretation_recipe": {"recipe_path": "import.recipe.json"},
+        "load_data": {"paths": ["recording.edf"]},
+        "attach_labels": {"mapping": {"recording.edf": "events.tsv"}},
+        "apply_standard_preprocess": {},
+        "apply_bandpass_filter": {"low_freq": 1.0, "high_freq": 40.0},
+        "apply_notch_filter": {"freq": 50.0},
+        "resample_data": {"rate": 128},
+        "normalize_data": {"method": "zscore"},
+        "set_reference": {"method": "average"},
+        "select_channels": {"channels": ["C3", "C4"]},
+        "reset_preprocess": {},
+        "epoch_data": {"t_min": -0.2, "t_max": 1.0},
+        "generate_dataset": {
+            "split_strategy": "trial",
+            "training_mode": "full_data",
+        },
+        "set_model": {"model_name": "EEGNet"},
+        "configure_training": {
+            "model_name": "EEGNet",
+            "epoch": 1,
+            "batch_size": 8,
+            "learning_rate": 0.001,
+        },
+        "start_training": {},
+        "stop_training": {},
+        "evaluate": {},
+        "visualize": {},
+        "saliency": {},
+        "clear_dataset": {},
+        "query_state": {},
+    }
+
+    application_contracts = AGENT_ACTION_CONTRACTS.contracts_for_kind(
+        AgentExecutionKind.APPLICATION_COMMAND
+    )
+    assert set(valid_params) == {
+        contract.canonical_tool for contract in application_contracts
+    }
+    for contract in application_contracts:
+        command = _command_for_tool(
+            contract.canonical_tool,
+            valid_params[contract.canonical_tool],
+        )
+        if command is None:
+            pytest.fail(
+                f"{contract.canonical_tool} did not build its application command"
+            )
+        assert command.name is contract.capability_command, contract.canonical_tool
+
+
 def test_agent_tool_policy_reuses_application_train_reasons():
     study = Study()
     service = get_application_service(study)
@@ -66,6 +252,475 @@ def test_agent_tool_policy_reuses_application_train_reasons():
     assert "Generate datasets before training." in start_training.reasons
 
 
+def test_agent_tool_policy_reads_state_and_capabilities_from_one_publication():
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=11,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    policy = build_agent_tool_policy(object(), runtime=runtime)
+
+    assert runtime.publication_reads == 1
+    assert policy["query_state"].enabled is True
+
+
+def test_mapped_product_tool_without_application_runtime_fails_closed():
+    result = execute_application_tool_command(
+        object(),
+        "query_state",
+        {"query": "state"},
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.tool_name == "query_state"
+    assert result.command_name == CommandName.QUERY_STATE.value
+    assert result.error_type == "contract"
+    assert result.recoverable is False
+    assert result.error_code == "application_tool_runtime_required"
+    assert result.message == (
+        "ApplicationToolRuntime is required for mapped product tool execution."
+    )
+    assert result.recovery_action == "provide_application_tool_runtime"
+    assert result.to_payload()["error_code"] == result.error_code
+    assert result.to_payload()["recovery_action"] == result.recovery_action
+
+
+def test_tool_payload_preserves_changed_state_for_agent_recovery():
+    result = ToolCommandResult.failure(
+        "query_state",
+        "Application state must be refreshed.",
+        error_code="unexpected_tool_failure",
+        recovery_action="refresh_application_state",
+        changed_state={"state_unknown": True},
+    )
+
+    assert result.to_payload()["changed_state"] == {"state_unknown": True}
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "command_name"),
+    [
+        ("reset_preprocess", CommandName.RESET_PREPROCESS),
+        ("stop_training", CommandName.STOP_TRAINING),
+    ],
+)
+def test_lifecycle_tools_without_application_runtime_fail_closed(
+    tool_name: str,
+    command_name: CommandName,
+) -> None:
+    result = execute_application_tool_command(object(), tool_name, {})
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.command_name == command_name.value
+    assert result.error_code == "application_tool_runtime_required"
+    assert result.recoverable is False
+
+
+def test_explicit_application_runtime_executes_for_headless_context():
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=12,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    runtime = _ApplicationRuntimeFake(
+        publication=publication,
+        command_result=CommandResult.success_result(
+            command_name=CommandName.QUERY_STATE.value,
+            message="Application state snapshot ready.",
+            state=state,
+            changed_state=ChangedState(),
+        ),
+    )
+
+    result = execute_application_tool_command(
+        object(),
+        "query_state",
+        {"query": "state"},
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is True
+    assert result.error_code is None
+    assert result.recovery_action is None
+    assert len(runtime.commands) == 1
+    assert isinstance(runtime.commands[0], QueryStateCommand)
+
+
+def test_reset_preprocess_tool_routes_to_narrow_command_and_publishes_final_state():
+    before = ApplicationStateSnapshot.empty()
+    after = replace(
+        before,
+        pipeline_stage="data_loaded",
+        preprocessed=PreprocessedStateSnapshot(),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=93,
+        state=before,
+        capabilities=build_capability_policy(before),
+    )
+    runtime = _ApplicationRuntimeFake(
+        publication=publication,
+        command_result=CommandResult.success_result(
+            command_name=CommandName.RESET_PREPROCESS.value,
+            message="Preprocessing reset to loaded raw data.",
+            state=after,
+            changed_state=ChangedState(preprocessed_changed=True),
+        ),
+    )
+    availability = ToolAvailability(
+        tool_name="reset_preprocess",
+        enabled=True,
+        command_name=CommandName.RESET_PREPROCESS.value,
+    )
+
+    result = execute_application_tool_command(
+        object(),
+        "reset_preprocess",
+        {"confirmed": True},
+        availability=availability,
+        state=before.to_dict(),
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is True
+    assert len(runtime.commands) == 1
+    command = runtime.commands[0]
+    assert isinstance(command, ResetPreprocessCommand)
+    assert command.confirmed is True
+    assert _state(result)["active_dataset"]["has_raw_data"] is True
+    assert _state(result)["preprocessed"]["available"] is False
+
+
+def test_stop_training_tool_routes_to_execution_control_and_publishes_final_state():
+    before = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="training",
+        active_training=ActiveTrainingSnapshot(
+            has_model=True,
+            has_training_option=True,
+            has_trainer=True,
+            is_running=True,
+        ),
+    )
+    after = replace(
+        before,
+        pipeline_stage="trained",
+        active_training=replace(before.active_training, is_running=False),
+    )
+    publication = ApplicationViewPublication(
+        generation=94,
+        state=before,
+        capabilities=build_capability_policy(before),
+    )
+    runtime = _ApplicationRuntimeFake(
+        publication=publication,
+        command_result=CommandResult.success_result(
+            command_name=CommandName.STOP_TRAINING.value,
+            message="Training stopped.",
+            state=after,
+            changed_state=ChangedState(training_changed=True),
+        ),
+    )
+    availability = ToolAvailability(
+        tool_name="stop_training",
+        enabled=True,
+        command_name=CommandName.STOP_TRAINING.value,
+    )
+
+    result = execute_application_tool_command(
+        object(),
+        "stop_training",
+        {},
+        availability=availability,
+        state=before.to_dict(),
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is True
+    assert len(runtime.commands) == 1
+    assert isinstance(runtime.commands[0], StopTrainingCommand)
+    assert _state(result)["active_training"]["is_running"] is False
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "command_name", "params", "command_type"),
+    [
+        (
+            "preview_interpretation",
+            CommandName.PREVIEW_INTERPRETATION,
+            {
+                "scan_id": "scan-1",
+                "choices": {"skip_labels": True},
+                "resource_preflight_confirmed": True,
+                "resource_preflight_token": "preview-receipt-1",
+            },
+            PreviewInterpretationCommand,
+        ),
+        (
+            "reload_interpretation_recipe",
+            CommandName.RELOAD_INTERPRETATION_RECIPE,
+            {
+                "recipe_path": "/tmp/recipe.json",
+                "resource_preflight_confirmed": True,
+                "resource_preflight_token": "reload-receipt-1",
+            },
+            ReloadInterpretationRecipeCommand,
+        ),
+    ],
+)
+def test_data_interpretation_surface_forwards_host_resource_receipt(
+    tool_name: str,
+    command_name: CommandName,
+    params: dict[str, object],
+    command_type: type[Command],
+) -> None:
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=95,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    runtime = _ApplicationRuntimeFake(
+        publication=publication,
+        command_result=CommandResult.success_result(
+            command_name=command_name.value,
+            message="Interpretation command completed.",
+            state=state,
+            changed_state=ChangedState(),
+        ),
+    )
+    availability = ToolAvailability(
+        tool_name=tool_name,
+        enabled=True,
+        command_name=command_name.value,
+    )
+
+    result = execute_application_tool_command(
+        object(),
+        tool_name,
+        params,
+        availability=availability,
+        state=state.to_dict(),
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is True
+    assert len(runtime.commands) == 1
+    command = runtime.commands[0]
+    assert isinstance(command, command_type)
+    assert command.resource_preflight_confirmed is True
+    assert command.resource_preflight_token == params["resource_preflight_token"]
+
+
+def test_attach_labels_surface_preserves_paths_and_host_resource_receipt() -> None:
+    command = _command_for_tool(
+        "attach_labels",
+        {
+            "mapping": {
+                "A01T.gdf": "/labels/A01T.mat",
+                "A02T.gdf": "/labels/A02T.mat",
+            },
+            "label_format": "mat",
+            "resource_preflight_confirmed": True,
+            "resource_preflight_token": "label-receipt-1",
+        },
+    )
+
+    assert isinstance(command, AttachLabelsCommand)
+    command = cast(AttachLabelsCommand, command)
+    assert command.label_paths == ["/labels/A01T.mat", "/labels/A02T.mat"]
+    assert command.label_format == "mat"
+    assert command.resource_preflight_confirmed is True
+    assert command.resource_preflight_token == "label-receipt-1"  # noqa: S105
+
+
+def test_generate_dataset_surface_does_not_guess_missing_split_decisions():
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=14,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+    availability = ToolAvailability(
+        tool_name="generate_dataset",
+        enabled=True,
+        reasons=(),
+        command_name=CommandName.GENERATE_DATASET.value,
+    )
+
+    result = execute_application_tool_command(
+        object(),
+        "generate_dataset",
+        {"test_ratio": 0.2, "val_ratio": 0.2},
+        availability=availability,
+        state=state.to_dict(),
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.error_type == "input"
+    assert result.recoverable is True
+    assert runtime.commands == []
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "command_name", "params"),
+    [
+        (
+            "apply_interpretation",
+            CommandName.APPLY_INTERPRETATION,
+            {"confirmed": "false"},
+        ),
+        ("start_training", CommandName.TRAIN, {"confirmed": 1}),
+        ("clear_dataset", CommandName.RESET_SESSION, {"confirmed": "true"}),
+        (
+            "load_data",
+            CommandName.LOAD_DATA,
+            {"paths": ["/tmp/A01T.gdf"], "resource_preflight_confirmed": "false"},
+        ),
+    ],
+)
+def test_application_surface_rejects_non_boolean_confirmation_values(
+    tool_name: str,
+    command_name: CommandName,
+    params: dict[str, object],
+) -> None:
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=15,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+    availability = ToolAvailability(
+        tool_name=tool_name,
+        enabled=True,
+        reasons=(),
+        command_name=command_name.value,
+    )
+
+    result = execute_application_tool_command(
+        object(),
+        tool_name,
+        params,
+        availability=availability,
+        state=state.to_dict(),
+        runtime=runtime,
+    )
+
+    result = _assert_tool_command_result(
+        result,
+        tool_name=tool_name,
+        command_name=command_name,
+        ok=False,
+        error_type="input",
+    )
+    assert "must be a boolean" in result.message
+    assert runtime.commands == []
+
+
+def test_stale_publication_preserves_recovery_tools_with_safe_public_reason():
+    study = Study()
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=12,
+        state=state,
+        capabilities=build_capability_policy(state),
+        verified=True,
+        stale=True,
+        refresh_error="training state changed during snapshot",
+    )
+    runtime = _ApplicationRuntimeFake(publication=publication)
+
+    policy = build_agent_tool_policy(study, publication=publication)
+    context = get_application_context(
+        object(),
+        "query_state",
+        runtime=runtime,
+    )
+
+    if context is None:
+        pytest.fail("explicit application runtime did not publish tool context")
+    assert policy["query_state"].enabled is True
+    assert policy["clear_dataset"].enabled is True
+    assert policy["clear_dataset"].requires_confirmation is True
+    assert policy["scan_source"].enabled is False
+    assert policy["list_files"].enabled is False
+    assert context.generation == publication.generation
+    assert context.availability.enabled is True
+    assert context.policy_error == "Workflow state is temporarily unavailable."
+    assert publication.diagnostic_error == "training state changed during snapshot"
+    assert context.state == state.to_dict()
+
+
+def test_stale_publication_keeps_raw_diagnostic_out_of_capability_reasons():
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=13,
+        state=state,
+        capabilities=build_capability_policy(state),
+        stale=True,
+        refresh_error="Traceback: /private/runtime.py SECRET_TOKEN_123",
+    )
+
+    policy = build_agent_tool_policy(Study(), publication=publication)
+
+    scan_source = policy["scan_source"]
+    assert scan_source.enabled is False
+    assert scan_source.reasons == ("Workflow state is temporarily unavailable.",)
+    serialized = str(scan_source.to_dict())
+    assert "Traceback" not in serialized
+    assert "/private/runtime.py" not in serialized
+    assert "SECRET_TOKEN_123" not in serialized
+    assert publication.public_unavailable_code == "application_state_unavailable"
+    assert publication.diagnostic_error == (
+        "Traceback: /private/runtime.py SECRET_TOKEN_123"
+    )
+
+
+def test_application_tool_result_capability_is_rebuilt_from_post_command_state():
+    study = Study()
+    pre_command_availability = ToolAvailability(
+        tool_name="set_model",
+        enabled=True,
+        reasons=("stale pre-command reason",),
+        command_name=CommandName.CONFIGURE_TRAINING.value,
+    )
+
+    result = execute_application_tool_command(
+        study,
+        "set_model",
+        {"model_name": "EEGNet"},
+        availability=pre_command_availability,
+        state={"pipeline_stage": "empty"},
+    )
+
+    result = _assert_tool_command_result(
+        result,
+        tool_name="set_model",
+        command_name=CommandName.CONFIGURE_TRAINING,
+        ok=True,
+        raw_status="ok",
+    )
+    post_command_availability = build_agent_tool_policy(study)["set_model"]
+    assert result.capability == post_command_availability.to_dict()
+    assert result.capability != pre_command_availability.to_dict()
+    assert _state(result)["training"]["has_model"] is True
+
+
 def test_start_training_surface_preserves_backend_confirmation_boundary():
     study = Study()
     raw = MagicMock()
@@ -73,10 +728,21 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     raw.get_filepath.return_value = "/tmp/sample.fif"
     study.loaded_data_list = [raw]
     cast(Any, study).datasets = [object()]
-    cast(Any, study).model_holder = object()
-    cast(Any, study).training_option = object()
+    configured = execute_application_tool_command(
+        study,
+        "configure_training",
+        {
+            "model_name": "EEGNet",
+            "epoch": 1,
+            "batch_size": 2,
+            "learning_rate": 0.001,
+            "device": "cpu",
+        },
+    )
+    assert isinstance(configured, ToolCommandResult)
+    assert configured.ok is True
     training = study.get_controller("training")
-    training.start_training = MagicMock()
+    training.start_training = MagicMock(return_value=1)
 
     unconfirmed = execute_application_tool_command(study, "start_training", {})
     confirmed = execute_application_tool_command(
@@ -94,8 +760,8 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
         raw_status="failed",
     )
     assert unconfirmed.blocked_reason == "train requires confirmation."
-    assert unconfirmed.raw_result["changed_state"]["error_changed"] is True
-    assert unconfirmed.changed_state["error_changed"] is True
+    assert unconfirmed.raw_result["changed_state"]["error_changed"] is False
+    assert unconfirmed.changed_state["error_changed"] is False
     confirmed = _assert_tool_command_result(
         confirmed,
         tool_name="start_training",
@@ -343,19 +1009,31 @@ def test_application_tool_command_apply_surfaces_confirmation_required(tmp_path)
 
 def test_application_tool_command_routes_standard_preprocess(tmp_path):
     study = Study()
-    raw = MagicMock()
-    raw.get_filename.return_value = "sample.fif"
-    raw.get_filepath.return_value = str(tmp_path / "sample.fif")
-    study.loaded_data_list = [raw]
-    study.preprocessed_data_list = [raw]
+    info = mne.create_info(
+        ch_names=["C3", "C4"],
+        sfreq=128,
+        ch_types="eeg",
+    )
+    data = np.random.default_rng(42).normal(size=(2, 128 * 20))
+    source = tmp_path / "sample_raw.fif"
+    mne.io.RawArray(data, info, verbose="ERROR").save(
+        source,
+        overwrite=True,
+        verbose="ERROR",
+    )
+    load_result = get_application_service(study).execute(
+        LoadDataCommand(paths=[str(source)]),
+    )
+    assert load_result.ok is True
 
     result = execute_application_tool_command(
         study,
         "apply_standard_preprocess",
         {
-            "l_freq": 4,
-            "h_freq": 40,
-            "notch_freq": 50,
+            "l_freq": 1,
+            "h_freq": 30,
+            "notch_freq": 0,
+            "rereference": "average",
             "normalize_method": "z-score",
         },
     )
@@ -364,35 +1042,60 @@ def test_application_tool_command_routes_standard_preprocess(tmp_path):
         result,
         tool_name="apply_standard_preprocess",
         command_name=CommandName.PREPROCESS,
-        ok=False,
-        error_type="validation",
-        raw_status="failed",
+        ok=True,
+        error_type="none",
+        raw_status="ok",
     )
-    assert result.raw_result["diagnostics"]["exception_type"] == "TypeError"
+    operations = _state(result)["preprocessed"]["operations"]
+    assert any("Re-reference (Average)" in item for item in operations)
+    assert any(
+        "z score normalization requested" in item
+        and "deferred to per-epoch application" in item
+        for item in operations
+    )
+    assert result.diagnostics["normalization_scope"] == "per_epoch_per_channel"
+    assert result.diagnostics["raw_requests_deferred"] == 1
+    assert result.diagnostics["epoched_items_normalized"] == 0
+    assert result.diagnostics["recording_statistics_used"] is False
+    assert result.changed_state["preprocessed_changed"] is True
+    assert result.changed_state["epoch_changed"] is False
+    assert _state(result)["epoch"]["exists"] is False
 
 
 def test_application_surface_requires_real_study():
     with pytest.raises(CapabilityPolicyUnavailable):
-        build_agent_tool_policy(MagicMock())
+        build_agent_tool_policy(object())
 
 
-def test_legacy_error_string_becomes_failed_structured_result():
+def test_explicit_tool_failure_becomes_failed_structured_result():
     result = normalize_tool_result(
         Study(),
         "start_training",
-        "Failed to start training: Generate datasets before training.",
+        ToolResult(
+            False,
+            "Generate datasets before training.",
+            error_type="precondition",
+        ),
     )
 
+    assert isinstance(result, ToolCommandResult)
     assert result.ok is False
     assert result.command_name == CommandName.TRAIN.value
     assert result.error_type == "precondition"
     assert "Generate datasets" in result.message
 
 
-def test_command_result_success_inference_handles_error_prefixes():
-    assert legacy_tool_result_succeeded("Successfully loaded 1 files.") is True
-    assert legacy_tool_result_succeeded("Error: paths list cannot be empty.") is False
-    assert legacy_tool_result_succeeded("Dataset generation failed: no epoch") is False
+def test_untyped_tool_text_fails_closed_as_invalid_contract():
+    result = normalize_tool_result(Study(), "list_files", "Error-looking text")
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.error_type == "contract"
+    assert result.recoverable is False
+    assert result.message == "The assistant tool returned an invalid result contract."
+    assert result.raw_result is None
+    assert result.diagnostics == {"returned_type": "str"}
+    assert "Error-looking text" not in repr(result.to_payload())
 
 
 def test_application_tool_command_returns_structured_result_for_model_config():
@@ -417,18 +1120,22 @@ def test_application_tool_command_returns_structured_result_for_model_config():
     assert result.changed_state["training_changed"] is True
 
 
-def test_application_tool_command_preserves_training_output_dir(tmp_path):
+def test_application_tool_command_preserves_host_authorized_training_output_dir(
+    tmp_path,
+):
     output_dir = tmp_path / "chatpanel-training-output"
 
     result = execute_application_tool_command(
         Study(),
         "configure_training",
         {
+            "model_name": "EEGNet",
             "epoch": 1,
             "batch_size": 2,
             "learning_rate": 0.001,
             "device": "cpu",
-            "output_dir": str(output_dir),
+            "evaluation_option": "val_auc",
+            "output_dir": UserProvidedTrainingOutputDir(str(output_dir)),
         },
     )
 
@@ -441,7 +1148,97 @@ def test_application_tool_command_preserves_training_output_dir(tmp_path):
         raw_status="ok",
     )
     training_state = result.raw_result["state"]["training"]["training_option"]
+    assert result.raw_result["state"]["training"]["model_name"] == "EEGNet"
     assert training_state["output_dir"] == str(output_dir)
+    assert training_state["evaluation_option"] == "Best validation AUC"
+
+
+def test_application_tool_command_accepts_backend_valid_learning_rate_one():
+    result = execute_application_tool_command(
+        Study(),
+        "configure_training",
+        {
+            "model_name": "EEGNet",
+            "epoch": 2,
+            "batch_size": 4,
+            "learning_rate": 1.0,
+            "device": "cpu",
+        },
+    )
+
+    result = _assert_tool_command_result(
+        result,
+        tool_name="configure_training",
+        command_name=CommandName.CONFIGURE_TRAINING,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    training_state = _state(result)["training"]
+    assert training_state["model_name"] == "EEGNet"
+    assert training_state["training_option"]["epoch"] == 2
+    assert training_state["training_option"]["batch_size"] == 4
+    assert training_state["training_option"]["learning_rate"] == 1.0
+
+
+def test_application_tool_command_rejects_partial_training_without_state_change():
+    study = Study()
+    service = get_application_service(study)
+    before = service.get_state().training
+
+    result = execute_application_tool_command(
+        study,
+        "configure_training",
+        {"model_name": "EEGNet", "epoch": 10},
+    )
+
+    result = _assert_tool_command_result(
+        result,
+        tool_name="configure_training",
+        command_name=CommandName.CONFIGURE_TRAINING,
+        ok=False,
+        error_type="input",
+    )
+    assert "batch_size" in result.message
+    assert "learning_rate" in result.message
+    assert service.get_state().training == before
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (("repeat", 1.75), ("save_checkpoints_every", 2.9)),
+)
+def test_application_tool_command_rejects_fractional_integer_options_without_state_change(
+    field: str,
+    value: float,
+):
+    study = Study()
+    service = get_application_service(study)
+    before = service.get_state().training
+    params: dict[str, object] = {
+        "model_name": "EEGNet",
+        "epoch": 2,
+        "batch_size": 4,
+        "learning_rate": 0.001,
+        "device": "cpu",
+        field: value,
+    }
+
+    result = execute_application_tool_command(
+        study,
+        "configure_training",
+        params,
+    )
+
+    result = _assert_tool_command_result(
+        result,
+        tool_name="configure_training",
+        command_name=CommandName.CONFIGURE_TRAINING,
+        ok=False,
+        error_type="input",
+    )
+    assert field in result.message
+    assert service.get_state().training == before
 
 
 def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
@@ -517,9 +1314,18 @@ def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
                         "anchor": "onset",
                         "time_model": "seconds",
                         "granularity": "trial",
+                        "value_decisions": {
+                            "left": {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "left hand",
+                                "decision_source": "user_choice",
+                                "provenance": "agent_tool",
+                            },
+                        },
                     },
                 },
-                "class_map": {"left": "left hand"},
             },
         },
     )
@@ -545,6 +1351,10 @@ def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
     }
     assert capabilities["events.tsv"]["format"] == "BIDS events"
     assert interpretation["class_map"] == {"left": "left hand"}
+    value_decision = interpretation["label_carrier_plan"][0]["value_decisions"]["left"]
+    assert value_decision["role"] == "stimulus"
+    assert value_decision["use_as_class"] is True
+    assert value_decision["class_name"] == "left hand"
 
 
 def test_analysis_tools_are_application_service_backed():
@@ -605,7 +1415,7 @@ def test_analysis_tools_are_application_service_backed():
     )
 
 
-def test_application_tool_command_leaves_ui_request_tools_on_legacy_path():
+def test_application_tool_command_leaves_ui_request_tools_on_explicit_adapter_path():
     assert (
         execute_application_tool_command(
             Study(),

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -15,6 +18,10 @@ from scripts.dev.capture_data_interpretation_replay import (
     build_replay_geometry_review,
     build_visible_text_review,
     dataset_sidebar_state,
+    ensure_confirmed_apply_succeeded,
+    pairing_rows,
+    pairing_rows_state_for_step,
+    request_window_close,
     source_event_field_matches,
     table_state,
     tree_rows,
@@ -25,7 +32,9 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 )
 
 
-def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
+def test_apply_replay_review_choices_only_changes_visible_matching_controls(
+    qtbot,
+) -> None:
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -37,6 +46,9 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
             "label_carriers": ["/tmp/source/events.tsv"],
         },
         preview={
+            "selected_eeg_files": [
+                "/tmp/source/sub-01_task-mi_run-2_raw.fif",
+            ],
             "event_roles": {"trial_type": "class label candidate"},
         },
         validation_decision={"decision": "needs_confirmation"},
@@ -57,20 +69,57 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
 
     apply_replay_review_choices(dialog)
 
-    label_item = dialog.label_carrier_tree.topLevelItem(0)
-    assert label_item is not None
     visible_selector = dialog._eeg_label_widgets["sub-01_task-mi_run-2_raw.fif"]
     assert isinstance(visible_selector, QComboBox)
     assert visible_selector.currentData() == "/tmp/source/events.tsv"
-    assert (
-        dialog.get_result()["choices"]["label_carrier_choices"][
-            "/tmp/source/events.tsv"
-        ]["target_file"]
-        == "sub-01_task-mi_run-2_raw.fif"
+    assert pairing_rows(dialog) == [
+        ["sub-01_task-mi_run-2_raw.fif", "events.tsv", "Needs setup"],
+    ]
+    label_choice = dialog.get_result()["choices"]["label_carrier_choices"][
+        "/tmp/source/events.tsv"
+    ]
+    assert "target_file" not in label_choice
+    assert dialog.get_result()["choices"].get("selected_eeg_files") is None
+    replay_choices = apply_replay_review_choices(dialog)
+    assert replay_choices["selected_eeg_files"] == [
+        "/tmp/source/sub-01_task-mi_run-2_raw.fif"
+    ]
+    assert role_selector.currentData() == "class label candidate"
+    assert ["Trial type", "event use", "Class label candidate"] in tree_rows(
+        dialog.event_tree
     )
-    assert role_selector.currentData() == "class cue"
-    assert ["Trial type", "event use", "Class cue"] in tree_rows(dialog.event_tree)
-    assert dialog.get_result()["choices"]["event_roles"] == {"trial_type": "class cue"}
+    assert dialog.get_result()["choices"].get("event_roles", {}) == {}
+
+
+def test_confirmed_apply_failure_fails_the_replay_validator() -> None:
+    try:
+        ensure_confirmed_apply_succeeded(
+            {
+                "ok": False,
+                "message": "Label carrier pairing is incomplete.",
+                "error": {"code": "validation_failed"},
+            }
+        )
+    except RuntimeError as exc:
+        assert "Confirmed apply failed" in str(exc)
+        assert "Label carrier pairing is incomplete" in str(exc)
+    else:
+        raise AssertionError("A failed confirmed apply must fail the replay.")
+
+
+def test_confirmed_apply_success_passes_the_replay_validator() -> None:
+    ensure_confirmed_apply_succeeded(
+        {
+            "ok": True,
+            "message": "Interpretation applied.",
+        }
+    )
+    ensure_confirmed_apply_succeeded(
+        {
+            "status": "ok",
+            "message": "Interpretation applied.",
+        }
+    )
 
 
 def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
@@ -192,7 +241,18 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
             "event_roles": {"trial_type": "class cue"},
             "recipe_trace": ["scan:scan-1", "candidate:candidate-1"],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision={
+            "decision": "needs_confirmation",
+            "action_items": [
+                {
+                    "target_step": "Review and Import",
+                    "issue": "Import assumptions need review",
+                    "impact": "Review the complete import report before applying.",
+                    "next_action": "Review the report.",
+                    "severity": "needs_confirmation",
+                }
+            ],
+        },
     )
     qtbot.addWidget(dialog)
     dialog.resize(760, 720)
@@ -216,7 +276,7 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     assert state["horizontal_scrollbar_max"] == 0
     assert state["vertical_scrollbar_max"] >= 0
     assert state["partial_visible_rows"] == []
-    assert state["text_elide_mode"] == "ElideRight"
+    assert state["text_elide_mode"] == "ElideNone"
     assert state["alternating_row_colors"] is True
     flat_rows = " ".join(" ".join(row) for row in state["rows"])
     assert "Source scan" not in flat_rows
@@ -300,10 +360,9 @@ def test_replay_geometry_review_checks_all_wizard_tables(qtbot) -> None:
                         dialog.file_tree,
                         qtbot,
                     ),
-                    "label_carriers": _tree_state_for_step(
+                    "file_pairing": pairing_rows_state_for_step(
                         dialog,
                         "Match Labels",
-                        dialog.label_carrier_tree,
                         qtbot,
                     ),
                     "events": _tree_state_for_step(
@@ -327,7 +386,7 @@ def test_replay_geometry_review_checks_all_wizard_tables(qtbot) -> None:
     assert review["checked_widgets"] == 4
     assert {row["widget"] for row in review["rows"]} == {
         "dialog.tables.metadata",
-        "dialog.tables.label_carriers",
+        "dialog.tables.file_pairing",
         "dialog.tables.events",
         "dialog.tables.review_summary",
     }
@@ -354,6 +413,48 @@ def test_replay_geometry_review_flags_underfilled_tree() -> None:
     assert review["passed"] is False
     assert review["findings"][0]["widget"] == "dialog.tables.label_carriers"
     assert review["findings"][0]["fills_viewport"] is False
+
+
+def test_capture_scripts_never_use_hidden_label_tree_as_ui_evidence() -> None:
+    root = Path(__file__).resolve().parents[3]
+    for relative_path in (
+        "scripts/dev/capture_data_interpretation_replay.py",
+        "scripts/dev/capture_human_like_product_walkthrough.py",
+    ):
+        source = (root / relative_path).read_text(encoding="utf-8")
+        assert "label_carrier_tree" not in source, relative_path
+
+
+def test_request_window_close_waits_for_deferred_product_shutdown(qtbot) -> None:
+    class DeferredCloseWidget(QWidget):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_attempts = 0
+
+        def closeEvent(self, event) -> None:
+            self.close_attempts += 1
+            if self.close_attempts == 1:
+                event.ignore()
+                QTimer.singleShot(10, self.close)
+                return
+            super().closeEvent(event)
+
+    widget = DeferredCloseWidget()
+    qtbot.addWidget(widget)
+    widget.show()
+    closed: list[bool] = []
+    timed_out: list[bool] = []
+
+    request_window_close(
+        widget,
+        on_closed=lambda: closed.append(True),
+        on_timeout=lambda: timed_out.append(True),
+        timeout_ms=500,
+    )
+    qtbot.waitUntil(lambda: bool(closed), timeout=1_000)
+
+    assert widget.close_attempts == 2
+    assert timed_out == []
 
 
 def table_item(text: str) -> QTableWidgetItem:
