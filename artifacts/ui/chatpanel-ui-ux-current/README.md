@@ -9,10 +9,10 @@ QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_ui_ux_
 ```
 
 - machine gate: `passed`
-- source fingerprint: `1334b4247780cad9d90c8f986963b1e86b2d9258c70380bbda635ee4f9983469`
+- source fingerprint: `a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3`
 - source stable during capture: `True`
-- source fingerprint at start / completion: `1334b4247780cad9d90c8f986963b1e86b2d9258c70380bbda635ee4f9983469` / `1334b4247780cad9d90c8f986963b1e86b2d9258c70380bbda635ee4f9983469`
-- fingerprinted source files: `29`
+- source fingerprint at start / completion: `a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3` / `a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3`
+- fingerprinted source files: `31`
 - Qt platform: `offscreen`
 - visual reviewer verdict: `not adjudicated by this script`
 - native display scaling observed: `false`
@@ -30,6 +30,8 @@ QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_ui_ux_
 | `narrow-stopping-progress.png` | 320 x 680 / 320 x 680 | user | PASS |
 | `narrow-command-progress.png` | 320 x 680 / 320 x 680 | user | PASS |
 | `narrow-error-action.png` | 320 x 680 / 320 x 680 | user, error | PASS |
+| `narrow-setting-change-confirmation.png` | 320 x 680 / 320 x 680 | user | PASS |
+| `narrow-setting-change-confirmation-max-content.png` | 320 x 680 / 320 x 680 | user | PASS |
 | `pixmap-scaled-narrow.png` | 320 x 760 / 480 x 1140 | user, tool_result, attention, cancelled | PASS |
 | `responsive-320-idle.png` | 320 x 650 / 320 x 650 | runtime / activity state | PASS |
 | `responsive-320-long-clarification-action-520.png` | 320 x 520 / 320 x 520 | user, clarification | PASS |
@@ -66,11 +68,13 @@ A real `MetricTab` records the pre-first-epoch empty state, then applies epoch 1
 
 ## Teardown
 
-The composed walkthrough binds a dedicated `AssistantCommandThread`, requests `AgentManager.close()`, and observes dispatcher cleanup, runtime cleanup, and QThread completion through Qt signals and an event loop. It does not call `QThread.wait()` on the GUI thread.
+The composed walkthrough binds a dedicated `AssistantCommandThread`, requests `AgentManager.close()`, and observes dispatcher cleanup, runtime cleanup, QThread completion, GUI heartbeat continuity, and close-call latency through Qt signals and an event loop. It does not call `QThread.wait()` on the GUI thread.
 
 - teardown passed: `True`
 - manager close finished: `True`
 - dedicated QThread finished: `True`
+- initial close-call latency: `3.28 ms`
+- GUI heartbeat count / max gap: `14` / `5.659 ms`
 
 ## Interaction Coverage
 

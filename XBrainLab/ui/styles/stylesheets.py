@@ -492,6 +492,31 @@ class Stylesheets:
 
     AGENT_TITLE_LABEL = "color: #d7e0ea; font-weight: bold;"
 
+    AGENT_STATUS_BADGE = """
+        QLabel#AssistantDockStatus {
+            color: #b8c4ce;
+            background-color: #252d34;
+            border: 1px solid #3f4b55;
+            border-radius: 7px;
+            padding: 2px 7px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        QLabel#AssistantDockStatus[assistantState="ready"] {
+            color: #a9d2c2;
+            border-color: #416557;
+        }
+        QLabel#AssistantDockStatus[assistantState="working"],
+        QLabel#AssistantDockStatus[assistantState="loading"] {
+            color: #b7cde0;
+            border-color: #49677e;
+        }
+        QLabel#AssistantDockStatus[assistantState="error"] {
+            color: #e2a3a6;
+            border-color: #795154;
+        }
+    """
+
     AGENT_TITLE_BTN = """
         QPushButton {
             background: transparent;
@@ -508,7 +533,7 @@ class Stylesheets:
         QPushButton:focus {
             color: #ffffff;
             background-color: #26313a;
-            border: 1px solid #4f94c9;
+            border: 1px solid #5e6a74;
             border-radius: 3px;
         }
     """
@@ -525,7 +550,7 @@ class Stylesheets:
         QPushButton:focus {
             color: #ffffff;
             background-color: #26313a;
-            border: 1px solid #4f94c9;
+            border: 1px solid #5e6a74;
             border-radius: 3px;
         }
     """

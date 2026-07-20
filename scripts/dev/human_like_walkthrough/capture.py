@@ -14,7 +14,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from scripts.dev.capture_chatpanel_local_walkthrough import collect_visible_messages
 from scripts.dev.human_like_walkthrough.contract import (
@@ -55,6 +55,7 @@ from scripts.dev.human_like_walkthrough.evidence import (
 from XBrainLab.backend.application import NewSessionCommand, QueryStateCommand
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import model_cache_candidates
+from XBrainLab.ui.chat.action_card import AssistantConfirmationCard
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 
 
@@ -830,73 +831,86 @@ def _capture_confirmation_interactions(
             if message.get("role") == "assistant"
         ]
 
-    def dialog_decision(
+    def card_decision(
         request: str,
-        button_role: QMessageBox.ButtonRole,
+        *,
+        approved: bool,
         decision: str,
         scenario_name: str,
     ) -> dict[str, Any]:
         scenario_start_count = reset_scenario(scenario_name)
         start_index = len(manager.chat_controller.messages)
         execution_before = controller.confirmed_execution_count
-        dialog_state = {"opened": False, "title": ""}
-        callback_error: list[str] = []
+        panel.input_field.setText(request)
+        click_assistant_control(cast(QWidget, panel.send_btn))
 
-        def choose() -> None:
-            dialogs = [
-                widget
-                for widget in app.topLevelWidgets()
-                if isinstance(widget, QMessageBox) and widget.isVisible()
-            ]
-            if len(dialogs) != 1:
-                callback_error.append(
-                    f"Expected one confirmation dialog, found {len(dialogs)}."
-                )
-                for widget in dialogs:
-                    widget.reject()
-                return
-            dialog = dialogs[0]
-            dialog_state["opened"] = True
-            dialog_state["title"] = dialog.windowTitle()
-            targets = [
-                button
-                for button in dialog.buttons()
-                if dialog.buttonRole(button) is button_role
-            ]
-            if len(targets) != 1:
-                callback_error.append(
-                    "Expected one confirmation decision button for "
-                    f"{button_role.name}, found {len(targets)}."
-                )
-                dialog.reject()
-                return
-            if scenario_name == "confirmed":
-                screenshot = dependencies.capture_named(
-                    dialog,
-                    output_dir,
-                    "assistant_confirmation_dialog",
-                )
-                screenshots["assistant_confirmation_dialog"] = screenshot
-                dialog_state["screenshot"] = screenshot
-            click_assistant_control(cast(QWidget, targets[0]))
+        card = cast(
+            AssistantConfirmationCard,
+            panel.confirmation_card_widget,
+        )
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            app.processEvents()
+            if card.isVisibleTo(dock) and card.request_id:
+                break
+            time.sleep(0.005)
+        if not card.isVisibleTo(dock) or not card.request_id:
+            raise RuntimeError("Expected one inline confirmation card.")
 
-        QTimer.singleShot(0, choose)
-        drive_assistant_request(app, manager, request)
-        app.processEvents()
-        if callback_error:
-            raise RuntimeError(callback_error[0])
+        controller_request = controller.last_confirmation_request
+        request_correlated = bool(
+            controller_request and controller_request.request_id == card.request_id
+        )
+        card_state = {
+            "opened": True,
+            "title": card.title_label.text(),
+            "request_id": card.request_id,
+            "request_correlated": request_correlated,
+            "primary_action": card.primary_button.text(),
+            "secondary_action": card.secondary_button.text(),
+        }
+        if scenario_name == "confirmed":
+            screenshot = dependencies.capture_named(
+                dock,
+                output_dir,
+                "assistant_confirmation_card",
+            )
+            screenshots["assistant_confirmation_card"] = screenshot
+            card_state["screenshot"] = screenshot
+
+        decision_button = card.primary_button if approved else card.secondary_button
+        click_assistant_control(cast(QWidget, decision_button))
+
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            app.processEvents()
+            if (
+                len(manager.chat_controller.messages) > start_index
+                and not manager.chat_controller.is_processing
+                and not card.isVisible()
+            ):
+                break
+            time.sleep(0.005)
+        if manager.chat_controller.is_processing or card.isVisible():
+            raise RuntimeError(
+                "Assistant confirmation did not reach one terminal UI state."
+            )
         terminal = terminal_messages(start_index)
         normalized = [" ".join(item.split()).lower() for item in terminal]
         return {
-            "request_kind": "production_confirmation",
+            "request_kind": "production_confirmation_card",
             "decision": decision,
             "destructive": bool(
                 controller.last_confirmation_request
                 and controller.last_confirmation_request.destructive
             ),
-            "dialog_opened": dialog_state["opened"],
-            "dialog_title": dialog_state["title"],
-            "dialog_screenshot": dialog_state.get("screenshot", ""),
+            "card_opened": card_state["opened"],
+            "card_title": card_state["title"],
+            "card_request_id": card_state["request_id"],
+            "request_correlated": card_state["request_correlated"],
+            "primary_action": card_state["primary_action"],
+            "secondary_action": card_state["secondary_action"],
+            "card_screenshot": card_state.get("screenshot", ""),
             "terminal_messages": terminal,
             "confirmed_execution_count": (
                 controller.confirmed_execution_count - execution_before
@@ -907,11 +921,11 @@ def _capture_confirmation_interactions(
             "scenario_isolated": scenario_start_count == 0,
         }
 
-    cancelled = dialog_decision(
+    cancelled = card_decision(
         ASSISTANT_CANCEL_CONFIRMATION_REQUEST,
-        QMessageBox.ButtonRole.RejectRole,
-        "cancelled",
-        "cancelled",
+        approved=False,
+        decision="cancelled",
+        scenario_name="cancelled",
     )
     _capture_phase(
         "assistant_confirmation_cancelled",
@@ -927,11 +941,11 @@ def _capture_confirmation_interactions(
         dependencies=dependencies,
     )
 
-    confirmed = dialog_decision(
+    confirmed = card_decision(
         ASSISTANT_CONFIRM_CONFIRMATION_REQUEST,
-        QMessageBox.ButtonRole.AcceptRole,
-        "confirmed",
-        "confirmed",
+        approved=True,
+        decision="confirmed",
+        scenario_name="confirmed",
     )
     _capture_phase(
         "assistant_confirmation_confirmed",

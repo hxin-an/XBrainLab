@@ -39,6 +39,28 @@ EMPTY_STATE_TEXT_STYLE = """
     }
 """
 
+SUGGESTION_PROMPT_STYLE = """
+    QToolButton#AssistantSuggestionPrompt {
+        min-height: 30px;
+        padding: 3px 10px;
+        color: #c8d3dc;
+        background-color: #252b31;
+        border: 1px solid #46515b;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        text-align: left;
+    }
+    QToolButton#AssistantSuggestionPrompt:hover {
+        color: #ffffff;
+        background-color: #303940;
+        border-color: #61717e;
+    }
+    QToolButton#AssistantSuggestionPrompt:focus {
+        border-color: #78a9d4;
+    }
+"""
+
 RUNTIME_STATE_STYLE = """
     QFrame#AssistantRuntimeState {
         background-color: #252b31;
@@ -299,6 +321,134 @@ RESPONSE_ACTION_STYLE = """
     }
     QToolButton#AssistantResponseAction:focus {
         border-color: #78a9d4;
+    }
+"""
+
+RESPONSE_ACTION_TITLE_STYLE = """
+    QLabel#AssistantResponseActionTitle {
+        color: #c7d5df;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+        font-weight: 700;
+    }
+"""
+
+ACTION_CARD_FRAME_STYLE = """
+    QFrame#AssistantConfirmationCard {
+        background-color: #252b31;
+        border: 1px solid #53616c;
+        border-radius: 7px;
+    }
+    QFrame#AssistantConfirmationCard[destructive="true"] {
+        background-color: #312728;
+        border-color: #87575a;
+    }
+"""
+
+ACTION_CARD_TITLE_STYLE = """
+    QLabel#AssistantActionCardTitle {
+        color: #f3f7fb;
+        background: transparent;
+        border: none;
+        font-size: 14px;
+        font-weight: 700;
+    }
+"""
+
+ACTION_CARD_LABEL_STYLE = """
+    QLabel#AssistantActionCardLabel {
+        color: #aebdc8;
+        background: transparent;
+        border: none;
+        font-size: 11px;
+        font-weight: 700;
+    }
+"""
+
+ACTION_CARD_TEXT_STYLE = """
+    QLabel {
+        color: #c8d3dc;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+    }
+"""
+
+ACTION_CARD_VALUE_STYLE = """
+    QLabel#AssistantActionCardValues {
+        color: #eef4f8;
+        background-color: #1e2429;
+        border: 1px solid #3f4b54;
+        border-radius: 5px;
+        padding: 8px 10px;
+        font-size: 13px;
+    }
+"""
+
+ACTION_CARD_PRIMARY_BUTTON_STYLE = """
+    QPushButton {
+        min-height: 34px;
+        padding: 4px 12px;
+        color: #ffffff;
+        background-color: #3f6f9f;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    QPushButton:hover { background-color: #4d84bb; }
+    QPushButton:pressed { background-color: #315b84; }
+    QPushButton:focus { border-color: #78a9d4; }
+    QPushButton:disabled {
+        color: #8b959e;
+        background-color: #303840;
+        border-color: #46515b;
+    }
+"""
+
+ACTION_CARD_DESTRUCTIVE_BUTTON_STYLE = """
+    QPushButton {
+        min-height: 34px;
+        padding: 4px 12px;
+        color: #ffffff;
+        background-color: #984b50;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    QPushButton:hover { background-color: #ad5a60; }
+    QPushButton:pressed { background-color: #7f3e42; }
+    QPushButton:focus { border-color: #e1a0a4; }
+    QPushButton:disabled {
+        color: #a28f91;
+        background-color: #493536;
+        border-color: #604548;
+    }
+"""
+
+ACTION_CARD_SECONDARY_BUTTON_STYLE = """
+    QPushButton {
+        min-height: 34px;
+        padding: 4px 12px;
+        color: #d8e0e7;
+        background-color: #303840;
+        border: 1px solid #56616b;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    QPushButton:hover {
+        color: #ffffff;
+        background-color: #39434c;
+        border-color: #697681;
+    }
+    QPushButton:focus { border-color: #78a9d4; }
+    QPushButton:disabled {
+        color: #7f8992;
+        background-color: #2a3036;
+        border-color: #414a52;
     }
 """
 

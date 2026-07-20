@@ -14,8 +14,8 @@ class AssistantComposer(QPlainTextEdit):
 
     submit_requested = pyqtSignal()
 
-    _MIN_HEIGHT = 42
-    _MAX_HEIGHT = 96
+    _MIN_HEIGHT = 76
+    _MAX_HEIGHT = 160
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -86,7 +86,7 @@ class AssistantComposer(QPlainTextEdit):
     def _fit_to_content(self) -> None:
         document = self.document()
         document_height = int(document.size().height()) if document is not None else 20
-        target = max(self._MIN_HEIGHT, min(self._MAX_HEIGHT, document_height + 18))
+        target = max(self._MIN_HEIGHT, min(self._MAX_HEIGHT, document_height + 24))
         self.setFixedHeight(target)
         self.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded

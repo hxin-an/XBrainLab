@@ -116,6 +116,11 @@ def _click(qtbot, button) -> None:
     qtbot.wait(50)
 
 
+def _wait_for_panel_idle(qtbot, panel, *, timeout: int = 10000) -> None:
+    """Wait for an async UI command to release its observable busy state."""
+    qtbot.waitUntil(panel.isEnabled, timeout=timeout)
+
+
 def _application_state(study):
     return _query_diagnostics(study, "state")["state"]
 
@@ -209,7 +214,10 @@ def _assert_assistant_status_matches_publication(
     assert ui_projection.decision_fields == backend_projection.decision_fields
     assert ui_projection.existing_ui_surface is surface
     assert (
-        manager.chat_panel.empty_state_action_button.text()
+        manager.chat_panel.empty_state_action_button.text() == "Suggest the next step"
+    )
+    assert (
+        manager.chat_panel.empty_state_action_button.property("assistantPrompt")
         == ui_projection.recommended_label
     )
     tooltip = manager.chat_panel.empty_state_widget.toolTip()
@@ -254,9 +262,12 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         for label in manager.chat_dock.titleBarWidget().findChildren(QLabel)
         if label.text()
     )
-    assert dock_title_text == "XBrainLab"
-    assert panel.empty_state_title.text() == "Start with your EEG data"
-    assert panel.empty_state_action_button.text() == "Scan data source"
+    assert "XBrainLab Assistant" in dock_title_text
+    assert panel.empty_state_title.text() == "How can I help with your EEG workflow?"
+    assert panel.empty_state_action_button.text() == "Suggest the next step"
+    assert panel.empty_state_action_button.property("assistantPrompt") == (
+        "Scan data source"
+    )
     assert panel.runtime_state_widget.isVisible()
     assert panel.runtime_state_title.text() == "Assistant setup required"
     assert "Model cache not found" not in panel.runtime_state_detail.text()
@@ -274,7 +285,6 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     )
     for forbidden in [
         "General Assistant",
-        "XBrainLab Assistant",
         "AI Assistant",
         "Conversation",
         "Assistant mode",
@@ -715,6 +725,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         FakeFilteringDialog,
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_filter)
+    _wait_for_panel_idle(qtbot, test_app.preprocess_panel)
     assert _application_state(test_app.study)["preprocessed"]["count"] == 1
     _assert_assistant_status_matches_publication(
         manager,

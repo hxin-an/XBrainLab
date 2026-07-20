@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-20`
+最後更新：`2026-07-21`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -66,6 +66,26 @@ overall PASS，repo-root `settings.json` 保持可見、未 stage，並明確列
 acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-quality reviewer 已在
 修復後 re-gate 並 PASS；真實 Phi-4 mid-generation shutdown、real deferred-startup transition
 與 Windows 互動式 3D 仍是明確 claim boundary，不可由自動化結果外推。
+
+### 2026-07-21 Agent Panel UI Gate
+
+- focused unit / script gate：`446 passed`，覆蓋 composer auto-grow、manual-scroll preservation、
+  runtime states、mode selector、response actions、typed confirmation correlation、manager lifecycle
+  與 walkthrough contracts；12 列長 setting card 會捲到底並實際送出 correlated Cancel，連續
+  160 字元、無空白的 path / hash / identifier 類值也會斷行且被 geometry guard 檢查。
+- product integration：`tests/integration/ui/test_product_walkthrough.py` 完整 `7/7` 連續重跑
+  3 次；async preprocessing 會等 panel busy lease 釋放後才查 ApplicationService state。
+- focused screenshot matrix：`artifacts/ui/chatpanel-ui-ux-current/`，涵蓋 320 / 760 / 1280
+  寬度、loading、empty、working / stopping、error / retry、長 clarification、setting change card
+  與 12 列 max-content card、real MainWindow dock；teardown 會量測 close latency、GUI heartbeat
+  與 QThread terminal signals。
+- human-like product walkthrough：`40/40` phases、`42` screenshots、resource smoke PASS；confirmation
+  會實際按 Cancel / Apply，並驗證 request correlation、signal path 與 QThread teardown；
+  fingerprint 包含 action card、confirmation contract 與 shared stylesheet owner。
+- `scripts/dev/run_chatpanel_ui_dpi_gate.py` 以 `QT_SCALE_FACTOR=1`、`1.25`、`1.5`
+  建立三個獨立 Qt subprocess，結果與選定截圖位於
+  `artifacts/ui/chatpanel-dpi-current/`；三者 geometry / text-fit / interaction contract 全數 PASS。
+  這仍是 Linux offscreen Qt evidence，不是 Windows native DPI 或多螢幕 acceptance。
 
 ## Roadmap Evidence Gate
 

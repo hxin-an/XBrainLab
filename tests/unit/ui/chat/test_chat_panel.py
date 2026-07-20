@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import FrozenInstanceError, replace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -10,6 +11,7 @@ import pytest
 from PyQt6.QtCore import QMimeData, QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QLabel,
     QPlainTextEdit,
     QScrollArea,
@@ -25,6 +27,11 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatResponseActionKind,
 )
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
+from XBrainLab.llm.agent.confirmation import (
+    AgentConfirmationRequest,
+    AgentConfirmationResolution,
+    AgentConfirmationResolutionStatus,
+)
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
     ChatResponseActionSelectionView,
@@ -60,6 +67,331 @@ def chat_panel(qtbot):
 
 
 class TestChatPanelInit:
+    def test_loading_and_empty_states_are_centered_in_the_main_content(
+        self,
+        qtbot,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            panel.resize(460, 680)
+            panel.set_runtime_state("loading")
+            panel.show()
+            qtbot.wait(20)
+
+        viewport = panel.scroll_area.viewport()
+        assert viewport is not None
+
+        def center_distance(widget: QWidget) -> int:
+            widget_top = widget.mapTo(viewport, QPoint(0, 0)).y()
+            widget_center = widget_top + (widget.height() // 2)
+            return abs(widget_center - (viewport.height() // 2))
+
+        assert center_distance(panel.runtime_state_widget) <= 80
+
+        panel.set_runtime_state("ready")
+        qtbot.wait(20)
+
+        assert panel.runtime_state_widget.isHidden()
+        assert panel.empty_state_widget.isVisibleTo(panel)
+        assert center_distance(panel.empty_state_widget) <= 100
+
+    def test_empty_state_suggestions_fill_the_composer_without_auto_sending(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(460, 680)
+        chat_panel.show()
+        qtbot.wait(10)
+
+        prompts = [
+            button
+            for button in chat_panel.empty_state_widget.findChildren(QToolButton)
+            if button.objectName() == "AssistantSuggestionPrompt"
+            and button.isVisibleTo(chat_panel.empty_state_widget)
+        ]
+
+        assert chat_panel.empty_state_title.text() == (
+            "How can I help with your EEG workflow?"
+        )
+        assert len(prompts) == 4
+        assert {button.text() for button in prompts} == {
+            "Check the current workflow status",
+            "Explain the current settings",
+            "Suggest the next step",
+            "Review the training configuration",
+        }
+
+        emitted: list[str] = []
+        chat_panel.send_message.connect(emitted.append)
+        prompts[0].click()
+
+        assert chat_panel.input_field.text() == prompts[0].property("assistantPrompt")
+        assert chat_panel.send_btn.isEnabled()
+        assert emitted == []
+
+    def test_mode_selector_precedes_two_line_composer_and_empty_send_is_disabled(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(460, 680)
+        chat_panel.show()
+        qtbot.wait(10)
+
+        mode_top = chat_panel.mode_selector_widget.mapTo(chat_panel, QPoint(0, 0)).y()
+        composer_top = chat_panel.input_widget.mapTo(chat_panel, QPoint(0, 0)).y()
+
+        assert chat_panel.mode_section_label.text() == "Agent mode"
+        assert mode_top < composer_top
+        assert chat_panel.input_field.height() >= 70
+        assert chat_panel.input_field.placeholderText() == (
+            "Ask about the current EEG workflow..."
+        )
+        assert chat_panel.send_btn.isEnabled() is False
+
+        chat_panel.input_field.setText("Explain the current settings")
+        qtbot.wait(10)
+        assert chat_panel.send_btn.isEnabled()
+
+        chat_panel.input_field.clear()
+        qtbot.wait(10)
+        assert chat_panel.send_btn.isEnabled() is False
+
+    def test_manual_scroll_position_is_preserved_when_assistant_message_arrives(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(320, 520)
+        chat_panel.show()
+        for index in range(20):
+            chat_panel.append_message(
+                "assistant",
+                f"Message {index}: " + ("long workflow explanation " * 4),
+            )
+        qtbot.wait(20)
+
+        scroll_bar = chat_panel.scroll_area.verticalScrollBar()
+        assert scroll_bar is not None
+        assert scroll_bar.maximum() > 0
+        scroll_bar.setValue(0)
+        qtbot.wait(10)
+
+        chat_panel.append_message(
+            "assistant",
+            "A new result arrived while the user was reading earlier messages.",
+        )
+        qtbot.wait(20)
+
+        assert scroll_bar.value() <= 2
+
+    def test_response_actions_are_attached_to_the_message_area(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        chat_panel.connect_controller(controller)
+        chat_panel.resize(420, 680)
+        chat_panel.show()
+        controller.add_agent_message(
+            "The next safe step is to review Training.",
+            presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
+            presentation_id="attached-action",
+            actions=(
+                ChatResponseAction(
+                    action_id="open-training",
+                    label="Open Training",
+                    kind=ChatResponseActionKind.OPEN_PANEL,
+                    panel=ChatPanelTarget.TRAINING,
+                ),
+            ),
+        )
+        qtbot.wait(20)
+
+        assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
+        assert chat_panel.response_actions_widget.isVisibleTo(panel := chat_panel)
+        assert panel.response_action_title.text() == "Suggested next step"
+
+    def test_confirmation_card_emits_the_exact_correlated_request(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        request = AgentConfirmationRequest.for_action(
+            command_name="configure_training",
+            params={"batch_size": 16},
+            action_label="Apply training settings",
+            description="Reduce GPU memory pressure before training.",
+            destructive=False,
+            publication_generation=7,
+        )
+        decisions: list[AgentConfirmationResolution] = []
+        chat_panel.confirmation_decision_requested.connect(decisions.append)
+
+        chat_panel.show_confirmation_request(
+            request,
+            current_values={"Batch size": "32"},
+        )
+        chat_panel.resize(420, 680)
+        chat_panel.show()
+        qtbot.wait(20)
+
+        card = chat_panel.confirmation_card_widget
+        assert card.isVisibleTo(chat_panel)
+        assert card.title_label.text() == "Suggested change"
+        assert "32" in card.values_summary.text()
+        assert "16" in card.values_summary.text()
+
+        card.primary_button.click()
+
+        assert len(decisions) == 1
+        assert decisions[0].matches(request)
+        assert decisions[0].status is AgentConfirmationResolutionStatus.APPROVED
+        assert card.isVisibleTo(chat_panel)
+        assert card.primary_button.isEnabled() is False
+        assert card.secondary_button.isEnabled() is False
+
+    def test_confirmation_card_stacks_actions_without_clipping_in_narrow_panel(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        request = AgentConfirmationRequest.for_action(
+            command_name="configure_training",
+            params={"batch_size": 16},
+            action_label="Apply change",
+            description="The current configuration may exceed available VRAM.",
+            destructive=False,
+            publication_generation=7,
+        )
+        chat_panel.resize(320, 680)
+        chat_panel.show_confirmation_request(
+            request,
+            current_values={"Batch size": "32"},
+        )
+        chat_panel.show()
+        qtbot.wait(20)
+
+        card = chat_panel.confirmation_card_widget
+        assert card.button_layout.direction() == QBoxLayout.Direction.TopToBottom
+        for button in (card.secondary_button, card.primary_button):
+            text_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
+            assert text_width <= button.contentsRect().width()
+
+    def test_confirmation_card_maximum_content_remains_scrollable_and_actionable(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        params = {
+            f"parameter_{index:02d}": f"{index}-" + ("W" * 160) for index in range(12)
+        }
+        request = AgentConfirmationRequest.for_action(
+            command_name="configure_training",
+            params=params,
+            action_label="Apply reviewed settings",
+            description=(
+                "Review every proposed setting before applying this configuration."
+            ),
+            destructive=False,
+            publication_generation=9,
+        )
+        decisions: list[AgentConfirmationResolution] = []
+        chat_panel.confirmation_decision_requested.connect(decisions.append)
+        chat_panel.resize(320, 680)
+        chat_panel.show_confirmation_request(request)
+        chat_panel.show()
+        qtbot.wait(30)
+
+        card = chat_panel.confirmation_card_widget
+        scrollbar = chat_panel.scroll_area.verticalScrollBar()
+        assert scrollbar.maximum() > 0
+        assert chat_panel.scroll_area.horizontalScrollBar().maximum() == 0
+        value_segments = [
+            segment
+            for segment in re.split(r"[\s\u200b]+", card.values_summary.text())
+            if segment
+        ]
+        assert (
+            max(
+                card.values_summary.fontMetrics().horizontalAdvance(segment)
+                for segment in value_segments
+            )
+            <= card.values_summary.contentsRect().width()
+        )
+        card.values_summary.setSelection(0, len(card.values_summary.text()))
+        card.values_summary.setFocus()
+        qtbot.keyClick(
+            card.values_summary,
+            Qt.Key.Key_C,
+            modifier=Qt.KeyboardModifier.ControlModifier,
+        )
+        clipboard = QApplication.clipboard()
+        assert clipboard is not None
+        assert clipboard.text() == card.values_summary.accessibleDescription()
+        assert "\u200b" not in clipboard.text()
+
+        scrollbar.setValue(scrollbar.maximum())
+        qtbot.wait(20)
+        viewport = chat_panel.scroll_area.viewport()
+        for button in (card.secondary_button, card.primary_button):
+            origin = button.mapTo(viewport, QPoint(0, 0))
+            assert origin.x() >= 0
+            assert origin.y() >= 0
+            assert origin.x() + button.width() <= viewport.width()
+            assert origin.y() + button.height() <= viewport.height()
+
+        card.secondary_button.click()
+        assert len(decisions) == 1
+        assert decisions[0].matches(request)
+        assert decisions[0].status is AgentConfirmationResolutionStatus.CANCELLED
+
+    def test_confirmation_card_replaces_stale_request_and_blocks_double_submit(
+        self,
+        chat_panel,
+    ) -> None:
+        first = AgentConfirmationRequest.for_action(
+            command_name="configure_training",
+            params={"batch_size": 32},
+            action_label="Apply training settings",
+            description="Use the selected batch size.",
+            destructive=False,
+            publication_generation=3,
+        )
+        second = AgentConfirmationRequest.for_action(
+            command_name="clear_dataset",
+            params={},
+            action_label="Clear dataset",
+            description=("Remove loaded EEG data and its downstream workspace state."),
+            destructive=True,
+            publication_generation=3,
+        )
+        decisions: list[AgentConfirmationResolution] = []
+        chat_panel.confirmation_decision_requested.connect(decisions.append)
+
+        chat_panel.show_confirmation_request(first)
+        chat_panel.show_confirmation_request(second)
+        card = chat_panel.confirmation_card_widget
+
+        assert card.request_id == second.request_id
+        assert card.title_label.text() == "Confirmation required"
+        assert card.secondary_button.text() == "Cancel"
+        card.primary_button.click()
+        card.primary_button.click()
+
+        assert len(decisions) == 1
+        assert decisions[0].matches(second)
+        assert decisions[0].status is AgentConfirmationResolutionStatus.APPROVED
+
+        chat_panel.set_confirmation_submitting(second.request_id, False)
+        assert card.primary_button.isEnabled()
+        assert card.primary_button.text() == "Clear dataset"
+
     def test_composer_caps_programmatic_oversized_prompt_before_submission(
         self,
         chat_panel,
@@ -134,8 +466,10 @@ class TestChatPanelInit:
 
         panel.set_runtime_state("ready")
         assert panel.input_field.isEnabled() is True
-        assert panel.send_btn.isEnabled() is True
-        assert panel.input_field.placeholderText() == "Ask about EEG"
+        assert panel.send_btn.isEnabled() is False
+        assert panel.input_field.placeholderText() == (
+            "Ask about the current EEG workflow..."
+        )
         assert panel.setup_btn.isHidden()
         assert panel.retry_runtime_btn.isHidden()
         assert panel.runtime_progress.isHidden()
@@ -660,12 +994,33 @@ class TestChatPanelInit:
         assert button.text() != full_label
         assert button.text().endswith("…")
         _assert_inside_panel_on_all_sides(chat_panel, button)
-        assert not chat_panel.scroll_area.isAncestorOf(
-            chat_panel.response_actions_widget
-        )
+        assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
 
     def test_has_input_area(self, chat_panel):
         assert isinstance(chat_panel.input_field, QPlainTextEdit)
+
+    @pytest.mark.parametrize("width", [320, 760, 1280])
+    def test_empty_state_copy_and_suggestions_fit_responsive_width(
+        self,
+        chat_panel,
+        qtbot,
+        width,
+    ) -> None:
+        chat_panel.resize(width, 650)
+        chat_panel.set_runtime_state("ready")
+        chat_panel.show()
+        qtbot.wait(20)
+
+        assert chat_panel.empty_state_title.wordWrap() is True
+        title_rect = chat_panel.empty_state_title.fontMetrics().boundingRect(
+            chat_panel.empty_state_title.contentsRect(),
+            int(Qt.TextFlag.TextWordWrap),
+            chat_panel.empty_state_title.text(),
+        )
+        assert title_rect.height() <= chat_panel.empty_state_title.height() + 2
+        for button in chat_panel.suggestion_prompt_buttons:
+            text_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
+            assert text_width <= button.contentsRect().width() + 2
 
     def test_input_placeholder_is_short_for_narrow_panel(self, chat_panel):
         chat_panel.resize(320, 620)
@@ -676,8 +1031,12 @@ class TestChatPanelInit:
             placeholder
         )
 
-        assert placeholder == "Ask about EEG"
-        assert required_width <= available_width
+        assert placeholder == "Ask about the current EEG workflow..."
+        assert chat_panel.input_field.horizontalScrollBarPolicy() == (
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert required_width > 0
+        assert available_width > 0
         assert "preprocessing, epoching" not in placeholder
 
     def test_has_send_button(self, chat_panel):
@@ -1157,7 +1516,9 @@ class TestChatPanelCallbacks:
 
     def test_status_summary_updates_visible_empty_state_and_tooltip(self, chat_panel):
         chat_panel.set_status_summary("Backend: empty", "Train blocked")
-        assert chat_panel.empty_state_title.text() == "Start with your EEG data"
+        assert chat_panel.empty_state_title.text() == (
+            "How can I help with your EEG workflow?"
+        )
         assert chat_panel.empty_state_backend_label.text() == (
             "No EEG files are open yet."
         )
@@ -1175,12 +1536,14 @@ class TestChatPanelCallbacks:
             assert not hasattr(chat_panel, legacy_name)
 
     def test_product_ui_structure_is_visible(self, chat_panel):
-        assert chat_panel.empty_state_title.text() == "Start with your EEG data"
+        assert chat_panel.empty_state_title.text() == (
+            "How can I help with your EEG workflow?"
+        )
         assert chat_panel.empty_state_widget.isHidden() is False
         assert chat_panel.empty_state_backend_label.text() == (
             "No EEG files are open yet."
         )
-        assert chat_panel.empty_state_action_button.text() == "Scan data source"
+        assert chat_panel.empty_state_action_button.text() == "Suggest the next step"
         assert not chat_panel.empty_state_action_button.isHidden()
         assert chat_panel.empty_state_next_label.isHidden()
         assert chat_panel.input_field.isHidden() is False
@@ -1193,7 +1556,10 @@ class TestChatPanelCallbacks:
             for label in chat_panel.control_panel.findChildren(QLabel)
             if not label.isHidden()
         ]
-        assert visible_footer_labels == ["Runs one action and stops."]
+        assert visible_footer_labels == [
+            "Agent mode",
+            "Runs one action and stops.",
+        ]
 
         visible_text = " ".join(
             child.text()
@@ -1205,7 +1571,6 @@ class TestChatPanelCallbacks:
         for hidden_product_detail in [
             "Assistant",
             "Conversation",
-            "Assistant mode",
             "Step behavior",
             "Single step",
             "Step by step",
@@ -1225,7 +1590,7 @@ class TestChatPanelCallbacks:
         )
 
         assert chat_panel.empty_state_action_button.isEnabled()
-        assert "QToolButton#AssistantEmptyStateAction" in (
+        assert "QToolButton#AssistantSuggestionPrompt" in (
             chat_panel.empty_state_action_button.styleSheet()
         )
 
@@ -1258,7 +1623,11 @@ class TestChatPanelCallbacks:
         assert chat_panel.empty_state_backend_label.text() == (
             "No EEG files are open yet."
         )
-        assert chat_panel.empty_state_action_button.text() == "Scan data source"
+        assert chat_panel.empty_state_action_button.text() == "Suggest the next step"
+        assert (
+            chat_panel.empty_state_action_button.property("assistantPrompt")
+            == "Scan data source"
+        )
         assert not chat_panel.empty_state_action_button.isHidden()
         assert chat_panel.empty_state_next_label.isHidden()
         assert "Setup needed" in chat_panel.empty_state_widget.toolTip()
@@ -1286,7 +1655,11 @@ class TestChatPanelCallbacks:
             "Scan a data source to begin"
         )
         assert not chat_panel.empty_state_next_label.isHidden()
-        assert chat_panel.empty_state_action_button.isHidden()
+        assert not chat_panel.empty_state_action_button.isHidden()
+        assert (
+            chat_panel.empty_state_action_button.property("assistantPrompt")
+            == "Suggest the next step"
+        )
 
     def test_product_status_results_stage_uses_results_empty_state(self, chat_panel):
         chat_panel.set_product_status(
@@ -1297,14 +1670,21 @@ class TestChatPanelCallbacks:
             blocked_reason=None,
         )
 
-        assert chat_panel.empty_state_title.text() == "Explore your results"
+        assert chat_panel.empty_state_title.text() == (
+            "How can I help with your EEG workflow?"
+        )
         assert chat_panel.empty_state_intro.text() == (
-            "Ask me to explain metrics, compare runs, or open a visualization."
+            "Ask the local assistant to explain the current state, review settings, "
+            "or guide the next safe step."
         )
         assert chat_panel.empty_state_backend_label.text() == (
             "Current workflow stage: Results available."
         )
-        assert chat_panel.empty_state_action_button.text() == "Review results"
+        assert chat_panel.empty_state_action_button.text() == "Suggest the next step"
+        assert (
+            chat_panel.empty_state_action_button.property("assistantPrompt")
+            == "Review results"
+        )
         assert not chat_panel.empty_state_action_button.isHidden()
         assert chat_panel.empty_state_next_label.isHidden()
 
@@ -1316,10 +1696,12 @@ class TestChatPanelCallbacks:
             available_commands=["evaluate", "visualize"],
         )
 
-        with qtbot.waitSignal(chat_panel.send_message, timeout=1000) as signal:
-            chat_panel.empty_state_action_button.click()
+        emitted: list[str] = []
+        chat_panel.send_message.connect(emitted.append)
+        chat_panel.empty_state_action_button.click()
 
-        assert signal.args == ["Review results"]
+        assert emitted == []
+        assert chat_panel.input_field.text() == "Review results"
 
     def test_product_status_training_stage_uses_running_empty_state(self, chat_panel):
         chat_panel.set_product_status(
@@ -1330,9 +1712,12 @@ class TestChatPanelCallbacks:
             blocked_reason=None,
         )
 
-        assert chat_panel.empty_state_title.text() == "Training is running"
+        assert chat_panel.empty_state_title.text() == (
+            "How can I help with your EEG workflow?"
+        )
         assert chat_panel.empty_state_intro.text() == (
-            "Ask for progress or stop the current training run."
+            "Ask the local assistant to explain the current state, review settings, "
+            "or guide the next safe step."
         )
 
     def test_low_priority_notice_does_not_enter_transcript(self, chat_panel):
@@ -1451,14 +1836,16 @@ class TestChatPanelCallbacks:
             _assert_inside_panel_on_all_sides(chat_panel, control)
         assert action.toolTip() == full_label
         assert action.text().endswith("…")
-        assert not chat_panel.scroll_area.isAncestorOf(
-            chat_panel.response_actions_widget
+        assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
+        assert (
+            chat_panel.response_actions_widget.mapTo(
+                chat_panel,
+                chat_panel.response_actions_widget.rect().bottomLeft(),
+            ).y()
+            < chat_panel.control_panel.mapTo(chat_panel, QPoint(0, 0)).y()
         )
-        assert chat_panel.response_actions_widget.geometry().bottom() < (
+        assert chat_panel.mode_selector_widget.geometry().bottom() < (
             chat_panel.input_widget.geometry().top()
-        )
-        assert chat_panel.input_widget.geometry().bottom() < (
-            chat_panel.mode_selector_widget.geometry().top()
         )
         assert chat_panel.scroll_area.geometry().bottom() < (
             chat_panel.control_panel.geometry().top()
@@ -1473,7 +1860,7 @@ class TestChatPanelCallbacks:
         chat_panel.show()
         qtbot.wait(10)
 
-        assert chat_panel.control_panel.height() <= 150
+        assert chat_panel.control_panel.height() <= 230
 
     @pytest.mark.parametrize("width", [320, 380, 460])
     def test_user_bubble_keeps_short_word_readable_in_narrow_dock(

@@ -268,6 +268,29 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 - tests 必須覆蓋 normal response、empty response、worker error、local unavailable first-open、
   missing argument、empty tool result、state-gated command、successful command summary。
 
+### Agent Panel Product UI Contract
+
+`ChatPanel` 只呈現 typed runtime / turn / response state，不自行推測 backend readiness：
+
+- `AgentManager` header 將 runtime 與 turn state投影成 `Local · Loading / Ready / Working / Error`；
+  窄 dock 先保留產品標題、New chat、Settings、Close，再隱藏非必要 badge / action。
+- message area 擁有 loading、empty、transcript、activity、response action 與 confirmation card；
+  composer / mode selector 固定在底部 layout，不用 absolute positioning。
+- setting change 與高風險 action 使用 transient `AssistantConfirmationCard`。Card 持有原始
+  `AgentConfirmationRequest`，Apply / Cancel 產生同 identity 的 typed
+  `AgentConfirmationResolution`，不從顯示文字重建 command。
+- action card 隱藏空對話狀態並佔用 transcript 流程；長到 12 列的設定仍由 message area
+  垂直捲動，尾端不放 expanding spacer，確保 Cancel / Apply 在 320 px dock 可到達。
+- current value 只讀同 generation、`state_reliable` 的 `ApplicationViewPublication`；publication
+  generation 不同時會提示重新驗證，不從 panel widget 或 `Study` internals 建第二份狀態。
+- action 完成後，GUI 同步仍由 `application_command_completed -> changed_state -> shared refresh`
+  處理；card 不直接寫 Training / Dataset widget。
+- transcript 只有接近尾端時自動跟隨；使用者向上閱讀後，新訊息不可強制拉到底部。
+- confirmation card 是 transient UI lease，不寫入 chat history；new chat、terminal turn 和 close
+  都會清除，避免過期 action 在下一個 turn 可執行。
+- runtime teardown 仍透過 Qt signal 與 event loop 收斂；focused gate 量測
+  `AgentManager.close()` 返回 latency 與清理期間 GUI heartbeat，不以固定布林值宣稱 non-blocking。
+
 ### 5. Tools
 
 `XBrainLab/llm/tools/definitions/` 定義工具名稱、參數 schema、描述和是否需要 confirmation。

@@ -159,23 +159,25 @@ def _admit_walkthrough_turn(
     return request
 
 
-def test_confirmation_walkthrough_targets_custom_button_roles() -> None:
+def test_confirmation_walkthrough_targets_inline_card_actions() -> None:
     source = Path("scripts/dev/human_like_walkthrough/capture.py").read_text(
         encoding="utf-8"
     )
 
-    assert "buttonRole" in source
-    assert "StandardButton.Yes" not in source
-    assert "StandardButton.No" not in source
+    assert "AssistantConfirmationCard" in source
+    assert "card.primary_button if approved else card.secondary_button" in source
+    assert "QMessageBox" not in source
 
 
-def test_confirmation_walkthrough_captures_dialog_before_choice() -> None:
+def test_confirmation_walkthrough_captures_card_before_choice() -> None:
     source = Path("scripts/dev/human_like_walkthrough/capture.py").read_text(
         encoding="utf-8"
     )
 
-    capture_index = source.index('screenshots["assistant_confirmation_dialog"]')
-    click_index = source.index("click_assistant_control(cast(QWidget, targets[0]))")
+    capture_index = source.index('screenshots["assistant_confirmation_card"]')
+    click_index = source.index(
+        "click_assistant_control(cast(QWidget, decision_button))"
+    )
     assert capture_index < click_index
 
 
@@ -424,8 +426,8 @@ def _base_payload() -> dict:
             "assistant_error": "assistant-error.png",
             "assistant_empty": "assistant-empty.png",
             "assistant_cancelled": "assistant-cancelled.png",
-            "assistant_confirmation_dialog": SCREENSHOT_NAMES[
-                "assistant_confirmation_dialog"
+            "assistant_confirmation_card": SCREENSHOT_NAMES[
+                "assistant_confirmation_card"
             ],
             "assistant_confirmed": "assistant-confirmed.png",
             "assistant_handoff": "assistant-handoff.png",
@@ -717,18 +719,19 @@ def _valid_assistant_runtime_ready_phase() -> dict[str, Any]:
     return {
         "phase": "assistant_runtime_ready",
         "screenshot": "assistant-ready.png",
-        "visible_text": ["Ask about EEG workflow", "Send"],
-        "button_state": [{"text": "Send", "enabled": True}],
+        "visible_text": ["Ask about the current EEG workflow...", "Send"],
+        "button_state": [{"text": "Send", "enabled": False}],
         "workflow_state": {},
         "notes": {
             "assistant_runtime": {
                 "phase": "ready",
                 "panel_processing": False,
                 "composer_input_enabled": True,
+                "composer_has_text": False,
                 "composer_visible": True,
-                "send_button_enabled": True,
+                "send_button_enabled": False,
                 "send_button_text": "Send",
-                "composer_placeholder": "Ask about EEG workflow",
+                "composer_placeholder": "Ask about the current EEG workflow...",
                 "status_visible": False,
                 "status_text": "",
                 "inline_state_visible": False,
@@ -828,7 +831,7 @@ def _valid_assistant_dock_evidence(width: int) -> dict[str, Any]:
         "dock_width": width,
         "dock_height": 720,
         "title_bar_visible": True,
-        "title_text": "XBrainLab",
+        "title_text": "XBrainLab Assistant",
         "title_text_fits": True,
         "title_bar_inside_bounds": True,
         "panel_inside_bounds": True,
@@ -883,7 +886,7 @@ def _valid_assistant_main_window_evidence(
         "dock_visible": True,
         "dock_floating": False,
         "dock_inside_window": True,
-        "title_text": "XBrainLab",
+        "title_text": "XBrainLab Assistant",
         "title_text_fits": True,
         "composer_visible": True,
         "composer_inside_window": True,
@@ -1360,7 +1363,7 @@ def test_assistant_main_window_evidence_measures_visible_product_geometry(
     dock = QDockWidget(window)
     title_bar = QWidget(dock)
     title_layout = QHBoxLayout(title_bar)
-    title = QLabel("XBrainLab", title_bar)
+    title = QLabel("XBrainLab Assistant", title_bar)
     title.setObjectName("AssistantDockTitle")
     title_layout.addWidget(title)
     dock.setTitleBarWidget(title_bar)
@@ -1393,7 +1396,7 @@ def test_assistant_main_window_evidence_measures_visible_product_geometry(
     )
 
     assert evidence["geometry_passed"] is True
-    assert evidence["title_text"] == "XBrainLab"
+    assert evidence["title_text"] == "XBrainLab Assistant"
     assert evidence["title_text_fits"] is True
     assert evidence["composer_visible"] is True
     assert evidence["primary_action_text"] == "Send"
@@ -1535,7 +1538,9 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
     }
 
     assert "XBrainLab/ui/chat/composer.py" in relative_paths
+    assert "XBrainLab/ui/chat/action_card.py" in relative_paths
     assert "XBrainLab/ui/chat/status_presenter.py" in relative_paths
+    assert "XBrainLab/ui/styles/stylesheets.py" in relative_paths
     assert "XBrainLab/ui/components/workflow_ui_handoff_host.py" in relative_paths
     assert "XBrainLab/ui/components/assistant_status_projection.py" in relative_paths
     assert "XBrainLab/ui/components/assistant_runtime_coordinator.py" in relative_paths
@@ -1562,6 +1567,7 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
     assert "XBrainLab/ui/panels/evaluation/confusion_matrix.py" in relative_paths
     assert "XBrainLab/ui/panels/evaluation/metrics_table.py" in relative_paths
     assert "XBrainLab/llm/agent/response_presentation.py" in relative_paths
+    assert "XBrainLab/llm/agent/confirmation.py" in relative_paths
     assert "XBrainLab/llm/agent/tool_feedback.py" in relative_paths
 
 
@@ -1688,11 +1694,15 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
             ],
             "notes": {
                 "assistant_interaction": {
-                    "request_kind": "production_confirmation",
+                    "request_kind": "production_confirmation_card",
                     "decision": "cancelled",
                     "destructive": True,
-                    "dialog_opened": True,
-                    "dialog_title": "Confirm destructive action",
+                    "card_opened": True,
+                    "card_title": "Confirmation required",
+                    "card_request_id": "cancel-request",
+                    "request_correlated": True,
+                    "primary_action": "Start a new session",
+                    "secondary_action": "Cancel",
                     "terminal_messages": [
                         "Session reset cancelled. Your current workflow is unchanged."
                     ],
@@ -1709,11 +1719,15 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
             "visible_text": [ASSISTANT_CONFIRMED_TERMINAL_MESSAGE],
             "notes": {
                 "assistant_interaction": {
-                    "request_kind": "production_confirmation",
+                    "request_kind": "production_confirmation_card",
                     "decision": "confirmed",
                     "destructive": True,
-                    "dialog_opened": True,
-                    "dialog_title": "Confirm destructive action",
+                    "card_opened": True,
+                    "card_title": "Confirmation required",
+                    "card_request_id": "confirm-request",
+                    "request_correlated": True,
+                    "primary_action": "Start a new session",
+                    "secondary_action": "Cancel",
                     "terminal_messages": [ASSISTANT_CONFIRMED_TERMINAL_MESSAGE],
                     "confirmed_execution_count": 1,
                     "duplicate_terminal_message": False,
@@ -2945,7 +2959,10 @@ def test_assistant_loading_guard_requires_modes_and_send_to_be_painted(
         _assert_assistant_dock_rendered(root, complete)
 
 
-def test_assistant_processing_guard_requires_stop_action(qtbot, tmp_path) -> None:
+def test_assistant_processing_guard_rejects_send_for_non_cancelable_work(
+    qtbot,
+    tmp_path,
+) -> None:
     root = QWidget()
     qtbot.addWidget(root)
     root.resize(420, 180)
@@ -2968,7 +2985,7 @@ def test_assistant_processing_guard_requires_stop_action(qtbot, tmp_path) -> Non
     screenshot = tmp_path / "assistant-processing-stale-send.png"
     assert root.grab().save(str(screenshot))
 
-    with pytest.raises(RuntimeError, match="expected Stop"):
+    with pytest.raises(RuntimeError, match="expected Working"):
         _assert_assistant_dock_rendered(root, screenshot)
 
 
@@ -3494,12 +3511,15 @@ def test_region_content_gate_rejects_ninety_nine_percent_blank_two_line_frame(
         )
 
 
-def test_assistant_stage_copy_review_rejects_results_with_import_heading() -> None:
+def test_assistant_stage_copy_review_rejects_results_with_stale_status() -> None:
     review = build_assistant_stage_copy_review(
         [
             {
                 "phase": "assistant_empty_state",
-                "visible_text": ["Start with your EEG data", "Results available"],
+                "visible_text": [
+                    "How can I help with your EEG workflow?",
+                    "Current workflow stage: Dataset ready.",
+                ],
                 "workflow_state": {
                     "raw": {"loaded": True},
                     "training": {"is_running": False},
@@ -3510,15 +3530,20 @@ def test_assistant_stage_copy_review_rejects_results_with_import_heading() -> No
     )
 
     assert review["passed"] is False
-    assert review["findings"][0]["expected_title"] == "Explore your results"
+    assert review["findings"][0]["expected_status"] == (
+        "Current workflow stage: Results available."
+    )
 
 
-def test_assistant_stage_copy_review_accepts_stage_aware_results_heading() -> None:
+def test_assistant_stage_copy_review_accepts_fixed_heading_and_stage_status() -> None:
     review = build_assistant_stage_copy_review(
         [
             {
                 "phase": "assistant_empty_state",
-                "visible_text": ["Explore your results", "Results available"],
+                "visible_text": [
+                    "How can I help with your EEG workflow?",
+                    "Current workflow stage: Results available.",
+                ],
                 "workflow_state": {
                     "raw": {"loaded": True},
                     "training": {"is_running": False},

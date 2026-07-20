@@ -150,6 +150,7 @@ from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import local_result_payload
 from XBrainLab.ui.chat.message_bubble import MessageBubble
+from XBrainLab.ui.chat.presentation import ChatTurnCancelability
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
 
@@ -2471,7 +2472,19 @@ def _assert_assistant_dock_rendered(
     if mode_titles != ASSISTANT_MODE_TITLES:
         raise RuntimeError("Assistant capture uses stale mode selector labels.")
     is_processing = bool(getattr(panel, "is_processing", False))
-    expected_action = "Stop" if is_processing else "Send"
+    cancelability = getattr(
+        getattr(panel, "_turn_presentation", None),
+        "cancelability",
+        ChatTurnCancelability.NONE,
+    )
+    if not is_processing:
+        expected_action = "Send"
+    elif cancelability is ChatTurnCancelability.CANCELLABLE:
+        expected_action = "Stop"
+    elif cancelability is ChatTurnCancelability.STOPPING:
+        expected_action = "Stopping"
+    else:
+        expected_action = "Working"
     if cast(QAbstractButton, send_button).text() != expected_action:
         raise RuntimeError(
             f"Assistant capture expected {expected_action}, got "
@@ -2560,12 +2573,18 @@ def _assert_assistant_feedback_rendered(
     required_widgets: list[QWidget] = []
     is_processing = bool(getattr(panel, "is_processing", False))
     activity = getattr(panel, "turn_activity_widget", None)
+    confirmation_card = getattr(panel, "confirmation_card_widget", None)
     if is_processing:
-        if not isinstance(activity, QWidget) or not activity.isVisibleTo(root):
+        if isinstance(activity, QWidget) and activity.isVisibleTo(root):
+            required_widgets.append(activity)
+        elif isinstance(confirmation_card, QWidget) and confirmation_card.isVisibleTo(
+            root
+        ):
+            required_widgets.append(confirmation_card)
+        else:
             raise RuntimeError(
-                "Assistant processing capture is missing activity feedback."
+                "Assistant processing capture is missing activity or decision feedback."
             )
-        required_widgets.append(activity)
 
     runtime_phase = getattr(getattr(panel, "_runtime_phase", None), "value", "")
     runtime_state = getattr(panel, "runtime_state_widget", None)

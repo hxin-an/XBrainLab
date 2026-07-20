@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
 
@@ -15,6 +16,7 @@ from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ApplicationStateSnapshot,
+    TrainingStateSnapshot,
 )
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
@@ -31,6 +33,7 @@ from XBrainLab.llm.agent.assistant_activity import (
 )
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
+    AgentConfirmationResolution,
     AgentConfirmationResolutionStatus,
 )
 from XBrainLab.llm.agent.response_presentation import (
@@ -517,6 +520,50 @@ class TestAgentManagerMethods:
             ]
             is ChatMessagePresentationKind.ERROR
         )
+
+    def test_error_response_offers_retry_for_last_user_request(self, agent_mgr) -> None:
+        agent_mgr._last_user_input = "Review the training configuration"
+        correlation = _admit_ui_turn(agent_mgr)
+        presentation = AssistantResponsePresentation(
+            text="The assistant could not complete the request.",
+            correlation=correlation,
+            kind=AssistantResponseKind.ERROR,
+        )
+
+        agent_mgr._handle_response_presentation(presentation)
+
+        actions = agent_mgr.chat_controller.add_agent_message.call_args.kwargs[
+            "actions"
+        ]
+        assert len(actions) == 1
+        assert actions[0].label == "Try again"
+        assert actions[0].kind is ChatResponseActionKind.SEND_MESSAGE
+        assert actions[0].prompt == "Review the training configuration"
+
+    def test_error_response_keeps_runtime_recovery_action_without_duplicate_retry(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr._last_user_input = "Review the training configuration"
+        correlation = _admit_ui_turn(agent_mgr)
+        presentation = AssistantResponsePresentation(
+            text="Open settings before retrying.",
+            correlation=correlation,
+            kind=AssistantResponseKind.ERROR,
+            actions=(
+                AssistantResponseAction.open_panel(
+                    "Open Dataset",
+                    AssistantPanelTarget.DATASET,
+                ),
+            ),
+        )
+
+        agent_mgr._handle_response_presentation(presentation)
+
+        actions = agent_mgr.chat_controller.add_agent_message.call_args.kwargs[
+            "actions"
+        ]
+        assert [action.label for action in actions] == ["Open Dataset"]
 
     @pytest.mark.parametrize(
         ("ambient_phase", "response_kind", "expected_kind"),
@@ -1598,11 +1645,6 @@ class TestAgentManagerMethods:
             destructive=True,
             publication_generation=1,
         )
-        approve_button = MagicMock()
-        cancel_button = MagicMock()
-        dialog = MagicMock()
-        dialog.addButton.side_effect = [approve_button, cancel_button]
-        dialog.clickedButton.return_value = cancel_button
         agent_mgr._assistant_runtime.confirm.return_value = (
             RuntimeCommandAdmissionResult(
                 command_name="confirm",
@@ -1611,17 +1653,69 @@ class TestAgentManagerMethods:
             )
         )
 
-        with patch(
-            "XBrainLab.ui.components.agent_manager.QMessageBox",
-            return_value=dialog,
-        ):
-            agent_mgr._show_action_confirmation(request)
+        agent_mgr._show_action_confirmation(request)
+
+        agent_mgr.chat_panel.show_confirmation_request.assert_called_once()
+        agent_mgr._assistant_runtime.confirm.assert_not_called()
+
+        resolution = AgentConfirmationResolution.for_request(
+            request,
+            status=AgentConfirmationResolutionStatus.CANCELLED,
+        )
+        agent_mgr._resolve_action_confirmation(resolution)
 
         sent_resolution = agent_mgr._assistant_runtime.confirm.call_args.args[0]
         assert sent_resolution.status is AgentConfirmationResolutionStatus.CANCELLED
+        agent_mgr.chat_panel.set_confirmation_submitting.assert_called_once_with(
+            request.request_id,
+            False,
+        )
         agent_mgr.chat_panel.show_notice.assert_called_once_with(
             "Assistant runtime closed before confirmation returned."
         )
+
+    def test_confirmation_current_values_require_matching_reliable_publication(
+        self,
+        agent_mgr,
+    ):
+        request = AgentConfirmationRequest.for_action(
+            command_name="configure_training",
+            params={"batch_size": 16, "learning_rate": 0.0005},
+            action_label="Apply training settings",
+            description="Reduce GPU memory pressure.",
+            destructive=False,
+            publication_generation=4,
+        )
+        publication = SimpleNamespace(
+            usable=True,
+            generation=4,
+            state=SimpleNamespace(
+                state_reliable=True,
+                training=TrainingStateSnapshot(
+                    has_training_option=True,
+                    training_option={
+                        "batch_size": 32,
+                        "learning_rate": 0.001,
+                    },
+                ),
+            ),
+        )
+        agent_mgr.application_service.get_view_publication = MagicMock(
+            return_value=publication
+        )
+
+        values, changed = agent_mgr._confirmation_current_values(request)
+
+        assert values == {
+            "Batch size": "32",
+            "Learning rate": "0.001",
+        }
+        assert changed is False
+
+        publication.generation = 5
+        values, changed = agent_mgr._confirmation_current_values(request)
+        assert values == {}
+        assert changed is True
 
     def test_invalid_typed_handoff_payload_is_not_guessed_or_routed(
         self,
@@ -2020,8 +2114,11 @@ class TestAgentManagerMethods:
         title = manager.chat_dock.findChild(QLabel, "AssistantDockTitle")
         assert title is not None
         assert title.minimumWidth() >= title.fontMetrics().horizontalAdvance(
-            "XBrainLab"
+            "XBrainLab Assistant"
         )
+        assert title.text() == "XBrainLab Assistant"
+        assert manager.assistant_header.status_badge is not None
+        assert manager.assistant_header.status_badge.text().startswith("Local ·")
         manager.chat_panel.retry_local_assistant_requested.emit()
         manager.retry_local_assistant.assert_called_once_with()
         for control in (
@@ -2037,6 +2134,8 @@ class TestAgentManagerMethods:
         assert manager.close_btn.accessibleName() == "Close assistant"
         assert manager.new_conv_title_btn.toolTip() == "New chat"
         assert manager.new_conv_title_btn.accessibleName() == "New chat"
+        assert manager.settings_btn.toolTip() == "Assistant settings"
+        assert manager.settings_btn.isCheckable() is False
         assert manager.clear_conversation_title_action.text() == "New chat"
         manager.chat_dock.show()
         manager.close_btn.click()

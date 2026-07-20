@@ -21,7 +21,6 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QMainWindow,
-    QMessageBox,
     QToolButton,
     QWidget,
 )
@@ -418,7 +417,7 @@ def _release_initial_load(qtbot: Any, harness: _RuntimeHarness) -> None:
     harness.engine.load_release.set()
     _wait_for_phase(qtbot, harness, AssistantRuntimePhase.READY)
     assert harness.panel.input_field.isEnabled()
-    assert harness.panel.send_btn.isEnabled()
+    assert harness.panel.send_btn.isEnabled() is False
 
 
 def _send_request(harness: _RuntimeHarness, text: str) -> None:
@@ -1080,13 +1079,9 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
         controller.pending_interactions.begin_confirmation(decision, request)
         controller._last_tool_summary = "The assistant completed a background action."
         outcome_spy = QSignalSpy(controller.interaction_resolved)
-        monkeypatch.setattr(
-            QMessageBox,
-            "exec",
-            lambda _dialog: QMessageBox.StandardButton.No,
-        )
-
         harness.manager._show_action_confirmation(request)
+        assert harness.panel.confirmation_card_widget.isVisibleTo(harness.panel)
+        harness.panel.confirmation_card_widget.secondary_button.click()
 
         qtbot.waitUntil(
             lambda: controller.pending_interactions.confirmation_decision is None,

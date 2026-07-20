@@ -358,7 +358,7 @@ class WalkthroughAssistantController(QObject):
             self.response_presentation_ready.emit(
                 self._response_presentation(
                     text=user_facing_generation_error(ASSISTANT_RAW_TRACEBACK),
-                    kind=AssistantResponseKind.BLOCKED,
+                    kind=AssistantResponseKind.ERROR,
                 )
             )
             self.events.append("error:traceback")

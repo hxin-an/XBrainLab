@@ -43,7 +43,6 @@ from XBrainLab.llm.agent.assistant_activity import (
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
     AgentConfirmationResolution,
-    AgentConfirmationResolutionStatus,
 )
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.response_presentation import (
@@ -159,11 +158,52 @@ _DELIVERY_TERMINAL_MESSAGES = {
 
 
 class AssistantDockTitleBar(QWidget):
-    """Minimal dock title bar that preserves native dock dragging."""
+    """Product header for the assistant dock with native drag behavior."""
 
     def __init__(self, on_float_toggle, parent=None):
         super().__init__(parent)
         self._on_float_toggle = on_float_toggle
+        self.status_badge: QLabel | None = None
+        self.retry_button: QPushButton | None = None
+        self.float_button: QPushButton | None = None
+        self._retry_available = False
+        self._retry_enabled = False
+
+    def set_assistant_status(self, text: str) -> None:
+        """Render one compact status without exposing runtime diagnostics."""
+        if self.status_badge is None:
+            return
+        normalized = " ".join(str(text or "Local · Setup").split())
+        self.status_badge.setText(normalized)
+        self.status_badge.setToolTip(normalized)
+        state = normalized.rsplit("·", 1)[-1].strip().lower()
+        self.status_badge.setProperty("assistantState", state)
+        style = self.status_badge.style()
+        if style is not None:
+            style.unpolish(self.status_badge)
+            style.polish(self.status_badge)
+
+    def resizeEvent(self, event):  # noqa: N802
+        """Keep essential title actions readable at narrow dock widths."""
+        super().resizeEvent(event)
+        self._sync_responsive_actions()
+
+    def set_retry_available(self, available: bool, *, enabled: bool) -> None:
+        """Show title-bar Retry only when space and request state allow it."""
+        self._retry_available = bool(available)
+        self._retry_enabled = bool(enabled)
+        self._sync_responsive_actions()
+
+    def _sync_responsive_actions(self) -> None:
+        """Hide optional controls before allowing the product title to clip."""
+        if self.status_badge is not None:
+            self.status_badge.setVisible(self.width() >= 400)
+        compact = self.width() < 470
+        if self.retry_button is not None:
+            self.retry_button.setVisible(self._retry_available and not compact)
+            self.retry_button.setEnabled(self._retry_enabled and not compact)
+        if self.float_button is not None:
+            self.float_button.setVisible(not compact)
 
     def mousePressEvent(self, event):  # noqa: N802
         """Let QDockWidget handle title-bar drags from empty title space."""
@@ -348,6 +388,9 @@ class AgentManager(QObject):
         self.chat_panel.response_action_requested.connect(
             self._handle_response_action_selection
         )
+        self.chat_panel.confirmation_decision_requested.connect(
+            self._resolve_action_confirmation
+        )
 
         self.chat_dock = QDockWidget("XBrainLab", self.main_window)
         self.chat_dock.setWidget(self.chat_panel)
@@ -364,18 +407,28 @@ class AgentManager(QObject):
 
         # Custom title bar with conversation controls and native dock dragging.
         title_bar = AssistantDockTitleBar(self._toggle_float, self.chat_dock)
+        self.assistant_header = title_bar
         title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
         title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(8, 2, 4, 2)
-        title_layout.setSpacing(4)
+        title_layout.setContentsMargins(10, 3, 5, 3)
+        title_layout.setSpacing(5)
 
-        title_label = QLabel("XBrainLab")
+        title_label = QLabel("XBrainLab Assistant")
         title_label.setObjectName("AssistantDockTitle")
         title_label.setStyleSheet(Stylesheets.AGENT_TITLE_LABEL)
         title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         title_label.setMinimumWidth(title_label.sizeHint().width())
         title_layout.addWidget(title_label)
+
+        status_badge = QLabel("")
+        status_badge.setObjectName("AssistantDockStatus")
+        status_badge.setStyleSheet(Stylesheets.AGENT_STATUS_BADGE)
+        status_badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        title_bar.status_badge = status_badge
+        title_bar.set_assistant_status(self.chat_panel.header_status_text)
+        title_layout.addWidget(status_badge)
         title_layout.addStretch()
+        self.chat_panel.header_status_changed.connect(title_bar.set_assistant_status)
 
         title_style = title_bar.style()
         if title_style is None:
@@ -393,7 +446,9 @@ class AgentManager(QObject):
         self.retry_title_btn.setAccessibleName("Retry last request")
         self.retry_title_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.retry_title_btn.setEnabled(False)
+        self.retry_title_btn.setVisible(False)
         self.retry_title_btn.clicked.connect(self.retry_last_user_input)
+        title_bar.retry_button = self.retry_title_btn
         title_layout.addWidget(self.retry_title_btn)
 
         # New chat clears only the assistant conversation, never workflow state.
@@ -413,8 +468,8 @@ class AgentManager(QObject):
         self.settings_btn.setIcon(QIcon(Icons.SETTINGS.path))
         self.settings_btn.setIconSize(QSize(16, 16))
         self.settings_btn.setFixedSize(28, 28)
-        self.settings_btn.setToolTip("Assistant options")
-        self.settings_btn.setAccessibleName("Assistant options")
+        self.settings_btn.setToolTip("Assistant settings")
+        self.settings_btn.setAccessibleName("Assistant settings")
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.settings_menu = QMenu(self.settings_btn)
         settings_action = QAction("Assistant settings", self.settings_btn)
@@ -447,6 +502,7 @@ class AgentManager(QObject):
         self.float_btn.setAccessibleName("Float assistant")
         self.float_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.float_btn.clicked.connect(self._toggle_float)
+        title_bar.float_button = self.float_btn
         title_layout.addWidget(self.float_btn)
 
         self.close_btn = QPushButton()
@@ -462,6 +518,7 @@ class AgentManager(QObject):
         title_layout.addWidget(self.close_btn)
 
         self.chat_dock.setTitleBarWidget(title_bar)
+        title_bar._sync_responsive_actions()
         self.chat_dock.topLevelChanged.connect(self._on_dock_top_level_changed)
 
         self.main_window.addDockWidget(
@@ -959,9 +1016,19 @@ class AgentManager(QObject):
         if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
             self.chat_panel.show_notice("")
         kind = self._chat_presentation_kind(presentation)
-        actions = tuple(
-            self._chat_response_action(action) for action in presentation.actions
-        )
+        typed_actions = presentation.actions
+        if (
+            presentation.kind is AssistantResponseKind.ERROR
+            and not typed_actions
+            and self._last_user_input
+        ):
+            typed_actions = (
+                AssistantResponseAction.send_message(
+                    "Try again",
+                    self._last_user_input,
+                ),
+            )
+        actions = tuple(self._chat_response_action(action) for action in typed_actions)
         visible_text = self._presentation.assistant_transcript_message(
             presentation.text
         )
@@ -1273,7 +1340,12 @@ class AgentManager(QObject):
         enabled = retry_available and not is_processing
 
         if hasattr(self, "retry_title_btn"):
-            self.retry_title_btn.setEnabled(enabled)
+            header = getattr(self, "assistant_header", None)
+            if isinstance(header, AssistantDockTitleBar):
+                header.set_retry_available(retry_available, enabled=enabled)
+            else:
+                self.retry_title_btn.setEnabled(enabled)
+                self.retry_title_btn.setVisible(retry_available)
             self.retry_title_btn.setToolTip(
                 "Retry the last request"
                 if retry_available
@@ -1325,6 +1397,8 @@ class AgentManager(QObject):
 
         # Clear the transcript only after the runtime accepts the boundary.
         self.chat_controller.clear_conversation()
+        if self.chat_panel:
+            self.chat_panel.clear_confirmation_request()
         self._last_user_input = None
         self._on_active_response_presentation_changed(None)
         if not self._assistant_turn_state.reset_idle():
@@ -1462,6 +1536,8 @@ class AgentManager(QObject):
             )
             return
         self._render_delivery_terminal_error(payload)
+        if self.chat_panel:
+            self.chat_panel.clear_confirmation_request()
         cancelled_outcomes = {"cancelled", "shutdown_cancelled"}
         if (
             phase_before_terminal is AssistantUiTurnPhase.STOPPING
@@ -1585,6 +1661,8 @@ class AgentManager(QObject):
 
     def close(self) -> bool:
         """Clean up the agent controller resources."""
+        if self.chat_panel:
+            self.chat_panel.clear_confirmation_request()
         self._workflow_ui_handoff_host.abandon_active()
         downloads_idle = self._model_download_lifecycle.request_shutdown()
         runtime_closed = self._assistant_runtime.close()
@@ -1683,69 +1761,118 @@ class AgentManager(QObject):
         return accepted
 
     def _show_action_confirmation(self, request: object) -> None:
-        """Resolve one exact assistant-proposed action through a product dialog."""
+        """Present one exact assistant action in the transcript for a decision."""
         if not isinstance(request, AgentConfirmationRequest):
             logger.error(
                 "Ignored untyped assistant confirmation request: %s",
                 redact_public_text(request),
             )
             return
+        if self.chat_panel is None:
+            logger.error("Assistant confirmation arrived before the panel was ready.")
+            return
 
-        detail = "\n".join(
-            f"  {label}: {value}" for label, value in request.parameter_rows
+        current_values, current_context_changed = self._confirmation_current_values(
+            request
         )
+        self.chat_panel.show_confirmation_request(
+            request,
+            current_values=current_values,
+            current_context_changed=current_context_changed,
+        )
+        if self.chat_dock is not None:
+            self.chat_dock.show()
+            self.chat_dock.raise_()
 
-        msg = QMessageBox(self.main_window)
-        msg.setIcon(
-            QMessageBox.Icon.Warning
-            if request.destructive
-            else QMessageBox.Icon.Question
-        )
-        msg.setWindowTitle(
-            "Confirm destructive action" if request.destructive else "Confirm action"
-        )
-        intro = (
-            "This action can remove or replace workspace data. "
-            "Review it before continuing:"
-            if request.destructive
-            else "The assistant is ready to run this action:"
-        )
-        msg.setText(
-            f"{intro}\n\n"
-            f"  Action: {request.action_label}\n"
-            f"  Details: {request.description}"
-        )
-        if detail:
-            msg.setDetailedText(detail)
-        approve_button = msg.addButton(
-            request.action_label,
-            QMessageBox.ButtonRole.AcceptRole,
-        )
-        cancel_button = msg.addButton(
-            "Cancel",
-            QMessageBox.ButtonRole.RejectRole,
-        )
-        if approve_button is None or cancel_button is None:
-            raise RuntimeError("Confirmation dialog buttons could not be created.")
-        approve_button.setStyleSheet(
-            Stylesheets.BTN_DANGER if request.destructive else Stylesheets.BTN_PRIMARY
-        )
-        cancel_button.setStyleSheet(Stylesheets.BTN_GHOST)
-        msg.setDefaultButton(cancel_button)
-        msg.setEscapeButton(cancel_button)
-
-        msg.exec()
-        status = (
-            AgentConfirmationResolutionStatus.APPROVED
-            if msg.clickedButton() is approve_button
-            else AgentConfirmationResolutionStatus.CANCELLED
-        )
-        self._surface_runtime_command_result(
-            self._assistant_runtime.confirm(
-                AgentConfirmationResolution.for_request(request, status=status)
-            ),
+    def _resolve_action_confirmation(
+        self,
+        resolution: object,
+    ) -> None:
+        """Return one correlated card decision through the runtime transport."""
+        if not isinstance(resolution, AgentConfirmationResolution):
+            logger.error(
+                "Ignored untyped assistant confirmation decision: %s",
+                redact_public_text(resolution),
+            )
+            return
+        accepted = self._surface_runtime_command_result(
+            self._assistant_runtime.confirm(resolution),
             fallback="The assistant could not receive your confirmation.",
         )
+        if self.chat_panel is None:
+            return
+        if accepted:
+            self.chat_panel.clear_confirmation_request(resolution.request_id)
+        else:
+            self.chat_panel.set_confirmation_submitting(
+                resolution.request_id,
+                False,
+            )
+
+    def _confirmation_current_values(
+        self,
+        request: AgentConfirmationRequest,
+    ) -> tuple[dict[str, str], bool]:
+        """Read display-only current values from one matching publication."""
+        try:
+            publication = self.application_service.get_view_publication()
+        except Exception as exc:
+            logger.debug(
+                "Could not read confirmation comparison values: %s",
+                redact_public_text(exc),
+            )
+            return {}, False
+
+        request_generation = request.publication_generation
+        if not getattr(publication, "usable", False) or not getattr(
+            publication.state, "state_reliable", False
+        ):
+            return {}, False
+        if (
+            request_generation is not None
+            and publication.generation != request_generation
+        ):
+            return {}, True
+        if request_generation is None:
+            return {}, False
+
+        training = publication.state.training
+        candidates: dict[str, object] = {}
+        if training.has_training_option:
+            candidates.update(training.training_option)
+        if training.has_model:
+            candidates.update(training.model_params)
+            if training.model_name:
+                candidates["model"] = training.model_name
+
+        display_values = {
+            str(key).replace("_", " ").strip().capitalize(): self._display_ui_value(
+                value
+            )
+            for key, value in candidates.items()
+        }
+        requested_labels = {label for label, _value in request.parameter_rows}
+        return (
+            {
+                label: value
+                for label, value in display_values.items()
+                if label in requested_labels
+            },
+            False,
+        )
+
+    @staticmethod
+    def _display_ui_value(value: object) -> str:
+        """Format safe snapshot values without exposing object representations."""
+        if value is None:
+            return "None"
+        if isinstance(value, bool):
+            return "True" if value else "False"
+        if isinstance(value, (str, int, float)):
+            return str(value)
+        if isinstance(value, (list, tuple)):
+            return ", ".join(str(item) for item in value[:8])
+        return "Configured"
 
     def _switch_sub_view(self, panel_index, view_mode):
         """Switch to a specific tab or view within a panel.

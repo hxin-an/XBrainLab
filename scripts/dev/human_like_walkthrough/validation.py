@@ -498,8 +498,10 @@ def build_assistant_runtime_contract_review(
         findings.append("assistant runtime ready phase was not published")
     if not bool(ready.get("composer_input_enabled")):
         findings.append("assistant composer did not enable when runtime became ready")
-    if not bool(ready.get("send_button_enabled")):
-        findings.append("assistant Send did not enable when runtime became ready")
+    if bool(ready.get("send_button_enabled")) != bool(ready.get("composer_has_text")):
+        findings.append(
+            "assistant Send state does not match whether the ready composer has input"
+        )
     if ready.get("send_button_text") != "Send":
         findings.append("assistant ready state did not present Send")
     if bool(ready.get("inline_state_visible")):
@@ -632,7 +634,7 @@ def build_assistant_dock_contract_review(
             findings.append(f"{phase_name} is not a 420px standard dock: {width}px")
         if not bool(dock.get("title_bar_visible")):
             findings.append(f"{phase_name} does not include the visible dock title bar")
-        if dock.get("title_text") != "XBrainLab" or not bool(
+        if dock.get("title_text") != "XBrainLab Assistant" or not bool(
             dock.get("title_text_fits")
         ):
             findings.append(f"{phase_name} dock title text does not fit")
@@ -762,7 +764,7 @@ def build_assistant_full_window_contract_review(
             or not bool(state.get("dock_inside_window"))
         ):
             findings.append(f"{phase_name} assistant dock is outside the main window")
-        if state.get("title_text") != "XBrainLab" or not bool(
+        if state.get("title_text") != "XBrainLab Assistant" or not bool(
             state.get("title_text_fits")
         ):
             findings.append(f"{phase_name} full-window assistant title does not fit")
@@ -959,13 +961,13 @@ def build_assistant_interaction_contract_review(
     """Require isolated confirmation and typed main-window handoff evidence."""
     expected = {
         "assistant_confirmation_cancelled": (
-            "production_confirmation",
+            "production_confirmation_card",
             "cancelled",
             0,
             2,
         ),
         "assistant_confirmation_confirmed": (
-            "production_confirmation",
+            "production_confirmation_card",
             "confirmed",
             1,
             2,
@@ -998,14 +1000,16 @@ def build_assistant_interaction_contract_review(
             findings.append(f"{phase_name} did not use {request_kind} routing")
         if interaction.get("decision") != decision:
             findings.append(f"{phase_name} did not record {decision}")
-        if request_kind == "production_confirmation" and (
-            not bool(interaction.get("dialog_opened"))
-            or interaction.get("dialog_title") != "Confirm destructive action"
+        if request_kind == "production_confirmation_card" and (
+            not bool(interaction.get("card_opened"))
+            or interaction.get("card_title") != "Confirmation required"
+            or not bool(interaction.get("request_correlated"))
+            or not str(interaction.get("card_request_id") or "")
         ):
             findings.append(
-                f"{phase_name} did not use the production confirmation dialog"
+                f"{phase_name} did not use one correlated inline confirmation card"
             )
-        if request_kind == "production_confirmation" and not bool(
+        if request_kind == "production_confirmation_card" and not bool(
             interaction.get("destructive")
         ):
             findings.append(f"{phase_name} did not mark the reset as destructive")
@@ -1171,7 +1175,7 @@ def build_assistant_settings_recovery_review(
 def build_assistant_stage_copy_review(
     phases: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Reject empty-state copy that contradicts observed workflow state."""
+    """Require a stable assistant heading plus workflow-grounded status copy."""
     rows: list[dict[str, Any]] = []
     for phase in phases:
         if phase.get("phase") != "assistant_empty_state":
@@ -1182,24 +1186,28 @@ def build_assistant_stage_copy_review(
         evaluation = workflow_state.get("evaluation", {})
         training = workflow_state.get("training", {})
         raw = workflow_state.get("raw", {})
-        expected_title = None
+        expected_status = None
         if isinstance(evaluation, dict) and (
             int(evaluation.get("finished_runs", 0) or 0) > 0
             or bool(evaluation.get("metrics_available", False))
         ):
-            expected_title = "Explore your results"
+            expected_status = "Current workflow stage: Results available."
         elif isinstance(training, dict) and bool(training.get("is_running", False)):
-            expected_title = "Training is running"
+            expected_status = "Current workflow stage: Training running."
         elif isinstance(raw, dict) and not bool(raw.get("loaded", False)):
-            expected_title = "Start with your EEG data"
-        if expected_title is None:
+            expected_status = "No EEG files are open yet."
+        if expected_status is None:
             continue
         visible_text = [str(item) for item in phase.get("visible_text", [])]
+        fixed_heading = "How can I help with your EEG workflow?"
         rows.append(
             {
                 "phase": phase.get("phase"),
-                "expected_title": expected_title,
-                "matched": expected_title in visible_text,
+                "expected_heading": fixed_heading,
+                "expected_status": expected_status,
+                "matched": (
+                    fixed_heading in visible_text and expected_status in visible_text
+                ),
             }
         )
     findings = [row for row in rows if not row["matched"]]

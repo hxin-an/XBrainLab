@@ -1,18 +1,20 @@
 {
   "schema_version": 6,
   "status": "passed",
-  "generated_at": "2026-07-19T13:10:23.185489+00:00",
+  "generated_at": "2026-07-20T19:12:56.154194+00:00",
   "generator": "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
   "replay_command": "QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
   "platform": "offscreen",
+  "configured_qt_scale_factor": "1",
+  "observed_screen_device_pixel_ratio": 1.0,
   "source_files": [
     {
       "path": "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
-      "sha256": "8dfc2efea4297d0245578745379c5f68d02e4ee16c35f304b80e1f4b333ec35c"
+      "sha256": "1e36da78818758aa5b0de939a1fcbdaf3aac7fd98a5823cb9bbc0ff884580271"
     },
     {
       "path": "scripts/dev/human_like_walkthrough/evidence.py",
-      "sha256": "c7d2c479d4fb0efe432408c1cc7143e6eaff6823ca4ec49eca419d874086a065"
+      "sha256": "602f4546f10d0561bf0edf7afca6348dad7ca1daa3b8b785f7b3680ddf670bdc"
     },
     {
       "path": "XBrainLab/chat_contract.py",
@@ -27,8 +29,12 @@
       "sha256": "dd051d0df5dfab331fe6f3f3e9f12f2f7ff7b9ca09cc9d5f5a78e6f12f227908"
     },
     {
+      "path": "XBrainLab/llm/agent/confirmation.py",
+      "sha256": "82f6a8fb5a7d7e947331aea0904b24b4166d8d246bc99071552322dcd373723d"
+    },
+    {
       "path": "XBrainLab/llm/agent/controller.py",
-      "sha256": "9b9e2f290a72e6bd433dc5e7d1ca22f6518ce90044845cdca9686cab6ba65752"
+      "sha256": "402536ddd079191d48216c6f0fd5376c285546daec86216161e0ea7d4a767090"
     },
     {
       "path": "XBrainLab/llm/agent/execution_policy.py",
@@ -52,7 +58,11 @@
     },
     {
       "path": "XBrainLab/ui/chat/composer.py",
-      "sha256": "62c236f3fe6037e5bf54add69203bc4f8c6bb852afdb09713114dce6564d930b"
+      "sha256": "825291b6b2ce2122af5ec4f2fc286bbce987be482e426be01eac276f1558e7af"
+    },
+    {
+      "path": "XBrainLab/ui/chat/action_card.py",
+      "sha256": "c8eb1786e65fef093de89759232c2dd2b67ed9a9df84b83e8edebdd639294bdb"
     },
     {
       "path": "XBrainLab/ui/chat/message_bubble.py",
@@ -60,11 +70,11 @@
     },
     {
       "path": "XBrainLab/ui/chat/panel.py",
-      "sha256": "0e300cc5e2bf561b75d9f9200f8c73c6b9b8b618e098bd513fe5151d65973475"
+      "sha256": "360175afb90619ebd304de932e9012bd3f524ba2b3c288d6bbee4136b2c9a3ae"
     },
     {
       "path": "XBrainLab/ui/chat/presentation.py",
-      "sha256": "1a1a510983c1bc59d6b483cecfc16ead60d9b2abc876d02b065ec4bd0ec46c5a"
+      "sha256": "ebf7e66c11ddf5337a702dbd91c8d8ef838e795fe3e3f35ccfa2a0152e0a8346"
     },
     {
       "path": "XBrainLab/ui/chat/status_presenter.py",
@@ -72,7 +82,7 @@
     },
     {
       "path": "XBrainLab/ui/chat/styles.py",
-      "sha256": "04f0944572f1db9825d1ac4590c63ecd73035c302fd9615b342bad1a8d7a2e0c"
+      "sha256": "9b8df44a0a57cc61ba2cf9b2d68a35e1a081d5b7eb1cab26f2bcec6f64d7fad3"
     },
     {
       "path": "XBrainLab/ui/chat/turn_state.py",
@@ -80,7 +90,7 @@
     },
     {
       "path": "XBrainLab/ui/components/agent_manager.py",
-      "sha256": "32ecf7e3b2fad46cdf709b0e7c51e5acf78320fc9b1c9bcaa22d3419c1efdb86"
+      "sha256": "3cf9b12ab9b449800eb5e2568d7dc34fec0cd4c3c1a6ce9f008999cda5ce5b41"
     },
     {
       "path": "XBrainLab/ui/components/agent_presentation_service.py",
@@ -116,17 +126,17 @@
     },
     {
       "path": "XBrainLab/ui/styles/stylesheets.py",
-      "sha256": "258065d95c3b9f408b1a03e600af5ec3e25b6047ff1d0601aa560bc934686913"
+      "sha256": "a10581f9c4cf20eaa0eaef2b9bd41913f5006916d8710ddcece3c923295070fc"
     },
     {
       "path": "XBrainLab/ui/styles/theme.py",
       "sha256": "d24d6b81cf21d341592c63d2353585010e1d85ae5082885b64a98134d8a951de"
     }
   ],
-  "source_fingerprint": "1334b4247780cad9d90c8f986963b1e86b2d9258c70380bbda635ee4f9983469",
+  "source_fingerprint": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
   "capture_source": {
-    "fingerprint_at_start": "1334b4247780cad9d90c8f986963b1e86b2d9258c70380bbda635ee4f9983469",
-    "fingerprint_at_completion": "1334b4247780cad9d90c8f986963b1e86b2d9258c70380bbda635ee4f9983469",
+    "fingerprint_at_start": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
+    "fingerprint_at_completion": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
     "stable": true
   },
   "render_scale_evidence": "synthetic_pixmap_device_ratio",
@@ -164,16 +174,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            423,
-            194,
-            42
+            32,
+            386,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 423,
-            "right": 208,
-            "bottom": 465
+            "left": 32,
+            "top": 386,
+            "right": 288,
+            "bottom": 462
           },
           "panel_size": [
             320,
@@ -190,16 +200,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            426,
+            200,
+            472,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 426,
-            "right": 306,
-            "bottom": 462
+            "left": 200,
+            "top": 472,
+            "right": 288,
+            "bottom": 508
           },
           "panel_size": [
             320,
@@ -217,15 +227,15 @@
           "visible": true,
           "bounds": [
             41,
-            476,
+            339,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 476,
+            "top": 339,
             "right": 278,
-            "bottom": 512
+            "bottom": 375
           },
           "panel_size": [
             320,
@@ -243,15 +253,15 @@
           "visible": false,
           "bounds": [
             0,
-            411,
+            311,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 411,
+            "top": 311,
             "right": 640,
-            "bottom": 891
+            "bottom": 791
           },
           "panel_size": [
             320,
@@ -296,7 +306,7 @@
         320,
         520
       ],
-      "image_sha256": "6fc281194ffed6e22a726530ca96964af7a47d4be8b8ae00798eb1f24c28bda0",
+      "image_sha256": "74d88991a9495a613bfd675fcd35c022b74e21ee9c5a0c6d5f401b8e789f402b",
       "png_color_mode": "RGB",
       "render_attempts": 1,
       "render_content": {
@@ -310,8 +320,8 @@
             520
           ],
           "pixel_count": 166400,
-          "color_count": 3542,
-          "dominant_color_ratio": 0.548588,
+          "color_count": 3827,
+          "dominant_color_ratio": 0.35628,
           "channel_range": 221
         },
         "regions": {
@@ -319,9 +329,9 @@
             "passed": true,
             "box": [
               12,
-              12,
+              88,
               308,
-              148
+              224
             ],
             "pixel_count": 40256,
             "color_count": 2157,
@@ -332,9 +342,9 @@
             "passed": true,
             "box": [
               41,
-              476,
+              339,
               278,
-              512
+              375
             ],
             "pixel_count": 8532,
             "color_count": 736,
@@ -344,14 +354,14 @@
           "composer": {
             "passed": true,
             "box": [
-              10,
-              419,
-              310,
-              469
+              28,
+              382,
+              292,
+              512
             ],
-            "pixel_count": 15000,
+            "pixel_count": 34320,
             "color_count": 659,
-            "dominant_color_ratio": 0.450667,
+            "dominant_color_ratio": 0.520862,
             "channel_range": 118
           }
         }
@@ -362,7 +372,7 @@
     "real_dock": {
       "surface": "real_dock",
       "assistant_usable_width": 320,
-      "assistant_height": 728,
+      "assistant_height": 726,
       "runtime_phase": "idle",
       "mode_selector_visible": true,
       "mode_controls_visible": true,
@@ -375,20 +385,20 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            631,
-            194,
-            42
+            32,
+            592,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 631,
-            "right": 208,
-            "bottom": 673
+            "left": 32,
+            "top": 592,
+            "right": 288,
+            "bottom": 668
           },
           "panel_size": [
             320,
-            728
+            726
           ],
           "sides": {
             "left": true,
@@ -401,20 +411,20 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            634,
+            200,
+            678,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 634,
-            "right": 306,
-            "bottom": 670
+            "left": 200,
+            "top": 678,
+            "right": 288,
+            "bottom": 714
           },
           "panel_size": [
             320,
-            728
+            726
           ],
           "sides": {
             "left": true,
@@ -428,19 +438,19 @@
           "visible": true,
           "bounds": [
             41,
-            684,
+            545,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 684,
+            "top": 545,
             "right": 278,
-            "bottom": 720
+            "bottom": 581
           },
           "panel_size": [
             320,
-            728
+            726
           ],
           "sides": {
             "left": true,
@@ -454,19 +464,19 @@
           "visible": false,
           "bounds": [
             0,
-            619,
+            517,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 619,
+            "top": 517,
             "right": 640,
-            "bottom": 1099
+            "bottom": 997
           },
           "panel_size": [
             320,
-            728
+            726
           ],
           "sides": {
             "left": true,
@@ -512,7 +522,7 @@
         1180,
         760
       ],
-      "image_sha256": "a24232b62886aa5647de33cc70e314c5f4e217e21962b13276d67a534db905cc",
+      "image_sha256": "f82196d6f3307ca38b7132a6d091588a6fbab59c9b85d42d40e5ae671c7a1405",
       "png_color_mode": "RGB",
       "render_attempts": 1,
       "render_content": {
@@ -526,8 +536,8 @@
             760
           ],
           "pixel_count": 896800,
-          "color_count": 10509,
-          "dominant_color_ratio": 0.731287,
+          "color_count": 10825,
+          "dominant_color_ratio": 0.694298,
           "channel_range": 246
         },
         "regions": {
@@ -535,9 +545,9 @@
             "passed": true,
             "box": [
               872,
-              44,
+              225,
               1168,
-              180
+              361
             ],
             "pixel_count": 40256,
             "color_count": 2157,
@@ -548,9 +558,9 @@
             "passed": true,
             "box": [
               901,
-              716,
+              579,
               1138,
-              752
+              615
             ],
             "pixel_count": 8532,
             "color_count": 736,
@@ -560,14 +570,14 @@
           "assistant_composer": {
             "passed": true,
             "box": [
-              870,
-              659,
-              1170,
-              709
+              888,
+              622,
+              1152,
+              752
             ],
-            "pixel_count": 15000,
+            "pixel_count": 34320,
             "color_count": 659,
-            "dominant_color_ratio": 0.450667,
+            "dominant_color_ratio": 0.520862,
             "channel_range": 118
           }
         }
@@ -604,8 +614,8 @@
             760
           ],
           "pixel_count": 896800,
-          "color_count": 6869,
-          "dominant_color_ratio": 0.824671,
+          "color_count": 8326,
+          "dominant_color_ratio": 0.80095,
           "channel_range": 255
         },
         "regions": {
@@ -613,9 +623,9 @@
             "passed": true,
             "box": [
               872,
-              218,
+              220,
               1168,
-              302
+              304
             ],
             "pixel_count": 24864,
             "color_count": 1288,
@@ -625,15 +635,15 @@
           "restored_response_action": {
             "passed": true,
             "box": [
-              950,
-              585,
-              1090,
-              632
+              872,
+              336,
+              1168,
+              383
             ],
-            "pixel_count": 6580,
-            "color_count": 454,
-            "dominant_color_ratio": 0.831611,
-            "channel_range": 193
+            "pixel_count": 13912,
+            "color_count": 458,
+            "dominant_color_ratio": 0.89793,
+            "channel_range": 201
           }
         }
       },
@@ -689,8 +699,15 @@
     },
     "runtime_state_after_cleanup": "closed",
     "dispatcher_state_after_cleanup": "closed",
+    "initial_close_call_duration_ms": 3.28,
+    "gui_heartbeat": {
+      "interval_ms": 5,
+      "count_during_cleanup": 14,
+      "max_gap_ms": 5.659,
+      "responsive": true
+    },
     "gui_thread_blocking_wait_used": false,
-    "observation_method": "qt_signals_and_event_loop",
+    "observation_method": "qt_signals_event_loop_heartbeat_and_close_latency",
     "timed_out": false,
     "checks": {
       "manager_close_reached_terminal": true,
@@ -705,7 +722,10 @@
       "runtime_closed": true,
       "dispatcher_closed": true,
       "signal_observation_did_not_time_out": true,
-      "gui_thread_blocking_wait_not_used": true
+      "manager_close_returned_within_budget": true,
+      "gui_heartbeat_observed_during_cleanup": true,
+      "gui_heartbeat_gap_within_budget": true,
+      "gui_thread_responsive_during_cleanup": true
     },
     "passed": true
   },
@@ -949,25 +969,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            319,
-            806,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": true,
           "bounds": [
             115,
-            856,
+            765,
             94,
             36
           ],
@@ -980,8 +987,21 @@
           "enabled": true,
           "bounds": [
             209,
-            856,
+            765,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            319,
+            832,
+            88,
             36
           ],
           "inside_panel": true,
@@ -991,7 +1011,7 @@
       "visible_actions": [],
       "visible_response_actions": [],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -1000,16 +1020,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -1021,15 +1054,15 @@
           "visible": true,
           "bounds": [
             53,
-            803,
+            812,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 53,
-            "top": 803,
+            "top": 812,
             "right": 309,
-            "bottom": 845
+            "bottom": 888
           },
           "panel_size": [
             460,
@@ -1047,15 +1080,15 @@
           "visible": true,
           "bounds": [
             319,
-            806,
+            832,
             88,
             36
           ],
           "edges": {
             "left": 319,
-            "top": 806,
+            "top": 832,
             "right": 407,
-            "bottom": 842
+            "bottom": 868
           },
           "panel_size": [
             460,
@@ -1073,15 +1106,15 @@
           "visible": true,
           "bounds": [
             111,
-            856,
+            765,
             237,
             36
           ],
           "edges": {
             "left": 111,
-            "top": 856,
+            "top": 765,
             "right": 348,
-            "bottom": 892
+            "bottom": 801
           },
           "panel_size": [
             460,
@@ -1099,15 +1132,15 @@
           "visible": true,
           "bounds": [
             10,
-            779,
+            745,
             440,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 779,
+            "top": 745,
             "right": 450,
-            "bottom": 792
+            "bottom": 758
           },
           "panel_size": [
             460,
@@ -1127,6 +1160,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -1146,6 +1180,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -1154,7 +1192,7 @@
         460,
         900
       ],
-      "image_sha256": "8d2a3f391708c842ab40be44f6a94e333ecbe9ea42469633b433d16ddabe799d",
+      "image_sha256": "8920a3b9e8203a32f07a8a2c122845c1f38aa828ea38666f59ebb0e5e7dae771",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -1168,8 +1206,8 @@
             900
           ],
           "pixel_count": 414000,
-          "color_count": 10270,
-          "dominant_color_ratio": 0.432029,
+          "color_count": 11033,
+          "dominant_color_ratio": 0.390254,
           "channel_range": 255
         },
         "regions": {}
@@ -1249,25 +1287,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            218,
-            666,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": true,
           "bounds": [
             45,
-            716,
+            579,
             94,
             36
           ],
@@ -1280,8 +1305,21 @@
           "enabled": true,
           "bounds": [
             139,
-            716,
+            579,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            712,
+            88,
             36
           ],
           "inside_panel": true,
@@ -1291,7 +1329,7 @@
       "visible_actions": [],
       "visible_response_actions": [],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -1300,16 +1338,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -1320,16 +1371,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            663,
-            194,
-            42
+            32,
+            626,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 663,
-            "right": 208,
-            "bottom": 705
+            "left": 32,
+            "top": 626,
+            "right": 288,
+            "bottom": 702
           },
           "panel_size": [
             320,
@@ -1346,16 +1397,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            666,
+            200,
+            712,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 666,
-            "right": 306,
-            "bottom": 702
+            "left": 200,
+            "top": 712,
+            "right": 288,
+            "bottom": 748
           },
           "panel_size": [
             320,
@@ -1373,15 +1424,15 @@
           "visible": true,
           "bounds": [
             41,
-            716,
+            579,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 716,
+            "top": 579,
             "right": 278,
-            "bottom": 752
+            "bottom": 615
           },
           "panel_size": [
             320,
@@ -1399,15 +1450,15 @@
           "visible": true,
           "bounds": [
             10,
-            639,
+            559,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 639,
+            "top": 559,
             "right": 310,
-            "bottom": 652
+            "bottom": 572
           },
           "panel_size": [
             320,
@@ -1427,6 +1478,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -1446,6 +1498,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -1454,7 +1510,7 @@
         320,
         760
       ],
-      "image_sha256": "421da1035c7417fd76dfdc2c99cb20465a927df301dfac335e6172f198f1e74a",
+      "image_sha256": "0f4efec7b9eeb5a137e3972ef7334ee01d796c9109295689987564e3480ca9ba",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -1468,8 +1524,8 @@
             760
           ],
           "pixel_count": 243200,
-          "color_count": 7427,
-          "dominant_color_ratio": 0.467549,
+          "color_count": 8192,
+          "dominant_color_ratio": 0.377192,
           "channel_range": 255
         },
         "regions": {}
@@ -1494,25 +1550,12 @@
       "bubble_bounds": [],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": false,
-          "bounds": [
-            319,
-            586,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": false,
           "bounds": [
             115,
-            636,
+            545,
             94,
             36
           ],
@@ -1525,8 +1568,21 @@
           "enabled": false,
           "bounds": [
             209,
-            636,
+            545,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            319,
+            612,
+            88,
             36
           ],
           "inside_panel": true,
@@ -1545,16 +1601,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
         "text": "Loading assistant...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
         "required_width": 145,
+        "unwrapped_width": 145,
         "required_height": 18,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -1566,15 +1635,15 @@
           "visible": true,
           "bounds": [
             53,
-            583,
+            592,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 53,
-            "top": 583,
+            "top": 592,
             "right": 309,
-            "bottom": 625
+            "bottom": 668
           },
           "panel_size": [
             460,
@@ -1592,15 +1661,15 @@
           "visible": true,
           "bounds": [
             319,
-            586,
+            612,
             88,
             36
           ],
           "edges": {
             "left": 319,
-            "top": 586,
+            "top": 612,
             "right": 407,
-            "bottom": 622
+            "bottom": 648
           },
           "panel_size": [
             460,
@@ -1618,15 +1687,15 @@
           "visible": true,
           "bounds": [
             111,
-            636,
+            545,
             237,
             36
           ],
           "edges": {
             "left": 111,
-            "top": 636,
+            "top": 545,
             "right": 348,
-            "bottom": 672
+            "bottom": 581
           },
           "panel_size": [
             460,
@@ -1644,15 +1713,15 @@
           "visible": false,
           "bounds": [
             0,
-            571,
+            517,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 571,
+            "top": 517,
             "right": 640,
-            "bottom": 1051
+            "bottom": 997
           },
           "panel_size": [
             460,
@@ -1672,6 +1741,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -1691,6 +1761,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -1699,7 +1773,7 @@
         460,
         680
       ],
-      "image_sha256": "8bbd304f215e8ad4554c63ea7d2dd8f3143b7e8d593b50c9bffa59716e45b7f7",
+      "image_sha256": "8cb7e2227f53cb7645c4f0ebf594226ab08ad1df95cfb3be3481624e7f3d7802",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -1713,8 +1787,8 @@
             680
           ],
           "pixel_count": 312800,
-          "color_count": 2716,
-          "dominant_color_ratio": 0.731052,
+          "color_count": 3317,
+          "dominant_color_ratio": 0.629338,
           "channel_range": 221
         },
         "regions": {}
@@ -1744,7 +1818,7 @@
           "enabled": true,
           "bounds": [
             27,
-            91,
+            221,
             266,
             44
           ],
@@ -1757,22 +1831,9 @@
           "enabled": true,
           "bounds": [
             27,
-            143,
+            273,
             266,
             44
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": false,
-          "bounds": [
-            218,
-            586,
-            88,
-            36
           ],
           "inside_panel": true,
           "text_fits": true
@@ -1783,7 +1844,7 @@
           "enabled": false,
           "bounds": [
             45,
-            636,
+            499,
             94,
             36
           ],
@@ -1796,8 +1857,21 @@
           "enabled": false,
           "bounds": [
             139,
-            636,
+            499,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            632,
+            88,
             36
           ],
           "inside_panel": true,
@@ -1819,16 +1893,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
         "text": "Assistant unavailable",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
         "required_width": 160,
+        "unwrapped_width": 160,
         "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -1839,16 +1926,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            583,
-            194,
-            42
+            32,
+            546,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 583,
-            "right": 208,
-            "bottom": 625
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
           },
           "panel_size": [
             320,
@@ -1865,16 +1952,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            586,
+            200,
+            632,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 586,
-            "right": 306,
-            "bottom": 622
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
           },
           "panel_size": [
             320,
@@ -1892,15 +1979,15 @@
           "visible": true,
           "bounds": [
             41,
-            636,
+            499,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 636,
+            "top": 499,
             "right": 278,
-            "bottom": 672
+            "bottom": 535
           },
           "panel_size": [
             320,
@@ -1918,15 +2005,15 @@
           "visible": false,
           "bounds": [
             0,
-            571,
+            471,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 571,
+            "top": 471,
             "right": 640,
-            "bottom": 1051
+            "bottom": 951
           },
           "panel_size": [
             320,
@@ -1946,6 +2033,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -1965,6 +2053,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -1973,7 +2065,7 @@
         320,
         680
       ],
-      "image_sha256": "f94a2aa07c38e5b0ba53d77d6b0ed616b417b2304a91fdffc55379aa8a076a0c",
+      "image_sha256": "bc62a5da6afbbc985ce96b0865e8f022e733b9dcbc711740deb214b91536dd07",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -1987,8 +2079,8 @@
             680
           ],
           "pixel_count": 217600,
-          "color_count": 3980,
-          "dominant_color_ratio": 0.584067,
+          "color_count": 4265,
+          "dominant_color_ratio": 0.437008,
           "channel_range": 221
         },
         "regions": {}
@@ -2042,25 +2134,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            218,
-            586,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": true,
           "bounds": [
             45,
-            636,
+            499,
             94,
             36
           ],
@@ -2073,8 +2152,21 @@
           "enabled": true,
           "bounds": [
             139,
-            636,
+            499,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            632,
+            88,
             36
           ],
           "inside_panel": true,
@@ -2084,7 +2176,7 @@
       "visible_actions": [],
       "visible_response_actions": [],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -2093,16 +2185,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -2113,16 +2218,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            583,
-            194,
-            42
+            32,
+            546,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 583,
-            "right": 208,
-            "bottom": 625
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
           },
           "panel_size": [
             320,
@@ -2139,16 +2244,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            586,
+            200,
+            632,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 586,
-            "right": 306,
-            "bottom": 622
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
           },
           "panel_size": [
             320,
@@ -2166,15 +2271,15 @@
           "visible": true,
           "bounds": [
             41,
-            636,
+            499,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 636,
+            "top": 499,
             "right": 278,
-            "bottom": 672
+            "bottom": 535
           },
           "panel_size": [
             320,
@@ -2192,15 +2297,15 @@
           "visible": true,
           "bounds": [
             10,
-            559,
+            479,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 559,
+            "top": 479,
             "right": 310,
-            "bottom": 572
+            "bottom": 492
           },
           "panel_size": [
             320,
@@ -2220,6 +2325,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -2239,6 +2345,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -2247,7 +2357,7 @@
         320,
         680
       ],
-      "image_sha256": "fb4ceec3e2e18f27315b8cf7f1abc3f9d557091eaadcf3523fd03bbeda777227",
+      "image_sha256": "6d141bfc0272dc7c15abbadfe52c9cb489183f886c8f3e8c9a10006041273a05",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -2261,8 +2371,8 @@
             680
           ],
           "pixel_count": 217600,
-          "color_count": 3664,
-          "dominant_color_ratio": 0.66625,
+          "color_count": 4433,
+          "dominant_color_ratio": 0.565262,
           "channel_range": 255
         },
         "regions": {}
@@ -2302,25 +2412,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Stop",
-          "enabled": true,
-          "bounds": [
-            218,
-            586,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": false,
           "bounds": [
             45,
-            636,
+            499,
             94,
             36
           ],
@@ -2333,8 +2430,21 @@
           "enabled": false,
           "bounds": [
             139,
-            636,
+            499,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Stop",
+          "enabled": true,
+          "bounds": [
+            200,
+            632,
+            88,
             36
           ],
           "inside_panel": true,
@@ -2353,16 +2463,29 @@
         "cancelability": "cancellable",
         "cancelability_text": "You can stop before an XBrainLab action starts."
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -2373,16 +2496,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            583,
-            194,
-            42
+            32,
+            546,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 583,
-            "right": 208,
-            "bottom": 625
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
           },
           "panel_size": [
             320,
@@ -2399,16 +2522,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            586,
+            200,
+            632,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 586,
-            "right": 306,
-            "bottom": 622
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
           },
           "panel_size": [
             320,
@@ -2426,15 +2549,15 @@
           "visible": true,
           "bounds": [
             41,
-            636,
+            499,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 636,
+            "top": 499,
             "right": 278,
-            "bottom": 672
+            "bottom": 535
           },
           "panel_size": [
             320,
@@ -2452,15 +2575,15 @@
           "visible": false,
           "bounds": [
             0,
-            571,
+            471,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 571,
+            "top": 471,
             "right": 640,
-            "bottom": 1051
+            "bottom": 951
           },
           "panel_size": [
             320,
@@ -2480,6 +2603,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -2499,6 +2623,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -2507,7 +2635,7 @@
         320,
         680
       ],
-      "image_sha256": "7abc07f0a7264413e0ffede950383d6bd3ffe7443f3516df9ba4cb0b4c9abbdc",
+      "image_sha256": "e19a489bb09de0556cc259bd520e7b28a5f9063cc7007a6e6b1e9eeccf7032fe",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -2521,8 +2649,8 @@
             680
           ],
           "pixel_count": 217600,
-          "color_count": 5092,
-          "dominant_color_ratio": 0.579306,
+          "color_count": 5765,
+          "dominant_color_ratio": 0.432247,
           "channel_range": 231
         },
         "regions": {}
@@ -2562,25 +2690,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Stopping",
-          "enabled": false,
-          "bounds": [
-            218,
-            586,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": false,
           "bounds": [
             45,
-            636,
+            499,
             94,
             36
           ],
@@ -2593,8 +2708,21 @@
           "enabled": false,
           "bounds": [
             139,
-            636,
+            499,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Stopping",
+          "enabled": false,
+          "bounds": [
+            200,
+            632,
+            88,
             36
           ],
           "inside_panel": true,
@@ -2613,16 +2741,29 @@
         "cancelability": "stopping",
         "cancelability_text": "No new action will start."
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -2633,16 +2774,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            583,
-            194,
-            42
+            32,
+            546,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 583,
-            "right": 208,
-            "bottom": 625
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
           },
           "panel_size": [
             320,
@@ -2659,16 +2800,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            586,
+            200,
+            632,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 586,
-            "right": 306,
-            "bottom": 622
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
           },
           "panel_size": [
             320,
@@ -2686,15 +2827,15 @@
           "visible": true,
           "bounds": [
             41,
-            636,
+            499,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 636,
+            "top": 499,
             "right": 278,
-            "bottom": 672
+            "bottom": 535
           },
           "panel_size": [
             320,
@@ -2712,15 +2853,15 @@
           "visible": false,
           "bounds": [
             0,
-            571,
+            471,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 571,
+            "top": 471,
             "right": 640,
-            "bottom": 1051
+            "bottom": 951
           },
           "panel_size": [
             320,
@@ -2740,6 +2881,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -2759,6 +2901,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -2767,7 +2913,7 @@
         320,
         680
       ],
-      "image_sha256": "40e4e71ac5770d0c2a2b02f97273f0de572c2255578a7cc21b12cbb297804f63",
+      "image_sha256": "da177640154db3914a435cc84eb356ccdb21073025c1207b59de87ce0743108e",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -2781,8 +2927,8 @@
             680
           ],
           "pixel_count": 217600,
-          "color_count": 4878,
-          "dominant_color_ratio": 0.59835,
+          "color_count": 5552,
+          "dominant_color_ratio": 0.451291,
           "channel_range": 231
         },
         "regions": {}
@@ -2822,25 +2968,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Working",
-          "enabled": false,
-          "bounds": [
-            218,
-            586,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": false,
           "bounds": [
             45,
-            636,
+            499,
             94,
             36
           ],
@@ -2853,8 +2986,21 @@
           "enabled": false,
           "bounds": [
             139,
-            636,
+            499,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Working",
+          "enabled": false,
+          "bounds": [
+            200,
+            632,
+            88,
             36
           ],
           "inside_panel": true,
@@ -2873,16 +3019,29 @@
         "cancelability": "not_cancellable",
         "cancelability_text": "This action has already started and cannot be stopped safely."
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -2893,16 +3052,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            583,
-            194,
-            42
+            32,
+            546,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 583,
-            "right": 208,
-            "bottom": 625
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
           },
           "panel_size": [
             320,
@@ -2919,16 +3078,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            586,
+            200,
+            632,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 586,
-            "right": 306,
-            "bottom": 622
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
           },
           "panel_size": [
             320,
@@ -2946,15 +3105,15 @@
           "visible": true,
           "bounds": [
             41,
-            636,
+            499,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 636,
+            "top": 499,
             "right": 278,
-            "bottom": 672
+            "bottom": 535
           },
           "panel_size": [
             320,
@@ -2972,15 +3131,15 @@
           "visible": false,
           "bounds": [
             0,
-            571,
+            471,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 571,
+            "top": 471,
             "right": 640,
-            "bottom": 1051
+            "bottom": 951
           },
           "panel_size": [
             320,
@@ -3000,6 +3159,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -3019,6 +3179,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -3027,7 +3191,7 @@
         320,
         680
       ],
-      "image_sha256": "9e1636c53cd9e732d79a10c4d537f2b78f99fba89e1c9c05d4b4a2a8563e7344",
+      "image_sha256": "9ae424468782fbe9f91472bf8c5290bc44e5da793ac8da4ae486275c09d8f470",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -3041,8 +3205,8 @@
             680
           ],
           "pixel_count": 217600,
-          "color_count": 4974,
-          "dominant_color_ratio": 0.601071,
+          "color_count": 5647,
+          "dominant_color_ratio": 0.454012,
           "channel_range": 231
         },
         "regions": {}
@@ -3100,23 +3264,10 @@
           "text": "Try again",
           "enabled": true,
           "bounds": [
-            106,
-            505,
-            107,
+            12,
+            223,
+            296,
             47
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_4",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            218,
-            586,
-            88,
-            36
           ],
           "inside_panel": true,
           "text_fits": true
@@ -3127,7 +3278,7 @@
           "enabled": true,
           "bounds": [
             45,
-            636,
+            499,
             94,
             36
           ],
@@ -3140,8 +3291,21 @@
           "enabled": true,
           "bounds": [
             139,
-            636,
+            499,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_11",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            632,
+            88,
             36
           ],
           "inside_panel": true,
@@ -3155,7 +3319,7 @@
         "Try again"
       ],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -3164,16 +3328,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -3184,16 +3361,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            583,
-            194,
-            42
+            32,
+            546,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 583,
-            "right": 208,
-            "bottom": 625
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
           },
           "panel_size": [
             320,
@@ -3210,16 +3387,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            586,
+            200,
+            632,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 586,
-            "right": 306,
-            "bottom": 622
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
           },
           "panel_size": [
             320,
@@ -3237,15 +3414,15 @@
           "visible": true,
           "bounds": [
             41,
-            636,
+            499,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 636,
+            "top": 499,
             "right": 278,
-            "bottom": 672
+            "bottom": 535
           },
           "panel_size": [
             320,
@@ -3263,15 +3440,15 @@
           "visible": true,
           "bounds": [
             10,
-            559,
+            479,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 559,
+            "top": 479,
             "right": 310,
-            "bottom": 572
+            "bottom": 492
           },
           "panel_size": [
             320,
@@ -3288,16 +3465,16 @@
         "response_action": {
           "visible": true,
           "bounds": [
-            106,
-            505,
-            107,
+            12,
+            223,
+            296,
             47
           ],
           "edges": {
-            "left": 106,
-            "top": 505,
-            "right": 213,
-            "bottom": 552
+            "left": 12,
+            "top": 223,
+            "right": 308,
+            "bottom": 270
           },
           "panel_size": [
             320,
@@ -3316,6 +3493,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -3335,6 +3513,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -3343,7 +3525,7 @@
         320,
         680
       ],
-      "image_sha256": "26965753fd43af3871073ff872652bc2a7edf597709d52b8d16eb5122dd517aa",
+      "image_sha256": "868692dade1c55ea307e53ec6b4e1c30b606885b53f4ef672b7e69ae93b152f9",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -3357,8 +3539,616 @@
             680
           ],
           "pixel_count": 217600,
-          "color_count": 4398,
-          "dominant_color_ratio": 0.574591,
+          "color_count": 5704,
+          "dominant_color_ratio": 0.48454,
+          "channel_range": 255
+        },
+        "regions": {}
+      }
+    },
+    {
+      "name": "narrow_setting_change_confirmation",
+      "file": "narrow-setting-change-confirmation.png",
+      "logical_size": [
+        320,
+        680
+      ],
+      "render_pixel_ratio": 1.0,
+      "render_scale_evidence": "logical_widget_render",
+      "native_display_scaling_observed": false,
+      "viewport_width": 320,
+      "horizontal_scroll_max": 0,
+      "vertical_scroll_max": 0,
+      "message_kinds": [
+        "user"
+      ],
+      "state_labels": {},
+      "visible_messages": [
+        {
+          "sender": "user",
+          "text": "Reduce the batch size if the current configuration is too large."
+        }
+      ],
+      "bubble_bounds": [
+        {
+          "index": 0,
+          "kind": "user",
+          "x": 25,
+          "width": 281,
+          "inside_viewport_horizontally": true
+        }
+      ],
+      "visible_buttons": [
+        {
+          "name": "AssistantActionCardSecondary",
+          "text": "Keep current value",
+          "enabled": true,
+          "bounds": [
+            27,
+            249,
+            266,
+            44
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantActionCardPrimary",
+          "text": "Apply change",
+          "enabled": true,
+          "bounds": [
+            27,
+            301,
+            266,
+            44
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantAskMode",
+          "text": "One step",
+          "enabled": true,
+          "bounds": [
+            45,
+            499,
+            94,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantWorkflowMode",
+          "text": "Guided workflow",
+          "enabled": true,
+          "bounds": [
+            139,
+            499,
+            135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            632,
+            88,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        }
+      ],
+      "visible_actions": [],
+      "visible_response_actions": [],
+      "send_text": "Send",
+      "send_enabled": false,
+      "input_enabled": true,
+      "activity": {
+        "visible": false,
+        "primary_status": "",
+        "step": "",
+        "cancelability": "none",
+        "cancelability_text": ""
+      },
+      "confirmation": {
+        "visible": true,
+        "title": "Suggested change",
+        "description": "Apply change",
+        "values": "Batch size\n32  ->  16",
+        "reason": "The current configuration may exceed available VRAM.",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": "walkthrough-batch-size-change"
+      },
+      "composer_placeholder": {
+        "text": "Ask about the current EEG workflow...",
+        "visible": true,
+        "viewport_width": 232,
+        "viewport_height": 56,
+        "document_margin": 4,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
+        "fits_width": true,
+        "fits_height": true,
+        "fits": true
+      },
+      "text_overflow": [],
+      "outside_buttons": [],
+      "panel_relative_geometry": {
+        "composer": {
+          "visible": true,
+          "bounds": [
+            32,
+            546,
+            256,
+            76
+          ],
+          "edges": {
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "send": {
+          "visible": true,
+          "bounds": [
+            200,
+            632,
+            88,
+            36
+          ],
+          "edges": {
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "mode_control": {
+          "visible": true,
+          "bounds": [
+            41,
+            499,
+            237,
+            36
+          ],
+          "edges": {
+            "left": 41,
+            "top": 499,
+            "right": 278,
+            "bottom": 535
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "mode_description": {
+          "visible": true,
+          "bounds": [
+            10,
+            479,
+            300,
+            13
+          ],
+          "edges": {
+            "left": 10,
+            "top": 479,
+            "right": 310,
+            "bottom": 492
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "response_action": null
+      },
+      "checks": {
+        "no_horizontal_scroll": true,
+        "message_bubbles_inside_viewport": true,
+        "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
+        "visible_text_fits": true,
+        "composer_placeholder_fits": true,
+        "composer_visible": true,
+        "send_button_visible": true,
+        "composer_inside_panel_on_all_sides": true,
+        "send_inside_panel_on_all_sides": true,
+        "mode_control_inside_panel_on_all_sides": true,
+        "mode_description_inside_panel_when_visible": true,
+        "response_action_inside_panel_on_all_sides": true,
+        "expected_message_kinds_present": true,
+        "expected_actions_present": true,
+        "expected_send_state_present": true,
+        "expected_send_enabled_present": true,
+        "expected_input_state_present": true,
+        "expected_runtime_visibility_present": true,
+        "expected_runtime_title_present": true,
+        "expected_activity_visibility_present": true,
+        "expected_activity_title_present": true,
+        "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
+        "legacy_muted_status_hidden": true,
+        "render_content_ready": true
+      },
+      "failures": [],
+      "pixel_size": [
+        320,
+        680
+      ],
+      "image_sha256": "acfb4642ca61b89cdee8af6818c650a7a938f020448e1ee0ddb690eb061c7c3b",
+      "render_attempts": 2,
+      "png_color_mode": "RGB",
+      "render_content": {
+        "passed": true,
+        "full_frame": {
+          "passed": true,
+          "box": [
+            0,
+            0,
+            320,
+            680
+          ],
+          "pixel_count": 217600,
+          "color_count": 7024,
+          "dominant_color_ratio": 0.308194,
+          "channel_range": 255
+        },
+        "regions": {}
+      }
+    },
+    {
+      "name": "narrow_setting_change_confirmation_max_content",
+      "file": "narrow-setting-change-confirmation-max-content.png",
+      "logical_size": [
+        320,
+        680
+      ],
+      "render_pixel_ratio": 1.0,
+      "render_scale_evidence": "logical_widget_render",
+      "native_display_scaling_observed": false,
+      "viewport_width": 306,
+      "horizontal_scroll_max": 0,
+      "vertical_scroll_max": 2768,
+      "message_kinds": [
+        "user"
+      ],
+      "state_labels": {},
+      "visible_messages": [
+        {
+          "sender": "user",
+          "text": "Review every proposed training setting before applying the change."
+        }
+      ],
+      "bubble_bounds": [
+        {
+          "index": 0,
+          "kind": "user",
+          "x": 23,
+          "width": 269,
+          "inside_viewport_horizontally": true
+        }
+      ],
+      "visible_buttons": [
+        {
+          "name": "AssistantActionCardSecondary",
+          "text": "Keep current value",
+          "enabled": true,
+          "bounds": [
+            27,
+            330,
+            252,
+            44
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantActionCardPrimary",
+          "text": "Apply reviewed settings",
+          "enabled": true,
+          "bounds": [
+            27,
+            382,
+            252,
+            44
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantAskMode",
+          "text": "One step",
+          "enabled": true,
+          "bounds": [
+            45,
+            499,
+            94,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantWorkflowMode",
+          "text": "Guided workflow",
+          "enabled": true,
+          "bounds": [
+            139,
+            499,
+            135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            632,
+            88,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        }
+      ],
+      "visible_actions": [],
+      "visible_response_actions": [],
+      "send_text": "Send",
+      "send_enabled": false,
+      "input_enabled": true,
+      "activity": {
+        "visible": false,
+        "primary_status": "",
+        "step": "",
+        "cancelability": "none",
+        "cancelability_text": ""
+      },
+      "confirmation": {
+        "visible": true,
+        "title": "Suggested change",
+        "description": "Apply reviewed settings",
+        "values": "Parameter 00\n0-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 01\n1-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 02\n2-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 03\n3-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 04\n4-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 05\n5-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 06\n6-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 07\n7-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 08\n8-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 09\n9-WWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 10\n10-WWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...\n\nParameter 11\n11-WWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​WWWWWWWWWWWW​W...",
+        "reason": "Review every proposed setting before applying this configuration.",
+        "actions": [
+          "Keep current value",
+          "Apply reviewed settings"
+        ],
+        "request_id": "walkthrough-max-setting-change"
+      },
+      "composer_placeholder": {
+        "text": "Ask about the current EEG workflow...",
+        "visible": true,
+        "viewport_width": 232,
+        "viewport_height": 56,
+        "document_margin": 4,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
+        "fits_width": true,
+        "fits_height": true,
+        "fits": true
+      },
+      "text_overflow": [],
+      "outside_buttons": [],
+      "panel_relative_geometry": {
+        "composer": {
+          "visible": true,
+          "bounds": [
+            32,
+            546,
+            256,
+            76
+          ],
+          "edges": {
+            "left": 32,
+            "top": 546,
+            "right": 288,
+            "bottom": 622
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "send": {
+          "visible": true,
+          "bounds": [
+            200,
+            632,
+            88,
+            36
+          ],
+          "edges": {
+            "left": 200,
+            "top": 632,
+            "right": 288,
+            "bottom": 668
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "mode_control": {
+          "visible": true,
+          "bounds": [
+            41,
+            499,
+            237,
+            36
+          ],
+          "edges": {
+            "left": 41,
+            "top": 499,
+            "right": 278,
+            "bottom": 535
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "mode_description": {
+          "visible": true,
+          "bounds": [
+            10,
+            479,
+            300,
+            13
+          ],
+          "edges": {
+            "left": 10,
+            "top": 479,
+            "right": 310,
+            "bottom": 492
+          },
+          "panel_size": [
+            320,
+            680
+          ],
+          "sides": {
+            "left": true,
+            "top": true,
+            "right": true,
+            "bottom": true
+          },
+          "inside_panel_on_all_sides": true
+        },
+        "response_action": null
+      },
+      "checks": {
+        "no_horizontal_scroll": true,
+        "message_bubbles_inside_viewport": true,
+        "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
+        "visible_text_fits": true,
+        "composer_placeholder_fits": true,
+        "composer_visible": true,
+        "send_button_visible": true,
+        "composer_inside_panel_on_all_sides": true,
+        "send_inside_panel_on_all_sides": true,
+        "mode_control_inside_panel_on_all_sides": true,
+        "mode_description_inside_panel_when_visible": true,
+        "response_action_inside_panel_on_all_sides": true,
+        "expected_message_kinds_present": true,
+        "expected_actions_present": true,
+        "expected_send_state_present": true,
+        "expected_send_enabled_present": true,
+        "expected_input_state_present": true,
+        "expected_runtime_visibility_present": true,
+        "expected_runtime_title_present": true,
+        "expected_activity_visibility_present": true,
+        "expected_activity_title_present": true,
+        "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
+        "legacy_muted_status_hidden": true,
+        "render_content_ready": true
+      },
+      "failures": [],
+      "pixel_size": [
+        320,
+        680
+      ],
+      "image_sha256": "b6f7de4a40b8a5829a897e4099ca940a691183475d6df6836d059a6bc327a9a2",
+      "render_attempts": 2,
+      "png_color_mode": "RGB",
+      "render_content": {
+        "passed": true,
+        "full_frame": {
+          "passed": true,
+          "box": [
+            0,
+            0,
+            320,
+            680
+          ],
+          "pixel_count": 217600,
+          "color_count": 5859,
+          "dominant_color_ratio": 0.220905,
           "channel_range": 255
         },
         "regions": {}
@@ -3438,25 +4228,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            218,
-            666,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": true,
           "bounds": [
             45,
-            716,
+            579,
             94,
             36
           ],
@@ -3469,8 +4246,21 @@
           "enabled": true,
           "bounds": [
             139,
-            716,
+            579,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            712,
+            88,
             36
           ],
           "inside_panel": true,
@@ -3480,7 +4270,7 @@
       "visible_actions": [],
       "visible_response_actions": [],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -3489,16 +4279,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -3509,16 +4312,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            663,
-            194,
-            42
+            32,
+            626,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 663,
-            "right": 208,
-            "bottom": 705
+            "left": 32,
+            "top": 626,
+            "right": 288,
+            "bottom": 702
           },
           "panel_size": [
             320,
@@ -3535,16 +4338,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            666,
+            200,
+            712,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 666,
-            "right": 306,
-            "bottom": 702
+            "left": 200,
+            "top": 712,
+            "right": 288,
+            "bottom": 748
           },
           "panel_size": [
             320,
@@ -3562,15 +4365,15 @@
           "visible": true,
           "bounds": [
             41,
-            716,
+            579,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 716,
+            "top": 579,
             "right": 278,
-            "bottom": 752
+            "bottom": 615
           },
           "panel_size": [
             320,
@@ -3588,15 +4391,15 @@
           "visible": true,
           "bounds": [
             10,
-            639,
+            559,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 639,
+            "top": 559,
             "right": 310,
-            "bottom": 652
+            "bottom": 572
           },
           "panel_size": [
             320,
@@ -3616,6 +4419,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -3635,6 +4439,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -3643,7 +4451,7 @@
         480,
         1140
       ],
-      "image_sha256": "3879eba3dfdea2615b2e62f10a62e085c7a5ad5c345b8e0fe1d4367b174260e9",
+      "image_sha256": "0cfad4aac2d2de85d87c9a068160ba446cc6d44822f3de2d849eb13e2cc7d773",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -3657,8 +4465,8 @@
             1140
           ],
           "pixel_count": 547200,
-          "color_count": 11577,
-          "dominant_color_ratio": 0.487538,
+          "color_count": 12575,
+          "dominant_color_ratio": 0.397591,
           "channel_range": 255
         },
         "regions": {}
@@ -3683,27 +4491,53 @@
       "bubble_bounds": [],
       "visible_buttons": [
         {
-          "name": "AssistantEmptyStateAction",
-          "text": "Scan data source",
+          "name": "AssistantSuggestionPrompt",
+          "text": "Check the current workflow status",
           "enabled": true,
           "bounds": [
             26,
-            134,
+            184,
             268,
-            47
+            41
           ],
           "inside_panel": true,
           "text_fits": true
         },
         {
-          "name": "QToolButton_3",
-          "text": "Send",
+          "name": "AssistantSuggestionPrompt",
+          "text": "Explain the current settings",
           "enabled": true,
           "bounds": [
-            218,
-            556,
-            88,
-            36
+            26,
+            232,
+            268,
+            41
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantSuggestionPrompt",
+          "text": "Suggest the next step",
+          "enabled": true,
+          "bounds": [
+            26,
+            280,
+            268,
+            41
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantSuggestionPrompt",
+          "text": "Review the training configuration",
+          "enabled": true,
+          "bounds": [
+            26,
+            328,
+            268,
+            41
           ],
           "inside_panel": true,
           "text_fits": true
@@ -3714,7 +4548,7 @@
           "enabled": true,
           "bounds": [
             45,
-            606,
+            469,
             94,
             36
           ],
@@ -3727,8 +4561,21 @@
           "enabled": true,
           "bounds": [
             139,
-            606,
+            469,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            602,
+            88,
             36
           ],
           "inside_panel": true,
@@ -3738,7 +4585,7 @@
       "visible_actions": [],
       "visible_response_actions": [],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -3747,16 +4594,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -3767,16 +4627,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            553,
-            194,
-            42
+            32,
+            516,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 553,
-            "right": 208,
-            "bottom": 595
+            "left": 32,
+            "top": 516,
+            "right": 288,
+            "bottom": 592
           },
           "panel_size": [
             320,
@@ -3793,16 +4653,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            556,
+            200,
+            602,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 556,
-            "right": 306,
-            "bottom": 592
+            "left": 200,
+            "top": 602,
+            "right": 288,
+            "bottom": 638
           },
           "panel_size": [
             320,
@@ -3820,15 +4680,15 @@
           "visible": true,
           "bounds": [
             41,
-            606,
+            469,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 606,
+            "top": 469,
             "right": 278,
-            "bottom": 642
+            "bottom": 505
           },
           "panel_size": [
             320,
@@ -3846,15 +4706,15 @@
           "visible": true,
           "bounds": [
             10,
-            529,
+            449,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 529,
+            "top": 449,
             "right": 310,
-            "bottom": 542
+            "bottom": 462
           },
           "panel_size": [
             320,
@@ -3874,6 +4734,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -3893,6 +4754,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -3901,7 +4766,7 @@
         320,
         650
       ],
-      "image_sha256": "5f461d06de0fd78c6dade45cf8c3a6cc94a39218e865e2082e1f0e3d9d3cf197",
+      "image_sha256": "03563214f91865f7d250f7e98f677b09bc082b9351454eaa3612d43a535db056",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -3915,8 +4780,8 @@
             650
           ],
           "pixel_count": 208000,
-          "color_count": 4735,
-          "dominant_color_ratio": 0.76075,
+          "color_count": 6583,
+          "dominant_color_ratio": 0.497587,
           "channel_range": 255
         },
         "regions": {}
@@ -3934,7 +4799,7 @@
       "native_display_scaling_observed": false,
       "viewport_width": 306,
       "horizontal_scroll_max": 0,
-      "vertical_scroll_max": 679,
+      "vertical_scroll_max": 801,
       "message_kinds": [
         "user",
         "clarification"
@@ -3971,26 +4836,13 @@
       "visible_buttons": [
         {
           "name": "AssistantResponseAction",
-          "text": "Review subject_01_session_0…",
+          "text": "Review subject_01_session…",
           "enabled": true,
           "bounds": [
-            28,
-            345,
-            264,
-            47
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_4",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            218,
-            426,
-            88,
-            36
+            12,
+            235,
+            282,
+            44
           ],
           "inside_panel": true,
           "text_fits": true
@@ -4001,7 +4853,7 @@
           "enabled": true,
           "bounds": [
             45,
-            476,
+            339,
             94,
             36
           ],
@@ -4014,8 +4866,21 @@
           "enabled": true,
           "bounds": [
             139,
-            476,
+            339,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_11",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            472,
+            88,
             36
           ],
           "inside_panel": true,
@@ -4029,7 +4894,7 @@
         "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 label alignment before continuing"
       ],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -4038,16 +4903,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -4058,16 +4936,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            423,
-            194,
-            42
+            32,
+            386,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 423,
-            "right": 208,
-            "bottom": 465
+            "left": 32,
+            "top": 386,
+            "right": 288,
+            "bottom": 462
           },
           "panel_size": [
             320,
@@ -4084,16 +4962,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            426,
+            200,
+            472,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 426,
-            "right": 306,
-            "bottom": 462
+            "left": 200,
+            "top": 472,
+            "right": 288,
+            "bottom": 508
           },
           "panel_size": [
             320,
@@ -4111,15 +4989,15 @@
           "visible": true,
           "bounds": [
             41,
-            476,
+            339,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 476,
+            "top": 339,
             "right": 278,
-            "bottom": 512
+            "bottom": 375
           },
           "panel_size": [
             320,
@@ -4137,15 +5015,15 @@
           "visible": true,
           "bounds": [
             10,
-            399,
+            319,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 399,
+            "top": 319,
             "right": 310,
-            "bottom": 412
+            "bottom": 332
           },
           "panel_size": [
             320,
@@ -4162,16 +5040,16 @@
         "response_action": {
           "visible": true,
           "bounds": [
-            28,
-            345,
-            264,
-            47
+            12,
+            235,
+            282,
+            44
           ],
           "edges": {
-            "left": 28,
-            "top": 345,
-            "right": 292,
-            "bottom": 392
+            "left": 12,
+            "top": 235,
+            "right": 294,
+            "bottom": 279
           },
           "panel_size": [
             320,
@@ -4190,6 +5068,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -4209,6 +5088,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -4217,7 +5100,7 @@
         320,
         520
       ],
-      "image_sha256": "374b81026bd5e0e84bc1b31a42cc512b4abaa56233a0034dc508d80ba93087b2",
+      "image_sha256": "08f54d96a265b824e91ebfcf63f6f323b87c1d25290d43e3f9bb32a478360db7",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -4231,8 +5114,8 @@
             520
           ],
           "pixel_count": 166400,
-          "color_count": 4351,
-          "dominant_color_ratio": 0.397494,
+          "color_count": 5612,
+          "dominant_color_ratio": 0.270138,
           "channel_range": 255
         },
         "regions": {}
@@ -4250,7 +5133,7 @@
       "native_display_scaling_observed": false,
       "viewport_width": 306,
       "horizontal_scroll_max": 0,
-      "vertical_scroll_max": 549,
+      "vertical_scroll_max": 671,
       "message_kinds": [
         "user",
         "clarification"
@@ -4287,26 +5170,13 @@
       "visible_buttons": [
         {
           "name": "AssistantResponseAction",
-          "text": "Review subject_01_session_0…",
+          "text": "Review subject_01_session…",
           "enabled": true,
           "bounds": [
-            28,
-            475,
-            264,
-            47
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_4",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            218,
-            556,
-            88,
-            36
+            12,
+            365,
+            282,
+            44
           ],
           "inside_panel": true,
           "text_fits": true
@@ -4317,7 +5187,7 @@
           "enabled": true,
           "bounds": [
             45,
-            606,
+            469,
             94,
             36
           ],
@@ -4330,8 +5200,21 @@
           "enabled": true,
           "bounds": [
             139,
-            606,
+            469,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_11",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            602,
+            88,
             36
           ],
           "inside_panel": true,
@@ -4345,7 +5228,7 @@
         "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 label alignment before continuing"
       ],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -4354,16 +5237,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -4374,16 +5270,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            553,
-            194,
-            42
+            32,
+            516,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 553,
-            "right": 208,
-            "bottom": 595
+            "left": 32,
+            "top": 516,
+            "right": 288,
+            "bottom": 592
           },
           "panel_size": [
             320,
@@ -4400,16 +5296,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            556,
+            200,
+            602,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 556,
-            "right": 306,
-            "bottom": 592
+            "left": 200,
+            "top": 602,
+            "right": 288,
+            "bottom": 638
           },
           "panel_size": [
             320,
@@ -4427,15 +5323,15 @@
           "visible": true,
           "bounds": [
             41,
-            606,
+            469,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 606,
+            "top": 469,
             "right": 278,
-            "bottom": 642
+            "bottom": 505
           },
           "panel_size": [
             320,
@@ -4453,15 +5349,15 @@
           "visible": true,
           "bounds": [
             10,
-            529,
+            449,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 529,
+            "top": 449,
             "right": 310,
-            "bottom": 542
+            "bottom": 462
           },
           "panel_size": [
             320,
@@ -4478,16 +5374,16 @@
         "response_action": {
           "visible": true,
           "bounds": [
-            28,
-            475,
-            264,
-            47
+            12,
+            365,
+            282,
+            44
           ],
           "edges": {
-            "left": 28,
-            "top": 475,
-            "right": 292,
-            "bottom": 522
+            "left": 12,
+            "top": 365,
+            "right": 294,
+            "bottom": 409
           },
           "panel_size": [
             320,
@@ -4506,6 +5402,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -4525,6 +5422,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -4533,7 +5434,7 @@
         320,
         650
       ],
-      "image_sha256": "bec36a76b79b4370980bacc9a6092f8036fee41dd8481ee48a6ae97477c0b742",
+      "image_sha256": "844c9dc11c11b1ffd475d7fb851405f02ff3e51b3f0999a1c2b460bda6b62995",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -4547,8 +5448,8 @@
             650
           ],
           "pixel_count": 208000,
-          "color_count": 4351,
-          "dominant_color_ratio": 0.44424,
+          "color_count": 5612,
+          "dominant_color_ratio": 0.325726,
           "channel_range": 255
         },
         "regions": {}
@@ -4588,25 +5489,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Stop",
-          "enabled": true,
-          "bounds": [
-            218,
-            556,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": false,
           "bounds": [
             45,
-            606,
+            469,
             94,
             36
           ],
@@ -4619,8 +5507,21 @@
           "enabled": false,
           "bounds": [
             139,
-            606,
+            469,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Stop",
+          "enabled": true,
+          "bounds": [
+            200,
+            602,
+            88,
             36
           ],
           "inside_panel": true,
@@ -4639,16 +5540,29 @@
         "cancelability": "cancellable",
         "cancelability_text": "You can stop before an XBrainLab action starts."
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -4659,16 +5573,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            553,
-            194,
-            42
+            32,
+            516,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 553,
-            "right": 208,
-            "bottom": 595
+            "left": 32,
+            "top": 516,
+            "right": 288,
+            "bottom": 592
           },
           "panel_size": [
             320,
@@ -4685,16 +5599,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            556,
+            200,
+            602,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 556,
-            "right": 306,
-            "bottom": 592
+            "left": 200,
+            "top": 602,
+            "right": 288,
+            "bottom": 638
           },
           "panel_size": [
             320,
@@ -4712,15 +5626,15 @@
           "visible": true,
           "bounds": [
             41,
-            606,
+            469,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 606,
+            "top": 469,
             "right": 278,
-            "bottom": 642
+            "bottom": 505
           },
           "panel_size": [
             320,
@@ -4738,15 +5652,15 @@
           "visible": false,
           "bounds": [
             0,
-            541,
+            441,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 541,
+            "top": 441,
             "right": 640,
-            "bottom": 1021
+            "bottom": 921
           },
           "panel_size": [
             320,
@@ -4766,6 +5680,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -4785,6 +5700,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -4793,7 +5712,7 @@
         320,
         650
       ],
-      "image_sha256": "98cb58c316ff9087248da9ec96c4ce3be14f822a0a351537e346a0496bae035b",
+      "image_sha256": "efaca88d00ac38b088f00a4d1e1df39767e6e3eeeaa42fc69ef93f4420bc83d2",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -4807,8 +5726,8 @@
             650
           ],
           "pixel_count": 208000,
-          "color_count": 5124,
-          "dominant_color_ratio": 0.559889,
+          "color_count": 5797,
+          "dominant_color_ratio": 0.406043,
           "channel_range": 231
         },
         "regions": {}
@@ -4838,7 +5757,7 @@
           "enabled": true,
           "bounds": [
             27,
-            91,
+            206,
             266,
             44
           ],
@@ -4851,22 +5770,9 @@
           "enabled": true,
           "bounds": [
             27,
-            143,
+            258,
             266,
             44
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": false,
-          "bounds": [
-            218,
-            556,
-            88,
-            36
           ],
           "inside_panel": true,
           "text_fits": true
@@ -4877,7 +5783,7 @@
           "enabled": false,
           "bounds": [
             45,
-            606,
+            469,
             94,
             36
           ],
@@ -4890,8 +5796,21 @@
           "enabled": false,
           "bounds": [
             139,
-            606,
+            469,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            200,
+            602,
+            88,
             36
           ],
           "inside_panel": true,
@@ -4913,16 +5832,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
         "text": "Assistant unavailable",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
         "required_width": 160,
+        "unwrapped_width": 160,
         "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -4933,16 +5865,16 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            553,
-            194,
-            42
+            32,
+            516,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 553,
-            "right": 208,
-            "bottom": 595
+            "left": 32,
+            "top": 516,
+            "right": 288,
+            "bottom": 592
           },
           "panel_size": [
             320,
@@ -4959,16 +5891,16 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            556,
+            200,
+            602,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 556,
-            "right": 306,
-            "bottom": 592
+            "left": 200,
+            "top": 602,
+            "right": 288,
+            "bottom": 638
           },
           "panel_size": [
             320,
@@ -4986,15 +5918,15 @@
           "visible": true,
           "bounds": [
             41,
-            606,
+            469,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 606,
+            "top": 469,
             "right": 278,
-            "bottom": 642
+            "bottom": 505
           },
           "panel_size": [
             320,
@@ -5012,15 +5944,15 @@
           "visible": false,
           "bounds": [
             0,
-            541,
+            441,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 541,
+            "top": 441,
             "right": 640,
-            "bottom": 1021
+            "bottom": 921
           },
           "panel_size": [
             320,
@@ -5040,6 +5972,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -5059,6 +5992,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -5067,7 +6004,7 @@
         320,
         650
       ],
-      "image_sha256": "eee1317ba390344bc0e11c3c188a3cf1335f693f1bb74debc13c90f9771e0602",
+      "image_sha256": "d8d0239e3f23f43ad883d8da1581250ab3917654ffbe17bc06ecb1ca5c940730",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -5081,8 +6018,8 @@
             650
           ],
           "pixel_count": 208000,
-          "color_count": 3980,
-          "dominant_color_ratio": 0.56487,
+          "color_count": 4265,
+          "dominant_color_ratio": 0.411024,
           "channel_range": 221
         },
         "regions": {}
@@ -5107,27 +6044,53 @@
       "bubble_bounds": [],
       "visible_buttons": [
         {
-          "name": "AssistantEmptyStateAction",
-          "text": "Scan data source",
+          "name": "AssistantSuggestionPrompt",
+          "text": "Check the current workflow status",
           "enabled": true,
           "bounds": [
             34,
-            102,
-            692,
-            47
+            229,
+            343,
+            41
           ],
           "inside_panel": true,
           "text_fits": true
         },
         {
-          "name": "QToolButton_3",
-          "text": "Send",
+          "name": "AssistantSuggestionPrompt",
+          "text": "Explain the current settings",
           "enabled": true,
           "bounds": [
-            469,
-            556,
-            88,
-            36
+            384,
+            229,
+            342,
+            41
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantSuggestionPrompt",
+          "text": "Suggest the next step",
+          "enabled": true,
+          "bounds": [
+            34,
+            277,
+            343,
+            41
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantSuggestionPrompt",
+          "text": "Review the training configuration",
+          "enabled": true,
+          "bounds": [
+            384,
+            277,
+            342,
+            41
           ],
           "inside_panel": true,
           "text_fits": true
@@ -5138,7 +6101,7 @@
           "enabled": true,
           "bounds": [
             265,
-            606,
+            515,
             94,
             36
           ],
@@ -5151,8 +6114,21 @@
           "enabled": true,
           "bounds": [
             359,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            469,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -5162,7 +6138,7 @@
       "visible_actions": [],
       "visible_response_actions": [],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -5171,16 +6147,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -5192,15 +6181,15 @@
           "visible": true,
           "bounds": [
             203,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 203,
-            "top": 553,
+            "top": 562,
             "right": 459,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             760,
@@ -5218,15 +6207,15 @@
           "visible": true,
           "bounds": [
             469,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 469,
-            "top": 556,
+            "top": 582,
             "right": 557,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             760,
@@ -5244,15 +6233,15 @@
           "visible": true,
           "bounds": [
             261,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 261,
-            "top": 606,
+            "top": 515,
             "right": 498,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             760,
@@ -5270,15 +6259,15 @@
           "visible": true,
           "bounds": [
             10,
-            529,
+            495,
             740,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 529,
+            "top": 495,
             "right": 750,
-            "bottom": 542
+            "bottom": 508
           },
           "panel_size": [
             760,
@@ -5298,6 +6287,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -5317,6 +6307,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -5325,7 +6319,7 @@
         760,
         650
       ],
-      "image_sha256": "808f3054bc65b21de9b98523af704ff573c855824039d8f0ca2390a14194d9ba",
+      "image_sha256": "85ad0b8bf5fa66fa0dc09bcb2f2a8fc64861eb30ec73bb13ef69f6c0d2be0156",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -5339,8 +6333,8 @@
             650
           ],
           "pixel_count": 494000,
-          "color_count": 4730,
-          "dominant_color_ratio": 0.749032,
+          "color_count": 6602,
+          "dominant_color_ratio": 0.630563,
           "channel_range": 255
         },
         "regions": {}
@@ -5358,7 +6352,7 @@
       "native_display_scaling_observed": false,
       "viewport_width": 746,
       "horizontal_scroll_max": 0,
-      "vertical_scroll_max": 56,
+      "vertical_scroll_max": 132,
       "message_kinds": [
         "user",
         "clarification"
@@ -5395,26 +6389,13 @@
       "visible_buttons": [
         {
           "name": "AssistantResponseAction",
-          "text": "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 labe…",
+          "text": "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 l…",
           "enabled": true,
           "bounds": [
-            27,
-            475,
-            706,
-            47
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_4",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            469,
-            556,
-            88,
-            36
+            13,
+            411,
+            720,
+            44
           ],
           "inside_panel": true,
           "text_fits": true
@@ -5425,7 +6406,7 @@
           "enabled": true,
           "bounds": [
             265,
-            606,
+            515,
             94,
             36
           ],
@@ -5438,8 +6419,21 @@
           "enabled": true,
           "bounds": [
             359,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_11",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            469,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -5453,7 +6447,7 @@
         "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 label alignment before continuing"
       ],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -5462,16 +6456,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -5483,15 +6490,15 @@
           "visible": true,
           "bounds": [
             203,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 203,
-            "top": 553,
+            "top": 562,
             "right": 459,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             760,
@@ -5509,15 +6516,15 @@
           "visible": true,
           "bounds": [
             469,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 469,
-            "top": 556,
+            "top": 582,
             "right": 557,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             760,
@@ -5535,15 +6542,15 @@
           "visible": true,
           "bounds": [
             261,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 261,
-            "top": 606,
+            "top": 515,
             "right": 498,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             760,
@@ -5561,15 +6568,15 @@
           "visible": true,
           "bounds": [
             10,
-            529,
+            495,
             740,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 529,
+            "top": 495,
             "right": 750,
-            "bottom": 542
+            "bottom": 508
           },
           "panel_size": [
             760,
@@ -5586,16 +6593,16 @@
         "response_action": {
           "visible": true,
           "bounds": [
-            27,
-            475,
-            706,
-            47
+            13,
+            411,
+            720,
+            44
           ],
           "edges": {
-            "left": 27,
-            "top": 475,
+            "left": 13,
+            "top": 411,
             "right": 733,
-            "bottom": 522
+            "bottom": 455
           },
           "panel_size": [
             760,
@@ -5614,6 +6621,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -5633,6 +6641,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -5641,7 +6653,7 @@
         760,
         650
       ],
-      "image_sha256": "4d8df6a17a9833e2e95f50a5b7d54b7898c5bc16b3a87990316ae4d9664723ca",
+      "image_sha256": "be4bdd159312803e2b99e91eb32947575a82b813b760834f5755a25f3630d0c2",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -5655,8 +6667,8 @@
             650
           ],
           "pixel_count": 494000,
-          "color_count": 6080,
-          "dominant_color_ratio": 0.437101,
+          "color_count": 6895,
+          "dominant_color_ratio": 0.38917,
           "channel_range": 255
         },
         "regions": {}
@@ -5696,25 +6708,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Stop",
-          "enabled": true,
-          "bounds": [
-            469,
-            556,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": false,
           "bounds": [
             265,
-            606,
+            515,
             94,
             36
           ],
@@ -5727,8 +6726,21 @@
           "enabled": false,
           "bounds": [
             359,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Stop",
+          "enabled": true,
+          "bounds": [
+            469,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -5747,16 +6759,29 @@
         "cancelability": "cancellable",
         "cancelability_text": "You can stop before an XBrainLab action starts."
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -5768,15 +6793,15 @@
           "visible": true,
           "bounds": [
             203,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 203,
-            "top": 553,
+            "top": 562,
             "right": 459,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             760,
@@ -5794,15 +6819,15 @@
           "visible": true,
           "bounds": [
             469,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 469,
-            "top": 556,
+            "top": 582,
             "right": 557,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             760,
@@ -5820,15 +6845,15 @@
           "visible": true,
           "bounds": [
             261,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 261,
-            "top": 606,
+            "top": 515,
             "right": 498,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             760,
@@ -5846,15 +6871,15 @@
           "visible": false,
           "bounds": [
             0,
-            541,
+            487,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 541,
+            "top": 487,
             "right": 640,
-            "bottom": 1021
+            "bottom": 967
           },
           "panel_size": [
             760,
@@ -5874,6 +6899,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -5893,6 +6919,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -5901,7 +6931,7 @@
         760,
         650
       ],
-      "image_sha256": "9ad3c69bb1ca3980a67698f1103ef5f2776cae0c94772d23208a66ed637f7502",
+      "image_sha256": "5e273f8e98bfea8129f2592946dc3f0bf19a373586c3454b9d862f1ad57fcd62",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -5915,8 +6945,8 @@
             650
           ],
           "pixel_count": 494000,
-          "color_count": 5121,
-          "dominant_color_ratio": 0.625759,
+          "color_count": 5794,
+          "dominant_color_ratio": 0.542682,
           "channel_range": 231
         },
         "regions": {}
@@ -5946,7 +6976,7 @@
           "enabled": true,
           "bounds": [
             35,
-            75,
+            247,
             341,
             44
           ],
@@ -5959,22 +6989,9 @@
           "enabled": true,
           "bounds": [
             384,
-            75,
+            247,
             341,
             44
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": false,
-          "bounds": [
-            469,
-            556,
-            88,
-            36
           ],
           "inside_panel": true,
           "text_fits": true
@@ -5985,7 +7002,7 @@
           "enabled": false,
           "bounds": [
             265,
-            606,
+            515,
             94,
             36
           ],
@@ -5998,8 +7015,21 @@
           "enabled": false,
           "bounds": [
             359,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            469,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -6021,16 +7051,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
         "text": "Assistant unavailable",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
         "required_width": 160,
+        "unwrapped_width": 160,
         "required_height": 18,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -6042,15 +7085,15 @@
           "visible": true,
           "bounds": [
             203,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 203,
-            "top": 553,
+            "top": 562,
             "right": 459,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             760,
@@ -6068,15 +7111,15 @@
           "visible": true,
           "bounds": [
             469,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 469,
-            "top": 556,
+            "top": 582,
             "right": 557,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             760,
@@ -6094,15 +7137,15 @@
           "visible": true,
           "bounds": [
             261,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 261,
-            "top": 606,
+            "top": 515,
             "right": 498,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             760,
@@ -6120,15 +7163,15 @@
           "visible": false,
           "bounds": [
             0,
-            541,
+            487,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 541,
+            "top": 487,
             "right": 640,
-            "bottom": 1021
+            "bottom": 967
           },
           "panel_size": [
             760,
@@ -6148,6 +7191,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -6167,6 +7211,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -6175,7 +7223,7 @@
         760,
         650
       ],
-      "image_sha256": "818f16a6e4677c2e7628ba2f84b5ba9b87e4a4559a7fd33c9e174852af171616",
+      "image_sha256": "60e0ee63f7d33439c7880dcef681e73807bc08892149d9729820da554a7636ba",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -6189,8 +7237,8 @@
             650
           ],
           "pixel_count": 494000,
-          "color_count": 3981,
-          "dominant_color_ratio": 0.657451,
+          "color_count": 4266,
+          "dominant_color_ratio": 0.574374,
           "channel_range": 221
         },
         "regions": {}
@@ -6215,27 +7263,53 @@
       "bubble_bounds": [],
       "visible_buttons": [
         {
-          "name": "AssistantEmptyStateAction",
-          "text": "Scan data source",
+          "name": "AssistantSuggestionPrompt",
+          "text": "Check the current workflow status",
           "enabled": true,
           "bounds": [
             294,
-            102,
-            692,
-            47
+            229,
+            343,
+            41
           ],
           "inside_panel": true,
           "text_fits": true
         },
         {
-          "name": "QToolButton_3",
-          "text": "Send",
+          "name": "AssistantSuggestionPrompt",
+          "text": "Explain the current settings",
           "enabled": true,
           "bounds": [
-            729,
-            556,
-            88,
-            36
+            644,
+            229,
+            342,
+            41
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantSuggestionPrompt",
+          "text": "Suggest the next step",
+          "enabled": true,
+          "bounds": [
+            294,
+            277,
+            343,
+            41
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "AssistantSuggestionPrompt",
+          "text": "Review the training configuration",
+          "enabled": true,
+          "bounds": [
+            644,
+            277,
+            342,
+            41
           ],
           "inside_panel": true,
           "text_fits": true
@@ -6246,7 +7320,7 @@
           "enabled": true,
           "bounds": [
             525,
-            606,
+            515,
             94,
             36
           ],
@@ -6259,8 +7333,21 @@
           "enabled": true,
           "bounds": [
             619,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            729,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -6270,7 +7357,7 @@
       "visible_actions": [],
       "visible_response_actions": [],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -6279,16 +7366,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -6300,15 +7400,15 @@
           "visible": true,
           "bounds": [
             463,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 463,
-            "top": 553,
+            "top": 562,
             "right": 719,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             1280,
@@ -6326,15 +7426,15 @@
           "visible": true,
           "bounds": [
             729,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 729,
-            "top": 556,
+            "top": 582,
             "right": 817,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             1280,
@@ -6352,15 +7452,15 @@
           "visible": true,
           "bounds": [
             521,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 521,
-            "top": 606,
+            "top": 515,
             "right": 758,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             1280,
@@ -6378,15 +7478,15 @@
           "visible": true,
           "bounds": [
             10,
-            529,
+            495,
             1260,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 529,
+            "top": 495,
             "right": 1270,
-            "bottom": 542
+            "bottom": 508
           },
           "panel_size": [
             1280,
@@ -6406,6 +7506,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -6425,6 +7526,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -6433,7 +7538,7 @@
         1280,
         650
       ],
-      "image_sha256": "1d84211d8b740a6b0f61cc98300c81ce459d77f2f5ab41e32ec377edfd9e8000",
+      "image_sha256": "dfa1af5238769a444fc62392ab04dafcb262b5953473c4db9c67b8c632799117",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -6447,8 +7552,8 @@
             650
           ],
           "pixel_count": 832000,
-          "color_count": 4730,
-          "dominant_color_ratio": 0.770363,
+          "color_count": 6602,
+          "dominant_color_ratio": 0.666272,
           "channel_range": 255
         },
         "regions": {}
@@ -6466,7 +7571,7 @@
       "native_display_scaling_observed": false,
       "viewport_width": 1266,
       "horizontal_scroll_max": 0,
-      "vertical_scroll_max": 56,
+      "vertical_scroll_max": 132,
       "message_kinds": [
         "user",
         "clarification"
@@ -6503,26 +7608,13 @@
       "visible_buttons": [
         {
           "name": "AssistantResponseAction",
-          "text": "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 label alignment before co…",
+          "text": "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 l…",
           "enabled": true,
           "bounds": [
-            208,
-            475,
-            863,
-            47
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_4",
-          "text": "Send",
-          "enabled": true,
-          "bounds": [
-            729,
-            556,
-            88,
-            36
+            273,
+            411,
+            720,
+            44
           ],
           "inside_panel": true,
           "text_fits": true
@@ -6533,7 +7625,7 @@
           "enabled": true,
           "bounds": [
             525,
-            606,
+            515,
             94,
             36
           ],
@@ -6546,8 +7638,21 @@
           "enabled": true,
           "bounds": [
             619,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_11",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            729,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -6561,7 +7666,7 @@
         "Review subject_01_session_02_task_motor_run_000000000000000000000000000001 label alignment before continuing"
       ],
       "send_text": "Send",
-      "send_enabled": true,
+      "send_enabled": false,
       "input_enabled": true,
       "activity": {
         "visible": false,
@@ -6570,16 +7675,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -6591,15 +7709,15 @@
           "visible": true,
           "bounds": [
             463,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 463,
-            "top": 553,
+            "top": 562,
             "right": 719,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             1280,
@@ -6617,15 +7735,15 @@
           "visible": true,
           "bounds": [
             729,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 729,
-            "top": 556,
+            "top": 582,
             "right": 817,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             1280,
@@ -6643,15 +7761,15 @@
           "visible": true,
           "bounds": [
             521,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 521,
-            "top": 606,
+            "top": 515,
             "right": 758,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             1280,
@@ -6669,15 +7787,15 @@
           "visible": true,
           "bounds": [
             10,
-            529,
+            495,
             1260,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 529,
+            "top": 495,
             "right": 1270,
-            "bottom": 542
+            "bottom": 508
           },
           "panel_size": [
             1280,
@@ -6694,16 +7812,16 @@
         "response_action": {
           "visible": true,
           "bounds": [
-            208,
-            475,
-            863,
-            47
+            273,
+            411,
+            720,
+            44
           ],
           "edges": {
-            "left": 208,
-            "top": 475,
-            "right": 1071,
-            "bottom": 522
+            "left": 273,
+            "top": 411,
+            "right": 993,
+            "bottom": 455
           },
           "panel_size": [
             1280,
@@ -6722,6 +7840,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -6741,6 +7860,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -6749,7 +7872,7 @@
         1280,
         650
       ],
-      "image_sha256": "fd8f297e1c31f64c8926bbc48da816fa116e1797f7ef3412c06de6de225ff762",
+      "image_sha256": "d0caaa5a93a9d9ebbc103ebb1da2298a2c370f9e72619e22d8d7ed4070cd5994",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -6763,8 +7886,8 @@
             650
           ],
           "pixel_count": 832000,
-          "color_count": 6304,
-          "dominant_color_ratio": 0.350713,
+          "color_count": 6849,
+          "dominant_color_ratio": 0.371606,
           "channel_range": 255
         },
         "regions": {}
@@ -6804,25 +7927,12 @@
       ],
       "visible_buttons": [
         {
-          "name": "QToolButton_3",
-          "text": "Stop",
-          "enabled": true,
-          "bounds": [
-            729,
-            556,
-            88,
-            36
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
           "name": "AssistantAskMode",
           "text": "One step",
           "enabled": false,
           "bounds": [
             525,
-            606,
+            515,
             94,
             36
           ],
@@ -6835,8 +7945,21 @@
           "enabled": false,
           "bounds": [
             619,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Stop",
+          "enabled": true,
+          "bounds": [
+            729,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -6855,16 +7978,29 @@
         "cancelability": "cancellable",
         "cancelability_text": "You can stop before an XBrainLab action starts."
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -6876,15 +8012,15 @@
           "visible": true,
           "bounds": [
             463,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 463,
-            "top": 553,
+            "top": 562,
             "right": 719,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             1280,
@@ -6902,15 +8038,15 @@
           "visible": true,
           "bounds": [
             729,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 729,
-            "top": 556,
+            "top": 582,
             "right": 817,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             1280,
@@ -6928,15 +8064,15 @@
           "visible": true,
           "bounds": [
             521,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 521,
-            "top": 606,
+            "top": 515,
             "right": 758,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             1280,
@@ -6954,15 +8090,15 @@
           "visible": false,
           "bounds": [
             0,
-            541,
+            487,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 541,
+            "top": 487,
             "right": 640,
-            "bottom": 1021
+            "bottom": 967
           },
           "panel_size": [
             1280,
@@ -6982,6 +8118,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -7001,6 +8138,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -7009,7 +8150,7 @@
         1280,
         650
       ],
-      "image_sha256": "0da1920146217eb92995c8a62922754dbc464a920ad5c5c132c3c2975a6c0bea",
+      "image_sha256": "6aec199d9b680cd6da90159a71bf73280af0cbb21a1a0bd6d101db2b6a546993",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -7023,8 +8164,8 @@
             650
           ],
           "pixel_count": 832000,
-          "color_count": 5121,
-          "dominant_color_ratio": 0.709669,
+          "color_count": 5794,
+          "dominant_color_ratio": 0.626593,
           "channel_range": 231
         },
         "regions": {}
@@ -7054,7 +8195,7 @@
           "enabled": true,
           "bounds": [
             295,
-            75,
+            247,
             341,
             44
           ],
@@ -7067,22 +8208,9 @@
           "enabled": true,
           "bounds": [
             644,
-            75,
+            247,
             341,
             44
-          ],
-          "inside_panel": true,
-          "text_fits": true
-        },
-        {
-          "name": "QToolButton_3",
-          "text": "Send",
-          "enabled": false,
-          "bounds": [
-            729,
-            556,
-            88,
-            36
           ],
           "inside_panel": true,
           "text_fits": true
@@ -7093,7 +8221,7 @@
           "enabled": false,
           "bounds": [
             525,
-            606,
+            515,
             94,
             36
           ],
@@ -7106,8 +8234,21 @@
           "enabled": false,
           "bounds": [
             619,
-            606,
+            515,
             135,
+            36
+          ],
+          "inside_panel": true,
+          "text_fits": true
+        },
+        {
+          "name": "QToolButton_10",
+          "text": "Send",
+          "enabled": false,
+          "bounds": [
+            729,
+            582,
+            88,
             36
           ],
           "inside_panel": true,
@@ -7129,16 +8270,29 @@
         "cancelability": "none",
         "cancelability_text": ""
       },
+      "confirmation": {
+        "visible": false,
+        "title": "Confirmation required",
+        "description": "",
+        "values": "",
+        "reason": "",
+        "actions": [
+          "Keep current value",
+          "Apply change"
+        ],
+        "request_id": null
+      },
       "composer_placeholder": {
         "text": "Assistant unavailable",
         "visible": true,
         "viewport_width": 232,
-        "viewport_height": 22,
+        "viewport_height": 56,
         "document_margin": 4,
         "required_width": 160,
+        "unwrapped_width": 160,
         "required_height": 18,
         "available_width": 224,
-        "available_height": 18,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -7150,15 +8304,15 @@
           "visible": true,
           "bounds": [
             463,
-            553,
+            562,
             256,
-            42
+            76
           ],
           "edges": {
             "left": 463,
-            "top": 553,
+            "top": 562,
             "right": 719,
-            "bottom": 595
+            "bottom": 638
           },
           "panel_size": [
             1280,
@@ -7176,15 +8330,15 @@
           "visible": true,
           "bounds": [
             729,
-            556,
+            582,
             88,
             36
           ],
           "edges": {
             "left": 729,
-            "top": 556,
+            "top": 582,
             "right": 817,
-            "bottom": 592
+            "bottom": 618
           },
           "panel_size": [
             1280,
@@ -7202,15 +8356,15 @@
           "visible": true,
           "bounds": [
             521,
-            606,
+            515,
             237,
             36
           ],
           "edges": {
             "left": 521,
-            "top": 606,
+            "top": 515,
             "right": 758,
-            "bottom": 642
+            "bottom": 551
           },
           "panel_size": [
             1280,
@@ -7228,15 +8382,15 @@
           "visible": false,
           "bounds": [
             0,
-            541,
+            487,
             640,
             480
           ],
           "edges": {
             "left": 0,
-            "top": 541,
+            "top": 487,
             "right": 640,
-            "bottom": 1021
+            "bottom": 967
           },
           "panel_size": [
             1280,
@@ -7256,6 +8410,7 @@
         "no_horizontal_scroll": true,
         "message_bubbles_inside_viewport": true,
         "visible_buttons_inside_panel": true,
+        "visible_button_text_fits": true,
         "visible_text_fits": true,
         "composer_placeholder_fits": true,
         "composer_visible": true,
@@ -7275,6 +8430,10 @@
         "expected_activity_visibility_present": true,
         "expected_activity_title_present": true,
         "expected_cancelability_present": true,
+        "expected_confirmation_visibility_present": true,
+        "expected_confirmation_title_present": true,
+        "expected_confirmation_values_present": true,
+        "expected_confirmation_actions_present": true,
         "legacy_muted_status_hidden": true,
         "render_content_ready": true
       },
@@ -7283,7 +8442,7 @@
         1280,
         650
       ],
-      "image_sha256": "599bee5ad168d9ccac21f74e28e4e15fa760f869108bc91816a2c3cdabace2dd",
+      "image_sha256": "4b75ae60fcab23559f9920d81cb5a2069c6f2546176f69c0e5a88f9ae8364e86",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -7297,8 +8456,8 @@
             650
           ],
           "pixel_count": 832000,
-          "color_count": 3981,
-          "dominant_color_ratio": 0.728487,
+          "color_count": 4266,
+          "dominant_color_ratio": 0.64541,
           "channel_range": 221
         },
         "regions": {}
@@ -7342,22 +8501,23 @@
         "dock_width": 320,
         "dock_height": 738,
         "title_bar_visible": true,
-        "title_text": "XBrainLab",
+        "title_text": "XBrainLab Assistant",
         "title_text_fits": true,
         "title_bar_inside_bounds": true,
         "panel_inside_bounds": true,
         "horizontal_scrollbar_max": 0,
         "overflowing_widgets": [],
         "composer_placeholder": {
-          "text": "Ask about EEG",
+          "text": "Ask about the current EEG workflow...",
           "visible": true,
-          "viewport_width": 170,
-          "viewport_height": 22,
+          "viewport_width": 232,
+          "viewport_height": 56,
           "document_margin": 4,
-          "required_width": 110,
-          "required_height": 18,
-          "available_width": 162,
-          "available_height": 18,
+          "required_width": 199,
+          "unwrapped_width": 283,
+          "required_height": 36,
+          "available_width": 224,
+          "available_height": 52,
           "fits_width": true,
           "fits_height": true,
           "fits": true
@@ -7390,15 +8550,16 @@
         }
       },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -7408,20 +8569,20 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            609,
-            194,
-            42
+            32,
+            570,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 609,
-            "right": 208,
-            "bottom": 651
+            "left": 32,
+            "top": 570,
+            "right": 288,
+            "bottom": 646
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7434,20 +8595,20 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            612,
+            200,
+            656,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 612,
-            "right": 306,
-            "bottom": 648
+            "left": 200,
+            "top": 656,
+            "right": 288,
+            "bottom": 692
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7461,19 +8622,19 @@
           "visible": true,
           "bounds": [
             41,
-            662,
+            523,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 662,
+            "top": 523,
             "right": 278,
-            "bottom": 698
+            "bottom": 559
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7487,19 +8648,19 @@
           "visible": true,
           "bounds": [
             10,
-            585,
+            503,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 585,
+            "top": 503,
             "right": 310,
-            "bottom": 598
+            "bottom": 516
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7515,7 +8676,7 @@
         1180,
         760
       ],
-      "image_sha256": "b725591185f017c3debd1f5352fb7c5ea5b3565d85531613697183d35cd1a29b",
+      "image_sha256": "f4ee44f6061d8292445c3364d67dea1cf000bdf7e79510996dc6ec7be1a535a1",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -7529,8 +8690,8 @@
             760
           ],
           "pixel_count": 896800,
-          "color_count": 10758,
-          "dominant_color_ratio": 0.709761,
+          "color_count": 11668,
+          "dominant_color_ratio": 0.683386,
           "channel_range": 255
         },
         "regions": {
@@ -7551,9 +8712,9 @@
             "passed": true,
             "box": [
               872,
-              218,
+              364,
               1168,
-              302
+              448
             ],
             "pixel_count": 24864,
             "color_count": 1288,
@@ -7563,15 +8724,15 @@
           "assistant_primary_action": {
             "passed": true,
             "box": [
-              1078,
-              644,
-              1166,
-              680
+              1060,
+              690,
+              1148,
+              726
             ],
             "pixel_count": 3168,
-            "color_count": 201,
-            "dominant_color_ratio": 0.825758,
-            "channel_range": 218
+            "color_count": 190,
+            "dominant_color_ratio": 0.828598,
+            "channel_range": 117
           }
         }
       }
@@ -7614,22 +8775,23 @@
         "dock_width": 320,
         "dock_height": 738,
         "title_bar_visible": true,
-        "title_text": "XBrainLab",
+        "title_text": "XBrainLab Assistant",
         "title_text_fits": true,
         "title_bar_inside_bounds": true,
         "panel_inside_bounds": true,
         "horizontal_scrollbar_max": 0,
         "overflowing_widgets": [],
         "composer_placeholder": {
-          "text": "Ask about EEG",
+          "text": "Ask about the current EEG workflow...",
           "visible": true,
-          "viewport_width": 170,
-          "viewport_height": 22,
+          "viewport_width": 232,
+          "viewport_height": 56,
           "document_margin": 4,
-          "required_width": 110,
-          "required_height": 18,
-          "available_width": 162,
-          "available_height": 18,
+          "required_width": 199,
+          "unwrapped_width": 283,
+          "required_height": 36,
+          "available_width": 224,
+          "available_height": 52,
           "fits_width": true,
           "fits_height": true,
           "fits": true
@@ -7662,15 +8824,16 @@
         }
       },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -7680,20 +8843,20 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            609,
-            194,
-            42
+            32,
+            570,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 609,
-            "right": 208,
-            "bottom": 651
+            "left": 32,
+            "top": 570,
+            "right": 288,
+            "bottom": 646
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7706,20 +8869,20 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            612,
+            200,
+            656,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 612,
-            "right": 306,
-            "bottom": 648
+            "left": 200,
+            "top": 656,
+            "right": 288,
+            "bottom": 692
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7733,19 +8896,19 @@
           "visible": true,
           "bounds": [
             41,
-            662,
+            523,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 662,
+            "top": 523,
             "right": 278,
-            "bottom": 698
+            "bottom": 559
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7759,19 +8922,19 @@
           "visible": false,
           "bounds": [
             10,
-            605,
+            523,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 605,
+            "top": 523,
             "right": 310,
-            "bottom": 618
+            "bottom": 536
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7787,7 +8950,7 @@
         1180,
         760
       ],
-      "image_sha256": "5c7e4d81db66df45d05fc581cc1c96e4e98b4ee6ef1d77c0a5a691da46febae5",
+      "image_sha256": "2c34a60c28fcee554301f55631c4faf71b1c6e95829ede9c0c1576615a359065",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -7801,8 +8964,8 @@
             760
           ],
           "pixel_count": 896800,
-          "color_count": 12741,
-          "dominant_color_ratio": 0.66643,
+          "color_count": 13554,
+          "dominant_color_ratio": 0.628876,
           "channel_range": 246
         },
         "regions": {
@@ -7823,9 +8986,9 @@
             "passed": true,
             "box": [
               872,
-              218,
+              220,
               1168,
-              302
+              304
             ],
             "pixel_count": 24864,
             "color_count": 1288,
@@ -7835,10 +8998,10 @@
           "assistant_primary_action": {
             "passed": true,
             "box": [
-              1078,
-              644,
-              1166,
-              680
+              1060,
+              690,
+              1148,
+              726
             ],
             "pixel_count": 3168,
             "color_count": 360,
@@ -7849,9 +9012,9 @@
             "passed": true,
             "box": [
               872,
-              314,
+              316,
               1168,
-              429
+              431
             ],
             "pixel_count": 34040,
             "color_count": 2187,
@@ -7899,22 +9062,23 @@
         "dock_width": 320,
         "dock_height": 738,
         "title_bar_visible": true,
-        "title_text": "XBrainLab",
+        "title_text": "XBrainLab Assistant",
         "title_text_fits": true,
         "title_bar_inside_bounds": true,
         "panel_inside_bounds": true,
         "horizontal_scrollbar_max": 0,
         "overflowing_widgets": [],
         "composer_placeholder": {
-          "text": "Ask about EEG",
+          "text": "Ask about the current EEG workflow...",
           "visible": true,
-          "viewport_width": 170,
-          "viewport_height": 22,
+          "viewport_width": 232,
+          "viewport_height": 56,
           "document_margin": 4,
-          "required_width": 110,
-          "required_height": 18,
-          "available_width": 162,
-          "available_height": 18,
+          "required_width": 199,
+          "unwrapped_width": 283,
+          "required_height": 36,
+          "available_width": 224,
+          "available_height": 52,
           "fits_width": true,
           "fits_height": true,
           "fits": true
@@ -7947,15 +9111,16 @@
         }
       },
       "composer_placeholder": {
-        "text": "Ask about EEG",
+        "text": "Ask about the current EEG workflow...",
         "visible": true,
-        "viewport_width": 170,
-        "viewport_height": 22,
+        "viewport_width": 232,
+        "viewport_height": 56,
         "document_margin": 4,
-        "required_width": 110,
-        "required_height": 18,
-        "available_width": 162,
-        "available_height": 18,
+        "required_width": 199,
+        "unwrapped_width": 283,
+        "required_height": 36,
+        "available_width": 224,
+        "available_height": 52,
         "fits_width": true,
         "fits_height": true,
         "fits": true
@@ -7965,20 +9130,20 @@
         "composer": {
           "visible": true,
           "bounds": [
-            14,
-            609,
-            194,
-            42
+            32,
+            570,
+            256,
+            76
           ],
           "edges": {
-            "left": 14,
-            "top": 609,
-            "right": 208,
-            "bottom": 651
+            "left": 32,
+            "top": 570,
+            "right": 288,
+            "bottom": 646
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -7991,20 +9156,20 @@
         "send": {
           "visible": true,
           "bounds": [
-            218,
-            612,
+            200,
+            656,
             88,
             36
           ],
           "edges": {
-            "left": 218,
-            "top": 612,
-            "right": 306,
-            "bottom": 648
+            "left": 200,
+            "top": 656,
+            "right": 288,
+            "bottom": 692
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -8018,19 +9183,19 @@
           "visible": true,
           "bounds": [
             41,
-            662,
+            523,
             237,
             36
           ],
           "edges": {
             "left": 41,
-            "top": 662,
+            "top": 523,
             "right": 278,
-            "bottom": 698
+            "bottom": 559
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -8044,19 +9209,19 @@
           "visible": false,
           "bounds": [
             10,
-            605,
+            523,
             300,
             13
           ],
           "edges": {
             "left": 10,
-            "top": 605,
+            "top": 523,
             "right": 310,
-            "bottom": 618
+            "bottom": 536
           },
           "panel_size": [
             320,
-            706
+            704
           ],
           "sides": {
             "left": true,
@@ -8072,7 +9237,7 @@
         1180,
         760
       ],
-      "image_sha256": "4647866c73745abfbc1a6be1f38c0984829c66a78919f4bf2a7652a387a043ac",
+      "image_sha256": "866403a32bb2466cfa78a200820d3e1e4ceca41269ad73cf8b1beed08b4c22fb",
       "render_attempts": 2,
       "png_color_mode": "RGB",
       "render_content": {
@@ -8086,8 +9251,8 @@
             760
           ],
           "pixel_count": 896800,
-          "color_count": 12841,
-          "dominant_color_ratio": 0.66709,
+          "color_count": 13654,
+          "dominant_color_ratio": 0.629536,
           "channel_range": 246
         },
         "regions": {
@@ -8108,9 +9273,9 @@
             "passed": true,
             "box": [
               872,
-              218,
+              220,
               1168,
-              302
+              304
             ],
             "pixel_count": 24864,
             "color_count": 1288,
@@ -8120,10 +9285,10 @@
           "assistant_primary_action": {
             "passed": true,
             "box": [
-              1078,
-              644,
-              1166,
-              680
+              1060,
+              690,
+              1148,
+              726
             ],
             "pixel_count": 3168,
             "color_count": 316,
@@ -8134,9 +9299,9 @@
             "passed": true,
             "box": [
               872,
-              314,
+              316,
               1168,
-              427
+              429
             ],
             "pixel_count": 33448,
             "color_count": 2332,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from itertools import pairwise
 from math import ceil
 from typing import Any, cast
@@ -257,7 +258,7 @@ def assistant_main_window_evidence(
         and dock.isVisible()
         and not dock_is_floating
         and "dock" not in out_of_window
-        and title_text == "XBrainLab"
+        and title_text == "XBrainLab Assistant"
         and title_text_fits
         and composer_visible
         and composer_inside_dock
@@ -587,6 +588,35 @@ def _widget_inside(parent: QWidget, child: QWidget, tolerance: int = 2) -> bool:
     )
 
 
+def _label_text_exceeds_bounds(label: QLabel) -> bool:
+    """Return whether a visible label needs more space than its content rect."""
+    if not label.isVisible() or not label.text():
+        return False
+    contents = label.contentsRect()
+    if label.wordWrap():
+        unbreakable_segments = re.split(r"[\s\u200b]+", label.text())
+        if any(
+            label.fontMetrics().horizontalAdvance(segment) > contents.width() + 2
+            for segment in unbreakable_segments
+            if segment
+        ):
+            return True
+        needed = label.fontMetrics().boundingRect(
+            QRect(0, 0, max(contents.width(), 1), 10000),
+            int(
+                Qt.AlignmentFlag.AlignLeft
+                | Qt.AlignmentFlag.AlignTop
+                | Qt.TextFlag.TextWordWrap
+            ),
+            label.text(),
+        )
+        return needed.height() > contents.height() + 3
+    return (
+        label.fontMetrics().horizontalAdvance(" ".join(label.text().split()))
+        > contents.width() + 2
+    )
+
+
 def _assistant_text_overflow(panel: Any) -> list[str]:
     """Return named assistant widgets whose rendered text exceeds bounds."""
     overflows: list[str] = []
@@ -625,17 +655,21 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
         label = getattr(panel, name, None)
         if label is None or not label.isVisible() or not label.text():
             continue
-        contents = label.contentsRect()
-        flags = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        if label.wordWrap():
-            flags |= int(Qt.TextFlag.TextWordWrap)
-        needed = label.fontMetrics().boundingRect(
-            QRect(0, 0, max(contents.width(), 1), 10000),
-            flags,
-            label.text(),
-        )
-        if needed.height() > contents.height() + 3:
+        if _label_text_exceeds_bounds(label):
             overflows.append(name)
+
+    confirmation_card = getattr(panel, "confirmation_card_widget", None)
+    if confirmation_card is not None and confirmation_card.isVisible():
+        for name in (
+            "title_label",
+            "description_label",
+            "values_summary",
+            "reason_title",
+            "reason_label",
+        ):
+            label = getattr(confirmation_card, name, None)
+            if isinstance(label, QLabel) and _label_text_exceeds_bounds(label):
+                overflows.append(f"confirmation_card/{name}")
 
     for index, bubble in enumerate(
         child for child in panel.findChildren(MessageBubble) if child.isVisible()
@@ -658,7 +692,7 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
 
 
 def assistant_composer_placeholder_evidence(panel: Any) -> dict[str, Any]:
-    """Measure the composer placeholder against its actual viewport and font."""
+    """Measure the wrapped composer placeholder against its real viewport."""
     input_field = cast(Any, panel.input_field)
     viewport_factory = getattr(input_field, "viewport", None)
     viewport = cast(
@@ -679,9 +713,19 @@ def assistant_composer_placeholder_evidence(panel: Any) -> dict[str, Any]:
     # remaining viewport height is the actual vertical clipping boundary.
     available_height = max(viewport.contentsRect().height() - document_margin, 0)
     metrics = input_field.fontMetrics()
-    required_width = metrics.horizontalAdvance(placeholder)
-    required_height = metrics.height()
-    fits_width = not placeholder or required_width <= available_width
+    unwrapped_width = metrics.horizontalAdvance(placeholder)
+    wrapped_bounds = metrics.boundingRect(
+        QRect(0, 0, max(available_width, 1), 10000),
+        int(
+            Qt.AlignmentFlag.AlignLeft
+            | Qt.AlignmentFlag.AlignTop
+            | Qt.TextFlag.TextWordWrap
+        ),
+        placeholder,
+    )
+    required_width = min(unwrapped_width, wrapped_bounds.width())
+    required_height = wrapped_bounds.height()
+    fits_width = not placeholder or wrapped_bounds.width() <= available_width
     fits_height = not placeholder or required_height <= available_height
     return {
         "text": placeholder,
@@ -690,6 +734,7 @@ def assistant_composer_placeholder_evidence(panel: Any) -> dict[str, Any]:
         "viewport_height": viewport.height(),
         "document_margin": document_margin,
         "required_width": required_width,
+        "unwrapped_width": unwrapped_width,
         "required_height": required_height,
         "available_width": available_width,
         "available_height": available_height,
@@ -939,6 +984,7 @@ def assistant_runtime_evidence(panel: Any) -> dict[str, Any]:
         "phase": str(phase_text),
         "panel_processing": bool(panel.is_processing),
         "composer_input_enabled": panel.input_field.isEnabled(),
+        "composer_has_text": bool(panel.input_field.toPlainText().strip()),
         "composer_visible": panel.input_widget.isVisible(),
         "send_button_enabled": panel.send_btn.isEnabled(),
         "send_button_text": panel.send_btn.text(),

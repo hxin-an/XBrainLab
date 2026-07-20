@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from PIL import Image
+from PyQt6.QtWidgets import QLabel
 
 from scripts.dev import capture_chatpanel_ui_ux_walkthrough as walkthrough_module
 from scripts.dev.capture_chatpanel_ui_ux_walkthrough import (
@@ -61,6 +62,13 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         spec.logical_width == 320
         and spec.logical_height == 650
         and spec.review_state == "long_clarification_action"
+        for spec in SCENARIOS
+    )
+    assert any(
+        spec.logical_width == 320
+        and spec.confirmation_visible
+        and spec.scroll_to_bottom
+        and spec.filename == "narrow-setting-change-confirmation-max-content.png"
         for spec in SCENARIOS
     )
     assert DEFAULT_OUTPUT_DIR.as_posix().endswith(
@@ -206,7 +214,14 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert teardown["dedicated_qthread"]["finished_signal_observed"] is True
     assert teardown["dedicated_qthread"]["running_after_cleanup"] is False
     assert teardown["gui_thread_blocking_wait_used"] is False
-    assert teardown["observation_method"] == "qt_signals_and_event_loop"
+    assert teardown["initial_close_call_duration_ms"] < 100
+    assert teardown["gui_heartbeat"]["count_during_cleanup"] >= 2
+    assert teardown["gui_heartbeat"]["max_gap_ms"] < 100
+    assert teardown["gui_heartbeat"]["responsive"] is True
+    assert (
+        teardown["observation_method"]
+        == "qt_signals_event_loop_heartbeat_and_close_latency"
+    )
     assert teardown["passed"] is True
 
     metric_transition = payload["metric_tab_transition"]
@@ -311,6 +326,34 @@ def test_image_content_gate_rejects_blank_canvas_and_required_regions(tmp_path) 
     assert all(region["passed"] is False for region in evidence["regions"].values())
 
 
+def test_scaled_child_regions_maps_logical_geometry_to_physical_pixels(
+    qapp,
+) -> None:
+    root = ChatPanel()
+    root.resize(320, 520)
+    root.show()
+    qapp.processEvents()
+
+    child = root.input_field
+    origin = child.mapTo(root, child.rect().topLeft())
+    regions = walkthrough_module._scaled_child_regions(
+        root,
+        {"composer": child},
+        pixel_width=400,
+        pixel_height=650,
+    )
+
+    assert regions["composer"] == (
+        round(origin.x() * 1.25),
+        round(origin.y() * 1.25),
+        round(child.width() * 1.25),
+        round(child.height() * 1.25),
+    )
+    root.close()
+    root.deleteLater()
+    qapp.processEvents()
+
+
 def test_mode_description_participates_in_overflow_and_geometry_evidence(
     qapp,
 ) -> None:
@@ -334,15 +377,66 @@ def test_mode_description_participates_in_overflow_and_geometry_evidence(
     qapp.processEvents()
 
 
-def test_teardown_capture_has_no_qthread_blocking_wait_call() -> None:
-    source_path = Path(walkthrough_module.__file__)
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
-    wait_calls = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "wait"
-    ]
+def test_confirmation_card_labels_participate_in_overflow_evidence(qapp) -> None:
+    from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 
-    assert wait_calls == []
+    panel = ChatPanel()
+    panel.resize(320, 680)
+    panel.set_runtime_state("ready")
+    panel.show_confirmation_request(
+        AgentConfirmationRequest.for_action(
+            command_name="configure_training",
+            params={"batch_size": 16},
+            action_label="Apply change",
+            description="Reduce GPU memory pressure before training.",
+            destructive=False,
+            publication_generation=7,
+        ),
+        current_values={"Batch size": "32"},
+    )
+    panel.show()
+    qapp.processEvents()
+    panel.confirmation_card_widget.reason_label.setFixedHeight(1)
+    qapp.processEvents()
+
+    overflow = human_evidence._assistant_text_overflow(panel)
+
+    assert "confirmation_card/reason_label" in overflow
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_wordwrapped_label_reports_unbreakable_token_overflow(qapp) -> None:
+    label = QLabel("W" * 160)
+    label.setWordWrap(True)
+    label.resize(230, 200)
+    label.show()
+    qapp.processEvents()
+
+    assert human_evidence._label_text_exceeds_bounds(label) is True
+    label.close()
+    label.deleteLater()
+    qapp.processEvents()
+
+
+def test_product_assistant_teardown_owners_have_no_blocking_wait_call() -> None:
+    root = Path(walkthrough_module.__file__).resolve().parents[2]
+    source_paths = (
+        root / "XBrainLab/ui/components/agent_manager.py",
+        root / "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
+        root / "XBrainLab/ui/components/assistant_command_dispatcher.py",
+        root / "XBrainLab/ui/components/assistant_runtime_coordinator.py",
+    )
+    blocking_calls: list[str] = []
+    for source_path in source_paths:
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        blocking_calls.extend(
+            f"{source_path.name}:{node.lineno}:{node.func.attr}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"wait", "sleep", "msleep", "usleep"}
+        )
+
+    assert blocking_calls == []

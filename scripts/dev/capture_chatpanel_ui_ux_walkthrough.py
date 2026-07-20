@@ -13,9 +13,11 @@ import hashlib
 import json
 import os
 import sys
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, cast
 
@@ -59,6 +61,7 @@ from XBrainLab.llm.agent.assistant_activity import (
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
+from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 from XBrainLab.llm.agent.response_presentation import (
     AssistantPanelTarget,
     AssistantResponseAction,
@@ -105,6 +108,8 @@ EXPECTED_SCREEN_FILES = (
     "narrow-stopping-progress.png",
     "narrow-command-progress.png",
     "narrow-error-action.png",
+    "narrow-setting-change-confirmation.png",
+    "narrow-setting-change-confirmation-max-content.png",
     "pixmap-scaled-narrow.png",
     "responsive-320-idle.png",
     "responsive-320-long-clarification-action-520.png",
@@ -146,6 +151,7 @@ FINGERPRINT_RELATIVE_PATHS = (
     "XBrainLab/chat_contract.py",
     "XBrainLab/backend/controller/chat_controller.py",
     "XBrainLab/llm/agent/assistant_activity.py",
+    "XBrainLab/llm/agent/confirmation.py",
     "XBrainLab/llm/agent/controller.py",
     "XBrainLab/llm/agent/execution_policy.py",
     "XBrainLab/llm/agent/response_presentation.py",
@@ -153,6 +159,7 @@ FINGERPRINT_RELATIVE_PATHS = (
     "XBrainLab/llm/agent/turn.py",
     "XBrainLab/product_language.py",
     "XBrainLab/ui/chat/composer.py",
+    "XBrainLab/ui/chat/action_card.py",
     "XBrainLab/ui/chat/message_bubble.py",
     "XBrainLab/ui/chat/panel.py",
     "XBrainLab/ui/chat/presentation.py",
@@ -185,7 +192,7 @@ class ScenarioSpec:
     prepare: Callable[[ChatPanel], None]
     required_kinds: tuple[str, ...] = ()
     expected_send_text: str = "Send"
-    expected_send_enabled: bool = True
+    expected_send_enabled: bool = False
     expected_input_enabled: bool = True
     expected_action_labels: tuple[str, ...] = ()
     runtime_state_visible: bool = False
@@ -193,7 +200,12 @@ class ScenarioSpec:
     activity_visible: bool = False
     expected_activity_title: str = ""
     expected_cancelability: ChatTurnCancelability = ChatTurnCancelability.NONE
+    confirmation_visible: bool = False
+    expected_confirmation_title: str = ""
+    expected_confirmation_values: tuple[str, ...] = ()
+    expected_confirmation_actions: tuple[str, ...] = ()
     review_state: str = ""
+    scroll_to_bottom: bool = False
 
 
 class _FirstPaintProbe(QObject):
@@ -258,6 +270,9 @@ class _TeardownProbeController(QObject):
         return None
 
     def close(self) -> bool:
+        # Keep the owned command thread busy long enough to observe that the GUI
+        # event loop remains responsive while asynchronous cleanup completes.
+        QThread.msleep(80)
         return True
 
 
@@ -430,6 +445,47 @@ def _prepare_error_action(panel: ChatPanel) -> None:
     )
 
 
+def _prepare_setting_change_confirmation(panel: ChatPanel) -> None:
+    panel.set_runtime_state("ready")
+    _controller(panel).add_user_message(
+        "Reduce the batch size if the current configuration is too large."
+    )
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={"batch_size": 16},
+        action_label="Apply change",
+        description="The current configuration may exceed available VRAM.",
+        destructive=False,
+        publication_generation=1,
+        request_id="walkthrough-batch-size-change",
+    )
+    panel.show_confirmation_request(
+        request,
+        current_values={"Batch size": "32"},
+    )
+
+
+def _prepare_max_setting_change_confirmation(panel: ChatPanel) -> None:
+    panel.set_runtime_state("ready")
+    _controller(panel).add_user_message(
+        "Review every proposed training setting before applying the change."
+    )
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={
+            f"parameter_{index:02d}": f"{index}-" + ("W" * 160) for index in range(12)
+        },
+        action_label="Apply reviewed settings",
+        description=(
+            "Review every proposed setting before applying this configuration."
+        ),
+        destructive=False,
+        publication_generation=1,
+        request_id="walkthrough-max-setting-change",
+    )
+    panel.show_confirmation_request(request)
+
+
 def _prepare_scaled_pixmap(panel: ChatPanel) -> None:
     panel.set_runtime_state("ready")
     controller = _controller(panel)
@@ -592,6 +648,7 @@ SCENARIOS = (
         _prepare_cancellable_progress,
         required_kinds=("user",),
         expected_send_text="Stop",
+        expected_send_enabled=True,
         expected_input_enabled=False,
         activity_visible=True,
         expected_activity_title="Working on your request",
@@ -636,6 +693,36 @@ SCENARIOS = (
         _prepare_error_action,
         required_kinds=("user", "error"),
         expected_action_labels=("Try again",),
+    ),
+    ScenarioSpec(
+        "narrow_setting_change_confirmation",
+        "narrow-setting-change-confirmation.png",
+        320,
+        680,
+        1.0,
+        _prepare_setting_change_confirmation,
+        required_kinds=("user",),
+        confirmation_visible=True,
+        expected_confirmation_title="Suggested change",
+        expected_confirmation_values=("Batch size", "32  ->  16"),
+        expected_confirmation_actions=("Keep current value", "Apply change"),
+    ),
+    ScenarioSpec(
+        "narrow_setting_change_confirmation_max_content",
+        "narrow-setting-change-confirmation-max-content.png",
+        320,
+        680,
+        1.0,
+        _prepare_max_setting_change_confirmation,
+        required_kinds=("user",),
+        confirmation_visible=True,
+        expected_confirmation_title="Suggested change",
+        expected_confirmation_values=("Parameter 00", "Parameter 11"),
+        expected_confirmation_actions=(
+            "Keep current value",
+            "Apply reviewed settings",
+        ),
+        scroll_to_bottom=True,
     ),
     ScenarioSpec(
         "pixmap_scaled_narrow",
@@ -686,6 +773,7 @@ SCENARIOS = (
         _prepare_responsive_processing,
         required_kinds=("user",),
         expected_send_text="Stop",
+        expected_send_enabled=True,
         expected_input_enabled=False,
         activity_visible=True,
         expected_activity_title="Working on your request",
@@ -735,6 +823,7 @@ SCENARIOS = (
         _prepare_responsive_processing,
         required_kinds=("user",),
         expected_send_text="Stop",
+        expected_send_enabled=True,
         expected_input_enabled=False,
         activity_visible=True,
         expected_activity_title="Working on your request",
@@ -784,6 +873,7 @@ SCENARIOS = (
         _prepare_responsive_processing,
         required_kinds=("user",),
         expected_send_text="Stop",
+        expected_send_enabled=True,
         expected_input_enabled=False,
         activity_visible=True,
         expected_activity_title="Working on your request",
@@ -993,10 +1083,24 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "cancelability": panel.turn_activity_widget.property("assistantCancelability"),
         "cancelability_text": panel.turn_activity_cancelability.text(),
     }
+    confirmation_card = panel.confirmation_card_widget
+    confirmation = {
+        "visible": confirmation_card.isVisibleTo(panel),
+        "title": confirmation_card.title_label.text(),
+        "description": confirmation_card.description_label.text(),
+        "values": confirmation_card.values_summary.text(),
+        "reason": confirmation_card.reason_label.text(),
+        "actions": (
+            confirmation_card.secondary_button.text(),
+            confirmation_card.primary_button.text(),
+        ),
+        "request_id": confirmation_card.request_id,
+    }
     checks = {
         "no_horizontal_scroll": horizontal.maximum() == 0,
         "message_bubbles_inside_viewport": not clipped,
         "visible_buttons_inside_panel": not outside_buttons,
+        "visible_button_text_fits": all(button["text_fits"] for button in buttons),
         "visible_text_fits": not text_overflow,
         "composer_placeholder_fits": placeholder["fits"],
         "composer_visible": panel.input_field.isVisibleTo(panel),
@@ -1043,6 +1147,21 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
             not spec.activity_visible
             or activity["cancelability"] == spec.expected_cancelability.value
         ),
+        "expected_confirmation_visibility_present": (
+            confirmation["visible"] is spec.confirmation_visible
+        ),
+        "expected_confirmation_title_present": (
+            not spec.expected_confirmation_title
+            or confirmation["title"] == spec.expected_confirmation_title
+        ),
+        "expected_confirmation_values_present": all(
+            value in confirmation["values"]
+            for value in spec.expected_confirmation_values
+        ),
+        "expected_confirmation_actions_present": (
+            not spec.expected_confirmation_actions
+            or confirmation["actions"] == spec.expected_confirmation_actions
+        ),
         "legacy_muted_status_hidden": panel.workflow_run_status_label.isHidden(),
     }
     failures = [name for name, passed in checks.items() if not passed]
@@ -1074,6 +1193,7 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "send_enabled": panel.send_btn.isEnabled(),
         "input_enabled": panel.input_field.isEnabled(),
         "activity": activity,
+        "confirmation": confirmation,
         "composer_placeholder": placeholder,
         "text_overflow": text_overflow,
         "outside_buttons": outside_buttons,
@@ -1235,15 +1355,6 @@ def _capture_immediate_widget_frame(
     required_content_widgets: Mapping[str, QWidget],
 ) -> dict[str, Any]:
     """Save the already-painted backing store without a settle/retry loop."""
-    required_regions: dict[str, tuple[int, int, int, int]] = {}
-    for name, child in required_content_widgets.items():
-        origin = child.mapTo(widget, QPoint(0, 0))
-        required_regions[name] = (
-            origin.x(),
-            origin.y(),
-            child.width(),
-            child.height(),
-        )
     pixmap = widget.grab()
     if pixmap.isNull() or not pixmap.save(str(output_path)):
         raise RuntimeError(f"Could not save immediate frame {output_path}.")
@@ -1251,6 +1362,12 @@ def _capture_immediate_widget_frame(
         normalized = rendered.convert("RGB")
         normalized.save(output_path, format="PNG")
         pixel_size = list(normalized.size)
+    required_regions = _scaled_child_regions(
+        widget,
+        required_content_widgets,
+        pixel_width=pixel_size[0],
+        pixel_height=pixel_size[1],
+    )
     return {
         "pixel_size": pixel_size,
         "image_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
@@ -1261,6 +1378,28 @@ def _capture_immediate_widget_frame(
             required_regions=required_regions,
         ),
     }
+
+
+def _scaled_child_regions(
+    root: QWidget,
+    children: Mapping[str, QWidget],
+    *,
+    pixel_width: int,
+    pixel_height: int,
+) -> dict[str, tuple[int, int, int, int]]:
+    """Map logical child geometry into a captured image's physical pixels."""
+    scale_x = pixel_width / max(root.width(), 1)
+    scale_y = pixel_height / max(root.height(), 1)
+    regions: dict[str, tuple[int, int, int, int]] = {}
+    for name, child in children.items():
+        origin = child.mapTo(root, QPoint(0, 0))
+        regions[name] = (
+            round(origin.x() * scale_x),
+            round(origin.y() * scale_y),
+            max(round(child.width() * scale_x), 1),
+            max(round(child.height() * scale_y), 1),
+        )
+    return regions
 
 
 def _first_paint_panel_state(panel: ChatPanel, *, surface: str) -> dict[str, Any]:
@@ -1592,7 +1731,14 @@ def _capture_manager_teardown(manager: Any) -> dict[str, Any]:
     command_thread.finished.connect(lambda: thread_finished_events.append(True))
 
     running_before_close = command_thread.isRunning()
+    heartbeat_times: list[float] = []
+    heartbeat = QTimer()
+    heartbeat.setInterval(5)
+    heartbeat.timeout.connect(lambda: heartbeat_times.append(time.perf_counter()))
+    heartbeat.start()
+    close_started = time.perf_counter()
     initial_close_result = bool(manager.close())
+    initial_close_call_duration_ms = (time.perf_counter() - close_started) * 1000.0
 
     def terminal_observed() -> bool:
         return bool(
@@ -1623,7 +1769,17 @@ def _capture_manager_teardown(manager: Any) -> dict[str, Any]:
         poll.stop()
         timeout.stop()
 
+    heartbeat.stop()
     final_close_result = bool(manager.close())
+    heartbeat_gaps_ms = [
+        (current - previous) * 1000.0 for previous, current in pairwise(heartbeat_times)
+    ]
+    max_heartbeat_gap_ms = max(heartbeat_gaps_ms, default=0.0)
+    gui_responsive = bool(
+        initial_close_call_duration_ms < 100.0
+        and len(heartbeat_times) >= 2
+        and max_heartbeat_gap_ms < 100.0
+    )
     runtime_result = runtime_results[-1] if runtime_results else {}
     dispatcher_result = dispatcher_results[-1] if dispatcher_results else {}
     runtime_state = str(getattr(runtime.state, "value", runtime.state))
@@ -1642,7 +1798,12 @@ def _capture_manager_teardown(manager: Any) -> dict[str, Any]:
         "runtime_closed": runtime_state == "closed",
         "dispatcher_closed": dispatcher_state == "closed",
         "signal_observation_did_not_time_out": not timed_out,
-        "gui_thread_blocking_wait_not_used": True,
+        "manager_close_returned_within_budget": (
+            initial_close_call_duration_ms < 100.0
+        ),
+        "gui_heartbeat_observed_during_cleanup": len(heartbeat_times) >= 2,
+        "gui_heartbeat_gap_within_budget": max_heartbeat_gap_ms < 100.0,
+        "gui_thread_responsive_during_cleanup": gui_responsive,
     }
     return {
         "manager_close_requested": True,
@@ -1666,8 +1827,18 @@ def _capture_manager_teardown(manager: Any) -> dict[str, Any]:
         },
         "runtime_state_after_cleanup": runtime_state,
         "dispatcher_state_after_cleanup": dispatcher_state,
-        "gui_thread_blocking_wait_used": False,
-        "observation_method": "qt_signals_and_event_loop",
+        "initial_close_call_duration_ms": round(
+            initial_close_call_duration_ms,
+            3,
+        ),
+        "gui_heartbeat": {
+            "interval_ms": 5,
+            "count_during_cleanup": len(heartbeat_times),
+            "max_gap_ms": round(max_heartbeat_gap_ms, 3),
+            "responsive": gui_responsive,
+        },
+        "gui_thread_blocking_wait_used": not gui_responsive,
+        "observation_method": ("qt_signals_event_loop_heartbeat_and_close_latency"),
         "timed_out": timed_out,
         "checks": checks,
         "passed": all(checks.values()),
@@ -2083,8 +2254,14 @@ def _teardown_contract_failures(payload: dict[str, Any]) -> list[str]:
         and thread.get("running_after_cleanup") is False
         and teardown.get("runtime_state_after_cleanup") == "closed"
         and teardown.get("dispatcher_state_after_cleanup") == "closed"
+        and float(teardown.get("initial_close_call_duration_ms", 1000.0)) < 100.0
+        and isinstance(teardown.get("gui_heartbeat"), dict)
+        and teardown["gui_heartbeat"].get("count_during_cleanup", 0) >= 2
+        and float(teardown["gui_heartbeat"].get("max_gap_ms", 1000.0)) < 100.0
+        and teardown["gui_heartbeat"].get("responsive") is True
         and teardown.get("gui_thread_blocking_wait_used") is False
-        and teardown.get("observation_method") == "qt_signals_and_event_loop"
+        and teardown.get("observation_method")
+        == "qt_signals_event_loop_heartbeat_and_close_latency"
         and teardown.get("timed_out") is False
         and _machine_checks_passed(teardown.get("checks"))
     )
@@ -2258,6 +2435,11 @@ def capture_walkthrough(
         spec.prepare(panel)
         panel.show()
         _settle_layout(app, panel)
+        if spec.scroll_to_bottom:
+            scrollbar = panel.scroll_area.verticalScrollBar()
+            if scrollbar is not None:
+                scrollbar.setValue(scrollbar.maximum())
+                app.processEvents()
         evidence = _screen_evidence(panel, spec)
         capture = _capture_widget(
             panel,
@@ -2295,6 +2477,7 @@ def capture_walkthrough(
             standalone_first_paint.get("passed") and dock_first_paint.get("passed")
         ),
     }
+    primary_screen = app.primaryScreen()
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "status": "pending",
@@ -2305,6 +2488,10 @@ def capture_walkthrough(
             "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
         ),
         "platform": QApplication.platformName(),
+        "configured_qt_scale_factor": os.environ.get("QT_SCALE_FACTOR", "1"),
+        "observed_screen_device_pixel_ratio": float(
+            primary_screen.devicePixelRatio() if primary_screen is not None else 1.0
+        ),
         "source_files": source_files_at_start,
         "source_fingerprint": fingerprint_at_start,
         "capture_source": {
@@ -2416,14 +2603,20 @@ def render_readme(payload: dict[str, Any]) -> str:
             "",
             "The composed walkthrough binds a dedicated `AssistantCommandThread`, "
             "requests `AgentManager.close()`, and observes dispatcher cleanup, runtime "
-            "cleanup, and QThread completion through Qt signals and an event loop. It "
-            "does not call `QThread.wait()` on the GUI thread.",
+            "cleanup, QThread completion, GUI heartbeat continuity, and close-call "
+            "latency through Qt signals and an event loop. It does not call "
+            "`QThread.wait()` on the GUI thread.",
             "",
             f"- teardown passed: `{payload['teardown']['passed']}`",
             f"- manager close finished: "
             f"`{payload['teardown']['manager_close_finished']}`",
             f"- dedicated QThread finished: "
             f"`{payload['teardown']['dedicated_qthread']['finished_signal_observed']}`",
+            f"- initial close-call latency: "
+            f"`{payload['teardown']['initial_close_call_duration_ms']} ms`",
+            f"- GUI heartbeat count / max gap: "
+            f"`{payload['teardown']['gui_heartbeat']['count_during_cleanup']}` / "
+            f"`{payload['teardown']['gui_heartbeat']['max_gap_ms']} ms`",
             "",
             "## Interaction Coverage",
             "",
