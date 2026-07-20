@@ -16510,3 +16510,23 @@
 - claim boundary：
   - The focused screenshots do not replace the final full product walkthrough or human Windows
     click-through.
+
+### 2026-07-20 Training History and Match Labels header containment
+
+- completed：
+  - Kept Training History inside compact workflow viewports by limiting the table to available
+    space, using internal scrolling, and restoring its natural height when the window grows.
+  - Replaced the guessed Training History group chrome height with the active Qt style/layout
+    measurement so title and frame space remain intact across font and DPI changes.
+  - Added vertical breathing room to the shared Match Labels table-header style, including File
+    pairing, event mapping, BIDS, and internal-event headers.
+- validation：
+  - Focused shrink/grow/shrink geometry regressions and all visible Match Labels header checks ->
+    PASS.
+  - UI unit suite -> `2071 passed`; related UI integration -> `27 passed`.
+  - Public multi-dataset IO/BIDS/cross-source integration -> `36 passed`; strict four-source
+    training/epoch smoke -> PASS.
+  - Ruff, BasedPyright, and architecture compliance -> PASS.
+- claim boundary：
+  - Native Linux/XCB artifacts are visually accepted; native Windows font scaling still requires
+    the final human click-through.

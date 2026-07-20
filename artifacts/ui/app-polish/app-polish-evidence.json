@@ -1,19 +1,19 @@
 {
   "schema_version": 4,
   "artifact_type": "xbrainlab.app_polish_ui_surfaces",
-  "generated_at_utc": "2026-07-19T12:59:47.057890+00:00",
+  "generated_at_utc": "2026-07-20T07:06:45.049036+00:00",
   "generator": "scripts/dev/capture_ui_polish_surfaces.py",
   "capture_environment": {
-    "qt_platform": "offscreen",
+    "qt_platform": "xcb",
     "capture_kind": "deterministic_qt_widget",
     "qt_style": "Fusion",
     "application_stylesheet": "Stylesheets.MAIN_WINDOW"
   },
   "capture_session": {
-    "started_at_utc": "2026-07-19T12:58:53.451629+00:00",
-    "completed_at_utc": "2026-07-19T12:59:47.057890+00:00",
-    "source_digest_at_start": "d75fba75129034c5654a3603c2cbfac4d8b605382e348e800b52497672bc03e5",
-    "source_digest_at_completion": "d75fba75129034c5654a3603c2cbfac4d8b605382e348e800b52497672bc03e5",
+    "started_at_utc": "2026-07-20T07:06:03.945761+00:00",
+    "completed_at_utc": "2026-07-20T07:06:45.049036+00:00",
+    "source_digest_at_start": "9f43a0421f47f75400aafb5c2d510e0510fa96e7d9bffc34700f7e05ad2f5482",
+    "source_digest_at_completion": "9f43a0421f47f75400aafb5c2d510e0510fa96e7d9bffc34700f7e05ad2f5482",
     "source_identity_stable": true
   },
   "capture_scope": {
@@ -69,12 +69,12 @@
     "version": 2,
     "repo_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab",
     "branch": "fix/nonblocking-state-shutdown-lifecycle",
-    "commit_sha": "faabfe388e3f21434796aafed1cde3f09535063f",
-    "head_tree_sha": "70235e544d00830accd1c8009a65707461053c45",
+    "commit_sha": "248c5db533b30a0b8920e122495e6e4791175974",
+    "head_tree_sha": "0681dfe67954482af3b47b3463d2c2862fd98f1f",
     "dirty": true,
-    "dirty_digest": "549ba9d7774cccd3cf85f58739e72837aabdf69d61576b171c73946aa50dabc5",
-    "source_content_digest": "2b0aed95c42e6a69c2aa90c1412efb1e51314222e066851fedda8fcf20436838",
-    "untracked_source_count": 258,
+    "dirty_digest": "7dfee50fcac997bad7cc89848f5fb84289e1d6d3560dadfc7cf071d6fbeb947f",
+    "source_content_digest": "e09d406be2ee42ac07fb639ef842a60d717adc150e850d04eb4cc19b362c51c1",
+    "untracked_source_count": 0,
     "excluded_generated_prefixes": [
       "artifacts/",
       ".pytest_cache/",
@@ -111,7 +111,7 @@
       "Makefile"
     ],
     "error": "",
-    "source_digest": "d75fba75129034c5654a3603c2cbfac4d8b605382e348e800b52497672bc03e5"
+    "source_digest": "9f43a0421f47f75400aafb5c2d510e0510fa96e7d9bffc34700f7e05ad2f5482"
   },
   "screenshots": {
     "model-selection-dialog.png": {
@@ -131,8 +131,8 @@
       "path": "training-setting-dialog.png",
       "exists": true,
       "readable": true,
-      "byte_size": 24893,
-      "sha256": "bb8721bf16659d65b19371be654b6202de85964fbb3c3de1296a22239e9d2c1d",
+      "byte_size": 24879,
+      "sha256": "2b33022e99e6a30f84802e2cef61d316c50c18af90cd7a4c8c6240f641124baa",
       "dimensions": [
         560,
         482
@@ -144,8 +144,8 @@
       "path": "preprocess-rereference-dialog.png",
       "exists": true,
       "readable": true,
-      "byte_size": 10437,
-      "sha256": "51c3abaa87af691eb8764e12d007c8a27018809dbbd28a32a5971c918e63de4d",
+      "byte_size": 10443,
+      "sha256": "7fab9e996bab5c3617c22c2b6e878d21966c6e1f368ce33491c7d8373dd2a69b",
       "dimensions": [
         460,
         340
@@ -170,11 +170,11 @@
       "path": "preprocess-epoching-bids-interval-duration-dialog.png",
       "exists": true,
       "readable": true,
-      "byte_size": 82521,
-      "sha256": "6c979b13f44f63206133103e8a972e9c366369ec13cdb39a6beb5b90d4331ff8",
+      "byte_size": 82743,
+      "sha256": "2a38722333ac679057611ce592b835b16d9b68e7ccf9ccec10c700fa48580bf6",
       "dimensions": [
         700,
-        752
+        780
       ],
       "format": "PNG",
       "error": ""
@@ -183,10 +183,10 @@
       "path": "data-splitting-dialog.png",
       "exists": true,
       "readable": true,
-      "byte_size": 22501,
-      "sha256": "876b787af73ef543428e7b7d5b21b89b56232361dab468d9c9f74d2011fc8d7d",
+      "byte_size": 23465,
+      "sha256": "e29f2230bee5780f7d82040019144991787d93eae857eff6d0096448bd680c65",
       "dimensions": [
-        752,
+        820,
         470
       ],
       "format": "PNG",
@@ -209,10 +209,10 @@
       "path": "data-splitting-preview-dialog.png",
       "exists": true,
       "readable": true,
-      "byte_size": 33373,
-      "sha256": "d5ff400403e49db354bf162c05ac56ce457772a2587eda9a9dd29a733a11ef3b",
+      "byte_size": 34214,
+      "sha256": "b35744ec905e20ae2ba0320865c092ba5c6cae681e482c1b10e4efbeff3b0bfc",
       "dimensions": [
-        752,
+        980,
         492
       ],
       "format": "PNG",
@@ -287,8 +287,8 @@
       "path": "saliency-setting-dialog.png",
       "exists": true,
       "readable": true,
-      "byte_size": 23892,
-      "sha256": "18707212a0180ef406b4e06bf9d82faab2e7092825e9a5bd2c81acbab6c2493b",
+      "byte_size": 23896,
+      "sha256": "a9841bf4f6313fdfa49adccbcad74c250e3f6656cfded9a1dc54c8654d5f10b7",
       "dimensions": [
         446,
         350
@@ -300,8 +300,8 @@
       "path": "saliency-setting-single-method.png",
       "exists": true,
       "readable": true,
-      "byte_size": 20389,
-      "sha256": "7a4b11a5c2dd40f0c8cc372b3c9f9d89006bbfcb27fa37e2d5c192c764b92e1a",
+      "byte_size": 20394,
+      "sha256": "88824559d5c366e06234915f5dc53453e0c168702ad244bf27daf02697e58820",
       "dimensions": [
         446,
         350
@@ -313,8 +313,8 @@
       "path": "saliency-setting-empty-state.png",
       "exists": true,
       "readable": true,
-      "byte_size": 14835,
-      "sha256": "5aba674f6d8010550bf0ccc024488a175fdd09284beb48f0dfb04755d5f4e8c5",
+      "byte_size": 14842,
+      "sha256": "934e612a3b26517370f2a8c1b03db2accee13c6c84679e0a8827d46ae240d36d",
       "dimensions": [
         446,
         220
@@ -326,10 +326,10 @@
       "path": "set-montage-dialog.png",
       "exists": true,
       "readable": true,
-      "byte_size": 16014,
-      "sha256": "a67b3cd3b36280a56569e779b02b337deb36017bf13b40da6bc88031e80a5f9b",
+      "byte_size": 16352,
+      "sha256": "9f1e4f083d25d7324d6eb82c1e05d910a394262acb8ff079cf56eb268c354677",
       "dimensions": [
-        752,
+        760,
         327
       ],
       "format": "PNG",
@@ -365,8 +365,8 @@
       "path": "training-history-few-rows.png",
       "exists": true,
       "readable": true,
-      "byte_size": 68452,
-      "sha256": "97cf59d05538b57d3062c312b80a71295e7e1ba48cb0dd348e12c1130645a00d",
+      "byte_size": 68691,
+      "sha256": "56db8a794c03eba5b19ddda9bb1d0a2b936cd1418d804728b301ca029caf73f0",
       "dimensions": [
         1120,
         760
@@ -378,8 +378,8 @@
       "path": "training-history-many-rows.png",
       "exists": true,
       "readable": true,
-      "byte_size": 96623,
-      "sha256": "74780e25f84e94079c78e7ebe4d5e587ddad1488608a142627d352b4dcb41231",
+      "byte_size": 96527,
+      "sha256": "c89e06bf059ab829e3d70432e930181cb8c0606d7d47c7e0142402f4f1e70ea4",
       "dimensions": [
         1120,
         760
@@ -695,7 +695,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 8699,
+            "reference_edge_pixels": 8700,
             "detail_tile_count": 84,
             "missing_detail_tile_ratio": 0.0
           },
@@ -972,9 +972,9 @@
           {
             "surface_name": "PrimaryConfirmButton text 15: OK",
             "bounds": [
-              417,
+              409,
               430,
-              466,
+              462,
               468
             ],
             "minimum_required_edge_recall": 0.7,
@@ -990,7 +990,7 @@
           {
             "surface_name": "SecondaryDialogButton text 16: Cancel",
             "bounds": [
-              472,
+              468,
               430,
               542,
               468
@@ -1067,7 +1067,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 4530,
+            "reference_edge_pixels": 4546,
             "detail_tile_count": 32,
             "missing_detail_tile_ratio": 0.0
           },
@@ -1110,9 +1110,9 @@
           {
             "surface_name": "PrimaryConfirmButton text 1: OK",
             "bounds": [
-              324,
+              316,
               291,
-              373,
+              369,
               329
             ],
             "minimum_required_edge_recall": 0.7,
@@ -1128,7 +1128,7 @@
           {
             "surface_name": "SecondaryDialogButton text 2: Cancel",
             "bounds": [
-              379,
+              375,
               291,
               449,
               329
@@ -1803,7 +1803,7 @@
               0,
               0,
               700,
-              752
+              780
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -1812,16 +1812,16 @@
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
             "reference_edge_pixels": 30618,
-            "detail_tile_count": 200,
+            "detail_tile_count": 212,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "EpochEventTable content 0",
             "bounds": [
               33,
-              298,
+              326,
               667,
-              414
+              442
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -1837,9 +1837,9 @@
             "surface_name": "QHeaderView content 2",
             "bounds": [
               34,
-              299,
+              327,
               666,
-              330
+              358
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -1857,43 +1857,43 @@
               18,
               15,
               682,
-              41
+              55
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
-            "changed_pixel_ratio": 0.9648162134944612,
+            "changed_pixel_ratio": 0.9777786611543966,
             "reference_edge_pixels": 656,
-            "detail_tile_count": 6,
+            "detail_tile_count": 4,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "EpochDialogSubtitle text 1: Choose which events become epochs, then set the ",
             "bounds": [
               18,
-              51,
+              65,
               682,
-              76
+              104
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
-            "changed_pixel_ratio": 0.971364770786812,
+            "changed_pixel_ratio": 0.9821997223809913,
             "reference_edge_pixels": 2234,
-            "detail_tile_count": 23,
+            "detail_tile_count": 15,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "EpochImportHintTitle text 2: BIDS events from import",
             "bounds": [
               39,
-              105,
+              133,
               221,
-              121
+              149
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -1909,9 +1909,9 @@
             "surface_name": "EpochImportHintSummary text 3: BIDS events confirmed in Match Labels.",
             "bounds": [
               39,
-              129,
+              157,
               661,
-              145
+              173
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -1927,9 +1927,9 @@
             "surface_name": "EpochImportHintKey text 4: Source",
             "bounds": [
               39,
-              153,
+              181,
               116,
-              169
+              197
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -1945,9 +1945,9 @@
             "surface_name": "EpochImportHintValue text 5: BIDS events",
             "bounds": [
               134,
-              153,
+              181,
               341,
-              169
+              197
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -1963,9 +1963,9 @@
             "surface_name": "EpochImportHintKey text 6: Placement",
             "bounds": [
               359,
-              153,
+              181,
               437,
-              169
+              197
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -1981,9 +1981,9 @@
             "surface_name": "EpochImportHintValue text 7: Label interval",
             "bounds": [
               455,
-              153,
+              181,
               661,
-              169
+              197
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -1999,9 +1999,9 @@
             "surface_name": "EpochImportHintKey text 8: Label field",
             "bounds": [
               39,
-              175,
+              203,
               116,
-              191
+              219
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2017,9 +2017,9 @@
             "surface_name": "EpochImportHintValue text 9: trial_type",
             "bounds": [
               134,
-              175,
+              203,
               341,
-              191
+              219
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2035,9 +2035,9 @@
             "surface_name": "EpochImportHintKey text 10: Timing",
             "bounds": [
               359,
-              175,
+              203,
               437,
-              191
+              219
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2053,9 +2053,9 @@
             "surface_name": "EpochImportHintValue text 11: onset + duration",
             "bounds": [
               455,
-              175,
+              203,
               661,
-              191
+              219
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2071,9 +2071,9 @@
             "surface_name": "EpochSectionTitle text 12: Events",
             "bounds": [
               33,
-              232,
+              260,
               667,
-              250
+              278
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2089,9 +2089,9 @@
             "surface_name": "QLabel text 13: These labels were confirmed in Match Labels. Unc",
             "bounds": [
               33,
-              258,
+              286,
               667,
-              290
+              318
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2107,9 +2107,9 @@
             "surface_name": "EpochSectionTitle text 14: Time Window",
             "bounds": [
               33,
-              449,
+              477,
               667,
-              467
+              495
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2125,9 +2125,9 @@
             "surface_name": "EpochWindowModeLabel text 15: Use event duration. The epoch starts at onset an",
             "bounds": [
               33,
-              475,
+              503,
               667,
-              507
+              535
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2143,9 +2143,9 @@
             "surface_name": "EpochFieldLabel text 16: Start (s)",
             "bounds": [
               33,
-              517,
+              545,
               135,
-              547
+              575
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2161,9 +2161,9 @@
             "surface_name": "EpochFieldLabel text 17: End (s)",
             "bounds": [
               275,
-              517,
+              545,
               327,
-              547
+              575
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2179,9 +2179,9 @@
             "surface_name": "EpochFieldLabel text 18: Duration",
             "bounds": [
               33,
-              555,
+              583,
               135,
-              571
+              599
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2197,9 +2197,9 @@
             "surface_name": "EpochDialogValue text 19: 1.50 s window (0.00 to 1.50 s)",
             "bounds": [
               147,
-              555,
+              583,
               455,
-              571
+              599
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2215,9 +2215,9 @@
             "surface_name": "EpochFieldLabel text 20: Suggested by",
             "bounds": [
               33,
-              579,
+              607,
               135,
-              611
+              639
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2233,9 +2233,9 @@
             "surface_name": "EpochDialogEvidence text 21: Uses the largest reviewed BIDS duration from Mat",
             "bounds": [
               147,
-              579,
+              607,
               455,
-              611
+              639
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2251,9 +2251,9 @@
             "surface_name": "EpochFieldLabel text 23: Baseline Min (s)",
             "bounds": [
               33,
-              643,
+              671,
               151,
-              673
+              701
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2269,9 +2269,9 @@
             "surface_name": "EpochFieldLabel text 24: Baseline Max (s)",
             "bounds": [
               291,
-              643,
+              671,
               412,
-              673
+              701
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2287,9 +2287,9 @@
             "surface_name": "EpochBaselineCheck text 27: Apply baseline correction",
             "bounds": [
               33,
-              619,
+              647,
               667,
-              635
+              663
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2305,9 +2305,9 @@
             "surface_name": "EpochSecondaryButton text 28: Cancel",
             "bounds": [
               18,
-              709,
+              737,
               128,
-              739
+              767
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2323,9 +2323,9 @@
             "surface_name": "EpochPrimaryButton text 29: Create Epochs",
             "bounds": [
               528,
-              709,
+              737,
               682,
-              739
+              767
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
@@ -2390,7 +2390,7 @@
         ],
         "reference_validated": true,
         "reference_comparison_count": 14,
-        "minimum_reference_edge_recall": 0.904545,
+        "minimum_reference_edge_recall": 0.989691,
         "maximum_reference_changed_pixel_ratio": 0.987528,
         "reference_regions": [
           {
@@ -2398,7 +2398,7 @@
             "bounds": [
               0,
               0,
-              752,
+              820,
               470
             ],
             "minimum_required_edge_recall": 0.42,
@@ -2407,8 +2407,8 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 20069,
-            "detail_tile_count": 132,
+            "reference_edge_pixels": 20745,
+            "detail_tile_count": 137,
             "missing_detail_tile_ratio": 0.0
           },
           {
@@ -2416,7 +2416,7 @@
             "bounds": [
               30,
               28,
-              490,
+              495,
               44
             ],
             "minimum_required_edge_recall": 0.7,
@@ -2424,7 +2424,7 @@
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
-            "changed_pixel_ratio": 0.9388646288209607,
+            "changed_pixel_ratio": 0.9395248380129589,
             "reference_edge_pixels": 584,
             "detail_tile_count": 12,
             "missing_detail_tile_ratio": 0.0
@@ -2486,27 +2486,27 @@
           {
             "surface_name": "DataSplitSectionTitle text 7: Split settings",
             "bounds": [
-              530,
+              535,
               28,
-              752,
+              790,
               44
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
-            "edge_recall": 0.9846153846153847,
-            "changed_pixel_ratio": 0.9353896103896104,
-            "reference_edge_pixels": 390,
+            "edge_recall": 1.0,
+            "changed_pixel_ratio": 0.9392998306041784,
+            "reference_edge_pixels": 365,
             "detail_tile_count": 7,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "QLabel text 8: Training",
             "bounds": [
-              530,
+              535,
               56,
-              595,
+              600,
               86
             ],
             "minimum_required_edge_recall": 0.7,
@@ -2522,9 +2522,9 @@
           {
             "surface_name": "QLabel text 9: Testing",
             "bounds": [
-              530,
+              535,
               96,
-              595,
+              600,
               126
             ],
             "minimum_required_edge_recall": 0.7,
@@ -2540,9 +2540,9 @@
           {
             "surface_name": "QLabel text 10: Validation",
             "bounds": [
-              530,
+              535,
               136,
-              595,
+              600,
               166
             ],
             "minimum_required_edge_recall": 0.7,
@@ -2558,27 +2558,27 @@
           {
             "surface_name": "DataSplitCrossValidationCheck text 12: Cross validation",
             "bounds": [
-              530,
+              535,
               178,
-              752,
+              790,
               194
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
-            "edge_recall": 0.9495327102803738,
-            "changed_pixel_ratio": 0.9204545454545454,
-            "reference_edge_pixels": 535,
-            "detail_tile_count": 9,
+            "edge_recall": 1.0,
+            "changed_pixel_ratio": 0.9257481648785997,
+            "reference_edge_pixels": 469,
+            "detail_tile_count": 8,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "PrimaryConfirmButton text 13: Confirm",
             "bounds": [
-              580,
+              648,
               422,
-              734,
+              802,
               454
             ],
             "minimum_required_edge_recall": 0.7,
@@ -2594,54 +2594,54 @@
           {
             "surface_name": "QComboBox text 14: Full Data",
             "bounds": [
-              607,
+              612,
               56,
-              752,
+              790,
               86
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
-            "edge_recall": 0.9045454545454545,
-            "changed_pixel_ratio": 0.09090909090909091,
-            "reference_edge_pixels": 220,
+            "edge_recall": 1.0,
+            "changed_pixel_ratio": 0.0,
+            "reference_edge_pixels": 179,
             "detail_tile_count": 3,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "QComboBox text 15: By Trial",
             "bounds": [
-              607,
+              612,
               96,
-              752,
+              790,
               126
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
-            "edge_recall": 0.9161676646706587,
-            "changed_pixel_ratio": 0.07242757242757243,
-            "reference_edge_pixels": 167,
+            "edge_recall": 1.0,
+            "changed_pixel_ratio": 0.0,
+            "reference_edge_pixels": 148,
             "detail_tile_count": 2,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "QComboBox text 16: By Trial",
             "bounds": [
-              607,
+              612,
               136,
-              752,
+              790,
               166
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
-            "edge_recall": 0.9161676646706587,
-            "changed_pixel_ratio": 0.07242757242757243,
-            "reference_edge_pixels": 167,
+            "edge_recall": 1.0,
+            "changed_pixel_ratio": 0.0,
+            "reference_edge_pixels": 148,
             "detail_tile_count": 2,
             "missing_detail_tile_ratio": 0.0
           }
@@ -3008,7 +3008,7 @@
             "bounds": [
               0,
               0,
-              752,
+              980,
               492
             ],
             "minimum_required_edge_recall": 0.42,
@@ -3017,8 +3017,8 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 14672,
-            "detail_tile_count": 116,
+            "reference_edge_pixels": 16496,
+            "detail_tile_count": 138,
             "missing_detail_tile_ratio": 0.0
           },
           {
@@ -3026,7 +3026,7 @@
             "bounds": [
               30,
               56,
-              378,
+              606,
               277
             ],
             "minimum_required_edge_recall": 0.42,
@@ -3035,8 +3035,8 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 3981,
-            "detail_tile_count": 33,
+            "reference_edge_pixels": 5121,
+            "detail_tile_count": 52,
             "missing_detail_tile_ratio": 0.0
           },
           {
@@ -3044,7 +3044,7 @@
             "bounds": [
               30,
               56,
-              378,
+              606,
               89
             ],
             "minimum_required_edge_recall": 0.42,
@@ -3054,7 +3054,7 @@
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
             "reference_edge_pixels": 855,
-            "detail_tile_count": 11,
+            "detail_tile_count": 10,
             "missing_detail_tile_ratio": 0.0
           },
           {
@@ -3062,7 +3062,7 @@
             "bounds": [
               30,
               30,
-              378,
+              606,
               46
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3070,7 +3070,7 @@
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
-            "changed_pixel_ratio": 0.9618084227910817,
+            "changed_pixel_ratio": 0.9769785963165755,
             "reference_edge_pixels": 320,
             "detail_tile_count": 7,
             "missing_detail_tile_ratio": 0.0
@@ -3078,9 +3078,9 @@
           {
             "surface_name": "SplitPreviewSectionTitle text 1: Split overview",
             "bounds": [
-              420,
+              648,
               28,
-              722,
+              950,
               44
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3096,9 +3096,9 @@
           {
             "surface_name": "SplitPreviewMuted text 2: Subjects",
             "bounds": [
-              420,
+              648,
               52,
-              477,
+              705,
               68
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3114,9 +3114,9 @@
           {
             "surface_name": "QLabel text 3: 2",
             "bounds": [
-              489,
+              717,
               52,
-              722,
+              950,
               68
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3132,9 +3132,9 @@
           {
             "surface_name": "SplitPreviewMuted text 4: Sessions",
             "bounds": [
-              420,
+              648,
               76,
-              477,
+              705,
               92
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3150,9 +3150,9 @@
           {
             "surface_name": "QLabel text 5: 1",
             "bounds": [
-              489,
+              717,
               76,
-              722,
+              950,
               92
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3168,9 +3168,9 @@
           {
             "surface_name": "SplitPreviewMuted text 6: Labels",
             "bounds": [
-              420,
+              648,
               100,
-              477,
+              705,
               116
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3186,9 +3186,9 @@
           {
             "surface_name": "QLabel text 7: 2",
             "bounds": [
-              489,
+              717,
               100,
-              722,
+              950,
               116
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3204,9 +3204,9 @@
           {
             "surface_name": "SplitPreviewMuted text 8: Trials",
             "bounds": [
-              420,
+              648,
               124,
-              477,
+              705,
               140
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3222,9 +3222,9 @@
           {
             "surface_name": "QLabel text 9: 120",
             "bounds": [
-              489,
+              717,
               124,
-              722,
+              950,
               140
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3240,9 +3240,9 @@
           {
             "surface_name": "SplitPreviewMuted text 10: Training",
             "bounds": [
-              420,
+              648,
               148,
-              477,
+              705,
               164
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3258,9 +3258,9 @@
           {
             "surface_name": "QLabel text 11: Full Data",
             "bounds": [
-              489,
+              717,
               148,
-              722,
+              950,
               164
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3276,9 +3276,9 @@
           {
             "surface_name": "SplitPreviewSectionTitle text 12: Validation split",
             "bounds": [
-              420,
+              648,
               196,
-              722,
+              950,
               212
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3294,9 +3294,9 @@
           {
             "surface_name": "QLabel text 13: By Trial",
             "bounds": [
-              420,
+              648,
               220,
-              722,
+              950,
               236
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3312,9 +3312,9 @@
           {
             "surface_name": "SplitPreviewSectionTitle text 14: Testing split",
             "bounds": [
-              420,
+              648,
               312,
-              722,
+              950,
               328
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3330,9 +3330,9 @@
           {
             "surface_name": "QLabel text 15: Cross Validation",
             "bounds": [
-              420,
+              648,
               336,
-              722,
+              950,
               352
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3348,9 +3348,9 @@
           {
             "surface_name": "QLabel text 16: By Trial",
             "bounds": [
-              420,
+              648,
               360,
-              722,
+              950,
               376
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3366,9 +3366,9 @@
           {
             "surface_name": "PrimaryConfirmButton text 17: Confirm",
             "bounds": [
-              408,
+              636,
               442,
-              734,
+              962,
               474
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3384,9 +3384,9 @@
           {
             "surface_name": "QComboBox text 18: Ratio",
             "bounds": [
-              420,
+              648,
               244,
-              536,
+              764,
               280
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3402,9 +3402,9 @@
           {
             "surface_name": "QComboBox text 19: K Fold",
             "bounds": [
-              420,
+              648,
               384,
-              536,
+              764,
               420
             ],
             "minimum_required_edge_recall": 0.7,
@@ -3636,7 +3636,7 @@
       "frame_readiness": {
         "consecutive_complete_frames": 2,
         "stable": true,
-        "max_changed_pixel_ratio": 0.002359,
+        "max_changed_pixel_ratio": 0.002125,
         "required_regions": [
           "ChatPanel complete surface",
           "Assistant composer",
@@ -4331,7 +4331,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 6668,
+            "reference_edge_pixels": 6684,
             "detail_tile_count": 48,
             "missing_detail_tile_ratio": 0.0
           },
@@ -4482,9 +4482,9 @@
           {
             "surface_name": "PrimaryConfirmButton text 17: OK",
             "bounds": [
-              303,
+              295,
               298,
-              352,
+              348,
               336
             ],
             "minimum_required_edge_recall": 0.7,
@@ -4500,7 +4500,7 @@
           {
             "surface_name": "SecondaryDialogButton text 18: Cancel",
             "bounds": [
-              358,
+              354,
               298,
               428,
               336
@@ -4571,7 +4571,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 5663,
+            "reference_edge_pixels": 5679,
             "detail_tile_count": 44,
             "missing_detail_tile_ratio": 0.0
           },
@@ -4722,9 +4722,9 @@
           {
             "surface_name": "PrimaryConfirmButton text 17: OK",
             "bounds": [
-              303,
+              295,
               298,
-              352,
+              348,
               336
             ],
             "minimum_required_edge_recall": 0.7,
@@ -4740,7 +4740,7 @@
           {
             "surface_name": "SecondaryDialogButton text 18: Cancel",
             "bounds": [
-              358,
+              354,
               298,
               428,
               336
@@ -4807,7 +4807,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 3871,
+            "reference_edge_pixels": 3887,
             "detail_tile_count": 27,
             "missing_detail_tile_ratio": 0.0
           },
@@ -4922,9 +4922,9 @@
           {
             "surface_name": "PrimaryConfirmButton text 14: OK",
             "bounds": [
-              303,
+              295,
               168,
-              352,
+              348,
               206
             ],
             "minimum_required_edge_recall": 0.7,
@@ -4940,7 +4940,7 @@
           {
             "surface_name": "SecondaryDialogButton text 15: Cancel",
             "bounds": [
-              358,
+              354,
               168,
               428,
               206
@@ -5008,7 +5008,7 @@
             "bounds": [
               0,
               0,
-              752,
+              760,
               327
             ],
             "minimum_required_edge_recall": 0.42,
@@ -5017,7 +5017,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 9390,
+            "reference_edge_pixels": 9506,
             "detail_tile_count": 96,
             "missing_detail_tile_ratio": 0.0
           },
@@ -5026,7 +5026,7 @@
             "bounds": [
               16,
               64,
-              736,
+              744,
               263
             ],
             "minimum_required_edge_recall": 0.42,
@@ -5035,7 +5035,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 5095,
+            "reference_edge_pixels": 5179,
             "detail_tile_count": 60,
             "missing_detail_tile_ratio": 0.0
           },
@@ -5044,7 +5044,7 @@
             "bounds": [
               17,
               65,
-              735,
+              743,
               96
             ],
             "minimum_required_edge_recall": 0.42,
@@ -5078,9 +5078,9 @@
           {
             "surface_name": "QPushButton text 1: Clear All",
             "bounds": [
-              518,
+              526,
               14,
-              614,
+              622,
               52
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5096,9 +5096,9 @@
           {
             "surface_name": "QPushButton text 2: Reset Saved",
             "bounds": [
-              626,
+              634,
               14,
-              736,
+              744,
               52
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5116,7 +5116,7 @@
             "bounds": [
               611,
               275,
-              660,
+              664,
               313
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5132,9 +5132,9 @@
           {
             "surface_name": "SecondaryDialogButton text 5: Cancel",
             "bounds": [
-              666,
+              670,
               275,
-              736,
+              744,
               313
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5170,7 +5170,7 @@
             "bounds": [
               265,
               100,
-              727,
+              735,
               128
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5188,7 +5188,7 @@
             "bounds": [
               265,
               132,
-              727,
+              735,
               160
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5206,7 +5206,7 @@
             "bounds": [
               265,
               164,
-              727,
+              735,
               192
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5224,7 +5224,7 @@
             "bounds": [
               265,
               196,
-              727,
+              735,
               224
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5242,7 +5242,7 @@
             "bounds": [
               265,
               228,
-              727,
+              735,
               256
             ],
             "minimum_required_edge_recall": 0.7,
@@ -5558,7 +5558,7 @@
         "reference_validated": true,
         "reference_comparison_count": 36,
         "minimum_reference_edge_recall": 0.995516,
-        "maximum_reference_changed_pixel_ratio": 0.999369,
+        "maximum_reference_changed_pixel_ratio": 0.999352,
         "reference_regions": [
           {
             "surface_name": "TrainingPanel complete surface",
@@ -5574,17 +5574,17 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 28596,
-            "detail_tile_count": 207,
+            "reference_edge_pixels": 30194,
+            "detail_tile_count": 217,
             "missing_detail_tile_ratio": 0.0
           },
           {
             "surface_name": "Training History table",
             "bounds": [
               31,
-              634,
+              621,
               829,
-              742
+              729
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -5636,9 +5636,9 @@
             "surface_name": "TrainingHistoryTable content 0",
             "bounds": [
               31,
-              634,
+              621,
               829,
-              742
+              729
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -5654,9 +5654,9 @@
             "surface_name": "QHeaderView content 1",
             "bounds": [
               32,
-              669,
+              656,
               60,
-              731
+              718
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -5672,9 +5672,9 @@
             "surface_name": "QHeaderView content 2",
             "bounds": [
               60,
-              635,
+              622,
               828,
-              669
+              656
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -5710,16 +5710,16 @@
               31,
               101,
               829,
-              579
+              566
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
-            "changed_pixel_ratio": 0.999369220049829,
+            "changed_pixel_ratio": 0.9993515091656989,
             "reference_edge_pixels": 1405,
-            "detail_tile_count": 14,
+            "detail_tile_count": 7,
             "missing_detail_tile_ratio": 0.0
           },
           {
@@ -5852,9 +5852,9 @@
             "surface_name": "Training History chrome title: TRAINING HISTORY",
             "bounds": [
               20,
-              590,
+              577,
               183,
-              613
+              600
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -5924,9 +5924,9 @@
             "surface_name": "Training History cell row 1: Group",
             "bounds": [
               60,
-              669,
+              656,
               145,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -5942,9 +5942,9 @@
             "surface_name": "Training History cell row 1: Run",
             "bounds": [
               146,
-              669,
+              656,
               217,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -5960,9 +5960,9 @@
             "surface_name": "Training History cell row 1: Model",
             "bounds": [
               218,
-              669,
+              656,
               349,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -5978,9 +5978,9 @@
             "surface_name": "Training History cell row 1: Status",
             "bounds": [
               350,
-              669,
+              656,
               446,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -5996,9 +5996,9 @@
             "surface_name": "Training History cell row 1: Epochs",
             "bounds": [
               447,
-              669,
+              656,
               521,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6014,9 +6014,9 @@
             "surface_name": "Training History cell row 1: Train Loss",
             "bounds": [
               522,
-              669,
+              656,
               613,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6032,9 +6032,9 @@
             "surface_name": "Training History cell row 1: Train Acc",
             "bounds": [
               614,
-              669,
+              656,
               701,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6050,9 +6050,9 @@
             "surface_name": "Training History cell row 1: Val Loss",
             "bounds": [
               702,
-              669,
+              656,
               783,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6068,9 +6068,9 @@
             "surface_name": "Training History cell row 2: Group",
             "bounds": [
               60,
-              699,
+              686,
               145,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6086,9 +6086,9 @@
             "surface_name": "Training History cell row 2: Run",
             "bounds": [
               146,
-              699,
+              686,
               217,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6104,9 +6104,9 @@
             "surface_name": "Training History cell row 2: Model",
             "bounds": [
               218,
-              699,
+              686,
               349,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6122,9 +6122,9 @@
             "surface_name": "Training History cell row 2: Status",
             "bounds": [
               350,
-              699,
+              686,
               446,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6140,9 +6140,9 @@
             "surface_name": "Training History cell row 2: Epochs",
             "bounds": [
               447,
-              699,
+              686,
               521,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6158,9 +6158,9 @@
             "surface_name": "Training History cell row 2: Train Loss",
             "bounds": [
               522,
-              699,
+              686,
               613,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6176,9 +6176,9 @@
             "surface_name": "Training History cell row 2: Train Acc",
             "bounds": [
               614,
-              699,
+              686,
               701,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6194,9 +6194,9 @@
             "surface_name": "Training History cell row 2: Val Loss",
             "bounds": [
               702,
-              699,
+              686,
               783,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6348,7 +6348,7 @@
         "reference_validated": true,
         "reference_comparison_count": 68,
         "minimum_reference_edge_recall": 0.995516,
-        "maximum_reference_changed_pixel_ratio": 0.999157,
+        "maximum_reference_changed_pixel_ratio": 0.999125,
         "reference_regions": [
           {
             "surface_name": "TrainingPanel complete surface",
@@ -6364,7 +6364,7 @@
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
             "changed_pixel_ratio": 0.0,
-            "reference_edge_pixels": 38879,
+            "reference_edge_pixels": 40467,
             "detail_tile_count": 248,
             "missing_detail_tile_ratio": 0.0
           },
@@ -6372,9 +6372,9 @@
             "surface_name": "Training History table",
             "bounds": [
               31,
-              514,
+              501,
               829,
-              742
+              729
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -6426,9 +6426,9 @@
             "surface_name": "TrainingHistoryTable content 0",
             "bounds": [
               31,
-              514,
+              501,
               829,
-              742
+              729
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -6444,9 +6444,9 @@
             "surface_name": "QHeaderView content 1",
             "bounds": [
               32,
-              549,
+              536,
               60,
-              731
+              718
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -6462,9 +6462,9 @@
             "surface_name": "QHeaderView content 2",
             "bounds": [
               60,
-              515,
+              502,
               818,
-              549
+              536
             ],
             "minimum_required_edge_recall": 0.42,
             "maximum_allowed_changed_pixel_ratio": 0.55,
@@ -6500,14 +6500,14 @@
               31,
               101,
               829,
-              459
+              446
             ],
             "minimum_required_edge_recall": 0.7,
             "maximum_allowed_changed_pixel_ratio": 1.0,
             "maximum_allowed_missing_detail_tile_ratio": 0.35,
             "minimum_reference_edge_pixels": 4,
             "edge_recall": 1.0,
-            "changed_pixel_ratio": 0.9991565975947152,
+            "changed_pixel_ratio": 0.9991246319058851,
             "reference_edge_pixels": 1405,
             "detail_tile_count": 7,
             "missing_detail_tile_ratio": 0.0
@@ -6642,9 +6642,9 @@
             "surface_name": "Training History chrome title: TRAINING HISTORY",
             "bounds": [
               20,
-              470,
+              457,
               183,
-              493
+              480
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6714,9 +6714,9 @@
             "surface_name": "Training History cell row 1: Group",
             "bounds": [
               60,
-              549,
+              536,
               145,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6732,9 +6732,9 @@
             "surface_name": "Training History cell row 1: Run",
             "bounds": [
               146,
-              549,
+              536,
               217,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6750,9 +6750,9 @@
             "surface_name": "Training History cell row 1: Model",
             "bounds": [
               218,
-              549,
+              536,
               349,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6768,9 +6768,9 @@
             "surface_name": "Training History cell row 1: Status",
             "bounds": [
               350,
-              549,
+              536,
               446,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6786,9 +6786,9 @@
             "surface_name": "Training History cell row 1: Epochs",
             "bounds": [
               447,
-              549,
+              536,
               521,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6804,9 +6804,9 @@
             "surface_name": "Training History cell row 1: Train Loss",
             "bounds": [
               522,
-              549,
+              536,
               613,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6822,9 +6822,9 @@
             "surface_name": "Training History cell row 1: Train Acc",
             "bounds": [
               614,
-              549,
+              536,
               701,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6840,9 +6840,9 @@
             "surface_name": "Training History cell row 1: Val Loss",
             "bounds": [
               702,
-              549,
+              536,
               783,
-              578
+              565
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6858,9 +6858,9 @@
             "surface_name": "Training History cell row 2: Group",
             "bounds": [
               60,
-              579,
+              566,
               145,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6876,9 +6876,9 @@
             "surface_name": "Training History cell row 2: Run",
             "bounds": [
               146,
-              579,
+              566,
               217,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6894,9 +6894,9 @@
             "surface_name": "Training History cell row 2: Model",
             "bounds": [
               218,
-              579,
+              566,
               349,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6912,9 +6912,9 @@
             "surface_name": "Training History cell row 2: Status",
             "bounds": [
               350,
-              579,
+              566,
               446,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6930,9 +6930,9 @@
             "surface_name": "Training History cell row 2: Epochs",
             "bounds": [
               447,
-              579,
+              566,
               521,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6948,9 +6948,9 @@
             "surface_name": "Training History cell row 2: Train Loss",
             "bounds": [
               522,
-              579,
+              566,
               613,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6966,9 +6966,9 @@
             "surface_name": "Training History cell row 2: Train Acc",
             "bounds": [
               614,
-              579,
+              566,
               701,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -6984,9 +6984,9 @@
             "surface_name": "Training History cell row 2: Val Loss",
             "bounds": [
               702,
-              579,
+              566,
               783,
-              608
+              595
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7002,9 +7002,9 @@
             "surface_name": "Training History cell row 3: Group",
             "bounds": [
               60,
-              609,
+              596,
               145,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7020,9 +7020,9 @@
             "surface_name": "Training History cell row 3: Run",
             "bounds": [
               146,
-              609,
+              596,
               217,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7038,9 +7038,9 @@
             "surface_name": "Training History cell row 3: Model",
             "bounds": [
               218,
-              609,
+              596,
               349,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7056,9 +7056,9 @@
             "surface_name": "Training History cell row 3: Status",
             "bounds": [
               350,
-              609,
+              596,
               446,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7074,9 +7074,9 @@
             "surface_name": "Training History cell row 3: Epochs",
             "bounds": [
               447,
-              609,
+              596,
               521,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7092,9 +7092,9 @@
             "surface_name": "Training History cell row 3: Train Loss",
             "bounds": [
               522,
-              609,
+              596,
               613,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7110,9 +7110,9 @@
             "surface_name": "Training History cell row 3: Train Acc",
             "bounds": [
               614,
-              609,
+              596,
               701,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7128,9 +7128,9 @@
             "surface_name": "Training History cell row 3: Val Loss",
             "bounds": [
               702,
-              609,
+              596,
               783,
-              638
+              625
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7146,9 +7146,9 @@
             "surface_name": "Training History cell row 4: Group",
             "bounds": [
               60,
-              639,
+              626,
               145,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7164,9 +7164,9 @@
             "surface_name": "Training History cell row 4: Run",
             "bounds": [
               146,
-              639,
+              626,
               217,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7182,9 +7182,9 @@
             "surface_name": "Training History cell row 4: Model",
             "bounds": [
               218,
-              639,
+              626,
               349,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7200,9 +7200,9 @@
             "surface_name": "Training History cell row 4: Status",
             "bounds": [
               350,
-              639,
+              626,
               446,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7218,9 +7218,9 @@
             "surface_name": "Training History cell row 4: Epochs",
             "bounds": [
               447,
-              639,
+              626,
               521,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7236,9 +7236,9 @@
             "surface_name": "Training History cell row 4: Train Loss",
             "bounds": [
               522,
-              639,
+              626,
               613,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7254,9 +7254,9 @@
             "surface_name": "Training History cell row 4: Train Acc",
             "bounds": [
               614,
-              639,
+              626,
               701,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7272,9 +7272,9 @@
             "surface_name": "Training History cell row 4: Val Loss",
             "bounds": [
               702,
-              639,
+              626,
               783,
-              668
+              655
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7290,9 +7290,9 @@
             "surface_name": "Training History cell row 5: Group",
             "bounds": [
               60,
-              669,
+              656,
               145,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7308,9 +7308,9 @@
             "surface_name": "Training History cell row 5: Run",
             "bounds": [
               146,
-              669,
+              656,
               217,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7326,9 +7326,9 @@
             "surface_name": "Training History cell row 5: Model",
             "bounds": [
               218,
-              669,
+              656,
               349,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7344,9 +7344,9 @@
             "surface_name": "Training History cell row 5: Status",
             "bounds": [
               350,
-              669,
+              656,
               446,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7362,9 +7362,9 @@
             "surface_name": "Training History cell row 5: Epochs",
             "bounds": [
               447,
-              669,
+              656,
               521,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7380,9 +7380,9 @@
             "surface_name": "Training History cell row 5: Train Loss",
             "bounds": [
               522,
-              669,
+              656,
               613,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7398,9 +7398,9 @@
             "surface_name": "Training History cell row 5: Train Acc",
             "bounds": [
               614,
-              669,
+              656,
               701,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7416,9 +7416,9 @@
             "surface_name": "Training History cell row 5: Val Loss",
             "bounds": [
               702,
-              669,
+              656,
               783,
-              698
+              685
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7434,9 +7434,9 @@
             "surface_name": "Training History cell row 6: Group",
             "bounds": [
               60,
-              699,
+              686,
               145,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7452,9 +7452,9 @@
             "surface_name": "Training History cell row 6: Run",
             "bounds": [
               146,
-              699,
+              686,
               217,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7470,9 +7470,9 @@
             "surface_name": "Training History cell row 6: Model",
             "bounds": [
               218,
-              699,
+              686,
               349,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7488,9 +7488,9 @@
             "surface_name": "Training History cell row 6: Status",
             "bounds": [
               350,
-              699,
+              686,
               446,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7506,9 +7506,9 @@
             "surface_name": "Training History cell row 6: Epochs",
             "bounds": [
               447,
-              699,
+              686,
               521,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7524,9 +7524,9 @@
             "surface_name": "Training History cell row 6: Train Loss",
             "bounds": [
               522,
-              699,
+              686,
               613,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7542,9 +7542,9 @@
             "surface_name": "Training History cell row 6: Train Acc",
             "bounds": [
               614,
-              699,
+              686,
               701,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,
@@ -7560,9 +7560,9 @@
             "surface_name": "Training History cell row 6: Val Loss",
             "bounds": [
               702,
-              699,
+              686,
               783,
-              728
+              715
             ],
             "minimum_required_edge_recall": 0.55,
             "maximum_allowed_changed_pixel_ratio": 0.7,

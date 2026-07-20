@@ -2,7 +2,7 @@
   "schema_version": 4,
   "artifact_type": "xbrainlab.data_import_wizard_steps",
   "generator": "scripts/dev/capture_data_import_wizard_steps.py",
-  "generated_at_utc": "2026-07-19T12:11:17.137720+00:00",
+  "generated_at_utc": "2026-07-20T07:13:20.480953+00:00",
   "capture_environment": {
     "qt_platform": "xcb",
     "capture_kind": "xcb_native_window",
@@ -40,23 +40,23 @@
     "complete": true
   },
   "capture_session": {
-    "started_at_utc": "2026-07-19T12:00:49.789480+00:00",
-    "completed_at_utc": "2026-07-19T12:11:17.137720+00:00",
-    "source_digest_at_start": "5a1388f72d362495c34ba32c68c6c1278d3a23a8ca36513128a56235911b5d46",
-    "source_digest_at_completion": "5a1388f72d362495c34ba32c68c6c1278d3a23a8ca36513128a56235911b5d46",
+    "started_at_utc": "2026-07-20T07:07:00.305899+00:00",
+    "completed_at_utc": "2026-07-20T07:13:20.480953+00:00",
+    "source_digest_at_start": "9f43a0421f47f75400aafb5c2d510e0510fa96e7d9bffc34700f7e05ad2f5482",
+    "source_digest_at_completion": "9f43a0421f47f75400aafb5c2d510e0510fa96e7d9bffc34700f7e05ad2f5482",
     "source_identity_stable": true,
-    "session_id": "20260719T120106Z-abd28016"
+    "session_id": "20260720T070708Z-9a635c5f"
   },
   "source_identity": {
     "version": 2,
     "repo_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab",
     "branch": "fix/nonblocking-state-shutdown-lifecycle",
-    "commit_sha": "faabfe388e3f21434796aafed1cde3f09535063f",
-    "head_tree_sha": "70235e544d00830accd1c8009a65707461053c45",
+    "commit_sha": "248c5db533b30a0b8920e122495e6e4791175974",
+    "head_tree_sha": "0681dfe67954482af3b47b3463d2c2862fd98f1f",
     "dirty": true,
-    "dirty_digest": "83ab3c5c0114214eb62f38ca3a8c57aed0c1c5c1b30ae147cb05f53f138253fd",
-    "source_content_digest": "39ce8619a52cb2b9128f88e541b110ea0c932eadf6849805ab610761ec7f9e94",
-    "untracked_source_count": 258,
+    "dirty_digest": "7dfee50fcac997bad7cc89848f5fb84289e1d6d3560dadfc7cf071d6fbeb947f",
+    "source_content_digest": "e09d406be2ee42ac07fb639ef842a60d717adc150e850d04eb4cc19b362c51c1",
+    "untracked_source_count": 0,
     "excluded_generated_prefixes": [
       "artifacts/",
       ".pytest_cache/",
@@ -93,7 +93,7 @@
       "Makefile"
     ],
     "error": "",
-    "source_digest": "5a1388f72d362495c34ba32c68c6c1278d3a23a8ca36513128a56235911b5d46"
+    "source_digest": "9f43a0421f47f75400aafb5c2d510e0510fa96e7d9bffc34700f7e05ad2f5482"
   },
   "screenshots": {
     "01-choose-eeg-data-760px.png": {
@@ -165,8 +165,8 @@
       "path": "04-match-labels-bids-events.png",
       "exists": true,
       "readable": true,
-      "byte_size": 128391,
-      "sha256": "079022c3a11c7fd5d44cd9395eccd254e237f616b611543bd3a48a3623620940",
+      "byte_size": 128398,
+      "sha256": "0370cc230cb7b77b907579142924f2eaefa89c72069da1369d5f7fd2315f986d",
       "dimensions": [
         1220,
         1320
@@ -178,8 +178,8 @@
       "path": "04-match-labels-conversion-fallback.png",
       "exists": true,
       "readable": true,
-      "byte_size": 64134,
-      "sha256": "3042669efc67fb06e2e7fd1837b588506a5e8b5e7f81cffeb6155d50c9cd1aec",
+      "byte_size": 64154,
+      "sha256": "e93b3067b2c5c24047ceb5c70d29cf59e512554c5a5652511d431a503d9a7907",
       "dimensions": [
         1220,
         1320
@@ -204,8 +204,8 @@
       "path": "04-match-labels-final-loaded-label-files.png",
       "exists": true,
       "readable": true,
-      "byte_size": 140786,
-      "sha256": "55f47214cb69bd3287aaa809c37008c8f8192a7853a32ac1875dfc3db04aab30",
+      "byte_size": 140803,
+      "sha256": "178213e8c3962a9f281f8814870460f834e9a1f56ce44c22bc1993d36a6cf164",
       "dimensions": [
         1220,
         1320
@@ -217,8 +217,8 @@
       "path": "04-match-labels-internal-suggested-events-full.png",
       "exists": true,
       "readable": true,
-      "byte_size": 113868,
-      "sha256": "3ab70b19475b7c771f9cfd51c1601cf1c77d62fe3305253908119a8092beb313",
+      "byte_size": 113920,
+      "sha256": "f8e49c8884aa004bd5a999bbf69a81dfc9688888de77ac2e5d7f58e4acb6bcd1",
       "dimensions": [
         1220,
         1320

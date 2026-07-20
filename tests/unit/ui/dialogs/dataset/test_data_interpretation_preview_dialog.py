@@ -687,6 +687,61 @@ def test_match_labels_pairing_board_applies_dataset_level_choices(qtbot):
     assert "Target · EEG event order · at Cue onset" in dialog.rule_status_label.text()
 
 
+def test_match_labels_pairing_header_has_vertical_text_breathing_room(qtbot):
+    label_path = "/tmp/source/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "selected_eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "trial order",
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "role": "external labels",
+                }
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 860)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    header = dialog.findChild(QFrame, "DataImportPairingHeader")
+    assert header is not None
+    labels = header.findChildren(QLabel, "DataImportPairingHeaderLabel")
+    assert [label.text() for label in labels] == [
+        "EEG file",
+        "Label file",
+        "Status",
+    ]
+    assert all(label.height() >= label.fontMetrics().height() + 4 for label in labels)
+    assert header.height() >= max(label.height() for label in labels) + 4
+    visible_header_labels = [
+        label
+        for label in dialog.findChildren(QLabel, "DataImportPairingHeaderLabel")
+        if label.isVisible()
+    ]
+    assert visible_header_labels
+    assert all(
+        label.height() >= label.fontMetrics().height() + 4
+        for label in visible_header_labels
+    )
+
+
 def test_match_labels_internal_source_hides_loaded_label_setup(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

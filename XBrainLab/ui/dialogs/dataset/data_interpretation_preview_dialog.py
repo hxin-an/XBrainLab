@@ -1334,7 +1334,7 @@ class DataInterpretationPreviewDialog(
         header = QFrame()
         header.setObjectName("DataImportPairingHeader")
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setContentsMargins(10, 2, 10, 2)
         layout.setSpacing(10)
         layout.addWidget(self._pairing_header_label("EEG file"), stretch=3)
         layout.addWidget(self._pairing_header_label("Label file"), stretch=3)
@@ -1344,6 +1344,11 @@ class DataInterpretationPreviewDialog(
     def _pairing_header_label(self, text: str, width: int | None = None) -> QLabel:
         label = QLabel(text)
         label.setObjectName("DataImportPairingHeaderLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        label.setSizePolicy(
+            QSizePolicy.Policy.Expanding if width is None else QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Minimum,
+        )
         if width is not None:
             label.setFixedWidth(width)
         return label
@@ -2553,6 +2558,9 @@ class DataInterpretationPreviewDialog(
             }}
             QLabel#DataImportPairingHeaderLabel {{
                 color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                padding: 2px 0;
                 font-size: 11px;
                 font-weight: 600;
             }}

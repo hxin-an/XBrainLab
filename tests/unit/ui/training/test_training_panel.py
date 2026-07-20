@@ -3,7 +3,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 
 from XBrainLab.backend.application.results import (
     ChangedState,
@@ -148,10 +148,67 @@ def test_training_panel_gives_remaining_height_to_plots_for_small_history(
     panel.history_table.update_history([_make_history_entry()])
     qtbot.wait(0)
 
-    assert panel.history_group.height() <= (
-        panel.history_table.preferred_content_height() + 52
-    )
+    assert panel.history_group.height() == panel.history_group.sizeHint().height()
     assert panel.plots_group.height() > panel.history_group.height()
+
+
+def test_training_panel_keeps_large_history_inside_compact_viewport(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    host = QWidget()
+    host.setFixedSize(900, 430)
+    host_layout = QVBoxLayout(host)
+    host_layout.setContentsMargins(0, 0, 0, 0)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
+    host_layout.addWidget(panel)
+    qtbot.addWidget(host)
+    host.show()
+    panel.history_table.update_history(
+        [
+            _make_history_entry(run_name=str(index + 1))
+            for index in range(panel.history_table.MAX_VISIBLE_ROWS + 3)
+        ]
+    )
+    qtbot.wait(0)
+
+    left_widget = panel.history_group.parentWidget()
+    assert left_widget is not None
+    compact_table_height = panel.history_table.height()
+    assert panel.history_group.geometry().bottom() <= (
+        left_widget.contentsRect().bottom() - 20
+    )
+    assert panel.history_group.height() >= panel.history_group.sizeHint().height()
+    assert panel.plots_group.height() >= panel._MIN_PLOTS_GROUP_HEIGHT
+    assert compact_table_height < panel.history_table.preferred_content_height()
+    assert panel.history_table.verticalScrollBar().maximum() > 0
+
+    host.setFixedHeight(760)
+    qtbot.wait(0)
+
+    assert panel.history_table.height() > compact_table_height
+    assert (
+        panel.history_table.height() == panel.history_table.preferred_content_height()
+    )
+    assert panel.history_group.height() >= panel.history_group.sizeHint().height()
+    assert panel.history_group.geometry().bottom() <= (
+        left_widget.contentsRect().bottom() - 20
+    )
+
+    host.setFixedHeight(430)
+    qtbot.wait(0)
+
+    assert panel.history_table.height() == compact_table_height
+    assert panel.history_group.height() >= panel.history_group.sizeHint().height()
+    assert panel.plots_group.height() >= panel._MIN_PLOTS_GROUP_HEIGHT
+    assert panel.history_group.geometry().bottom() <= (
+        left_widget.contentsRect().bottom() - 20
+    )
 
 
 def test_training_panel_split_data_success(mock_main_window, mock_controller, qtbot):

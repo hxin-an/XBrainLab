@@ -28,6 +28,7 @@ class TrainingHistoryTable(QTableWidget):
     content_height_changed = pyqtSignal(int)
     MAX_VISIBLE_ROWS = 6
     EMPTY_VIEWPORT_HEIGHT = 52
+    MIN_CONTENT_HEIGHT = 96
     KEY_COLUMN_PADDING = 26
     KEY_COLUMN_MAX_WIDTHS = (220, 180, 190, 120)
 
@@ -41,6 +42,7 @@ class TrainingHistoryTable(QTableWidget):
         super().__init__(parent)
         self.row_map = {}  # Map row -> (plan, record)
         self._last_content_height = -1
+        self._height_limit: int | None = None
         self._init_ui()
         self.empty_state_label = QLabel("No training runs yet", self.viewport())
         self.empty_state_label.setObjectName("TrainingHistoryEmptyState")
@@ -126,14 +128,33 @@ class TrainingHistoryTable(QTableWidget):
             + 2
         )
 
+    def set_height_limit(self, maximum_height: int | None) -> None:
+        """Bound visible rows to the space offered by the enclosing panel."""
+        normalized = (
+            None
+            if maximum_height is None
+            else max(int(maximum_height), self.MIN_CONTENT_HEIGHT)
+        )
+        if normalized == self._height_limit:
+            return
+        self._height_limit = normalized
+        self._sync_content_height()
+
     def _sync_content_height(self) -> None:
-        has_overflow = self.rowCount() > self.MAX_VISIBLE_ROWS
+        preferred_height = self.preferred_content_height()
+        target_height = (
+            preferred_height
+            if self._height_limit is None
+            else min(preferred_height, self._height_limit)
+        )
+        has_overflow = (
+            self.rowCount() > self.MAX_VISIBLE_ROWS or target_height < preferred_height
+        )
         self.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
             if has_overflow
             else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        target_height = self.preferred_content_height()
         self.setFixedHeight(target_height)
         if target_height != self._last_content_height:
             self._last_content_height = target_height
