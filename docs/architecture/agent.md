@@ -286,6 +286,9 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 - action 完成後，GUI 同步仍由 `application_command_completed -> changed_state -> shared refresh`
   處理；card 不直接寫 Training / Dataset widget。
 - transcript 只有接近尾端時自動跟隨；使用者向上閱讀後，新訊息不可強制拉到底部。
+- empty state 與 durable transcript 必須互斥；判斷依 message ownership，而不是 Qt
+  `isVisible()`。即使 dock 暫時隱藏、背景收到 runtime refresh 或 confirmation cleanup，
+  重新開啟後也不可把 suggestion empty state 插回既有對話。
 - confirmation card 是 transient UI lease，不寫入 chat history；new chat、terminal turn 和 close
   都會清除，避免過期 action 在下一個 turn 可執行。
 - runtime teardown 仍透過 Qt signal 與 event loop 收斂；focused gate 量測

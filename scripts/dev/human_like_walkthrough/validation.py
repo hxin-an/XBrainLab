@@ -649,6 +649,18 @@ def build_assistant_dock_contract_review(
             findings.append(
                 f"{phase_name} has overflowing widgets: {', '.join(map(str, overflowing))}"
             )
+        transcript_message_count = int(dock.get("transcript_message_count", 0) or 0)
+        empty_state_visible = bool(dock.get("empty_state_visible"))
+        if transcript_message_count > 0 and empty_state_visible:
+            findings.append(
+                f"{phase_name} shows the assistant empty state beside an active transcript"
+            )
+        if phase_name == "assistant_empty_state" and (
+            not empty_state_visible or transcript_message_count != 0
+        ):
+            findings.append(
+                "assistant_empty_state does not exclusively show the empty-state surface"
+            )
         runtime = (phase.get("notes") or {}).get("assistant_runtime", {})
         runtime = runtime if isinstance(runtime, dict) else {}
         runtime_phase = str(runtime.get("phase") or "")

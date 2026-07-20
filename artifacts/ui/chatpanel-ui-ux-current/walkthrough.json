@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
   "status": "passed",
-  "generated_at": "2026-07-20T19:34:22.434478+00:00",
+  "generated_at": "2026-07-20T19:53:38.824633+00:00",
   "generator": "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
   "replay_command": "QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
   "platform": "offscreen",
@@ -14,7 +14,7 @@
     },
     {
       "path": "scripts/dev/human_like_walkthrough/evidence.py",
-      "sha256": "602f4546f10d0561bf0edf7afca6348dad7ca1daa3b8b785f7b3680ddf670bdc"
+      "sha256": "8427ff158c5fbde18f7ca559cc014f88c2956fb15132f3cf1ff4bce1f16beb8b"
     },
     {
       "path": "XBrainLab/chat_contract.py",
@@ -70,7 +70,7 @@
     },
     {
       "path": "XBrainLab/ui/chat/panel.py",
-      "sha256": "360175afb90619ebd304de932e9012bd3f524ba2b3c288d6bbee4136b2c9a3ae"
+      "sha256": "204e50df6f08c45a5a3788f4e72db5afe005f5a05590ef03881471330b537c5c"
     },
     {
       "path": "XBrainLab/ui/chat/presentation.py",
@@ -133,10 +133,10 @@
       "sha256": "d24d6b81cf21d341592c63d2353585010e1d85ae5082885b64a98134d8a951de"
     }
   ],
-  "source_fingerprint": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
+  "source_fingerprint": "6d126ee823fce3711c432c1c752d327ad0dc5fef6afb02e6d7e24f046321689e",
   "capture_source": {
-    "fingerprint_at_start": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
-    "fingerprint_at_completion": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
+    "fingerprint_at_start": "6d126ee823fce3711c432c1c752d327ad0dc5fef6afb02e6d7e24f046321689e",
+    "fingerprint_at_completion": "6d126ee823fce3711c432c1c752d327ad0dc5fef6afb02e6d7e24f046321689e",
     "stable": true
   },
   "render_scale_evidence": "synthetic_pixmap_device_ratio",
@@ -699,11 +699,11 @@
     },
     "runtime_state_after_cleanup": "closed",
     "dispatcher_state_after_cleanup": "closed",
-    "initial_close_call_duration_ms": 3.787,
+    "initial_close_call_duration_ms": 3.452,
     "gui_heartbeat": {
       "interval_ms": 5,
       "count_during_cleanup": 14,
-      "max_gap_ms": 5.491,
+      "max_gap_ms": 5.777,
       "responsive": true
     },
     "gui_thread_blocking_wait_used": false,
@@ -8507,6 +8507,9 @@
         "panel_inside_bounds": true,
         "horizontal_scrollbar_max": 0,
         "overflowing_widgets": [],
+        "empty_state_visible": false,
+        "transcript_message_count": 3,
+        "visible_message_count": 3,
         "composer_placeholder": {
           "text": "Ask about the current EEG workflow...",
           "visible": true,
@@ -8781,6 +8784,9 @@
         "panel_inside_bounds": true,
         "horizontal_scrollbar_max": 0,
         "overflowing_widgets": [],
+        "empty_state_visible": false,
+        "transcript_message_count": 3,
+        "visible_message_count": 3,
         "composer_placeholder": {
           "text": "Ask about the current EEG workflow...",
           "visible": true,
@@ -9068,6 +9074,9 @@
         "panel_inside_bounds": true,
         "horizontal_scrollbar_max": 0,
         "overflowing_widgets": [],
+        "empty_state_visible": false,
+        "transcript_message_count": 3,
+        "visible_message_count": 3,
         "composer_placeholder": {
           "text": "Ask about the current EEG workflow...",
           "visible": true,

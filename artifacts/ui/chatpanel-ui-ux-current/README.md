@@ -9,9 +9,9 @@ QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_ui_ux_
 ```
 
 - machine gate: `passed`
-- source fingerprint: `80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec`
+- source fingerprint: `6d126ee823fce3711c432c1c752d327ad0dc5fef6afb02e6d7e24f046321689e`
 - source stable during capture: `True`
-- source fingerprint at start / completion: `80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec` / `80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec`
+- source fingerprint at start / completion: `6d126ee823fce3711c432c1c752d327ad0dc5fef6afb02e6d7e24f046321689e` / `6d126ee823fce3711c432c1c752d327ad0dc5fef6afb02e6d7e24f046321689e`
 - fingerprinted source files: `31`
 - Qt platform: `offscreen`
 - visual reviewer verdict: `not adjudicated by this script`
@@ -73,8 +73,8 @@ The composed walkthrough binds a dedicated `AssistantCommandThread`, requests `A
 - teardown passed: `True`
 - manager close finished: `True`
 - dedicated QThread finished: `True`
-- initial close-call latency: `3.787 ms`
-- GUI heartbeat count / max gap: `14` / `5.491 ms`
+- initial close-call latency: `3.452 ms`
+- GUI heartbeat count / max gap: `14` / `5.777 ms`
 
 ## Interaction Coverage
 

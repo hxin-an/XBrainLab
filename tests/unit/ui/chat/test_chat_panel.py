@@ -583,6 +583,36 @@ class TestChatPanelInit:
         assert (not panel.runtime_state_widget.isHidden()) is expected_runtime
         assert (not panel.empty_state_widget.isHidden()) is expected_empty
 
+    def test_hidden_panel_runtime_refresh_keeps_empty_state_out_of_transcript(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.append_message("assistant", "The current workflow is ready.")
+        assert chat_panel.empty_state_widget.isHidden()
+
+        chat_panel.set_runtime_state("ready")
+        chat_panel.show()
+        qtbot.wait(10)
+
+        assert chat_panel.chat_content_widget.findChildren(MessageBubble)
+        assert chat_panel.empty_state_widget.isHidden()
+
+    def test_hidden_panel_confirmation_clear_keeps_empty_state_out_of_transcript(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.append_message("assistant", "Review the current evaluation results.")
+        assert chat_panel.empty_state_widget.isHidden()
+
+        chat_panel.clear_confirmation_request()
+        chat_panel.show()
+        qtbot.wait(10)
+
+        assert chat_panel.chat_content_widget.findChildren(MessageBubble)
+        assert chat_panel.empty_state_widget.isHidden()
+
     @pytest.mark.parametrize("phase", ["idle", "loading", "failed"])
     def test_non_ready_runtime_rejects_processing_state(self, qtbot, phase):
         with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):

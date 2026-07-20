@@ -867,7 +867,7 @@ class ChatPanel(QWidget):
         self.confirmation_card_widget.clear()
         if (
             self._runtime_phase is AssistantRuntimePhase.READY
-            and not self._has_visible_messages()
+            and not self._has_transcript_messages()
             and not self.turn_activity_widget.isVisible()
         ):
             self.empty_state_widget.setVisible(True)
@@ -1239,7 +1239,7 @@ class ChatPanel(QWidget):
             self.setup_btn.setVisible(False)
             self.runtime_actions.setVisible(False)
             self.runtime_state_widget.setVisible(False)
-            if not self._has_visible_messages():
+            if not self._has_transcript_messages():
                 self.empty_state_widget.setVisible(True)
         else:
             is_failed = self._runtime_phase is AssistantRuntimePhase.FAILED
@@ -1568,7 +1568,7 @@ class ChatPanel(QWidget):
     def _sync_content_alignment(self) -> None:
         """Center owned empty/runtime states and top-align real transcripts."""
         centered_surface_visible = (
-            not self._has_visible_messages()
+            not self._has_transcript_messages()
             and (
                 self.runtime_state_widget.isVisible()
                 or self.empty_state_widget.isVisible()
@@ -1738,11 +1738,9 @@ class ChatPanel(QWidget):
             empty_state.setVisible(self._runtime_phase is AssistantRuntimePhase.READY)
         self._sync_content_alignment()
 
-    def _has_visible_messages(self) -> bool:
-        return any(
-            isinstance(widget, MessageBubble) and widget.isVisible()
-            for widget in self.chat_content_widget.findChildren(MessageBubble)
-        )
+    def _has_transcript_messages(self) -> bool:
+        """Return transcript truth even while the assistant dock is hidden."""
+        return bool(self.chat_content_widget.findChildren(MessageBubble))
 
     def _scroll_to_bottom(self):
         """Scroll the chat area to the bottom."""

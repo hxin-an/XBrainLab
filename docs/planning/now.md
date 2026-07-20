@@ -30,7 +30,7 @@
 | Done | Scientific training correctness | validation-only checkpoint、final test evaluation、split provenance、undefined AUC、BIDS bounds/run mapping、overlapping-window leakage 與 saliency atomicity都有 regression。 |
 | Done | Non-blocking application view / shutdown | 原子 publication、non-blocking query、recovery path、background snapshot generation、owner-bound Qt receiver 與 native teardown regression 已通過。 |
 | Done | Agent verified host loop | strict envelope、repair context、turn guard、request admission、confirmation / UI handoff 與真 Phi-4 ChatPanel workflow 已完成；raw model accuracy 仍明確列為 research gap。 |
-| Done | Agent Panel product UI | loading / empty / ready / working / error、responsive composer、mode selector、suggestion prompts、inline typed confirmation 與 retry 已統一；12 列長 action card 可捲動且操作可達，無空白長值會安全斷行且 Copy 不污染原值；focused `446/446`、完整 UI unit suite `2087/2087`、product walkthrough `7/7` 連續 3 輪、human-like walkthrough與 100% / 125% / 150% Qt subprocess gate 已通過。 |
+| Done | Agent Panel product UI | loading / empty / ready / working / error、responsive composer、mode selector、suggestion prompts、inline typed confirmation 與 retry 已統一；12 列長 action card 可捲動且操作可達，無空白長值會安全斷行且 Copy 不污染原值；hidden dock refresh 不會讓 empty state 與 transcript 並存；focused `455/455`、完整 UI unit suite `2089/2089`、product walkthrough `7/7` 連續 3 輪、human-like walkthrough與 100% / 125% / 150% Qt subprocess gate 已通過。 |
 | Done | Candidate closure | 完整 unit `9006`、integration `388`、靜態 / architecture / docs、多資料集、UI walkthrough、兩個獨立 reviewer 與 exact-commit dashboard 全數 PASS；branch 已 push。 |
 | Next | Windows user acceptance | 從已發佈候選 branch 做真人 click-through；通過前不直接合併 `main`。 |
 

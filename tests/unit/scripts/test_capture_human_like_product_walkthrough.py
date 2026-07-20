@@ -367,6 +367,7 @@ def _base_payload() -> dict:
         phase for phase in phases if phase["phase"] == "assistant_empty_state"
     )
     empty_phase["notes"]["assistant_dock"] = _valid_assistant_dock_evidence(420)
+    empty_phase["notes"]["assistant_dock"]["empty_state_visible"] = True
     narrow_phase = next(
         phase for phase in phases if phase["phase"] == "assistant_narrow_panel"
     )
@@ -837,6 +838,9 @@ def _valid_assistant_dock_evidence(width: int) -> dict[str, Any]:
         "panel_inside_bounds": True,
         "horizontal_scrollbar_max": 0,
         "overflowing_widgets": [],
+        "empty_state_visible": False,
+        "transcript_message_count": 0,
+        "visible_message_count": 0,
         "runtime_state": {
             "visible": True,
             "inside_content": True,
@@ -1296,6 +1300,25 @@ def test_assistant_dock_contract_rejects_overflow_in_any_assistant_phase() -> No
 
     assert review["passed"] is False
     assert "assistant_sanitized_error" in "; ".join(review["findings"])
+
+
+def test_assistant_dock_contract_rejects_empty_state_beside_transcript() -> None:
+    payload = _base_payload()
+    phase = next(
+        phase
+        for phase in payload["phases"]
+        if phase["phase"] == "assistant_existing_ui_handoff"
+    )
+    phase["notes"]["assistant_dock"]["transcript_message_count"] = 2
+    phase["notes"]["assistant_dock"]["visible_message_count"] = 2
+    phase["notes"]["assistant_dock"]["empty_state_visible"] = True
+
+    review = build_assistant_dock_contract_review(payload["phases"])
+
+    assert review["passed"] is False
+    findings = "; ".join(review["findings"]).lower()
+    assert "assistant_existing_ui_handoff" in findings
+    assert "empty state" in findings
 
 
 def test_assistant_signal_path_rejects_direct_chat_controller_injection() -> None:

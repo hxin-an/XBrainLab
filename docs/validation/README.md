@@ -69,12 +69,13 @@ acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-qu
 
 ### 2026-07-21 Agent Panel UI Gate
 
-- focused unit / script gate：`446 passed`，覆蓋 composer auto-grow、manual-scroll preservation、
+- focused unit / script gate：`455 passed`，覆蓋 composer auto-grow、manual-scroll preservation、
   runtime states、mode selector、response actions、typed confirmation correlation、manager lifecycle
   與 walkthrough contracts；12 列長 setting card 會捲到底並實際送出 correlated Cancel，連續
   160 字元、無空白的 path / hash / identifier 類值也會斷行且被 geometry guard 檢查；
-  Ctrl+C / 右鍵 Copy 會移除顯示用 soft-wrap mark，clipboard 與原始值精確相同。
-- 完整 UI unit suite：`2087 passed`；同時移除舊 modal confirmation 測試假設，並保護
+  Ctrl+C / 右鍵 Copy 會移除顯示用 soft-wrap mark，clipboard 與原始值精確相同；hidden dock
+  收到 runtime refresh 或 confirmation cleanup 後，empty state 仍不會與既有 transcript 並存。
+- 完整 UI unit suite：`2089 passed`；同時移除舊 modal confirmation 測試假設，並保護
   partially constructed AgentManager 的 model-download / runtime shutdown。
 - product integration：`tests/integration/ui/test_product_walkthrough.py` 完整 `7/7` 連續重跑
   3 次；async preprocessing 會等 panel busy lease 釋放後才查 ApplicationService state。

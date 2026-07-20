@@ -792,6 +792,11 @@ def assistant_dock_evidence(dock: QWidget, panel: Any) -> dict[str, Any]:
         if retry_action is not None
         else 0
     )
+    empty_state = getattr(panel, "empty_state_widget", None)
+    transcript_messages = (
+        chat_content.findChildren(MessageBubble) if chat_content is not None else []
+    )
+    visible_messages = collect_visible_messages(panel)
     placeholder = assistant_composer_placeholder_evidence(panel)
     return {
         "capture_target": "full_dock",
@@ -808,6 +813,11 @@ def assistant_dock_evidence(dock: QWidget, panel: Any) -> dict[str, Any]:
             horizontal_scrollbar.maximum() if horizontal_scrollbar is not None else 0
         ),
         "overflowing_widgets": sorted(set(overflowing)),
+        "empty_state_visible": bool(
+            empty_state is not None and empty_state.isVisible()
+        ),
+        "transcript_message_count": len(transcript_messages),
+        "visible_message_count": len(visible_messages),
         "composer_placeholder": placeholder,
         "runtime_state": {
             "visible": runtime_visible,
