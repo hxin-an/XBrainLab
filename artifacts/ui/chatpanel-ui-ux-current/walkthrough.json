@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
   "status": "passed",
-  "generated_at": "2026-07-20T19:12:56.154194+00:00",
+  "generated_at": "2026-07-20T19:34:22.434478+00:00",
   "generator": "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
   "replay_command": "QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
   "platform": "offscreen",
@@ -90,7 +90,7 @@
     },
     {
       "path": "XBrainLab/ui/components/agent_manager.py",
-      "sha256": "3cf9b12ab9b449800eb5e2568d7dc34fec0cd4c3c1a6ce9f008999cda5ce5b41"
+      "sha256": "62c080bee298cb924371bc0fa88ca236079f6d21b7c3bafd53096b2ce9817d92"
     },
     {
       "path": "XBrainLab/ui/components/agent_presentation_service.py",
@@ -133,10 +133,10 @@
       "sha256": "d24d6b81cf21d341592c63d2353585010e1d85ae5082885b64a98134d8a951de"
     }
   ],
-  "source_fingerprint": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
+  "source_fingerprint": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
   "capture_source": {
-    "fingerprint_at_start": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
-    "fingerprint_at_completion": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
+    "fingerprint_at_start": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
+    "fingerprint_at_completion": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
     "stable": true
   },
   "render_scale_evidence": "synthetic_pixmap_device_ratio",
@@ -699,11 +699,11 @@
     },
     "runtime_state_after_cleanup": "closed",
     "dispatcher_state_after_cleanup": "closed",
-    "initial_close_call_duration_ms": 3.28,
+    "initial_close_call_duration_ms": 3.787,
     "gui_heartbeat": {
       "interval_ms": 5,
       "count_during_cleanup": 14,
-      "max_gap_ms": 5.659,
+      "max_gap_ms": 5.491,
       "responsive": true
     },
     "gui_thread_blocking_wait_used": false,

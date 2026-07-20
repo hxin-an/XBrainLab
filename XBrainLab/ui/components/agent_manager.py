@@ -1661,8 +1661,9 @@ class AgentManager(QObject):
 
     def close(self) -> bool:
         """Clean up the agent controller resources."""
-        if self.chat_panel:
-            self.chat_panel.clear_confirmation_request()
+        chat_panel = getattr(self, "chat_panel", None)
+        if chat_panel:
+            chat_panel.clear_confirmation_request()
         self._workflow_ui_handoff_host.abandon_active()
         downloads_idle = self._model_download_lifecycle.request_shutdown()
         runtime_closed = self._assistant_runtime.close()

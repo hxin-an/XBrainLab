@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-20T19:15:13.836794+00:00",
+  "generated_at": "2026-07-20T19:36:37.143930+00:00",
   "status": "passed",
   "required_scales": [
     1.0,
@@ -15,7 +15,7 @@
       "failures": [],
       "configured_qt_scale_factor": "1",
       "observed_screen_device_pixel_ratio": 1.0,
-      "source_fingerprint": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
+      "source_fingerprint": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
       "selected_screenshots": [
         "scale-100-first-paint-320-real-dock.png",
         "scale-100-responsive-320-idle.png",
@@ -29,7 +29,7 @@
       "failures": [],
       "configured_qt_scale_factor": "1.25",
       "observed_screen_device_pixel_ratio": 1.25,
-      "source_fingerprint": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
+      "source_fingerprint": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
       "selected_screenshots": [
         "scale-125-first-paint-320-real-dock.png",
         "scale-125-responsive-320-idle.png",
@@ -43,7 +43,7 @@
       "failures": [],
       "configured_qt_scale_factor": "1.5",
       "observed_screen_device_pixel_ratio": 1.5,
-      "source_fingerprint": "a353ea90e794f0dfee257d74d20b5493e61dd74f574c9eaa6d26d29910aacda3",
+      "source_fingerprint": "80db75b738ae8dc64a9948b038e0107c04b5fe99a5f7e3097161d39fdd4ea2ec",
       "selected_screenshots": [
         "scale-150-first-paint-320-real-dock.png",
         "scale-150-responsive-320-idle.png",

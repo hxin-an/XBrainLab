@@ -1,17 +1,17 @@
 # Human-Like Product Walkthrough
 
 - status: `passed`
-- run ID: `20260720T191309Z-9965ef0b`
-- generated at: `2026-07-20T19:14:30.134620+00:00`
-- Git revision: `16781d1a76b4974e06d30f3f6220b507f7d7e4ce`
+- run ID: `20260720T193436Z-110b746f`
+- generated at: `2026-07-20T19:35:56.516545+00:00`
+- Git revision: `fffce5435805bbcfaf2d9af092b007b12ed32e43`
 - working tree dirty: `True`
 - screenshot hashes: `43`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Assistant states use AgentManager and Qt signals with a deterministic controller, not direct ChatController injection. This is product-surface evidence, not local-model or tool-call correctness evidence. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
 - evidence contract: `13`
 - assistant driver: `agent_manager_qt_signals`
-- source fingerprint: `5150c2cc5c0687571b8e4226be256d8f484eb6c3ae7535000c166f7ebb45a942`
-- elapsed seconds: `80.269`
+- source fingerprint: `cd706eb1d90bfb6e5ab813a4ead8aa67515c8edb7f36ec0f949ecd8a6f8f8555`
+- elapsed seconds: `79.806`
 - source: `<walkthrough_source>`
 - recipe: `artifacts/ui/human-like-walkthrough-runs/current/walkthrough-import.recipe.json`
 
@@ -22,8 +22,8 @@
 - screenshots: `42`
 - human desktop acceptance: `not performed`
 - resource smoke passed: `True`
-- current RSS growth: `547968` KB / limit `1200000` KB
-- max RSS high-water growth: `611624` KB
+- current RSS growth: `547492` KB / limit `1200000` KB
+- max RSS high-water growth: `612232` KB
 
 ## Screenshots
 
@@ -192,9 +192,9 @@
 - smoke checked: `True`
 - smoke passed: `True`
 - boundary: Coarse process smoke only: current RSS catches large retained-memory regressions, while max RSS is recorded as a high-water diagnostic and does not prove the absence of leaks.
-- start: threads `1`, qt active `0`, current rss `724680` KB, max rss `724680` KB
-- before_close: threads `2`, qt active `0`, current rss `1271324` KB, max rss `1336304` KB
-- after_close: threads `2`, qt active `0`, current rss `1272648` KB, max rss `1336304` KB
+- start: threads `1`, qt active `0`, current rss `724512` KB, max rss `724512` KB
+- before_close: threads `2`, qt active `0`, current rss `1271832` KB, max rss `1336744` KB
+- after_close: threads `2`, qt active `0`, current rss `1272004` KB, max rss `1336744` KB
 
 ## Remaining Human Verification
 

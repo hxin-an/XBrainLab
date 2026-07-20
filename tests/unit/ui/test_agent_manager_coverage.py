@@ -3,7 +3,7 @@
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QMainWindow
@@ -42,7 +42,6 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
 from XBrainLab.ui.components.assistant_status_projection import (
     build_assistant_status_projection,
 )
-from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 @pytest.fixture(autouse=True)
@@ -337,10 +336,10 @@ class TestAgentManagerHandlePanelNavigation:
 
 
 class TestShowActionConfirmation:
-    """Cover _show_action_confirmation L548-584."""
+    """Cover the inline typed confirmation lifecycle."""
 
     def test_approved(self):
-        """User approves action."""
+        """Present first; send approval only after the card resolves."""
         m = _make_manager()
         request = AgentConfirmationRequest.for_action(
             command_name="start_training",
@@ -350,42 +349,33 @@ class TestShowActionConfirmation:
             destructive=False,
             publication_generation=4,
         )
-        from PyQt6.QtWidgets import QMessageBox
+        m._assistant_runtime.confirm.return_value = RuntimeCommandAdmissionResult(
+            command_name="confirm",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
 
-        approve_button = MagicMock()
-        cancel_button = MagicMock()
-        mock_box = MagicMock()
-        mock_box.addButton.side_effect = [approve_button, cancel_button]
-        mock_box.clickedButton.return_value = approve_button
-        mock_cls = MagicMock(return_value=mock_box)
-        # Preserve real Icon and StandardButton so comparisons work
-        mock_cls.Icon = QMessageBox.Icon
-        mock_cls.ButtonRole = QMessageBox.ButtonRole
-        mock_cls.StandardButton = QMessageBox.StandardButton
-        with patch(
-            "XBrainLab.ui.components.agent_manager.QMessageBox",
-            mock_cls,
-        ):
-            m._show_action_confirmation(request)
+        m._show_action_confirmation(request)
+
+        m.chat_panel.show_confirmation_request.assert_called_once()
+        m._assistant_runtime.confirm.assert_not_called()
+        m._resolve_action_confirmation(
+            AgentConfirmationResolution.for_request(
+                request,
+                status=AgentConfirmationResolutionStatus.APPROVED,
+            )
+        )
+
         resolution = m._assistant_runtime.confirm.call_args.args[0]
         assert isinstance(resolution, AgentConfirmationResolution)
         assert resolution.matches(request)
         assert resolution.status is AgentConfirmationResolutionStatus.APPROVED
-        visible_text = mock_box.setText.call_args.args[0]
-        assert "Action: Start training" in visible_text
-        assert "start_training" not in visible_text
-        assert "Tool:" not in visible_text
-        assert mock_box.addButton.call_args_list == [
-            call("Start training", QMessageBox.ButtonRole.AcceptRole),
-            call("Cancel", QMessageBox.ButtonRole.RejectRole),
-        ]
-        mock_box.setDefaultButton.assert_called_once_with(cancel_button)
-        mock_box.setEscapeButton.assert_called_once_with(cancel_button)
-        mock_box.setStandardButtons.assert_not_called()
+        m.chat_panel.clear_confirmation_request.assert_called_once_with(
+            request.request_id
+        )
         m.chat_controller.add_agent_message.assert_not_called()
 
     def test_rejected(self):
-        """User rejects action."""
+        """Present first; send cancellation only after the card resolves."""
         m = _make_manager()
         request = AgentConfirmationRequest.for_action(
             command_name="clear_dataset",
@@ -395,36 +385,27 @@ class TestShowActionConfirmation:
             destructive=True,
             publication_generation=5,
         )
-        from PyQt6.QtWidgets import QMessageBox
+        m._assistant_runtime.confirm.return_value = RuntimeCommandAdmissionResult(
+            command_name="confirm",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
 
-        approve_button = MagicMock()
-        cancel_button = MagicMock()
-        mock_box = MagicMock()
-        mock_box.addButton.side_effect = [approve_button, cancel_button]
-        mock_box.clickedButton.return_value = cancel_button
-        mock_cls = MagicMock(return_value=mock_box)
-        mock_cls.Icon = QMessageBox.Icon
-        mock_cls.ButtonRole = QMessageBox.ButtonRole
-        mock_cls.StandardButton = QMessageBox.StandardButton
-        with patch(
-            "XBrainLab.ui.components.agent_manager.QMessageBox",
-            mock_cls,
-        ):
-            m._show_action_confirmation(request)
+        m._show_action_confirmation(request)
+
+        m.chat_panel.show_confirmation_request.assert_called_once()
+        m._assistant_runtime.confirm.assert_not_called()
+        m._resolve_action_confirmation(
+            AgentConfirmationResolution.for_request(
+                request,
+                status=AgentConfirmationResolutionStatus.CANCELLED,
+            )
+        )
+
         resolution = m._assistant_runtime.confirm.call_args.args[0]
         assert isinstance(resolution, AgentConfirmationResolution)
         assert resolution.matches(request)
         assert resolution.status is AgentConfirmationResolutionStatus.CANCELLED
-        visible_text = mock_box.setText.call_args.args[0]
-        assert "Action: Clear dataset" in visible_text
-        assert "clear_dataset" not in visible_text
-        assert "Tool:" not in visible_text
-        assert mock_box.addButton.call_args_list == [
-            call("Clear dataset", QMessageBox.ButtonRole.AcceptRole),
-            call("Cancel", QMessageBox.ButtonRole.RejectRole),
-        ]
-        mock_box.setDefaultButton.assert_called_once_with(cancel_button)
-        mock_box.setEscapeButton.assert_called_once_with(cancel_button)
-        mock_box.setStandardButtons.assert_not_called()
-        approve_button.setStyleSheet.assert_called_once_with(Stylesheets.BTN_DANGER)
+        m.chat_panel.clear_confirmation_request.assert_called_once_with(
+            request.request_id
+        )
         m.chat_controller.add_agent_message.assert_not_called()
