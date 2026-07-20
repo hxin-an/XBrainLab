@@ -421,7 +421,7 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             step_title="Review and Import",
             title="Review and Import",
             summary=common_summary,
-            primary_action="Import EEG Data",
+            primary_action="Confirm and Import",
             expanded_report=True,
             label_carrier_count=3,
         ),
@@ -431,7 +431,7 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             step_title="Review and Import",
             title="Review and Import",
             summary=common_summary,
-            primary_action="Import EEG Data",
+            primary_action="Confirm and Import",
             label_carrier_count=3,
         ),
     )
@@ -1491,13 +1491,16 @@ def _conversion_fallback_dialog() -> DataInterpretationPreviewDialog:
 
 
 def _review_import_dialog() -> DataInterpretationPreviewDialog:
+    metadata_rows = _metadata_rows()
+    for row in metadata_rows:
+        row["task"] = {"value": "", "decision": "needs_confirmation"}
     return DataInterpretationPreviewDialog(
         parent=None,
         scan_result=_base_scan(),
         preview={
             "summary": "Found 3 EEG file(s) and 3 label/event carrier(s).",
             "source_selection": "3 selected file(s)",
-            "metadata_preview": _metadata_rows(),
+            "metadata_preview": metadata_rows,
             "label_carrier_preview": _label_carriers(),
             "resource_preflight": {
                 "risk_level": "safe",

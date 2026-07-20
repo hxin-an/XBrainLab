@@ -97,6 +97,9 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
         },
         label_imports=[{"status": "applied"}],
         recipe_trace=["scan", "apply"],
+        epoch_settings={"t_min": -0.2, "t_max": 1.0},
+        epoch_window=(-0.2, 1.0),
+        baseline=(None, 0.0),
     )
 
     recipe = build_import_recipe(
@@ -125,6 +128,14 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
     assert loaded.warnings == ["Review labels."]
     assert loaded.label_imports == []
     assert loaded.run_event_mappings == {}
+    assert {
+        "epoch",
+        "epoch_settings",
+        "epoch_window",
+        "t_min",
+        "t_max",
+        "baseline",
+    }.isdisjoint(recipe.to_dict())
 
 
 def test_recipe_preserves_reviewed_label_content_identity(tmp_path):

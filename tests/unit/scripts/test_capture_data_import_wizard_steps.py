@@ -253,7 +253,7 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
         for spec in capture_script._canonical_capture_specs()
         if spec.step_title == "Review and Import"
     }
-    assert review_specs == {dialog.apply_button.text()} == {"Import EEG Data"}
+    assert review_specs == {dialog.apply_button.text()} == {"Confirm and Import"}
     assert dialog.apply_button.isEnabled()
     assert dialog.apply_button.isVisibleTo(dialog)
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
@@ -420,7 +420,7 @@ def test_expanded_report_guard_rejects_blank_review_header(qtbot, tmp_path):
             dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).x() + 8,
             dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).y() + 8,
         ),
-        "Hide import report",
+        "Hide detailed report",
         fill="#ffffff",
     )
     image.save(screenshot)

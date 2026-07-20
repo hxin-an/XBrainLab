@@ -55,9 +55,10 @@ def test_public_bids_value_decisions_recheck_and_apply(qtbot) -> None:
     assert dialog.apply_button.isEnabled()
     assert dialog.decision_label.text() == "Ready to recheck and import."
     assert not dialog.review_actions_panel.isVisible()
-    assert review_rows["Recipe"]["status"] == "Ready"
-    assert review_rows["Recipe"]["summary"] == (
-        "Event value choices complete. Apply to recheck this import."
+    assert review_rows["Recipe"]["status"] == "Not saved"
+    assert (
+        review_rows["Recipe"]["summary"]
+        == "Save current import and label mapping settings."
     )
     result = dialog.get_result()
 

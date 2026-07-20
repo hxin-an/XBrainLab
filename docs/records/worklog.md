@@ -16530,3 +16530,28 @@
 - claim boundary：
   - Native Linux/XCB artifacts are visually accepted; native Windows font scaling still requires
     the final human click-through.
+
+### 2026-07-20 Load-only Import Recipe and compact final review
+
+- completed：
+  - Separated the saved Import Recipe from downstream Epoch readiness: recipes now describe only
+    EEG selection, metadata, label sources, and reviewed label mapping. Incomplete Epoch defaults
+    no longer disable Data Import or recipe saving.
+  - Rebuilt Review and Import as one compact six-row review with equal-height status badges,
+    source-aware metadata notes, a secondary detailed report action, and a load-only Recipe row.
+  - Kept generic `task` metadata optional while preserving strict BIDS task requirements.
+- validation：
+  - Focused backend/UI/presenter/capture regressions -> `162 passed`; visible multi-format wizard
+    and external-label workflows -> `12 passed`.
+  - Required dataset matrix -> `20/20` lifecycle cases, `14/14` formats, `7/7` external placement
+    contracts, `4/4` internal-event profiles; public IO/BIDS/cross-source integration -> `36 passed`;
+    strict cross-source smoke -> `4/4`.
+  - Canonical Data Import artifacts were rebuilt, source-digest validated, and visually reviewed;
+    Ruff, BasedPyright, and architecture compliance -> PASS.
+  - The fast dashboard exposed a deterministic stale Training baseline from the preceding
+    Training History containment change; the current layout was visually reviewed twice and the
+    approved reference was synchronized without changing Training product code.
+- claim boundary：
+  - `onset` / `duration` remain label-placement evidence and may seed the separate Epoch handoff;
+    they are not saved as an Epoch window or baseline configuration. Native Windows DPI still
+    requires human acceptance.

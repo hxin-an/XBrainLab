@@ -829,14 +829,14 @@ class DataInterpretationPreviewDialog(
         self.save_recipe_check.setEnabled(can_submit)
         self.save_recipe_check.clicked.connect(self._remember_save_recipe_preference)
         self.save_recipe_check.setToolTip(
-            "Save the selected source, metadata, label source, and label placement."
+            "Save the selected EEG files, metadata, label source, and label mapping."
         )
 
         review_panel, review_panel_layout = self._step_panel()
         review_panel_layout.addWidget(
             self._panel_header(
                 "Review and Import",
-                "Review what will be imported. Epoch settings are configured later.",
+                "Review what will be imported before applying.",
             )
         )
         self.review_actions_panel = QWidget()
@@ -847,12 +847,16 @@ class DataInterpretationPreviewDialog(
         self._populate_review_action_cards()
         review_panel_layout.addWidget(self.review_actions_panel)
 
-        self.import_report_toggle = QPushButton("View import report")
-        self.import_report_toggle.setObjectName("DataImportInlineAction")
+        self.import_report_toggle = QPushButton("View detailed report")
+        self.import_report_toggle.setObjectName("DataImportReviewAction")
         self.import_report_toggle.clicked.connect(self._toggle_import_report)
-        import_review_card, import_review_layout = self._card("Import review")
+        self.import_review_card, import_review_layout = self._card("Import review")
         self._build_review_import_summary(import_review_layout)
-        review_panel_layout.addWidget(import_review_card)
+        review_panel_layout.addWidget(self.import_review_card)
+        review_panel_layout.addWidget(
+            self.import_report_toggle,
+            alignment=Qt.AlignmentFlag.AlignLeft,
+        )
 
         self.review_tree = QTreeWidget()
         self.review_tree.setObjectName("InterpretationReviewSummary")
@@ -887,7 +891,7 @@ class DataInterpretationPreviewDialog(
         import_report_layout.addWidget(self.review_tree)
         self.import_report_card.setVisible(self._has_remap_options())
         if self._has_remap_options():
-            self.import_report_toggle.setText("Hide import report")
+            self.import_report_toggle.setText("Hide detailed report")
         review_panel_layout.addWidget(self.import_report_card)
         review_panel_layout.addStretch()
         self.step_stack.addWidget(review_panel)
@@ -930,8 +934,6 @@ class DataInterpretationPreviewDialog(
             "Apply Remap"
             if self.decision == "blocked" and self._has_remap_options()
             else "Confirm and Import"
-            if self.decision == "needs_confirmation"
-            else "Import EEG Data"
         )
         self.apply_button.setObjectName("DataImportPrimaryButton")
         self.apply_button.setStyleSheet(self._primary_button_style())
@@ -2351,12 +2353,14 @@ class DataInterpretationPreviewDialog(
                 font-size: 12px;
             }}
             QLabel#DataImportReviewStatusReady,
+            QLabel#DataImportReviewStatusReadyWithNotes,
             QLabel#DataImportReviewStatusNeedsReview,
             QLabel#DataImportReviewStatusMissing,
             QLabel#DataImportReviewStatusIncomplete,
+            QLabel#DataImportReviewStatusNeutral,
             QLabel#DataImportReviewStatus {{
                 border-radius: 4px;
-                padding: 3px 7px;
+                padding: 2px 8px;
                 font-size: 11px;
                 font-weight: 700;
             }}
@@ -2370,11 +2374,21 @@ class DataInterpretationPreviewDialog(
                 background-color: #3a2a12;
                 border: 1px solid #7a5520;
             }}
+            QLabel#DataImportReviewStatusReadyWithNotes {{
+                color: #ffe3b0;
+                background-color: #3a2a12;
+                border: 1px solid #7a5520;
+            }}
             QLabel#DataImportReviewStatusMissing,
             QLabel#DataImportReviewStatusIncomplete {{
                 color: #ffd0d0;
                 background-color: #3a1717;
                 border: 1px solid #783030;
+            }}
+            QLabel#DataImportReviewStatusNeutral {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: #2b2b2b;
+                border: 1px solid #4a4a4a;
             }}
             QLabel#DataImportCodeBlock {{
                 color: #d8ecff;
@@ -2874,6 +2888,8 @@ class DataInterpretationPreviewDialog(
                 color: #e8e8e8;
                 font-size: 12px;
                 font-weight: 600;
+                spacing: 11px;
+                padding-left: 2px;
             }}
             QRadioButton#DataImportPlacementRadio {{
                 color: #eeeeee;
@@ -3265,6 +3281,8 @@ class DataInterpretationPreviewDialog(
         required = set(missing_fields)
         required.discard("session")
         required.discard("run")
+        if not self._is_bids_source():
+            required.discard("task")
         return required
 
     @staticmethod

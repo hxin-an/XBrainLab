@@ -348,7 +348,7 @@ def test_data_interpretation_preview_dialog_uses_one_panel_per_step(qtbot):
     assert _visible_group_titles(dialog) == ["Review and Import"]
     assert not dialog.next_button.isVisible()
     assert ok_button.isVisible()
-    assert ok_button.text() == "Import EEG Data"
+    assert ok_button.text() == "Confirm and Import"
     assert not dialog.confirmation_label.isVisible()
     assert dialog.save_recipe_check.isVisible()
 
@@ -3714,7 +3714,7 @@ def test_import_report_wraps_long_cells_and_uses_column_specific_tooltips(qtbot)
     assert report.sizeHintForRow(0) > report.fontMetrics().height() + 10
 
 
-def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
+def test_review_and_import_describes_a_load_only_recipe(qtbot):
     label_path = "/tmp/labels/A01T.mat"
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -3773,10 +3773,17 @@ def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
     assert "Classlabel" in review_text
     assert "target EEG events 768" in review_text
     assert "Recipe" in review_text
-    assert "Label matching saved" in review_text
-    assert "Epoch setup comes later" in review_text
+    assert "Not saved" in review_text
+    assert "Save current import and label mapping settings" in review_text
+    assert "Epoch setup" not in review_text
     assert dialog.save_recipe_check.text() == "Save recipe"
     assert dialog.save_recipe_check.isVisibleTo(dialog)
+    assert dialog.import_report_toggle.text() == "View detailed report"
+    assert not dialog.import_review_card.isAncestorOf(dialog.import_report_toggle)
+    assert (
+        dialog.import_report_toggle.geometry().top()
+        >= dialog.import_review_card.geometry().bottom()
+    )
     assert "Ready to import" not in review_text
     assert "No blocking review items" not in review_text
     assert "Epoch setup will use" not in review_text
@@ -3826,7 +3833,7 @@ def test_review_and_import_metadata_summary_uses_manual_edits(qtbot):
     assert "Missing session" not in review_text
 
 
-def test_save_recipe_defaults_on_when_required_metadata_becomes_complete(qtbot):
+def test_save_recipe_and_import_do_not_require_optional_task_or_epoch_setup(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -3846,6 +3853,11 @@ def test_save_recipe_defaults_on_when_required_metadata_becomes_complete(qtbot):
             ],
             "class_map": {"769": "left hand"},
             "event_roles": {"internal_events": "event role candidates"},
+            "epoch_handoff": {
+                "ready": False,
+                "supervised_ready": False,
+                "supervised_blockers": ["Epoch setup is incomplete."],
+            },
         },
         validation_decision={"decision": "needs_confirmation"},
     )
@@ -3858,12 +3870,15 @@ def test_save_recipe_defaults_on_when_required_metadata_becomes_complete(qtbot):
     item = dialog.file_tree.topLevelItem(0)
     assert item is not None
     item.setText(1, "A01")
-    item.setText(3, "motor-imagery")
     dialog._sync_apply_state()
 
     assert dialog.apply_button.isEnabled()
     assert dialog.save_recipe_check.isEnabled()
     assert dialog.save_recipe_check.isChecked()
+    review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert review_rows["Metadata"]["status"] == "Ready with notes"
+    assert review_rows["Recipe"]["status"] == "Not saved"
+    assert "Epoch" not in review_rows["Recipe"]["summary"]
 
     dialog.save_recipe_check.click()
     assert not dialog.save_recipe_check.isChecked()
@@ -3872,7 +3887,7 @@ def test_save_recipe_defaults_on_when_required_metadata_becomes_complete(qtbot):
     assert not dialog.save_recipe_check.isChecked()
 
 
-def test_review_and_import_metadata_missing_task_uses_compact_review_row(qtbot):
+def test_review_and_import_optional_task_uses_compact_note_row(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -3922,8 +3937,8 @@ def test_review_and_import_metadata_missing_task_uses_compact_review_row(qtbot):
 
     assert "Import review" in review_text
     assert "Metadata" in review_text
-    assert "Needs review" in review_text
-    assert "Missing: task" in review_text
+    assert "Ready with notes" in review_text
+    assert "Optional field missing: task" in review_text
     assert "3 files affected" in review_text
     assert "Review before import" not in review_text
     assert "Review metadata" not in action_text
@@ -3934,6 +3949,47 @@ def test_review_and_import_metadata_missing_task_uses_compact_review_row(qtbot):
     _click_button(dialog, "Edit Metadata")
 
     assert dialog._step_titles[dialog.step_stack.currentIndex()] == "Review Metadata"
+
+
+def test_review_and_import_status_badges_share_geometry(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": "", "decision": "needs_confirmation"},
+                    "task": {"value": "", "decision": "needs_confirmation"},
+                    "run": {"value": "", "decision": "needs_confirmation"},
+                }
+            ],
+            "class_map": {"769": "left hand"},
+            "event_roles": {"internal_events": "event role candidates"},
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    badges = [
+        label
+        for label in dialog.findChildren(QLabel)
+        if label.objectName().startswith("DataImportReviewStatus")
+        and label.isVisibleTo(dialog)
+    ]
+
+    assert len(badges) == 6
+    assert len({badge.height() for badge in badges}) == 1
+    assert all(badge.height() >= badge.fontMetrics().height() + 8 for badge in badges)
 
 
 def test_review_and_import_drops_stale_metadata_action_after_manual_edits(qtbot):
@@ -4104,14 +4160,14 @@ def test_review_and_import_keeps_warning_items_in_report_not_primary_actions(qtb
 
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
     assert warning not in _visible_step_text(dialog, "Review and Import")
-    assert dialog.import_report_toggle.text() == "View import report"
+    assert dialog.import_report_toggle.text() == "View detailed report"
     assert warning in _tree_text(dialog.review_tree)
 
     dialog.import_report_toggle.click()
     qtbot.wait(0)
 
     assert dialog.import_report_card.isVisibleTo(dialog)
-    assert dialog.import_report_toggle.text() == "Hide import report"
+    assert dialog.import_report_toggle.text() == "Hide detailed report"
 
 
 def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
@@ -5212,8 +5268,11 @@ def test_recipe_remap_selection_refreshes_every_visible_review_state(qtbot):
 
     assert dialog.apply_button.isEnabled()
     assert dialog.decision_label.text() == "Ready to apply remap."
-    assert "Replacement files selected" in review_rows["Recipe"]["summary"]
-    assert review_rows["Recipe"]["status"] == "Ready"
+    assert (
+        review_rows["Recipe"]["summary"]
+        == "Save current import and label mapping settings."
+    )
+    assert review_rows["Recipe"]["status"] == "Not saved"
     assert "Resolve blocking items" not in review_rows["Recipe"]["summary"]
     assert "Cannot import yet" not in action_text
     assert not dialog.review_actions_panel.isVisibleTo(dialog)

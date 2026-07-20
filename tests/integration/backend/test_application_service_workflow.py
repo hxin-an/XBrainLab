@@ -621,6 +621,20 @@ def test_explicit_multiclass_epoch_unlocks_dataset_after_label_free_import(
     assert apply_result.state.interpretation.epoch_handoff[
         "supervised_blocker_codes"
     ] == ["missing_class_labels"]
+    recipe_result = service.execute(
+        SaveInterpretationRecipeCommand(
+            recipe_path=str(tmp_path / "load-only-recipe.json"),
+        ),
+    )
+    assert recipe_result.ok is True
+    assert apply_result.state.raw.loaded is True
+    assert {
+        "epoch",
+        "epoch_handoff",
+        "epoch_settings",
+        "epoch_window",
+        "baseline",
+    }.isdisjoint(recipe_result.diagnostics["recipe"])
     blocked_before_epoch = service.get_capabilities().get(CommandName.GENERATE_DATASET)
     assert blocked_before_epoch.enabled is False
     assert "Create epochs before generating datasets." in blocked_before_epoch.reasons

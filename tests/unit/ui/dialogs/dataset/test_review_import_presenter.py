@@ -196,13 +196,4 @@ def test_internal_label_placement_summary_and_recipe_note():
         internal_label_placement_summary(selected_class_count=4, event_role_count=0)
         == "4 EEG events selected as class labels"
     )
-    assert (
-        recipe_note(
-            decision="needs_confirmation",
-            source_mode="label_files",
-            has_internal_choices=False,
-            active_carrier_count=1,
-            needs_label_conversion=True,
-        )
-        == "Label file needs conversion before supervised training."
-    )
+    assert recipe_note() == "Save current import and label mapping settings."

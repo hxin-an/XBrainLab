@@ -131,25 +131,6 @@ def internal_label_placement_summary(
     return "No usable labels selected yet"
 
 
-def recipe_note(
-    *,
-    decision: str,
-    source_mode: str,
-    has_internal_choices: bool,
-    active_carrier_count: int,
-    needs_label_conversion: bool,
-) -> str:
-    """Return the short recipe note for the final import step."""
-    if decision == "blocked":
-        return "Resolve blocking items before import."
-    if source_mode == "internal_events":
-        return (
-            "Internal label choices saved. Epoch setup comes later."
-            if has_internal_choices
-            else "No training labels selected."
-        )
-    if active_carrier_count <= 0:
-        return "No training labels selected."
-    if needs_label_conversion:
-        return "Label file needs conversion before supervised training."
-    return "Label matching saved. Epoch setup comes later."
+def recipe_note() -> str:
+    """Describe the optional load-only recipe saved after a successful import."""
+    return "Save current import and label mapping settings."

@@ -40,11 +40,11 @@ panel。
 | Load Labels | 載入要和 EEG 對應的 labels / events。 | 自動找到附近 label carrier；提供 `Load label file`、`Load label folder`、`Continue without labels`。 | 假設 label 一定和 EEG 在同一資料夾。 |
 | Review Metadata | 檢查 subject / session / task / run。 | metadata table、empty metadata compact state、`Smart Parse`、manual edit。 | 空 metadata 佔滿大表格。 |
 | Match Labels | 設定 label 如何套到 EEG。 | Pairing board：每個 selected EEG row 選一個 `Label file`，狀態放在 label 右側；label placement：`Read labels from`、`Use as`、`Place labels by` 和 mode-specific placement panel。 | `Anchor`、`Time`、`Granularity`、`Role`、`Label unit` 作為第一層術語。 |
-| Review and Import | 只確認真正需要行動的項目。 | import summary、blocking / decision cards、`View import report` secondary details。 | 長串 warning / confirmation / format rows，沒有下一步。 |
+| Review and Import | 只確認真正需要行動的項目。 | import summary、blocking / decision cards、`View detailed report` secondary details。 | 長串 warning / confirmation / format rows，沒有下一步。 |
 
 這五步可以在同一 dialog 裡用 stepper / tabs 呈現，也可以拆成多個 panel；目標不是增加畫面數量，
 而是讓每個畫面只服務一個使用者任務。進階資訊例如 format capability、recipe trace、raw event role、
-class map diagnostics 應放在 `View import report` 或其他 advanced details，而不是和主操作平起平坐。
+class map diagnostics 應放在 `View detailed report` 或其他 advanced details，而不是和主操作平起平坐。
 
 資料入口命名也應貼近一般使用者語言：
 
@@ -81,7 +81,7 @@ class map diagnostics 應放在 `View import report` 或其他 advanced details�
 - preview / validation command result 會帶 structured action items，UI 以 target step grouping、
   issue、impact、next action 呈現。最後頁第一層只顯示 blockers / required decisions；
   report-only warnings、format capability、recipe trace 和 per-file diagnostics 收在
-  `View import report`。
+  `View detailed report`。
 
 這是 step-panel wizard baseline，不代表完整 BIDS support，也不代表所有 downstream supervised
 workflow 都已讀取 skip-label limited state。
@@ -382,6 +382,11 @@ BIDS validation 的目標不是要求資料完美，而是明確說出哪些能�
 ## Recipe
 
 `ImportRecipe` 的本質不是一般 config，而是「這份資料如何被理解」的證據。
+
+它只保存重新載入 EEG、metadata、label source 與 label mapping 所需的資料解讀選擇。
+Epoch window、baseline correction 與其他 Epoch 執行設定屬於後續 Preprocess / Epoch workflow，
+不得寫入 Import recipe，也不得因為尚未建立 Epoch 而阻止 Data Import。`onset`、`duration`
+等欄位只作為 label placement 的原始 timing evidence 保存，不能被當成已完成的 Epoch 設定。
 
 recipe 至少應保存：
 
