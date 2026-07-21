@@ -1043,7 +1043,7 @@ def _assert_text_controls_rendered(
             _assert_region_has_no_unpainted_block(
                 screenshot,
                 bounds,
-                surface_name=surface_name,
+                surface_name=f"{surface_name}: {_control_name(control)}",
             )
             _assert_region_matches_reference(
                 screenshot,
