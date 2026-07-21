@@ -725,14 +725,14 @@ class EvaluationPanel(BasePanel):
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
                 border-radius: 4px;
                 margin-top: 18px;
-                color: {Theme.TEXT_PRIMARY};
+                color: {Theme.TEXT_SECONDARY};
                 font-weight: bold;
             }}
             QGroupBox#EvaluationPlotsGroup::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 4px;
-                color: {Theme.TEXT_PRIMARY};
+                color: {Theme.TEXT_SECONDARY};
             }}
             QLabel {{
                 background-color: transparent;

@@ -169,6 +169,18 @@ def test_evaluation_panel_layout(qtbot):
     )
 
 
+def test_evaluation_plots_title_uses_standard_section_tone(qtbot):
+    """Evaluation Plots must not be brighter than peer panel section titles."""
+    panel = EvaluationPanel(controller=MagicMock(), parent=None)
+    qtbot.addWidget(panel)
+    panel.show()
+    qtbot.wait(20)
+
+    title_color = panel.plots_group.palette().color(QPalette.ColorRole.WindowText)
+
+    assert title_color == QColor(Theme.TEXT_SECONDARY)
+
+
 def test_evaluation_tabs_do_not_draw_platform_base_line(qtbot):
     panel = EvaluationPanel(controller=MagicMock(), parent=None)
     qtbot.addWidget(panel)
