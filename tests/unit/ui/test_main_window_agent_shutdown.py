@@ -142,6 +142,28 @@ def test_forced_close_retries_failed_assistant_teardown_before_accepting(qtbot):
         window.close()
 
 
+def test_deferred_close_logs_user_shutdown_intent_once(qtbot):
+    window = _make_window(qtbot)
+    manager = _ThreadOwningAgentManager(window, failures_before_success=3)
+    window.agent_manager = manager
+
+    try:
+        with patch("XBrainLab.ui.main_window.logger.info") as info:
+            assert window.close() is False
+            qtbot.waitUntil(lambda: manager.close_calls == 4, timeout=2_000)
+            qtbot.waitUntil(lambda: not window.isVisible(), timeout=1_000)
+
+        closing_messages = [
+            call
+            for call in info.call_args_list
+            if call.args and call.args[0] == "Closing application..."
+        ]
+        assert len(closing_messages) == 1
+    finally:
+        manager.stop_for_test_cleanup()
+        window.close()
+
+
 def test_close_keeps_the_window_fenced_until_late_assistant_teardown_succeeds(
     qtbot,
     monkeypatch,

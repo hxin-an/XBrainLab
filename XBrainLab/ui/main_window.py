@@ -1189,7 +1189,6 @@ class MainWindow(QMainWindow):
         if sip.isdeleted(self):
             event.accept()
             return
-        logger.info("Closing application...")
         if self._force_shutdown_requested:
             if not self._closing_in_progress:
                 self._begin_close_attempt()
@@ -1207,7 +1206,6 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 self._schedule_close_retry()
                 return
-            logger.critical("Forcing GUI shutdown after safe recovery failed.")
             if not self._close_assistant_for_shutdown():
                 self._handle_assistant_shutdown_failure(event)
                 return
@@ -1271,6 +1269,9 @@ class MainWindow(QMainWindow):
 
     def _begin_close_attempt(self) -> None:
         """Freeze user actions while worker ownership is being released."""
+        logger.info("Closing application...")
+        if self._force_shutdown_requested:
+            logger.critical("Forcing GUI shutdown after safe recovery failed.")
         self._closing_in_progress = True
         self._startup_prewarm_retry_pending = False
         self._training_close_ready = False
