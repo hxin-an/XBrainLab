@@ -519,7 +519,8 @@ class TestPlotSampleDataEdgeCases:
 
         _plot_controller_data(plotter, mock_controller)
         mock_widget.show_unavailable_message.assert_called_once_with(
-            "The current signal could not be displayed. Try refreshing the panel."
+            "The current signal could not be displayed. Reopen Preprocess to "
+            "retry. If the issue continues, reload the EEG data."
         )
         assert ("Plot Error",) not in {
             call.args for call in mock_widget.plot_time.setTitle.call_args_list

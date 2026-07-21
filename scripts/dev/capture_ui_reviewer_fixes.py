@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import time
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import cast
+from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 from PIL import Image
@@ -17,10 +20,16 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QHeaderView,
     QLabel,
+    QVBoxLayout,
     QWidget,
 )
 
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    collect_screenshot_artifacts,
+    collect_source_identity,
+)
 from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames,
     assert_region_has_no_unpainted_block,
@@ -35,14 +44,43 @@ from XBrainLab.ui.dialogs.preprocess.normalize_dialog import NormalizeDialog
 from XBrainLab.ui.dialogs.preprocess.rereference_dialog import RereferenceDialog
 from XBrainLab.ui.dialogs.preprocess.resampling_dialog import ResampleDialog
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
-from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
+from XBrainLab.ui.panels.preprocess.preview_widget import (
+    PREVIEW_RENDER_FAILED_MESSAGE,
+    PreviewWidget,
+)
+from XBrainLab.ui.panels.training.history_table import TrainingHistoryTable
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "artifacts" / "ui" / "ui-review-fixes"
+EVIDENCE_FILENAME = "ui-review-fixes-evidence.json"
+REVIEWER_FIX_SURFACES = (
+    "preprocess-no-data.png",
+    "preprocess-loaded.png",
+    "preprocess-locked.png",
+    "preprocess-unavailable.png",
+    "preprocessing-history-no-data.png",
+    "preprocessing-history-locked.png",
+    "preprocess-filtering-dialog.png",
+    "preprocess-filtering-invalid.png",
+    "preprocess-rereference-average.png",
+    "preprocess-rereference-selected.png",
+    "preprocess-rereference-selection-required.png",
+    "preprocess-normalize-dialog.png",
+    "preprocess-resample-dialog.png",
+    "training-history-empty.png",
+    "smart-parser-simple.png",
+    "smart-parser-regex.png",
+    "smart-parser-folder.png",
+    "smart-parser-fixed.png",
+    "import-report-ready.png",
+    "import-review-will-save.png",
+    "import-review-loaded-recipe.png",
+)
 
 
 def main() -> int:
+    source_identity_at_start = collect_source_identity(ROOT, refresh=True)
     instance = QApplication.instance()
     app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
     app.setStyle("Fusion")
@@ -58,6 +96,27 @@ def main() -> int:
     review._go_to_step(review._step_titles.index("Review and Import"))
     review.import_report_toggle.click()
     _capture(app, review, "import-report-ready.png")
+
+    review = _ready_import_dialog()
+    review.resize(QSize(1100, 800))
+    review._go_to_step(review._step_titles.index("Review and Import"))
+    review.save_recipe_check.setChecked(True)
+    _capture(app, review, "import-review-will-save.png")
+
+    review = _ready_import_dialog(recipe_loaded=True)
+    review.resize(QSize(1100, 800))
+    review._go_to_step(review._step_titles.index("Review and Import"))
+    _capture(app, review, "import-review-loaded-recipe.png")
+
+    source_identity_at_end = collect_source_identity(ROOT, refresh=True)
+    if source_identity_at_start.get("source_digest") != source_identity_at_end.get(
+        "source_digest"
+    ):
+        raise RuntimeError("Product source changed during focused UI capture.")
+    _write_evidence_manifest(
+        source_identity=source_identity_at_end,
+        source_identity_at_start=source_identity_at_start,
+    )
     return 0
 
 
@@ -92,13 +151,18 @@ def _capture_preprocess_states(app: QApplication) -> None:
     preview.show_locked_message("Preprocessing locked")
     _capture(app, preview, "preprocess-locked.png")
 
+    preview = PreviewWidget()
+    preview.resize(QSize(920, 620))
+    preview.show_unavailable_message(PREVIEW_RENDER_FAILED_MESSAGE)
+    _capture(app, preview, "preprocess-unavailable.png")
+
     history = HistoryWidget()
-    history.resize(QSize(920, history.HISTORY_HEIGHT))
+    history.resize(QSize(920, history.height()))
     history.show_no_data()
     _capture(app, history, "preprocessing-history-no-data.png")
 
     history = HistoryWidget()
-    history.resize(QSize(920, history.HISTORY_HEIGHT))
+    history.resize(QSize(920, history.height()))
     history.update_history(
         [
             "Band-pass filter: 1-40 Hz",
@@ -114,23 +178,40 @@ def _capture_preprocess_dialogs(app: QApplication) -> None:
     filtering = FilteringDialog(None, sampling_rate_hz=250.0)
     _capture(app, filtering, "preprocess-filtering-dialog.png")
 
-    data = type("CaptureData", (), {})()
-    data.get_mne = lambda: type(
-        "CaptureMne",
-        (),
-        {"ch_names": ["Fz", "C3", "Cz", "C4", "Pz"]},
-    )()
+    filtering = FilteringDialog(None, sampling_rate_hz=250.0)
+    filtering.h_freq_spin.setValue(130.0)
+    _capture(app, filtering, "preprocess-filtering-invalid.png")
+
+    data = SimpleNamespace(
+        get_mne=lambda: SimpleNamespace(ch_names=["Fz", "C3", "Cz", "C4", "Pz"])
+    )
     rereference = RereferenceDialog(None, [data])
     _capture(app, rereference, "preprocess-rereference-average.png")
 
     rereference = RereferenceDialog(None, [data])
     rereference.selected_channels_radio.setChecked(True)
-    rereference.chan_list.item(1).setSelected(True)
-    rereference.chan_list.item(3).setSelected(True)
+    c3_item = rereference.chan_list.item(1)
+    c4_item = rereference.chan_list.item(3)
+    if c3_item is None or c4_item is None:
+        raise RuntimeError("Re-reference capture channels are unavailable.")
+    c3_item.setSelected(True)
+    c4_item.setSelected(True)
     _capture(app, rereference, "preprocess-rereference-selected.png")
+
+    rereference = RereferenceDialog(None, [data])
+    rereference.selected_channels_radio.setChecked(True)
+    _capture(app, rereference, "preprocess-rereference-selection-required.png")
 
     _capture(app, NormalizeDialog(None), "preprocess-normalize-dialog.png")
     _capture(app, ResampleDialog(None), "preprocess-resample-dialog.png")
+
+    history_container = QWidget()
+    history_layout = QVBoxLayout(history_container)
+    history_layout.setContentsMargins(12, 12, 12, 12)
+    history = TrainingHistoryTable(history_container)
+    history_layout.addWidget(history)
+    history_container.resize(QSize(1144, history.preferred_content_height() + 24))
+    _capture(app, history_container, "training-history-empty.png")
 
 
 def _capture_smart_parser_modes(app: QApplication) -> None:
@@ -171,33 +252,76 @@ def _capture_smart_parser_modes(app: QApplication) -> None:
         _capture(app, dialog, f"smart-parser-{suffix}.png")
 
 
-def _ready_import_dialog() -> DataInterpretationPreviewDialog:
+def _ready_import_dialog(
+    *,
+    recipe_loaded: bool = False,
+) -> DataInterpretationPreviewDialog:
     source_path = ROOT / "tests" / "fixtures" / "data"
     eeg_path = str(source_path / "sub-01_task-mi_raw.fif")
+    preview = {
+        "summary": "Found 1 EEG file(s).",
+        "selected_eeg_files": [eeg_path],
+        "source_selection": "Single file",
+        "metadata_preview": [
+            {
+                "file": "sub-01_task-mi_raw.fif",
+                "subject": {"value": "01", "decision": "safe"},
+                "session": {"value": None, "decision": "safe"},
+                "task": {"value": "mi", "decision": "safe"},
+                "run": {"value": None, "decision": "safe"},
+            }
+        ],
+        "class_map": {"left": "Left", "right": "Right"},
+        "resource_preflight": {
+            "risk_level": "safe",
+            "required_memory_bytes": 512 * 1024**2,
+            "available_memory_bytes": 8 * 1024**3,
+        },
+    }
+    if recipe_loaded:
+        preview["recipe_reload_summary"] = {
+            "message": "Saved import choices were loaded and revalidated."
+        }
     return DataInterpretationPreviewDialog(
         parent=None,
         scan_result={"source_path": str(source_path), "eeg_files": [eeg_path]},
-        preview={
-            "summary": "Found 1 EEG file(s).",
-            "selected_eeg_files": [eeg_path],
-            "source_selection": "Single file",
-            "metadata_preview": [
-                {
-                    "file": "sub-01_task-mi_raw.fif",
-                    "subject": {"value": "01", "decision": "safe"},
-                    "session": {"value": None, "decision": "safe"},
-                    "task": {"value": "mi", "decision": "safe"},
-                    "run": {"value": None, "decision": "safe"},
-                }
-            ],
-            "class_map": {"left": "Left", "right": "Right"},
-            "resource_preflight": {
-                "risk_level": "safe",
-                "required_memory_bytes": 512 * 1024**2,
-                "available_memory_bytes": 8 * 1024**3,
-            },
-        },
+        preview=preview,
         validation_decision={"decision": "safe"},
+    )
+
+
+def _write_evidence_manifest(
+    *,
+    source_identity: dict,
+    source_identity_at_start: dict,
+) -> None:
+    screenshots = collect_screenshot_artifacts(
+        {filename: OUTPUT_DIR / filename for filename in REVIEWER_FIX_SURFACES}
+    )
+    missing = [
+        filename
+        for filename, metadata in screenshots.items()
+        if not metadata.get("readable")
+    ]
+    if missing:
+        raise RuntimeError(f"Focused UI captures are missing or unreadable: {missing}")
+    for filename, metadata in screenshots.items():
+        metadata["path"] = filename
+    payload = {
+        "schema_version": 1,
+        "artifact_type": "xbrainlab.ui_reviewer_fixes",
+        "generator": "scripts/dev/capture_ui_reviewer_fixes.py",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "qt_platform": QApplication.platformName(),
+        "source_identity_at_start": source_identity_at_start,
+        "source_identity": source_identity,
+        "required_surfaces": list(REVIEWER_FIX_SURFACES),
+        "screenshots": screenshots,
+        "passed": True,
+    }
+    (OUTPUT_DIR / EVIDENCE_FILENAME).write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
 
 
@@ -250,6 +374,10 @@ def _assert_reviewer_surface_pixels(widget: QWidget, screenshot: Path) -> None:
     ]
     for index, control in enumerate(controls):
         if not control.isVisibleTo(widget):
+            continue
+        if isinstance(control, QHeaderView):
+            # A scrollable table header can be wider than its clipped viewport;
+            # the owning table region below already verifies the painted result.
             continue
         text = _control_text(control)
         has_readable_text = bool(
@@ -311,7 +439,7 @@ def _pixmap_image(pixmap) -> Image.Image:
         raise RuntimeError("Could not open the live widget reference buffer.")
     if not pixmap.save(buffer, "PNG"):
         raise RuntimeError("Could not encode the live widget reference.")
-    data = bytes(buffer.data())
+    data = bytes(cast(Any, buffer.data()))
     buffer.close()
     with Image.open(BytesIO(data)) as source:
         image = source.convert("RGB")

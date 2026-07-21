@@ -554,7 +554,9 @@ class SmartParserDialog(BaseDialog):
         for row, filepath in enumerate(self.filenames):
             filename = os.path.basename(filepath)
 
-            self.table.setItem(row, 0, QTableWidgetItem(filename))
+            file_item = QTableWidgetItem(filename)
+            file_item.setToolTip(filepath)
+            self.table.setItem(row, 0, file_item)
 
             sub = "-"
             sess = "-"

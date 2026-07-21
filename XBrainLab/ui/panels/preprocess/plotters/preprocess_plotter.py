@@ -19,8 +19,8 @@ from XBrainLab.ui.panels.preprocess.data_query import (
 if TYPE_CHECKING:
     from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
 
-PLOT_RENDER_FAILED_MESSAGE = (
-    "The current signal could not be displayed. Try refreshing the panel."
+from XBrainLab.ui.panels.preprocess.preview_widget import (
+    PREVIEW_RENDER_FAILED_MESSAGE,
 )
 
 
@@ -282,7 +282,7 @@ class PreprocessPlotter:
 
         except Exception as error:
             logger.error("Plotting failed: %s", error, exc_info=True)
-            self._show_preview_unavailable(PLOT_RENDER_FAILED_MESSAGE)
+            self._show_preview_unavailable(PREVIEW_RENDER_FAILED_MESSAGE)
 
     def _apply_psd_result(
         self,

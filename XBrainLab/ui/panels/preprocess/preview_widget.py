@@ -28,6 +28,11 @@ pg.setConfigOption("background", Theme.BACKGROUND_MID)
 pg.setConfigOption("foreground", Theme.TEXT_MUTED)
 pg.setConfigOption("antialias", True)
 
+PREVIEW_RENDER_FAILED_MESSAGE = (
+    "The current signal could not be displayed. Reopen Preprocess to retry. "
+    "If the issue continues, reload the EEG data."
+)
+
 
 class PreviewWidget(QWidget):
     """Widget for signal visualization (time and frequency domains).
@@ -316,7 +321,7 @@ class PreviewWidget(QWidget):
             self.unavailable_state_detail,
         ) = self._preview_state_widget(
             "Signal preview unavailable",
-            "The current signal could not be displayed. Try refreshing the panel.",
+            PREVIEW_RENDER_FAILED_MESSAGE,
         )
         self.preview_stack.addWidget(self.unavailable_state)
         # Compatibility alias for older tests and callers.
@@ -574,10 +579,7 @@ class PreviewWidget(QWidget):
         self.plot_time.setTitle("")
         self.plot_freq.setTitle("")
         detail = str(message).strip()
-        self.unavailable_state_detail.setText(
-            detail
-            or "The current signal could not be displayed. Try refreshing the panel."
-        )
+        self.unavailable_state_detail.setText(detail or PREVIEW_RENDER_FAILED_MESSAGE)
         self._set_preview_interactive(False, state="unavailable")
 
     def _on_channels_inserted(self, *_args) -> None:

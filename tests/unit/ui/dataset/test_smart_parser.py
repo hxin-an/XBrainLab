@@ -40,6 +40,17 @@ def test_smart_parser_init(dialog):
     assert dialog.table.columnCount() == 5
 
 
+def test_smart_parser_preview_exposes_complete_filename_in_tooltip(qtbot):
+    filepath = "/capture/sub-01_ses-01_task-motor-imagery_run-01_eeg.gdf"
+    dialog = SmartParserDialog([filepath])
+    qtbot.addWidget(dialog)
+
+    file_item = dialog.table.item(0, 0)
+
+    assert file_item.text() == "sub-01_ses-01_task-motor-imagery_run-01_eeg.gdf"
+    assert file_item.toolTip() == filepath
+
+
 def test_smart_parser_regex_controls_are_compact(dialog):
     dialog.radio_regex.setChecked(True)
 
