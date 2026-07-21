@@ -71,6 +71,8 @@ OUTPUT_DIR = Path(
     )
 )
 WINDOW_SIZE = QSize(1220, 1320)
+REVIEW_COMPACT_SIZE = (1220, 632)
+REVIEW_REPORT_SIZE = (1220, 926)
 WIZARD_STEP_TEXT = (
     "1. Choose EEG Data",
     "2. Load Labels",
@@ -423,6 +425,7 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             summary=common_summary,
             primary_action="Confirm and Import",
             expanded_report=True,
+            expected_size=REVIEW_REPORT_SIZE,
             label_carrier_count=3,
         ),
         CanonicalCaptureSpec(
@@ -432,6 +435,7 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             title="Review and Import",
             summary=common_summary,
             primary_action="Confirm and Import",
+            expected_size=REVIEW_COMPACT_SIZE,
             label_carrier_count=3,
         ),
     )
@@ -997,11 +1001,9 @@ def _assert_line_tokens_rendered(
 def _assert_canonical_review_artifact(screenshot: Path) -> None:
     """Reject decoder-incompatible or visibly blank canonical review artifacts."""
     with Image.open(screenshot) as captured:
-        expected_size = (WINDOW_SIZE.width(), WINDOW_SIZE.height())
-        if captured.mode != "RGB" or captured.size != expected_size:
+        if captured.mode != "RGB":
             raise RuntimeError(
-                "Canonical review artifact must be a 1220x1320 RGB PNG: "
-                f"{screenshot.name}"
+                f"Canonical review artifact must be an RGB PNG: {screenshot.name}"
             )
         if "dpi" in captured.info:
             raise RuntimeError(
@@ -1009,10 +1011,11 @@ def _assert_canonical_review_artifact(screenshot: Path) -> None:
                 f"as a blank header: {screenshot.name}"
             )
         grayscale = captured.convert("L")
+        width, height = captured.size
 
     for name, bounds, minimum_bright_pixels in (
-        ("navigation and title", (0, 0, 1220, 150), 5_000),
-        ("import review rows", (0, 150, 1220, 410), 5_000),
+        ("navigation and title", (0, 0, width, min(150, height)), 5_000),
+        ("import review rows", (0, 150, width, min(410, height)), 5_000),
     ):
         histogram = grayscale.crop(bounds).histogram()
         bright_pixels = sum(histogram[110:])

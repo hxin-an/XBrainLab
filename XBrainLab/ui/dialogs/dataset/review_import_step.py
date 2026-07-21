@@ -1314,6 +1314,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             self.review_tree.updateGeometry()
         self.import_report_card.updateGeometry()
         self._sync_scroll_policy()
+        QTimer.singleShot(0, self._sync_review_dialog_geometry)
 
     def _refresh_review_tree(self) -> None:
         """Rebuild the detailed report without losing current remap choices."""

@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 from PIL import Image, ImageDraw
-from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtCore import QPoint, QSize, Qt
 
 import scripts.dev.capture_data_import_wizard_steps as capture_script
 
@@ -40,6 +40,14 @@ def test_capture_specs_cover_responsive_and_semantic_review_evidence():
     assert any(spec.label_carrier_count >= 12 for spec in wizard_specs)
     assert any(spec.bids_events for spec in wizard_specs)
     assert any(spec.expanded_report for spec in wizard_specs)
+    assert {
+        spec.filename: spec.expected_size
+        for spec in wizard_specs
+        if spec.step_title == "Review and Import"
+    } == {
+        "05-review-and-import-report.png": capture_script.REVIEW_REPORT_SIZE,
+        "05-review-and-import.png": capture_script.REVIEW_COMPACT_SIZE,
+    }
     assert all(
         f"{spec.expected_size[0]}px" in spec.filename
         for spec in wizard_specs
@@ -373,9 +381,10 @@ def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
     )
     dialog = capture_script._review_import_dialog()
     qtbot.addWidget(dialog)
-    dialog.resize(capture_script.WINDOW_SIZE)
+    expected_size = QSize(*spec.expected_size)
+    dialog.resize(expected_size)
     dialog.show()
-    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.resize(expected_size)
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
     qtbot.wait(20)
 
@@ -388,9 +397,14 @@ def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
 
 
 def test_expanded_report_guard_rejects_blank_review_header(qtbot, tmp_path):
+    spec = next(
+        spec
+        for spec in capture_script._canonical_capture_specs()
+        if spec.filename == "05-review-and-import-report.png"
+    )
     dialog = capture_script._review_import_dialog()
     qtbot.addWidget(dialog)
-    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.resize(QSize(*spec.expected_size))
     dialog.show()
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
     dialog.import_report_toggle.click()

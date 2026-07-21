@@ -319,6 +319,7 @@ class DataInterpretationPreviewDialog(
         self._initial_choices = dict(choices or {})
         self._initial_step = str(initial_step or "")
         self._resume_step_after_accept = ""
+        self._review_restore_size: QSize | None = None
         self.workflow_steps_label: QLabel
         self.step_labels: list[QLabel]
         self.summary_label: QLabel
@@ -1710,6 +1711,38 @@ class DataInterpretationPreviewDialog(
             self._sync_apply_state()
         self._fit_review_tree_height()
         self._sync_scroll_policy()
+        QTimer.singleShot(0, self._sync_review_dialog_geometry)
+
+    def _sync_review_dialog_geometry(self) -> None:
+        """Compact the final review while preserving the working-step size."""
+        if not hasattr(self, "step_stack") or not hasattr(self, "scroll_area"):
+            return
+        final_step = self.step_stack.currentIndex() == self.step_stack.count() - 1
+        if not final_step:
+            if self._review_restore_size is not None:
+                restore_size = self._review_restore_size
+                self._review_restore_size = None
+                self.resize(restore_size)
+            return
+
+        if self._review_restore_size is None:
+            self._review_restore_size = QSize(self.size())
+        current_page = self.step_stack.currentWidget()
+        viewport = self.scroll_area.viewport()
+        if current_page is None or viewport is None or viewport.height() <= 0:
+            return
+        page_layout = current_page.layout()
+        if page_layout is not None:
+            page_layout.activate()
+        content_height = max(
+            current_page.sizeHint().height(),
+            current_page.minimumSizeHint().height(),
+        )
+        chrome_height = max(self.height() - viewport.height(), 150)
+        desired_height = max(content_height + chrome_height + 8, 560)
+        target_height = min(desired_height, self._review_restore_size.height())
+        if target_height != self.height():
+            self.resize(self.width(), target_height)
 
     def _sync_step_labels(self, current: int) -> None:
         if not hasattr(self, "step_labels"):

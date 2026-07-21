@@ -4329,6 +4329,46 @@ def test_review_and_import_keeps_warning_items_in_report_not_primary_actions(qtb
     assert dialog.rect().contains(apply_bottom_right)
 
 
+def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source/A01T.gdf",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": None, "decision": "safe"},
+                    "task": {"value": None, "decision": "safe"},
+                    "run": {"value": None, "decision": "safe"},
+                },
+            ],
+            "class_map": {"769": "left", "770": "right"},
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(700, 700)
+    dialog.show()
+    qtbot.wait(0)
+    working_height = dialog.height()
+
+    _show_step(dialog, "Review and Import")
+    qtbot.waitUntil(lambda: dialog.height() < working_height)
+    compact_height = dialog.height()
+
+    dialog.import_report_toggle.click()
+    qtbot.waitUntil(lambda: dialog.height() > compact_height)
+    assert dialog.height() <= working_height
+
+    _show_step(dialog, "Match Labels")
+    qtbot.waitUntil(lambda: dialog.height() == working_height)
+
+
 def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
