@@ -3,7 +3,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QGroupBox, QMainWindow, QVBoxLayout, QWidget
 
 from XBrainLab.backend.application.results import (
     ChangedState,
@@ -172,6 +172,9 @@ def test_training_panel_gives_remaining_height_to_plots_for_small_history(
     panel.history_table.update_history([_make_history_entry()])
     qtbot.wait(0)
 
+    assert not isinstance(panel.history_group, QGroupBox)
+    assert panel.history_title.text() == "TRAINING HISTORY"
+    assert panel.history_table.MAX_VISIBLE_ROWS == 5
     assert panel.history_group.height() == panel.history_group.sizeHint().height()
     assert panel.plots_group.height() > panel.history_group.height()
 
@@ -203,11 +206,14 @@ def test_training_panel_history_height_does_not_follow_run_count_or_host_growth(
 
     left_widget = panel.history_group.parentWidget()
     assert left_widget is not None
+    left_layout = left_widget.layout()
+    assert left_layout is not None
+    bottom_margin = left_layout.contentsMargins().bottom()
     stable_table_height = panel.history_table.height()
     stable_group_height = panel.history_group.height()
     assert stable_table_height == panel.history_table.preferred_content_height()
     assert panel.history_group.geometry().bottom() <= (
-        left_widget.contentsRect().bottom() - 20
+        left_widget.contentsRect().bottom() - bottom_margin
     )
     assert panel.plots_group.height() >= panel._MIN_PLOTS_GROUP_HEIGHT
     assert panel.history_table.verticalScrollBar().maximum() > 0
@@ -218,7 +224,7 @@ def test_training_panel_history_height_does_not_follow_run_count_or_host_growth(
     assert panel.history_table.height() == stable_table_height
     assert panel.history_group.height() == stable_group_height
     assert panel.history_group.geometry().bottom() <= (
-        left_widget.contentsRect().bottom() - 20
+        left_widget.contentsRect().bottom() - bottom_margin
     )
 
     host.setFixedHeight(430)
@@ -228,7 +234,7 @@ def test_training_panel_history_height_does_not_follow_run_count_or_host_growth(
     assert panel.history_group.height() == stable_group_height
     assert panel.plots_group.height() >= panel._MIN_PLOTS_GROUP_HEIGHT
     assert panel.history_group.geometry().bottom() <= (
-        left_widget.contentsRect().bottom() - 20
+        left_widget.contentsRect().bottom() - bottom_margin
     )
 
 

@@ -982,7 +982,7 @@ def _training_history_reference_regions(
     panel: TrainingPanel,
 ) -> list[tuple[str, tuple[int, int, int, int], Image.Image]]:
     references: list[tuple[str, tuple[int, int, int, int], Image.Image]] = []
-    for group in (panel.plots_group, panel.history_group):
+    for group in (panel.plots_group,):
         width = min(
             group.width(),
             group.fontMetrics().horizontalAdvance(group.title()) + 24,
@@ -1002,6 +1002,36 @@ def _training_history_reference_regions(
                 rendered.crop((0, 0, width, height)),
             )
         )
+
+    history_title = panel.history_title
+    history_title_text = history_title.text()
+    width = min(
+        history_title.width(),
+        history_title.fontMetrics().horizontalAdvance(history_title_text) + 8,
+    )
+    height = history_title.height()
+    top_left = history_title.mapTo(panel, QPoint(0, 0))
+    title_in_section = history_title.mapTo(panel.history_group, QPoint(0, 0))
+    rendered = _pixmap_image(panel.history_group.grab())
+    references.append(
+        (
+            f"Training History chrome title: {history_title_text}",
+            (
+                top_left.x(),
+                top_left.y(),
+                top_left.x() + width,
+                top_left.y() + height,
+            ),
+            rendered.crop(
+                (
+                    title_in_section.x(),
+                    title_in_section.y(),
+                    title_in_section.x() + width,
+                    title_in_section.y() + height,
+                )
+            ),
+        )
+    )
 
     tab_bar = panel.tabs.tabBar()
     rendered_tabs = _pixmap_image(tab_bar.grab())
@@ -1101,7 +1131,9 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             raise RuntimeError(
                 f"{filename} lost Training History horizontal scrolling."
             )
-        expected_visible_rows = [0, 1, 2] if expected_running else [0, 1]
+        expected_visible_rows = list(
+            range(min(expected_rows, widget.history_table.MAX_VISIBLE_ROWS))
+        )
         if semantics["fully_visible_rows"] != expected_visible_rows:
             raise RuntimeError(
                 f"{filename} has the wrong fully visible Training History rows."
@@ -1359,6 +1391,7 @@ def _training_history_semantics(panel: TrainingPanel) -> dict[str, Any]:
                 key_columns_fit = False
     return {
         "row_count": table.rowCount(),
+        "visible_row_capacity": table.MAX_VISIBLE_ROWS,
         "statuses": statuses,
         "running": "Running" in statuses,
         "start_enabled": panel.sidebar.btn_start.isEnabled(),

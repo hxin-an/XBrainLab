@@ -3,6 +3,7 @@
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QSizePolicy,
     QTabWidget,
     QTextEdit,
@@ -199,7 +200,7 @@ class TrainingPanel(BasePanel):
         # --- Left Column: Training Status (Main Content) ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(20, 20, 20, 20)
+        left_layout.setContentsMargins(20, 12, 20, 12)
         left_layout.setSpacing(0)
 
         # Training Plots Group
@@ -229,10 +230,21 @@ class TrainingPanel(BasePanel):
         plots_layout.addWidget(self.tabs)
         left_layout.addWidget(self.plots_group, stretch=1)
 
-        # Training History Group
-        self.history_group = QGroupBox("TRAINING HISTORY")
+        # Training history is already visually framed by its table. Keep the
+        # section title, but avoid a redundant outer group-box border.
+        self.history_group = QWidget()
+        self.history_group.setObjectName("TrainingHistorySection")
         history_layout = QVBoxLayout(self.history_group)
-        history_layout.setContentsMargins(10, 20, 10, 10)
+        history_layout.setContentsMargins(0, 6, 0, 0)
+        history_layout.setSpacing(6)
+
+        self.history_title = QLabel("TRAINING HISTORY")
+        self.history_title.setObjectName("TrainingHistoryTitle")
+        self.history_title.setStyleSheet(
+            f"background: transparent; color: {Theme.TEXT_MUTED}; "
+            "font-size: 13px; font-weight: bold;"
+        )
+        history_layout.addWidget(self.history_title)
 
         # History Table
         self.history_table = TrainingHistoryTable()

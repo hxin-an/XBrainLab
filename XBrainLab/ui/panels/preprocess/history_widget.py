@@ -29,7 +29,9 @@ class HistoryWidget(QWidget):
     Updates dynamically based on controller state.
     """
 
-    MAX_VISIBLE_ROWS = 5
+    # Keep the common preprocessing chain visible without forcing users to
+    # scroll after filter, resample, reference, normalize, and epoch steps.
+    MAX_VISIBLE_ROWS = 7
     MIN_ROW_HEIGHT = 24
 
     def __init__(self, parent=None):

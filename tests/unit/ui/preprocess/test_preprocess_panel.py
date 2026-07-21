@@ -234,6 +234,7 @@ def test_preprocessing_history_keeps_one_height_across_states(qtbot):
     qtbot.addWidget(panel)
     history = panel.history_widget
     initial_height = history.minimumHeight()
+    assert history.MAX_VISIBLE_ROWS == 7
 
     history.show_no_data()
     assert history.history_list.item(0).text() == "No preprocessing history yet."

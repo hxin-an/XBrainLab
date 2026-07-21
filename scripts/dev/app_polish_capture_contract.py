@@ -629,7 +629,10 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 False,
                 f"Training History state contract is inconsistent: {filename}.",
             )
-        expected_visible_rows = [0, 1, 2] if expected_running else [0, 1]
+        visible_row_capacity = _positive_int(contract.get("visible_row_capacity"))
+        if visible_row_capacity <= 0:
+            return False, f"Training History visible capacity is missing: {filename}."
+        expected_visible_rows = list(range(min(expected_rows, visible_row_capacity)))
         if contract.get("fully_visible_rows") != expected_visible_rows:
             return False, f"Training History visible rows are incomplete: {filename}."
         if contract.get("partially_visible_rows"):

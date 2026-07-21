@@ -339,14 +339,14 @@ def test_training_history_pixel_gate_rejects_erased_chrome_and_row_cells(
     with Image.open(screenshot) as captured:
         damaged = captured.convert("RGB")
     draw = ImageDraw.Draw(damaged)
-    for group in (panel.plots_group, panel.history_group):
-        top_left = group.mapTo(panel, QPoint(0, 0))
+    for title_surface in (panel.plots_group, panel.history_title):
+        top_left = title_surface.mapTo(panel, QPoint(0, 0))
         draw.rectangle(
             (
                 top_left.x(),
                 top_left.y(),
-                top_left.x() + group.width() - 1,
-                top_left.y() + 18,
+                top_left.x() + title_surface.width() - 1,
+                top_left.y() + title_surface.height() - 1,
             ),
             fill="#f0f0f0",
         )

@@ -25,7 +25,7 @@ class TrainingHistoryTable(QTableWidget):
     """
 
     selection_changed_record = pyqtSignal(object)  # Emits record object
-    MAX_VISIBLE_ROWS = 3
+    MAX_VISIBLE_ROWS = 5
     ROW_HEIGHT = 30
     KEY_COLUMN_PADDING = 26
     KEY_COLUMN_MAX_WIDTHS = (220, 180, 190, 120)
@@ -118,7 +118,7 @@ class TrainingHistoryTable(QTableWidget):
         return self._target_content_height()
 
     def _target_content_height(self) -> int:
-        # Reserve one stable viewport for the header and three complete rows.
+        # Reserve one stable viewport for the header and five complete rows.
         # A horizontal-scrollbar gutter is included only when the current width
         # actually needs it; reserving it unconditionally reveals part of the
         # next row on wider tables.
