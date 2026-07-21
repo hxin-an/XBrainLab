@@ -4364,6 +4364,11 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     dialog.import_report_toggle.click()
     qtbot.waitUntil(lambda: dialog.height() > compact_height)
     assert dialog.height() <= working_height
+    review_header = dialog.review_tree.header()
+    review_viewport = dialog.review_tree.viewport()
+    assert review_header is not None
+    assert review_viewport is not None
+    assert review_header.length() == review_viewport.width()
 
     _show_step(dialog, "Match Labels")
     qtbot.waitUntil(lambda: dialog.height() == working_height)

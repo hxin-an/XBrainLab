@@ -1315,6 +1315,12 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         self.import_report_card.updateGeometry()
         self._sync_scroll_policy()
         QTimer.singleShot(0, self._sync_review_dialog_geometry)
+        QTimer.singleShot(0, self._refit_review_tree_after_layout)
+
+    def _refit_review_tree_after_layout(self) -> None:
+        """Fill the settled report viewport without a trailing header gap."""
+        if hasattr(self, "review_tree") and self.import_report_card.isVisible():
+            self._fit_tree_columns_to_viewport(self.review_tree)
 
     def _refresh_review_tree(self) -> None:
         """Rebuild the detailed report without losing current remap choices."""
