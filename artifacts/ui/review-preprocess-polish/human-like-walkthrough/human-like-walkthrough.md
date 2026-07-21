@@ -13,7 +13,6 @@
 - source fingerprint: `df1e091819c6afb231aa39baaaa9d88e211c1cd2c2245bd810f9314f2e195b0b`
 - elapsed seconds: `81.362`
 - source: `<walkthrough_source>`
-- recipe: `artifacts/ui/review-preprocess-polish/human-like-walkthrough/walkthrough-import.recipe.json`
 
 ## Pass / Fail
 
