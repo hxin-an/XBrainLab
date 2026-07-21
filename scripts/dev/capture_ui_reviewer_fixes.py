@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Capture focused evidence for the current UI product-review fixes."""
+"""Capture focused evidence for current import and preprocessing UI fixes."""
 
 from __future__ import annotations
 
 import sys
-import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
 from typing import cast
-from unittest.mock import patch
 
+import numpy as np
 from PIL import Image
 from PyQt6.QtCore import QBuffer, QIODevice, QPoint, QSize
 from PyQt6.QtWidgets import (
@@ -27,11 +26,15 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_region_has_no_unpainted_block,
     assert_region_matches_reference,
 )
-from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
-from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import SmartParserDialog
+from XBrainLab.ui.dialogs.preprocess.filtering_dialog import FilteringDialog
+from XBrainLab.ui.dialogs.preprocess.normalize_dialog import NormalizeDialog
+from XBrainLab.ui.dialogs.preprocess.rereference_dialog import RereferenceDialog
+from XBrainLab.ui.dialogs.preprocess.resampling_dialog import ResampleDialog
+from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
 from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -43,25 +46,12 @@ def main() -> int:
     instance = QApplication.instance()
     app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setStyleSheet(Stylesheets.MAIN_WINDOW)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    preview = PreviewWidget()
-    preview.setStyleSheet(Stylesheets.MAIN_WINDOW)
-    preview.resize(QSize(920, 620))
-    preview.show_locked_message("Data is Epoched - Preprocessing Locked")
-    _capture(app, preview, "preprocess-locked.png")
-
-    with tempfile.TemporaryDirectory(prefix="xbrainlab-ui-review-model-") as temp_dir:
-        config = _installed_local_config(Path(temp_dir))
-        with (
-            patch.object(LLMConfig, "load_from_file", return_value=config),
-            patch.object(config, "missing_local_runtime_packages", return_value=[]),
-            patch("XBrainLab.ui.dialogs.model_settings_dialog.ModelDownloader"),
-        ):
-            settings = ModelSettingsDialog(config=config)
-        settings.setStyleSheet(Stylesheets.MAIN_WINDOW)
-        settings.resize(QSize(520, 440))
-        _capture(app, settings, "assistant-settings.png")
+    _capture_preprocess_states(app)
+    _capture_preprocess_dialogs(app)
+    _capture_smart_parser_modes(app)
 
     review = _ready_import_dialog()
     review.resize(QSize(1100, 800))
@@ -71,20 +61,114 @@ def main() -> int:
     return 0
 
 
-def _installed_local_config(root: Path) -> LLMConfig:
-    config = LLMConfig()
-    config.model_name = LLMConfig.default_local_model_id()
-    config.cache_dir = str(root / "model-cache")
-    config.device = "cpu"
-    config.load_in_4bit = False
-    config.local_model_enabled = True
-    cache = Path(config.local_cache_candidates(config.model_name)[0])
-    cache.mkdir(parents=True, exist_ok=True)
-    (cache / "config.json").write_text("{}", encoding="utf-8")
-    (cache / "tokenizer_config.json").write_text("{}", encoding="utf-8")
-    with (cache / "model.safetensors").open("wb") as model_file:
-        model_file.truncate(256 * 1024 * 1024)
-    return config
+def _capture_preprocess_states(app: QApplication) -> None:
+    preview = PreviewWidget()
+    preview.resize(QSize(920, 620))
+    preview.reset_view()
+    _capture(app, preview, "preprocess-no-data.png")
+
+    preview = PreviewWidget()
+    preview.resize(QSize(920, 620))
+    preview.chan_combo.addItems(["C3", "Cz", "C4"])
+    time_axis = np.linspace(0.0, 4.0, 800)
+    original = 18.0 * np.sin(2 * np.pi * 10 * time_axis)
+    current = 14.0 * np.sin(2 * np.pi * 10 * time_axis + 0.15)
+    preview.time_original_curve.setData(time_axis, original)
+    preview.time_current_curve.setData(time_axis, current)
+    frequency_axis = np.linspace(1.0, 50.0, 100)
+    preview.freq_original_curve.setData(
+        frequency_axis,
+        -20.0 * np.log10(frequency_axis + 1.0),
+    )
+    preview.freq_current_curve.setData(
+        frequency_axis,
+        -18.0 * np.log10(frequency_axis + 1.0),
+    )
+    preview._set_preview_interactive(True, state="loaded")
+    _capture(app, preview, "preprocess-loaded.png")
+
+    preview = PreviewWidget()
+    preview.resize(QSize(920, 620))
+    preview.show_locked_message("Preprocessing locked")
+    _capture(app, preview, "preprocess-locked.png")
+
+    history = HistoryWidget()
+    history.resize(QSize(920, history.HISTORY_HEIGHT))
+    history.show_no_data()
+    _capture(app, history, "preprocessing-history-no-data.png")
+
+    history = HistoryWidget()
+    history.resize(QSize(920, history.HISTORY_HEIGHT))
+    history.update_history(
+        [
+            "Band-pass filter: 1-40 Hz",
+            "Re-reference: average",
+            "Normalize: Z-Score",
+        ],
+        is_epoched=True,
+    )
+    _capture(app, history, "preprocessing-history-locked.png")
+
+
+def _capture_preprocess_dialogs(app: QApplication) -> None:
+    filtering = FilteringDialog(None, sampling_rate_hz=250.0)
+    _capture(app, filtering, "preprocess-filtering-dialog.png")
+
+    data = type("CaptureData", (), {})()
+    data.get_mne = lambda: type(
+        "CaptureMne",
+        (),
+        {"ch_names": ["Fz", "C3", "Cz", "C4", "Pz"]},
+    )()
+    rereference = RereferenceDialog(None, [data])
+    _capture(app, rereference, "preprocess-rereference-average.png")
+
+    rereference = RereferenceDialog(None, [data])
+    rereference.selected_channels_radio.setChecked(True)
+    rereference.chan_list.item(1).setSelected(True)
+    rereference.chan_list.item(3).setSelected(True)
+    _capture(app, rereference, "preprocess-rereference-selected.png")
+
+    _capture(app, NormalizeDialog(None), "preprocess-normalize-dialog.png")
+    _capture(app, ResampleDialog(None), "preprocess-resample-dialog.png")
+
+
+def _capture_smart_parser_modes(app: QApplication) -> None:
+    modes = (
+        (
+            "simple",
+            "radio_split",
+            ["Sub01_Ses01.gdf", "Sub02_Ses01.gdf", "Sub03_Ses02.gdf"],
+        ),
+        (
+            "regex",
+            "radio_regex",
+            [
+                "sub-01_ses-01_task-mi_run-01_eeg.gdf",
+                "sub-02_ses-01_task-mi_run-02_eeg.gdf",
+                "sub-03_ses-02_task-mi_run-01_eeg.gdf",
+            ],
+        ),
+        (
+            "folder",
+            "radio_folder",
+            [
+                "/capture/Subject01/ses-01/eeg01.gdf",
+                "/capture/Subject02/ses-01/eeg02.gdf",
+                "/capture/Subject03/ses-02/eeg03.gdf",
+            ],
+        ),
+        ("fixed", "radio_fixed", ["A01T.gdf", "A02E.gdf", "A03T.gdf"]),
+    )
+    for suffix, radio_name, filenames in modes:
+        dialog = SmartParserDialog(filenames)
+        getattr(dialog, radio_name).setChecked(True)
+        if suffix == "simple":
+            dialog.split_sep_combo.setCurrentIndex(0)
+            dialog.split_sub_idx.setValue(1)
+            dialog.split_sess_idx.setValue(2)
+        dialog.update_preview()
+        _capture(app, dialog, f"smart-parser-{suffix}.png")
 
 
 def _ready_import_dialog() -> DataInterpretationPreviewDialog:
@@ -168,7 +252,10 @@ def _assert_reviewer_surface_pixels(widget: QWidget, screenshot: Path) -> None:
         if not control.isVisibleTo(widget):
             continue
         text = _control_text(control)
-        if isinstance(control, QAbstractItemView) or text:
+        has_readable_text = bool(
+            text and any(character.isalnum() for character in text)
+        )
+        if isinstance(control, QAbstractItemView) or has_readable_text:
             name = control.objectName() or type(control).__name__
             required[f"{name} {index}: {text[:48]}"] = control
 
@@ -177,6 +264,13 @@ def _assert_reviewer_surface_pixels(widget: QWidget, screenshot: Path) -> None:
         scale_y = captured.height / max(widget.height(), 1)
     for surface_name, control in required.items():
         top_left = control.mapTo(widget, QPoint(0, 0))
+        bottom_right = control.mapTo(widget, control.rect().bottomRight())
+        if not widget.rect().contains(top_left) or not widget.rect().contains(
+            bottom_right
+        ):
+            raise RuntimeError(
+                f"{surface_name} is clipped outside the captured widget."
+            )
         bounds = (
             round(top_left.x() * scale_x),
             round(top_left.y() * scale_y),

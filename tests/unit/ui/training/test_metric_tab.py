@@ -75,7 +75,9 @@ def test_clear(metric_tab):
 def test_close_releases_canvas_and_cancels_pending_draw(metric_tab, qtbot):
     metric_tab.update_plot(1, 0.5, 0.6)
     old_canvas = metric_tab.canvas
-    old_canvas._draw_pending = True
+    old_figure = metric_tab.fig
+    old_canvas.draw_idle()
+    assert old_canvas._draw_timer.isActive()
 
     metric_tab.close()
     qtbot.wait(0)
@@ -83,6 +85,9 @@ def test_close_releases_canvas_and_cancels_pending_draw(metric_tab, qtbot):
     assert metric_tab.canvas is None
     assert old_canvas.parent() is None
     assert old_canvas._draw_pending is False
+    assert not old_canvas._draw_timer.isActive()
+    assert old_canvas.figure is None
+    assert old_figure.canvas is None
 
 
 def test_parent_teardown_leaves_no_pending_canvas_callback(qtbot):
@@ -112,3 +117,20 @@ def test_parent_teardown_leaves_no_pending_canvas_callback(qtbot):
     QCoreApplication.processEvents()
     # pytest-qt fails on uncaught Qt callbacks; explicit fd capture is redundant
     # and is not portable to every Windows-mounted test temp root.
+
+
+def test_queued_draw_callback_is_safe_after_canvas_deletion(metric_tab, qtbot):
+    from PyQt6 import sip
+    from PyQt6.QtCore import QCoreApplication, QEvent
+
+    old_canvas = metric_tab.canvas
+    queued_callback = old_canvas._draw_idle
+    old_canvas.draw_idle()
+
+    metric_tab._release_canvas()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.processEvents()
+
+    assert sip.isdeleted(old_canvas)
+    queued_callback()
+    assert old_canvas._draw_pending is False

@@ -69,6 +69,30 @@ def test_training_panel_init_controller(mock_main_window, mock_controller, qtbot
     panel.close()
 
 
+def test_training_panel_close_releases_metric_canvases(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.show()
+    canvases = [panel.tab_acc.canvas, panel.tab_loss.canvas]
+    for canvas in canvases:
+        canvas._draw_pending = True
+
+    panel.close()
+    qtbot.wait(0)
+
+    assert panel.tab_acc.canvas is None
+    assert panel.tab_loss.canvas is None
+    assert all(canvas._draw_pending is False for canvas in canvases)
+
+
 def test_training_panel_start_training_success(
     mock_main_window, mock_controller, qtbot
 ):
@@ -152,7 +176,7 @@ def test_training_panel_gives_remaining_height_to_plots_for_small_history(
     assert panel.plots_group.height() > panel.history_group.height()
 
 
-def test_training_panel_keeps_large_history_inside_compact_viewport(
+def test_training_panel_history_height_does_not_follow_run_count_or_host_growth(
     mock_main_window,
     mock_controller,
     qtbot,
@@ -179,23 +203,20 @@ def test_training_panel_keeps_large_history_inside_compact_viewport(
 
     left_widget = panel.history_group.parentWidget()
     assert left_widget is not None
-    compact_table_height = panel.history_table.height()
+    stable_table_height = panel.history_table.height()
+    stable_group_height = panel.history_group.height()
+    assert stable_table_height == panel.history_table.preferred_content_height()
     assert panel.history_group.geometry().bottom() <= (
         left_widget.contentsRect().bottom() - 20
     )
-    assert panel.history_group.height() >= panel.history_group.sizeHint().height()
     assert panel.plots_group.height() >= panel._MIN_PLOTS_GROUP_HEIGHT
-    assert compact_table_height < panel.history_table.preferred_content_height()
     assert panel.history_table.verticalScrollBar().maximum() > 0
 
     host.setFixedHeight(760)
     qtbot.wait(0)
 
-    assert panel.history_table.height() > compact_table_height
-    assert (
-        panel.history_table.height() == panel.history_table.preferred_content_height()
-    )
-    assert panel.history_group.height() >= panel.history_group.sizeHint().height()
+    assert panel.history_table.height() == stable_table_height
+    assert panel.history_group.height() == stable_group_height
     assert panel.history_group.geometry().bottom() <= (
         left_widget.contentsRect().bottom() - 20
     )
@@ -203,8 +224,8 @@ def test_training_panel_keeps_large_history_inside_compact_viewport(
     host.setFixedHeight(430)
     qtbot.wait(0)
 
-    assert panel.history_table.height() == compact_table_height
-    assert panel.history_group.height() >= panel.history_group.sizeHint().height()
+    assert panel.history_table.height() == stable_table_height
+    assert panel.history_group.height() == stable_group_height
     assert panel.plots_group.height() >= panel._MIN_PLOTS_GROUP_HEIGHT
     assert panel.history_group.geometry().bottom() <= (
         left_widget.contentsRect().bottom() - 20

@@ -1,7 +1,13 @@
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QCheckBox, QDialogButtonBox, QGroupBox, QLabel, QPushButton
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QDialogButtonBox,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+)
 
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog, SmartParserDialog
@@ -155,12 +161,65 @@ def test_filtering_dialog_init(qtbot):
     dialog.h_freq_spin.setValue(40.0)
     # Check notch
     dialog.notch_check.setChecked(True)
+    dialog.notch_mode_combo.setCurrentText("Custom")
     dialog.notch_spin.setValue(60.0)
 
     dialog.accept()
     # (l_freq, h_freq, notch_freqs)
     params = dialog.get_params()
     assert params == (1.0, 40.0, 60.0)
+
+
+def test_filtering_dialog_uses_section_toggles_and_inline_validation(qtbot):
+    dialog = FilteringDialog(None, sampling_rate_hz=100.0)
+    qtbot.addWidget(dialog)
+
+    assert dialog.bandpass_check.text() == "On"
+    assert dialog.notch_check.text() == "Off"
+    assert dialog.bandpass_title.text() == "Band-pass filter"
+    assert dialog.notch_title.text() == "Notch filter"
+    assert dialog.frequency_range_label.text() == "Frequency range"
+
+    dialog.h_freq_spin.setValue(50.0)
+    assert not dialog.ok_button.isEnabled()
+    assert "below 50" in dialog.validation_label.text()
+
+    dialog.h_freq_spin.setValue(40.0)
+    assert dialog.ok_button.isEnabled()
+    assert not dialog.validation_label.isVisibleTo(dialog)
+
+
+def test_filtering_dialog_preserves_values_when_sections_are_disabled(qtbot):
+    dialog = FilteringDialog(None, sampling_rate_hz=250.0)
+    qtbot.addWidget(dialog)
+    dialog.l_freq_spin.setValue(2.5)
+    dialog.h_freq_spin.setValue(45.0)
+    dialog.bandpass_check.setChecked(False)
+
+    assert not dialog.l_freq_spin.isEnabled()
+    assert not dialog.h_freq_spin.isEnabled()
+
+    dialog.bandpass_check.setChecked(True)
+    assert dialog.l_freq_spin.value() == 2.5
+    assert dialog.h_freq_spin.value() == 45.0
+
+
+def test_filtering_dialog_validates_and_preserves_notch_mode(qtbot):
+    dialog = FilteringDialog(None, sampling_rate_hz=100.0)
+    qtbot.addWidget(dialog)
+    dialog.notch_check.setChecked(True)
+    dialog.notch_mode_combo.setCurrentText("Custom")
+    dialog.notch_spin.setValue(49.0)
+
+    assert dialog.ok_button.isEnabled()
+    dialog.notch_spin.setValue(50.0)
+    assert not dialog.ok_button.isEnabled()
+    assert "below 50" in dialog.validation_label.text()
+
+    dialog.notch_check.setChecked(False)
+    dialog.notch_check.setChecked(True)
+    assert dialog.notch_mode_combo.currentText() == "Custom"
+    assert dialog.notch_spin.value() == 50.0
 
 
 def test_rereference_dialog_default(qtbot):
@@ -173,28 +232,29 @@ def test_rereference_dialog_default(qtbot):
         qtbot.addWidget(dialog)
 
         # Default is Average
-        assert dialog.avg_check.isChecked()
+        assert dialog.average_radio.isChecked()
         dialog.accept()
         assert dialog.get_params() == "average"
 
 
-def test_rereference_dialog_channel_box_precedes_average_checkbox(qtbot):
-    """Average reference should read as an option below channel selection."""
+def test_rereference_dialog_explains_mutually_exclusive_reference_modes(qtbot):
     mock_data = MagicMock(spec=Raw)
     mock_data.get_mne.return_value.ch_names = ["C3", "C4"]
 
     dialog = RereferenceDialog(None, [mock_data])
     qtbot.addWidget(dialog)
 
-    group = dialog.findChild(QGroupBox)
-    assert group is dialog.chan_group
-    assert group.title() == "Select Reference Channels"
-    assert dialog.avg_check is not None
-    assert dialog.avg_check.text() == "Use average reference"
+    assert isinstance(dialog.average_radio, QRadioButton)
+    assert isinstance(dialog.selected_channels_radio, QRadioButton)
+    assert dialog.average_radio.text() == "Average reference"
+    assert dialog.selected_channels_radio.text() == "Selected reference channels"
+    assert not dialog.chan_list.isEnabled()
 
-    layout = dialog.layout()
-    assert layout is not None
-    assert layout.indexOf(dialog.chan_group) < layout.indexOf(dialog.avg_check)
+    dialog.selected_channels_radio.setChecked(True)
+    assert dialog.chan_list.isEnabled()
+    assert not dialog.ok_button.isEnabled()
+    dialog.chan_list.item(0).setSelected(True)
+    assert dialog.ok_button.isEnabled()
 
     buttons = dialog.findChild(QDialogButtonBox)
     assert buttons is not None
@@ -212,7 +272,7 @@ def test_rereference_dialog_custom(qtbot):
         qtbot.addWidget(dialog)
 
         # Swtich to Custom
-        dialog.avg_check.setChecked(False)
+        dialog.selected_channels_radio.setChecked(True)
 
         # Select channel
         item = dialog.chan_list.item(0)  # C3
@@ -232,3 +292,7 @@ def test_normalize_dialog_init(qtbot):
     dialog.accept()
 
     assert dialog.get_params() == "z score"
+    assert dialog.section_title.text() == "Normalization method"
+    assert dialog.zscore_radio.isEnabled()
+    assert dialog.minmax_radio.isEnabled()
+    assert "QGroupBox" not in type(dialog.section_container).__name__

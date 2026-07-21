@@ -45,7 +45,7 @@ overall PASS，repo-root `settings.json` 保持可見、未 stage，並明確列
 - strict cross-source runner `4/4`（PhysioNet、BBCI 是 2 個 class-grounded training cases；
   SCCN、CNT 是 2 個 IO/epoch-only cases）。SCCN `rt` / `square` 沒有 public protocol class
   ground truth，不算 supervised class 或 training evidence。
-- human-like desktop walkthrough：`40/40` phases、`42` screenshots、resource smoke PASS。
+- latest human-like desktop walkthrough：`42/42` phases、`44` required screenshots、resource smoke PASS。
 - real local Phi-4 mini ChatPanel：GPU runtime、`query_state` tool turn 與一般問答 turn PASS；
   關閉後 runtime / dispatcher 都是 `closed`、controller 已釋放、registered / running generation
   threads 都是 `0`。
@@ -67,6 +67,33 @@ acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-qu
 修復後 re-gate 並 PASS；真實 Phi-4 mid-generation shutdown、real deferred-startup transition
 與 Windows 互動式 3D 仍是明確 claim boundary，不可由自動化結果外推。
 
+### 2026-07-21 Review / Preprocess / Visualization GUI Gate
+
+- expanded backend / UI / capture regression：`1133 passed`；product walkthrough：`7 passed`。
+- human-like product walkthrough：`42/42` required phases、`44` required screenshots、resource
+  smoke PASS；table geometry findings 與 clipped rows 均為 `0`。目前 artifact 在
+  `artifacts/ui/review-preprocess-polish/human-like-walkthrough/`。
+- focused UI artifact 在 `artifacts/ui/ui-review-fixes/` 與
+  `artifacts/ui/review-preprocess-polish/app-polish/`，涵蓋 Data Import Step 5、Smart Parser 四種
+  parsing mode、filter / re-reference / normalize / resample、Signal Preview no-data / loaded /
+  locked、固定 Preprocessing / Training History 與 Explanation Plots。
+- attribution spectrogram 使用所有 class finite values 的共同 p99 display range；本輪真實 render
+  為 linear `vmin=0`、shared `vmax=1.591498656489425e-4`、dynamic range 約 `55.16`，兩個 class
+  共用 cividis normalization 與 colorbar。資料維度、finite values、frequency/time axis 與
+  aggregation diagnostics 皆通過；artifact 在
+  `artifacts/ui/review-preprocess-polish/visualization-render/`。
+- required multi-dataset gate 維持 strict PASS：real lifecycle `20`、14 format paths、7 public
+  cases / 5 source families，以及 strict cross-source `4/4`（2 training + 2 IO/epoch-only）。
+- Preprocess 的 PyQtGraph teardown 另以相關 `267` tests 連續重跑三次，並以
+  `tests/integration/ui/test_native_render_lifecycle.py` 的真實 EEG Time / PSD panel-switching
+  subprocess stress 驗證。關閉 panel / MainWindow 前會停止 debounce、解除 `SignalProxy`，再呼叫
+  PyQtGraph `PlotWidget.close()` 依 library contract 釋放 PlotItem / Axis / Label / scene，避免 deferred
+  paint / resize event 存取已刪除的 native graphics item。Walkthrough cleanup 也會略過已由主視窗
+  teardown 關閉的 PlotWidget，並保證 `app.quit()` 執行，避免二次 close 卡住 exit-code gate。
+
+這些結果支撐 automated handoff candidate，不取代 Windows 真人 DPI、遠端桌面、互動式 3D
+與長時間操作 acceptance。
+
 ### 2026-07-21 Agent Panel UI Gate
 
 - focused unit / script gate：`455 passed`，覆蓋 composer auto-grow、manual-scroll preservation、
@@ -83,7 +110,7 @@ acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-qu
   寬度、loading、empty、working / stopping、error / retry、長 clarification、setting change card
   與 12 列 max-content card、real MainWindow dock；teardown 會量測 close latency、GUI heartbeat
   與 QThread terminal signals。
-- human-like product walkthrough：`40/40` phases、`42` screenshots、resource smoke PASS；confirmation
+- latest human-like product walkthrough：`42/42` phases、`44` required screenshots、resource smoke PASS；confirmation
   會實際按 Cancel / Apply，並驗證 request correlation、signal path 與 QThread teardown；
   fingerprint 包含 action card、confirmation contract 與 shared stylesheet owner。
 - `scripts/dev/run_chatpanel_ui_dpi_gate.py` 以 `QT_SCALE_FACTOR=1`、`1.25`、`1.5`

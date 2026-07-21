@@ -1,179 +1,244 @@
-"""Frequency filtering dialog for configuring bandpass and notch filters.
+"""Frequency filtering settings for EEG preprocessing."""
 
-Provides controls for setting low/high pass-band frequencies and
-optional notch frequency for EEG signal filtering.
-"""
+from __future__ import annotations
+
+import math
 
 from PyQt6.QtWidgets import (
-    QCheckBox,
+    QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
-    QFormLayout,
-    QMessageBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
     QVBoxLayout,
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
+from XBrainLab.ui.dialogs.preprocess.common import create_preprocess_section
 
 
 class FilteringDialog(BaseDialog):
-    """Dialog for configuring frequency filters.
+    """Configure optional band-pass and notch filters without changing values."""
 
-    Supports bandpass (low/high cut) and notch filters with validation
-    to ensure correct frequency ranges.
+    def __init__(self, parent, *, sampling_rate_hz: float | None = None):
+        self.params: tuple[float | None, float | None, float | None] | None = None
+        self.sampling_rate_hz = self._valid_sampling_rate(sampling_rate_hz)
+        self.bandpass_check: QPushButton
+        self.notch_check: QPushButton
+        self.bandpass_title: QLabel
+        self.notch_title: QLabel
+        self.frequency_range_label: QLabel
+        self.l_freq_spin: QDoubleSpinBox
+        self.h_freq_spin: QDoubleSpinBox
+        self.notch_mode_combo: QComboBox
+        self.notch_spin: QDoubleSpinBox
+        self.validation_label: QLabel
+        self.ok_button: QPushButton
+        super().__init__(parent, title="Filtering", width=520, height=360)
 
-    Attributes:
-        params: Tuple of (l_freq, h_freq, notch_freq) after acceptance.
-        bandpass_check: QCheckBox to enable/disable bandpass filtering.
-        l_freq_spin: QDoubleSpinBox for lower pass-band frequency.
-        h_freq_spin: QDoubleSpinBox for upper pass-band frequency.
-        notch_check: QCheckBox to enable/disable notch filtering.
-        notch_spin: QDoubleSpinBox for notch frequency.
-
-    """
-
-    def __init__(self, parent):
-        self.params: tuple | None = None
-        self.bandpass_check = None
-        self.l_freq_spin = None
-        self.h_freq_spin = None
-        self.notch_check = None
-        self.notch_spin = None
-
-        super().__init__(parent, title="Filtering")
-        self.resize(300, 250)
-
-    def init_ui(self):
-        """Initialize the dialog UI with filter controls and buttons."""
+    def init_ui(self) -> None:
         layout = QVBoxLayout(self)
-        form_layout = QFormLayout()
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(16)
 
-        # Bandpass Filter
-        self.bandpass_check = QCheckBox("Apply Bandpass Filter")
-        self.bandpass_check.setChecked(True)
-        self.bandpass_check.toggled.connect(self.toggle_bandpass)
-        form_layout.addRow(self.bandpass_check)
+        bandpass_section, self.bandpass_title, bandpass_layout = (
+            create_preprocess_section("Band-pass filter", parent=self)
+        )
+        bandpass_header = QHBoxLayout()
+        bandpass_header.setContentsMargins(0, 0, 0, 0)
+        bandpass_header.addWidget(self.bandpass_title)
+        bandpass_header.addStretch()
+        self.bandpass_check = self._toggle_button(checked=True)
+        bandpass_header.addWidget(self.bandpass_check)
+        bandpass_layout.removeWidget(self.bandpass_title)
+        bandpass_layout.insertLayout(0, bandpass_header)
 
-        self.l_freq_spin = QDoubleSpinBox()
-        self.l_freq_spin.setRange(0, 1000)
-        self.l_freq_spin.setDecimals(2)
-        self.l_freq_spin.setValue(1.0)  # Default
+        self.frequency_range_label = QLabel("Frequency range")
+        self.frequency_range_label.setObjectName("PreprocessFieldLabel")
+        bandpass_layout.addWidget(self.frequency_range_label)
+        frequency_row = QHBoxLayout()
+        frequency_row.setContentsMargins(0, 0, 0, 0)
+        frequency_row.setSpacing(8)
+        self.l_freq_spin = self._frequency_spin(1.0)
+        self.h_freq_spin = self._frequency_spin(40.0)
+        frequency_row.addWidget(self.l_freq_spin)
+        frequency_row.addWidget(QLabel("-"))
+        frequency_row.addWidget(self.h_freq_spin)
+        frequency_row.addWidget(QLabel("Hz"))
+        frequency_row.addStretch()
+        bandpass_layout.addLayout(frequency_row)
+        layout.addWidget(bandpass_section)
 
-        self.h_freq_spin = QDoubleSpinBox()
-        self.h_freq_spin.setRange(0, 1000)
-        self.h_freq_spin.setDecimals(2)
-        self.h_freq_spin.setValue(40.0)  # Default
+        notch_section, self.notch_title, notch_layout = create_preprocess_section(
+            "Notch filter",
+            parent=self,
+        )
+        notch_header = QHBoxLayout()
+        notch_header.setContentsMargins(0, 0, 0, 0)
+        notch_header.addWidget(self.notch_title)
+        notch_header.addStretch()
+        self.notch_check = self._toggle_button(checked=False)
+        notch_header.addWidget(self.notch_check)
+        notch_layout.removeWidget(self.notch_title)
+        notch_layout.insertLayout(0, notch_header)
 
-        form_layout.addRow("Lower pass-band (Hz):", self.l_freq_spin)
-        form_layout.addRow("Upper pass-band (Hz):", self.h_freq_spin)
+        notch_label = QLabel("Power-line frequency")
+        notch_label.setObjectName("PreprocessFieldLabel")
+        notch_layout.addWidget(notch_label)
+        notch_row = QHBoxLayout()
+        notch_row.setContentsMargins(0, 0, 0, 0)
+        notch_row.setSpacing(8)
+        self.notch_mode_combo = QComboBox()
+        self.notch_mode_combo.addItems(["50 Hz", "60 Hz", "Custom"])
+        self.notch_mode_combo.setFixedWidth(140)
+        self.notch_spin = self._frequency_spin(50.0)
+        self.notch_spin.setFixedWidth(120)
+        self.notch_spin.setSuffix(" Hz")
+        notch_row.addWidget(self.notch_mode_combo)
+        notch_row.addWidget(self.notch_spin)
+        notch_row.addStretch()
+        notch_layout.addLayout(notch_row)
+        layout.addWidget(notch_section)
 
-        # Notch Filter
-        self.notch_check = QCheckBox("Apply Notch Filter")
-        self.notch_check.toggled.connect(self.toggle_notch)
-        form_layout.addRow(self.notch_check)
+        self.validation_label = QLabel()
+        self.validation_label.setObjectName("PreprocessInlineError")
+        self.validation_label.setWordWrap(True)
+        self.validation_label.hide()
+        layout.addWidget(self.validation_label)
 
-        self.notch_spin = QDoubleSpinBox()
-        self.notch_spin.setRange(0, 1000)
-        self.notch_spin.setValue(50.0)  # Default 50Hz
-        self.notch_spin.setEnabled(False)
-        form_layout.addRow("Notch Frequency (Hz):", self.notch_spin)
-
-        layout.addLayout(form_layout)
-
-        # Buttons
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         normalize_dialog_button_box(buttons)
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if not isinstance(ok_button, QPushButton):
+            raise RuntimeError("Filtering dialog OK button is unavailable")
+        self.ok_button = ok_button
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def toggle_notch(self, checked):
-        """Enable or disable the notch frequency spin box.
+        self.bandpass_check.toggled.connect(self.toggle_bandpass)
+        self.notch_check.toggled.connect(self.toggle_notch)
+        self.notch_mode_combo.currentTextChanged.connect(self._sync_notch_mode)
+        for spin in (self.l_freq_spin, self.h_freq_spin, self.notch_spin):
+            spin.valueChanged.connect(self._update_validation)
+        self._sync_toggle_text(self.bandpass_check)
+        self._sync_toggle_text(self.notch_check)
+        self.toggle_bandpass(True)
+        self.toggle_notch(False)
+        self._sync_notch_mode()
+        self._update_validation()
 
-        Args:
-            checked: Whether notch filtering is enabled.
+    @staticmethod
+    def _valid_sampling_rate(value: float | None) -> float | None:
+        if value is None:
+            return None
+        try:
+            result = float(value)
+        except (TypeError, ValueError):
+            return None
+        return result if math.isfinite(result) and result > 0 else None
 
-        """
-        if self.notch_spin:
-            self.notch_spin.setEnabled(checked)
+    @staticmethod
+    def _toggle_button(*, checked: bool) -> QPushButton:
+        button = QPushButton()
+        button.setObjectName("PreprocessToggle")
+        button.setCheckable(True)
+        button.setChecked(checked)
+        button.setAutoDefault(False)
+        button.setDefault(False)
+        button.toggled.connect(
+            lambda _checked, owned=button: FilteringDialog._sync_toggle_text(owned)
+        )
+        return button
 
-    def toggle_bandpass(self, checked):
-        """Enable or disable the bandpass frequency spin boxes.
+    @staticmethod
+    def _sync_toggle_text(button: QPushButton) -> None:
+        button.setText("On" if button.isChecked() else "Off")
 
-        Args:
-            checked: Whether bandpass filtering is enabled.
+    @staticmethod
+    def _frequency_spin(value: float) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(0.0, 1000.0)
+        spin.setDecimals(2)
+        spin.setValue(value)
+        spin.setFixedWidth(120)
+        return spin
 
-        """
-        if self.l_freq_spin:
-            self.l_freq_spin.setEnabled(checked)
-        if self.h_freq_spin:
-            self.h_freq_spin.setEnabled(checked)
+    def toggle_notch(self, checked: bool) -> None:
+        self.notch_mode_combo.setEnabled(checked)
+        self._sync_notch_mode()
+        self._update_validation()
 
-    def accept(self):
-        """Validate filter parameters and accept the dialog.
+    def toggle_bandpass(self, checked: bool) -> None:
+        self.frequency_range_label.setEnabled(checked)
+        self.l_freq_spin.setEnabled(checked)
+        self.h_freq_spin.setEnabled(checked)
+        self._update_validation()
 
-        Raises:
-            QMessageBox: Warning if frequency range is invalid or no
-                filter is selected.
+    def _sync_notch_mode(self, *_args) -> None:
+        custom = self.notch_mode_combo.currentText() == "Custom"
+        self.notch_spin.setVisible(custom)
+        self.notch_spin.setEnabled(self.notch_check.isChecked() and custom)
+        self._update_validation()
 
-        """
-        if (
-            not self.bandpass_check
-            or not self.l_freq_spin
-            or not self.h_freq_spin
-            or not self.notch_check
-            or not self.notch_spin
-        ):
-            return
+    def _selected_notch_frequency(self) -> float:
+        mode = self.notch_mode_combo.currentText()
+        if mode == "50 Hz":
+            return 50.0
+        if mode == "60 Hz":
+            return 60.0
+        return float(self.notch_spin.value())
 
-        l_freq = None
-        h_freq = None
-
+    def _validation_error(self) -> str:
+        if not self.bandpass_check.isChecked() and not self.notch_check.isChecked():
+            return "Enable at least one filter."
+        nyquist = (
+            self.sampling_rate_hz / 2.0 if self.sampling_rate_hz is not None else None
+        )
         if self.bandpass_check.isChecked():
-            l_freq = self.l_freq_spin.value()
-            h_freq = self.h_freq_spin.value()
-
-            # Validate
-            if l_freq >= h_freq > 0:
-                QMessageBox.warning(
-                    self,
-                    "Invalid Input",
-                    "Lower freq must be less than Upper freq.",
-                )
-                return
-
-        notch_freqs = None
+            lower = float(self.l_freq_spin.value())
+            upper = float(self.h_freq_spin.value())
+            if lower < 0:
+                return "Lower frequency must be zero or greater."
+            if upper <= lower:
+                return "Upper frequency must be greater than lower frequency."
+            if nyquist is not None and upper >= nyquist:
+                return f"Upper frequency must be below {nyquist:g} Hz."
         if self.notch_check.isChecked():
-            notch_freqs = self.notch_spin.value()
+            notch = self._selected_notch_frequency()
+            if notch <= 0:
+                return "Notch frequency must be greater than zero."
+            if nyquist is not None and notch >= nyquist:
+                return f"Notch frequency must be below {nyquist:g} Hz."
+        return ""
 
-        if l_freq is None and h_freq is None and notch_freqs is None:
-            QMessageBox.warning(
-                self,
-                "Warning",
-                "Please select at least one filter (Bandpass or Notch).",
-            )
+    def _update_validation(self, *_args) -> None:
+        if not hasattr(self, "validation_label") or not hasattr(self, "ok_button"):
             return
+        error = self._validation_error()
+        self.validation_label.setText(error)
+        self.validation_label.setVisible(bool(error))
+        self.ok_button.setEnabled(not error)
 
-        self.params = (l_freq, h_freq, notch_freqs)
+    def accept(self) -> None:
+        error = self._validation_error()
+        if error:
+            self._update_validation()
+            return
+        lower = self.l_freq_spin.value() if self.bandpass_check.isChecked() else None
+        upper = self.h_freq_spin.value() if self.bandpass_check.isChecked() else None
+        notch = (
+            self._selected_notch_frequency() if self.notch_check.isChecked() else None
+        )
+        self.params = (lower, upper, notch)
         super().accept()
 
     def get_params(self):
-        """Return the configured filter parameters.
-
-        Returns:
-            Tuple of (l_freq, h_freq, notch_freq) or None.
-
-        """
         return self.params
 
     def get_result(self):
-        """Return the configured filter parameters.
-
-        Returns:
-            Tuple of (l_freq, h_freq, notch_freq) or None.
-
-        """
         return self.get_params()

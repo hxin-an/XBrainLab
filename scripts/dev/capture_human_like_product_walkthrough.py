@@ -217,7 +217,9 @@ SCREENSHOT_NAMES: dict[str, str] = {
     "applied": "06-interpretation-applied.png",
     "recipe_reloaded": "07-recipe-reloaded.png",
     "recipe_reapplied": "07-recipe-reapplied.png",
+    "preprocess_loaded": "08a-preprocessing-loaded.png",
     "preprocess": "08-preprocessing.png",
+    "preprocess_locked": "08b-preprocessing-locked.png",
     "dataset_ready": "09-dataset-ready.png",
     "training_readiness": "10-training-readiness.png",
     "analysis_readiness": "11-analysis-readiness.png",
@@ -242,7 +244,9 @@ REQUIRED_PHASES = (
     "data_interpretation_save_recipe",
     "data_interpretation_reload_recipe",
     "data_interpretation_reapply_recipe",
+    "preprocessing_loaded",
     "preprocessing",
+    "preprocessing_locked",
     "epoch_creation",
     "dataset_generation",
     "training_readiness",
@@ -512,9 +516,23 @@ def capture_walkthrough(app: QApplication, output_dir: Path) -> dict[str, Any]:
                 },
             }
         finally:
-            for widget in app.topLevelWidgets():
-                widget.close()
-            app.quit()
+            try:
+                for widget in tuple(app.topLevelWidgets()):
+                    try:
+                        # MainWindow teardown closes owned PyQtGraph widgets.
+                        # Qt may retain those wrappers in this snapshot briefly;
+                        # PlotWidget.close() is not idempotent after plotItem=None.
+                        if (
+                            hasattr(widget, "plotItem")
+                            and getattr(widget, "plotItem", None) is None
+                        ):
+                            continue
+                        widget.close()
+                    except RuntimeError:
+                        # A parent window may already have deleted the wrapper.
+                        continue
+            finally:
+                app.quit()
 
     QTimer.singleShot(1000, run)
     app.exec()
@@ -795,10 +813,17 @@ def _run_walkthrough_steps(
         notes=lambda: {
             "active_step": active_dialog_step(dialog),
             "apply_enabled": dialog.apply_button.isEnabled(),
+            "save_recipe_selected": dialog.save_recipe_check.isChecked(),
             "review_summary_rows": tree_rows(dialog.review_tree),
             "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
         },
     )
+    if dialog.save_recipe_check.isChecked():
+        raise RuntimeError("Save recipe must remain optional by default.")
+    dialog.save_recipe_check.click()
+    recipe_requested = bool(dialog.get_result().get("save_recipe"))
+    if not recipe_requested:
+        raise RuntimeError("Step 5 did not preserve the explicit Save recipe choice.")
     dialog.close()
 
     safe_probe = data_interpretation_decision_probe(str(SOURCE_PATH), {})
@@ -834,11 +859,17 @@ def _run_walkthrough_steps(
         ApplyInterpretationCommand(confirmed=True),
         command_results,
     )
-    save_recipe = execute_recorded(
-        service,
-        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
-        command_results,
+    save_recipe = (
+        execute_recorded(
+            service,
+            SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+            command_results,
+        )
+        if recipe_requested
+        else None
     )
+    if save_recipe is None:
+        raise RuntimeError("The explicit Save recipe choice was not executed.")
     reload_recipe = execute_recorded(
         service,
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
@@ -930,6 +961,24 @@ def _run_walkthrough_steps(
         },
     )
 
+    open_workflow_panel(window, 1)
+    window.preprocess_panel.update_panel()
+    app.processEvents()
+    capture_step(
+        "preprocessing_loaded",
+        "preprocess_loaded",
+        notes={
+            "preview_state": "loaded",
+            "channel_count": window.preprocess_panel.preview_widget.chan_combo.count(),
+            "time_curve_samples": len(
+                window.preprocess_panel.preview_widget.time_current_curve.xData
+            )
+            if window.preprocess_panel.preview_widget.time_current_curve.xData
+            is not None
+            else 0,
+        },
+    )
+
     preprocess = execute_recorded(
         service,
         PreprocessCommand(
@@ -940,6 +989,16 @@ def _run_walkthrough_steps(
         ),
         command_results,
     )
+    tool_transcript.append(command_summary(preprocess))
+    open_workflow_panel(window, 1)
+    window.preprocess_panel.update_panel()
+    app.processEvents()
+    capture_step(
+        "preprocessing",
+        "preprocess",
+        notes={"preprocess": command_summary(preprocess)},
+    )
+
     epoch = execute_recorded(
         service,
         CreateEpochCommand(t_min=0.0, t_max=0.51, event_ids=None),
@@ -955,16 +1014,17 @@ def _run_walkthrough_steps(
         ),
         command_results,
     )
-    tool_transcript.extend(
-        command_summary(item) for item in [preprocess, epoch, dataset]
-    )
-
+    tool_transcript.extend(command_summary(item) for item in [epoch, dataset])
     open_workflow_panel(window, 1)
+    window.preprocess_panel.update_panel()
     app.processEvents()
     capture_step(
-        "preprocessing",
-        "preprocess",
-        notes={"preprocess": command_summary(preprocess)},
+        "preprocessing_locked",
+        "preprocess_locked",
+        notes={
+            "epoch": command_summary(epoch),
+            "preview_state": "locked",
+        },
     )
     open_workflow_panel(window, 2)
     app.processEvents()

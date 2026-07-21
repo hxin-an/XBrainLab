@@ -60,7 +60,6 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     """Render helpers for final review, action items, and recipe trace."""
 
     def _build_review_import_summary(self, layout: QVBoxLayout) -> None:
-        self.save_recipe_check.setText("Save recipe")
         self._review_import_rows_layout = QGridLayout()
         self._review_import_rows_layout.setContentsMargins(0, 0, 0, 0)
         self._review_import_rows_layout.setHorizontalSpacing(10)
@@ -77,13 +76,13 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             status_label = QLabel(row["status"])
             status_label.setObjectName(self._review_status_object_name(row["status"]))
             status_label.setAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
             )
             status_label.setSizePolicy(
                 QSizePolicy.Policy.Fixed,
                 QSizePolicy.Policy.Fixed,
             )
-            status_label.setMinimumWidth(116)
+            status_label.setFixedWidth(132)
             status_height = max(status_label.fontMetrics().height() + 10, 26)
             status_label.setFixedHeight(status_height)
             summary_label = QLabel(row["summary"])
@@ -125,7 +124,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 status_height,
             )
         self._review_import_rows_layout.setColumnMinimumWidth(0, 118)
-        self._review_import_rows_layout.setColumnMinimumWidth(1, 126)
+        self._review_import_rows_layout.setColumnMinimumWidth(1, 132)
         self._review_import_rows_layout.setColumnStretch(2, 1)
         self.save_recipe_check.setVisible(True)
         self._review_import_rows_layout.invalidate()
@@ -145,7 +144,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             "Ready": "DataImportReviewStatusReady",
             "Completed": "DataImportReviewStatusReady",
             "Safe": "DataImportReviewStatusReady",
+            "Saved": "DataImportReviewStatusReady",
+            "Loaded": "DataImportReviewStatusNeutral",
             "Ready with notes": "DataImportReviewStatusReadyWithNotes",
+            "Will save": "DataImportReviewStatusNeutral",
             "Warning": "DataImportReviewStatusNeedsReview",
             "Blocking": "DataImportReviewStatusMissing",
             "Too large": "DataImportReviewStatusMissing",
@@ -153,6 +155,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             "Needs review": "DataImportReviewStatusNeedsReview",
             "Missing": "DataImportReviewStatusMissing",
             "Incomplete": "DataImportReviewStatusIncomplete",
+            "Action required": "DataImportReviewStatusIncomplete",
             "Not saved": "DataImportReviewStatusNeutral",
         }.get(status, "DataImportReviewStatus")
 
@@ -173,7 +176,11 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
 
     def _review_import_action(self, row: dict[str, str]) -> QPushButton:
         action = row.get("action", "")
-        if action == "Save recipe":
+        if action in {
+            "Save recipe",
+            "Cancel save",
+        }:
+            self.save_recipe_check.setText(action)
             return self.save_recipe_check
         button = QPushButton(action)
         button.setObjectName("DataImportReviewAction")
@@ -187,7 +194,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     def _review_import_status_rows(self) -> list[dict[str, str]]:
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_required = self._metadata_required_missing_fields(missing_fields)
-        missing_notes = set(missing_fields) & {"task"}
+        missing_notes = set(missing_fields) & {"session", "task", "run"}
         metadata_file_count = self.file_tree.topLevelItemCount()
         if missing_required:
             metadata_status = "Needs review"
@@ -202,10 +209,16 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         elif missing_notes:
             metadata_status = "Ready with notes"
             field_word = "field" if len(missing_notes) == 1 else "fields"
-            ordered_notes = [field for field in ("task",) if field in missing_notes]
+            ordered_notes = [
+                field for field in ("session", "task", "run") if field in missing_notes
+            ]
             metadata_row_summary = (
                 f"Optional {field_word} missing: {', '.join(ordered_notes)}"
             )
+            if self._is_bids_source():
+                metadata_row_summary = (
+                    f"BIDS entities reviewed · {metadata_row_summary}"
+                )
             affected_count = self._metadata_affected_file_count(missing_notes)
             if affected_count:
                 file_word = "file" if affected_count == 1 else "files"
@@ -236,12 +249,29 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         label_placement_status = "Ready"
         label_placement_summary = self._review_label_placement_text()
         if self._should_show_label_table_fallback():
-            label_placement_status = "Incomplete"
+            label_placement_status = "Action required"
         elif (
             "need review" in label_placement_summary.lower()
             or self._has_review_action_for_step("Match Labels")
         ):
             label_placement_status = "Needs review"
+
+        recipe_selected = self.save_recipe_check.isChecked()
+        if recipe_selected:
+            recipe_status = "Will save"
+            recipe_summary = "Recipe will be saved after this import succeeds."
+            recipe_action = "Cancel save"
+        elif self._has_loaded_import_recipe() and not self._recipe_choices_changed():
+            recipe_status = "Loaded"
+            recipe_summary = (
+                "A saved recipe was loaded. Save the current import settings "
+                "again to keep any changes."
+            )
+            recipe_action = "Save recipe"
+        else:
+            recipe_status = "Not saved"
+            recipe_summary = self._review_recipe_note_text()
+            recipe_action = "Save recipe"
 
         return [
             {
@@ -268,18 +298,31 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 "target_step": "Match Labels",
                 "action": (
                     "Go to Label Placement"
-                    if label_placement_status in {"Needs review", "Incomplete"}
+                    if label_placement_status in {"Needs review", "Action required"}
                     else ""
                 ),
             },
             self._resource_check_status_row(),
             {
                 "item": "Recipe",
-                "status": "Not saved",
-                "summary": self._review_recipe_note_text(),
-                "action": "Save recipe",
+                "status": recipe_status,
+                "summary": recipe_summary,
+                "action": recipe_action,
             },
         ]
+
+    def _has_loaded_import_recipe(self) -> bool:
+        summary = self.preview.get("recipe_reload_summary")
+        return isinstance(summary, dict) and bool(summary)
+
+    def _recipe_choices_changed(self) -> bool:
+        """Return whether the loaded recipe required current-scan substitutions."""
+        return bool(
+            self._eeg_file_remap_options() or self._label_carrier_remap_options()
+        )
+
+    def _pending_recipe_action_text(self, checked: bool) -> str:
+        return "Cancel save" if checked else "Save recipe"
 
     def _metadata_affected_file_count(self, fields: set[str]) -> int:
         """Count rows missing at least one requested metadata field."""
@@ -379,14 +422,115 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     def _refresh_review_import_summary(self) -> None:
         if hasattr(self, "_review_import_rows_layout"):
             self._render_review_import_rows()
+        self._refresh_import_report_summary()
+
+    def _refresh_import_report_summary(self) -> None:
+        if not hasattr(self, "import_report_summary"):
+            return
+        self.import_report_summary.setText(self._import_report_summary_text())
+
+    def _import_report_summary_text(self) -> str:
+        eeg_names = self._selected_eeg_file_names()
+        eeg_summary = self._event_code_list_text(eeg_names, limit=5) or "None"
+        label_names = [
+            Path(self._label_carrier_key(item, original)).name
+            for item, original in self._label_carrier_items
+            if not self._is_label_carrier_excluded(
+                self._label_carrier_key(item, original),
+            )
+        ]
+        label_summary = self._event_code_list_text(label_names, limit=5) or "None"
+        review_rows = {row["item"]: row for row in self._review_import_status_rows()}
+        metadata = review_rows.get("Metadata", {})
+        resource = review_rows.get("Resource check", {})
+        if self._label_source_mode() == "loaded_label_files":
+            pairing = self._loaded_label_pairing_result()
+            alignment = (
+                f"{pairing.matched_count}/{len(eeg_names)} EEG files paired"
+                if eeg_names
+                else "No EEG files selected"
+            )
+        else:
+            alignment = "Labels are read from EEG events; file pairing is not required"
+
+        optional_notes = self._import_report_optional_notes_text(metadata)
+        blocking_issues = self._import_report_blocking_issues_text()
+        return "\n".join(
+            (
+                f"EEG files: {eeg_summary}",
+                f"Label files: {label_summary}",
+                "Metadata: "
+                f"{metadata.get('status', 'Unknown')} - "
+                f"{metadata.get('summary', 'No metadata status available')}",
+                f"Label alignment: {alignment}",
+                f"Label placement: {self._review_label_placement_text()}",
+                "Resource check: "
+                f"{resource.get('status', 'Unknown')} - "
+                f"{resource.get('summary', 'No resource status available')}",
+                f"Optional notes: {optional_notes}",
+                f"Blocking issues: {blocking_issues}",
+            )
+        )
+
+    def _import_report_optional_notes_text(
+        self,
+        metadata_row: dict[str, str],
+    ) -> str:
+        notes: list[str] = []
+        if metadata_row.get("status") == "Ready with notes":
+            notes.append(str(metadata_row.get("summary") or "").strip())
+        action_items = self.preview.get("action_items") or self.validation_decision.get(
+            "action_items"
+        )
+        notes.extend(
+            str(item.get("issue") or "").strip()
+            for item in action_items or []
+            if isinstance(item, dict)
+            and str(item.get("severity") or "").strip().lower()
+            not in {"blocked", "needs_confirmation"}
+            and str(item.get("issue") or "").strip()
+        )
+        return "; ".join(dict.fromkeys(note for note in notes if note)) or "None"
+
+    def _import_report_blocking_issues_text(self) -> str:
+        """Return only issues that currently block applying the import."""
+        action_items = self.preview.get("action_items") or self.validation_decision.get(
+            "action_items"
+        )
+        blocking_items = [
+            item
+            for item in action_items or []
+            if isinstance(item, dict)
+            and str(item.get("severity") or "").strip().lower() == "blocked"
+        ]
+        issues: list[str] = []
+        for row in action_item_rows(blocking_items):
+            current_row = self._current_review_row(row)
+            if not self._review_row_is_resolved(current_row):
+                issues.append(current_row[1])
+        if (
+            not issues
+            and self.decision == "blocked"
+            and not self._review_ready_for_recheck()
+        ):
+            issues = [
+                str(reason).strip()
+                for reason in (
+                    self.validation_decision.get("blocked_reasons")
+                    or self.preview.get("blocked_reasons")
+                    or []
+                )
+                if str(reason).strip()
+            ]
+        return "; ".join(dict.fromkeys(issues)) if issues else "None"
 
     def _default_review_action_row(self) -> tuple[str, str, str, str]:
         if self.decision == "blocked" and not self._review_ready_for_recheck():
             return (
                 "Review and Import",
                 "Cannot import yet",
-                "Blocking items must be resolved before this recipe can be applied.",
-                "Fix the action items below, then apply.",
+                "Blocking items must be resolved before the data can be imported.",
+                "Resolve the action items below, then import.",
             )
         return (
             "Review and Import",
@@ -1158,9 +1302,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         visible = not self.import_report_card.isVisible()
         if visible:
             self._refresh_review_tree()
+            self._refresh_import_report_summary()
         self.import_report_card.setVisible(visible)
         self.import_report_toggle.setText(
-            "Hide detailed report" if visible else "View detailed report"
+            "Hide import report" if visible else "View import report"
         )
         if visible:
             self._fit_tree_columns_to_viewport(self.review_tree)
@@ -1199,9 +1344,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         return metadata_required_fields_complete(
             row_count=len(self._metadata_items),
             missing_fields=missing_fields,
-            required_fields=(
-                {"subject", "task"} if self._is_bids_source() else {"subject"}
-            ),
+            required_fields=({"subject"}),
         )
 
     @staticmethod

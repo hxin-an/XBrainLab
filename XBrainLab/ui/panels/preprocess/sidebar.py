@@ -1,7 +1,7 @@
 """Sidebar widget for the preprocessing panel with operations and execution controls."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -193,6 +193,13 @@ class PreprocessSidebar(QWidget):
 
         is_epoched = False
         publication = get_application_view_publication(self)
+        if publication is not None:
+            active_dataset = getattr(
+                getattr(publication, "state", None),
+                "active_dataset",
+                None,
+            )
+            is_epoched = bool(getattr(active_dataset, "has_epoch_data", False))
         capabilities = (
             publication.effective_capabilities if publication is not None else None
         )
@@ -317,15 +324,23 @@ class PreprocessSidebar(QWidget):
                 self,
                 CommandName.CREATE_EPOCH,
             )
+            reset_capability = get_command_capability(
+                self,
+                CommandName.RESET_PREPROCESS,
+            )
         else:
             capabilities = publication.effective_capabilities
             preprocess_capability = capabilities.get(CommandName.PREPROCESS)
             epoch_capability = capabilities.get(CommandName.CREATE_EPOCH)
+            reset_capability = capabilities.get(CommandName.RESET_PREPROCESS)
         preprocess_enabled = (
             preprocess_capability.enabled if preprocess_capability is not None else True
         )
         epoch_enabled = (
             epoch_capability.enabled if epoch_capability is not None else True
+        )
+        reset_enabled = (
+            reset_capability.enabled if reset_capability is not None else True
         )
         preprocess_reason = blocked_reason(
             preprocess_capability,
@@ -334,6 +349,10 @@ class PreprocessSidebar(QWidget):
         epoch_reason = blocked_reason(
             epoch_capability,
             "Epoching is not available.",
+        )
+        reset_reason = blocked_reason(
+            reset_capability,
+            "Reset preprocessing is not available.",
         )
         if preprocess_capability is None and is_epoched:
             preprocess_reason = (
@@ -352,6 +371,16 @@ class PreprocessSidebar(QWidget):
         ):
             button.setEnabled(preprocess_enabled)
         self.btn_epoch.setEnabled(epoch_enabled)
+        self.btn_reset.setEnabled(reset_enabled and not is_epoched)
+        self.btn_reset.setToolTip(
+            "Preprocessing is locked after epoching."
+            if is_epoched
+            else (
+                "Restore the loaded EEG data before preprocessing."
+                if reset_enabled
+                else reset_reason
+            )
+        )
 
         # Filter
         if not preprocess_enabled or (preprocess_capability is None and is_epoched):
@@ -628,7 +657,10 @@ class PreprocessSidebar(QWidget):
             else None
         )
 
-        dialog = FilteringDialog(self)
+        dialog = FilteringDialog(
+            self,
+            sampling_rate_hz=self._current_sampling_rate_hz(),
+        )
         if dialog.exec():
             params = dialog.get_params()
             if params:
@@ -657,6 +689,50 @@ class PreprocessSidebar(QWidget):
                     expected_publication_generation=expected_generation,
                     stale_review_title="Review Filtering Again",
                 )
+
+    def _current_sampling_rate_hz(self) -> float | None:
+        """Return the lowest loaded rate so validation is safe for every file."""
+        query_candidate = getattr(self.panel, "_query_data_lists_for_render", None)
+        if not callable(query_candidate):
+            return None
+        query = cast(
+            Callable[[], tuple[list[Any], list[Any]] | None],
+            query_candidate,
+        )
+        try:
+            rendered = query()
+        except Exception:
+            return None
+        if not rendered or not rendered[0]:
+            return None
+        rates = [
+            rate
+            for data in rendered[0]
+            if (rate := self._sampling_rate_hz(data)) is not None
+        ]
+        return min(rates) if rates else None
+
+    @staticmethod
+    def _sampling_rate_hz(data: Any) -> float | None:
+        """Read one signal's rate without loading or mutating its samples."""
+        get_sfreq_candidate = getattr(data, "get_sfreq", None)
+        if callable(get_sfreq_candidate):
+            get_sfreq = cast(Callable[[], Any], get_sfreq_candidate)
+            try:
+                value = float(get_sfreq())
+                if value > 0:
+                    return value
+            except (TypeError, ValueError):
+                pass
+        get_mne_candidate = getattr(data, "get_mne", None)
+        if not callable(get_mne_candidate):
+            return None
+        get_mne = cast(Callable[[], Any], get_mne_candidate)
+        try:
+            value = float(get_mne().info["sfreq"])
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return None
+        return value if value > 0 else None
 
     def open_resample(self):
         """Open the resample dialog and change the sampling rate."""

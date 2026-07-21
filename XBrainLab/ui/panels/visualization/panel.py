@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from PyQt6.QtCore import QEvent, QThread
-from PyQt6.QtGui import QStandardItemModel
+from PyQt6.QtCore import QEvent, Qt, QThread
+from PyQt6.QtGui import QIcon, QStandardItemModel
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,7 +14,10 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QStyle,
     QTabWidget,
+    QToolButton,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -279,16 +282,35 @@ class VisualizationPanel(BasePanel):
         plots_layout = QVBoxLayout(plots_group)
         plots_layout.setContentsMargins(10, 20, 10, 10)
 
-        self.explanation_context = QLabel()
-        self.explanation_context.setWordWrap(True)
-        self.explanation_context.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; background: transparent;"
-        )
-        plots_layout.addWidget(self.explanation_context)
+        self._explanation_context_text = ""
 
         # Tabs
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(Stylesheets.TAB_WIDGET_CLEAN)
+        self.explanation_info_button = QToolButton(self.tabs)
+        self.explanation_info_button.setObjectName("ExplanationAggregationInfo")
+        self.explanation_info_button.setAccessibleName("Plot aggregation details")
+        self.explanation_info_button.setAutoRaise(True)
+        self.explanation_info_button.setFixedSize(24, 24)
+        self.explanation_info_button.setCursor(
+            Qt.CursorShape.PointingHandCursor,
+        )
+        style = self.style()
+        self.explanation_info_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
+            if style is not None
+            else QIcon()
+        )
+        self.explanation_info_button.setToolTip(
+            "How the selected explanation plot is grouped and aggregated."
+        )
+        self.explanation_info_button.clicked.connect(
+            self._show_explanation_context_tooltip,
+        )
+        self.tabs.setCornerWidget(
+            self.explanation_info_button,
+            Qt.Corner.TopRightCorner,
+        )
         # Signal connected at the end of init_ui to avoid early triggering
 
         # Get trainers for initialization (empty initially)
@@ -690,7 +712,7 @@ class VisualizationPanel(BasePanel):
 
     def _refresh_explanation_context(self) -> None:
         """Explain the scientific target and aggregation used by the active view."""
-        if not hasattr(self, "explanation_context") or not hasattr(self, "tabs"):
+        if not hasattr(self, "tabs"):
             return
         descriptions = {
             0: "Grouped by true class label · Mean across evaluated epochs",
@@ -701,11 +723,21 @@ class VisualizationPanel(BasePanel):
             2: ("Grouped by true class label · Mean across evaluated epochs and time"),
             3: "Grouped by true class label · Mean across evaluated epochs",
         }
-        self.explanation_context.setText(
-            descriptions.get(
-                self.tabs.currentIndex(),
-                "Grouped by true class label · Mean across evaluated epochs",
-            )
+        self._explanation_context_text = descriptions.get(
+            self.tabs.currentIndex(),
+            "Grouped by true class label · Mean across evaluated epochs",
+        )
+        self.tabs.setToolTip(self._explanation_context_text)
+        self.explanation_info_button.setToolTip(self._explanation_context_text)
+
+    def _show_explanation_context_tooltip(self) -> None:
+        """Expose aggregation semantics without reserving a permanent row."""
+        QToolTip.showText(
+            self.explanation_info_button.mapToGlobal(
+                self.explanation_info_button.rect().bottomLeft(),
+            ),
+            self.explanation_info_button.toolTip(),
+            self.explanation_info_button,
         )
 
     def on_update(self):

@@ -6,11 +6,12 @@
 
 ## 目前焦點
 
-**Run Windows acceptance on the published Desktop MVP handoff candidate.**
+**Close the focused GUI repair candidate, then run Windows acceptance from that single branch.**
 
 先前稽核列出的 product、scientific correctness、Qt lifecycle 與 agent host-safety blocker 已完成
 實作、完整回歸、獨立 reviewer、commit / push 與 exact-commit dashboard 都已關閉。現在不再
-擴張功能；下一步是 Windows 真人 click-through，接受後才進 stabilization / main merge gate。
+擴張功能；`ux/gui-review-preprocess-polish` 已完成自動化與可見 artifact gate，收斂 commit / push
+後的下一步是 Windows 真人 click-through，接受後才進 stabilization / main merge gate。
 
 ## 本輪 To-do
 
@@ -32,6 +33,7 @@
 | Done | Agent verified host loop | strict envelope、repair context、turn guard、request admission、confirmation / UI handoff 與真 Phi-4 ChatPanel workflow 已完成；raw model accuracy 仍明確列為 research gap。 |
 | Done | Agent Panel product UI | loading / empty / ready / working / error、responsive composer、mode selector、suggestion prompts、inline typed confirmation 與 retry 已統一；12 列長 action card 可捲動且操作可達，無空白長值會安全斷行且 Copy 不污染原值；hidden dock refresh 不會讓 empty state 與 transcript 並存；focused `455/455`、完整 UI unit suite `2089/2089`、product walkthrough `7/7` 連續 3 輪、human-like walkthrough與 100% / 125% / 150% Qt subprocess gate 已通過。 |
 | Done | Candidate closure | 完整 unit `9006`、integration `388`、靜態 / architecture / docs、多資料集、UI walkthrough、兩個獨立 reviewer 與 exact-commit dashboard 全數 PASS；branch 已 push。 |
+| Done | Review / preprocess / visualization repair | Step 5 recipe 與 Epoch 解耦且 optional；Smart Parser、preprocess dialogs、三態 preview、固定 History、Explanation Plots 與共用色階 spectrogram 已完成 focused `567`、product `7`、human-like `42/42` 與多資料集 gate。 |
 | Next | Windows user acceptance | 從已發佈候選 branch 做真人 click-through；通過前不直接合併 `main`。 |
 
 ## 2026-07-04 Rebaseline 結論
@@ -43,7 +45,7 @@
 | Active repo | `/mnt/d/workspace_v2/projects/lab/xbrainlab` |
 | Registered git worktrees | 只有目前這個 worktree。之前的混亂主要是歷史 branches，不是多個仍掛載的 worktree。 |
 | Current rebaseline checkpoint | `docs/rebaseline-drop-mcp` 的 latest pushed checkpoint。 |
-| Current integration branch | `fix/nonblocking-state-shutdown-lifecycle`；完成後 fast-forward `stabilize/desktop-mvp`，只保留一個手測入口。 |
+| Current repair candidate | `ux/gui-review-preprocess-polish`；完成後 fast-forward `stabilize/desktop-mvp`，只保留一個手測入口。 |
 | Main branch | `main` / `origin/main` 都落後目前 integration line；不要在 Desktop MVP gate 前直接把現在狀態推回 main。 |
 
 目前只有三個 local branches 沒有併入 rebaseline checkpoint：
@@ -95,7 +97,7 @@ roadmap / architecture` 沒有每次同步，所以 canonical truth 慢慢落後
 
 ## 本輪不做
 
-- 不重開 Match Labels / Review and Import 大型 UX 設計。
+- 不把本輪 Step 5 局部修復擴張成 Match Labels / Data Import 全流程重做。
 - 不做 MCP hardening、MCP client certification 或 MCP thesis evidence。
 - 不開始 thesis-grade agent benchmark 實驗；那需要獨立 research branch / goal。
 - 不把 automated dashboard PASS 當作 human Windows acceptance。

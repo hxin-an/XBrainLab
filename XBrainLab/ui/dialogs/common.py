@@ -161,6 +161,54 @@ def dark_dialog_stylesheet() -> str:
             padding: 0 4px;
             color: {Theme.TEXT_PRIMARY};
         }}
+        QFrame#PreprocessSection {{
+            background-color: transparent;
+            border: none;
+        }}
+        QLabel#PreprocessSectionTitle {{
+            background-color: transparent;
+            border: none;
+            color: {Theme.TEXT_PRIMARY};
+            font-weight: 700;
+            padding: 0;
+        }}
+        QLabel#PreprocessSectionTitle:disabled {{
+            color: {Theme.BTN_DISABLED_TEXT};
+        }}
+        QLabel#PreprocessFieldLabel {{
+            background-color: transparent;
+            border: none;
+            color: {Theme.TEXT_SECONDARY};
+        }}
+        QLabel#PreprocessInlineError {{
+            background-color: transparent;
+            border: none;
+            color: {Theme.ACCENT_ERROR};
+            padding: 2px 0;
+        }}
+        QPushButton#PreprocessToggle {{
+            min-width: 44px;
+            max-width: 44px;
+            min-height: 22px;
+            max-height: 22px;
+            padding: 1px 6px;
+            border-radius: 11px;
+            background-color: {Theme.BACKGROUND_MID};
+            border: 1px solid {Theme.BACKGROUND_LIGHT};
+            color: {Theme.TEXT_SECONDARY};
+            font-size: 11px;
+            font-weight: 700;
+        }}
+        QPushButton#PreprocessToggle:checked {{
+            background-color: {Theme.BLUE_PRIMARY};
+            border-color: {Theme.BLUE_HOVER};
+            color: {Theme.TEXT_PRIMARY};
+        }}
+        QListWidget#PreprocessReferenceChannels:disabled {{
+            background-color: {Theme.BACKGROUND_DARK};
+            border-color: {Theme.HISTORY_TABLE_BORDER};
+            color: {Theme.BTN_DISABLED_TEXT};
+        }}
         QListWidget, QListView, QTreeWidget, QTreeView {{
             background-color: {Theme.METRICS_TABLE_BG};
             alternate-background-color: {Theme.METRICS_TABLE_ALT_BG};

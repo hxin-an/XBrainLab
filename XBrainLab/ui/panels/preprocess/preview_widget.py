@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSlider,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -59,6 +60,7 @@ class PreviewWidget(QWidget):
 
         """
         super().__init__(parent)
+        self._native_plot_shutdown = False
         self.init_ui()
         self.setup_timer()
 
@@ -72,6 +74,11 @@ class PreviewWidget(QWidget):
         self.plot_group = QGroupBox("SIGNAL PREVIEW")
         plot_layout = QVBoxLayout()
         plot_layout.setContentsMargins(10, 20, 10, 10)
+        self.preview_stack = QStackedWidget()
+        self.plot_content = QWidget()
+        plot_content_layout = QVBoxLayout(self.plot_content)
+        plot_content_layout.setContentsMargins(0, 0, 0, 0)
+        plot_content_layout.setSpacing(10)
 
         # Tabs for Time/Freq
         self.plot_tabs = QTabWidget()
@@ -234,14 +241,7 @@ class PreviewWidget(QWidget):
         self.plot_tabs.addTab(self.tab_freq, "Frequency (PSD)")
         self.plot_tabs.currentChanged.connect(self._on_plot_param_changed)
 
-        plot_layout.addWidget(self.plot_tabs)
-
-        self.locked_status_label = QLabel()
-        self.locked_status_label.setObjectName("PreprocessPreviewStatus")
-        self.locked_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.locked_status_label.setWordWrap(True)
-        self.locked_status_label.hide()
-        plot_layout.addWidget(self.locked_status_label)
+        plot_content_layout.addWidget(self.plot_tabs)
 
         # 2. Controls (Channel, Y-Scale)
         ctrl_layout = QHBoxLayout()
@@ -268,7 +268,7 @@ class PreviewWidget(QWidget):
         ctrl_layout.addWidget(self.yscale_spin)
 
         ctrl_layout.addStretch()
-        plot_layout.addLayout(ctrl_layout)
+        plot_content_layout.addLayout(ctrl_layout)
 
         # 3. Time Navigation
         time_nav_layout = QHBoxLayout()
@@ -286,20 +286,126 @@ class PreviewWidget(QWidget):
         self.time_spin.valueChanged.connect(self._on_time_spin_changed)
         time_nav_layout.addWidget(self.time_spin)
 
-        plot_layout.addLayout(time_nav_layout)
+        plot_content_layout.addLayout(time_nav_layout)
+        self.preview_stack.addWidget(self.plot_content)
+
+        (
+            self.empty_state,
+            self.empty_state_title,
+            self.empty_state_detail,
+        ) = self._preview_state_widget(
+            "No EEG data loaded",
+            "Load EEG data to preview signals.",
+        )
+        self.preview_stack.addWidget(self.empty_state)
+        (
+            self.locked_state,
+            self.locked_state_title,
+            self.locked_state_detail,
+        ) = self._preview_state_widget(
+            "Preprocessing locked",
+            (
+                "The data has already been epoched. Preprocessing operations "
+                "cannot be changed at this stage."
+            ),
+        )
+        self.preview_stack.addWidget(self.locked_state)
+        (
+            self.unavailable_state,
+            self.unavailable_state_title,
+            self.unavailable_state_detail,
+        ) = self._preview_state_widget(
+            "Signal preview unavailable",
+            "The current signal could not be displayed. Try refreshing the panel.",
+        )
+        self.preview_stack.addWidget(self.unavailable_state)
+        # Compatibility alias for older tests and callers.
+        self.locked_status_label = self.locked_state_detail
+        plot_layout.addWidget(self.preview_stack)
         self.plot_group.setLayout(plot_layout)
 
         layout.addWidget(self.plot_group)
         self._set_preview_interactive(
             False,
-            status="Load EEG data to preview signals.",
+            state="empty",
         )
+
+    @staticmethod
+    def _preview_state_widget(
+        title: str,
+        detail: str,
+    ) -> tuple[QWidget, QLabel, QLabel]:
+        state = QWidget()
+        state.setObjectName("PreprocessPreviewState")
+        layout = QVBoxLayout(state)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(8)
+        layout.addStretch()
+        title_label = QLabel(title)
+        title_label.setObjectName("PreprocessPreviewStateTitle")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        detail_label = QLabel(detail)
+        detail_label.setObjectName("PreprocessPreviewStateDetail")
+        detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        detail_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(detail_label)
+        layout.addStretch()
+        state.setStyleSheet(
+            f"""
+            QWidget#PreprocessPreviewState {{
+                background-color: {Theme.BACKGROUND_MID};
+                border: 1px solid {Theme.BORDER};
+                border-radius: 4px;
+            }}
+            QLabel#PreprocessPreviewStateTitle {{
+                background: transparent;
+                border: none;
+                color: {Theme.TEXT_PRIMARY};
+                font-size: 15px;
+                font-weight: 700;
+            }}
+            QLabel#PreprocessPreviewStateDetail {{
+                background: transparent;
+                border: none;
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 12px;
+            }}
+            """
+        )
+        return state, title_label, detail_label
 
     def setup_timer(self):
         """Create a single-shot debounce timer for plot-parameter changes."""
         self.plot_timer = QTimer(self)
         self.plot_timer.setSingleShot(True)
         self.plot_timer.timeout.connect(self._emit_plot_update)
+
+    def prepare_for_shutdown(self) -> None:
+        """Stop deferred PyQtGraph work before Qt destroys native plot objects."""
+        if self._native_plot_shutdown:
+            return
+        self._native_plot_shutdown = True
+        self.plot_timer.stop()
+        for proxy_name in ("proxy_time", "proxy_freq"):
+            proxy = getattr(self, proxy_name, None)
+            disconnect = getattr(proxy, "disconnect", None)
+            if callable(disconnect):
+                disconnect()
+        for plot_name in ("plot_time", "plot_freq"):
+            plot = getattr(self, plot_name, None)
+            if plot is None:
+                continue
+            plot.setUpdatesEnabled(False)
+            viewport = plot.viewport()
+            if viewport is not None:
+                viewport.setUpdatesEnabled(False)
+            plot.close()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        """Release deferred plot callbacks before the widget hierarchy closes."""
+        self.prepare_for_shutdown()
+        super().closeEvent(event)
 
     @pyqtSlot()
     def _emit_plot_update(self) -> None:
@@ -308,6 +414,8 @@ class PreviewWidget(QWidget):
 
     def _on_plot_param_changed(self):
         """Start the debounce timer when a plot parameter changes."""
+        if self._native_plot_shutdown:
+            return
         self.plot_timer.start(50)  # Debounce
 
     def _on_time_slider_changed(self, value):
@@ -320,6 +428,8 @@ class PreviewWidget(QWidget):
         self.time_spin.blockSignals(True)
         self.time_spin.setValue(value / 10.0)
         self.time_spin.blockSignals(False)
+        if self._native_plot_shutdown:
+            return
         self.plot_timer.start(50)
 
     def _on_time_spin_changed(self, value):
@@ -332,6 +442,8 @@ class PreviewWidget(QWidget):
         self.time_slider.blockSignals(True)
         self.time_slider.setValue(int(value * 10))
         self.time_slider.blockSignals(False)
+        if self._native_plot_shutdown:
+            return
         self.plot_timer.start(50)
 
     def _mouse_moved_time(self, evt):
@@ -433,23 +545,40 @@ class PreviewWidget(QWidget):
             label.hide()
 
     def reset_view(self):
-        """Clear both plots and show a *No Data* title."""
+        """Clear plots and replace the canvas with an intentional empty state."""
         self.plot_timer.stop()
         self.clear_plot_data()
-        self.plot_time.setTitle("No Data")
-        self.plot_freq.setTitle("No Data")
-        self._set_preview_interactive(
-            False,
-            status="Load EEG data to preview signals.",
-        )
+        self.plot_time.setTitle("")
+        self.plot_freq.setTitle("")
+        self._set_preview_interactive(False, state="empty")
 
     def show_locked_message(self, message: str):
         """Display a locked state and remove misleading interaction affordances."""
         self.plot_timer.stop()
         self.clear_plot_data()
-        self.plot_time.setTitle("Preview unavailable")
-        self.plot_freq.setTitle("Preview unavailable")
-        self._set_preview_interactive(False, status=message)
+        self.plot_time.setTitle("")
+        self.plot_freq.setTitle("")
+        detail = str(message).strip()
+        if not detail or detail.casefold() == "preprocessing locked":
+            detail = (
+                "The data has already been epoched. Preprocessing operations "
+                "cannot be changed at this stage."
+            )
+        self.locked_state_detail.setText(detail)
+        self._set_preview_interactive(False, state="locked")
+
+    def show_unavailable_message(self, message: str) -> None:
+        """Display an actionable preview failure without implying epoching."""
+        self.plot_timer.stop()
+        self.clear_plot_data()
+        self.plot_time.setTitle("")
+        self.plot_freq.setTitle("")
+        detail = str(message).strip()
+        self.unavailable_state_detail.setText(
+            detail
+            or "The current signal could not be displayed. Try refreshing the panel."
+        )
+        self._set_preview_interactive(False, state="unavailable")
 
     def _on_channels_inserted(self, *_args) -> None:
         """Restore preview controls when a new raw dataset publishes channels."""
@@ -457,20 +586,20 @@ class PreviewWidget(QWidget):
             return
         self.plot_time.setTitle("")
         self.plot_freq.setTitle("")
-        self._set_preview_interactive(True)
+        self._set_preview_interactive(True, state="loaded")
 
     def _on_current_curve_data_changed(self, *_args) -> None:
         """Restore controls when a reset-to-raw path publishes signal data."""
         x_data = self.time_current_curve.xData
         if x_data is None or len(x_data) == 0:
             return
-        self._set_preview_interactive(True)
+        self._set_preview_interactive(True, state="loaded")
 
     def _set_preview_interactive(
         self,
         enabled: bool,
         *,
-        status: str = "",
+        state: str,
     ) -> None:
         """Keep plot and navigation affordances aligned with preview availability."""
         controls = (
@@ -485,8 +614,14 @@ class PreviewWidget(QWidget):
         )
         for control in controls:
             control.setEnabled(enabled)
-        self.locked_status_label.setText(status)
-        self.locked_status_label.setVisible(bool(status) and not enabled)
+        target = {
+            "loaded": self.plot_content,
+            "empty": self.empty_state,
+            "locked": self.locked_state,
+            "unavailable": self.unavailable_state,
+        }.get(state, self.empty_state)
+        self.preview_stack.setCurrentWidget(target)
+        self.locked_status_label.setVisible(state == "locked")
 
     def clear_plot_data(self):
         """Clear plotted data without deleting PyQtGraph graphics items."""

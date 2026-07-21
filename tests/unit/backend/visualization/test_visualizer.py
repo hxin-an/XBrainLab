@@ -698,7 +698,7 @@ def test_topomap_shares_scale_across_classes(
     plt.close(fig)
 
 
-def test_saliency_spectrogram_shares_global_magnitude_scale_across_classes():
+def test_saliency_spectrogram_shares_robust_scale_across_classes():
     epochs = Epochs(get_preprocessed_data_list(2))
     epochs.label_map = {0: "left", 1: "right"}
     epochs.event_id = {"left": 0, "right": 1}
@@ -710,11 +710,15 @@ def test_saliency_spectrogram_shares_global_magnitude_scale_across_classes():
         0: np.broadcast_to(
             base_signal[None, None, :],
             (2, len(ch_names), sample_count),
-        ).copy(),
+        )
+        .copy()
+        .astype(np.float32),
         1: np.broadcast_to(
             (5 * base_signal)[None, None, :],
             (2, len(ch_names), sample_count),
-        ).copy(),
+        )
+        .copy()
+        .astype(np.float32),
     }
     eval_record = _bound_eval_record(
         epochs,
@@ -727,15 +731,89 @@ def test_saliency_spectrogram_shares_global_magnitude_scale_across_classes():
         gradient.copy(),
     )
 
+    observed_stft_dtypes = []
+    original_stft = signal.stft
+
+    def recording_stft(values, *args, **kwargs):
+        observed_stft_dtypes.append(np.asarray(values).dtype)
+        return original_stft(values, *args, **kwargs)
+
     visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
-    fig = visualizer.get_plt("Gradient")
+    with patch(
+        "XBrainLab.backend.visualization.saliency_spectrogram_map.signal.stft",
+        side_effect=recording_stft,
+    ):
+        fig = visualizer.get_plt("Gradient")
     images = [axis.images[0] for axis in fig.axes if axis.images]
-    global_max = max(float(np.max(image.get_array())) for image in images)
+    shared_limits = images[0].get_clim()
 
     assert len(images) == 2
     assert len(fig.axes) == 3  # two class plots and one shared colorbar
     for image in images:
-        assert image.get_clim() == pytest.approx((0.0, global_max))
+        assert image.get_clim() == pytest.approx(shared_limits)
+        assert image.get_cmap().name == "cividis"
+    assert shared_limits[0] == 0.0
+    assert shared_limits[1] > 0.0
+    assert observed_stft_dtypes == [np.dtype(np.float32), np.dtype(np.float32)]
+    assert "shared p99 scale" in fig.axes[-1].get_ylabel()
+    assert visualizer.spectrogram_display_scale["upper_percentile"] == 99.0
+    assert visualizer.spectrogram_display_scale["data_max"] >= shared_limits[1]
+    assert len(visualizer.spectrogram_diagnostics) == 2
+    for diagnostic in visualizer.spectrogram_diagnostics:
+        assert diagnostic["finite_count"] > 0
+        assert diagnostic["nan_count"] == 0
+        assert diagnostic["inf_count"] == 0
+        assert len(diagnostic["frequency_bins"]) > 0
+        assert all(
+            "p1" in frequency_bin and "p99" in frequency_bin
+            for frequency_bin in diagnostic["frequency_bins"]
+        )
+    plt.close(fig)
+
+
+def test_saliency_spectrogram_robust_scale_is_not_owned_by_one_outlier():
+    epochs = Epochs(get_preprocessed_data_list(2))
+    epochs.label_map = {0: "left", 1: "right"}
+    epochs.event_id = {"left": 0, "right": 1}
+    epochs.sfreq = 128.0
+    sample_count = 256
+    time = np.arange(sample_count) / epochs.sfreq
+    base_signal = np.sin(2 * np.pi * 10 * time)
+    left = np.broadcast_to(
+        base_signal[None, None, :],
+        (8, len(ch_names), sample_count),
+    ).copy()
+    right = np.broadcast_to(
+        (2 * base_signal)[None, None, :],
+        (8, len(ch_names), sample_count),
+    ).copy()
+    left[0, 0, 0] = 1e9
+    gradient = {0: left, 1: right}
+    eval_record = _bound_eval_record(
+        epochs,
+        np.array([0, 1] * 8),
+        np.ones((16, 2)),
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+
+    visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
+    fig = visualizer.get_plt("Gradient")
+    images = [axis.images[0] for axis in fig.axes if axis.images]
+    display_max = images[0].get_clim()[1]
+    data_max = max(float(np.nanmax(image.get_array())) for image in images)
+
+    assert len(images) == 2
+    assert display_max < data_max
+    assert all(image.norm is images[0].norm for image in images)
+    assert images[0].norm.clip is False
+    assert visualizer.spectrogram_display_scale["over_range_count"] > 0
+    assert visualizer.spectrogram_display_scale["over_range_ratio"] > 0
+    assert visualizer.spectrogram_display_scale["data_max"] == pytest.approx(data_max)
+    assert "shared p99 scale" in fig.axes[-1].get_ylabel()
     plt.close(fig)
 
 

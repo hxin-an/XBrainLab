@@ -10,6 +10,11 @@ from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
     project_submission,
     recipe_note,
 )
+from XBrainLab.ui.dialogs.dataset.review_presenter import (
+    is_optional_metadata_review_row,
+    metadata_required_fields_complete,
+    primary_action_item_rows,
+)
 
 
 def _submission_facts(
@@ -156,6 +161,36 @@ def test_metadata_summary_hides_optional_session_run_noise():
         )
         == "BIDS entities reviewed · 3 files"
     )
+
+
+def test_review_metadata_requires_subject_but_not_task_session_or_run():
+    assert metadata_required_fields_complete(
+        row_count=2,
+        missing_fields={"task": 2, "session": 2, "run": 2},
+    )
+    assert not metadata_required_fields_complete(
+        row_count=2,
+        missing_fields={"subject": 1, "task": 2},
+    )
+    assert is_optional_metadata_review_row(
+        (
+            "Review Metadata",
+            "Task metadata is missing",
+            "Optional task metadata is unavailable.",
+            "Review metadata if needed.",
+        )
+    )
+
+
+def test_primary_review_rows_exclude_nonblocking_limited_items():
+    rows = primary_action_item_rows(
+        [
+            {"severity": "limited", "issue": "Labels skipped for now."},
+            {"severity": "blocked", "issue": "Label alignment is unresolved."},
+        ]
+    )
+
+    assert [row[1] for row in rows] == ["Label alignment is unresolved."]
     assert (
         metadata_summary(
             row_count=0,
@@ -196,4 +231,6 @@ def test_internal_label_placement_summary_and_recipe_note():
         internal_label_placement_summary(selected_class_count=4, event_role_count=0)
         == "4 EEG events selected as class labels"
     )
-    assert recipe_note() == "Save current import and label mapping settings."
+    assert recipe_note() == (
+        "Save the current data import and label mapping settings for reuse."
+    )

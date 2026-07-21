@@ -420,7 +420,7 @@ def test_expanded_report_guard_rejects_blank_review_header(qtbot, tmp_path):
             dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).x() + 8,
             dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).y() + 8,
         ),
-        "Hide detailed report",
+        "Hide import report",
         fill="#ffffff",
     )
     image.save(screenshot)

@@ -432,8 +432,8 @@ def test_app_polish_validator_requires_many_row_cell_pixel_evidence(
 
     frame = payload["surface_contracts"][filename]["frame_readiness"]
     removed_prefixes = (
-        "Training History cell row 5:",
-        "Training History cell row 6:",
+        "Training History cell row 1:",
+        "Training History cell row 2:",
     )
     frame["required_regions"] = [
         name

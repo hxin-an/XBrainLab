@@ -7,12 +7,14 @@ useful for reducing data size and computation time.
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
-    QFormLayout,
+    QHBoxLayout,
+    QLabel,
     QVBoxLayout,
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
+from XBrainLab.ui.dialogs.preprocess.common import create_preprocess_section
 
 
 class ResampleDialog(BaseDialog):
@@ -29,18 +31,33 @@ class ResampleDialog(BaseDialog):
     def __init__(self, parent):
         self.sfreq: float | None = None
         self.sfreq_spin = None
-        super().__init__(parent, title="Resample")
-        self.resize(300, 100)
+        self.section_title = None
+        super().__init__(parent, title="Resample", width=400, height=220)
 
     def init_ui(self):
         """Initialize the dialog UI with sampling rate input and buttons."""
         layout = QVBoxLayout(self)
-        form = QFormLayout()
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(16)
+        section, self.section_title, section_layout = create_preprocess_section(
+            "Target sampling rate",
+            parent=self,
+        )
         self.sfreq_spin = QDoubleSpinBox()
         self.sfreq_spin.setRange(1, 10000)
         self.sfreq_spin.setValue(250.0)
-        form.addRow("Sampling Rate (Hz):", self.sfreq_spin)
-        layout.addLayout(form)
+        self.sfreq_spin.setFixedWidth(150)
+        field_row = QHBoxLayout()
+        field_row.setContentsMargins(0, 0, 0, 0)
+        field_row.setSpacing(8)
+        field_label = QLabel("Sampling rate")
+        field_label.setObjectName("PreprocessFieldLabel")
+        field_row.addWidget(field_label)
+        field_row.addWidget(self.sfreq_spin)
+        field_row.addWidget(QLabel("Hz"))
+        field_row.addStretch()
+        section_layout.addLayout(field_row)
+        layout.addWidget(section)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,

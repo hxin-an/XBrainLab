@@ -19,6 +19,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractButton, QLabel, QMessageBox, QWidget
 
 import XBrainLab.backend.application.service as application_service_module
+from scripts.dev.capture_human_like_product_walkthrough import REQUIRED_PHASES
 from XBrainLab.backend.application import (
     CommandName,
     PreviewInterpretationCommand,
@@ -105,8 +106,9 @@ def test_human_like_capture_script_is_a_real_exit_code_gate(tmp_path) -> None:
         (output_dir / "human-like-walkthrough.json").read_text(encoding="utf-8")
     )
     assert payload["status"] == "passed"
-    assert payload["pass_fail_summary"]["observed_phase_count"] == 40
-    assert payload["pass_fail_summary"]["required_phase_count"] == 40
+    expected_phase_count = len(REQUIRED_PHASES)
+    assert payload["pass_fail_summary"]["observed_phase_count"] == expected_phase_count
+    assert payload["pass_fail_summary"]["required_phase_count"] == expected_phase_count
     assert payload["artifact_run"]["source_fingerprint"]
     assert isinstance(payload["artifact_run"]["working_tree_dirty"], bool)
 
@@ -696,10 +698,21 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
 
     _click(qtbot, test_app.nav_btns[1])
     _wait_for_workflow_panel(qtbot, test_app, 1, "preprocess_panel")
+    qtbot.waitUntil(
+        lambda: test_app.preprocess_panel.preview_widget.chan_combo.count() == 4
+        and test_app.preprocess_panel.preview_widget.time_current_curve.xData
+        is not None
+        and len(test_app.preprocess_panel.preview_widget.time_current_curve.xData) > 0,
+        timeout=5000,
+    )
+    assert (
+        test_app.preprocess_panel.preview_widget.preview_stack.currentWidget()
+        is test_app.preprocess_panel.preview_widget.plot_content
+    )
 
     class FakeFilteringDialog:
-        def __init__(self, _parent):
-            pass
+        def __init__(self, _parent, *, sampling_rate_hz=None):
+            assert sampling_rate_hz == pytest.approx(128.0)
 
         def exec(self):
             return True

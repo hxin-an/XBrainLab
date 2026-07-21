@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -40,6 +39,8 @@ from XBrainLab.ui.styles.theme import Theme
 
 _PARSER_MODE_WIDTH = 116
 _PARSER_SETTINGS_LABEL_WIDTH = 64
+_MIN_PREVIEW_ROWS = 3
+_MAX_PREVIEW_ROWS = 8
 
 
 class SmartParserDialog(BaseDialog):
@@ -63,7 +64,6 @@ class SmartParserDialog(BaseDialog):
         self.filenames = filenames
         self.parsed_data: dict[str, tuple[str, str, str, str]] = {}
 
-        # UI Elements
         # UI Elements
         self.mode_group: QButtonGroup = cast(QButtonGroup, None)
         self.radio_split: QRadioButton = cast(QRadioButton, None)
@@ -90,11 +90,13 @@ class SmartParserDialog(BaseDialog):
         self.fixed_sess_len: QSpinBox = cast(QSpinBox, None)
 
         super().__init__(parent, title="Smart Metadata Parser")
-        self.resize(1000, 700)
+        self.setMinimumWidth(720)
 
         # Load previous settings after UI init
         self.load_settings()
         self.update_preview()
+        size_hint = self.sizeHint()
+        self.resize(max(size_hint.width(), 760), max(size_hint.height(), 440))
 
     @override
     def showEvent(self, event: QShowEvent) -> None:
@@ -142,12 +144,18 @@ class SmartParserDialog(BaseDialog):
         layout.addWidget(header)
 
         # 1. Configuration Area
-        config_group = QGroupBox("Parsing method")
-        config_group.setObjectName("SmartParserMethodGroup")
-        config_group.setMaximumWidth(640)
-        config_layout = QVBoxLayout()
-        config_layout.setContentsMargins(10, 12, 10, 8)
-        config_layout.setSpacing(6)
+        config_group = QFrame()
+        config_group.setObjectName("SmartParserMethodPanel")
+        config_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+        config_layout = QVBoxLayout(config_group)
+        config_layout.setContentsMargins(12, 10, 12, 12)
+        config_layout.setSpacing(9)
+        method_title = QLabel("Parsing method")
+        method_title.setObjectName("SmartParserMethodTitle")
+        config_layout.addWidget(method_title)
 
         # Mode Selection
         mode_layout = QHBoxLayout()
@@ -186,9 +194,8 @@ class SmartParserDialog(BaseDialog):
         self.settings_stack = QStackedWidget()
         self.settings_stack.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Fixed,
         )
-        self.settings_stack.setMaximumHeight(108)
 
         # --- Page 0: Split Settings ---
         page_split = QWidget()
@@ -339,11 +346,12 @@ class SmartParserDialog(BaseDialog):
         )
 
         self.settings_stack.addWidget(page_fixed)
+        self.settings_stack.currentChanged.connect(self._fit_settings_stack)
+        self._fit_settings_stack(self.settings_stack.currentIndex())
 
         config_layout.addWidget(self.settings_stack)
 
-        config_group.setLayout(config_layout)
-        layout.addWidget(config_group, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(config_group)
 
         # 2. Preview Table
         preview_label = QLabel("Preview")
@@ -355,13 +363,19 @@ class SmartParserDialog(BaseDialog):
         self.table.setHorizontalHeaderLabels(
             ["File", "Subject", "Session", "Task", "Run"],
         )
-        self.table.setMinimumHeight(260)
+        self.table.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         header = self.table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         vertical_header = self.table.verticalHeader()
         if vertical_header is not None:
             vertical_header.setVisible(False)
+            vertical_header.setDefaultSectionSize(30)
+            vertical_header.setMinimumSectionSize(28)
+        self._sync_preview_table_height()
         layout.addWidget(self.table, stretch=1)
 
         # 3. Buttons
@@ -494,6 +508,17 @@ class SmartParserDialog(BaseDialog):
 
         self.update_preview()
 
+    def _fit_settings_stack(self, index: int) -> None:
+        """Give the active parsing form only the height its controls need."""
+        page = self.settings_stack.widget(index)
+        if page is None:
+            return
+        page_layout = page.layout()
+        if page_layout is not None:
+            page_layout.activate()
+        self.settings_stack.setFixedHeight(max(page.sizeHint().height(), 48))
+        self.settings_stack.updateGeometry()
+
     def on_regex_preset_changed(self, index):
         """Populate the regex input with a preset pattern.
 
@@ -609,6 +634,27 @@ class SmartParserDialog(BaseDialog):
             if any(value != "-" for value in (sub, sess, task, run)):
                 self.parsed_data[filepath] = (sub, sess, task, run)
 
+        self._sync_preview_table_height()
+
+    def _sync_preview_table_height(self) -> None:
+        """Show a bounded number of complete preview rows without dead space."""
+        if not self.table:
+            return
+        header = self.table.horizontalHeader()
+        vertical_header = self.table.verticalHeader()
+        header_height = header.sizeHint().height() if header is not None else 0
+        row_height = (
+            vertical_header.defaultSectionSize() if vertical_header is not None else 30
+        )
+        visible_rows = min(
+            max(self.table.rowCount(), _MIN_PREVIEW_ROWS),
+            _MAX_PREVIEW_ROWS,
+        )
+        target_height = (
+            header_height + (row_height * visible_rows) + (2 * self.table.frameWidth())
+        )
+        self.table.setFixedHeight(target_height)
+
     def get_result(self):
         """Return the parsed metadata mapping.
 
@@ -658,21 +704,17 @@ class SmartParserDialog(BaseDialog):
                 font-size: 14px;
                 font-weight: 700;
             }}
-            QGroupBox#SmartParserMethodGroup {{
+            QFrame#SmartParserMethodPanel {{
                 background-color: transparent;
                 border: 1px solid #323232;
                 border-radius: 4px;
-                margin-top: 10px;
-                color: #e8e8e8;
-                font-weight: 600;
             }}
-            QGroupBox#SmartParserMethodGroup::title {{
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 5px;
-                left: 7px;
+            QLabel#SmartParserMethodTitle {{
                 color: #e8e8e8;
-                background-color: {Theme.BACKGROUND_DARK};
+                background-color: transparent;
+                border: none;
+                font-size: 13px;
+                font-weight: 700;
             }}
             QRadioButton {{
                 color: #e8e8e8;

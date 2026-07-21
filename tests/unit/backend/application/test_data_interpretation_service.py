@@ -2541,8 +2541,8 @@ def test_apply_interpretation_requires_target_candidate_confirmation(
     safe_dir = tmp_path / "safe"
     confirm_dir.mkdir()
     safe_dir.mkdir()
-    confirm_eeg = confirm_dir / "sub-01_raw.fif"
-    confirm_events = confirm_dir / "sub-01_events.tsv"
+    confirm_eeg = confirm_dir / "recording_raw.fif"
+    confirm_events = confirm_dir / "recording_events.tsv"
     safe_eeg = safe_dir / "sub-02_task-mi_raw.fif"
     confirm_eeg.write_bytes(b"not loaded during scan")
     confirm_events.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
@@ -2575,7 +2575,7 @@ def test_apply_interpretation_requires_target_candidate_confirmation(
         "needs_confirmation"
     )
     assert any(
-        "task metadata" in item
+        "subject metadata" in item
         for item in validation_payload["validation_decision"]["required_confirmations"]
     )
     service.handle_scan_source(ScanSourceCommand(source_path=str(safe_dir)))

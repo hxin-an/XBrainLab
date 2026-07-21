@@ -1101,6 +1101,13 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             raise RuntimeError(
                 f"{filename} lost Training History horizontal scrolling."
             )
+        expected_visible_rows = [0, 1, 2] if expected_running else [0, 1]
+        if semantics["fully_visible_rows"] != expected_visible_rows:
+            raise RuntimeError(
+                f"{filename} has the wrong fully visible Training History rows."
+            )
+        if semantics["partially_visible_rows"]:
+            raise RuntimeError(f"{filename} clips a partial Training History row.")
         vertical_scroll = int(semantics["vertical_scroll_maximum"])
         if (expected_running and vertical_scroll <= 0) or (
             not expected_running and vertical_scroll != 0
@@ -1319,6 +1326,19 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
 
 def _training_history_semantics(panel: TrainingPanel) -> dict[str, Any]:
     table = panel.history_table
+    viewport = table.viewport()
+    viewport_rect = viewport.rect()
+    visible_rows: list[int] = []
+    partially_visible_rows: list[int] = []
+    for row in range(table.rowCount()):
+        item = table.item(row, 0)
+        if item is None:
+            continue
+        row_rect = table.visualItemRect(item)
+        if viewport_rect.contains(row_rect):
+            visible_rows.append(row)
+        elif row_rect.intersects(viewport_rect):
+            partially_visible_rows.append(row)
     statuses = [
         item.text()
         for row in range(table.rowCount())
@@ -1348,6 +1368,8 @@ def _training_history_semantics(panel: TrainingPanel) -> dict[str, Any]:
         "key_columns_fit": key_columns_fit,
         "horizontal_scroll_available": table.horizontalScrollBar().maximum() > 0,
         "vertical_scroll_maximum": table.verticalScrollBar().maximum(),
+        "fully_visible_rows": visible_rows,
+        "partially_visible_rows": partially_visible_rows,
     }
 
 

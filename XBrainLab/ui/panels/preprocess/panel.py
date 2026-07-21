@@ -89,12 +89,17 @@ class PreprocessPanel(BasePanel):
         left_layout.setContentsMargins(20, 20, 20, 20)
         left_layout.setSpacing(10)
 
-        left_layout.addWidget(self.preview_widget, stretch=2)
-        left_layout.addWidget(self.history_widget, stretch=1)
+        left_layout.addWidget(self.preview_widget, stretch=1)
+        left_layout.addWidget(self.history_widget, stretch=0)
 
         # --- Right Side: Sidebar ---
         main_layout.addWidget(left_widget, stretch=1)
         main_layout.addWidget(self.sidebar, stretch=0)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        """Quiesce native plot callbacks before Qt tears down the panel."""
+        self.preview_widget.prepare_for_shutdown()
+        super().closeEvent(event)
 
     def update_panel(self, *args):
         """Refresh the sidebar, history, and preview plots from controller state."""
@@ -130,7 +135,7 @@ class PreprocessPanel(BasePanel):
             first_data = data_list[0]
             if is_epoched:
                 self.preview_widget.show_locked_message(
-                    "Data is Epoched - Preprocessing Locked",
+                    "Preprocessing locked",
                 )
                 return
 
@@ -172,7 +177,7 @@ class PreprocessPanel(BasePanel):
         data_list, original_data_list = queried_lists
         if data_list and not data_list[0].is_raw():
             self.preview_widget.show_locked_message(
-                "Data is Epoched - Preprocessing Locked",
+                "Preprocessing locked",
             )
             return
         self.plotter.plot_sample_data(

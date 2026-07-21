@@ -115,7 +115,7 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert dialog.apply_button.text() == "Confirm and Import"
     assert dialog.get_result() == {
         "confirmed": True,
-        "save_recipe": True,
+        "save_recipe": False,
         "choices": {"label_carrier": "embedded_events"},
     }
 
@@ -3077,7 +3077,7 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     assert submission.confirmed_on_accept is True
 
 
-def test_completed_event_values_do_not_bypass_other_required_decisions(qtbot):
+def test_completed_event_values_can_recheck_with_only_optional_metadata_missing(qtbot):
     events_path = "/tmp/source/sub-01_task-mi_events.tsv"
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -3137,13 +3137,13 @@ def test_completed_event_values_do_not_bypass_other_required_decisions(qtbot):
     )
 
     assert dialog._event_value_decisions_ready_for_recheck() is True
-    assert dialog._has_unresolved_required_decisions() is True
-    assert dialog.can_submit_for_backend_review() is False
-    assert dialog._review_ready_for_recheck() is False
-    assert dialog.apply_button.isEnabled() is False
+    assert dialog._has_unresolved_required_decisions() is False
+    assert dialog.can_submit_for_backend_review() is True
+    assert dialog._review_ready_for_recheck() is True
+    assert dialog.apply_button.isEnabled() is True
     submission = dialog._submission_projection()
     assert dialog.get_result()["confirmed"] is submission.confirmed_on_accept
-    assert submission.confirmed_on_accept is False
+    assert submission.confirmed_on_accept is True
 
 
 def test_regular_folder_events_tsv_uses_general_label_flow(qtbot):
@@ -3774,11 +3774,11 @@ def test_review_and_import_describes_a_load_only_recipe(qtbot):
     assert "target EEG events 768" in review_text
     assert "Recipe" in review_text
     assert "Not saved" in review_text
-    assert "Save current import and label mapping settings" in review_text
+    assert "Save the current data import and label mapping settings" in review_text
     assert "Epoch setup" not in review_text
     assert dialog.save_recipe_check.text() == "Save recipe"
     assert dialog.save_recipe_check.isVisibleTo(dialog)
-    assert dialog.import_report_toggle.text() == "View detailed report"
+    assert dialog.import_report_toggle.text() == "View import report"
     assert not dialog.import_review_card.isAncestorOf(dialog.import_report_toggle)
     assert (
         dialog.import_report_toggle.geometry().top()
@@ -3874,17 +3874,164 @@ def test_save_recipe_and_import_do_not_require_optional_task_or_epoch_setup(qtbo
 
     assert dialog.apply_button.isEnabled()
     assert dialog.save_recipe_check.isEnabled()
-    assert dialog.save_recipe_check.isChecked()
+    assert not dialog.save_recipe_check.isChecked()
     review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
     assert review_rows["Metadata"]["status"] == "Ready with notes"
     assert review_rows["Recipe"]["status"] == "Not saved"
     assert "Epoch" not in review_rows["Recipe"]["summary"]
 
     dialog.save_recipe_check.click()
-    assert not dialog.save_recipe_check.isChecked()
+    assert dialog.save_recipe_check.isChecked()
     item.setText(2, "T")
     dialog._sync_apply_state()
-    assert not dialog.save_recipe_check.isChecked()
+    assert dialog.save_recipe_check.isChecked()
+
+
+def test_bids_optional_task_and_run_do_not_block_import_or_recipe(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/bids",
+            "source_kind": "bids",
+            "bids": {"is_bids": True},
+            "eeg_files": ["/tmp/bids/sub-01_eeg.edf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "selected_eeg_files": ["/tmp/bids/sub-01_eeg.edf"],
+            "metadata_preview": [
+                {
+                    "file": "sub-01_eeg.edf",
+                    "subject": {"value": "01", "decision": "safe"},
+                    "session": {"value": "", "decision": "needs_confirmation"},
+                    "task": {"value": "", "decision": "needs_confirmation"},
+                    "run": {"value": "", "decision": "needs_confirmation"},
+                }
+            ],
+            "class_map": {"1": "class 1"},
+            "event_roles": {"internal_events": "event role candidates"},
+            "epoch_handoff": {
+                "ready": False,
+                "supervised_ready": False,
+                "supervised_blockers": ["Epoch setup is incomplete."],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert dialog.apply_button.isEnabled()
+    assert rows["Metadata"]["status"] == "Ready with notes"
+    assert "task, run" in rows["Metadata"]["summary"]
+    assert rows["Recipe"]["status"] == "Not saved"
+    assert "Epoch" not in rows["Recipe"]["summary"]
+
+
+def test_review_recipe_action_is_optional_and_reports_pending_selection(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "selected_eeg_files": ["/tmp/source/A01T.gdf"],
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": "", "decision": "needs_confirmation"},
+                    "task": {"value": "", "decision": "needs_confirmation"},
+                    "run": {"value": "", "decision": "needs_confirmation"},
+                }
+            ],
+            "class_map": {"769": "left hand"},
+            "event_roles": {"internal_events": "event role candidates"},
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    _show_step(dialog, "Review and Import")
+
+    assert isinstance(dialog.save_recipe_check, QPushButton)
+    assert dialog.save_recipe_check.isCheckable()
+    assert dialog.save_recipe_check.text() == "Save recipe"
+    assert dialog.apply_button.isEnabled()
+
+    dialog.save_recipe_check.click()
+    rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert rows["Recipe"]["status"] == "Will save"
+    assert rows["Recipe"]["summary"] == (
+        "Recipe will be saved after this import succeeds."
+    )
+    assert rows["Recipe"]["action"] == "Cancel save"
+    assert dialog.apply_button.isEnabled()
+
+
+def test_import_report_includes_import_facts_and_issue_summary(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "selected_eeg_files": ["/tmp/source/A01T.gdf"],
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": "", "decision": "needs_confirmation"},
+                    "task": {"value": "", "decision": "needs_confirmation"},
+                    "run": {"value": "", "decision": "needs_confirmation"},
+                }
+            ],
+            "class_map": {"769": "left hand"},
+            "event_roles": {"internal_events": "event role candidates"},
+            "resource_preflight": {
+                "risk_level": "safe",
+                "required_memory_bytes": 128 * 1024 * 1024,
+                "available_memory_bytes": 8 * 1024 * 1024 * 1024,
+            },
+            "action_items": [
+                {
+                    "target_step": "Load Labels",
+                    "issue": "Labels skipped for now.",
+                    "impact": "Supervised workflows remain limited.",
+                    "next_action": "Load labels later if needed.",
+                    "severity": "limited",
+                }
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    _show_step(dialog, "Review and Import")
+
+    dialog.import_report_toggle.click()
+    report = dialog.import_report_summary.text()
+
+    assert dialog.import_report_card.isVisibleTo(dialog)
+    for heading in (
+        "EEG files:",
+        "Label files:",
+        "Metadata:",
+        "Label alignment:",
+        "Label placement:",
+        "Resource check:",
+        "Optional notes:",
+        "Blocking issues:",
+    ):
+        assert heading in report
+    assert "A01T.gdf" in report
+    assert "Ready with notes" in report
+    assert "Safe" in report
+    assert "Optional notes:" in report
+    assert "Labels skipped for now." in report.split("Blocking issues:", 1)[0]
+    assert "Blocking issues: None" in report
+    assert "Labels skipped for now" not in report.split("Blocking issues:", 1)[1]
 
 
 def test_review_and_import_optional_task_uses_compact_note_row(qtbot):
@@ -3938,7 +4085,7 @@ def test_review_and_import_optional_task_uses_compact_note_row(qtbot):
     assert "Import review" in review_text
     assert "Metadata" in review_text
     assert "Ready with notes" in review_text
-    assert "Optional field missing: task" in review_text
+    assert "Optional fields missing: session, task, run" in review_text
     assert "3 files affected" in review_text
     assert "Review before import" not in review_text
     assert "Review metadata" not in action_text
@@ -3989,6 +4136,12 @@ def test_review_and_import_status_badges_share_geometry(qtbot):
 
     assert len(badges) == 6
     assert len({badge.height() for badge in badges}) == 1
+    assert len({badge.width() for badge in badges}) == 1
+    assert all(
+        badge.alignment()
+        == (Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        for badge in badges
+    )
     assert all(badge.height() >= badge.fontMetrics().height() + 8 for badge in badges)
 
 
@@ -4160,14 +4313,20 @@ def test_review_and_import_keeps_warning_items_in_report_not_primary_actions(qtb
 
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
     assert warning not in _visible_step_text(dialog, "Review and Import")
-    assert dialog.import_report_toggle.text() == "View detailed report"
+    assert dialog.import_report_toggle.text() == "View import report"
     assert warning in _tree_text(dialog.review_tree)
 
     dialog.import_report_toggle.click()
     qtbot.wait(0)
 
     assert dialog.import_report_card.isVisibleTo(dialog)
-    assert dialog.import_report_toggle.text() == "Hide detailed report"
+    assert dialog.import_report_toggle.text() == "Hide import report"
+    assert dialog.apply_button.isVisibleTo(dialog)
+    apply_bottom_right = dialog.apply_button.mapTo(
+        dialog,
+        dialog.apply_button.rect().bottomRight(),
+    )
+    assert dialog.rect().contains(apply_bottom_right)
 
 
 def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
@@ -4952,6 +5111,17 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
     assert "Reloaded recipe" in details
     assert "Review any changed files" in details
     assert "Saved recipe choices were reapplied before validation" in details
+    _show_step(dialog, "Review and Import")
+    rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert rows["Recipe"] == {
+        "item": "Recipe",
+        "status": "Loaded",
+        "summary": (
+            "A saved recipe was loaded. Save the current import settings "
+            "again to keep any changes."
+        ),
+        "action": "Save recipe",
+    }
 
 
 def test_data_interpretation_preview_dialog_keeps_recipe_trace_out_of_review_actions(
@@ -5268,16 +5438,17 @@ def test_recipe_remap_selection_refreshes_every_visible_review_state(qtbot):
 
     assert dialog.apply_button.isEnabled()
     assert dialog.decision_label.text() == "Ready to apply remap."
-    assert (
-        review_rows["Recipe"]["summary"]
-        == "Save current import and label mapping settings."
-    )
     assert review_rows["Recipe"]["status"] == "Not saved"
+    assert review_rows["Recipe"]["action"] == "Save recipe"
     assert "Resolve blocking items" not in review_rows["Recipe"]["summary"]
     assert "Cannot import yet" not in action_text
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
     assert "Replacement selected" in report_text
     assert "were not found in the current scan" not in report_text
+    assert "Blocking issues: None" in dialog._import_report_summary_text()
+    assert "were not found in the current scan" not in (
+        dialog._import_report_summary_text()
+    )
 
 
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):

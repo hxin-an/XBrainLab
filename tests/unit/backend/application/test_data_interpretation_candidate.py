@@ -1044,6 +1044,33 @@ def test_build_interpretation_candidate_filters_metadata_to_selected_files():
     ]
 
 
+def test_candidate_only_requires_subject_metadata_confirmation():
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-optional-metadata",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/signal.fif"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[
+                FileMetadataResolution(
+                    file="/data/signal.fif",
+                    subject=_field("subject"),
+                    session=_field("session"),
+                    task=_field("task"),
+                    run=_field("run"),
+                )
+            ],
+        ),
+        choices={"skip_labels": True},
+    )
+
+    assert candidate.confirmation_items == [
+        "Confirm subject metadata for signal.fif.",
+    ]
+
+
 def test_build_interpretation_candidate_resolves_relative_selected_file_to_scan_path(
     tmp_path,
 ):

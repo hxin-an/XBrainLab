@@ -135,7 +135,7 @@ def test_key_columns_expand_for_group_run_model_and_status_text(
     assert history_table.horizontalScrollBar().maximum() > 0
 
 
-def test_empty_history_is_compact_and_has_an_intentional_empty_state(
+def test_empty_history_uses_the_stable_history_viewport(
     history_table,
     qtbot,
 ):
@@ -147,13 +147,23 @@ def test_empty_history_is_compact_and_has_an_intentional_empty_state(
     assert history_table.empty_state_label.isVisibleTo(history_table)
     assert history_table.empty_state_label.text() == "No training runs yet"
     assert history_table.height() == history_table.preferred_content_height()
-    assert history_table.height() < 140
+    expected_height = (
+        history_table.horizontalHeader().sizeHint().height()
+        + (
+            history_table.verticalHeader().defaultSectionSize()
+            * history_table.MAX_VISIBLE_ROWS
+        )
+        + (2 * history_table.frameWidth())
+    )
+    if history_table._horizontal_scrollbar_expected():
+        expected_height += history_table.horizontalScrollBar().sizeHint().height()
+    assert history_table.preferred_content_height() == expected_height
     assert (
         history_table.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     )
 
 
-def test_small_history_fits_rows_without_large_empty_viewport(
+def test_small_history_does_not_resize_the_history_viewport(
     history_table,
     qtbot,
 ):
@@ -184,11 +194,32 @@ def test_small_history_fits_rows_without_large_empty_viewport(
     assert last_item is not None
     assert viewport is not None
     assert not history_table.empty_state_label.isVisibleTo(history_table)
-    assert history_table.visualItemRect(last_item).bottom() >= viewport.height() - 24
+    assert history_table.visualItemRect(last_item).bottom() < viewport.height()
     assert history_table.height() == history_table.preferred_content_height()
     assert (
         history_table.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     )
+
+
+def test_stable_history_geometry_skips_redundant_item_layout(
+    history_table,
+    qtbot,
+    monkeypatch,
+):
+    history_table.resize(980, 420)
+    history_table.show()
+    history_table.update_history([])
+    qtbot.wait(0)
+    layout_calls = []
+    monkeypatch.setattr(
+        history_table,
+        "doItemsLayout",
+        lambda: layout_calls.append(True),
+    )
+
+    history_table._sync_content_height()
+
+    assert layout_calls == []
 
 
 def test_large_history_caps_height_and_enables_row_scrolling(history_table, qtbot):
@@ -223,6 +254,96 @@ def test_large_history_caps_height_and_enables_row_scrolling(history_table, qtbo
         history_table.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     )
     assert history_table.verticalScrollBar().maximum() > 0
+    viewport = history_table.viewport()
+    assert viewport is not None
+    for row in range(history_table.MAX_VISIBLE_ROWS):
+        assert viewport.rect().contains(
+            history_table.visualItemRect(history_table.item(row, 0))
+        )
+    first_hidden = history_table.visualItemRect(
+        history_table.item(history_table.MAX_VISIBLE_ROWS, 0)
+    )
+    assert not viewport.rect().intersects(first_hidden)
+
+
+def test_wide_history_viewport_does_not_reveal_a_partial_fourth_row(
+    history_table,
+    qtbot,
+):
+    mock_plan = MagicMock()
+    mock_plan.option.epoch = 10
+    mock_record = MagicMock()
+    mock_record.get_epoch.return_value = 1
+    mock_record.is_finished.return_value = False
+    mock_record.epoch = 1
+    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
+    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
+    rows = [
+        {
+            "plan": mock_plan,
+            "record": mock_record,
+            "group_name": "G1",
+            "run_name": f"R{index + 1}",
+            "model_name": "M1",
+            "is_current_run": False,
+        }
+        for index in range(history_table.MAX_VISIBLE_ROWS + 1)
+    ]
+    history_table.resize(1800, 520)
+    history_table.show()
+    history_table.update_history(rows)
+    qtbot.wait(0)
+
+    viewport = history_table.viewport()
+    fourth_row = history_table.visualItemRect(
+        history_table.item(history_table.MAX_VISIBLE_ROWS, 0)
+    )
+    assert not viewport.rect().intersects(fourth_row)
+
+
+def test_history_height_stays_fixed_when_vertical_scrollbar_appears(
+    history_table,
+    qtbot,
+):
+    mock_plan = MagicMock()
+    mock_plan.option.epoch = 10
+    mock_record = MagicMock()
+    mock_record.get_epoch.return_value = 1
+    mock_record.is_finished.return_value = False
+    mock_record.epoch = 1
+    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
+    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
+    row = {
+        "plan": mock_plan,
+        "record": mock_record,
+        "group_name": "G1",
+        "run_name": "R1",
+        "model_name": "M1",
+        "is_current_run": False,
+    }
+    header = history_table.horizontalHeader()
+    assert header is not None
+    just_fits_columns = header.length() + (2 * history_table.frameWidth()) + 2
+    history_table.resize(just_fits_columns, 420)
+    history_table.show()
+    history_table.update_history([])
+    qtbot.wait(0)
+    empty_height = history_table.height()
+
+    history_table.update_history(
+        [
+            {**row, "run_name": f"R{index + 1}"}
+            for index in range(history_table.MAX_VISIBLE_ROWS + 2)
+        ]
+    )
+    qtbot.wait(0)
+
+    assert history_table.verticalScrollBar().maximum() > 0
+    assert history_table.height() == empty_height
+    first_hidden = history_table.visualItemRect(
+        history_table.item(history_table.MAX_VISIBLE_ROWS, 0)
+    )
+    assert not history_table.viewport().rect().intersects(first_hidden)
 
 
 def test_selection_emit(history_table, qtbot):

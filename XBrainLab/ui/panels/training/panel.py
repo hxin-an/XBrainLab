@@ -239,9 +239,6 @@ class TrainingPanel(BasePanel):
         self.history_table.selection_changed_record.connect(
             self.on_history_selection_changed,
         )
-        self.history_table.content_height_changed.connect(
-            self._set_history_group_height,
-        )
 
         history_layout.addWidget(self.history_table)
 
@@ -252,9 +249,7 @@ class TrainingPanel(BasePanel):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        self._set_history_group_height(
-            self.history_table.preferred_content_height(),
-        )
+        self.history_group.setFixedHeight(self.history_group.sizeHint().height())
         left_layout.addWidget(self.history_group, stretch=0)
         main_layout.addWidget(left_widget, stretch=1)
 
@@ -264,63 +259,6 @@ class TrainingPanel(BasePanel):
 
         # Initial Check
         # Sidebar does its own check on init
-
-    def resizeEvent(self, event):  # noqa: N802
-        """Keep plots and history inside the current workflow viewport."""
-        super().resizeEvent(event)
-        if hasattr(self, "history_group"):
-            self._fit_history_group_to_viewport()
-
-    def _set_history_group_height(self, table_height: int) -> None:
-        """Keep short history intentional and give the rest of the panel to plots."""
-        _ = table_height
-        self._fit_history_group_to_viewport()
-
-    def _fit_history_group_to_viewport(self) -> None:
-        """Use internal table scrolling instead of extending below the panel."""
-        left_widget = self.history_group.parentWidget()
-        if left_widget is None:
-            return
-        left_layout = left_widget.layout()
-        if left_layout is None:
-            return
-        margins = left_layout.contentsMargins()
-        usable_height = max(
-            left_widget.contentsRect().height() - margins.top() - margins.bottom(),
-            0,
-        )
-        history_chrome_height = self._history_group_chrome_height()
-        minimum_plots_height = max(
-            self._MIN_PLOTS_GROUP_HEIGHT,
-            self.plots_group.minimumSizeHint().height(),
-        )
-        maximum_group_height = max(
-            self.history_table.MIN_CONTENT_HEIGHT + history_chrome_height,
-            usable_height - minimum_plots_height,
-        )
-        table_height_limit = max(
-            maximum_group_height - history_chrome_height,
-            self.history_table.MIN_CONTENT_HEIGHT,
-        )
-        self.history_table.set_height_limit(table_height_limit)
-        group_height = self.history_table.height() + history_chrome_height
-        self.history_group.setFixedHeight(group_height)
-        self.history_group.updateGeometry()
-        left_layout.invalidate()
-        left_layout.activate()
-
-    def _history_group_chrome_height(self) -> int:
-        """Measure title, frame, and layout space using the active Qt style."""
-        history_layout = self.history_group.layout()
-        if history_layout is None:
-            return 0
-        history_layout.invalidate()
-        margins = history_layout.contentsMargins()
-        margin_floor = margins.top() + margins.bottom()
-        hinted_chrome = (
-            self.history_group.sizeHint().height() - self.history_table.height()
-        )
-        return max(hinted_chrome, margin_floor, 0)
 
     # --- Event Handlers ---
 
@@ -971,4 +909,6 @@ class TrainingPanel(BasePanel):
             event: The ``QCloseEvent``.
 
         """
+        for metric_tab in (self.tab_acc, self.tab_loss):
+            metric_tab.close()
         super().closeEvent(event)

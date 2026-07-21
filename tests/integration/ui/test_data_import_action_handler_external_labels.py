@@ -84,6 +84,7 @@ class _DatasetHost(QWidget):
 @dataclass
 class _WizardDriver:
     timer: QTimer
+    save_recipe: bool = False
     phase: int = 0
     dialogs: list[DataInterpretationPreviewDialog] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)
@@ -189,8 +190,8 @@ def _complete_visible_external_label_controls(
         raise AssertionError("Visible event-value decisions remain incomplete.")
 
 
-def _start_wizard_driver() -> _WizardDriver:
-    driver = _WizardDriver(timer=QTimer())
+def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
+    driver = _WizardDriver(timer=QTimer(), save_recipe=save_recipe)
     driver.timer.setInterval(5)
 
     def _fail(message: str, modal: QWidget | None) -> None:
@@ -301,8 +302,17 @@ def _start_wizard_driver() -> _WizardDriver:
                         modal,
                     )
                     return
-                if not modal.save_recipe_check.isChecked():
-                    _fail("Save recipe is not selected on the completed review.", modal)
+                if driver.save_recipe and not modal.save_recipe_check.isChecked():
+                    driver.trace.append("Save recipe")
+                    QTest.mouseClick(
+                        modal.save_recipe_check,
+                        Qt.MouseButton.LeftButton,
+                    )
+                if modal.save_recipe_check.isChecked() is not driver.save_recipe:
+                    _fail(
+                        "Save recipe selection does not match the requested path.",
+                        modal,
+                    )
                     return
                 driver.trace.append(modal.apply_button.text())
                 driver.phase = 5
@@ -583,10 +593,12 @@ def _start_label_source_lifecycle_driver(
     return driver
 
 
+@pytest.mark.parametrize("save_recipe", [False, True])
 def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     qtbot: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    save_recipe: bool,
 ) -> None:
     """The visible Dataset action must publish one reviewed label import."""
     if not GDF_PATH.exists() or not LABEL_PATH.exists():
@@ -641,7 +653,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
 
     runtime = application_ui_runtime(panel)
     assert runtime is not None
-    driver = _start_wizard_driver()
+    driver = _start_wizard_driver(save_recipe=save_recipe)
 
     assert panel.sidebar.import_btn.isVisibleTo(panel)
     assert panel.sidebar.import_btn.isEnabled()
@@ -674,7 +686,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
         "Choose EEG Source for Interpretation",
         "Load label file",
     ]
-    assert driver.trace == [
+    expected_trace = [
         "Next: Load Labels",
         "Load label file",
         "Next: Review Metadata",
@@ -682,8 +694,11 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
         "Next: Match Labels",
         "complete Match Labels controls",
         "Next: Review and Import",
-        "Confirm and Import",
     ]
+    if save_recipe:
+        expected_trace.append("Save recipe")
+    expected_trace.append("Confirm and Import")
+    assert driver.trace == expected_trace
 
     assert panel.data_surface.currentWidget() is panel.table
     assert panel.table.item(0, 0).text() == selected_gdf.name
@@ -703,10 +718,10 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     assert publication.state.raw.files == [GDF_PATH.name]
     assert publication.state.active_dataset.has_raw_data is True
     assert interpretation.has_applied_interpretation is True
-    assert interpretation.has_recipe is True
-    assert recipe_path.exists()
+    assert interpretation.has_recipe is save_recipe
+    assert recipe_path.exists() is save_recipe
     assert interpretation.latest_interpretation_id
-    assert interpretation.latest_recipe_id
+    assert bool(interpretation.latest_recipe_id) is save_recipe
     assert interpretation.label_sources == [str(external_label)]
     assert interpretation.label_carriers == [str(external_label)]
     assert interpretation.class_map == EXPECTED_CLASS_MAP

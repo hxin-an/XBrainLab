@@ -661,7 +661,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             (
                 "Timing fields",
                 self._bids_timing_fields_text(start_fields, duration_fields),
-                "Saved for import recipe and later epoch setup.",
+                "Saved with the reviewed event mapping.",
             )
         )
         if warnings:

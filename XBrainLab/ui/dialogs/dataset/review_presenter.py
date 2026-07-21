@@ -142,7 +142,7 @@ def primary_action_item_rows(values: Any) -> list[ReviewRow]:
         if not isinstance(value, dict):
             continue
         severity = str(value.get("severity") or "needs_confirmation").strip().lower()
-        if severity not in {"blocked", "needs_confirmation", "limited"}:
+        if severity not in {"blocked", "needs_confirmation"}:
             continue
         rows.append(
             (
@@ -192,7 +192,7 @@ def metadata_required_fields_complete(
     """Return whether metadata review has no missing required fields."""
     if row_count <= 0:
         return False
-    required = required_fields or {"subject", "task"}
+    required = required_fields or {"subject"}
     if isinstance(missing_fields, set):
         return not (required & missing_fields)
     return not {field for field in required if int(missing_fields.get(field) or 0) > 0}
@@ -202,14 +202,12 @@ def is_optional_metadata_review_row(row: ReviewRow) -> bool:
     if not is_metadata_review_row(row):
         return False
     fields = metadata_fields_in_review_rows([row])
-    return bool(fields) and fields <= {"session", "run"}
+    return bool(fields) and fields <= {"session", "task", "run"}
 
 
 def metadata_review_action_row(rows: list[ReviewRow]) -> ReviewRow:
     fields = [
-        field
-        for field in ("subject", "task")
-        if field in metadata_fields_in_review_rows(rows)
+        field for field in ("subject",) if field in metadata_fields_in_review_rows(rows)
     ]
     if fields:
         impact = "Required fields need review: " + ", ".join(fields) + "."

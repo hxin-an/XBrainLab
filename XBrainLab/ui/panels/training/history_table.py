@@ -25,10 +25,8 @@ class TrainingHistoryTable(QTableWidget):
     """
 
     selection_changed_record = pyqtSignal(object)  # Emits record object
-    content_height_changed = pyqtSignal(int)
-    MAX_VISIBLE_ROWS = 6
-    EMPTY_VIEWPORT_HEIGHT = 52
-    MIN_CONTENT_HEIGHT = 96
+    MAX_VISIBLE_ROWS = 3
+    ROW_HEIGHT = 30
     KEY_COLUMN_PADDING = 26
     KEY_COLUMN_MAX_WIDTHS = (220, 180, 190, 120)
 
@@ -40,9 +38,8 @@ class TrainingHistoryTable(QTableWidget):
 
         """
         super().__init__(parent)
+        self._syncing_geometry = False
         self.row_map = {}  # Map row -> (plan, record)
-        self._last_content_height = -1
-        self._height_limit: int | None = None
         self._init_ui()
         self.empty_state_label = QLabel("No training runs yet", self.viewport())
         self.empty_state_label.setObjectName("TrainingHistoryEmptyState")
@@ -78,6 +75,8 @@ class TrainingHistoryTable(QTableWidget):
         header_v = self.verticalHeader()
         if header_v:
             header_v.setVisible(False)
+            header_v.setDefaultSectionSize(30)
+            header_v.setMinimumSectionSize(28)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -100,6 +99,10 @@ class TrainingHistoryTable(QTableWidget):
             readable_width = header_metrics.horizontalAdvance(header_text) + 28
             self.setColumnWidth(column, max(preferred_width, readable_width))
 
+        self._minimum_content_width = sum(
+            self.columnWidth(column) for column in range(self.columnCount())
+        )
+
         if header:
             header.setStretchLastSection(True)
 
@@ -107,61 +110,79 @@ class TrainingHistoryTable(QTableWidget):
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
+        self._sync_content_height()
         self._position_empty_state()
 
     def preferred_content_height(self) -> int:
-        """Return the intentional viewport height for the current row count."""
+        """Return the stable height for the current table width."""
+        return self._target_content_height()
+
+    def _target_content_height(self) -> int:
+        # Reserve one stable viewport for the header and three complete rows.
+        # A horizontal-scrollbar gutter is included only when the current width
+        # actually needs it; reserving it unconditionally reveals part of the
+        # next row on wider tables.
         header = self.horizontalHeader()
-        header_height = header.height() if header is not None else 0
-        visible_rows = min(self.rowCount(), self.MAX_VISIBLE_ROWS)
-        if visible_rows:
-            viewport_height = sum(self.rowHeight(row) for row in range(visible_rows))
-        else:
-            viewport_height = self.EMPTY_VIEWPORT_HEIGHT
-        scrollbar = self.horizontalScrollBar()
-        scrollbar_height = scrollbar.sizeHint().height() if scrollbar is not None else 0
+        vertical_header = self.verticalHeader()
+        header_height = header.sizeHint().height() if header is not None else 0
+        row_height = (
+            vertical_header.defaultSectionSize()
+            if vertical_header is not None
+            else self.ROW_HEIGHT
+        )
+        horizontal_scrollbar = self.horizontalScrollBar()
+        horizontal_overflow = self._horizontal_scrollbar_expected()
+        scrollbar_height = 0
+        if horizontal_overflow and horizontal_scrollbar is not None:
+            scrollbar_height = horizontal_scrollbar.sizeHint().height()
         return (
             header_height
-            + viewport_height
+            + (row_height * self.MAX_VISIBLE_ROWS)
             + scrollbar_height
-            + self.frameWidth() * 2
-            + 2
+            + (2 * self.frameWidth())
         )
 
-    def set_height_limit(self, maximum_height: int | None) -> None:
-        """Bound visible rows to the space offered by the enclosing panel."""
-        normalized = (
-            None
-            if maximum_height is None
-            else max(int(maximum_height), self.MIN_CONTENT_HEIGHT)
+    def _horizontal_scrollbar_expected(self) -> bool:
+        """Predict overflow without making it depend on the current row count."""
+        header = self.horizontalHeader()
+        viewport = self.viewport()
+        vertical_scrollbar = self.verticalScrollBar()
+        if header is None or viewport is None:
+            return False
+        reserved_width = (
+            vertical_scrollbar.sizeHint().width()
+            if vertical_scrollbar is not None
+            else 0
         )
-        if normalized == self._height_limit:
-            return
-        self._height_limit = normalized
-        self._sync_content_height()
+        content_width = getattr(self, "_minimum_content_width", header.length())
+        return content_width > max(0, viewport.width() - reserved_width)
 
     def _sync_content_height(self) -> None:
-        preferred_height = self.preferred_content_height()
-        target_height = (
-            preferred_height
-            if self._height_limit is None
-            else min(preferred_height, self._height_limit)
-        )
-        has_overflow = (
-            self.rowCount() > self.MAX_VISIBLE_ROWS or target_height < preferred_height
-        )
-        self.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            if has_overflow
-            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self.setFixedHeight(target_height)
-        if target_height != self._last_content_height:
-            self._last_content_height = target_height
-            self.content_height_changed.emit(target_height)
-        self.empty_state_label.setVisible(self.rowCount() == 0)
-        self._position_empty_state()
-        self.updateGeometry()
+        if self._syncing_geometry:
+            return
+        self._syncing_geometry = True
+        has_overflow = self.rowCount() > self.MAX_VISIBLE_ROWS
+        try:
+            target_policy = (
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+                if has_overflow
+                else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            policy_changed = self.verticalScrollBarPolicy() != target_policy
+            if policy_changed:
+                self.setVerticalScrollBarPolicy(target_policy)
+            self.updateGeometries()
+            target_height = self._target_content_height()
+            geometry_changed = policy_changed or self.height() != target_height
+            if geometry_changed:
+                self.setFixedHeight(target_height)
+                self.updateGeometries()
+            self.empty_state_label.setVisible(self.rowCount() == 0)
+            self._position_empty_state()
+            if geometry_changed:
+                self.updateGeometry()
+        finally:
+            self._syncing_geometry = False
 
     def _position_empty_state(self) -> None:
         viewport = self.viewport()

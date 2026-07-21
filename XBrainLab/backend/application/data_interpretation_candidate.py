@@ -393,7 +393,10 @@ def build_interpretation_candidate(
     confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
 
     for item in metadata:
-        fields = (item.subject, item.task)
+        # Subject is the only metadata field required by the generic import
+        # contract. Strict BIDS structure is validated by the BIDS reviewer
+        # above; task/session/run remain optional review notes here.
+        fields = (item.subject,)
         confirmation_items.extend(
             f"Confirm {field_value.field} metadata for {Path(item.file).name}."
             for field_value in fields

@@ -238,7 +238,7 @@ def test_plot_sample_data_refuses_real_study_query_none_controller_fallback(
     mock_controller.has_data.assert_not_called()
     mock_controller.get_preprocessed_data_list.assert_not_called()
     mock_widget.time_current_curve.setData.assert_not_called()
-    mock_widget.show_locked_message.assert_called_once_with(
+    mock_widget.show_unavailable_message.assert_called_once_with(
         "Preprocess preview is unavailable because application state could not be read."
     )
 
@@ -265,7 +265,7 @@ def test_plot_sample_data_surfaces_application_query_failure(
     mock_controller.has_data.assert_not_called()
     mock_controller.get_preprocessed_data_list.assert_not_called()
     mock_widget.time_current_curve.setData.assert_not_called()
-    mock_widget.show_locked_message.assert_called_once_with(
+    mock_widget.show_unavailable_message.assert_called_once_with(
         "Published preprocess objects are stale."
     )
 
@@ -477,7 +477,7 @@ class TestPlotSampleDataEdgeCases:
         ):
             plotter.plot_sample_data()
         mock_widget.time_current_curve.setData.assert_not_called()
-        mock_widget.show_locked_message.assert_called_once_with(
+        mock_widget.show_unavailable_message.assert_called_once_with(
             "Preprocess application state is unavailable."
         )
 
@@ -512,13 +512,18 @@ class TestPlotSampleDataEdgeCases:
         mock_widget.plot_time.enableAutoRange.assert_called_once()
 
     def test_plot_exception(self, mock_widget, mock_controller):
-        """Plotting exception is caught and reported."""
+        """Plotting exceptions switch to the product unavailable state."""
         raw_obj = mock_controller.get_preprocessed_data_list()[0]
         raw_obj.get_sfreq.side_effect = RuntimeError("broken")
         plotter = PreprocessPlotter(mock_widget, mock_controller)
 
         _plot_controller_data(plotter, mock_controller)
-        mock_widget.plot_time.setTitle.assert_called_with("Plot Error")
+        mock_widget.show_unavailable_message.assert_called_once_with(
+            "The current signal could not be displayed. Try refreshing the panel."
+        )
+        assert ("Plot Error",) not in {
+            call.args for call in mock_widget.plot_time.setTitle.call_args_list
+        }
 
 
 def test_preprocess_plotter_has_no_direct_study_or_controller_data_reads() -> None:

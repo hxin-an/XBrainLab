@@ -58,7 +58,7 @@ def test_public_bids_value_decisions_recheck_and_apply(qtbot) -> None:
     assert review_rows["Recipe"]["status"] == "Not saved"
     assert (
         review_rows["Recipe"]["summary"]
-        == "Save current import and label mapping settings."
+        == "Save the current data import and label mapping settings for reuse."
     )
     result = dialog.get_result()
 

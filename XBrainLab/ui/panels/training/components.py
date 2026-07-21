@@ -4,12 +4,57 @@ from contextlib import suppress
 from typing import Any
 
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PyQt6.QtCore import Qt
+from PyQt6 import sip
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.styles.theme import Theme
+
+
+class _OwnedDrawFigureCanvas(FigureCanvasQTAgg):
+    """Qt canvas whose deferred redraw can be cancelled during teardown."""
+
+    def __init__(self, figure: Figure) -> None:
+        super().__init__(figure)
+        self._draw_timer = QTimer(self)
+        self._draw_timer.setSingleShot(True)
+        self._draw_timer.timeout.connect(self._draw_idle)
+
+    def draw_idle(self) -> None:
+        if self._draw_pending or self._is_drawing:
+            return
+        self._draw_pending = True
+        self._draw_timer.start(0)
+
+    def _draw_idle(self) -> None:
+        """Flush a queued redraw without touching a deleted Qt canvas."""
+        if sip.isdeleted(self):
+            self._draw_pending = False
+            return
+        with self._idle_draw_cntx():
+            if not self._draw_pending:
+                return
+            self._draw_pending = False
+            try:
+                if sip.isdeleted(self) or self.height() <= 0 or self.width() <= 0:
+                    return
+                self.draw()
+            except RuntimeError as error:
+                if sip.isdeleted(self) or "has been deleted" in str(error):
+                    return
+                logger.exception("Training metric canvas redraw failed")
+            except Exception:
+                logger.exception("Training metric canvas redraw failed")
+
+    def cancel_pending_draw(self) -> None:
+        if not sip.isdeleted(self._draw_timer):
+            self._draw_timer.stop()
+            with suppress(TypeError, RuntimeError):
+                self._draw_timer.timeout.disconnect(self._draw_idle)
+        self._draw_pending = False
 
 
 class MetricTab(QWidget):
@@ -52,7 +97,7 @@ class MetricTab(QWidget):
         layout.addWidget(self.empty_state_label, stretch=1)
 
         self.fig = Figure(figsize=(5, 3), dpi=100)
-        self.canvas = FigureCanvas(self.fig)
+        self.canvas = _OwnedDrawFigureCanvas(self.fig)
         self.ax: Any = self.fig.add_subplot(111)
 
         self.ax.set_title(f"{self.metric_name} vs Epoch")
@@ -219,7 +264,11 @@ class MetricTab(QWidget):
         canvas = getattr(self, "canvas", None)
         if canvas is None:
             return
-        if hasattr(canvas, "_draw_pending"):
+        figure = getattr(canvas, "figure", None)
+        cancel_pending_draw = getattr(canvas, "cancel_pending_draw", None)
+        if callable(cancel_pending_draw):
+            cancel_pending_draw()
+        elif hasattr(canvas, "_draw_pending"):
             canvas._draw_pending = False
         layout = self.layout()
         if layout is not None:
@@ -229,6 +278,9 @@ class MetricTab(QWidget):
             canvas.setParent(None)
         with suppress(RuntimeError):
             canvas.close()
+        if figure is not None and getattr(figure, "canvas", None) is canvas:
+            figure.canvas = None
+        canvas.figure = None
         with suppress(RuntimeError):
             canvas.deleteLater()
         self.canvas = None

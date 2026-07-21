@@ -1,9 +1,11 @@
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QAbstractItemView, QMainWindow, QMessageBox
 
+from XBrainLab.backend.application import CommandCapability, CommandName
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 
 
@@ -77,6 +79,8 @@ def test_update_panel_uses_query_data_lists_before_stale_controller(qtbot):
         dataset_controller=dataset_controller,
     )
     qtbot.addWidget(panel)
+    panel.show()
+    qtbot.wait(0)
     panel.plotter.plot_sample_data = MagicMock()
 
     panel.update_panel()
@@ -143,6 +147,120 @@ def test_update_panel_epoched_data_cancels_pending_plot_timer(qtbot):
     panel.plotter.plot_sample_data.assert_not_called()
 
 
+def test_preprocess_panel_quiesces_native_plots_before_close(qtbot):
+    panel = PreprocessPanel(
+        controller=MagicMock(),
+        dataset_controller=MagicMock(),
+    )
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.preview_widget.plot_timer.start(1000)
+
+    panel.close()
+    qtbot.wait(0)
+
+    preview = panel.preview_widget
+    assert preview._native_plot_shutdown is True
+    assert not preview.plot_timer.isActive()
+    assert preview.proxy_time.slot is None
+    assert preview.proxy_freq.slot is None
+    assert not preview.plot_time.updatesEnabled()
+    assert not preview.plot_freq.updatesEnabled()
+    assert preview.plot_time.closed is True
+    assert preview.plot_freq.closed is True
+    assert preview.plot_time.getPlotItem() is None
+    assert preview.plot_freq.getPlotItem() is None
+
+
+def test_signal_preview_uses_distinct_no_data_loaded_and_locked_states(qtbot):
+    controller = MagicMock()
+    dataset_controller = MagicMock()
+    panel = PreprocessPanel(
+        controller=controller,
+        dataset_controller=dataset_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.show()
+    qtbot.wait(0)
+    panel.plotter.plot_sample_data = MagicMock()
+
+    panel.preview_widget.reset_view()
+    assert panel.preview_widget.empty_state.isVisible()
+    assert not panel.preview_widget.plot_content.isVisible()
+    assert not panel.preview_widget.locked_state.isVisible()
+    assert panel.preview_widget.empty_state_title.text() == "No EEG data loaded"
+
+    raw = MagicMock()
+    raw.is_raw.return_value = True
+    raw.get_preprocess_history.return_value = []
+    raw.get_mne.return_value.ch_names = ["C3", "C4"]
+    raw.get_mne.return_value.times = [0.0, 1.0]
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render_lists",
+        return_value=([raw], [raw]),
+    ):
+        panel.update_panel()
+    assert panel.preview_widget.plot_content.isVisible()
+    assert not panel.preview_widget.empty_state.isVisible()
+    assert not panel.preview_widget.locked_state.isVisible()
+
+    epoched = MagicMock()
+    epoched.is_raw.return_value = False
+    epoched.get_preprocess_history.return_value = ["Band-pass filter"]
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render_lists",
+        return_value=([epoched], []),
+    ):
+        panel.update_panel()
+    assert panel.preview_widget.locked_state.isVisible()
+    assert not panel.preview_widget.plot_content.isVisible()
+    assert panel.preview_widget.locked_state_title.text() == "Preprocessing locked"
+    assert "already been epoched" in panel.preview_widget.locked_state_detail.text()
+
+    panel.preview_widget.show_unavailable_message(
+        "Published preprocess objects are stale. Refresh the panel."
+    )
+    assert panel.preview_widget.unavailable_state.isVisible()
+    assert not panel.preview_widget.locked_state.isVisible()
+    assert panel.preview_widget.unavailable_state_title.text() == (
+        "Signal preview unavailable"
+    )
+    assert "stale" in panel.preview_widget.unavailable_state_detail.text()
+
+
+def test_preprocessing_history_keeps_one_height_across_states(qtbot):
+    controller = MagicMock()
+    panel = PreprocessPanel(controller=controller, dataset_controller=MagicMock())
+    qtbot.addWidget(panel)
+    history = panel.history_widget
+    initial_height = history.minimumHeight()
+
+    history.show_no_data()
+    assert history.history_list.item(0).text() == "No preprocessing history yet."
+    assert (
+        history.history_list.selectionMode()
+        == QAbstractItemView.SelectionMode.NoSelection
+    )
+    history.update_history([], False)
+    assert history.history_list.item(0).text() == (
+        "No preprocessing operations have been applied yet."
+    )
+    history.update_history([f"Step {index}" for index in range(12)], True)
+    history.show()
+    qtbot.wait(0)
+
+    assert initial_height == history.maximumHeight()
+    assert history.minimumHeight() == history.maximumHeight()
+    assert history.history_list.count() == 13
+    assert history.history_list.item(12).text() == (
+        "Epoching completed. Preprocessing is now locked."
+    )
+    first_hidden = history.history_list.visualItemRect(
+        history.history_list.item(history.MAX_VISIBLE_ROWS)
+    )
+    assert not history.history_list.viewport().rect().intersects(first_hidden)
+
+
 def test_update_plot_only_epoched_data_shows_locked_message_without_plotting(qtbot):
     controller = MagicMock()
     dataset_controller = MagicMock()
@@ -164,7 +282,7 @@ def test_update_plot_only_epoched_data_shows_locked_message_without_plotting(qtb
         panel.update_plot_only()
 
     panel.preview_widget.show_locked_message.assert_called_once_with(
-        "Data is Epoched - Preprocessing Locked",
+        "Preprocessing locked",
     )
     panel.plotter.plot_sample_data.assert_not_called()
 
@@ -441,6 +559,56 @@ class TestPreprocessSidebarOps:
             assert mock_warning.call_args.args[1] == "Filtering Blocked"
             mock_crit.assert_not_called()
 
+    def test_filtering_dialog_receives_loaded_sampling_rate(self, setup):
+        panel, _mock_ctrl, _ = setup
+        data = MagicMock()
+        data.get_sfreq.return_value = 256.0
+        panel._query_data_lists_for_render = MagicMock(return_value=([data], []))
+        with (
+            patch.object(
+                panel.sidebar,
+                "_begin_preprocess_review",
+                return_value=(None, True),
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog"
+            ) as dialog_type,
+        ):
+            dialog_type.return_value.exec.return_value = False
+            panel.sidebar.open_filtering()
+
+        dialog_type.assert_called_once_with(
+            panel.sidebar,
+            sampling_rate_hz=256.0,
+        )
+
+    def test_filtering_dialog_uses_lowest_sampling_rate_across_loaded_data(self, setup):
+        panel, _mock_ctrl, _ = setup
+        data_256 = MagicMock()
+        data_256.get_sfreq.return_value = 256.0
+        data_128 = MagicMock()
+        data_128.get_sfreq.return_value = 128.0
+        panel._query_data_lists_for_render = MagicMock(
+            return_value=([data_256, data_128], [])
+        )
+        with (
+            patch.object(
+                panel.sidebar,
+                "_begin_preprocess_review",
+                return_value=(None, True),
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog"
+            ) as dialog_type,
+        ):
+            dialog_type.return_value.exec.return_value = False
+            panel.sidebar.open_filtering()
+
+        dialog_type.assert_called_once_with(
+            panel.sidebar,
+            sampling_rate_hz=128.0,
+        )
+
     def test_resample_error(self, setup):
         panel, mock_ctrl, _ = setup
         mock_ctrl.apply_resample.side_effect = RuntimeError("fail")
@@ -516,6 +684,61 @@ class TestPreprocessSidebarOps:
         assert "locked" in panel.sidebar.btn_filter.toolTip().lower()
         assert "locked" in panel.sidebar.btn_epoch.toolTip().lower()
         assert "Epoched" in panel.sidebar.btn_epoch.text()
+        assert not panel.sidebar.btn_reset.isEnabled()
+
+    def test_update_button_states_disables_reset_without_loaded_data(self, setup):
+        panel, _, _ = setup
+
+        def capability(_widget, command_name):
+            enabled = command_name not in {
+                CommandName.PREPROCESS,
+                CommandName.CREATE_EPOCH,
+                CommandName.RESET_PREPROCESS,
+            }
+            return CommandCapability(
+                command_name=command_name.value,
+                enabled=enabled,
+                reasons=[] if enabled else ["Load EEG data first."],
+            )
+
+        with patch(
+            "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
+            side_effect=capability,
+        ):
+            panel.sidebar._update_button_states(is_epoched=False)
+
+        assert not panel.sidebar.btn_reset.isEnabled()
+
+    def test_update_sidebar_uses_publication_epoch_state_for_locked_copy(self, setup):
+        panel, _, _ = setup
+        disabled = CommandCapability(
+            command_name=CommandName.PREPROCESS.value,
+            enabled=False,
+            reasons=["Preprocessing is locked after epoching."],
+        )
+        publication = SimpleNamespace(
+            effective_capabilities={
+                CommandName.PREPROCESS: disabled,
+                CommandName.CREATE_EPOCH: CommandCapability(
+                    command_name=CommandName.CREATE_EPOCH.value,
+                    enabled=False,
+                    reasons=["Epoch data already exists."],
+                ),
+            },
+            state=SimpleNamespace(
+                active_dataset=SimpleNamespace(has_epoch_data=True),
+            ),
+        )
+
+        with patch(
+            "XBrainLab.ui.panels.preprocess.sidebar.get_application_view_publication",
+            return_value=publication,
+        ):
+            panel.sidebar.update_sidebar()
+
+        assert panel.sidebar.btn_epoch.text() == "Epoched (Locked)"
+        assert not panel.sidebar.btn_reset.isEnabled()
+        assert "locked" in panel.sidebar.btn_reset.toolTip().lower()
 
     def test_check_lock_when_epoched(self, setup):
         panel, mock_ctrl, _ = setup

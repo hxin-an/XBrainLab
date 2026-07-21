@@ -1,13 +1,21 @@
 """Frequency-by-time saliency spectrogram visualiser."""
 
+import logging
 from typing import Any
 
 import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.colors import Normalize, PowerNorm
 from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
 from .base import Visualizer
-from .saliency_semantics import shared_color_limits
+
+logger = logging.getLogger(__name__)
+
+_ROBUST_LOWER_PERCENTILE = 1.0
+_ROBUST_UPPER_PERCENTILE = 99.0
+_POWER_SCALE_DYNAMIC_RANGE = 1_000.0
 
 
 def _compact_colorbar_tick(value: float, _position: int) -> str:
@@ -26,6 +34,98 @@ class SaliencySpectrogramMapViz(Visualizer):
     The saliency is transformed via STFT and averaged across trials and
     channels, producing one subplot per class label.
     """
+
+    @staticmethod
+    def _describe_values(values: np.ndarray) -> dict[str, float | int]:
+        flat = np.asarray(values).ravel()
+        finite = flat[np.isfinite(flat)]
+        if finite.size:
+            percentiles = np.percentile(finite, [1, 5, 50, 95, 99])
+            minimum = float(np.min(finite))
+            maximum = float(np.max(finite))
+        else:
+            percentiles = np.full(5, np.nan)
+            minimum = maximum = float("nan")
+        return {
+            "min": minimum,
+            "max": maximum,
+            "median": float(percentiles[2]),
+            "p1": float(percentiles[0]),
+            "p5": float(percentiles[1]),
+            "p95": float(percentiles[3]),
+            "p99": float(percentiles[4]),
+            "non_zero_ratio": float(np.count_nonzero(finite) / finite.size)
+            if finite.size
+            else 0.0,
+            "zero_ratio": float(np.count_nonzero(finite == 0) / finite.size)
+            if finite.size
+            else 0.0,
+            "nan_count": int(np.count_nonzero(np.isnan(flat))),
+            "inf_count": int(np.count_nonzero(np.isinf(flat))),
+            "finite_count": int(finite.size),
+        }
+
+    @classmethod
+    def _build_shared_display_scale(
+        cls,
+        arrays: list[np.ndarray],
+    ) -> tuple[Normalize, str, dict[str, float | int | str]]:
+        finite_parts = []
+        for array in arrays:
+            flat = np.asarray(array).ravel()
+            finite_parts.append(flat[np.isfinite(flat)])
+        finite_parts = [part for part in finite_parts if part.size]
+        if not finite_parts:
+            raise ValueError("Spectrogram magnitude contains no finite values.")
+        pooled = np.concatenate(finite_parts)
+        if float(np.min(pooled)) < -1e-12:
+            raise ValueError("Spectrogram magnitude unexpectedly contains negatives.")
+
+        epsilon = float(np.finfo(float).eps)
+        data_max = float(np.max(pooled))
+        upper = float(np.percentile(pooled, _ROBUST_UPPER_PERCENTILE))
+        if not np.isfinite(upper) or upper <= epsilon:
+            upper = max(data_max, epsilon)
+        over_range_count = int(np.count_nonzero(pooled > upper))
+        over_range_ratio = float(over_range_count / pooled.size)
+        positive = pooled[pooled > epsilon]
+        if positive.size:
+            lower_reference = float(
+                np.percentile(positive, _ROBUST_LOWER_PERCENTILE),
+            )
+            dynamic_range = upper / max(lower_reference, epsilon)
+        else:
+            lower_reference = 0.0
+            dynamic_range = 1.0
+
+        if dynamic_range >= _POWER_SCALE_DYNAMIC_RANGE:
+            norm: Normalize = PowerNorm(
+                gamma=0.5,
+                vmin=0.0,
+                vmax=upper,
+                clip=False,
+            )
+            label = "Attribution magnitude (power, shared p99 scale)"
+            scale_name = "power"
+        else:
+            norm = Normalize(vmin=0.0, vmax=upper, clip=False)
+            label = "Attribution magnitude (shared p99 scale)"
+            scale_name = "linear"
+        return (
+            norm,
+            label,
+            {
+                "scale": scale_name,
+                "vmin": 0.0,
+                "vmax": upper,
+                "data_max": data_max,
+                "upper_percentile": _ROBUST_UPPER_PERCENTILE,
+                "over_range_count": over_range_count,
+                "over_range_ratio": over_range_ratio,
+                "lower_reference": lower_reference,
+                "dynamic_range": float(dynamic_range),
+            },
+        )
 
     def _get_plt(self, method, absolute: bool = False) -> Any:
         """Render the saliency spectrogram figure.
@@ -56,7 +156,18 @@ class SaliencySpectrogramMapViz(Visualizer):
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
         spectrogram_by_label = []
-        for label_key, label_name, raw_saliency in saliency_by_label:
+        diagnostics: list[dict[str, object]] = []
+        for label_key, label_name, raw_values in saliency_by_label:
+            raw_saliency = np.asarray(raw_values)
+            if raw_saliency.ndim != 3:
+                raise ValueError(
+                    "Saliency spectrogram expects epochs x channels x samples; "
+                    f"received shape {raw_saliency.shape!r} for {label_name!r}.",
+                )
+            if not np.all(np.isfinite(raw_saliency)):
+                raise ValueError(
+                    f"Saliency for {label_name!r} contains NaN or infinite values.",
+                )
             sample_count = int(raw_saliency.shape[-1])
             if sample_count < 2:
                 raise ValueError(
@@ -78,6 +189,17 @@ class SaliencySpectrogramMapViz(Visualizer):
                 padded=False,
             )
             saliency = np.mean(np.mean(abs(stft_saliency), axis=0), axis=0)
+            if saliency.ndim != 2:
+                raise ValueError(
+                    f"Spectrogram aggregation produced shape {saliency.shape!r}; "
+                    "expected frequency x time.",
+                )
+            if saliency.shape != (freqs.size, timestamps.size):
+                raise ValueError(
+                    "Spectrogram axes do not match the rendered matrix: "
+                    f"matrix={saliency.shape!r}, frequencies={freqs.size}, "
+                    f"times={timestamps.size}.",
+                )
             epoch_start = float(getattr(self.epoch_data, "tmin", 0.0))
             time_centers = epoch_start + timestamps
             if time_centers.size == 1:
@@ -103,22 +225,30 @@ class SaliencySpectrogramMapViz(Visualizer):
                 ),
             )
 
-        _, color_max = shared_color_limits(
-            [
-                saliency
-                for (
-                    _label_key,
-                    _label_name,
-                    saliency,
-                    _freqs,
-                    _time_centers,
-                    _time_min,
-                    _time_max,
-                ) in spectrogram_by_label
-            ],
-            nonnegative=True,
-            value_name="Spectrogram magnitude",
+            frequency_stats = [
+                {
+                    "frequency_hz": float(freq),
+                    **self._describe_values(saliency[index]),
+                }
+                for index, freq in enumerate(freqs)
+            ]
+            class_diagnostics: dict[str, object] = {
+                "label": str(label_name),
+                "raw_shape": tuple(raw_saliency.shape),
+                "matrix_shape": tuple(saliency.shape),
+                **self._describe_values(saliency),
+                "frequency_bins": frequency_stats,
+            }
+            diagnostics.append(class_diagnostics)
+            logger.debug("Attribution spectrogram diagnostics: %s", class_diagnostics)
+
+        display_arrays = [entry[2] for entry in spectrogram_by_label]
+        shared_norm, colorbar_label, scale_details = self._build_shared_display_scale(
+            display_arrays,
         )
+        self.spectrogram_diagnostics = tuple(diagnostics)
+        self.spectrogram_display_scale = dict(scale_details)
+        logger.info("Attribution spectrogram shared display scale: %s", scale_details)
         fig.subplots_adjust(
             left=0.10,
             right=0.86,
@@ -148,15 +278,16 @@ class SaliencySpectrogramMapViz(Visualizer):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
             plot_axes.append(ax)
 
-            cmap = "magma"
+            cmap = plt.get_cmap("cividis").copy()
+            cmap.set_bad("#777777")
+            cmap.set_over("#f5e663")
             image = ax.imshow(
                 saliency,
                 origin="lower",
                 interpolation="nearest",
                 aspect="auto",
                 cmap=cmap,
-                vmin=0.0,
-                vmax=color_max,
+                norm=shared_norm,
                 extent=(
                     time_min,
                     time_max,
@@ -184,6 +315,12 @@ class SaliencySpectrogramMapViz(Visualizer):
                 fraction=0.035,
                 pad=0.04,
                 format=FuncFormatter(_compact_colorbar_tick),
+                extend=(
+                    "max"
+                    if int(scale_details.get("over_range_count") or 0) > 0
+                    else "neither"
+                ),
             )
             colorbar.ax.tick_params(labelsize=7, pad=1)
+            colorbar.set_label(colorbar_label, fontsize=8)
         return fig

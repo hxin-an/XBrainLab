@@ -371,7 +371,7 @@ class DataInterpretationPreviewDialog(
         self.target_event_option_frames: dict[str, QFrame]
         self.class_map_rows_widget: QWidget | None = None
         self.event_value_editor: EventValueDecisionEditor | None = None
-        self.save_recipe_check: QCheckBox
+        self.save_recipe_check: QPushButton
         self.file_tree: QTreeWidget
         self.label_carrier_tree: QTreeWidget
         self.event_group: QGroupBox
@@ -822,10 +822,11 @@ class DataInterpretationPreviewDialog(
         self.confirmation_label = QLabel(self._confirmation_text())
         self.confirmation_label.setObjectName("InterpretationConfirmation")
         self.confirmation_label.setWordWrap(True)
-        self.save_recipe_check = QCheckBox("Save recipe")
-        self.save_recipe_check.setObjectName("DataImportSaveRecipeCheck")
+        self.save_recipe_check = QPushButton("Save recipe")
+        self.save_recipe_check.setObjectName("DataImportReviewAction")
+        self.save_recipe_check.setCheckable(True)
         can_submit = self.can_submit_for_backend_review()
-        self.save_recipe_check.setChecked(can_submit)
+        self.save_recipe_check.setChecked(False)
         self.save_recipe_check.setEnabled(can_submit)
         self.save_recipe_check.clicked.connect(self._remember_save_recipe_preference)
         self.save_recipe_check.setToolTip(
@@ -847,7 +848,7 @@ class DataInterpretationPreviewDialog(
         self._populate_review_action_cards()
         review_panel_layout.addWidget(self.review_actions_panel)
 
-        self.import_report_toggle = QPushButton("View detailed report")
+        self.import_report_toggle = QPushButton("View import report")
         self.import_report_toggle.setObjectName("DataImportReviewAction")
         self.import_report_toggle.clicked.connect(self._toggle_import_report)
         self.import_review_card, import_review_layout = self._card("Import review")
@@ -884,14 +885,22 @@ class DataInterpretationPreviewDialog(
             QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Maximum,
         )
+        self.import_report_summary = QLabel()
+        self.import_report_summary.setObjectName("DataImportReportSummary")
+        self.import_report_summary.setWordWrap(True)
+        self.import_report_summary.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
+        import_report_layout.addWidget(self.import_report_summary)
         self.review_tree.setSizePolicy(
             QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Maximum,
         )
         import_report_layout.addWidget(self.review_tree)
+        self._refresh_import_report_summary()
         self.import_report_card.setVisible(self._has_remap_options())
         if self._has_remap_options():
-            self.import_report_toggle.setText("Hide detailed report")
+            self.import_report_toggle.setText("Hide import report")
         review_panel_layout.addWidget(self.import_report_card)
         review_panel_layout.addStretch()
         self.step_stack.addWidget(review_panel)
@@ -3281,8 +3290,7 @@ class DataInterpretationPreviewDialog(
         required = set(missing_fields)
         required.discard("session")
         required.discard("run")
-        if not self._is_bids_source():
-            required.discard("task")
+        required.discard("task")
         return required
 
     @staticmethod
@@ -4050,13 +4058,16 @@ class DataInterpretationPreviewDialog(
         if hasattr(self, "save_recipe_check"):
             self.save_recipe_check.setEnabled(can_submit)
             preferred = self._save_recipe_preference
-            checked = can_submit and (preferred if preferred is not None else True)
+            checked = can_submit and (preferred if preferred is not None else False)
             was_blocked = self.save_recipe_check.blockSignals(True)
             self.save_recipe_check.setChecked(checked)
             self.save_recipe_check.blockSignals(was_blocked)
+            self.save_recipe_check.setText(self._pending_recipe_action_text(checked))
 
     def _remember_save_recipe_preference(self, checked: bool) -> None:
         self._save_recipe_preference = bool(checked)
+        self.save_recipe_check.setText(self._pending_recipe_action_text(checked))
+        self._refresh_review_import_summary()
 
     def _has_eeg_file_remap_options(self) -> bool:
         return bool(self._eeg_file_remap_options())

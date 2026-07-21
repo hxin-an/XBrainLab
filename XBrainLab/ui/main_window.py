@@ -1278,7 +1278,16 @@ class MainWindow(QMainWindow):
         self._shutdown_release_attempts = 0
         self._assistant_shutdown_attempts = 0
         self._set_close_interaction_enabled(False)
+        self._prepare_preprocess_native_plots_for_shutdown()
         self._begin_visualization_render_shutdown()
+
+    def _prepare_preprocess_native_plots_for_shutdown(self) -> None:
+        """Quiesce deferred PyQtGraph paint work before window destruction."""
+        panel = getattr(self, "preprocess_panel", None)
+        preview = getattr(panel, "preview_widget", None)
+        prepare = getattr(preview, "prepare_for_shutdown", None)
+        if callable(prepare):
+            prepare()
 
     def _owned_ui_background_work_idle(self) -> bool:
         """Return whether every UI-owned background worker is terminal."""

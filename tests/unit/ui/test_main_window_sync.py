@@ -341,6 +341,15 @@ def test_close_waits_for_active_visualization_native_render(main_window):
     retry.assert_called_once_with()
 
 
+def test_close_quiesces_preprocess_native_plots_before_window_teardown(main_window):
+    preview = SimpleNamespace(prepare_for_shutdown=MagicMock())
+    main_window.preprocess_panel = SimpleNamespace(preview_widget=preview)
+
+    main_window._begin_close_attempt()
+
+    preview.prepare_for_shutdown.assert_called_once_with()
+
+
 def test_close_finalizes_native_resources_after_workers_idle_before_accept(
     main_window,
 ):

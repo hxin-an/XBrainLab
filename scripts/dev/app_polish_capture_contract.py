@@ -629,6 +629,11 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 False,
                 f"Training History state contract is inconsistent: {filename}.",
             )
+        expected_visible_rows = [0, 1, 2] if expected_running else [0, 1]
+        if contract.get("fully_visible_rows") != expected_visible_rows:
+            return False, f"Training History visible rows are incomplete: {filename}."
+        if contract.get("partially_visible_rows"):
+            return False, f"Training History clips a partial row: {filename}."
         if (
             _button_visual_signature(contract.get("start_visual")) is None
             or _button_visual_signature(contract.get("stop_visual")) is None
@@ -645,14 +650,14 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             return False, f"Training History chrome evidence is incomplete: {filename}."
         required_cell_names = {
             f"Training History cell row {row}: {column}"
-            for row in ((5, 6) if expected_running else (1, 2))
+            for row in ((1, 2, 3) if expected_running else (1, 2))
             for column in ("Group", "Run", "Model", "Status")
         }
         if expected_running:
             required_cell_names.update(
                 {
                     f"Training History cell row {row}: {column}"
-                    for row in (5, 6)
+                    for row in (1, 2)
                     for column in ("Epochs", "Train Loss", "Train Acc", "Val Loss")
                 }
             )

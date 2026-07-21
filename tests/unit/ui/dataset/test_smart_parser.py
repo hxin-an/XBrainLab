@@ -1,5 +1,5 @@
 import pytest
-from PyQt6.QtWidgets import QFrame, QGridLayout, QLabel, QWidget
+from PyQt6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QWidget
 
 from XBrainLab.ui.dialogs.dataset import SmartParserDialog
 
@@ -67,6 +67,52 @@ def test_smart_parser_method_radios_use_equal_columns(dialog):
 
     assert {radio.minimumWidth() for radio in radios} == {116}
     assert {radio.maximumWidth() for radio in radios} == {116}
+
+
+def test_smart_parser_configuration_uses_available_width_without_title_frame(
+    dialog,
+):
+    method_panel = dialog.findChild(QFrame, "SmartParserMethodPanel")
+    section_title = dialog.findChild(QLabel, "SmartParserMethodTitle")
+
+    assert method_panel is not None
+    assert section_title is not None
+    assert section_title.text() == "Parsing method"
+    assert method_panel.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+    assert method_panel.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
+    assert method_panel.maximumWidth() >= 16_000
+    assert "QFrame#SmartParserMethodPanel" in dialog.styleSheet()
+
+
+def test_smart_parser_settings_stack_fits_the_active_mode(dialog):
+    dialog.radio_regex.setChecked(True)
+    regex_height = dialog.settings_stack.height()
+
+    dialog.radio_folder.setChecked(True)
+    folder_height = dialog.settings_stack.height()
+
+    assert regex_height == max(dialog.settings_stack.widget(1).sizeHint().height(), 48)
+    assert folder_height == max(dialog.settings_stack.widget(2).sizeHint().height(), 48)
+    assert folder_height < regex_height
+
+
+def test_smart_parser_preview_height_fits_rows_without_large_empty_viewport(
+    dialog,
+):
+    header = dialog.table.horizontalHeader()
+    vertical_header = dialog.table.verticalHeader()
+    assert header is not None
+    assert vertical_header is not None
+
+    expected_height = (
+        header.sizeHint().height()
+        + (vertical_header.defaultSectionSize() * 3)
+        + (2 * dialog.table.frameWidth())
+    )
+
+    assert dialog.table.minimumHeight() == expected_height
+    assert dialog.table.maximumHeight() == expected_height
+    assert expected_height < 260
 
 
 def test_smart_parser_folder_page_uses_aligned_pattern_card(dialog):

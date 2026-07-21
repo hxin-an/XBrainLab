@@ -307,21 +307,26 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
 
 
-def test_visualization_panel_explains_attribution_target_and_aggregation(qtbot):
+def test_visualization_panel_keeps_aggregation_detail_out_of_the_plot_layout(qtbot):
     panel, _ctrl = _make_panel(qtbot)
 
-    assert panel.explanation_context.text() == (
+    assert not hasattr(panel, "explanation_context")
+    assert not panel.explanation_info_button.isHidden()
+    assert panel.explanation_info_button.accessibleName() == "Plot aggregation details"
+    assert panel.tabs.toolTip() == (
         "Grouped by true class label · Mean across evaluated epochs"
     )
+    assert panel.explanation_info_button.toolTip() == panel.tabs.toolTip()
 
     panel.tabs.setCurrentIndex(1)
-    assert panel.explanation_context.text() == (
+    assert panel.tabs.toolTip() == (
         "Grouped by true class label · Mean magnitude across evaluated epochs "
         "and channels"
     )
+    assert panel.explanation_info_button.toolTip() == panel.tabs.toolTip()
 
     panel.tabs.setCurrentIndex(2)
-    assert panel.explanation_context.text() == (
+    assert panel.tabs.toolTip() == (
         "Grouped by true class label · Mean across evaluated epochs and time"
     )
 
