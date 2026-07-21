@@ -909,6 +909,8 @@ class TrainingPanel(BasePanel):
             event: The ``QCloseEvent``.
 
         """
-        for metric_tab in (self.tab_acc, self.tab_loss):
-            metric_tab.close()
+        for attribute_name in ("tab_acc", "tab_loss"):
+            metric_tab = getattr(self, attribute_name, None)
+            if metric_tab is not None:
+                metric_tab.close()
         super().closeEvent(event)
