@@ -21,6 +21,7 @@ from scripts.dev.capture_visualization_render_walkthrough import (
     _command_payload,
     _content_addressed_screenshot_path,
     _control_label_pair_gaps,
+    _explanation_context_from_panel,
     _matplotlib_layout_evidence,
     _normalize_png_artifact,
     _prepare_tiny_trained_state,
@@ -36,6 +37,15 @@ from scripts.dev.capture_visualization_render_walkthrough import (
 )
 from XBrainLab.backend.application import TrainCommand
 from XBrainLab.backend.application.results import ErrorType
+
+
+def test_explanation_context_comes_from_information_control(qapp) -> None:
+    expected = "Grouped by true class label · Mean across evaluated epochs"
+    info_control = QLabel()
+    info_control.setToolTip(expected)
+    panel = SimpleNamespace(explanation_info_button=info_control)
+
+    assert _explanation_context_from_panel(panel) == expected
 
 
 def test_wait_for_saliency_render_observes_worker_completion(qapp) -> None:
@@ -221,7 +231,7 @@ def test_wait_for_3d_capture_does_not_accept_plotter_creation_before_render(
     window = QWidget()
     window.resize(800, 600)
     window.show()
-    plotter = QWidget(window)
+    plotter = cast(Any, QWidget(window))
     plotter.setGeometry(20, 20, 640, 480)
     plotter.show()
     plotter.render_window = FakeRenderWindow()

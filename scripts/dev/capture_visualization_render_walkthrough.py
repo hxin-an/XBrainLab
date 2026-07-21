@@ -105,7 +105,9 @@ def _three_d_runtime_contract(
     configured_platform = str(source.get("QT_QPA_PLATFORM", "")).strip().lower()
     if platform_name is None:
         app = QApplication.instance()
-        platform_name = str(app.platformName()) if app is not None else ""
+        platform_name = (
+            str(cast(QApplication, app).platformName()) if app is not None else ""
+        )
     active_platform = str(platform_name or configured_platform).strip().lower()
     pyvista_off_screen = str(source.get("PYVISTA_OFF_SCREEN", "")).strip().lower()
     off_screen_requested = pyvista_off_screen in {"1", "true", "yes", "on"}
@@ -466,7 +468,7 @@ def _capture_render_tab(
         draw()
         _process_events(app, 100)
     evidence = _render_evidence(widget, window)
-    explanation_context = str(panel.explanation_context.text())
+    explanation_context = _explanation_context_from_panel(panel)
     expected_context = spec["expected_context"]
     screenshot_path = output_dir / spec["screenshot"]
     capture_code = _capture_fully_rendered_window(window, screenshot_path)
@@ -519,6 +521,18 @@ def _capture_render_tab(
         "explanation_context": explanation_context,
         **evidence,
     }
+
+
+def _explanation_context_from_panel(panel: Any) -> str:
+    """Read aggregation semantics from the user-facing information control."""
+    info_control = getattr(panel, "explanation_info_button", None)
+    tooltip = getattr(info_control, "toolTip", None)
+    if not callable(tooltip):
+        raise RuntimeError("Visualization aggregation information is unavailable.")
+    context = str(tooltip()).strip()
+    if not context:
+        raise RuntimeError("Visualization aggregation information is empty.")
+    return context
 
 
 def _wait_for_saliency_render(
@@ -1530,7 +1544,7 @@ def _capture_fully_rendered_window(
         window.raise_()
         window.activateWindow()
         QApplication.processEvents()
-        pixmap = screen.grabWindow(int(window.winId()))
+        pixmap = screen.grabWindow(window.winId())
     else:
         ratio = max(float(window.devicePixelRatioF()), 1.0)
         pixel_width = max(1, round(window.width() * ratio))
