@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QDialog, QFrame, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+
+from XBrainLab.ui.core.base_dialog import BaseDialog
 
 _DIALOG_MARGINS = (18, 12, 18, 12)
 _DIALOG_SPACING = 12
@@ -16,16 +18,12 @@ def configure_preprocess_dialog_layout(layout: QVBoxLayout) -> None:
 
 
 def fit_preprocess_dialog_to_content(
-    dialog: QDialog,
+    dialog: BaseDialog,
     *,
     minimum_width: int,
 ) -> None:
     """Remove surplus vertical space while preserving a stable dialog width."""
-    layout = dialog.layout()
-    if layout is not None:
-        layout.activate()
-    hint = dialog.sizeHint()
-    dialog.resize(max(minimum_width, hint.width()), hint.height())
+    dialog.fit_to_content(minimum_width=minimum_width)
 
 
 def create_preprocess_section(

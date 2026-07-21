@@ -511,18 +511,13 @@ def _assistant_recovery_standard() -> ChatPanel:
 
 
 def _saliency_setting_dialog() -> QWidget:
-    dialog = SaliencySettingDialog(None, saliency_params=None)
-    dialog.adjustSize()
-    dialog.resize(dialog.sizeHint())
-    return dialog
+    return SaliencySettingDialog(None, saliency_params=None)
 
 
 def _saliency_setting_single_method() -> QWidget:
     dialog = SaliencySettingDialog(None, saliency_params=None)
     for method, check in dialog.method_checks.items():
         check.setChecked(method == "SmoothGrad")
-    dialog.adjustSize()
-    dialog.resize(dialog.sizeHint())
     return dialog
 
 
@@ -530,8 +525,6 @@ def _saliency_setting_empty_state() -> QWidget:
     dialog = SaliencySettingDialog(None, saliency_params=None)
     for check in dialog.method_checks.values():
         check.setChecked(False)
-    dialog.adjustSize()
-    dialog.resize(dialog.sizeHint())
     return dialog
 
 

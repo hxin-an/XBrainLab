@@ -179,6 +179,19 @@ class TestSaliencySettingMethods:
         assert not buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
         assert not dialog.empty_state_label.isHidden()
 
+    def test_method_switching_keeps_dialog_center_stable(self, dialog, qtbot):
+        dialog.show()
+        qtbot.wait(0)
+        original_center = dialog.geometry().center()
+
+        for check in dialog.method_checks.values():
+            check.setChecked(False)
+        qtbot.wait(0)
+
+        updated_center = dialog.geometry().center()
+        assert abs(updated_center.x() - original_center.x()) <= 1
+        assert abs(updated_center.y() - original_center.y()) <= 1
+
     def test_empty_state_text_is_not_clipped_when_all_methods_are_unchecked(
         self,
         dialog,

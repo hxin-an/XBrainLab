@@ -7,6 +7,7 @@ from collections.abc import Iterable
 import numpy as np
 
 NONNEGATIVE_SALIENCY_METHODS = frozenset({"SmoothGrad_Squared", "VarGrad"})
+SALIENCY_RED_BLUE_CMAP = "coolwarm"
 
 
 def shared_color_limits(
@@ -52,4 +53,4 @@ def saliency_color_scale(
         nonnegative=nonnegative,
         value_name=method,
     )
-    return ("Reds" if nonnegative else "coolwarm"), color_min, color_max
+    return ("Reds" if nonnegative else SALIENCY_RED_BLUE_CMAP), color_min, color_max

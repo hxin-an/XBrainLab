@@ -17,7 +17,7 @@
 - finished runs: `1`
 - metrics available: `True`
 - saliency available: `True`
-- ready screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-saliency-map-01b16eaa0b1d.png`
+- ready screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-saliency-map-9d16ebaacaad.png`
 - elapsed seconds: `<runtime-dependent>`
 - uncaught exceptions: `0`
 
@@ -26,44 +26,44 @@
 ### Saliency Map
 
 - status: `ok`
-- screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-saliency-map-01b16eaa0b1d.png`
-- screenshot SHA-256: `01b16eaa0b1dc84f7bfe56c1f45af77641b5cf45a14605cab3c38b6633e044bb`
+- screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-saliency-map-9d16ebaacaad.png`
+- screenshot SHA-256: `9d16ebaacaad404da1cfdcf38654c8b65bf6c986a844c0bfa5272f98b15310a9`
 - axes count: `3`
 - image count: `4`
 - scientific context: Grouped by true class label · Mean across evaluated epochs
 - error visible: `False`
 - canvas visible: `True`
 - artist layout: `inside canvas`
-- canvas color count: `934`
-- canvas chromatic fraction: `0.364022`
+- canvas color count: `921`
+- canvas chromatic fraction: `0.387867`
 
 ### Spectrogram
 
 - status: `ok`
-- screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-spectrogram-bc1f9e5fae18.png`
-- screenshot SHA-256: `bc1f9e5fae1879e977b116670f421c807e44a9956c8b08fcd6839def41a1a342`
+- screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-spectrogram-43f54d0b2656.png`
+- screenshot SHA-256: `43f54d0b2656c3917695e6ae35549ba669211ede1549154d2da5ebc4af3694a3`
 - axes count: `3`
 - image count: `4`
 - scientific context: Grouped by true class label · Mean magnitude across evaluated epochs and channels
 - error visible: `False`
 - canvas visible: `True`
 - artist layout: `inside canvas`
-- canvas color count: `759`
-- canvas chromatic fraction: `0.430792`
+- canvas color count: `837`
+- canvas chromatic fraction: `0.434342`
 
 ### Topographic Map
 
 - status: `ok`
-- screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-topographic-map-5229a889a5f1.png`
-- screenshot SHA-256: `5229a889a5f15a37f87d353ea31ac3c508133b71cbd8580803056419a66693a1`
+- screenshot: `artifacts/ui/review-preprocess-polish/visualization-render/visualization-render-topographic-map-b2882ef8566a.png`
+- screenshot SHA-256: `b2882ef8566a716dcece367d3aa0590d089d0e056585d747b25d1c6b6bfd0da4`
 - axes count: `3`
 - image count: `8`
 - scientific context: Grouped by true class label · Mean across evaluated epochs and time
 - error visible: `False`
 - canvas visible: `True`
 - artist layout: `inside canvas`
-- canvas color count: `4184`
-- canvas chromatic fraction: `0.071867`
+- canvas color count: `4110`
+- canvas chromatic fraction: `0.074664`
 
 ## Blocked Tabs
 

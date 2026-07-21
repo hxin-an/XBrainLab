@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize
-from PyQt6.QtGui import QIcon, QShowEvent
+from PyQt6.QtCore import QPoint, QRect, QSize
+from PyQt6.QtGui import QIcon, QMoveEvent, QShowEvent
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
 
 from XBrainLab.ui.dialogs.common import dark_dialog_stylesheet
@@ -41,6 +41,8 @@ class BaseDialog(QDialog):
             controller: Optional backend controller for data access.
 
         """
+        self._content_anchor_center: QPoint | None = None
+        self._setting_stable_geometry = False
         super().__init__(parent)
         self.setWindowTitle(title)
         self.controller = controller
@@ -60,6 +62,13 @@ class BaseDialog(QDialog):
         """Keep top-level dialogs usable on the screen where they open."""
         self._fit_to_available_screen()
         super().showEvent(event)
+        self._content_anchor_center = QPoint(self.geometry().center())
+
+    def moveEvent(self, event: QMoveEvent) -> None:  # noqa: N802
+        """Treat an explicit window move as the new dynamic-content anchor."""
+        super().moveEvent(event)
+        if self.isVisible() and not self._setting_stable_geometry:
+            self._content_anchor_center = QPoint(self.geometry().center())
 
     def _fit_to_available_screen(self) -> None:
         screen = self.screen()
@@ -82,6 +91,83 @@ class BaseDialog(QDialog):
         )
         self.resize(target)
         center_widget_on_screen(self, screen)
+
+    def resize_preserving_center(self, target_size: QSize) -> None:
+        """Resize dynamic content without letting the dialog drift on screen."""
+        screen = self.screen()
+        if screen is None:
+            self.resize(target_size)
+            return
+
+        available = screen.availableGeometry().adjusted(
+            _DIALOG_SCREEN_MARGIN,
+            _DIALOG_SCREEN_MARGIN,
+            -_DIALOG_SCREEN_MARGIN,
+            -_DIALOG_SCREEN_MARGIN,
+        )
+        if available.width() <= 0 or available.height() <= 0:
+            available = screen.availableGeometry()
+
+        minimum = self.minimumSize()
+        maximum = self.maximumSize()
+        maximum_width = min(maximum.width(), available.width())
+        maximum_height = min(maximum.height(), available.height())
+        minimum_width = min(minimum.width(), available.width())
+        minimum_height = min(minimum.height(), available.height())
+        width = min(
+            max(target_size.width(), minimum_width, 1),
+            maximum_width,
+        )
+        height = min(
+            max(target_size.height(), minimum_height, 1),
+            maximum_height,
+        )
+
+        current_geometry = self.geometry()
+        center = self._content_anchor_center
+        if center is None:
+            center = (
+                current_geometry.center()
+                if current_geometry.isValid()
+                else available.center()
+            )
+        target = QRect(0, 0, width, height)
+        target.moveCenter(center)
+        if target.left() < available.left():
+            target.moveLeft(available.left())
+        if target.right() > available.right():
+            target.moveRight(available.right())
+        if target.top() < available.top():
+            target.moveTop(available.top())
+        if target.bottom() > available.bottom():
+            target.moveBottom(available.bottom())
+        self._setting_stable_geometry = True
+        try:
+            self.setGeometry(target)
+        finally:
+            self._setting_stable_geometry = False
+        self._content_anchor_center = QPoint(target.center())
+
+    def fit_to_content(
+        self,
+        *,
+        minimum_width: int = 0,
+        minimum_height: int = 0,
+        maximum_width: int | None = None,
+        maximum_height: int | None = None,
+    ) -> None:
+        """Fit visible content while preserving the current visual anchor."""
+        layout = self.layout()
+        if layout is not None:
+            layout.activate()
+        hint = self.sizeHint()
+        width = max(minimum_width, hint.width())
+        height = max(minimum_height, hint.height())
+        if maximum_width is not None:
+            width = min(width, maximum_width)
+        if maximum_height is not None:
+            height = min(height, maximum_height)
+        self.resize_preserving_center(QSize(width, height))
 
     def _normalize_dialog_buttons(self) -> None:
         """Normalize dialog buttons without removing intentional action icons.

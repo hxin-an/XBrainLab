@@ -133,7 +133,11 @@ class ModelSelectionDialog(BaseDialog):
                 else self.model_list[0]
             )
             self.on_model_select(selected_model_name)
-        self.resize(640, min(max(self.sizeHint().height(), 440), 620))
+        self.fit_to_content(
+            minimum_width=640,
+            minimum_height=440,
+            maximum_height=620,
+        )
 
     def _canonical_model_name(self, model_name: str | None) -> str | None:
         if not isinstance(model_name, str):
@@ -452,9 +456,11 @@ class ModelSelectionDialog(BaseDialog):
 
     def _resize_dialog_to_content(self) -> None:
         """Resize normal content high enough so the scroll area is not a gutter."""
-        self.adjustSize()
-        target_height = min(max(self.sizeHint().height(), 440), 620)
-        self.resize(max(self.width(), 640), target_height)
+        self.fit_to_content(
+            minimum_width=640,
+            minimum_height=440,
+            maximum_height=620,
+        )
 
     def _clear_params_table_selection(self) -> None:
         """Avoid a misleading initial selected row in the parameter table."""

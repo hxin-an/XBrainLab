@@ -10,6 +10,7 @@ from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
 from .base import Visualizer
+from .saliency_semantics import SALIENCY_RED_BLUE_CMAP
 
 logger = logging.getLogger(__name__)
 
@@ -278,9 +279,9 @@ class SaliencySpectrogramMapViz(Visualizer):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
             plot_axes.append(ax)
 
-            cmap = plt.get_cmap("cividis").copy()
+            cmap = plt.get_cmap(SALIENCY_RED_BLUE_CMAP).copy()
             cmap.set_bad("#777777")
-            cmap.set_over("#f5e663")
+            cmap.set_over(cmap(1.0))
             image = ax.imshow(
                 saliency,
                 origin="lower",

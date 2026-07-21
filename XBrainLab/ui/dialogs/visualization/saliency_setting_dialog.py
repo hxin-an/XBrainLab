@@ -83,7 +83,7 @@ class SaliencySettingDialog(BaseDialog):
     def init_ui(self):
         """Initialize method checkboxes and dynamic parameter tabs."""
         layout = QVBoxLayout(self)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(18, 16, 18, 14)
         layout.setSpacing(12)
 
@@ -388,10 +388,7 @@ class SaliencySettingDialog(BaseDialog):
             ok_button.setEnabled(has_methods)
         if activated_method in selected_methods and is_multi_method:
             self.method_tabs.setCurrentWidget(self.method_param_pages[activated_method])
-        dialog_layout = self.layout()
-        if dialog_layout is not None:
-            dialog_layout.activate()
-        self.adjustSize()
+        self.fit_to_content(minimum_width=440)
 
     def _clear_single_method_host(self) -> None:
         while self.single_method_layout.count():

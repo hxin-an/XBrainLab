@@ -341,9 +341,11 @@ class PickMontageDialog(BaseDialog):
 
     def _resize_dialog_to_content(self) -> None:
         """Fit the dialog around the mapping rows without exceeding a useful size."""
-        self.adjustSize()
-        target_height = min(max(self.sizeHint().height(), 320), 640)
-        self.resize(max(self.width(), 700), target_height)
+        self.fit_to_content(
+            minimum_width=700,
+            minimum_height=320,
+            maximum_height=640,
+        )
 
     def initial_sequential_fill(self):
         """Run a one-pass sequential fill for initialization."""

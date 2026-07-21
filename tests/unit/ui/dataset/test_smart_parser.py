@@ -118,8 +118,6 @@ def test_smart_parser_method_labels_do_not_overlap_with_large_ui_font(
             parser.radio_fixed,
             parser.radio_folder,
         ]
-        assert all(radio.width() >= radio.sizeHint().width() for radio in radios)
-
         compact_controls = [
             parser.split_sep_combo,
             parser.split_sub_idx,
@@ -128,9 +126,12 @@ def test_smart_parser_method_labels_do_not_overlap_with_large_ui_font(
             parser.regex_sub_idx,
             parser.regex_sess_idx,
         ]
-        assert all(
-            control.width() >= control.sizeHint().width()
-            for control in compact_controls
+        qtbot.waitUntil(
+            lambda: all(
+                control.width() >= control.sizeHint().width()
+                for control in (*radios, *compact_controls)
+            ),
+            timeout=1_000,
         )
 
         row_height = parser.table.verticalHeader().defaultSectionSize()

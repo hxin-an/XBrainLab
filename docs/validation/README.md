@@ -77,11 +77,16 @@ acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-qu
   `artifacts/ui/review-preprocess-polish/app-polish/`，涵蓋 Data Import Step 5、Smart Parser 四種
   parsing mode、filter / re-reference / normalize / resample、Signal Preview no-data / loaded /
   locked、固定 Preprocessing / Training History 與 Explanation Plots。
-- attribution spectrogram 使用所有 class finite values 的共同 p99 display range；本輪真實 render
-  為 linear `vmin=0`、shared `vmax=1.591498656489425e-4`、dynamic range 約 `55.16`，兩個 class
-  共用 cividis normalization 與 colorbar。資料維度、finite values、frequency/time axis 與
-  aggregation diagnostics 皆通過；artifact 在
+- attribution spectrogram 使用所有 class finite values 的共同 p99 display range；最新真實 render
+  為 linear `vmin=0`、shared `vmax=4.043816728517419e-4`、dynamic range 約 `67.09`，兩個 class
+  共用 `coolwarm` 紅白藍 normalization 與 colorbar，和 Saliency Map 使用同一套色彩語彙。
+  資料維度、finite values、frequency/time axis 與 aggregation diagnostics 皆通過；artifact 在
   `artifacts/ui/review-preprocess-polish/visualization-render/`。
+- 動態內容 dialog 改由 `BaseDialog.fit_to_content()` 保留目前視窗中心；Filtering validation、
+  Saliency method、Model Selection、Set Montage、Data Splitting、Data Import review/report 的內容
+  高度改變不再以左上角為錨點造成視窗漂移。相關 dialog regression `292 passed`，合併
+  visualization regression 後 `345 passed`；完整 UI unit suite `2123 passed`，product
+  walkthrough `7 passed`。
 - required multi-dataset gate 維持 strict PASS：real lifecycle `20`、14 format paths、7 public
   cases / 5 source families，以及 strict cross-source `4/4`（2 training + 2 IO/epoch-only）。
 - Preprocess 的 PyQtGraph teardown 另以相關 `267` tests 連續重跑三次，並以

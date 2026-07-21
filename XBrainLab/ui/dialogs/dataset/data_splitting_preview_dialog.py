@@ -284,7 +284,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         # So we initialize members before super.
 
         super().__init__(parent, title=title)
-        self.resize(920, self.sizeHint().height())
+        self.fit_to_content(minimum_width=920)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_table)
@@ -301,7 +301,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.setStyleSheet(_PREVIEW_DIALOG_STYLE)
         self.setMinimumWidth(920)
         layout = QHBoxLayout(self)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(18)
 
@@ -830,6 +830,8 @@ class DataSplittingPreviewDialog(BaseDialog):
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
             )
         self.tree.setFixedHeight(target_height)
+        if self.isVisible():
+            self.fit_to_content(minimum_width=920)
 
     def confirm(self):
         """Finalize dataset generation and accept the dialog."""

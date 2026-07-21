@@ -751,7 +751,7 @@ def test_saliency_spectrogram_shares_robust_scale_across_classes():
     assert len(fig.axes) == 3  # two class plots and one shared colorbar
     for image in images:
         assert image.get_clim() == pytest.approx(shared_limits)
-        assert image.get_cmap().name == "cividis"
+        assert image.get_cmap().name == "coolwarm"
     assert shared_limits[0] == 0.0
     assert shared_limits[1] > 0.0
     assert observed_stft_dtypes == [np.dtype(np.float32), np.dtype(np.float32)]

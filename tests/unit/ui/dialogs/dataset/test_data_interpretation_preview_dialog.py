@@ -4356,14 +4356,21 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     dialog.show()
     qtbot.wait(0)
     working_height = dialog.height()
+    working_center = dialog.geometry().center()
 
     _show_step(dialog, "Review and Import")
     assert dialog.height() < working_height
+    review_center = dialog.geometry().center()
+    assert abs(review_center.x() - working_center.x()) <= 2
+    assert abs(review_center.y() - working_center.y()) <= 1
     compact_height = dialog.height()
 
     dialog.import_report_toggle.click()
     assert dialog.height() > compact_height
     assert dialog.height() <= working_height
+    report_center = dialog.geometry().center()
+    assert abs(report_center.x() - working_center.x()) <= 2
+    assert abs(report_center.y() - working_center.y()) <= 1
     review_header = dialog.review_tree.header()
     review_viewport = dialog.review_tree.viewport()
     assert review_header is not None
@@ -4372,6 +4379,9 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
 
     _show_step(dialog, "Match Labels")
     assert dialog.height() == working_height
+    restored_center = dialog.geometry().center()
+    assert abs(restored_center.x() - working_center.x()) <= 2
+    assert abs(restored_center.y() - working_center.y()) <= 1
 
 
 def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):

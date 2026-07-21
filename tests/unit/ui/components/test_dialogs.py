@@ -315,3 +315,18 @@ def test_preprocess_setting_dialogs_fit_their_visible_content(qtbot):
         qtbot.addWidget(dialog)
         dialog.layout().activate()
         assert dialog.height() <= dialog.sizeHint().height() + 2
+
+
+def test_filtering_validation_resize_keeps_dialog_center_stable(qtbot):
+    dialog = FilteringDialog(None, sampling_rate_hz=250.0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
+    original_center = dialog.geometry().center()
+
+    dialog.h_freq_spin.setValue(0.0)
+    qtbot.wait(0)
+
+    updated_center = dialog.geometry().center()
+    assert abs(updated_center.x() - original_center.x()) <= 1
+    assert abs(updated_center.y() - original_center.y()) <= 1

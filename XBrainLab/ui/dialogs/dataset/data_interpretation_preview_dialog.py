@@ -1724,7 +1724,7 @@ class DataInterpretationPreviewDialog(
             if self._review_restore_size is not None:
                 restore_size = self._review_restore_size
                 self._review_restore_size = None
-                self.resize(restore_size)
+                self.resize_preserving_center(restore_size)
             return
 
         if self._review_restore_size is None:
@@ -1744,7 +1744,7 @@ class DataInterpretationPreviewDialog(
         desired_height = max(content_height + chrome_height + 8, 560)
         target_height = min(desired_height, self._review_restore_size.height())
         if target_height != self.height():
-            self.resize(self.width(), target_height)
+            self.resize_preserving_center(QSize(self.width(), target_height))
 
     def _sync_step_labels(self, current: int) -> None:
         if not hasattr(self, "step_labels"):

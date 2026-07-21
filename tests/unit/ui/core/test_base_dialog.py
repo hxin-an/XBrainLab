@@ -1,4 +1,5 @@
 import pytest
+from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QPushButton, QVBoxLayout
 
@@ -48,6 +49,28 @@ def test_init_params(dialog):
     assert dialog.windowTitle() == "Test Dialog"
     assert dialog.width() == 200
     assert dialog.height() == 100
+
+
+def test_resize_preserving_center_keeps_dynamic_dialog_anchored(dialog, qtbot):
+    dialog.show()
+    qtbot.wait(0)
+    original_center = dialog.geometry().center()
+
+    dialog.resize_preserving_center(QSize(320, 180))
+
+    updated_center = dialog.geometry().center()
+    assert abs(updated_center.x() - original_center.x()) <= 1
+    assert abs(updated_center.y() - original_center.y()) <= 1
+    assert dialog.size() == QSize(320, 180)
+
+    dialog.move(dialog.x() + 40, dialog.y() + 24)
+    qtbot.wait(0)
+    moved_center = dialog.geometry().center()
+    dialog.resize_preserving_center(QSize(260, 140))
+
+    updated_center = dialog.geometry().center()
+    assert abs(updated_center.x() - moved_center.x()) <= 1
+    assert abs(updated_center.y() - moved_center.y()) <= 1
 
 
 def test_abstract_methods():
