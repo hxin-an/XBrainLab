@@ -2,7 +2,7 @@
   "schema_version": 4,
   "artifact_type": "xbrainlab.data_import_wizard_steps",
   "generator": "scripts/dev/capture_data_import_wizard_steps.py",
-  "generated_at_utc": "2026-07-20T15:09:35.625501+00:00",
+  "generated_at_utc": "2026-07-21T02:55:32.360619+00:00",
   "capture_environment": {
     "qt_platform": "xcb",
     "capture_kind": "xcb_native_window",
@@ -40,22 +40,22 @@
     "complete": true
   },
   "capture_session": {
-    "started_at_utc": "2026-07-20T15:03:11.557415+00:00",
-    "completed_at_utc": "2026-07-20T15:09:35.625501+00:00",
-    "source_digest_at_start": "491153ce8ca9a91e66ac2d018708b6278a9639f5203a6e53e5c34f36c31d6268",
-    "source_digest_at_completion": "491153ce8ca9a91e66ac2d018708b6278a9639f5203a6e53e5c34f36c31d6268",
+    "started_at_utc": "2026-07-21T02:49:18.799368+00:00",
+    "completed_at_utc": "2026-07-21T02:55:32.360619+00:00",
+    "source_digest_at_start": "ac6b38f696a88694fed0c9474d973b97d4d67c6d26ce0a6b1bc800621a8faad8",
+    "source_digest_at_completion": "ac6b38f696a88694fed0c9474d973b97d4d67c6d26ce0a6b1bc800621a8faad8",
     "source_identity_stable": true,
-    "session_id": "20260720T150319Z-c89b4822"
+    "session_id": "20260721T024926Z-8b93180a"
   },
   "source_identity": {
     "version": 2,
     "repo_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab",
-    "branch": "fix/nonblocking-state-shutdown-lifecycle",
-    "commit_sha": "1819e71c58c22a6baec64497ce1ac804c6838319",
-    "head_tree_sha": "7682e79aa5283ffe11661218e1752b64bd0fd75b",
-    "dirty": true,
-    "dirty_digest": "e2e6b2a9d30accb49140e40ff64a3d2faa6245555029eb973a738ae4e18ffb41",
-    "source_content_digest": "ccbf55f08b8a5f2f922098bafc39163d644cc8a81c732e35cc6b286017fe4619",
+    "branch": "ux/gui-review-preprocess-polish",
+    "commit_sha": "2df053d291f5dc584b7ef197215c9f061b56dd85",
+    "head_tree_sha": "87469ae0eec521cbd856ac6fd520165b4f626ed0",
+    "dirty": false,
+    "dirty_digest": "d954db2b63d8c8ef9985d3f9ff3f614eace6f47e63bdad12d77e3b176775b72e",
+    "source_content_digest": "2d7cde343f8b134da77f5af1353db90153b448f4a0d4a8d7af03b272f30a8647",
     "untracked_source_count": 0,
     "excluded_generated_prefixes": [
       "artifacts/",
@@ -93,7 +93,7 @@
       "Makefile"
     ],
     "error": "",
-    "source_digest": "491153ce8ca9a91e66ac2d018708b6278a9639f5203a6e53e5c34f36c31d6268"
+    "source_digest": "ac6b38f696a88694fed0c9474d973b97d4d67c6d26ce0a6b1bc800621a8faad8"
   },
   "screenshots": {
     "01-choose-eeg-data-760px.png": {
@@ -165,8 +165,8 @@
       "path": "04-match-labels-bids-events.png",
       "exists": true,
       "readable": true,
-      "byte_size": 128398,
-      "sha256": "0370cc230cb7b77b907579142924f2eaefa89c72069da1369d5f7fd2315f986d",
+      "byte_size": 128276,
+      "sha256": "84d37b05b96aafd98c65b0da175a99544103b941605684c069aec8d0e45b3021",
       "dimensions": [
         1220,
         1320
@@ -230,11 +230,11 @@
       "path": "05-review-and-import-report.png",
       "exists": true,
       "readable": true,
-      "byte_size": 95910,
-      "sha256": "5ab3527c6afc7e5bb3b9d286e6c072602c99f4ae39a0c1aabf9c218ae0e13428",
+      "byte_size": 131681,
+      "sha256": "3775a4ea2c04a6629cefbd7ae44d377d5acdf48cc1241aa3b6d9bb0343806968",
       "dimensions": [
         1220,
-        1320
+        926
       ],
       "format": "PNG",
       "error": ""
@@ -243,11 +243,11 @@
       "path": "05-review-and-import.png",
       "exists": true,
       "readable": true,
-      "byte_size": 76849,
-      "sha256": "a41b8eaeb5a5f3a0a1fb51df2a14ec94a2fb23b7e11588ac6e80b058421c688a",
+      "byte_size": 74342,
+      "sha256": "e94990c3595f0cc16f3e2e0ff2741e798e1cfef8161e4d2b59d7ba1e83c4de14",
       "dimensions": [
         1220,
-        1320
+        632
       ],
       "format": "PNG",
       "error": ""
