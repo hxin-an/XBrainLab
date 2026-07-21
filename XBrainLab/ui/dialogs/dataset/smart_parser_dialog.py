@@ -37,8 +37,11 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.theme import Theme
 
-_PARSER_MODE_WIDTH = 116
-_PARSER_SETTINGS_LABEL_WIDTH = 64
+_PARSER_MODE_MIN_WIDTH = 116
+_PARSER_SETTINGS_LABEL_MIN_WIDTH = 72
+_PARSER_MODE_SETTINGS_GAP = 20
+_PARSER_PAGE_BOTTOM_PADDING = 10
+_PREVIEW_ROW_VERTICAL_PADDING = 10
 _MIN_PREVIEW_ROWS = 3
 _MAX_PREVIEW_ROWS = 8
 
@@ -101,6 +104,12 @@ class SmartParserDialog(BaseDialog):
     @override
     def showEvent(self, event: QShowEvent) -> None:
         """Center the parser over the import dialog when it is shown."""
+        self._fit_settings_stack(self.settings_stack.currentIndex())
+        layout = self.layout()
+        if layout is not None:
+            layout.activate()
+        hint = self.sizeHint()
+        self.resize(max(self.width(), hint.width()), max(self.height(), hint.height()))
         super().showEvent(event)
         if self._centered_on_show:
             return
@@ -152,10 +161,11 @@ class SmartParserDialog(BaseDialog):
         )
         config_layout = QVBoxLayout(config_group)
         config_layout.setContentsMargins(12, 10, 12, 12)
-        config_layout.setSpacing(9)
+        config_layout.setSpacing(0)
         method_title = QLabel("Parsing method")
         method_title.setObjectName("SmartParserMethodTitle")
         config_layout.addWidget(method_title)
+        config_layout.addSpacing(8)
 
         # Mode Selection
         mode_layout = QHBoxLayout()
@@ -179,16 +189,18 @@ class SmartParserDialog(BaseDialog):
         self.radio_folder.toggled.connect(self.toggle_mode)
         self.radio_fixed.toggled.connect(self.toggle_mode)
 
-        for radio in (
+        mode_radios = (
             self.radio_split,
             self.radio_regex,
             self.radio_fixed,
             self.radio_folder,
-        ):
-            self._configure_mode_radio(radio)
+        )
+        self._configure_mode_radios(mode_radios)
+        for radio in mode_radios:
             mode_layout.addWidget(radio)
         mode_layout.addStretch()
         config_layout.addLayout(mode_layout)
+        config_layout.addSpacing(_PARSER_MODE_SETTINGS_GAP)
 
         # Settings Stack
         self.settings_stack = QStackedWidget()
@@ -205,23 +217,23 @@ class SmartParserDialog(BaseDialog):
         self.split_sep_combo.addItems(
             ["Underscore (_)", "Hyphen (-)", "Space ( )", "Dot (.)"],
         )
-        self.split_sep_combo.setFixedWidth(150)
+        self._fit_control_width(self.split_sep_combo, minimum=150, maximum=220)
         self.split_sep_combo.currentIndexChanged.connect(self.update_preview)
 
         self.split_sub_idx = QSpinBox()
         self.split_sub_idx.setRange(1, 10)
         self.split_sub_idx.setValue(1)
         self.split_sub_idx.setPrefix("Part ")
-        self.split_sub_idx.setFixedWidth(82)
         self.split_sub_idx.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._fit_control_width(self.split_sub_idx, minimum=82, maximum=120)
         self.split_sub_idx.valueChanged.connect(self.update_preview)
 
         self.split_sess_idx = QSpinBox()
         self.split_sess_idx.setRange(1, 10)
         self.split_sess_idx.setValue(2)
         self.split_sess_idx.setPrefix("Part ")
-        self.split_sess_idx.setFixedWidth(82)
         self.split_sess_idx.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._fit_control_width(self.split_sess_idx, minimum=82, maximum=120)
         self.split_sess_idx.valueChanged.connect(self.update_preview)
 
         self._add_settings_row(layout_split, 0, "Separator", self.split_sep_combo)
@@ -242,7 +254,7 @@ class SmartParserDialog(BaseDialog):
                 "BIDS (sub-01_ses-01_task-mi_run-1)",
             ],
         )
-        self.regex_preset_combo.setMaximumWidth(340)
+        self._fit_control_width(self.regex_preset_combo, minimum=280, maximum=460)
         self.regex_preset_combo.currentIndexChanged.connect(
             self.on_regex_preset_changed,
         )
@@ -256,16 +268,16 @@ class SmartParserDialog(BaseDialog):
         self.regex_sub_idx = QSpinBox()
         self.regex_sub_idx.setRange(1, 10)
         self.regex_sub_idx.setPrefix("Group ")
-        self.regex_sub_idx.setFixedWidth(82)
         self.regex_sub_idx.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._fit_control_width(self.regex_sub_idx, minimum=82, maximum=120)
         self.regex_sub_idx.valueChanged.connect(self.update_preview)
 
         self.regex_sess_idx = QSpinBox()
         self.regex_sess_idx.setRange(1, 10)
         self.regex_sess_idx.setValue(2)
         self.regex_sess_idx.setPrefix("Group ")
-        self.regex_sess_idx.setFixedWidth(82)
         self.regex_sess_idx.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._fit_control_width(self.regex_sess_idx, minimum=82, maximum=120)
         self.regex_sess_idx.valueChanged.connect(self.update_preview)
 
         group_widget = QWidget()
@@ -373,8 +385,12 @@ class SmartParserDialog(BaseDialog):
         vertical_header = self.table.verticalHeader()
         if vertical_header is not None:
             vertical_header.setVisible(False)
-            vertical_header.setDefaultSectionSize(30)
-            vertical_header.setMinimumSectionSize(28)
+            row_height = max(
+                30,
+                self.table.fontMetrics().height() + _PREVIEW_ROW_VERTICAL_PADDING,
+            )
+            vertical_header.setDefaultSectionSize(row_height)
+            vertical_header.setMinimumSectionSize(row_height)
         self._sync_preview_table_height()
         layout.addWidget(self.table, stretch=1)
 
@@ -398,11 +414,11 @@ class SmartParserDialog(BaseDialog):
     @staticmethod
     def _parser_grid_layout(parent: QWidget) -> QGridLayout:
         layout = QGridLayout(parent)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 0, _PARSER_PAGE_BOTTOM_PADDING)
         layout.setHorizontalSpacing(5)
         layout.setVerticalSpacing(10)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        layout.setColumnMinimumWidth(0, _PARSER_SETTINGS_LABEL_WIDTH)
+        layout.setColumnMinimumWidth(0, _PARSER_SETTINGS_LABEL_MIN_WIDTH)
         layout.setColumnStretch(1, 0)
         layout.setColumnStretch(2, 1)
         return layout
@@ -414,9 +430,31 @@ class SmartParserDialog(BaseDialog):
         return label
 
     @staticmethod
-    def _configure_mode_radio(radio: QRadioButton) -> None:
-        radio.setObjectName("SmartParserModeRadio")
-        radio.setFixedWidth(_PARSER_MODE_WIDTH)
+    def _configure_mode_radios(radios: tuple[QRadioButton, ...]) -> None:
+        for radio in radios:
+            radio.setObjectName("SmartParserModeRadio")
+        target_width = max(
+            _PARSER_MODE_MIN_WIDTH,
+            *(radio.sizeHint().width() + 6 for radio in radios),
+        )
+        for radio in radios:
+            radio.setMinimumWidth(target_width)
+            radio.setSizePolicy(
+                QSizePolicy.Policy.Minimum,
+                QSizePolicy.Policy.Fixed,
+            )
+
+    @staticmethod
+    def _fit_control_width(
+        control: QWidget,
+        *,
+        minimum: int,
+        maximum: int,
+    ) -> None:
+        """Keep text-bearing controls readable without making forms full-width."""
+        target_width = min(max(minimum, control.sizeHint().width()), maximum)
+        control.setMinimumWidth(target_width)
+        control.setMaximumWidth(maximum)
 
     @staticmethod
     def _add_settings_row(
@@ -427,9 +465,17 @@ class SmartParserDialog(BaseDialog):
     ) -> None:
         label = QLabel(label_text)
         label.setObjectName("SmartParserSettingsLabel")
-        label.setFixedWidth(_PARSER_SETTINGS_LABEL_WIDTH)
+        label.setMinimumWidth(
+            max(_PARSER_SETTINGS_LABEL_MIN_WIDTH, label.sizeHint().width()),
+        )
+        label.setMinimumHeight(field.sizeHint().height())
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(label, row, 0)
+        layout.addWidget(
+            label,
+            row,
+            0,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        )
         layout.addWidget(field, row, 1, 1, 2, Qt.AlignmentFlag.AlignLeft)
 
     @staticmethod
@@ -513,11 +559,34 @@ class SmartParserDialog(BaseDialog):
         page = self.settings_stack.widget(index)
         if page is None:
             return
+        self._sync_settings_row_heights(page)
         page_layout = page.layout()
         if page_layout is not None:
             page_layout.activate()
-        self.settings_stack.setFixedHeight(max(page.sizeHint().height(), 48))
+        target_height = max(
+            page.sizeHint().height(),
+            page.minimumSizeHint().height(),
+            48,
+        )
+        self.settings_stack.setFixedHeight(target_height)
         self.settings_stack.updateGeometry()
+
+    @staticmethod
+    def _sync_settings_row_heights(page: QWidget) -> None:
+        """Align labels to styled controls after Qt has resolved platform metrics."""
+        layout = page.layout()
+        if not isinstance(layout, QGridLayout):
+            return
+        for row in range(layout.rowCount()):
+            label_item = layout.itemAtPosition(row, 0)
+            field_item = layout.itemAtPosition(row, 1)
+            if label_item is None or field_item is None:
+                continue
+            label = label_item.widget()
+            field = field_item.widget()
+            if not isinstance(label, QLabel) or field is None:
+                continue
+            label.setMinimumHeight(field.sizeHint().height())
 
     def on_regex_preset_changed(self, index):
         """Populate the regex input with a preset pattern.

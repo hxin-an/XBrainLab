@@ -1,5 +1,16 @@
 import pytest
-from PyQt6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QWidget
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QLabel,
+    QLineEdit,
+    QSizePolicy,
+    QSpinBox,
+    QWidget,
+)
 
 from XBrainLab.ui.dialogs.dataset import SmartParserDialog
 
@@ -57,9 +68,15 @@ def test_smart_parser_regex_controls_are_compact(dialog):
     assert dialog.settings_stack.currentIndex() == 1
     assert dialog.regex_input.minimumWidth() == 320
     assert dialog.regex_input.maximumWidth() == 460
-    assert dialog.regex_preset_combo.maximumWidth() == 340
-    assert dialog.regex_sub_idx.width() == 82
-    assert dialog.regex_sess_idx.width() == 82
+    assert dialog.regex_preset_combo.maximumWidth() == 460
+    assert (
+        dialog.regex_preset_combo.width()
+        >= dialog.regex_preset_combo.sizeHint().width()
+    )
+    assert dialog.regex_sub_idx.width() >= dialog.regex_sub_idx.sizeHint().width()
+    assert dialog.regex_sess_idx.width() >= dialog.regex_sess_idx.sizeHint().width()
+    assert dialog.regex_sub_idx.maximumWidth() == 120
+    assert dialog.regex_sess_idx.maximumWidth() == 120
     assert isinstance(dialog.settings_stack.currentWidget().layout(), QGridLayout)
     labels = dialog.settings_stack.currentWidget().findChildren(
         QLabel,
@@ -76,8 +93,50 @@ def test_smart_parser_method_radios_use_equal_columns(dialog):
         dialog.radio_folder,
     ]
 
-    assert {radio.minimumWidth() for radio in radios} == {116}
-    assert {radio.maximumWidth() for radio in radios} == {116}
+    assert len({radio.minimumWidth() for radio in radios}) == 1
+    assert all(radio.minimumWidth() >= radio.sizeHint().width() for radio in radios)
+    assert all(radio.maximumWidth() > radio.minimumWidth() for radio in radios)
+
+
+def test_smart_parser_method_labels_do_not_overlap_with_large_ui_font(
+    qtbot,
+    qapp,
+):
+    original_font = QFont(qapp.font())
+    enlarged_font = QFont(original_font)
+    enlarged_font.setPointSize(max(original_font.pointSize() + 5, 14))
+    qapp.setFont(enlarged_font)
+    try:
+        parser = SmartParserDialog(["sub-01_ses-01_task-mi_run-01_eeg.gdf"])
+        qtbot.addWidget(parser)
+        parser.show()
+        qapp.processEvents()
+
+        radios = [
+            parser.radio_split,
+            parser.radio_regex,
+            parser.radio_fixed,
+            parser.radio_folder,
+        ]
+        assert all(radio.width() >= radio.sizeHint().width() for radio in radios)
+
+        compact_controls = [
+            parser.split_sep_combo,
+            parser.split_sub_idx,
+            parser.split_sess_idx,
+            parser.regex_preset_combo,
+            parser.regex_sub_idx,
+            parser.regex_sess_idx,
+        ]
+        assert all(
+            control.width() >= control.sizeHint().width()
+            for control in compact_controls
+        )
+
+        row_height = parser.table.verticalHeader().defaultSectionSize()
+        assert row_height >= parser.table.fontMetrics().height() + 10
+    finally:
+        qapp.setFont(original_font)
 
 
 def test_smart_parser_configuration_uses_available_width_without_title_frame(
@@ -105,6 +164,67 @@ def test_smart_parser_settings_stack_fits_the_active_mode(dialog):
     assert regex_height == max(dialog.settings_stack.widget(1).sizeHint().height(), 48)
     assert folder_height == max(dialog.settings_stack.widget(2).sizeHint().height(), 48)
     assert folder_height < regex_height
+
+
+def test_smart_parser_forms_clear_the_mode_row_and_panel_edges(dialog, qapp):
+    dialog.show()
+    qapp.processEvents()
+    method_panel = dialog.findChild(QFrame, "SmartParserMethodPanel")
+    assert method_panel is not None
+
+    for radio in (
+        dialog.radio_split,
+        dialog.radio_regex,
+        dialog.radio_folder,
+        dialog.radio_fixed,
+    ):
+        radio.setChecked(True)
+        qapp.processEvents()
+        stack_top = dialog.settings_stack.mapTo(method_panel, QPoint(0, 0)).y()
+        mode_bottom = max(
+            mode.mapTo(method_panel, QPoint(0, mode.height())).y()
+            for mode in (
+                dialog.radio_split,
+                dialog.radio_regex,
+                dialog.radio_folder,
+                dialog.radio_fixed,
+            )
+        )
+        assert stack_top - mode_bottom >= 20
+
+        page = dialog.settings_stack.currentWidget()
+        controls = []
+        for widget_type in (QComboBox, QLineEdit, QSpinBox):
+            controls.extend(page.findChildren(widget_type))
+        assert all(
+            control.mapTo(page, QPoint(0, control.height())).y() <= page.height() - 8
+            for control in controls
+        )
+
+        page_layout = page.layout()
+        if isinstance(page_layout, QGridLayout):
+            for row in range(page_layout.rowCount()):
+                label_item = page_layout.itemAtPosition(row, 0)
+                field_item = page_layout.itemAtPosition(row, 1)
+                if (
+                    label_item is not None
+                    and field_item is not None
+                    and isinstance(label_item.widget(), QLabel)
+                    and field_item.widget() is not None
+                ):
+                    assert label_item.alignment() & Qt.AlignmentFlag.AlignVCenter
+                    label = label_item.widget()
+                    field = field_item.widget()
+                    assert label.height() >= field.sizeHint().height()
+                    label_center = label.mapTo(
+                        page,
+                        QPoint(0, label.height() // 2),
+                    ).y()
+                    field_center = field.mapTo(
+                        page,
+                        QPoint(0, field.height() // 2),
+                    ).y()
+                    assert abs(label_center - field_center) <= 1
 
 
 def test_smart_parser_preview_height_fits_rows_without_large_empty_viewport(
@@ -137,8 +257,10 @@ def test_smart_parser_folder_page_uses_aligned_pattern_card(dialog):
     assert isinstance(folder_page.layout(), QGridLayout)
     assert example_cards
     assert [label.text() for label in settings_labels] == ["Pattern", "Example"]
-    assert {label.minimumWidth() for label in settings_labels} == {64}
-    assert {label.maximumWidth() for label in settings_labels} == {64}
+    assert all(
+        label.minimumWidth() >= label.sizeHint().width() for label in settings_labels
+    )
+    assert all(label.maximumWidth() > label.minimumWidth() for label in settings_labels)
     example_text = " ".join(
         label.text() for label in example_cards[0].findChildren(QLabel)
     )
@@ -177,8 +299,8 @@ def test_smart_parser_mode_pages_use_left_aligned_settings_grid(dialog):
         assert isinstance(page.layout(), QGridLayout)
         labels = page.findChildren(QLabel, "SmartParserSettingsLabel")
         assert labels
-        assert {label.minimumWidth() for label in labels} == {64}
-        assert {label.maximumWidth() for label in labels} == {64}
+        assert all(label.minimumWidth() >= label.sizeHint().width() for label in labels)
+        assert all(label.maximumWidth() > label.minimumWidth() for label in labels)
 
     fixed_page = dialog.settings_stack.widget(3)
     assert isinstance(fixed_page.layout(), QGridLayout)

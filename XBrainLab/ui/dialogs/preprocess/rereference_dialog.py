@@ -14,7 +14,11 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
-from XBrainLab.ui.dialogs.preprocess.common import create_preprocess_section
+from XBrainLab.ui.dialogs.preprocess.common import (
+    configure_preprocess_dialog_layout,
+    create_preprocess_section,
+    fit_preprocess_dialog_to_content,
+)
 
 
 class RereferenceDialog(BaseDialog):
@@ -33,11 +37,11 @@ class RereferenceDialog(BaseDialog):
         self.section_title: QLabel
         self.channels_title: QLabel
         super().__init__(parent, title="Re-reference", width=460, height=420)
+        fit_preprocess_dialog_to_content(self, minimum_width=460)
 
     def init_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 14)
-        layout.setSpacing(16)
+        configure_preprocess_dialog_layout(layout)
 
         method_section, self.section_title, method_layout = create_preprocess_section(
             "Reference method",
@@ -105,6 +109,7 @@ class RereferenceDialog(BaseDialog):
         valid = not selected_mode or bool(self.chan_list.selectedItems())
         self.validation_label.setVisible(selected_mode and not valid)
         self.ok_button.setEnabled(valid)
+        fit_preprocess_dialog_to_content(self, minimum_width=460)
 
     def accept(self) -> None:
         if self.average_radio.isChecked():

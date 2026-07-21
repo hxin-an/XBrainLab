@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import Qt
@@ -296,3 +297,21 @@ def test_normalize_dialog_init(qtbot):
     assert dialog.zscore_radio.isEnabled()
     assert dialog.minmax_radio.isEnabled()
     assert "QGroupBox" not in type(dialog.section_container).__name__
+
+
+def test_preprocess_setting_dialogs_fit_their_visible_content(qtbot):
+    """Compact setting dialogs must not distribute surplus height between rows."""
+    data = SimpleNamespace(
+        get_mne=lambda: SimpleNamespace(ch_names=["Fz", "C3", "Cz", "C4", "Pz"])
+    )
+    dialogs = (
+        NormalizeDialog(None),
+        ResampleDialog(None),
+        FilteringDialog(None, sampling_rate_hz=250.0),
+        RereferenceDialog(None, [data]),
+    )
+
+    for dialog in dialogs:
+        qtbot.addWidget(dialog)
+        dialog.layout().activate()
+        assert dialog.height() <= dialog.sizeHint().height() + 2

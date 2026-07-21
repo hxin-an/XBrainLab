@@ -11,7 +11,11 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
-from XBrainLab.ui.dialogs.preprocess.common import create_preprocess_section
+from XBrainLab.ui.dialogs.preprocess.common import (
+    configure_preprocess_dialog_layout,
+    create_preprocess_section,
+    fit_preprocess_dialog_to_content,
+)
 
 
 class NormalizeDialog(BaseDialog):
@@ -35,12 +39,12 @@ class NormalizeDialog(BaseDialog):
         self.zscore_radio = None
         self.minmax_radio = None
         super().__init__(parent, title="Normalize", width=380, height=220)
+        fit_preprocess_dialog_to_content(self, minimum_width=380)
 
     def init_ui(self):
         """Initialize the dialog UI with normalization method selection."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 14)
-        layout.setSpacing(16)
+        configure_preprocess_dialog_layout(layout)
 
         self.section_container, self.section_title, method_layout = (
             create_preprocess_section("Normalization method", parent=self)

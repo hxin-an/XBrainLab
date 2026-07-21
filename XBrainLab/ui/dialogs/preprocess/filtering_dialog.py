@@ -16,7 +16,11 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
-from XBrainLab.ui.dialogs.preprocess.common import create_preprocess_section
+from XBrainLab.ui.dialogs.preprocess.common import (
+    configure_preprocess_dialog_layout,
+    create_preprocess_section,
+    fit_preprocess_dialog_to_content,
+)
 
 
 class FilteringDialog(BaseDialog):
@@ -37,11 +41,11 @@ class FilteringDialog(BaseDialog):
         self.validation_label: QLabel
         self.ok_button: QPushButton
         super().__init__(parent, title="Filtering", width=520, height=360)
+        fit_preprocess_dialog_to_content(self, minimum_width=520)
 
     def init_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 14)
-        layout.setSpacing(16)
+        configure_preprocess_dialog_layout(layout)
 
         bandpass_section, self.bandpass_title, bandpass_layout = (
             create_preprocess_section("Band-pass filter", parent=self)
@@ -223,6 +227,7 @@ class FilteringDialog(BaseDialog):
         self.validation_label.setText(error)
         self.validation_label.setVisible(bool(error))
         self.ok_button.setEnabled(not error)
+        fit_preprocess_dialog_to_content(self, minimum_width=520)
 
     def accept(self) -> None:
         error = self._validation_error()
