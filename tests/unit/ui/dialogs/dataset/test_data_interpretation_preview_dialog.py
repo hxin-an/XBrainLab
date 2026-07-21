@@ -4358,11 +4358,11 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     working_height = dialog.height()
 
     _show_step(dialog, "Review and Import")
-    qtbot.waitUntil(lambda: dialog.height() < working_height)
+    assert dialog.height() < working_height
     compact_height = dialog.height()
 
     dialog.import_report_toggle.click()
-    qtbot.waitUntil(lambda: dialog.height() > compact_height)
+    assert dialog.height() > compact_height
     assert dialog.height() <= working_height
     review_header = dialog.review_tree.header()
     review_viewport = dialog.review_tree.viewport()
@@ -4371,7 +4371,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert review_header.length() == review_viewport.width()
 
     _show_step(dialog, "Match Labels")
-    qtbot.waitUntil(lambda: dialog.height() == working_height)
+    assert dialog.height() == working_height
 
 
 def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):

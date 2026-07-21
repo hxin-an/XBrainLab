@@ -1710,8 +1710,10 @@ class DataInterpretationPreviewDialog(
                 self._fit_tree_columns_to_viewport(self.review_tree)
             self._sync_apply_state()
         self._fit_review_tree_height()
+        # Settle the final-step window size before returning to the event loop.
+        # Deferring this resize paints one frame at the previous step's height.
+        self._sync_review_dialog_geometry()
         self._sync_scroll_policy()
-        QTimer.singleShot(0, self._sync_review_dialog_geometry)
 
     def _sync_review_dialog_geometry(self) -> None:
         """Compact the final review while preserving the working-step size."""
