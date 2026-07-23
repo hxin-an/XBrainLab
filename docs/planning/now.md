@@ -6,13 +6,13 @@
 
 ## 目前焦點
 
-**Publish the validated Agent presentation checkpoint, then run Windows acceptance from that single branch.**
+**Run Windows acceptance from the published Agent presentation checkpoint.**
 
 先前稽核列出的 product、scientific correctness、Qt lifecycle 與 agent host-safety blocker 已完成
 實作、完整回歸、獨立 reviewer、commit / push 與 exact-commit dashboard 都已關閉。現在不再
 擴張功能；`ux/gui-review-preprocess-polish` 已完成 Agent presentation 自動化、可見 artifact
-與獨立 reviewer gate。收斂 checkpoint 後的下一步是 Windows 真人 click-through，接受後才進
-stabilization / main merge gate。
+與獨立 reviewer gate，presentation checkpoint `915e5ac4` 已 push。下一步是 Windows 真人
+click-through，接受後才進 stabilization / main merge gate。
 
 ## 本輪 To-do
 

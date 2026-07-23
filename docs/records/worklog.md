@@ -52,6 +52,8 @@
   - exact focused / human-like source fingerprints 穩定；human-like walkthrough `42/42` phases、
     `44` required screenshots、resource smoke PASS；Qt 100% / 125% / 150% gate PASS。
   - code 與 UI reviewer 都沒有 blocking finding。
+  - presentation source、tests、docs 與 compact artifacts 已提交為 `915e5ac4` 並 push 至
+    `origin/ux/gui-review-preprocess-polish`。
 - 證據：
   - `artifacts/ui/assistant-presentation-current/`
 - 接續 / 本輪剩餘：
