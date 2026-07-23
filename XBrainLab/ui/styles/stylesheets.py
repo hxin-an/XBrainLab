@@ -485,12 +485,18 @@ class Stylesheets:
 
     # --- Agent Assistant Panel ---
     AGENT_TITLE_BAR = """
-        background: #1b2025;
-        border-bottom: 1px solid #303840;
-        padding: 2px;
+        background: #181c20;
+        border-bottom: 1px solid #303941;
+        padding: 0px;
     """
 
-    AGENT_TITLE_LABEL = "color: #d7e0ea; font-weight: bold;"
+    AGENT_TITLE_LABEL = """
+        color: #edf3f8;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+        font-weight: 700;
+    """
 
     AGENT_STATUS_BADGE = """
         QLabel#AssistantDockStatus {
@@ -520,37 +526,50 @@ class Stylesheets:
     AGENT_TITLE_BTN = """
         QPushButton {
             background: transparent;
-            color: #b9c4ce;
-            border: none;
-            font-size: 14px;
-            font-weight: bold;
+            color: #aebac5;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            font-size: 18px;
+            font-weight: 600;
         }
         QPushButton:hover {
-            color: #ffffff;
-            background-color: #26313a;
-            border-radius: 3px;
+            color: #edf3f8;
+            background-color: #222a31;
+            border-color: #343f48;
         }
         QPushButton:focus {
-            color: #ffffff;
-            background-color: #26313a;
-            border: 1px solid #5e6a74;
-            border-radius: 3px;
+            color: #edf3f8;
+            background-color: #222a31;
+            border-color: #4b5c69;
+        }
+        QPushButton:disabled {
+            color: #68737d;
+            background: transparent;
+            border-color: transparent;
+        }
+        QPushButton::menu-indicator {
+            image: none;
+            width: 0px;
         }
     """
 
     AGENT_NEW_CONV_BTN = """
         QPushButton {
             background: transparent;
-            color: #b9c4ce;
-            border: none;
-            font-size: 16px;
-            font-weight: bold;
+            color: #aebac5;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            font-size: 19px;
+            font-weight: 500;
         }
-        QPushButton:hover { color: #ffffff; background-color: #26313a; }
+        QPushButton:hover {
+            color: #edf3f8;
+            background-color: #222a31;
+            border-color: #343f48;
+        }
         QPushButton:focus {
-            color: #ffffff;
-            background-color: #26313a;
-            border: 1px solid #5e6a74;
-            border-radius: 3px;
+            color: #edf3f8;
+            background-color: #222a31;
+            border-color: #4b5c69;
         }
     """

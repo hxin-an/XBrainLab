@@ -306,10 +306,10 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
     assert manager.retry_title_btn.text() == ""
     assert not manager.retry_title_btn.icon().isNull()
-    assert manager.settings_btn.text() == ""
-    assert not manager.settings_btn.icon().isNull()
-    assert manager.float_btn.text() == ""
-    assert not manager.float_btn.icon().isNull()
+    assert manager.settings_btn.text() == "⋮"
+    assert manager.settings_btn.icon().isNull()
+    assert manager.settings_btn.accessibleName() == "Assistant options"
+    assert not hasattr(manager, "float_btn")
     assert manager.retry_title_btn.isEnabled() is False
     assert not hasattr(manager, "clear_title_btn")
     assert manager.retry_title_btn.geometry().right() <= (
@@ -318,7 +318,7 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     menu_text = [
         action.text() for action in manager.settings_menu.actions() if action.text()
     ]
-    assert menu_text == ["Assistant settings", "New chat"]
+    assert menu_text == ["Assistant settings", "Float assistant", "New chat"]
     assert manager.clear_conversation_title_action.isEnabled() is False
 
     visible_title_text = " ".join(
@@ -357,10 +357,9 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert manager.retry_title_btn.isEnabled() is False
     assert manager.clear_conversation_title_action.isEnabled() is False
 
-    send_text_width = panel.send_btn.fontMetrics().horizontalAdvance(
-        panel.send_btn.text()
-    )
-    assert send_text_width < panel.send_btn.width() - 12
+    assert panel.send_btn.toolButtonStyle() is (Qt.ToolButtonStyle.ToolButtonIconOnly)
+    assert panel.send_btn.icon().isNull() is False
+    assert panel.send_btn.accessibleName() == "Send"
 
     panel.append_message("user", "hello from a product user")
     user_bubble = panel._latest_layout_message_bubble()

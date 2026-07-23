@@ -8,13 +8,12 @@ streaming responses, and debug-mode interception.
 from contextlib import suppress
 from uuid import uuid4
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
-    QButtonGroup,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QProgressBar,
@@ -22,6 +21,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpacerItem,
+    QStyle,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -60,9 +60,11 @@ from .presentation import (
     ChatTurnPresentation,
     ChatTurnPresentationPhase,
 )
+from .segmented_control import AssistantSegmentedControl
 from .status_presenter import build_assistant_empty_state
 from .styles import (
     ASSISTANT_PANEL_STYLE,
+    COMPOSER_SURFACE_STYLE,
     CONTROL_PANEL_STYLE,
     EMPTY_STATE_STYLE,
     EMPTY_STATE_TEXT_STYLE,
@@ -81,13 +83,13 @@ from .styles import (
     SEND_BUTTON_LOCKED_STYLE,
     SEND_BUTTON_PROCESSING_STYLE,
     SEND_BUTTON_STYLE,
-    SUGGESTION_PROMPT_STYLE,
     TURN_ACTIVITY_CANCELABILITY_STYLE,
     TURN_ACTIVITY_PROGRESS_STYLE,
     TURN_ACTIVITY_STEP_STYLE,
     TURN_ACTIVITY_STYLE,
     TURN_ACTIVITY_TITLE_STYLE,
 )
+from .suggestion_card import AssistantSuggestionCard
 
 PRODUCT_STATUS_HIDDEN_COMMANDS = frozenset(
     {
@@ -96,64 +98,8 @@ PRODUCT_STATUS_HIDDEN_COMMANDS = frozenset(
         "import_labels",
     }
 )
-CHAT_SURFACE_MAX_WIDTH = 720
-CHAT_CONTROL_MAX_WIDTH = 900
-
-EXECUTION_MODE_SELECTOR_STYLE = f"""
-    QWidget#AssistantModeSelector {{
-        background: transparent;
-        border: none;
-    }}
-    QPushButton {{
-        min-width: 72px;
-        min-height: 28px;
-        padding: 3px 10px;
-        color: {Theme.TEXT_SECONDARY};
-        background: {Theme.BACKGROUND_DARK};
-        border: 1px solid {Theme.BORDER};
-        font-size: 12px;
-        font-weight: 600;
-    }}
-    QPushButton#AssistantAskMode {{
-        border-top-left-radius: 5px;
-        border-bottom-left-radius: 5px;
-        border-top-right-radius: 0px;
-        border-bottom-right-radius: 0px;
-    }}
-    QPushButton#AssistantWorkflowMode {{
-        border-left: none;
-        border-top-left-radius: 0px;
-        border-bottom-left-radius: 0px;
-        border-top-right-radius: 5px;
-        border-bottom-right-radius: 5px;
-    }}
-    QPushButton:checked {{
-        color: {Theme.TEXT_PRIMARY};
-        background: {Theme.BLUE_PRESSED};
-        border-color: {Theme.BLUE_FOCUS_BORDER};
-    }}
-    QPushButton:hover:!checked {{
-        color: {Theme.TEXT_PRIMARY};
-        background: {Theme.BACKGROUND_MID};
-    }}
-    QPushButton:disabled {{
-        color: {Theme.BTN_DISABLED_TEXT};
-        background: {Theme.BTN_DISABLED_BG};
-        border-color: {Theme.BTN_DISABLED_BORDER};
-    }}
-    QPushButton:checked:disabled {{
-        color: #c9d8e6;
-        background: #29445a;
-        border-color: #456b88;
-    }}
-    QPushButton:focus {{
-        color: {Theme.TEXT_PRIMARY};
-        border: 1px solid {Theme.BLUE_FOCUS_BORDER};
-    }}
-    QPushButton#AssistantWorkflowMode:focus {{
-        border-left: 1px solid {Theme.BLUE_FOCUS_BORDER};
-    }}
-"""
+CHAT_SURFACE_MAX_WIDTH = 620
+CHAT_CONTROL_MAX_WIDTH = 620
 
 WORKFLOW_RUN_STATUS_STYLE = f"""
     QLabel#AssistantWorkflowRunStatus {{
@@ -227,6 +173,18 @@ class ChatPanel(QWidget):
         self.debug_mode = ToolDebugMode(script_path) if script_path else None
         self.setObjectName("AssistantPanel")
         self.setStyleSheet(ASSISTANT_PANEL_STYLE)
+        self._deferred_reflow_timer = QTimer(self)
+        self._deferred_reflow_timer.setSingleShot(True)
+        self._deferred_reflow_timer.timeout.connect(self._reflow_chat_content)
+        self._empty_state_scroll_timer = QTimer(self)
+        self._empty_state_scroll_timer.setSingleShot(True)
+        self._empty_state_scroll_timer.timeout.connect(self._apply_empty_state_scroll)
+        self._tail_scroll_timer = QTimer(self)
+        self._tail_scroll_timer.setSingleShot(True)
+        self._tail_scroll_timer.timeout.connect(self._apply_pending_scroll_to_bottom)
+        self._viewport_reflow_timer = QTimer(self)
+        self._viewport_reflow_timer.setSingleShot(True)
+        self._viewport_reflow_timer.timeout.connect(self._apply_queued_viewport_reflow)
         self.init_ui()
         self._notice_timer = QTimer(self)
         self._notice_timer.setSingleShot(True)
@@ -249,7 +207,7 @@ class ChatPanel(QWidget):
 
         # Container Widget inside ScrollArea
         self.chat_content_widget = QWidget()
-        self.chat_content_widget.setStyleSheet("background-color: #1e1e1e;")
+        self.chat_content_widget.setStyleSheet("background-color: #181c20;")
         self.chat_layout = QVBoxLayout(self.chat_content_widget)
         self.chat_layout.setContentsMargins(12, 12, 12, 12)
         self.chat_layout.setSpacing(12)
@@ -321,9 +279,10 @@ class ChatPanel(QWidget):
             QSizePolicy.Policy.Maximum,
         )
         control_layout = QVBoxLayout(control_panel)
-        control_layout.setContentsMargins(10, 8, 10, 8)
-        control_layout.setSpacing(7)
-        self.mode_section_label = QLabel("Agent mode")
+        self.control_layout = control_layout
+        control_layout.setContentsMargins(12, 10, 12, 11)
+        control_layout.setSpacing(8)
+        self.mode_section_label = QLabel("Agent mode", control_panel)
         self.mode_section_label.setObjectName("AssistantModeSectionLabel")
         self.mode_section_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; background: transparent; "
@@ -334,59 +293,39 @@ class ChatPanel(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        control_layout.addWidget(self.mode_section_label)
+        self.mode_section_label.setVisible(False)
 
-        mode_row = QWidget()
+        mode_row = AssistantSegmentedControl(
+            (
+                ("single", ASSISTANT_MODE_LABELS["single"]),
+                ("multi", ASSISTANT_MODE_LABELS["multi"]),
+            ),
+            descriptions=ASSISTANT_MODE_DESCRIPTIONS,
+        )
         self.mode_selector_widget = mode_row
-        mode_row.setObjectName("AssistantModeSelector")
-        mode_row.setStyleSheet(EXECUTION_MODE_SELECTOR_STYLE)
         mode_row.setMaximumWidth(CHAT_CONTROL_MAX_WIDTH)
         mode_row.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        mode_layout = QHBoxLayout(mode_row)
-        mode_layout.setContentsMargins(4, 0, 4, 0)
-        mode_layout.setSpacing(0)
-
-        self.execution_mode_group = QButtonGroup(self)
-        self.execution_mode_group.setExclusive(True)
-
-        self.ask_mode_btn = QPushButton(ASSISTANT_MODE_LABELS["single"])
-        self.ask_mode_btn.setObjectName("AssistantAskMode")
-        self.ask_mode_btn.setCheckable(True)
-        self.ask_mode_btn.setChecked(True)
-        self.ask_mode_btn.setMinimumHeight(30)
+        self.ask_mode_btn = mode_row.button("single")
         self.ask_mode_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.ask_mode_btn.setAccessibleName(ASSISTANT_MODE_LABELS["single"])
         self.ask_mode_btn.setToolTip(ASSISTANT_MODE_DESCRIPTIONS["single"])
         self.ask_mode_btn.setAccessibleDescription(
             ASSISTANT_MODE_DESCRIPTIONS["single"]
         )
-        self.ask_mode_btn.clicked.connect(
-            lambda _checked=False: self._set_execution_mode("single")
-        )
-        self.execution_mode_group.addButton(self.ask_mode_btn)
-        mode_layout.addWidget(self.ask_mode_btn)
-
-        self.workflow_mode_btn = QPushButton(ASSISTANT_MODE_LABELS["multi"])
-        self.workflow_mode_btn.setObjectName("AssistantWorkflowMode")
-        self.workflow_mode_btn.setCheckable(True)
-        self.workflow_mode_btn.setMinimumHeight(30)
+        self.workflow_mode_btn = mode_row.button("multi")
         self.workflow_mode_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.workflow_mode_btn.setAccessibleName(ASSISTANT_MODE_LABELS["multi"])
         self.workflow_mode_btn.setToolTip(ASSISTANT_MODE_DESCRIPTIONS["multi"])
         self.workflow_mode_btn.setAccessibleDescription(
             ASSISTANT_MODE_DESCRIPTIONS["multi"]
         )
-        self.workflow_mode_btn.clicked.connect(
-            lambda _checked=False: self._set_execution_mode("multi")
-        )
-        self.execution_mode_group.addButton(self.workflow_mode_btn)
-        mode_layout.addWidget(self.workflow_mode_btn)
-        mode_layout.addStretch(1)
+        mode_row.selection_changed.connect(self._set_execution_mode)
+        mode_row.set_selected("single")
 
-        self.mode_description_label = QLabel("")
+        self.mode_description_label = QLabel("", control_panel)
         self.mode_description_label.setObjectName("AssistantModeDescription")
         self.mode_description_label.setStyleSheet(EXECUTION_MODE_DESCRIPTION_STYLE)
         self.mode_description_label.setWordWrap(True)
@@ -400,7 +339,6 @@ class ChatPanel(QWidget):
         )
         self.mode_description_label.setAccessibleName("Execution mode behavior")
         self.mode_description_label.setVisible(False)
-        control_layout.addWidget(self.mode_description_label)
         self._update_mode_description()
 
         self.workflow_run_status_label = QLabel("")
@@ -421,7 +359,9 @@ class ChatPanel(QWidget):
         # Composer: Input Field and Send / Stop Button
         input_widget = QWidget()
         self.input_widget = input_widget
-        input_widget.setStyleSheet("background: transparent; border: none;")
+        input_widget.setObjectName("AssistantComposerSurface")
+        input_widget.setProperty("inputFocused", False)
+        input_widget.setStyleSheet(COMPOSER_SURFACE_STYLE)
         input_widget.setMaximumWidth(CHAT_CONTROL_MAX_WIDTH)
         input_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -432,19 +372,29 @@ class ChatPanel(QWidget):
             input_widget,
         )
         self.input_layout = input_layout
-        input_layout.setContentsMargins(4, 4, 4, 4)
-        input_layout.setSpacing(10)
+        input_layout.setContentsMargins(5, 4, 5, 4)
+        input_layout.setSpacing(6)
 
         self.input_field = AssistantComposer()
         self.input_field.setPlaceholderText("Ask about the current EEG workflow...")
         self.input_field.setStyleSheet(INPUT_FIELD_STYLE)
+        self.input_field.installEventFilter(self)
         self.input_field.submit_requested.connect(self._on_send)
         self.input_field.textChanged.connect(self._apply_composer_activity_state)
         input_layout.addWidget(self.input_field, 1)
 
         self.send_btn = QToolButton()
+        self.send_btn.setObjectName("AssistantSendButton")
         self.send_btn.setText("Send")
-        self.send_btn.setFixedSize(88, 36)
+        self.send_btn.setAccessibleName("Send")
+        self.send_btn.setFixedSize(38, 38)
+        self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        style = self.style()
+        if style is not None:
+            self.send_btn.setIcon(
+                style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward)
+            )
+            self.send_btn.setIconSize(QSize(18, 18))
         self.send_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_btn.clicked.connect(self._on_send)
@@ -455,10 +405,10 @@ class ChatPanel(QWidget):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
 
-        control_layout.addWidget(mode_row)
-        control_layout.addWidget(input_widget)
-        control_layout.setAlignment(input_widget, Qt.AlignmentFlag.AlignHCenter)
-        control_layout.setAlignment(mode_row, Qt.AlignmentFlag.AlignHCenter)
+        self.mode_control_host = self._build_centered_control_host(mode_row)
+        self.composer_host = self._build_centered_control_host(input_widget)
+        control_layout.addWidget(self.mode_control_host)
+        control_layout.addWidget(self.composer_host)
 
         self.notice_label = QLabel("")
         self.notice_label.setObjectName("AssistantNotice")
@@ -467,6 +417,20 @@ class ChatPanel(QWidget):
         self.notice_label.setVisible(False)
         control_layout.addWidget(self.notice_label)
         layout.addWidget(control_panel, 0)
+
+    @staticmethod
+    def _build_centered_control_host(control: QWidget) -> QWidget:
+        """Center one expanding control without making its max width a minimum."""
+        host = QWidget()
+        host.setStyleSheet("background: transparent; border: none;")
+        host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        host_layout = QHBoxLayout(host)
+        host_layout.setContentsMargins(0, 0, 0, 0)
+        host_layout.setSpacing(0)
+        host_layout.addStretch(1)
+        host_layout.addWidget(control, 1000)
+        host_layout.addStretch(1)
+        return host
 
     def _build_runtime_state(self) -> QFrame:
         """Build the single inline local-runtime status and recovery surface."""
@@ -604,13 +568,15 @@ class ChatPanel(QWidget):
         empty.setObjectName("AssistantEmptyState")
         empty.setStyleSheet(EMPTY_STATE_STYLE)
         empty_layout = QVBoxLayout(empty)
-        empty_layout.setContentsMargins(14, 14, 14, 14)
-        empty_layout.setSpacing(8)
+        self.empty_state_layout = empty_layout
+        empty_layout.setContentsMargins(10, 12, 10, 12)
+        empty_layout.setSpacing(10)
 
         self.empty_state_title = QLabel("How can I help with your EEG workflow?")
         self.empty_state_title.setObjectName("AssistantEmptyTitle")
         self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
         self.empty_state_title.setWordWrap(True)
+        self.empty_state_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_state_title.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Minimum,
@@ -618,21 +584,23 @@ class ChatPanel(QWidget):
         empty_layout.addWidget(self.empty_state_title)
 
         self.empty_state_intro = QLabel(
-            "Ask the local assistant to explain the current state, review settings, "
-            "or guide the next safe step."
+            "I can review your settings, explain results, and recommend next steps."
         )
         self.empty_state_intro.setWordWrap(True)
         self.empty_state_intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
+        self.empty_state_intro.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_state_intro)
 
         self.empty_state_backend_label = QLabel("No EEG files are open yet.")
         self.empty_state_backend_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_backend_label.setWordWrap(True)
+        self.empty_state_backend_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_state_backend_label)
 
         self.empty_state_next_label = QLabel("")
         self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_next_label.setWordWrap(True)
+        self.empty_state_next_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_state_next_label.setVisible(False)
         empty_layout.addWidget(self.empty_state_next_label)
 
@@ -641,47 +609,52 @@ class ChatPanel(QWidget):
         self.suggestion_prompt_widget.setStyleSheet(
             "background: transparent; border: none;"
         )
-        self.suggestion_prompt_layout = QGridLayout(self.suggestion_prompt_widget)
-        self.suggestion_prompt_layout.setContentsMargins(0, 4, 0, 0)
-        self.suggestion_prompt_layout.setSpacing(7)
+        self.suggestion_prompt_layout = QVBoxLayout(self.suggestion_prompt_widget)
+        self.suggestion_prompt_layout.setContentsMargins(0, 6, 0, 0)
+        self.suggestion_prompt_layout.setSpacing(8)
 
         prompts = (
             (
                 "Check the current workflow status",
+                "See the progress and results.",
                 "Check the current workflow status",
+                QStyle.StandardPixmap.SP_DialogApplyButton,
+                "blue",
             ),
             (
                 "Explain the current settings",
+                "Review key parameters and configurations.",
                 "Explain the current settings",
+                QStyle.StandardPixmap.SP_FileDialogDetailedView,
+                "green",
             ),
             (
                 "Suggest the next step",
+                "Get recommendations for what to do next.",
                 "Suggest the next step",
+                QStyle.StandardPixmap.SP_ArrowForward,
+                "violet",
             ),
             (
                 "Review the training configuration",
+                "Inspect training setup and hyperparameters.",
                 "Review the training configuration",
+                QStyle.StandardPixmap.SP_ComputerIcon,
+                "amber",
             ),
         )
-        self.suggestion_prompt_buttons: list[QToolButton] = []
-        for label, prompt in prompts:
-            button = QToolButton(self.suggestion_prompt_widget)
-            button.setObjectName("AssistantSuggestionPrompt")
-            button.setText(label)
-            button.setProperty("assistantPrompt", prompt)
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-            button.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Fixed,
+        self.suggestion_prompt_buttons: list[AssistantSuggestionCard] = []
+        for label, subtitle, prompt, icon, accent in prompts:
+            button = AssistantSuggestionCard(
+                label,
+                subtitle,
+                icon=icon,
+                accent=accent,
+                parent=self.suggestion_prompt_widget,
             )
-            button.setMinimumHeight(32)
-            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setStyleSheet(SUGGESTION_PROMPT_STYLE)
+            button.setProperty("assistantPrompt", prompt)
             button.clicked.connect(
-                lambda _checked=False, selected=button: (
-                    self._fill_suggestion_prompt(selected)
-                )
+                lambda selected=button: self._fill_suggestion_prompt(selected)
             )
             self.suggestion_prompt_buttons.append(button)
         self._layout_suggestion_prompts(1)
@@ -694,7 +667,7 @@ class ChatPanel(QWidget):
 
         return empty
 
-    def _fill_suggestion_prompt(self, button: QToolButton) -> None:
+    def _fill_suggestion_prompt(self, button: AssistantSuggestionCard) -> None:
         """Place a suggestion in the composer so the user remains in control."""
         prompt = button.property("assistantPrompt")
         if (
@@ -708,21 +681,12 @@ class ChatPanel(QWidget):
         self.input_field.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _layout_suggestion_prompts(self, columns: int) -> None:
-        """Lay out complete prompt labels without eliding their meaning."""
-        columns = 1 if columns <= 1 else 2
+        """Keep recommendation rows in one scan-friendly vertical sequence."""
+        del columns
         for button in self.suggestion_prompt_buttons:
             self.suggestion_prompt_layout.removeWidget(button)
-        for index, button in enumerate(self.suggestion_prompt_buttons):
-            self.suggestion_prompt_layout.addWidget(
-                button,
-                index // columns,
-                index % columns,
-            )
-        for column in range(2):
-            self.suggestion_prompt_layout.setColumnStretch(
-                column,
-                1 if column < columns else 0,
-            )
+        for button in self.suggestion_prompt_buttons:
+            self.suggestion_prompt_layout.addWidget(button)
 
     def _build_response_actions(self) -> QWidget:
         """Build the lightweight action list attached to the latest response."""
@@ -788,7 +752,7 @@ class ChatPanel(QWidget):
             response_layout.activate()
         self._place_transient_surfaces_after_messages()
         self._reflow_chat_content()
-        QTimer.singleShot(0, self._reflow_chat_content)
+        self._schedule_reflow()
         if self._follow_transcript_updates:
             self._scroll_to_bottom()
 
@@ -981,12 +945,8 @@ class ChatPanel(QWidget):
 
     def _sync_control_context_visibility(self) -> None:
         """Keep mode choices discoverable while limiting contextual guidance."""
-        runtime_ready = (
-            self._runtime_phase is AssistantRuntimePhase.READY
-            or self.debug_mode is not None
-        )
         self.mode_selector_widget.setVisible(True)
-        self.mode_description_label.setVisible(runtime_ready and not self.is_processing)
+        self.mode_description_label.setVisible(False)
         self.workflow_run_status_label.setVisible(False)
 
     def set_turn_activity(self, presentation: ChatTurnPresentation) -> None:
@@ -1031,12 +991,18 @@ class ChatPanel(QWidget):
         cancelability = self._turn_presentation.cancelability
         if self.is_processing and cancelability is ChatTurnCancelability.CANCELLABLE:
             self.send_btn.setText("Stop")
+            self.send_btn.setIcon(QIcon())
+            self.send_btn.setFixedSize(72, 38)
+            self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             self.send_btn.setToolTip("Stop this request before an action starts.")
             self.send_btn.setStyleSheet(SEND_BUTTON_PROCESSING_STYLE)
             send_enabled = runtime_ready
         elif self.is_processing:
             stopping = cancelability is ChatTurnCancelability.STOPPING
             self.send_btn.setText("Stopping" if stopping else "Working")
+            self.send_btn.setIcon(QIcon())
+            self.send_btn.setFixedSize(92, 38)
+            self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             self.send_btn.setToolTip(
                 "Waiting for the local assistant to stop."
                 if stopping
@@ -1049,6 +1015,14 @@ class ChatPanel(QWidget):
             send_enabled = False
         else:
             self.send_btn.setText("Send")
+            style = self.style()
+            if style is not None:
+                self.send_btn.setIcon(
+                    style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward)
+                )
+                self.send_btn.setIconSize(QSize(18, 18))
+            self.send_btn.setFixedSize(38, 38)
+            self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             self.send_btn.setToolTip("Send request")
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
             send_enabled = runtime_ready and bool(self.input_field.text().strip())
@@ -1065,6 +1039,22 @@ class ChatPanel(QWidget):
                 and not self.is_processing
                 and runtime_ready
             )
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        """Reflect composer focus on its integrated input surface."""
+        if watched is self.input_field and event.type() in {
+            QEvent.Type.FocusIn,
+            QEvent.Type.FocusOut,
+        }:
+            self.input_widget.setProperty(
+                "inputFocused",
+                event.type() is QEvent.Type.FocusIn,
+            )
+            style = self.input_widget.style()
+            if style is not None:
+                style.unpolish(self.input_widget)
+                style.polish(self.input_widget)
+        return super().eventFilter(watched, event)
 
     def _on_send(self):
         """Handle send button click or Enter key press.
@@ -1483,7 +1473,7 @@ class ChatPanel(QWidget):
         """Reflow content that may have arrived while the dock was hidden."""
         super().showEvent(event)
         self._reflow_chat_content()
-        QTimer.singleShot(0, self._reflow_chat_content)
+        self._schedule_reflow()
 
     def _reflow_chat_content(self) -> None:
         """Fit transcript bubbles and response actions to the live viewport."""
@@ -1509,15 +1499,13 @@ class ChatPanel(QWidget):
         ):
             surface.setFixedWidth(transcript_surface_width)
 
-        control_width = max(
-            min(self.width() - 20, CHAT_CONTROL_MAX_WIDTH),
+        empty_margins = self.empty_state_layout.contentsMargins()
+        suggestion_width = max(
+            transcript_surface_width - empty_margins.left() - empty_margins.right(),
             1,
         )
-        for control in (
-            self.input_widget,
-            self.mode_selector_widget,
-        ):
-            control.setMaximumWidth(control_width)
+        for suggestion in self.suggestion_prompt_buttons:
+            suggestion.fit_to_width(suggestion_width)
 
         for index in range(self.chat_layout.count()):
             item = self.chat_layout.itemAt(index)
@@ -1531,14 +1519,12 @@ class ChatPanel(QWidget):
             else QBoxLayout.Direction.LeftToRight
         )
         self._layout_suggestion_prompts(2 if container_width >= 520 else 1)
-        self.input_layout.setDirection(
-            QBoxLayout.Direction.TopToBottom
-            if control_width < 380
-            else QBoxLayout.Direction.LeftToRight
-        )
+        self.input_layout.setDirection(QBoxLayout.Direction.LeftToRight)
         self._fit_runtime_state_to_contents()
         self._sync_content_alignment()
         self.chat_content_widget.updateGeometry()
+        if self._shows_empty_state_only():
+            self._scroll_empty_state_to_top()
 
     def _place_transient_surfaces_after_messages(self) -> None:
         """Keep current transcript activity after the durable messages."""
@@ -1591,11 +1577,7 @@ class ChatPanel(QWidget):
             0,
             0,
             QSizePolicy.Policy.Minimum,
-            (
-                QSizePolicy.Policy.Expanding
-                if centered_surface_visible
-                else QSizePolicy.Policy.Minimum
-            ),
+            QSizePolicy.Policy.Expanding,
         )
         self.chat_layout.invalidate()
 
@@ -1634,7 +1616,8 @@ class ChatPanel(QWidget):
         if not isinstance(record, ChatMessageRecord):
             raise TypeError("ChatPanel messages require typed chat records.")
         is_user = record.role is ChatMessageRole.USER
-        follow_tail = is_user or self._is_near_bottom()
+        had_transcript = self._has_transcript_messages()
+        follow_tail = is_user or not had_transcript or self._is_near_bottom()
         self._follow_transcript_updates = follow_tail
         if is_user or not record.has_active_actions:
             self.clear_response_actions()
@@ -1659,7 +1642,7 @@ class ChatPanel(QWidget):
             self.show_response_actions(record)
         self._reflow_chat_content()
         self._sync_content_alignment()
-        QTimer.singleShot(0, self._reflow_chat_content)
+        self._schedule_reflow()
         if follow_tail:
             self._scroll_to_bottom()
         else:
@@ -1742,16 +1725,37 @@ class ChatPanel(QWidget):
         """Return transcript truth even while the assistant dock is hidden."""
         return bool(self.chat_content_widget.findChildren(MessageBubble))
 
+    def _shows_empty_state_only(self) -> bool:
+        """Return whether the scroll area currently contains only onboarding UI."""
+        return bool(
+            self.empty_state_widget.isVisible()
+            and not self._has_transcript_messages()
+            and not self.confirmation_card_widget.isVisible()
+            and not self.turn_activity_widget.isVisible()
+        )
+
+    def _scroll_empty_state_to_top(self) -> None:
+        """Keep the onboarding title visible when its suggestions need scrolling."""
+        self._pending_scroll_to_bottom = False
+        # The empty state is not transcript history. Keep the next real turn
+        # tail-following even though onboarding itself starts at the top.
+        self._follow_transcript_updates = True
+
+        self._apply_empty_state_scroll()
+        self._empty_state_scroll_timer.start(0)
+
+    def _apply_empty_state_scroll(self) -> None:
+        """Apply top alignment while the onboarding surface remains current."""
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        if scroll_bar is not None and self._shows_empty_state_only():
+            scroll_bar.setValue(scroll_bar.minimum())
+
     def _scroll_to_bottom(self):
         """Scroll the chat area to the bottom."""
         self._follow_transcript_updates = True
         self._pending_scroll_to_bottom = True
-
-        def apply_scroll() -> None:
-            self._apply_pending_scroll_to_bottom()
-
-        apply_scroll()
-        QTimer.singleShot(0, apply_scroll)
+        self._apply_pending_scroll_to_bottom()
+        self._tail_scroll_timer.start(0)
 
     def _on_scroll_range_changed(self, _minimum: int, _maximum: int) -> None:
         """Reflow after scrollbar visibility changes, then follow the tail."""
@@ -1764,14 +1768,20 @@ class ChatPanel(QWidget):
         if self._viewport_reflow_pending:
             return
         self._viewport_reflow_pending = True
+        self._viewport_reflow_timer.start(0)
 
-        def apply_reflow() -> None:
-            self._viewport_reflow_pending = False
-            self._reflow_chat_content()
-            if self._follow_transcript_updates or self._pending_scroll_to_bottom:
-                self._scroll_to_bottom()
+    def _apply_queued_viewport_reflow(self) -> None:
+        """Apply one scrollbar-driven reflow through an owned timer."""
+        self._viewport_reflow_pending = False
+        self._reflow_chat_content()
+        if self._shows_empty_state_only():
+            self._scroll_empty_state_to_top()
+        elif self._follow_transcript_updates or self._pending_scroll_to_bottom:
+            self._scroll_to_bottom()
 
-        QTimer.singleShot(0, apply_reflow)
+    def _schedule_reflow(self) -> None:
+        """Coalesce deferred geometry work in a timer owned by this panel."""
+        self._deferred_reflow_timer.start(0)
 
     def _on_scroll_value_changed(self, _value: int) -> None:
         """Track explicit reading position without fighting internal follow."""

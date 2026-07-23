@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-07-20`
+最後更新：`2026-07-23`
 
 ## 這份文件的用途
 
@@ -34,6 +34,29 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-07-23
+
+### 22:19 Agent Panel presentation closure
+
+- 做了什麼：
+  - 依產品 reference 收斂 Assistant Header、完整 loading / empty state、suggestion cards、
+    `Single action` / `Guided workflow` selector、兩行 composer 與 Assistant Settings。
+  - 保留既有 agent reasoning、tools、confirmation、runtime state 與 backend truth，只調整
+    presentation；同時把 ChatPanel / MessageBubble deferred reflow 改為 owner-bound timer。
+  - 建立 compact current artifact，保留 loading、empty、conversation、confirmation、error、
+    narrow、Settings collapsed / expanded / constrained-height 與 150% scale 畫面。
+- 結果：
+  - focused presentation / regression suite `511 passed`；architecture、Ruff、touched product
+    BasedPyright 與 diff check PASS。
+  - exact focused / human-like source fingerprints 穩定；human-like walkthrough `42/42` phases、
+    `44` required screenshots、resource smoke PASS；Qt 100% / 125% / 150% gate PASS。
+  - code 與 UI reviewer 都沒有 blocking finding。
+- 證據：
+  - `artifacts/ui/assistant-presentation-current/`
+- 接續 / 本輪剩餘：
+  - Windows native DPI、多螢幕、真實 local-model 長 session 與真人 click-through 尚未完成。
+  - full-repo BasedPyright 仍有 `122` 個既有 errors；本輪只證明 touched product files clean。
 
 ## 2026-07-20
 

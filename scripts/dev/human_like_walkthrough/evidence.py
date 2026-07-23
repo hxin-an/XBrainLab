@@ -5,10 +5,18 @@ from __future__ import annotations
 import re
 from itertools import pairwise
 from math import ceil
+from pathlib import Path
 from typing import Any, cast
 
+from PIL import Image, ImageStat
 from PyQt6.QtCore import QPoint, QRect, Qt
-from PyQt6.QtWidgets import QAbstractButton, QComboBox, QLabel, QWidget
+from PyQt6.QtWidgets import (
+    QAbstractButton,
+    QComboBox,
+    QLabel,
+    QToolButton,
+    QWidget,
+)
 
 from scripts.dev.capture_chatpanel_local_walkthrough import collect_visible_messages
 from scripts.dev.human_like_walkthrough.driver import WalkthroughAssistantController
@@ -617,6 +625,61 @@ def _label_text_exceeds_bounds(label: QLabel) -> bool:
     )
 
 
+def _button_renders_text(button: QAbstractButton) -> bool:
+    """Return whether Qt paints the button text in its current presentation."""
+    return not (
+        isinstance(button, QToolButton)
+        and button.toolButtonStyle() is Qt.ToolButtonStyle.ToolButtonIconOnly
+    )
+
+
+def icon_only_control_contrast_evidence(
+    root: QWidget,
+    screenshot: Path,
+    control: QToolButton,
+) -> dict[str, Any]:
+    """Measure whether an icon-only control paints visible icon detail."""
+    if control.toolButtonStyle() is not Qt.ToolButtonStyle.ToolButtonIconOnly:
+        return {
+            "passed": True,
+            "applicable": False,
+            "luminance_span": 0,
+            "luminance_stddev": 0.0,
+        }
+    if control.icon().isNull() or not control.accessibleName().strip():
+        return {
+            "passed": False,
+            "applicable": True,
+            "luminance_span": 0,
+            "luminance_stddev": 0.0,
+        }
+
+    icon_size = control.iconSize()
+    icon_width = max(min(icon_size.width(), control.width()), 1)
+    icon_height = max(min(icon_size.height(), control.height()), 1)
+    local_x = max((control.width() - icon_width) // 2, 0)
+    local_y = max((control.height() - icon_height) // 2, 0)
+    origin = control.mapTo(root, QPoint(local_x, local_y))
+    with Image.open(screenshot) as captured:
+        scale_x = captured.width / max(root.width(), 1)
+        scale_y = captured.height / max(root.height(), 1)
+        left = round(origin.x() * scale_x)
+        top = round(origin.y() * scale_y)
+        right = round((origin.x() + icon_width) * scale_x)
+        bottom = round((origin.y() + icon_height) * scale_y)
+        crop = captured.convert("L").crop((left, top, right, bottom))
+        low, high = crop.getextrema() or (0, 0)
+        stddev = float(ImageStat.Stat(crop).stddev[0]) if crop.size[0] else 0.0
+    span = int(high) - int(low)
+    return {
+        "passed": span >= 24 and stddev >= 3.0,
+        "applicable": True,
+        "luminance_span": span,
+        "luminance_stddev": round(stddev, 3),
+        "bounds": [left, top, max(right - left, 0), max(bottom - top, 0)],
+    }
+
+
 def _assistant_text_overflow(panel: Any) -> list[str]:
     """Return named assistant widgets whose rendered text exceeds bounds."""
     overflows: list[str] = []
@@ -633,6 +696,8 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
             continue
         text = " ".join(str(widget.text() or "").split())
         if not text:
+            continue
+        if isinstance(widget, QAbstractButton) and not _button_renders_text(widget):
             continue
         available = max(widget.contentsRect().width(), 1)
         padding = 18 if isinstance(widget, QAbstractButton) else 0

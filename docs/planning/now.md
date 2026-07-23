@@ -1,17 +1,18 @@
 # XBrainLab Now
 
-最後更新：`2026-07-21`
+最後更新：`2026-07-23`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Close the focused GUI repair candidate, then run Windows acceptance from that single branch.**
+**Publish the validated Agent presentation checkpoint, then run Windows acceptance from that single branch.**
 
 先前稽核列出的 product、scientific correctness、Qt lifecycle 與 agent host-safety blocker 已完成
 實作、完整回歸、獨立 reviewer、commit / push 與 exact-commit dashboard 都已關閉。現在不再
-擴張功能；`ux/gui-review-preprocess-polish` 已完成自動化與可見 artifact gate，收斂 commit / push
-後的下一步是 Windows 真人 click-through，接受後才進 stabilization / main merge gate。
+擴張功能；`ux/gui-review-preprocess-polish` 已完成 Agent presentation 自動化、可見 artifact
+與獨立 reviewer gate。收斂 checkpoint 後的下一步是 Windows 真人 click-through，接受後才進
+stabilization / main merge gate。
 
 ## 本輪 To-do
 
@@ -31,10 +32,10 @@
 | Done | Scientific training correctness | validation-only checkpoint、final test evaluation、split provenance、undefined AUC、BIDS bounds/run mapping、overlapping-window leakage 與 saliency atomicity都有 regression。 |
 | Done | Non-blocking application view / shutdown | 原子 publication、non-blocking query、recovery path、background snapshot generation、owner-bound Qt receiver 與 native teardown regression 已通過。 |
 | Done | Agent verified host loop | strict envelope、repair context、turn guard、request admission、confirmation / UI handoff 與真 Phi-4 ChatPanel workflow 已完成；raw model accuracy 仍明確列為 research gap。 |
-| Done | Agent Panel product UI | loading / empty / ready / working / error、responsive composer、mode selector、suggestion prompts、inline typed confirmation 與 retry 已統一；12 列長 action card 可捲動且操作可達，無空白長值會安全斷行且 Copy 不污染原值；hidden dock refresh 不會讓 empty state 與 transcript 並存；focused `455/455`、完整 UI unit suite `2089/2089`、product walkthrough `7/7` 連續 3 輪、human-like walkthrough與 100% / 125% / 150% Qt subprocess gate 已通過。 |
+| Done | Agent Panel product UI | Header、loading / empty / ready / working / error、responsive composer、`Single action` / `Guided workflow` selector、suggestion prompts、inline typed confirmation、retry 與 Settings 已統一；owner-bound deferred reflow 不會在 widget 刪除後回呼。最新 focused presentation / regression suite `511/511`，exact focused / human-like source fingerprints 穩定，human-like walkthrough `42/42` phases、44 screenshots，100% / 125% / 150% Qt subprocess gate 與兩個 reviewer gate 均通過。 |
 | Done | Candidate closure | 完整 unit `9006`、integration `388`、靜態 / architecture / docs、多資料集、UI walkthrough、兩個獨立 reviewer 與 exact-commit dashboard 全數 PASS；branch 已 push。 |
 | Done | Review / preprocess / visualization repair | Step 5 recipe 與 Epoch 解耦且 optional；Smart Parser、preprocess dialogs、三態 preview、固定 History、Explanation Plots 與共用色階 spectrogram 已完成 focused `567`、product `7`、human-like `42/42` 與多資料集 gate。 |
-| Next | Windows user acceptance | 從已發佈候選 branch 做真人 click-through；通過前不直接合併 `main`。 |
+| Next | Windows user acceptance | 從本次 Agent presentation checkpoint 所在候選 branch 做真人 click-through；通過前不直接合併 `main`。 |
 
 ## 2026-07-04 Rebaseline 結論
 

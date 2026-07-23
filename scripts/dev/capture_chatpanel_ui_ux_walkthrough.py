@@ -163,8 +163,10 @@ FINGERPRINT_RELATIVE_PATHS = (
     "XBrainLab/ui/chat/message_bubble.py",
     "XBrainLab/ui/chat/panel.py",
     "XBrainLab/ui/chat/presentation.py",
+    "XBrainLab/ui/chat/segmented_control.py",
     "XBrainLab/ui/chat/status_presenter.py",
     "XBrainLab/ui/chat/styles.py",
+    "XBrainLab/ui/chat/suggestion_card.py",
     "XBrainLab/ui/chat/turn_state.py",
     "XBrainLab/ui/components/agent_manager.py",
     "XBrainLab/ui/components/agent_presentation_service.py",
@@ -952,11 +954,17 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
         inside = human_evidence._widget_inside(panel, button)
         text = " ".join(str(button.text() or "").split())
         text_width = button.fontMetrics().horizontalAdvance(text) + 18
-        text_fits = not text or text_width <= button.contentsRect().width() + 2
+        text_rendered = human_evidence._button_renders_text(button)
+        text_fits = (
+            not text_rendered
+            or not text
+            or text_width <= button.contentsRect().width() + 2
+        )
         records.append(
             {
                 "name": name,
                 "text": text,
+                "text_rendered": text_rendered,
                 "enabled": button.isEnabled(),
                 "bounds": [origin.x(), origin.y(), button.width(), button.height()],
                 "inside_panel": inside,
@@ -1123,6 +1131,12 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "expected_actions_present": visible_actions
         == list(spec.expected_action_labels),
         "expected_send_state_present": panel.send_btn.text() == spec.expected_send_text,
+        "send_accessible_name_present": panel.send_btn.accessibleName() == "Send",
+        "send_visual_present": (
+            panel.send_btn.toolButtonStyle()
+            is not Qt.ToolButtonStyle.ToolButtonIconOnly
+            or not panel.send_btn.icon().isNull()
+        ),
         "expected_send_enabled_present": (
             panel.send_btn.isEnabled() is spec.expected_send_enabled
         ),
@@ -2447,6 +2461,15 @@ def capture_walkthrough(
             render_pixel_ratio=spec.render_pixel_ratio,
         )
         evidence.update(capture)
+        send_contrast = human_evidence.icon_only_control_contrast_evidence(
+            panel,
+            output_dir / spec.filename,
+            panel.send_btn,
+        )
+        evidence["send_icon_contrast"] = send_contrast
+        evidence["checks"]["send_visual_present"] = bool(
+            evidence["checks"]["send_visual_present"] and send_contrast["passed"]
+        )
         evidence["checks"]["render_content_ready"] = capture["render_content"]["passed"]
         evidence["failures"] = [
             name for name, passed in evidence["checks"].items() if not passed

@@ -5,15 +5,23 @@ Defines the styles used by visible assistant transcript and composer components.
 
 from ..styles.theme import Theme
 
+ASSISTANT_BACKGROUND = "#181c20"
+ASSISTANT_SURFACE = "#1f252b"
+ASSISTANT_SURFACE_HOVER = "#252d34"
+ASSISTANT_BORDER = "#343f48"
+ASSISTANT_BORDER_HOVER = "#4b5c69"
+ASSISTANT_ACCENT = "#168be0"
+ASSISTANT_ACCENT_HOVER = "#2a9bef"
+
 ASSISTANT_PANEL_STYLE = """
     QWidget#AssistantPanel {
-        background-color: #1e1e1e;
+        background-color: #181c20;
     }
 """
 
 EMPTY_STATE_STYLE = """
     QFrame#AssistantEmptyState {
-        background-color: #1e1e1e;
+        background-color: #181c20;
         border: none;
         border-radius: 0px;
     }
@@ -24,14 +32,14 @@ EMPTY_STATE_TITLE_STYLE = """
         color: #f3f7fb;
         background: transparent;
         border: none;
-        font-size: 17px;
+        font-size: 18px;
         font-weight: 700;
     }
 """
 
 EMPTY_STATE_TEXT_STYLE = """
     QLabel {
-        color: #b7c4cf;
+        color: #aebac5;
         background: transparent;
         border: none;
         font-size: 13px;
@@ -40,31 +48,123 @@ EMPTY_STATE_TEXT_STYLE = """
 """
 
 SUGGESTION_PROMPT_STYLE = """
-    QToolButton#AssistantSuggestionPrompt {
-        min-height: 30px;
-        padding: 3px 10px;
-        color: #c8d3dc;
-        background-color: #252b31;
-        border: 1px solid #46515b;
+    QFrame#AssistantSuggestionPrompt {
+        background-color: #1f252b;
+        border: 1px solid #343f48;
         border-radius: 6px;
+    }
+    QFrame#AssistantSuggestionPrompt:hover {
+        background-color: #252d34;
+        border-color: #4b5c69;
+    }
+    QFrame#AssistantSuggestionPrompt:focus {
+        border: 1px solid #168be0;
+    }
+    QFrame#AssistantSuggestionPrompt:disabled {
+        background-color: #1b2025;
+        border-color: #2a3239;
+    }
+"""
+
+SUGGESTION_TITLE_STYLE = """
+    QLabel#AssistantSuggestionTitle {
+        color: #edf3f8;
+        background: transparent;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+    }
+"""
+
+SUGGESTION_SUBTITLE_STYLE = """
+    QLabel#AssistantSuggestionSubtitle {
+        color: #9aa8b4;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
+"""
+
+SUGGESTION_CHEVRON_STYLE = """
+    QLabel#AssistantSuggestionChevron {
+        color: #9aa8b4;
+        background: transparent;
+        border: none;
+        font-size: 22px;
+        font-weight: 400;
+    }
+"""
+
+SUGGESTION_ICON_STYLES = """
+    QLabel#AssistantSuggestionIcon {
+        background-color: #173b56;
+        border: none;
+        border-radius: 7px;
+    }
+    QLabel#AssistantSuggestionIcon[accent="green"] {
+        background-color: #173d31;
+    }
+    QLabel#AssistantSuggestionIcon[accent="violet"] {
+        background-color: #34284d;
+    }
+    QLabel#AssistantSuggestionIcon[accent="amber"] {
+        background-color: #46331e;
+    }
+"""
+
+SEGMENTED_CONTROL_STYLE = """
+    QWidget#AssistantSegmentedControl {
+        background: transparent;
+        border: none;
+    }
+    QPushButton#AssistantSegment {
+        min-height: 36px;
+        padding: 3px 10px;
+        color: #b8c3cd;
+        background-color: #1a1f24;
+        border: 1px solid #39434c;
+        border-radius: 0px;
         font-size: 12px;
         font-weight: 600;
-        text-align: left;
     }
-    QToolButton#AssistantSuggestionPrompt:hover {
-        color: #ffffff;
-        background-color: #303940;
-        border-color: #61717e;
+    QPushButton#AssistantSegment[segmentPosition="first"] {
+        border-top-left-radius: 5px;
+        border-bottom-left-radius: 5px;
     }
-    QToolButton#AssistantSuggestionPrompt:focus {
-        border-color: #78a9d4;
+    QPushButton#AssistantSegment[segmentPosition="last"] {
+        border-left: none;
+        border-top-right-radius: 5px;
+        border-bottom-right-radius: 5px;
+    }
+    QPushButton#AssistantSegment[segmentPosition="middle"] {
+        border-left: none;
+    }
+    QPushButton#AssistantSegment[segmentPosition="only"] {
+        border-radius: 5px;
+    }
+    QPushButton#AssistantSegment:hover:!checked {
+        color: #edf3f8;
+        background-color: #222a31;
+    }
+    QPushButton#AssistantSegment:checked {
+        color: #42a5f5;
+        background-color: #192530;
+        border: 1px solid #168be0;
+    }
+    QPushButton#AssistantSegment:focus {
+        border: 1px solid #4dabf5;
+    }
+    QPushButton#AssistantSegment:disabled {
+        color: #6f7b85;
+        background-color: #1b2025;
+        border-color: #2d353c;
     }
 """
 
 RUNTIME_STATE_STYLE = """
     QFrame#AssistantRuntimeState {
-        background-color: #252b31;
-        border: 1px solid #45515c;
+        background-color: #1f252b;
+        border: 1px solid #3b4852;
         border-radius: 6px;
     }
 """
@@ -152,13 +252,13 @@ TURN_ACTIVITY_PROGRESS_STYLE = """
 # Scroll Area Styles
 SCROLL_AREA_STYLE = """
     QScrollArea {
-        background-color: #1e1e1e;
+        background-color: #181c20;
         border: none;
     }
     QScrollBar:vertical {
         border: none;
-        background: #1e1e1e;
-        width: 14px;
+        background: #181c20;
+        width: 10px;
         margin: 0px;
     }
     QScrollBar::handle:vertical {
@@ -181,8 +281,8 @@ SCROLL_AREA_STYLE = """
 # Control Panel Styles
 CONTROL_PANEL_STYLE = """
     QWidget#ControlPanel {
-        background-color: #252526;
-        border-top: 1px solid #3e3e3e;
+        background-color: #181c20;
+        border-top: 1px solid #303941;
         min-height: 56px;
     }
 """
@@ -197,17 +297,27 @@ NOTICE_LABEL_STYLE = """
 """
 
 # Input Field Styles
+COMPOSER_SURFACE_STYLE = """
+    QWidget#AssistantComposerSurface {
+        background-color: #171b20;
+        border: 1px solid #46515b;
+        border-radius: 7px;
+    }
+    QWidget#AssistantComposerSurface[inputFocused="true"] {
+        border-color: #168be0;
+    }
+"""
+
 INPUT_FIELD_STYLE = """
     QPlainTextEdit {
-        background-color: #1e1e1e;
+        background-color: transparent;
         color: #f1f5f9;
-        border: 1px solid #4a4a4a;
-        border-radius: 8px;
-        padding: 9px 11px;
-        font-size: 15px;
+        border: none;
+        padding: 8px 9px;
+        font-size: 14px;
     }
     QPlainTextEdit:focus {
-        border: 1px solid #5B7DB1;
+        border: none;
     }
     QPlainTextEdit:disabled {
         color: #7c8792;
@@ -218,16 +328,16 @@ INPUT_FIELD_STYLE = """
 # Send Button Styles
 SEND_BUTTON_STYLE = """
     QToolButton {
-        background-color: #3f6f9f;
+        background-color: #087dcc;
         color: white;
-        border-radius: 8px;
+        border-radius: 19px;
         font-size: 13px;
         font-weight: 700;
         border: 1px solid transparent;
     }
-    QToolButton:hover { background-color: #4d84bb; }
-    QToolButton:pressed { background-color: #315b84; }
-    QToolButton:focus { border-color: #78a9d4; }
+    QToolButton:hover { background-color: #168fe0; }
+    QToolButton:pressed { background-color: #0968a8; }
+    QToolButton:focus { border-color: #74c0fc; }
     QToolButton:disabled {
         color: #87919b;
         background-color: #2b333b;

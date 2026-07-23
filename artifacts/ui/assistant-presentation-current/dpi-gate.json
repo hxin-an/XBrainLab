@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-23T14:29:49.790404+00:00",
+  "status": "passed",
+  "required_scales": [
+    1.0,
+    1.25,
+    1.5
+  ],
+  "claim_boundary": "This gate runs Linux Qt offscreen subprocesses with explicit QT_SCALE_FACTOR values. It validates device-pixel-ratio observation, layout, text-fit, and interaction contracts at those configured scales. It does not replace Windows native DPI, multi-monitor, compositor, or human click-through acceptance.",
+  "records": [
+    {
+      "scale": 1.0,
+      "status": "passed",
+      "failures": [],
+      "configured_qt_scale_factor": "1",
+      "observed_screen_device_pixel_ratio": 1.0,
+      "source_fingerprint": "dc19918c555fbcc9ea659d7cea8117c254c02bc63f2af2c9a39fdd0f69ed2f71",
+      "selected_screenshots": [
+        "scale-100-first-paint-320-real-dock.png",
+        "scale-100-responsive-320-idle.png",
+        "scale-100-narrow-setting-change-confirmation-max-content.png"
+      ],
+      "subprocess_returncode": 0
+    },
+    {
+      "scale": 1.25,
+      "status": "passed",
+      "failures": [],
+      "configured_qt_scale_factor": "1.25",
+      "observed_screen_device_pixel_ratio": 1.25,
+      "source_fingerprint": "dc19918c555fbcc9ea659d7cea8117c254c02bc63f2af2c9a39fdd0f69ed2f71",
+      "selected_screenshots": [
+        "scale-125-first-paint-320-real-dock.png",
+        "scale-125-responsive-320-idle.png",
+        "scale-125-narrow-setting-change-confirmation-max-content.png"
+      ],
+      "subprocess_returncode": 0
+    },
+    {
+      "scale": 1.5,
+      "status": "passed",
+      "failures": [],
+      "configured_qt_scale_factor": "1.5",
+      "observed_screen_device_pixel_ratio": 1.5,
+      "source_fingerprint": "dc19918c555fbcc9ea659d7cea8117c254c02bc63f2af2c9a39fdd0f69ed2f71",
+      "selected_screenshots": [
+        "scale-150-first-paint-320-real-dock.png",
+        "scale-150-responsive-320-idle.png",
+        "scale-150-narrow-setting-change-confirmation-max-content.png"
+      ],
+      "subprocess_returncode": 0
+    }
+  ],
+  "failures": [],
+  "replay_command": "poetry run python scripts/dev/run_chatpanel_ui_dpi_gate.py"
+}

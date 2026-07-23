@@ -1171,7 +1171,7 @@ def build_assistant_settings_recovery_review(
     ):
         if not bool(evidence.get(key)):
             findings.append(f"assistant recovery lacks {label} evidence")
-    if evidence.get("dialog_title") != "AI Assistant Settings":
+    if evidence.get("dialog_title") != "Assistant Settings":
         findings.append("assistant recovery did not open the real settings dialog")
     if list(evidence.get("runtime_sequence", [])) != [
         "failed",

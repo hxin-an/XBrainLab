@@ -49,6 +49,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QTextBrowser,
+    QToolButton,
     QWidget,
 )
 
@@ -91,7 +92,10 @@ from scripts.dev.human_like_walkthrough.driver import (
     drive_assistant_request,
     install_walkthrough_assistant,
 )
-from scripts.dev.human_like_walkthrough.evidence import chat_panel_geometry
+from scripts.dev.human_like_walkthrough.evidence import (
+    chat_panel_geometry,
+    icon_only_control_contrast_evidence,
+)
 from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames as _assert_consecutive_complete_frames,
 )
@@ -151,6 +155,7 @@ from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import local_result_payload
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import ChatTurnCancelability
+from XBrainLab.ui.chat.suggestion_card import AssistantSuggestionCard
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
 
@@ -311,7 +316,7 @@ MAIN_NAVIGATION_TITLES = (
     "Evaluation",
     "Visualization",
 )
-ASSISTANT_MODE_TITLES = ("One step", "Guided workflow")
+ASSISTANT_MODE_TITLES = ("Single action", "Guided workflow")
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
@@ -2192,6 +2197,27 @@ def _assert_text_controls_rendered(
             if not control.isVisibleTo(root):
                 name = control.objectName() or control.__class__.__name__
                 raise RuntimeError(f"{surface_name} control is hidden: {name}.")
+            if (
+                isinstance(control, QToolButton)
+                and control.toolButtonStyle() is Qt.ToolButtonStyle.ToolButtonIconOnly
+            ):
+                if control.icon().isNull() or not control.accessibleName().strip():
+                    name = control.objectName() or control.__class__.__name__
+                    raise RuntimeError(
+                        f"{surface_name} icon-only control is not perceivable: {name}."
+                    )
+                contrast = icon_only_control_contrast_evidence(
+                    root,
+                    screenshot,
+                    control,
+                )
+                if not contrast["passed"]:
+                    name = control.objectName() or control.__class__.__name__
+                    raise RuntimeError(
+                        f"{surface_name} icon-only control is not visibly painted: "
+                        f"{name} ({contrast})."
+                    )
+                continue
             text = (
                 control.text().replace("&&", "\0").replace("&", "").replace("\0", "&")
             )
@@ -2311,7 +2337,11 @@ def _label_text_line_probes(
     line_heights = [max(round(line.height()), metrics.height()) for line in lines]
     required_height = sum(line_heights)
     if label.wordWrap() and required_height > content_rect.height():
-        raise RuntimeError(f"{surface_name} label text is vertically clipped.")
+        name = label.objectName() or f"QLabel({text!r})"
+        raise RuntimeError(
+            f"{surface_name} label text is vertically clipped: {name} "
+            f"needs {required_height}px, has {content_rect.height()}px."
+        )
 
     horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
     vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
@@ -2556,23 +2586,44 @@ def _assert_assistant_dock_rendered(
         cast(QWidget, send_button),
     ]
     empty_action = getattr(panel, "empty_state_action_button", None)
-    empty_action_visible = isinstance(
-        empty_action,
-        QAbstractButton,
-    ) and empty_action.isVisibleTo(widget)
+    legacy_empty_action = (
+        cast(QAbstractButton, empty_action)
+        if isinstance(empty_action, QAbstractButton)
+        else None
+    )
+    suggestion_cards = [
+        card
+        for card in getattr(panel, "suggestion_prompt_buttons", ())
+        if isinstance(card, AssistantSuggestionCard) and card.isVisibleTo(widget)
+    ]
+    empty_action_visible = bool(suggestion_cards) or (
+        legacy_empty_action is not None and legacy_empty_action.isVisibleTo(widget)
+    )
     if (logical_name or screenshot.name) == SCREENSHOT_NAMES[
         "assistant_empty"
     ] and not empty_action_visible:
         raise RuntimeError(
             "Assistant empty-state capture is missing its visible action button."
         )
-    if isinstance(empty_action, QAbstractButton) and empty_action_visible:
-        action_text = " ".join(empty_action.text().split())
-        if not action_text or empty_action.accessibleName() != action_text:
+    if suggestion_cards:
+        for card in suggestion_cards:
+            action_text = " ".join(card.text().split())
+            if (
+                not action_text
+                or card.accessibleName() != action_text
+                or not card.subtitle().strip()
+            ):
+                raise RuntimeError(
+                    "Assistant suggestion is visible without current action copy."
+                )
+            paint_controls.extend((card.title_label, card.subtitle_label))
+    elif legacy_empty_action is not None and empty_action_visible:
+        action_text = " ".join(legacy_empty_action.text().split())
+        if not action_text or legacy_empty_action.accessibleName() != action_text:
             raise RuntimeError(
                 "Assistant empty-state action is visible without current action copy."
             )
-        paint_controls.append(empty_action)
+        paint_controls.append(legacy_empty_action)
     _assert_text_controls_rendered(
         widget,
         screenshot,

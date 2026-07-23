@@ -1,8 +1,8 @@
 from math import ceil
 from unittest.mock import patch
 
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6.QtCore import QEvent, Qt, QUrl
+from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 
@@ -179,3 +179,13 @@ class TestMessageBubble:
         document = bubble.text_edit.document()
         assert document is not None
         assert bubble.text_edit.height() >= ceil(document.size().height()) + 8
+
+    def test_deferred_reflow_is_owned_by_the_bubble(self, qapp):
+        bubble = MessageBubble("Starting.", is_user=False)
+        bubble.show()
+        qapp.processEvents()
+
+        bubble.set_text("Updated text that schedules a deferred reflow.")
+        bubble.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()

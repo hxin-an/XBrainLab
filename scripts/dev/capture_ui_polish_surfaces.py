@@ -852,7 +852,7 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
             {
                 "Assistant composer": widget.control_panel,
                 "Assistant input": widget.input_field,
-                "Assistant One step mode": widget.ask_mode_btn,
+                "Assistant Single action mode": widget.ask_mode_btn,
                 "Assistant Guided workflow mode": widget.workflow_mode_btn,
                 "Assistant Send/Stop action": widget.send_btn,
             }
@@ -1649,7 +1649,7 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "status: generated focused UI review evidence\n"
         "generator: `scripts/dev/capture_ui_polish_surfaces.py`\n"
         "environment: PyQt offscreen capture\n"
-        "supports: current visual state for assistant One step/Guided workflow "
+        "supports: current visual state for assistant Single action/Guided workflow "
         "narrow "
         "surfaces, model selection, data splitting, and evaluation metrics "
         "table polish\n"

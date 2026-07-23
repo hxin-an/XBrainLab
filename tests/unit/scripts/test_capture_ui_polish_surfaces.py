@@ -150,7 +150,7 @@ def test_assistant_setup_capture_is_a_valid_320px_state(qtbot) -> None:
     assert panel.width() == 320
     assert panel._runtime_phase.value == "idle"
     assert panel.is_processing is False
-    assert panel.ask_mode_btn.text() == "One step"
+    assert panel.ask_mode_btn.text() == "Single action"
     assert panel.workflow_mode_btn.text() == "Guided workflow"
     assert panel.setup_btn.isVisible()
     assert panel.send_btn.text() == "Send"
@@ -165,7 +165,7 @@ def test_assistant_workflow_capture_is_ready_before_processing(qtbot) -> None:
     assert panel.width() == 420
     assert panel._runtime_phase.value == "ready"
     assert panel.is_processing is True
-    assert panel.ask_mode_btn.text() == "One step"
+    assert panel.ask_mode_btn.text() == "Single action"
     assert panel.workflow_mode_btn.text() == "Guided workflow"
     assert panel._turn_presentation.phase.value == "working"
     assert panel._turn_presentation.cancelability.value == "cancellable"

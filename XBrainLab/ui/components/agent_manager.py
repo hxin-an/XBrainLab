@@ -9,7 +9,7 @@ from PyQt6.QtCore import (
     Qt,
     pyqtSignal,
 )
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -107,7 +107,6 @@ from XBrainLab.ui.refresh_coordinator import (
     begin_command_refresh_suppression,
     complete_command_refresh_suppression,
 )
-from XBrainLab.ui.styles.icons import Icons
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 VIZ_TAB_3D_PLOT = 3
@@ -165,7 +164,6 @@ class AssistantDockTitleBar(QWidget):
         self._on_float_toggle = on_float_toggle
         self.status_badge: QLabel | None = None
         self.retry_button: QPushButton | None = None
-        self.float_button: QPushButton | None = None
         self._retry_available = False
         self._retry_enabled = False
 
@@ -202,8 +200,6 @@ class AssistantDockTitleBar(QWidget):
         if self.retry_button is not None:
             self.retry_button.setVisible(self._retry_available and not compact)
             self.retry_button.setEnabled(self._retry_enabled and not compact)
-        if self.float_button is not None:
-            self.float_button.setVisible(not compact)
 
     def mousePressEvent(self, event):  # noqa: N802
         """Let QDockWidget handle title-bar drags from empty title space."""
@@ -410,8 +406,8 @@ class AgentManager(QObject):
         self.assistant_header = title_bar
         title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
         title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(10, 3, 5, 3)
-        title_layout.setSpacing(5)
+        title_layout.setContentsMargins(12, 4, 6, 4)
+        title_layout.setSpacing(4)
 
         title_label = QLabel("XBrainLab Assistant")
         title_label.setObjectName("AssistantDockTitle")
@@ -464,19 +460,20 @@ class AgentManager(QObject):
         title_layout.addWidget(self.new_conv_title_btn)
 
         # Options menu. Keep it to real, implemented actions.
-        self.settings_btn = QPushButton()
-        self.settings_btn.setIcon(QIcon(Icons.SETTINGS.path))
-        self.settings_btn.setIconSize(QSize(16, 16))
+        self.settings_btn = QPushButton("⋮")
         self.settings_btn.setFixedSize(28, 28)
-        self.settings_btn.setToolTip("Assistant settings")
-        self.settings_btn.setAccessibleName("Assistant settings")
+        self.settings_btn.setToolTip("Assistant options")
+        self.settings_btn.setAccessibleName("Assistant options")
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.settings_menu = QMenu(self.settings_btn)
-        settings_action = QAction("Assistant settings", self.settings_btn)
-        settings_action.triggered.connect(
+        self.settings_action = QAction("Assistant settings", self.settings_btn)
+        self.settings_action.triggered.connect(
             lambda _checked=False: self.open_settings_dialog()
         )
-        self.settings_menu.addAction(settings_action)
+        self.settings_menu.addAction(self.settings_action)
+        self.float_action = QAction("Float assistant", self.settings_btn)
+        self.float_action.triggered.connect(lambda _checked=False: self._toggle_float())
+        self.settings_menu.addAction(self.float_action)
         self.clear_conversation_title_action = QAction(
             "New chat",
             self.settings_btn,
@@ -492,27 +489,10 @@ class AgentManager(QObject):
         self.settings_btn.setMenu(self.settings_menu)
         title_layout.addWidget(self.settings_btn)
 
-        self.float_btn = QPushButton()
-        self.float_btn.setIcon(
-            title_style.standardIcon(QStyle.StandardPixmap.SP_TitleBarNormalButton)
-        )
-        self.float_btn.setIconSize(QSize(16, 16))
-        self.float_btn.setFixedSize(28, 28)
-        self.float_btn.setToolTip("Float assistant")
-        self.float_btn.setAccessibleName("Float assistant")
-        self.float_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.float_btn.clicked.connect(self._toggle_float)
-        title_bar.float_button = self.float_btn
-        title_layout.addWidget(self.float_btn)
-
-        self.close_btn = QPushButton()
-        self.close_btn.setIcon(
-            title_style.standardIcon(QStyle.StandardPixmap.SP_TitleBarCloseButton)
-        )
-        self.close_btn.setIconSize(QSize(16, 16))
+        self.close_btn = QPushButton("⌃")
         self.close_btn.setFixedSize(28, 28)
-        self.close_btn.setToolTip("Close assistant")
-        self.close_btn.setAccessibleName("Close assistant")
+        self.close_btn.setToolTip("Hide assistant")
+        self.close_btn.setAccessibleName("Hide assistant")
         self.close_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.close_btn.clicked.connect(self.chat_dock.close)
         title_layout.addWidget(self.close_btn)
@@ -553,9 +533,9 @@ class AgentManager(QObject):
     def _on_dock_top_level_changed(self, floating: bool) -> None:
         """Keep the assistant dock usable when it becomes a floating window."""
         action = "Dock assistant" if floating else "Float assistant"
-        if hasattr(self, "float_btn"):
-            self.float_btn.setToolTip(action)
-            self.float_btn.setAccessibleName(action)
+        if hasattr(self, "float_action"):
+            self.float_action.setText(action)
+            self.float_action.setToolTip(action)
         if floating:
             self._place_floating_dock()
 

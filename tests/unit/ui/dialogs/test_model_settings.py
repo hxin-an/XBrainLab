@@ -124,11 +124,7 @@ def config():
 @pytest.fixture
 def dialog(qtbot, config):
     lifecycle = _FakeDownloadLifecycle()
-    with (
-        patch.object(LLMConfig, "load_from_file", return_value=config),
-        patch("os.path.exists", return_value=False),
-        patch("os.listdir", return_value=[]),
-    ):
+    with patch.object(LLMConfig, "load_from_file", return_value=config):
         from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 
         dlg = ModelSettingsDialog(
@@ -143,7 +139,7 @@ def dialog(qtbot, config):
 
 class TestModelSettingsInit:
     def test_creates_dialog(self, dialog):
-        assert dialog.windowTitle() == "AI Assistant Settings"
+        assert dialog.windowTitle() == "Assistant Settings"
         assert dialog.isVisible() is False
 
     def test_constructor_defers_cache_scan_and_runtime_probe(
@@ -229,6 +225,66 @@ class TestModelSettingsInit:
             button.text() == "Activate" for button in dialog.findChildren(QPushButton)
         )
 
+    def test_presents_response_presets_without_hiding_exact_controls(self, dialog):
+        assert dialog.response_style_control.selected_key() == "balanced"
+        assert dialog.response_length_control.selected_key() == "standard"
+        assert dialog.advanced_content.isHidden()
+
+        dialog.response_style_control.set_selected("precise", emit=True)
+        dialog.response_length_control.set_selected("detailed", emit=True)
+
+        assert dialog.temperature_spin.value() == pytest.approx(0.2)
+        assert dialog.top_p_spin.value() == pytest.approx(0.8)
+        assert dialog.max_tokens_spin.value() == 1024
+
+        dialog.advanced_toggle.setChecked(True)
+        assert not dialog.advanced_content.isHidden()
+        assert dialog.temperature_spin.isVisibleTo(dialog)
+        assert dialog.top_p_spin.isVisibleTo(dialog)
+        assert dialog.max_tokens_spin.isVisibleTo(dialog)
+
+    def test_custom_exact_values_are_named_in_collapsed_preset_summary(
+        self,
+        dialog,
+    ):
+        dialog.temperature_spin.setValue(0.31)
+
+        assert dialog.response_style_control.selected_key() is None
+        assert dialog.advanced_toggle.text() == "Advanced settings · Custom"
+
+    def test_settings_sections_and_footer_follow_product_hierarchy(self, dialog):
+        assert dialog.heading_label.text() == "Assistant Settings"
+        assert dialog.model_section_label.text() == "Model"
+        assert dialog.response_style_label.text() == "Response style"
+        assert dialog.response_length_label.text() == "Response length"
+        assert dialog.btn_cancel.text() == "Cancel"
+        assert dialog.btn_activate.text() == "Save"
+        assert dialog.btn_cancel.icon().isNull()
+        assert dialog.btn_activate.icon().isNull()
+
+    def test_collapsed_settings_fit_all_primary_controls_before_scrolling(
+        self,
+        dialog,
+        qtbot,
+    ):
+        dialog.show()
+        qtbot.wait(20)
+
+        body_viewport = dialog.settings_body_scroll.viewport()
+        assert dialog.settings_body_scroll.verticalScrollBar().value() == 0
+        assert body_viewport.rect().contains(
+            dialog.advanced_toggle.mapTo(
+                body_viewport,
+                dialog.advanced_toggle.rect().center(),
+            )
+        )
+        assert dialog.rect().contains(
+            dialog.btn_activate.mapTo(dialog, dialog.btn_activate.rect().center())
+        )
+        assert dialog.rect().contains(
+            dialog.btn_cancel.mapTo(dialog, dialog.btn_cancel.rect().center())
+        )
+
     def test_dialog_supports_reasonable_resize_without_fixed_geometry(
         self,
         dialog,
@@ -254,16 +310,49 @@ class TestModelSettingsInit:
         ):
             assert dialog.rect().contains(widget.geometry().center())
 
+    def test_expanded_advanced_settings_keep_footer_on_constrained_screen(
+        self,
+        dialog,
+        qtbot,
+    ):
+        dialog.show()
+        dialog.advanced_toggle.setChecked(True)
+        qtbot.wait(20)
+        dialog.resize(520, 552)
+        qtbot.wait(20)
+
+        assert dialog.height() <= 552
+        assert dialog.minimumSizeHint().height() <= 552
+        assert dialog.btn_activate.isVisibleTo(dialog)
+        assert dialog.btn_cancel.isVisibleTo(dialog)
+        body_viewport = dialog.settings_body_scroll.viewport()
+        dialog.settings_body_scroll.ensureWidgetVisible(dialog.max_tokens_spin)
+        qtbot.wait(20)
+        for field in (
+            dialog.temperature_spin,
+            dialog.top_p_spin,
+            dialog.max_tokens_spin,
+        ):
+            assert field.isVisibleTo(dialog)
+        assert body_viewport.rect().contains(
+            dialog.max_tokens_spin.mapTo(
+                body_viewport,
+                dialog.max_tokens_spin.rect().center(),
+            )
+        )
+        assert dialog.rect().contains(
+            dialog.btn_activate.mapTo(dialog, dialog.btn_activate.rect().center())
+        )
+        assert dialog.rect().contains(
+            dialog.btn_cancel.mapTo(dialog, dialog.btn_cancel.rect().center())
+        )
+
     def test_legacy_remote_config_loads_as_local_only(self, qtbot, config):
         config.inference_mode = "gemini"
         config.active_mode = "gemini"
         config.gemini_enabled = True
 
-        with (
-            patch.object(LLMConfig, "load_from_file", return_value=config),
-            patch("os.path.exists", return_value=False),
-            patch("os.listdir", return_value=[]),
-        ):
+        with patch.object(LLMConfig, "load_from_file", return_value=config):
             from XBrainLab.ui.dialogs.model_settings_dialog import (
                 ModelSettingsDialog,
             )
@@ -356,6 +445,15 @@ class TestLocalModelSection:
 
         assert dialog.is_downloading is True
         assert "cancel" in dialog.local_action_btn.text().lower()
+        assert not dialog.download_progress.isHidden()
+        assert dialog.download_progress.minimum() == 0
+        assert dialog.download_progress.maximum() == 0
+
+        dialog.on_download_progress(42, "Downloading model files...")
+
+        assert dialog.download_progress.maximum() == 100
+        assert dialog.download_progress.value() == 42
+        assert dialog.local_status_label.text() == "Downloading model files..."
 
     def test_start_failure_is_not_misreported_as_an_active_download(self, dialog):
         dialog.is_downloading = False
@@ -562,11 +660,7 @@ class TestLocalModelSection:
             runtime_message="Local runtime unavailable. Model cache not found.",
         )
         dialog.local_enable_chk.setChecked(False)
-        with (
-            patch("os.path.exists", return_value=False),
-            patch("os.listdir", return_value=[]),
-        ):
-            dialog._on_local_enable_toggled(False)
+        dialog._on_local_enable_toggled(False)
 
         assert dialog.local_model_combo.isEnabled()
         assert dialog.local_action_btn.isEnabled()

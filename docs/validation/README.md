@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-21`
+最後更新：`2026-07-23`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -99,7 +99,32 @@ acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-qu
 這些結果支撐 automated handoff candidate，不取代 Windows 真人 DPI、遠端桌面、互動式 3D
 與長時間操作 acceptance。
 
-### 2026-07-21 Agent Panel UI Gate
+### 2026-07-23 Agent Panel Presentation Gate
+
+- latest focused presentation / regression suite：`511 passed`。範圍包含 ChatPanel、MessageBubble、
+  AgentManager、Assistant Settings、capture contracts 與 product walkthrough；deferred reflow
+  改由 owner-bound `QTimer` 管理，widget 刪除後不再留下無 owner callback。
+- compact evidence 在 `artifacts/ui/assistant-presentation-current/`。focused walkthrough 的
+  source fingerprint 為
+  `dc19918c555fbcc9ea659d7cea8117c254c02bc63f2af2c9a39fdd0f69ed2f71`；
+  human-like walkthrough 的開始與完成 fingerprint 都是
+  `4b5771bf1631a4281953cdd26869e7b60019d158b04664feab40141f6d897834`，
+  結果為 `42/42` phases、`44` required screenshots、resource smoke PASS。
+- Qt scale gate 在獨立 subprocess 使用 100% / 125% / 150% 全數 PASS。Settings constrained-height
+  probe 驗證 expanded dialog `520 x 552`、固定 footer 的 Save bottom `y=535`、body scroll
+  maximum `166`；320 / 420 / 760 寬度的主要動作沒有遺失或水平裁切。
+- 視覺 reviewer 與 code reviewer 均無 blocking finding。已知 nonblocking debt 是 working
+  期間 disabled mode selector 的 checked 狀態較淡，以及 552px 高度初始 viewport 會露出下一個
+  advanced field 的一部分；controls 可經 body scroll 完整到達，footer 始終可見。
+- architecture compliance、Ruff 與 touched product files 的 BasedPyright 全數 PASS。
+  full-repo BasedPyright 目前仍有 `122` 個既有 errors；這是明確 debt，不能把 scoped clean
+  外推成全 repo type-clean。
+
+這些 evidence 證明目前 source 的 Linux/Qt presentation、狀態切換、text fit、interaction 與
+teardown contract。它們不證明 Windows native DPI、多螢幕、真實模型長 session、實際模型下載
+中的進度畫面、local-model/tool correctness 或真人 desktop acceptance。
+
+#### 2026-07-21 既有 Agent Panel gate
 
 - focused unit / script gate：`455 passed`，覆蓋 composer auto-grow、manual-scroll preservation、
   runtime states、mode selector、response actions、typed confirmation correlation、manager lifecycle

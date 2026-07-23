@@ -499,7 +499,7 @@ def _drive_settings_recovery(
             dialog.reject()
             return
         dialog.local_enable_chk.setChecked(True)
-        dialog.temperature_spin.setValue(0.2)
+        dialog.response_style_control.set_selected("precise", emit=True)
         dialog.update_validation_state()
         evidence["controlled_temperature"] = dialog.temperature_spin.value()
         screenshot = dependencies.capture_named(

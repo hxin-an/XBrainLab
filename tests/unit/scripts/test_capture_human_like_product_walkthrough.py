@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -20,8 +20,10 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QPushButton,
+    QStyle,
     QTableWidget,
     QTextBrowser,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -307,7 +309,7 @@ def _base_payload() -> dict:
     settings_evidence = {
         "open_settings_clicked": True,
         "dialog_opened": True,
-        "dialog_title": "AI Assistant Settings",
+        "dialog_title": "Assistant Settings",
         "activate_clicked": True,
         "save_observed": True,
         "isolated_config": True,
@@ -1562,7 +1564,9 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
 
     assert "XBrainLab/ui/chat/composer.py" in relative_paths
     assert "XBrainLab/ui/chat/action_card.py" in relative_paths
+    assert "XBrainLab/ui/chat/segmented_control.py" in relative_paths
     assert "XBrainLab/ui/chat/status_presenter.py" in relative_paths
+    assert "XBrainLab/ui/chat/suggestion_card.py" in relative_paths
     assert "XBrainLab/ui/styles/stylesheets.py" in relative_paths
     assert "XBrainLab/ui/components/workflow_ui_handoff_host.py" in relative_paths
     assert "XBrainLab/ui/components/assistant_status_projection.py" in relative_paths
@@ -1919,7 +1923,7 @@ def test_settings_recovery_review_requires_real_dialog_save_and_runtime_sequence
             "assistant_settings_recovery": {
                 "open_settings_clicked": True,
                 "dialog_opened": True,
-                "dialog_title": "AI Assistant Settings",
+                "dialog_title": "Assistant Settings",
                 "activate_clicked": True,
                 "save_observed": True,
                 "isolated_config": True,
@@ -2825,6 +2829,57 @@ def test_text_paint_guard_honors_word_wrap_and_rejects_real_label_clipping(
         )
 
 
+def test_text_paint_guard_validates_icon_only_controls_by_icon_and_accessible_name(
+    qtbot,
+    tmp_path,
+) -> None:
+    root = QWidget()
+    qtbot.addWidget(root)
+    root.resize(100, 80)
+    root.setStyleSheet("background: #202020;")
+    button = QToolButton(root)
+    button.setObjectName("AssistantSendButton")
+    button.setText("Send")
+    button.setAccessibleName("Send")
+    button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+    button.setIcon(root.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward))
+    button.setGeometry(30, 20, 38, 38)
+    root.show()
+    qtbot.wait(20)
+    screenshot = tmp_path / "icon-only-control.png"
+    assert root.grab().save(str(screenshot))
+
+    walkthrough_module._assert_text_controls_rendered(
+        root,
+        screenshot,
+        [button],
+        surface_name="Assistant primary action",
+    )
+
+    button.setIcon(QIcon())
+    with pytest.raises(RuntimeError, match="not perceivable"):
+        walkthrough_module._assert_text_controls_rendered(
+            root,
+            screenshot,
+            [button],
+            surface_name="Assistant primary action",
+        )
+
+    transparent = QPixmap(18, 18)
+    transparent.fill(Qt.GlobalColor.transparent)
+    button.setIcon(QIcon(transparent))
+    qtbot.wait(20)
+    transparent_screenshot = tmp_path / "transparent-icon-only-control.png"
+    assert root.grab().save(str(transparent_screenshot))
+    with pytest.raises(RuntimeError, match="not visibly painted"):
+        walkthrough_module._assert_text_controls_rendered(
+            root,
+            transparent_screenshot,
+            [button],
+            surface_name="Assistant primary action",
+        )
+
+
 def test_main_window_rejects_missing_navigation_owner(qtbot, tmp_path) -> None:
     window = QMainWindow()
     qtbot.addWidget(window)
@@ -2934,7 +2989,7 @@ def test_assistant_loading_guard_requires_modes_and_send_to_be_painted(
     control_panel.setObjectName("ControlPanel")
     control_layout = QVBoxLayout(control_panel)
     mode_row = QHBoxLayout()
-    ask_mode = QPushButton("One step", control_panel)
+    ask_mode = QPushButton("Single action", control_panel)
     workflow_mode = QPushButton("Guided workflow", control_panel)
     mode_row.addWidget(ask_mode)
     mode_row.addWidget(workflow_mode)
@@ -2992,7 +3047,7 @@ def test_assistant_processing_guard_rejects_send_for_non_cancelable_work(
     panel = QWidget(root)
     panel.setObjectName("AssistantPanel")
     panel.setGeometry(0, 0, 420, 180)
-    ask_mode = QPushButton("One step", panel)
+    ask_mode = QPushButton("Single action", panel)
     ask_mode.setGeometry(10, 20, 180, 34)
     workflow_mode = QPushButton("Guided workflow", panel)
     workflow_mode.setGeometry(200, 20, 200, 34)
@@ -3021,7 +3076,7 @@ def test_assistant_empty_capture_requires_current_action_button(
     panel = QWidget(dock)
     panel.setObjectName("AssistantPanel")
     layout = QVBoxLayout(panel)
-    ask_mode = QPushButton("One step", panel)
+    ask_mode = QPushButton("Single action", panel)
     workflow_mode = QPushButton("Guided workflow", panel)
     send = QPushButton("Send", panel)
     for control in (ask_mode, workflow_mode, send):

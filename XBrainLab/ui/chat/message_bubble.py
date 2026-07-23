@@ -99,10 +99,13 @@ class MessageBubble(QWidget):
         """
         super().__init__(parent)
         self.is_user = is_user
-        self.bubble_frame: QFrame | None = None
-        self.text_edit: QTextBrowser | None = None
-        self.kind_label: QLabel | None = None
+        self.bubble_frame: QFrame
+        self.text_edit: QTextBrowser
+        self.kind_label: QLabel
         self._raw_text = text  # Store raw text to preserve fidelity
+        self._reflow_timer = QTimer(self)
+        self._reflow_timer.setSingleShot(True)
+        self._reflow_timer.timeout.connect(self._reflow_after_text_change)
         self.presentation_kind = presentation_kind or (
             MessagePresentationKind.USER
             if is_user
@@ -161,14 +164,13 @@ class MessageBubble(QWidget):
         )  # We handle links manually for file:// support
         self.text_edit.anchorClicked.connect(self._on_link_clicked)
 
-        if self.text_edit:
-            self.text_edit.setWordWrapMode(
-                QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
-            )
-            doc = self.text_edit.document()
-            if doc:
-                doc.setDocumentMargin(0)  # Remove internal document margin
-            self.text_edit.setContentsMargins(0, 0, 0, 0)
+        self.text_edit.setWordWrapMode(
+            QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+        )
+        doc = self.text_edit.document()
+        if doc:
+            doc.setDocumentMargin(0)  # Remove internal document margin
+        self.text_edit.setContentsMargins(0, 0, 0, 0)
 
         # Transparent background
         self.text_edit.setStyleSheet(
@@ -201,8 +203,6 @@ class MessageBubble(QWidget):
         if self.is_user:
             kind = MessagePresentationKind.USER
         self.presentation_kind = kind
-        if self.bubble_frame is None or self.kind_label is None:
-            return
 
         semantic = _SEMANTIC_PRESENTATION.get(kind)
         if semantic is None:
@@ -226,7 +226,7 @@ class MessageBubble(QWidget):
             style.unpolish(self.bubble_frame)
             style.polish(self.bubble_frame)
         if self.isVisible():
-            QTimer.singleShot(0, self._reflow_after_text_change)
+            self._reflow_timer.start(0)
 
     def _on_link_clicked(self, url: QUrl):
         """Handle link clicks, supporting local file URLs.
@@ -277,9 +277,6 @@ class MessageBubble(QWidget):
         layout_h_margins = 30
         layout_v_margins = 20
 
-        if self.text_edit is None or self.bubble_frame is None:
-            return
-
         doc = self.text_edit.document()
         if not doc:
             return
@@ -320,8 +317,7 @@ class MessageBubble(QWidget):
         final_height = text_height + layout_v_margins + semantic_header_height + 4
 
         # 5. Apply Height
-        if self.text_edit:
-            self.text_edit.setFixedHeight(text_height)
+        self.text_edit.setFixedHeight(text_height)
         self.bubble_frame.setFixedHeight(final_height)
         self.setFixedHeight(final_height)
 
@@ -333,10 +329,9 @@ class MessageBubble(QWidget):
 
         """
         self._raw_text = text
-        if self.text_edit:
-            self.text_edit.setMarkdown(text)
-            if self.isVisible():
-                QTimer.singleShot(0, self._reflow_after_text_change)
+        self.text_edit.setMarkdown(text)
+        if self.isVisible():
+            self._reflow_timer.start(0)
 
     def _reflow_after_text_change(self) -> None:
         """Resize a live bubble after streamed Markdown changes its height."""

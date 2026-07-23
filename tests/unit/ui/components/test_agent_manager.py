@@ -2125,17 +2125,26 @@ class TestAgentManagerMethods:
             manager.retry_title_btn,
             manager.new_conv_title_btn,
             manager.settings_btn,
-            manager.float_btn,
             manager.close_btn,
         ):
             assert control.width() >= 28
             assert control.height() >= 28
             assert control.focusPolicy() == Qt.FocusPolicy.StrongFocus
-        assert manager.close_btn.accessibleName() == "Close assistant"
+        assert not hasattr(manager, "float_btn")
+        assert manager.close_btn.text() == "⌃"
+        assert manager.close_btn.icon().isNull()
+        assert manager.close_btn.accessibleName() == "Hide assistant"
         assert manager.new_conv_title_btn.toolTip() == "New chat"
         assert manager.new_conv_title_btn.accessibleName() == "New chat"
-        assert manager.settings_btn.toolTip() == "Assistant settings"
+        assert manager.settings_btn.text() == "⋮"
+        assert manager.settings_btn.toolTip() == "Assistant options"
+        assert manager.settings_btn.accessibleName() == "Assistant options"
         assert manager.settings_btn.isCheckable() is False
+        menu_text = [
+            action.text() for action in manager.settings_menu.actions() if action.text()
+        ]
+        assert menu_text == ["Assistant settings", "Float assistant", "New chat"]
+        assert manager.float_action.text() == "Float assistant"
         assert manager.clear_conversation_title_action.text() == "New chat"
         manager.chat_dock.show()
         manager.close_btn.click()

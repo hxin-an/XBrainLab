@@ -8,7 +8,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QMimeData, QPoint, QRect, Qt
+from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
@@ -109,13 +109,16 @@ class TestChatPanelInit:
 
         prompts = [
             button
-            for button in chat_panel.empty_state_widget.findChildren(QToolButton)
-            if button.objectName() == "AssistantSuggestionPrompt"
-            and button.isVisibleTo(chat_panel.empty_state_widget)
+            for button in chat_panel.suggestion_prompt_buttons
+            if button.isVisibleTo(chat_panel.empty_state_widget)
         ]
 
         assert chat_panel.empty_state_title.text() == (
             "How can I help with your EEG workflow?"
+        )
+        assert chat_panel.mode_section_label.parentWidget() is chat_panel.control_panel
+        assert (
+            chat_panel.mode_description_label.parentWidget() is chat_panel.control_panel
         )
         assert len(prompts) == 4
         assert {button.text() for button in prompts} == {
@@ -123,6 +126,15 @@ class TestChatPanelInit:
             "Explain the current settings",
             "Suggest the next step",
             "Review the training configuration",
+        }
+        assert {button.subtitle() for button in prompts} == {
+            "See the progress and results.",
+            "Review key parameters and configurations.",
+            "Get recommendations for what to do next.",
+            "Inspect training setup and hyperparameters.",
+        }
+        assert {button.chevron_label.text() for button in prompts} == {
+            "\N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK}"
         }
 
         emitted: list[str] = []
@@ -145,7 +157,7 @@ class TestChatPanelInit:
         mode_top = chat_panel.mode_selector_widget.mapTo(chat_panel, QPoint(0, 0)).y()
         composer_top = chat_panel.input_widget.mapTo(chat_panel, QPoint(0, 0)).y()
 
-        assert chat_panel.mode_section_label.text() == "Agent mode"
+        assert chat_panel.mode_section_label.isHidden()
         assert mode_top < composer_top
         assert chat_panel.input_field.height() >= 70
         assert chat_panel.input_field.placeholderText() == (
@@ -449,6 +461,8 @@ class TestChatPanelInit:
         assert panel.input_field.isEnabled() is False
         assert panel.send_btn.isEnabled() is False
         assert panel.send_btn.text() == "Send"
+        assert panel.send_btn.accessibleName() == "Send"
+        assert not panel.send_btn.icon().isNull()
         assert panel.runtime_state_title.text() == "Assistant unavailable"
         assert panel.input_field.placeholderText() == "Assistant unavailable"
 
@@ -625,6 +639,8 @@ class TestChatPanelInit:
 
         assert panel.is_processing is False
         assert panel.send_btn.text() == "Send"
+        assert panel.send_btn.accessibleName() == "Send"
+        assert not panel.send_btn.icon().isNull()
         assert panel.send_btn.isEnabled() is False
         assert panel.input_field.isEnabled() is False
 
@@ -1049,8 +1065,45 @@ class TestChatPanelInit:
         )
         assert title_rect.height() <= chat_panel.empty_state_title.height() + 2
         for button in chat_panel.suggestion_prompt_buttons:
-            text_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
-            assert text_width <= button.contentsRect().width() + 2
+            for label in (button.title_label, button.subtitle_label):
+                text_rect = label.fontMetrics().boundingRect(
+                    QRect(0, 0, max(label.contentsRect().width(), 1), 1000),
+                    int(Qt.TextFlag.TextWordWrap),
+                    label.text(),
+                )
+                assert text_rect.height() <= label.contentsRect().height() + 2
+
+    def test_narrow_empty_state_starts_at_the_title_instead_of_the_tail(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(320, 650)
+        chat_panel.set_runtime_state("ready")
+        chat_panel.show()
+        qtbot.wait(30)
+
+        scrollbar = chat_panel.scroll_area.verticalScrollBar()
+        assert scrollbar.maximum() > 0
+        assert scrollbar.value() <= 2
+        title_top = chat_panel.empty_state_title.mapTo(
+            chat_panel.scroll_area.viewport(),
+            QPoint(0, 0),
+        ).y()
+        assert title_top >= 0
+
+    def test_wide_panel_uses_available_width_for_mode_and_composer(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(760, 650)
+        chat_panel.set_runtime_state("ready")
+        chat_panel.show()
+        qtbot.wait(20)
+
+        assert chat_panel.mode_selector_widget.width() == 620
+        assert chat_panel.input_widget.width() == 620
 
     def test_input_placeholder_is_short_for_narrow_panel(self, chat_panel):
         chat_panel.resize(320, 620)
@@ -1081,9 +1134,9 @@ class TestChatPanelInit:
     def test_ask_workflow_selector_is_visible_and_defaults_to_ask(self, chat_panel):
         assert chat_panel.ask_mode_btn.isVisibleTo(chat_panel)
         assert chat_panel.workflow_mode_btn.isVisibleTo(chat_panel)
-        assert chat_panel.ask_mode_btn.text() == "One step"
+        assert chat_panel.ask_mode_btn.text() == "Single action"
         assert chat_panel.workflow_mode_btn.text() == "Guided workflow"
-        assert chat_panel.mode_description_label.isVisibleTo(chat_panel)
+        assert chat_panel.mode_description_label.isHidden()
         assert chat_panel.mode_description_label.text() == "Runs one action and stops."
         assert chat_panel.ask_mode_btn.toolTip() == "Runs one action and stops."
         assert chat_panel.ask_mode_btn.accessibleDescription() == (
@@ -1098,6 +1151,26 @@ class TestChatPanelInit:
         assert chat_panel.ask_mode_btn.isChecked()
         assert chat_panel.current_execution_mode == "single"
 
+    def test_composer_uses_compact_integrated_send_action(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(360, 680)
+        chat_panel.show()
+        qtbot.wait(20)
+
+        assert chat_panel.send_btn.text() == "Send"
+        assert chat_panel.send_btn.accessibleName() == "Send"
+        assert chat_panel.send_btn.width() == chat_panel.send_btn.height()
+        assert chat_panel.send_btn.toolButtonStyle() == (
+            Qt.ToolButtonStyle.ToolButtonIconOnly
+        )
+        assert chat_panel.input_layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert not chat_panel.input_field.geometry().intersects(
+            chat_panel.send_btn.geometry()
+        )
+
     def test_workflow_selector_emits_internal_multi_mode(self, chat_panel, qtbot):
         with qtbot.waitSignal(
             chat_panel.execution_mode_changed,
@@ -1108,13 +1181,13 @@ class TestChatPanelInit:
         assert emitted.args == ["multi"]
         assert chat_panel.workflow_mode_btn.isChecked()
         assert chat_panel.current_execution_mode == "multi"
-        assert chat_panel.mode_description_label.isVisibleTo(chat_panel)
+        assert chat_panel.mode_description_label.isHidden()
         assert chat_panel.mode_description_label.text() == (
             "Continues safe actions and pauses before a decision."
         )
 
     @pytest.mark.parametrize("mode", ["single", "multi"])
-    def test_mode_guidance_is_visible_when_the_selector_is_available(
+    def test_mode_guidance_remains_accessible_without_adding_a_layout_row(
         self,
         chat_panel,
         qtbot,
@@ -1126,7 +1199,7 @@ class TestChatPanelInit:
         qtbot.wait(0)
 
         description = chat_panel.mode_description_label
-        assert description.isVisibleTo(chat_panel)
+        assert description.isHidden()
         assert description.toolTip() == description.text()
         assert description.accessibleDescription() == description.text()
         selected = (
@@ -1290,7 +1363,7 @@ class TestChatPanelInit:
 
         chat_panel.set_processing_state(False)
         qtbot.wait(0)
-        assert chat_panel.mode_description_label.isVisibleTo(chat_panel)
+        assert chat_panel.mode_description_label.isHidden()
         assert chat_panel.turn_activity_widget.isHidden()
 
     def test_new_turn_does_not_restore_the_previous_turn_status(
@@ -1528,7 +1601,9 @@ class TestChatPanelCallbacks:
         assert chat_panel.input_field.isEnabled() is False
         chat_panel.set_processing_state(False)
         assert chat_panel.is_processing is False
-        assert "Send" in chat_panel.send_btn.text()
+        assert chat_panel.send_btn.text() == "Send"
+        assert chat_panel.send_btn.accessibleName() == "Send"
+        assert not chat_panel.send_btn.icon().isNull()
         assert chat_panel.input_field.isEnabled() is True
 
     def test_clear_ui(self, chat_panel):
@@ -1578,6 +1653,8 @@ class TestChatPanelCallbacks:
         assert chat_panel.empty_state_next_label.isHidden()
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
+        assert chat_panel.send_btn.accessibleName() == "Send"
+        assert not chat_panel.send_btn.icon().isNull()
         assert chat_panel.ask_mode_btn.isHidden() is False
         assert chat_panel.workflow_mode_btn.isHidden() is False
         assert chat_panel.ask_mode_btn.isChecked()
@@ -1586,10 +1663,7 @@ class TestChatPanelCallbacks:
             for label in chat_panel.control_panel.findChildren(QLabel)
             if not label.isHidden()
         ]
-        assert visible_footer_labels == [
-            "Agent mode",
-            "Runs one action and stops.",
-        ]
+        assert visible_footer_labels == []
 
         visible_text = " ".join(
             child.text()
@@ -1620,7 +1694,7 @@ class TestChatPanelCallbacks:
         )
 
         assert chat_panel.empty_state_action_button.isEnabled()
-        assert "QToolButton#AssistantSuggestionPrompt" in (
+        assert "QFrame#AssistantSuggestionPrompt" in (
             chat_panel.empty_state_action_button.styleSheet()
         )
 
@@ -1639,7 +1713,7 @@ class TestChatPanelCallbacks:
             qtbot.wait(20)
 
         pixel = panel.grab().toImage().pixelColor(QPoint(8, 320)).name().lower()
-        assert pixel == "#1e1e1e"
+        assert pixel == "#181c20"
 
     def test_product_status_updates_visible_empty_state(self, chat_panel):
         chat_panel.set_product_status(
@@ -1704,8 +1778,7 @@ class TestChatPanelCallbacks:
             "How can I help with your EEG workflow?"
         )
         assert chat_panel.empty_state_intro.text() == (
-            "Ask the local assistant to explain the current state, review settings, "
-            "or guide the next safe step."
+            "I can review your settings, explain results, and recommend next steps."
         )
         assert chat_panel.empty_state_backend_label.text() == (
             "Current workflow stage: Results available."
@@ -1746,8 +1819,7 @@ class TestChatPanelCallbacks:
             "How can I help with your EEG workflow?"
         )
         assert chat_panel.empty_state_intro.text() == (
-            "Ask the local assistant to explain the current state, review settings, "
-            "or guide the next safe step."
+            "I can review your settings, explain results, and recommend next steps."
         )
 
     def test_low_priority_notice_does_not_enter_transcript(self, chat_panel):
@@ -1874,9 +1946,15 @@ class TestChatPanelCallbacks:
             ).y()
             < chat_panel.control_panel.mapTo(chat_panel, QPoint(0, 0)).y()
         )
-        assert chat_panel.mode_selector_widget.geometry().bottom() < (
-            chat_panel.input_widget.geometry().top()
-        )
+        mode_bottom = chat_panel.mode_selector_widget.mapTo(
+            chat_panel,
+            QPoint(0, chat_panel.mode_selector_widget.height()),
+        ).y()
+        composer_top = chat_panel.input_widget.mapTo(
+            chat_panel,
+            QPoint(0, 0),
+        ).y()
+        assert mode_bottom < composer_top
         assert chat_panel.scroll_area.geometry().bottom() < (
             chat_panel.control_panel.geometry().top()
         )
@@ -1891,6 +1969,51 @@ class TestChatPanelCallbacks:
         qtbot.wait(10)
 
         assert chat_panel.control_panel.height() <= 230
+
+    def test_sparse_transcript_keeps_consecutive_turns_together(
+        self,
+        qtbot,
+        chat_panel,
+    ):
+        chat_panel.resize(420, 780)
+        chat_panel.show()
+        chat_panel.append_message("user", "Hello.")
+        chat_panel.append_message(
+            "assistant",
+            "I can help interpret EEG data and prepare a training-ready dataset.",
+        )
+        qtbot.wait(20)
+
+        bubbles = [
+            chat_panel.chat_layout.itemAt(index).widget()
+            for index in range(chat_panel.chat_layout.count())
+            if isinstance(
+                chat_panel.chat_layout.itemAt(index).widget(),
+                MessageBubble,
+            )
+        ]
+        assert len(bubbles) == 2
+        first_bottom = bubbles[0].geometry().bottom()
+        second_top = bubbles[1].geometry().top()
+        assert 0 <= second_top - first_bottom <= 24
+        assert bubbles[0].geometry().top() <= 24
+
+    def test_deferred_empty_state_scroll_is_owned_by_panel(
+        self,
+        qapp,
+    ):
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            panel.resize(320, 520)
+            panel.set_runtime_state("ready")
+            panel.show()
+            qapp.processEvents()
+            panel._scroll_empty_state_to_top()
+            panel.deleteLater()
+            QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            qapp.processEvents()
 
     @pytest.mark.parametrize("width", [320, 380, 460])
     def test_user_bubble_keeps_short_word_readable_in_narrow_dock(

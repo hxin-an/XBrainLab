@@ -5,21 +5,34 @@ parameters. Remote assistant runtimes are not part of the product path.
 """
 
 import contextlib
+import math
 import weakref
 
-from PyQt6.QtCore import QCoreApplication, QObject, QSignalBlocker, QTimer
+from PyQt6.QtCore import (
+    QCoreApplication,
+    QObject,
+    QSignalBlocker,
+    QSize,
+    Qt,
+    QTimer,
+)
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QDoubleSpinBox,
-    QGroupBox,
+    QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QProgressBar,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
+    QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.backend.utils.logger import logger
@@ -34,9 +47,175 @@ from XBrainLab.llm.core.model_download_lifecycle import (
     ModelStatusInspectionRequest,
     ModelStatusInspectionResult,
 )
+from XBrainLab.ui.chat.segmented_control import AssistantSegmentedControl
+from XBrainLab.ui.core.base_dialog import BaseDialog
+
+_RESPONSE_STYLE_PRESETS: dict[str, tuple[float, float]] = {
+    "precise": (0.2, 0.8),
+    "balanced": (0.7, 0.9),
+    "exploratory": (1.0, 0.95),
+}
+_RESPONSE_LENGTH_PRESETS: dict[str, int] = {
+    "short": 256,
+    "standard": 512,
+    "detailed": 1024,
+}
+
+_ASSISTANT_SETTINGS_STYLE = """
+    QDialog#AssistantSettingsDialog {
+        background-color: #181c20;
+        color: #edf3f8;
+    }
+    QLabel#AssistantSettingsHeading {
+        color: #f3f7fb;
+        background: transparent;
+        border: none;
+        font-size: 20px;
+        font-weight: 700;
+    }
+    QLabel#AssistantSettingsSection {
+        color: #edf3f8;
+        background: transparent;
+        border: none;
+        font-size: 14px;
+        font-weight: 700;
+    }
+    QLabel#AssistantSettingsMuted {
+        color: #9aa8b4;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
+    QComboBox#AssistantModelCombo {
+        min-height: 34px;
+        color: #edf3f8;
+        background-color: #20262c;
+        border: 1px solid #3d4852;
+        border-radius: 5px;
+        padding: 2px 9px;
+    }
+    QDoubleSpinBox#AssistantExactValue,
+    QSpinBox#AssistantExactValue {
+        min-height: 30px;
+        color: #edf3f8;
+        background-color: #20262c;
+        border: 1px solid #3d4852;
+        border-radius: 5px;
+        padding: 1px 9px;
+    }
+    QComboBox#AssistantModelCombo:focus,
+    QDoubleSpinBox#AssistantExactValue:focus,
+    QSpinBox#AssistantExactValue:focus {
+        border-color: #168be0;
+    }
+    QFrame#AssistantModelStatusDot {
+        min-width: 9px;
+        max-width: 9px;
+        min-height: 9px;
+        max-height: 9px;
+        border: none;
+        border-radius: 4px;
+        background-color: #7d8994;
+    }
+    QFrame#AssistantModelStatusDot[statusTone="ready"] {
+        background-color: #42c961;
+    }
+    QFrame#AssistantModelStatusDot[statusTone="warning"] {
+        background-color: #d8a846;
+    }
+    QFrame#AssistantModelStatusDot[statusTone="error"] {
+        background-color: #d65f66;
+    }
+    QCheckBox#AssistantLocalEnabled {
+        color: #c8d3dc;
+        spacing: 8px;
+    }
+    QToolButton#AssistantAdvancedToggle {
+        min-height: 38px;
+        color: #d7e0e8;
+        background-color: #1c2228;
+        border: 1px solid #39434c;
+        border-radius: 5px;
+        padding: 4px 11px;
+        text-align: left;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    QToolButton#AssistantAdvancedToggle:hover {
+        color: #f3f7fb;
+        background-color: #222a31;
+        border-color: #4b5c69;
+    }
+    QWidget#AssistantAdvancedContent {
+        background: transparent;
+        border: 1px solid #303941;
+        border-radius: 5px;
+    }
+    QPushButton#AssistantModelAction,
+    QPushButton#AssistantSecondaryButton {
+        min-height: 34px;
+        color: #d6dee6;
+        background-color: #252c32;
+        border: 1px solid #414c55;
+        border-radius: 5px;
+        padding: 3px 12px;
+    }
+    QPushButton#AssistantModelAction:hover,
+    QPushButton#AssistantSecondaryButton:hover {
+        color: #ffffff;
+        background-color: #303940;
+        border-color: #596875;
+    }
+    QPushButton#AssistantPrimaryButton {
+        min-height: 34px;
+        color: #ffffff;
+        background-color: #087dcc;
+        border: 1px solid #168be0;
+        border-radius: 5px;
+        padding: 3px 18px;
+        font-weight: 700;
+    }
+    QPushButton#AssistantPrimaryButton:hover {
+        background-color: #168fe0;
+    }
+    QPushButton#AssistantPrimaryButton:disabled {
+        color: #7f8a94;
+        background-color: #2a3239;
+        border-color: #353f47;
+    }
+    QFrame#AssistantSettingsDivider {
+        color: #303941;
+        background-color: #303941;
+        border: none;
+        max-height: 1px;
+    }
+    QProgressBar#AssistantDownloadProgress {
+        min-height: 5px;
+        max-height: 5px;
+        background-color: #242c33;
+        border: none;
+        border-radius: 2px;
+        text-align: center;
+    }
+    QProgressBar#AssistantDownloadProgress::chunk {
+        background-color: #168be0;
+        border-radius: 2px;
+    }
+    QScrollArea#AssistantSettingsBodyScroll {
+        background: transparent;
+        border: none;
+    }
+    QScrollArea#AssistantSettingsBodyScroll > QWidget > QWidget {
+        background: #181c20;
+    }
+    QWidget#AssistantAdvancedContent {
+        background: transparent;
+        border: none;
+    }
+"""
 
 
-class ModelSettingsDialog(QDialog):
+class ModelSettingsDialog(BaseDialog):
     """Dialog for configuring the local AI assistant runtime.
 
     Provides UI for selecting, installing, deleting, and activating approved
@@ -58,11 +237,6 @@ class ModelSettingsDialog(QDialog):
         agent_manager=None,
         download_lifecycle: ModelDownloadLifecycleContract | None = None,
     ):
-        super().__init__(parent)
-        self.setWindowTitle("AI Assistant Settings")
-        self.setMinimumSize(460, 400)
-        self.resize(500, 440)
-
         # Reference to AgentManager for safe deletion (switching backend)
         self.agent_manager = agent_manager
 
@@ -86,6 +260,24 @@ class ModelSettingsDialog(QDialog):
                 parent=lifecycle_parent,
             )
         self.download_lifecycle = download_lifecycle
+        self.is_downloading = self.download_lifecycle.active_target is not None
+        self._inspection_request_id = 0
+        self._pending_inspection_request_id: int | None = None
+        self._current_local_model_state: ModelStatusInspectionResult | None = None
+        self._updating_response_presets = False
+        self._download_observers_attached = False
+
+        super().__init__(
+            parent=parent,
+            title="Assistant Settings",
+            width=560,
+            height=560,
+        )
+        self.setMinimumWidth(520)
+        self._fit_timer = QTimer(self)
+        self._fit_timer.setSingleShot(True)
+        self._fit_timer.timeout.connect(self._fit_initial_content)
+
         self.download_lifecycle.progress.connect(self.on_download_progress)
         self.download_lifecycle.finished.connect(self.on_download_finished)
         self.download_lifecycle.failed.connect(self.on_download_failed)
@@ -96,134 +288,365 @@ class ModelSettingsDialog(QDialog):
             self._on_model_inspection_finished
         )
         self._download_observers_attached = True
-        self.is_downloading = self.download_lifecycle.active_target is not None
-        self._inspection_request_id = 0
-        self._pending_inspection_request_id: int | None = None
-        self._current_local_model_state: ModelStatusInspectionResult | None = None
-
-        self.init_ui()
         self.load_state()
+        self._schedule_fit()
 
     def init_ui(self):
         """Initialize the dialog UI with local model settings."""
-        layout = QVBoxLayout(self)
-        layout.setSpacing(15)
+        self.setObjectName("AssistantSettingsDialog")
+        self.setStyleSheet(f"{self.styleSheet()}\n{_ASSISTANT_SETTINGS_STYLE}")
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        # --- Local Model Section ---
-        local_group = QGroupBox("Local Model")
-        local_layout = QVBoxLayout()
+        self.settings_body_scroll = QScrollArea(self)
+        self.settings_body_scroll.setObjectName("AssistantSettingsBodyScroll")
+        self.settings_body_scroll.setWidgetResizable(True)
+        self.settings_body_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.settings_body_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.settings_body_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.settings_body_scroll.setMinimumHeight(280)
+        self.settings_body_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+
+        self.settings_body = QWidget(self.settings_body_scroll)
+        self.settings_body.setObjectName("AssistantSettingsBody")
+        layout = QVBoxLayout(self.settings_body)
+        layout.setContentsMargins(24, 18, 24, 16)
+        layout.setSpacing(12)
+
+        self.heading_label = QLabel("Assistant Settings")
+        self.heading_label.setObjectName("AssistantSettingsHeading")
+        layout.addWidget(self.heading_label)
+
+        self.model_section_label = self._section_label("Model")
+        layout.addWidget(self.model_section_label)
 
         # Model Dropdown
         self.local_model_combo = QComboBox()
+        self.local_model_combo.setObjectName("AssistantModelCombo")
         self.local_model_combo.addItems(LLMConfig.allowed_local_model_ids())
         self.local_model_combo.currentTextChanged.connect(self.check_local_model_status)
-        local_layout.addWidget(QLabel("Select Model:"))
-        local_layout.addWidget(self.local_model_combo)
+        self.local_model_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        layout.addWidget(self.local_model_combo)
 
         # Status & Actions
         status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(2, 0, 0, 0)
+        status_layout.setSpacing(8)
+        self.model_status_dot = QFrame(self)
+        self.model_status_dot.setObjectName("AssistantModelStatusDot")
+        self.model_status_dot.setProperty("statusTone", "neutral")
+        status_layout.addWidget(self.model_status_dot)
         self.local_status_label = QLabel("Status: Checking...")
         status_layout.addWidget(self.local_status_label)
         status_layout.addStretch()
 
         self.local_action_btn = QPushButton("Install Model")
-        self.local_action_btn.setFixedWidth(100)
+        self.local_action_btn.setObjectName("AssistantModelAction")
+        self.local_action_btn.setMinimumWidth(110)
         self.local_action_btn.clicked.connect(self.on_local_action_clicked)
         status_layout.addWidget(self.local_action_btn)
-        local_layout.addLayout(status_layout)
+        layout.addLayout(status_layout)
 
-        self.local_runtime_label = QLabel("Runtime: Checking...")
-        self.local_runtime_label.setWordWrap(True)
-        local_layout.addWidget(self.local_runtime_label)
-
-        self.local_resource_label = QLabel("")
-        self.local_resource_label.setWordWrap(True)
-        local_layout.addWidget(self.local_resource_label)
+        self.download_progress = QProgressBar(self)
+        self.download_progress.setObjectName("AssistantDownloadProgress")
+        self.download_progress.setRange(0, 100)
+        self.download_progress.setValue(0)
+        self.download_progress.setTextVisible(False)
+        self.download_progress.setVisible(False)
+        layout.addWidget(self.download_progress)
 
         self.local_enable_chk = QCheckBox("Use local assistant")
+        self.local_enable_chk.setObjectName("AssistantLocalEnabled")
         self.local_enable_chk.toggled.connect(self._on_local_enable_toggled)
-        local_layout.addWidget(self.local_enable_chk)
+        layout.addWidget(self.local_enable_chk)
 
-        local_group.setLayout(local_layout)
-        layout.addWidget(local_group)
+        self.response_style_label = self._section_label("Response style")
+        layout.addWidget(self.response_style_label)
+        self.response_style_control = AssistantSegmentedControl(
+            (
+                ("precise", "Precise"),
+                ("balanced", "Balanced"),
+                ("exploratory", "Exploratory"),
+            ),
+            descriptions={
+                "precise": "More consistent explanatory wording.",
+                "balanced": "Balanced detail and variation.",
+                "exploratory": "More varied explanatory wording.",
+            },
+            parent=self,
+        )
+        self.response_style_control.selection_changed.connect(
+            self._apply_response_style_preset
+        )
+        layout.addWidget(self.response_style_control)
 
-        # --- Generation Parameters Section ---
-        gen_group = QGroupBox("Informational answer style")
-        gen_layout = QVBoxLayout()
+        self.response_length_label = self._section_label("Response length")
+        layout.addWidget(self.response_length_label)
+        self.response_length_control = AssistantSegmentedControl(
+            (
+                ("short", "Short"),
+                ("standard", "Standard"),
+                ("detailed", "Detailed"),
+            ),
+            descriptions={
+                "short": "Prefer concise explanations.",
+                "standard": "Use normal explanatory detail.",
+                "detailed": "Allow longer explanations.",
+            },
+            parent=self,
+        )
+        self.response_length_control.selection_changed.connect(
+            self._apply_response_length_preset
+        )
+        layout.addWidget(self.response_length_control)
 
-        # Temperature
-        temp_layout = QHBoxLayout()
-        temp_layout.addWidget(QLabel("Temperature:"))
+        self.advanced_toggle = QToolButton(self)
+        self.advanced_toggle.setObjectName("AssistantAdvancedToggle")
+        self.advanced_toggle.setText("Advanced settings")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setChecked(False)
+        self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.advanced_toggle.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.advanced_toggle.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.advanced_toggle.toggled.connect(self._set_advanced_visible)
+        layout.addWidget(self.advanced_toggle)
+
+        self.advanced_content = QWidget(self.settings_body)
+        self.advanced_content.setObjectName("AssistantAdvancedContent")
+        advanced_layout = QVBoxLayout(self.advanced_content)
+        advanced_layout.setContentsMargins(10, 8, 10, 8)
+        advanced_layout.setSpacing(7)
+
+        exact_form = QFormLayout()
+        exact_form.setContentsMargins(0, 0, 0, 0)
+        exact_form.setHorizontalSpacing(18)
+        exact_form.setVerticalSpacing(6)
+        exact_form.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        exact_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
+
         self.temperature_spin = QDoubleSpinBox()
+        self.temperature_spin.setObjectName("AssistantExactValue")
         self.temperature_spin.setRange(0.0, 2.0)
         self.temperature_spin.setSingleStep(0.1)
         self.temperature_spin.setDecimals(2)
         self.temperature_spin.setValue(self.config.temperature)
+        self.temperature_spin.setFixedWidth(160)
         self.temperature_spin.setToolTip(
             "Controls variety in explanatory answers. Workflow actions always "
             "use deterministic decoding."
         )
-        temp_layout.addWidget(self.temperature_spin)
-        gen_layout.addLayout(temp_layout)
+        exact_form.addRow("Temperature", self.temperature_spin)
 
-        # Top-p
-        topp_layout = QHBoxLayout()
-        topp_layout.addWidget(QLabel("Top-p:"))
         self.top_p_spin = QDoubleSpinBox()
+        self.top_p_spin.setObjectName("AssistantExactValue")
         self.top_p_spin.setRange(0.0, 1.0)
         self.top_p_spin.setSingleStep(0.05)
         self.top_p_spin.setDecimals(2)
         self.top_p_spin.setValue(self.config.top_p)
+        self.top_p_spin.setFixedWidth(160)
         self.top_p_spin.setToolTip("Nucleus sampling cutoff for explanatory answers.")
-        topp_layout.addWidget(self.top_p_spin)
-        gen_layout.addLayout(topp_layout)
+        exact_form.addRow("Top-p", self.top_p_spin)
 
-        # Max New Tokens
-        tokens_layout = QHBoxLayout()
-        tokens_layout.addWidget(QLabel("Max Tokens:"))
         self.max_tokens_spin = QSpinBox()
+        self.max_tokens_spin.setObjectName("AssistantExactValue")
         self.max_tokens_spin.setRange(64, 8192)
         self.max_tokens_spin.setSingleStep(64)
         self.max_tokens_spin.setValue(self.config.max_new_tokens)
+        self.max_tokens_spin.setFixedWidth(160)
         self.max_tokens_spin.setToolTip(
             "Maximum length of explanatory answers. Workflow actions use a "
             "separate safety limit."
         )
-        tokens_layout.addWidget(self.max_tokens_spin)
-        gen_layout.addLayout(tokens_layout)
+        exact_form.addRow("Maximum tokens", self.max_tokens_spin)
+        advanced_layout.addLayout(exact_form)
 
-        gen_group.setLayout(gen_layout)
-        layout.addWidget(gen_group)
+        self.local_runtime_label = QLabel(
+            "Runtime: Checking...",
+            self.advanced_content,
+        )
+        self.local_runtime_label.setObjectName("AssistantSettingsMuted")
+        self.local_runtime_label.setWordWrap(True)
+        advanced_layout.addWidget(self.local_runtime_label)
+
+        self.local_resource_label = QLabel("", self.advanced_content)
+        self.local_resource_label.setObjectName("AssistantSettingsMuted")
+        self.local_resource_label.setWordWrap(True)
+        advanced_layout.addWidget(self.local_resource_label)
+        self.advanced_content.setVisible(False)
+        layout.addWidget(self.advanced_content)
+
+        self.temperature_spin.valueChanged.connect(
+            self._sync_response_presets_from_exact_values
+        )
+        self.top_p_spin.valueChanged.connect(
+            self._sync_response_presets_from_exact_values
+        )
+        self.max_tokens_spin.valueChanged.connect(
+            self._sync_response_presets_from_exact_values
+        )
+        self._sync_response_presets_from_exact_values()
 
         layout.addStretch()
+        self.settings_body_scroll.setWidget(self.settings_body)
+        root_layout.addWidget(self.settings_body_scroll, 1)
 
         # --- Footer ---
-        footer_layout = QVBoxLayout()
+        self.footer_widget = QWidget(self)
+        footer_layout = QVBoxLayout(self.footer_widget)
+        footer_layout.setContentsMargins(24, 0, 24, 16)
+        footer_layout.setSpacing(12)
+
+        divider = QFrame(self.footer_widget)
+        divider.setObjectName("AssistantSettingsDivider")
+        divider.setFrameShape(QFrame.Shape.HLine)
+        footer_layout.addWidget(divider)
 
         btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.setSpacing(10)
         btn_layout.addStretch()
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setObjectName("AssistantSecondaryButton")
+        self.btn_cancel.setMinimumWidth(94)
         self.btn_cancel.clicked.connect(self.reject)
 
         self.btn_activate = QPushButton("Save")
+        self.btn_activate.setObjectName("AssistantPrimaryButton")
+        self.btn_activate.setMinimumWidth(94)
         self.btn_activate.setEnabled(False)
         self.btn_activate.clicked.connect(self.on_activate_clicked)
-        # Keep the primary Save action visually distinct from Cancel.
-        self.btn_activate.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #007bff; color: white; border-radius: 4px;
-                padding: 6px 12px;
-            }
-            QPushButton:disabled { background-color: #555; color: #aaa; }
-        """,
-        )
 
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_activate)
-
         footer_layout.addLayout(btn_layout)
-        layout.addLayout(footer_layout)
+        root_layout.addWidget(self.footer_widget)
+
+    @staticmethod
+    def _section_label(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("AssistantSettingsSection")
+        return label
+
+    def _apply_response_style_preset(self, key: str) -> None:
+        values = _RESPONSE_STYLE_PRESETS.get(key)
+        if values is None:
+            return
+        self._updating_response_presets = True
+        try:
+            with (
+                QSignalBlocker(self.temperature_spin),
+                QSignalBlocker(self.top_p_spin),
+            ):
+                self.temperature_spin.setValue(values[0])
+                self.top_p_spin.setValue(values[1])
+        finally:
+            self._updating_response_presets = False
+        self._sync_response_presets_from_exact_values()
+
+    def _apply_response_length_preset(self, key: str) -> None:
+        value = _RESPONSE_LENGTH_PRESETS.get(key)
+        if value is None:
+            return
+        self._updating_response_presets = True
+        try:
+            with QSignalBlocker(self.max_tokens_spin):
+                self.max_tokens_spin.setValue(value)
+        finally:
+            self._updating_response_presets = False
+        self._sync_response_presets_from_exact_values()
+
+    def _sync_response_presets_from_exact_values(self, *_args) -> None:
+        if self._updating_response_presets:
+            return
+        style_key = next(
+            (
+                key
+                for key, (temperature, top_p) in _RESPONSE_STYLE_PRESETS.items()
+                if math.isclose(
+                    self.temperature_spin.value(),
+                    temperature,
+                    abs_tol=0.001,
+                )
+                and math.isclose(self.top_p_spin.value(), top_p, abs_tol=0.001)
+            ),
+            None,
+        )
+        length_key = next(
+            (
+                key
+                for key, value in _RESPONSE_LENGTH_PRESETS.items()
+                if self.max_tokens_spin.value() == value
+            ),
+            None,
+        )
+        self.response_style_control.set_selected(style_key)
+        self.response_length_control.set_selected(length_key)
+        custom_values = style_key is None or length_key is None
+        self.advanced_toggle.setText(
+            "Advanced settings · Custom" if custom_values else "Advanced settings"
+        )
+
+    def _set_advanced_visible(self, visible: bool) -> None:
+        self.advanced_content.setVisible(visible)
+        self.advanced_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if visible else Qt.ArrowType.RightArrow
+        )
+        self._schedule_fit()
+
+    def _schedule_fit(self) -> None:
+        """Coalesce content-fit requests in a timer owned by this dialog."""
+        self._fit_timer.start(0)
+
+    def _fit_initial_content(self) -> None:
+        if not self.isVisible():
+            return
+        body_layout = self.settings_body.layout()
+        if body_layout is not None:
+            body_layout.activate()
+        footer_layout = self.footer_widget.layout()
+        if footer_layout is not None:
+            footer_layout.activate()
+        body_hint = self.settings_body.sizeHint()
+        footer_hint = self.footer_widget.sizeHint()
+        self.resize_preserving_center(
+            QSize(
+                min(max(520, body_hint.width()), 700),
+                min(
+                    max(
+                        body_hint.height()
+                        + footer_hint.height()
+                        + (self.settings_body_scroll.frameWidth() * 2),
+                        1,
+                    ),
+                    700,
+                ),
+            )
+        )
+
+    def _set_model_status_tone(self, tone: str) -> None:
+        self.model_status_dot.setProperty("statusTone", tone)
+        style = self.model_status_dot.style()
+        if style is not None:
+            style.unpolish(self.model_status_dot)
+            style.polish(self.model_status_dot)
 
     def load_state(self):
         """Load lightweight config state and defer cache/runtime inspection."""
@@ -260,6 +683,7 @@ class ModelSettingsDialog(QDialog):
         self.local_downloaded = False
         self.local_status_label.setText("Model: Checking...")
         self.local_status_label.setStyleSheet("color: #888888;")
+        self._set_model_status_tone("neutral")
         self.local_runtime_label.setText("Runtime: Checking...")
         self.local_runtime_label.setStyleSheet("color: #888888;")
         self.local_resource_label.setText("")
@@ -276,10 +700,12 @@ class ModelSettingsDialog(QDialog):
         if state.installed:
             self.local_status_label.setText("Model: Installed")
             self.local_status_label.setStyleSheet("color: #4caf50;")
+            self._set_model_status_tone("warning")
             self.local_action_btn.setText("Delete")
         else:
             self.local_status_label.setText("Model: Not installed")
             self.local_status_label.setStyleSheet("color: #888888;")
+            self._set_model_status_tone("neutral")
             self.local_action_btn.setText("Install Model")
         self.local_action_btn.setEnabled(
             not self.is_downloading and not state.diagnostic_message
@@ -297,6 +723,7 @@ class ModelSettingsDialog(QDialog):
             )
 
         if state.runtime_ready:
+            self._set_model_status_tone("ready")
             detail = state.runtime_message.removeprefix("Local runtime ready.").strip()
             if not detail:
                 self.local_runtime_label.setText("Runtime: Available")
@@ -310,8 +737,10 @@ class ModelSettingsDialog(QDialog):
         self.local_runtime_label.setText(f"Runtime unavailable: {detail}")
         if "Missing optional packages" in state.runtime_message:
             self.local_runtime_label.setStyleSheet("color: #f44336;")
+            self._set_model_status_tone("error")
         else:
             self.local_runtime_label.setStyleSheet("color: #ff9800;")
+            self._set_model_status_tone("warning")
 
     def check_local_model_status(self, *_args):
         """Request one coherent status snapshot without blocking the GUI."""
@@ -372,6 +801,7 @@ class ModelSettingsDialog(QDialog):
         self.temperature_spin.setValue(self.config.temperature)
         self.top_p_spin.setValue(self.config.top_p)
         self.max_tokens_spin.setValue(self.config.max_new_tokens)
+        self._sync_response_presets_from_exact_values()
 
     def on_local_action_clicked(self):
         """Handle local model install/delete/cancel button click."""
@@ -448,6 +878,10 @@ class ModelSettingsDialog(QDialog):
         self.is_downloading = True
         self.local_action_btn.setText("Cancel")
         self.local_status_label.setText("Downloading...")
+        self._set_model_status_tone("warning")
+        self.download_progress.setRange(0, 0)
+        self.download_progress.setVisible(True)
+        self._schedule_fit()
         self.update_validation_state()
 
     def _delete_model(self):
@@ -480,6 +914,10 @@ class ModelSettingsDialog(QDialog):
                 return
             self.is_downloading = True
             self.local_status_label.setText("Deleting model...")
+            self._set_model_status_tone("warning")
+            self.download_progress.setRange(0, 0)
+            self.download_progress.setVisible(True)
+            self._schedule_fit()
             self.local_action_btn.setEnabled(False)
             self.update_validation_state()
 
@@ -491,10 +929,15 @@ class ModelSettingsDialog(QDialog):
             msg: Progress message to display.
 
         """
-        del percent
         target = self.download_lifecycle.active_target
         if target is None or target.repo_id == self.local_model_combo.currentText():
             self.local_status_label.setText(msg)
+            if 0 <= int(percent) <= 100:
+                self.download_progress.setRange(0, 100)
+                self.download_progress.setValue(int(percent))
+            else:
+                self.download_progress.setRange(0, 0)
+            self.download_progress.setVisible(True)
 
     def on_download_finished(self, outcome: object):
         """Handle successful download completion.
@@ -506,6 +949,7 @@ class ModelSettingsDialog(QDialog):
         if not isinstance(outcome, ModelDownloadOutcome):
             return
         self.is_downloading = not self.download_lifecycle.is_idle()
+        self.download_progress.setVisible(False)
         self.check_local_model_status()
         QMessageBox.information(self, "Success", "Model downloaded successfully!")
 
@@ -519,6 +963,8 @@ class ModelSettingsDialog(QDialog):
         if not isinstance(outcome, ModelDownloadOutcome):
             return
         self.is_downloading = not self.download_lifecycle.is_idle()
+        self.download_progress.setVisible(False)
+        self._schedule_fit()
         selected_target = outcome.target.repo_id == self.local_model_combo.currentText()
         self.check_local_model_status()
         if outcome.cancelled:
@@ -531,7 +977,10 @@ class ModelSettingsDialog(QDialog):
         if selected_target:
             self.local_status_label.setText("Download failed")
             self.local_status_label.setStyleSheet("color: #f44336;")
+            self._set_model_status_tone("error")
             self.local_action_btn.setText("Retry")
+            self.download_progress.setVisible(False)
+            self._schedule_fit()
         QMessageBox.critical(
             self,
             "Download Failed",
@@ -545,6 +994,8 @@ class ModelSettingsDialog(QDialog):
         if result.reason is not ModelCacheCleanupReason.USER_DELETE:
             return
         self.is_downloading = not self.download_lifecycle.is_idle()
+        self.download_progress.setVisible(False)
+        self._schedule_fit()
         self.check_local_model_status()
         if result.ok:
             QMessageBox.information(
@@ -652,6 +1103,11 @@ class ModelSettingsDialog(QDialog):
         self._detach_download_observers()
         super().closeEvent(event)
 
+    def showEvent(self, event):  # noqa: N802
+        """Fit the collapsed product form after Qt resolves visible size hints."""
+        super().showEvent(event)
+        self._schedule_fit()
+
     def _shutdown_active_download(self):
         """Request cancellation without releasing application ownership."""
         if self.is_downloading:
@@ -687,3 +1143,7 @@ class ModelSettingsDialog(QDialog):
 
         """
         return self.config
+
+    def get_result(self):
+        """Return the configured local assistant settings."""
+        return self.get_config()

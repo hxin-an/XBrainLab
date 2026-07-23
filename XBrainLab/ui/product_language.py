@@ -16,7 +16,7 @@ from XBrainLab.product_language import tool_action_label as shared_tool_action_l
 COMMAND_LABELS = WORKFLOW_COMMAND_LABELS
 
 ASSISTANT_MODE_LABELS: dict[str, str] = {
-    "single": "One step",
+    "single": "Single action",
     "multi": "Guided workflow",
 }
 ASSISTANT_MODE_DESCRIPTIONS: dict[str, str] = {

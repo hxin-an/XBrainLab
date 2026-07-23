@@ -377,6 +377,31 @@ def test_mode_description_participates_in_overflow_and_geometry_evidence(
     qapp.processEvents()
 
 
+def test_icon_only_send_button_uses_icon_evidence_not_hidden_text_width(qapp) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 520)
+    panel.set_runtime_state("ready")
+    panel.show()
+    qapp.processEvents()
+
+    assert panel.send_btn.text() == "Send"
+    assert panel.send_btn.accessibleName() == "Send"
+    assert panel.send_btn.icon().isNull() is False
+    assert human_evidence._button_renders_text(panel.send_btn) is False
+    assert "send_btn" not in human_evidence._assistant_text_overflow(panel)
+    send_record = next(
+        record
+        for record in walkthrough_module._button_evidence(panel)[0]
+        if record["name"] == "AssistantSendButton"
+    )
+    assert send_record["text_rendered"] is False
+    assert send_record["text_fits"] is True
+
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
 def test_confirmation_card_labels_participate_in_overflow_evidence(qapp) -> None:
     from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 
