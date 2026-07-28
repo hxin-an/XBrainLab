@@ -18,6 +18,10 @@ CONFIGURED_TEST_OPTIONS = ResolvedGenerationOptions(
     temperature=0.7,
     top_p=0.9,
 )
+GRANITE_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+GRANITE_MODEL_REVISION = (
+    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
+)
 PRIMARY_MODEL_REVISION = (
     "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
 )
@@ -207,6 +211,61 @@ class TestGenerationProfiles:
             assert "temperature" not in generation_kwargs
             assert "top_p" not in generation_kwargs
 
+    def test_tokenizer_input_is_bounded_by_the_catalog_runtime_context(self):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        config = _make_config(model_name=GRANITE_MODEL_ID)
+        backend = LocalBackend(config)
+        backend.is_loaded = True
+        tokenizer = MagicMock()
+        tokenizer.apply_chat_template.return_value = "prompt text"
+        tokenizer.return_value = MagicMock(to=MagicMock(return_value={}))
+        model = MagicMock()
+        model.device = "cpu"
+        backend.tokenizer = tokenizer
+        backend.model = model
+        streamer = MagicMock()
+        streamer.__iter__ = MagicMock(return_value=iter([]))
+
+        class ImmediateThread:
+            def __init__(self, target, **_kwargs):
+                self._target = target
+
+            def start(self):
+                self._target()
+
+            def join(self, timeout=0):
+                return None
+
+            def is_alive(self):
+                return False
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "transformers": MagicMock(
+                        TextIteratorStreamer=MagicMock(return_value=streamer)
+                    ),
+                },
+            ),
+            patch("XBrainLab.llm.core.backends.local.Thread", ImmediateThread),
+        ):
+            list(
+                backend.generate_stream(
+                    [{"role": "user", "content": "hi"}],
+                    options=CONFIGURED_TEST_OPTIONS,
+                )
+            )
+
+        tokenizer.assert_called_once_with(
+            "prompt text",
+            return_tensors="pt",
+            truncation=True,
+            max_length=8_192 - CONFIGURED_TEST_OPTIONS.max_new_tokens,
+        )
+        assert tokenizer.truncation_side == "left"
+
 
 class TestLocalBackendLoad:
     def test_load_already_loaded(self):
@@ -286,6 +345,46 @@ class TestLocalBackendLoad:
 
         assert backend.is_loaded is True
         mock_bnb_config.assert_called_once_with(load_in_4bit=True)
+
+    @patch("XBrainLab.llm.core.backends.local.torch", create=True)
+    def test_granite_cuda_index_uses_catalog_bfloat16_and_forbids_remote_code(
+        self,
+        mock_torch,
+    ):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        cfg = _make_config(
+            model_name=GRANITE_MODEL_ID,
+            device="cuda:0",
+            trust_remote_code=True,
+        )
+        backend = LocalBackend(cfg)
+        mock_tokenizer_cls = MagicMock(
+            from_pretrained=MagicMock(return_value=MagicMock())
+        )
+        mock_model = MagicMock()
+        mock_model_cls = MagicMock(from_pretrained=MagicMock(return_value=mock_model))
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "torch": mock_torch,
+                "transformers": MagicMock(
+                    BitsAndBytesConfig=MagicMock(),
+                    AutoTokenizer=mock_tokenizer_cls,
+                    AutoModelForCausalLM=mock_model_cls,
+                ),
+            },
+        ):
+            backend.load()
+
+        tokenizer_kwargs = mock_tokenizer_cls.from_pretrained.call_args.kwargs
+        model_kwargs = mock_model_cls.from_pretrained.call_args.kwargs
+        assert tokenizer_kwargs["revision"] == GRANITE_MODEL_REVISION
+        assert tokenizer_kwargs["trust_remote_code"] is False
+        assert model_kwargs["trust_remote_code"] is False
+        assert model_kwargs["dtype"] is mock_torch.bfloat16
+        mock_model.to.assert_called_once_with("cuda:0")
 
     @patch("XBrainLab.llm.core.backends.local.torch", create=True)
     def test_load_failure(self, mock_torch):
@@ -464,6 +563,19 @@ class TestProcessMessages:
         assert result[0]["role"] == "user"
         assert "You are helpful" in result[0]["content"]
         assert "hello" in result[0]["content"]
+
+    def test_granite_preserves_native_system_role(self):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        backend = LocalBackend(_make_config(model_name=GRANITE_MODEL_ID))
+        messages = [
+            {"role": "system", "content": "Use the strict action envelope."},
+            {"role": "user", "content": "Continue until a decision is needed."},
+        ]
+
+        result = backend._process_messages_for_template(messages)
+
+        assert result == messages
 
     def test_system_only_no_user(self):
         backend = self._get_backend()

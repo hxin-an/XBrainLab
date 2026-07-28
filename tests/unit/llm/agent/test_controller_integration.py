@@ -275,7 +275,7 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
         "_handle_admitted_user_input",
         _fault_then_complete,
     )
-    first = AssistantTurnRequest(
+    first = AssistantTurnRequest.single_action(
         correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
         text="first request",
     )
@@ -295,10 +295,12 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
     assert controller._active_generation_dispatch_phase is None
     assert controller._active_host_turn_id is None
     assert controller._active_host_turn_generation is None
+    assert controller._active_turn_scope is None
+    assert controller._active_turn_terminal_command is None
     assert controller.is_processing is False
 
     second = controller.handle_user_turn(
-        AssistantTurnRequest(
+        AssistantTurnRequest.single_action(
             correlation=AssistantTurnCorrelation(generation=2, turn_id=2),
             text="second request",
         )
@@ -330,7 +332,7 @@ def test_internal_setup_fault_unwinds_pending_metrics_and_rag_context(
     controller.turn_finished.connect(terminals.append)
 
     acknowledgement = controller.handle_user_turn(
-        AssistantTurnRequest(
+        AssistantTurnRequest.single_action(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
             text="request with setup fault",
         )
@@ -346,7 +348,45 @@ def test_internal_setup_fault_unwinds_pending_metrics_and_rag_context(
     assert controller.assembler._turn_authorized_command is None
     assert controller._active_host_turn_id is None
     assert controller._active_host_turn_generation is None
+    assert controller._active_turn_scope is None
+    assert controller._active_turn_terminal_command is None
     assert controller.is_processing is False
+
+
+def test_guided_turn_scope_is_owned_by_the_admitted_request(
+    controller: LLMController,
+    monkeypatch,
+) -> None:
+    observed: list[tuple[str, str | None]] = []
+
+    def _inspect_active_scope(_text: str) -> None:
+        observed.append(
+            (
+                controller._active_policy_mode(),
+                controller._active_turn_terminal_command,
+            )
+        )
+        assert not hasattr(controller, "set_execution_mode")
+        controller._emit_processing_finished()
+
+    monkeypatch.setattr(
+        controller,
+        "_handle_admitted_user_input",
+        _inspect_active_scope,
+    )
+
+    acknowledgement = controller.handle_user_turn(
+        AssistantTurnRequest.guided_workflow(
+            correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+            text="Load the recording and create epochs.",
+            terminal_command="create_epoch",
+        )
+    )
+
+    assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+    assert observed == [("multi", "create_epoch")]
+    assert controller._active_turn_scope is None
+    assert controller._active_turn_terminal_command is None
 
 
 def test_controller_verification_flow_rejection(controller: LLMController) -> None:
@@ -398,7 +438,7 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
     controller.turn_finished.connect(terminals.append)
 
     controller.handle_user_turn(
-        AssistantTurnRequest(
+        AssistantTurnRequest.single_action(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
             text="clear the current dataset",
         )
@@ -423,7 +463,7 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
         ]
 
         controller.handle_user_turn(
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=2, turn_id=2),
                 text="Compare alpha and beta EEG rhythms",
             )
@@ -470,7 +510,7 @@ def test_delayed_duplicate_stop_ack_for_a_cannot_affect_active_or_stopping_b(
     controller.turn_finished.connect(terminals.append)
 
     controller.handle_user_turn(
-        AssistantTurnRequest(
+        AssistantTurnRequest.single_action(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
             text="Compare alpha and beta EEG rhythms",
         )
@@ -483,7 +523,7 @@ def test_delayed_duplicate_stop_ack_for_a_cannot_affect_active_or_stopping_b(
     assert [(item.turn_id, item.outcome) for item in terminals] == [(1, "cancelled")]
 
     controller.handle_user_turn(
-        AssistantTurnRequest(
+        AssistantTurnRequest.single_action(
             correlation=AssistantTurnCorrelation(generation=2, turn_id=2),
             text="Explain event-related potentials",
         )

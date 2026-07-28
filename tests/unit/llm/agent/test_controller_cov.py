@@ -54,7 +54,9 @@ def _submit_user_turn(ctrl, text: str) -> AssistantTurnCorrelation:
         generation=sequence,
         turn_id=sequence,
     )
-    ctrl.handle_user_turn(AssistantTurnRequest(correlation=correlation, text=text))
+    ctrl.handle_user_turn(
+        AssistantTurnRequest.single_action(correlation=correlation, text=text)
+    )
     return correlation
 
 
@@ -137,7 +139,6 @@ def ctrl():
             "sig_cancel_generation",
             "sig_shutdown_worker",
             "sig_rag_context_ready",
-            "execution_mode_changed",
             "application_command_completed",
             "application_command_started",
             "runtime_state_changed",
@@ -180,7 +181,7 @@ class TestAppendHistory:
 class TestHandleUserInput:
     def test_ignores_empty(self, ctrl):
         with pytest.raises(ValueError, match="must not be empty"):
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text="   ",
             )
@@ -389,10 +390,10 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_failure_retries(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
+        from XBrainLab.llm.agent.turn import AssistantTurnScope
 
         _allow_prompt_tools(ctrl)
-        ctrl._execution_mode = LLMController.MODE_MULTI
+        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=_tool_outcome(
                 "err",

@@ -209,22 +209,17 @@ class TestInitializeAgent:
             )
             engine.load_model.assert_called_once()
 
-    def test_initialize_agent_uses_ready_fallback_model(self, worker):
-        primary = LLMConfig.default_local_model_id()
-        fallback = LLMConfig.fallback_local_model_id()
-        spec = _launch_spec(primary, ready_model_id=fallback)
+    def test_initialize_agent_supports_an_explicit_legacy_model(self, worker):
+        legacy_model = LLMConfig.fallback_local_model_id()
+        spec = _launch_spec(legacy_model)
         with patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng:
             engine = MockEng.return_value
 
             worker.initialize_agent(spec)
 
-            assert primary != fallback
-            assert MockEng.call_args.args[0].model_name == fallback
-            assert (
-                worker.log.emit.call_args_list[0]
-                .args[0]
-                .endswith(f"supported local model {fallback}.")
-            )
+            assert MockEng.call_args.args[0].model_name == legacy_model
+            assert spec.requested_model_id == legacy_model
+            assert spec.fallback_used is False
             engine.load_model.assert_called_once()
 
     def test_error_on_failure(self, worker):
@@ -499,11 +494,12 @@ class TestGenerateFromMessages:
         worker.generation_finished.emit.assert_not_called()
 
     def test_syncs_generation_settings_without_runtime_switch(self, worker):
+        active_model = "microsoft/Phi-4-mini-instruct"
         engine = MagicMock()
         engine.config = MagicMock()
         engine.config.inference_mode = "local"
         engine.config.active_mode = "local"
-        engine.config.model_name = "microsoft/Phi-4-mini-instruct"
+        engine.config.model_name = active_model
         engine.config.timeout = 60
         worker.engine = engine
 
@@ -523,16 +519,17 @@ class TestGenerateFromMessages:
         ):
             worker.generate_from_messages(_request("test"))
             engine.switch_backend.assert_not_called()
-            assert engine.config.model_name == LLMConfig.default_local_model_id()
+            assert engine.config.model_name == active_model
             assert engine.config.inference_mode == "local"
             assert engine.config.temperature == 1.25
 
     def test_model_id_change_in_settings_does_not_reload_backend(self, worker):
+        active_model = "microsoft/Phi-4-mini-instruct"
         engine = MagicMock()
         engine.config = MagicMock()
         engine.config.inference_mode = "local"
         engine.config.active_mode = "local"
-        engine.config.model_name = "microsoft/Phi-4-mini-instruct"
+        engine.config.model_name = active_model
         engine.config.timeout = 60
         stale_backend = object()
         engine.active_backend = stale_backend
@@ -556,18 +553,19 @@ class TestGenerateFromMessages:
             worker.generate_from_messages(_request("test"))
 
         engine.switch_backend.assert_not_called()
-        assert engine.config.model_name == LLMConfig.default_local_model_id()
+        assert engine.config.model_name == active_model
         assert engine.active_backend is stale_backend
 
     def test_backend_fields_in_settings_do_not_change_active_selection(
         self,
         worker,
     ):
+        active_model = "microsoft/Phi-4-mini-instruct"
         engine = MagicMock()
         engine.config = MagicMock()
         engine.config.inference_mode = "local"
         engine.config.active_mode = "local"
-        engine.config.model_name = "microsoft/Phi-4-mini-instruct"
+        engine.config.model_name = active_model
         engine.config.timeout = 60
         stale_backend = object()
         engine.active_backend = stale_backend
@@ -591,7 +589,7 @@ class TestGenerateFromMessages:
         engine.switch_backend.assert_not_called()
         assert engine.config.inference_mode == "local"
         assert engine.config.active_mode == "local"
-        assert engine.config.model_name == LLMConfig.default_local_model_id()
+        assert engine.config.model_name == active_model
         assert engine.active_backend is stale_backend
 
     def test_fails_closed_when_generation_settings_reload_fails(self, worker):

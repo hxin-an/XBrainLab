@@ -1,6 +1,6 @@
 # XBrainLab 操作筆記
 
-最後更新：`2026-05-30`
+最後更新：`2026-07-29`
 
 ## 工作路徑
 
@@ -25,8 +25,8 @@ cd /mnt/d/workspace_v2/projects/lab/xbrainlab
 - docs build：`poetry run mkdocs build --strict`
 - local assistant runtime：catalog / download preflight / health-check scripts
 
-目前 local assistant model cache 是 missing 狀態，不能宣稱 primary / fallback prompt
-smoke 或 structured-output smoke 已在這個 worktree 上通過。`accelerate` 和
+目前 exact primary `ibm-granite/granite-3.3-2b-instruct` 已有本機 cache，GPU prompt
+smoke、structured-output smoke 與受控產品 workflow 均已通過。`accelerate` 和
 `bitsandbytes` 不是預設硬需求；4-bit loading 仍是 optional path。
 
 ## 桌面啟動
@@ -85,8 +85,9 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 
 | role | model | estimated download | VRAM estimate | cache |
 | --- | --- | ---: | ---: | --- |
-| primary | `microsoft/Phi-4-mini-instruct` | 7.69 GB | 9.0 GB | missing cache |
-| fallback | `microsoft/Phi-3.5-mini-instruct` | 7.64 GB | 8.5 GB | missing cache |
+| primary | `ibm-granite/granite-3.3-2b-instruct` | 5.08 GB | 6.0 GB | cached |
+| legacy explicit choice | `microsoft/Phi-4-mini-instruct` | 7.69 GB | 9.0 GB | cached |
+| legacy explicit choice | `microsoft/Phi-3.5-mini-instruct` | 7.64 GB | 8.5 GB | optional |
 
 目前 cache：
 
@@ -94,10 +95,9 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 XBrainLab/llm/core/models
 ```
 
-目前 `scripts/dev/inspect_local_assistant_runtime.py --format markdown` 回報
-`classification: missing-cache`，cache 用量 `0.00 GB`。這表示目前只有 preflight /
-download plan evidence，不能宣稱 local LLM prompt smoke 或 structured-output smoke 已在本機
-跑過。已刪除舊 Qwen cache；不要重新下載或使用 Qwen、DeepSeek、Yi、GLM、Baichuan、
+目前 exact Granite inspect 回報 `classification: gpu-ready`，catalog cache 共
+`12.77 GB / 20 GB`。產品不會在 Granite 不可用時靜默換成 Phi；legacy Phi 只能由使用者
+明確選取。已刪除舊 Qwen cache；不要重新下載或使用 Qwen、DeepSeek、Yi、GLM、Baichuan、
 InternLM、MiniCPM 等中國公司或中國來源模型。
 
 下載前檢查：
@@ -105,7 +105,7 @@ InternLM、MiniCPM 等中國公司或中國來源模型。
 ```bash
 poetry run python scripts/dev/plan_local_model_download.py --format markdown
 poetry run python scripts/dev/plan_local_model_download.py \
-  --model microsoft/Phi-3.5-mini-instruct --format markdown
+  --model ibm-granite/granite-3.3-2b-instruct --format markdown
 ```
 
 已下載的模型會被視為 cached：preflight 應顯示 `ok=True`、estimated download `0.00 GB`，
@@ -118,7 +118,7 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdo
 poetry run python scripts/dev/inspect_local_assistant_runtime.py \
   --format markdown --prompt-smoke --structured-smoke
 poetry run python scripts/dev/inspect_local_assistant_runtime.py \
-  --model microsoft/Phi-3.5-mini-instruct \
+  --model ibm-granite/granite-3.3-2b-instruct \
   --format markdown --prompt-smoke --structured-smoke
 ```
 
@@ -126,8 +126,8 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 
 ```bash
 rm -rf \
-  XBrainLab/llm/core/models/models--microsoft--Phi-4-mini-instruct \
-  XBrainLab/llm/core/models/.locks/models--microsoft--Phi-4-mini-instruct
+  XBrainLab/llm/core/models/models--ibm-granite--granite-3.3-2b-instruct \
+  XBrainLab/llm/core/models/.locks/models--ibm-granite--granite-3.3-2b-instruct
 ```
 
 清理後重新跑 preflight，確認 projected cache 仍低於上限。

@@ -429,19 +429,30 @@ def path_label_for_intent(intent: str) -> str | None:
 
 
 def _is_explanatory_no_tool_request(normalized: str) -> bool:
+    if _is_natural_interpretation_preview_request(normalized):
+        return False
     explanatory_markers = (
         "why",
         "what is",
         "what are",
         "explain",
+        "compare",
         "concept",
         "為什麼",
         "什麼是",
         "是什麼",
         "解釋",
+        "比較",
+        "我想了解",
+        "請幫我了解",
+        "了解",
         "概念",
     )
-    if not any(marker in normalized for marker in explanatory_markers):
+    asks_to_understand = bool(re.search(r"\bunderstand(?:ing)?\b", normalized))
+    if not (
+        any(marker in normalized for marker in explanatory_markers)
+        or asks_to_understand
+    ):
         return False
     return not any(
         marker in normalized

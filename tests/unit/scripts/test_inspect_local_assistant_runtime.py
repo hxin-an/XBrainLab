@@ -95,6 +95,8 @@ def test_render_markdown_includes_classification(tmp_path: Path):
     assert "classification" in rendered
     assert "current backend mode" in rendered
     assert "inspected backend mode" in rendered
+    assert "legacy compatibility models" in rendered
+    assert "fallback local model" not in rendered
 
 
 def test_prompt_smoke_skips_when_local_runtime_unavailable(tmp_path: Path):

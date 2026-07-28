@@ -22,6 +22,7 @@ from XBrainLab.llm.agent.request_admission import (
     UserRequestAdmissionAction,
     UserRequestAdmissionPolicy,
 )
+from XBrainLab.llm.agent.turn import AssistantTurnScope
 
 
 def _publication(state: ApplicationStateSnapshot) -> ApplicationViewPublication:
@@ -186,6 +187,52 @@ def test_blocked_explicit_command_is_resolved_before_model_generation() -> None:
     assert "Configure training options before training" in decision.message
 
 
+def test_guided_goal_starts_from_backend_recommended_prerequisite() -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        "Prepare this EEG dataset for training.",
+        _publication(ApplicationStateSnapshot.empty()),
+        scope=AssistantTurnScope.GUIDED_WORKFLOW,
+        terminal_command=CommandName.GENERATE_DATASET.value,
+    )
+
+    assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
+    assert decision.command is CommandName.SCAN_SOURCE
+    assert decision.decision_fields == ("source_path",)
+
+
+def test_direct_train_request_does_not_inherit_guided_scope() -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        "Start training.",
+        _publication(ApplicationStateSnapshot.empty()),
+        scope=AssistantTurnScope.SINGLE_ACTION,
+    )
+
+    assert decision.action is UserRequestAdmissionAction.BLOCKED
+    assert decision.command is CommandName.TRAIN
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Compare standard preprocessing and training settings.",
+        "I am trying to understand loading and preprocessing.",
+        "請比較標準前處理和訓練設定",
+        "我想了解載入和標準前處理",
+        "想了解載入和標準前處理",
+        "了解載入和前處理的差異",
+    ),
+)
+def test_explanatory_request_does_not_authorize_a_mutation(text: str) -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        text,
+        _publication(_loaded_state()),
+        scope=AssistantTurnScope.SINGLE_ACTION,
+    )
+
+    assert decision.action is UserRequestAdmissionAction.GENERATE
+    assert decision.command is None
+
+
 @pytest.mark.parametrize("text", ("Reset preprocessing.", "重設前處理"))
 def test_reset_preprocess_admission_never_widens_to_session_reset(text: str) -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
@@ -232,6 +279,7 @@ def test_natural_continue_request_authorizes_current_backend_step() -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
         "Continue with the reviewed recording.",
         _publication(_validated_interpretation_state()),
+        scope=AssistantTurnScope.GUIDED_WORKFLOW,
     )
 
     assert decision.action is UserRequestAdmissionAction.GENERATE
@@ -242,6 +290,7 @@ def test_natural_continue_stops_for_preprocess_settings() -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
         "Continue the workflow.",
         _publication(_loaded_state()),
+        scope=AssistantTurnScope.GUIDED_WORKFLOW,
     )
 
     assert decision.action is UserRequestAdmissionAction.UI_HANDOFF

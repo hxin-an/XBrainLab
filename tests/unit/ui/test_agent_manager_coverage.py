@@ -296,25 +296,11 @@ class TestAgentManagerRetry:
         )
 
 
-class TestAgentManagerExecutionMode:
-    """Cover execution mode forwarding."""
+def test_agent_manager_has_no_product_execution_mode_bridge() -> None:
+    manager = _make_manager()
 
-    def test_on_execution_mode_changed(self):
-        """L398-399: Forwards mode to controller."""
-        m = _make_manager()
-        m._on_execution_mode_changed("multi")
-        m._assistant_runtime.set_execution_mode.assert_called_with("multi")
-
-    def test_sync_execution_mode_ui(self):
-        """Execution mode sync updates the visible Ask/Workflow selector."""
-        m = _make_manager()
-        m._sync_execution_mode_ui("single")
-        m.chat_panel.set_execution_mode.assert_called_with("single")
-
-    def test_sync_multi(self):
-        m = _make_manager()
-        m._sync_execution_mode_ui("multi")
-        m.chat_panel.set_execution_mode.assert_called_with("multi")
+    assert not hasattr(manager, "_on_execution_mode_changed")
+    assert not hasattr(manager, "_sync_execution_mode_ui")
 
 
 class TestAgentManagerHandlePanelNavigation:

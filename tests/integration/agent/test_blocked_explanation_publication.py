@@ -199,7 +199,7 @@ def test_controller_explains_blocked_steps_from_real_atomic_publications(
 
             response_count = len(presentations)
             controller.handle_user_turn(
-                AssistantTurnRequest(
+                AssistantTurnRequest.single_action(
                     correlation=AssistantTurnCorrelation(
                         generation=sequence,
                         turn_id=sequence,

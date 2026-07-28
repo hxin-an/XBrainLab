@@ -575,7 +575,6 @@ def _assistant_is_ready(manager: Any) -> bool:
         and dock is not None
         and dock.isVisible()
         and panel.input_field.isEnabled()
-        and panel.send_btn.isEnabled()
         and not bool(
             chat_controller and getattr(chat_controller, "is_processing", False)
         )

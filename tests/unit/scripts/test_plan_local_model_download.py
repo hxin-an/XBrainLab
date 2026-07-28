@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 from scripts.dev.plan_local_model_download import build_plan, render_markdown
@@ -17,9 +18,12 @@ def test_build_plan_reports_primary_model(tmp_path: Path):
 
     assert plan["ok"] is True
     assert plan["model_id"] == "microsoft/Phi-4-mini-instruct"
-    assert plan["primary_model"] == "microsoft/Phi-4-mini-instruct"
-    assert plan["fallback_model"] == "microsoft/Phi-3.5-mini-instruct"
-    assert "Qwen" not in "\n".join(plan["allowed_models"])
+    assert plan["primary_model"] == "ibm-granite/granite-3.3-2b-instruct"
+    assert plan["legacy_compatibility_models"] == [
+        "microsoft/Phi-4-mini-instruct",
+        "microsoft/Phi-3.5-mini-instruct",
+    ]
+    assert "Qwen" not in "\n".join(cast(list[str], plan["allowed_models"]))
 
 
 def test_build_plan_blocks_policy_disallowed_model(tmp_path: Path):
@@ -30,7 +34,7 @@ def test_build_plan_blocks_policy_disallowed_model(tmp_path: Path):
         plan = build_plan("Qwen/Qwen2.5-7B-Instruct")
 
     assert plan["ok"] is False
-    assert "Chinese model providers" in plan["message"]
+    assert "Chinese model providers" in cast(str, plan["message"])
 
 
 def test_render_markdown_includes_cache_and_source(tmp_path: Path):
@@ -44,4 +48,5 @@ def test_render_markdown_includes_cache_and_source(tmp_path: Path):
 
     assert "Local Model Download Preflight" in rendered
     assert "cache directory" in rendered
+    assert "automatic fallback: `disabled`" in rendered
     assert "huggingface.co/microsoft/Phi-3.5-mini-instruct" in rendered

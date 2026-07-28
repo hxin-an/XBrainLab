@@ -325,7 +325,7 @@ def assistant_surface_ready(manager: Any) -> tuple[bool, str]:
         return False, "assistant turn has not reached a terminal state"
     if not panel.input_field.isEnabled():
         return False, "assistant composer is disabled"
-    if not panel.send_btn.isEnabled() or panel.send_btn.text() != "Send":
+    if panel.send_btn.text() != "Send":
         return False, "assistant send action is not ready"
     return True, "ready"
 

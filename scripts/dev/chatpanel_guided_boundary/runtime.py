@@ -1,4 +1,4 @@
-"""CLI/runtime composition for the real-model Guided Workflow walkthrough."""
+"""CLI/runtime composition for the real-model adaptive-workflow walkthrough."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.capture_chatpanel_local_pipeline_chain_walkthrough import (
-    SettingsFileSnapshot,
     _structured_value,
     _turn_metrics_evidence,
     approve_product_dialog,
@@ -27,7 +26,6 @@ from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _capture_current_window,
     _clear_saved_main_window_geometry,
     _force_offline_hf_runtime,
-    _load_capture_config,
     _runtime_summary,
     _set_baseline_window_geometry,
     write_synthetic_raw_fif,
@@ -60,7 +58,8 @@ from scripts.dev.chatpanel_guided_boundary.validation import (
     validate_guided_boundary_artifact_root,
 )
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
-from XBrainLab.config import AppConfig
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.config_paths import CONFIG_DIR_ENV
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-guided-boundary"
@@ -74,8 +73,7 @@ def cli_main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir).expanduser().resolve()
     run_id, staging_dir = create_guided_boundary_staging_dir(output_dir)
     source_identity_at_start = collect_source_identity(ROOT, refresh=True)
-    settings_path = Path(AppConfig.BASE_DIR) / "settings.json"
-    settings_snapshot = SettingsFileSnapshot.capture(settings_path)
+    previous_config_dir = os.environ.get(CONFIG_DIR_ENV)
     runtime_summary: dict[str, object] = {
         "classification": "unknown",
         "model_id": args.model,
@@ -84,8 +82,10 @@ def cli_main(argv: list[str] | None = None) -> int:
     source_path: Path | None = None
     try:
         _enforce_offline_runtime()
-        config = _load_capture_config(args.model)
-        config.save_to_file(str(settings_path))
+        config = _prepare_capture_config(
+            args.model,
+            staging_dir / "runtime-config",
+        )
         runtime = classify_runtime(config)
         runtime_summary = _runtime_summary(runtime)
         runtime_summary["model_id"] = args.model
@@ -102,7 +102,7 @@ def cli_main(argv: list[str] | None = None) -> int:
                 status="blocked",
                 reason=str(
                     runtime.get("message")
-                    or "Exact Phi-4 local GPU runtime is not ready."
+                    or "Exact Granite 3.3 2B local GPU runtime is not ready."
                 ),
                 model_id=args.model,
                 runtime_summary=runtime_summary,
@@ -133,10 +133,10 @@ def cli_main(argv: list[str] | None = None) -> int:
         )
         return_code = 1
     finally:
-        settings_snapshot.restore()
+        _restore_capture_config_env(previous_config_dir)
 
-    # settings.json is part of source identity. Freeze only after the temporary
-    # runtime selection has been restored; artifact paths are generated output.
+    # Freeze only after the isolated config environment has been restored.
+    # The repo-root settings.json is protected user state and is never touched.
     frozen_source_identity = collect_source_identity(refresh=True)
     if not _record_guided_source_stability(
         payload,
@@ -164,6 +164,32 @@ def cli_main(argv: list[str] | None = None) -> int:
     print(f"Wrote {published_dir / JSON_ARTIFACT}")
     print(f"Wrote {published_dir / MARKDOWN_ARTIFACT}")
     return return_code
+
+
+def _prepare_capture_config(model_id: str, config_dir: Path) -> LLMConfig:
+    """Persist one capture-only runtime selection outside the repo settings."""
+    isolated_dir = config_dir.expanduser().resolve()
+    os.environ[CONFIG_DIR_ENV] = str(isolated_dir)
+    config = LLMConfig()
+    config.apply_runtime_selection(
+        "local",
+        model_id=model_id,
+        ui_active_mode="local",
+    )
+    config.local_runtime_notice_acknowledged = True
+    if not config.save_to_file():
+        raise RuntimeError(
+            f"Could not persist isolated assistant config under {isolated_dir}."
+        )
+    return config
+
+
+def _restore_capture_config_env(previous_config_dir: str | None) -> None:
+    """Restore the caller's config boundary without touching either file."""
+    if previous_config_dir is None:
+        os.environ.pop(CONFIG_DIR_ENV, None)
+    else:
+        os.environ[CONFIG_DIR_ENV] = previous_config_dir
 
 
 def _record_guided_source_stability(
@@ -291,14 +317,14 @@ def _enforce_offline_runtime() -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Run a real local Phi-4 Guided Workflow until the typed Data Import "
+            "Run a real local Granite adaptive workflow until the typed Data Import "
             "handoff, capture the wizard, cancel it, and prove state did not mutate."
         )
     )
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL_ID,
-        help="Exact local model id; this proof accepts Phi-4 only.",
+        help="Exact local model id; this proof accepts Granite 3.3 2B only.",
     )
     parser.add_argument(
         "--output-dir",

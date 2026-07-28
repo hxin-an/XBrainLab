@@ -29,12 +29,13 @@ from XBrainLab.backend.training.input_contract import (
 from .intent import (
     command_for_intent,
     infer_user_intent,
-    is_explicit_workflow_continuation,
 )
 from .training_request import (
     contains_explicit_training_options,
     extract_explicit_training_options,
 )
+from .turn import AssistantTurnScope
+from .turn_scope import workflow_command_is_within_endpoint
 
 
 class UserRequestAdmissionAction(str, Enum):
@@ -69,22 +70,32 @@ class UserRequestAdmissionPolicy:
         self,
         text: str,
         publication: ApplicationViewPublication | None,
+        *,
+        scope: AssistantTurnScope = AssistantTurnScope.SINGLE_ACTION,
+        terminal_command: str | None = None,
     ) -> UserRequestAdmission:
         """Evaluate one request against one committed backend publication."""
         intent = infer_user_intent(text)
         command = command_for_intent(intent)
         if (
-            command is None
+            scope is AssistantTurnScope.GUIDED_WORKFLOW
             and publication is not None
             and publication.usable
-            and is_explicit_workflow_continuation(text)
         ):
             projection = build_workflow_projection(
                 publication.state,
                 publication.effective_capabilities,
             )
-            if projection.recommended_command is not None:
+            if (
+                projection.recommended_command is not None
+                and workflow_command_is_within_endpoint(
+                    projection.recommended_command,
+                    terminal_command,
+                )
+            ):
                 command = CommandName(projection.recommended_command)
+            elif terminal_command is not None:
+                command = None
         if command is None:
             return UserRequestAdmission(UserRequestAdmissionAction.GENERATE)
 

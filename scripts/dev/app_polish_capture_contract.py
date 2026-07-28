@@ -16,7 +16,7 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     validate_source_identity,
 )
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 ARTIFACT_TYPE = "xbrainlab.app_polish_ui_surfaces"
 MANIFEST_NAME = "app-polish-evidence.json"
 GENERATOR = "scripts/dev/capture_ui_polish_surfaces.py"
@@ -29,8 +29,8 @@ APP_POLISH_SURFACES = (
     "data-splitting-dialog.png",
     "data-splitting-dialog-narrow.png",
     "data-splitting-preview-dialog.png",
-    "assistant-ask-narrow.png",
-    "assistant-workflow-narrow.png",
+    "assistant-setup-required-narrow.png",
+    "assistant-active-turn-narrow.png",
     "assistant-loading.png",
     "assistant-failed.png",
     "assistant-recovery-loading.png",

@@ -1,4 +1,4 @@
-"""Fail-closed validation for real Guided Workflow boundary evidence."""
+"""Fail-closed validation for real adaptive-workflow boundary evidence."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     validate_source_identity,
 )
 
-DEFAULT_MODEL_ID = "microsoft/Phi-4-mini-instruct"
+DEFAULT_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 EXPECTED_AUTO_CHAIN = (
     "scan_source",
     "preview_interpretation",
@@ -24,7 +24,7 @@ EXPECTED_AUTO_CHAIN = (
 )
 FIRST_PROMPT_TEMPLATE = (
     "Use the EEG recording at {source_path} to prepare the data for analysis. "
-    "Continue through safe steps, and stop when the app needs my input."
+    "Continue until a decision is needed."
 )
 EXPECTED_DECISION_FIELDS = ("metadata_review", "label_matching")
 EXPECTED_WIZARD_STEPS = (
@@ -43,7 +43,7 @@ _BOUNDARY_PHASES = [
     "created",
     "starting",
     "waiting_for_ready",
-    "selecting_guided_mode",
+    "resolving_turn_scope",
     "running_auto_chain",
     "waiting_at_boundary",
     "workflow_handoff_open",
@@ -99,10 +99,10 @@ def validate_guided_boundary_payload(
         return False, str(payload.get("failure_reason") or "Walkthrough failed.")
     if status != "passed":
         return False, "Guided walkthrough artifact status is not passed."
-    if payload.get("schema_version") != 3:
-        return False, "Guided walkthrough schema version is missing or unsupported."
-    if payload.get("walkthrough") != "guided_workflow_ui_handoff_boundary":
-        return False, "Artifact is not the Guided Workflow boundary walkthrough."
+    if payload.get("schema_version") != 5:
+        return False, "Adaptive walkthrough schema version is missing or unsupported."
+    if payload.get("walkthrough") != "adaptive_workflow_ui_handoff_boundary":
+        return False, "Artifact is not the adaptive workflow boundary walkthrough."
     if list(payload.get("expected_auto_chain") or []) != list(EXPECTED_AUTO_CHAIN):
         return False, "Artifact expected auto-chain does not match the chain contract."
     claim_boundary = str(payload.get("claim_boundary") or "")
@@ -137,7 +137,7 @@ def validate_guided_boundary_payload(
     ok, reason = _validate_runtime(payload)
     if not ok:
         return ok, reason
-    ok, reason = _validate_mode(payload.get("mode_selection"))
+    ok, reason = _validate_scope_resolution(payload.get("scope_resolution"))
     if not ok:
         return ok, reason
     ok, reason = _validate_auto_chain(payload)
@@ -175,8 +175,9 @@ def validate_guided_boundary_payload(
     ui = _mapping(payload.get("ui_state"))
     if (
         ui.get("send_button_text") != "Send"
-        or not ui.get("send_button_enabled")
+        or ui.get("send_button_enabled")
         or not ui.get("input_enabled")
+        or str(ui.get("input_text") or "").strip()
         or ui.get("chat_processing")
         or ui.get("controller_processing")
         or ui.get("runtime_turn_in_flight")
@@ -302,9 +303,12 @@ def _validate_runtime(payload: Mapping[str, Any]) -> tuple[bool, str]:
         runtime.get("requested_model_id") != DEFAULT_MODEL_ID
         or runtime.get("loaded_model_id") != DEFAULT_MODEL_ID
     ):
-        return False, "Requested and loaded runtime models are not exact Phi-4."
+        return (
+            False,
+            "Requested and loaded runtime models are not exact Granite 3.3 2B.",
+        )
     if runtime.get("phase") != "ready" or not runtime.get("initialized"):
-        return False, "Exact Phi-4 runtime was not ready and initialized."
+        return False, "Exact Granite 3.3 2B runtime was not ready and initialized."
     if (
         runtime.get("selection_outcome") != "exact"
         or runtime.get("fallback_used") is not False
@@ -318,13 +322,19 @@ def _validate_runtime(payload: Mapping[str, Any]) -> tuple[bool, str]:
     return True, ""
 
 
-def _validate_mode(value: object) -> tuple[bool, str]:
-    mode = _mapping(value)
-    if not mode.get("selected_by_click") or not mode.get("button_checked"):
-        return False, "Guided Workflow was not selected through its real UI button."
-    for owner in ("panel", "manager", "controller"):
-        if mode.get(owner) != "multi":
-            return False, f"Guided mode did not reach the {owner} owner."
+def _validate_scope_resolution(value: object) -> tuple[bool, str]:
+    resolution = _mapping(value)
+    if resolution.get("source") != "request_text":
+        return False, "Workflow scope was not derived from the user request."
+    if (
+        resolution.get("scope") != "guided_workflow"
+        or resolution.get("policy_mode") != "multi"
+    ):
+        return False, "The natural request did not resolve to guided workflow scope."
+    if resolution.get("terminal_command") is not None:
+        return False, "Decision-bounded continuation unexpectedly set an endpoint."
+    if resolution.get("legacy_selector_present") is not False:
+        return False, "The retired manual mode selector is still present."
     return True, ""
 
 
@@ -341,12 +351,16 @@ def _validate_auto_chain(
     if tool_names != list(EXPECTED_AUTO_CHAIN):
         return False, "First turn did not execute exactly the safe auto-chain."
     proposal_names = _proposal_names(first_turn.get("tool_proposals"))
-    if proposal_names != list(EXPECTED_AUTO_CHAIN):
-        return False, "First turn model proposals did not match the exact auto-chain."
+    if proposal_names != [EXPECTED_AUTO_CHAIN[0]]:
+        return (
+            False,
+            "First turn model proposals did not stop after the one model-owned "
+            "auto-chain action.",
+        )
     ok, reason = _validate_turn_tool_attempts(
         first_turn,
         canonical_turn_calls(str(payload.get("source_path") or ""), turn="first"),
-        actual_kind="execution",
+        model_proposal_count=1,
     )
     if not ok:
         return ok, reason
@@ -360,10 +374,15 @@ def _validate_auto_chain(
                 False,
                 "First turn metrics do not prove one exact Guided Workflow turn.",
             )
-        if metrics.get("llm_calls") != len(EXPECTED_AUTO_CHAIN):
+        llm_calls = metrics.get("llm_calls")
+        if (
+            isinstance(llm_calls, bool)
+            or not isinstance(llm_calls, int)
+            or llm_calls not in (1, 2)
+        ):
             return (
                 False,
-                "First turn used format recovery, retries, or extra model calls.",
+                "First turn exceeded the one bounded format recovery model call.",
             )
 
     observations = _sequence(payload.get("command_observations"))
@@ -430,6 +449,17 @@ def _validate_boundary(value: object) -> tuple[bool, str]:
         return False, "Apply action did not retain its confirmation boundary."
     if capability.get("can_auto_execute"):
         return False, "Apply action could auto-execute across a decision boundary."
+    waiting = _mapping(boundary.get("assistant_waiting_surface"))
+    if (
+        waiting.get("turn_phase") != "waiting"
+        or waiting.get("header_status") != "Local · Waiting"
+        or waiting.get("send_button_text") != "Waiting"
+        or bool(waiting.get("send_button_enabled"))
+        or bool(waiting.get("input_enabled", True))
+        or waiting.get("cancelability_text")
+        != "Use the open confirmation or XBrainLab dialog to continue or cancel."
+    ):
+        return False, "Decision boundary was presented as active assistant work."
     return True, ""
 
 
@@ -667,37 +697,79 @@ def _validate_turn_tool_attempts(
     turn: Mapping[str, Any],
     expected_calls: Sequence[Mapping[str, Any]],
     *,
-    actual_kind: str,
+    model_proposal_count: int,
 ) -> tuple[bool, str]:
     proposals = [_mapping(item) for item in _sequence(turn.get("tool_proposals"))]
     attempts = [_mapping(item) for item in _sequence(turn.get("tool_attempts"))]
-    if len(proposals) != len(expected_calls):
+    if len(proposals) != model_proposal_count:
         return False, "Tool proposal count does not match the canonical contract."
     if len(attempts) != len(expected_calls):
         return False, "Tool attempt trace does not cover every canonical proposal."
 
     for index, expected_value in enumerate(expected_calls):
         expected = _canonical_call(expected_value)
-        proposal = _canonical_call(proposals[index])
         attempt = attempts[index]
-        raw = _canonical_call(attempt.get("raw"))
-        canonical = _canonical_call(attempt.get("canonical"))
-        normalized = _canonical_call(attempt.get("normalized"))
-        actual_value = _mapping(attempt.get("actual"))
-        actual = _canonical_call(actual_value)
         label = str(expected.get("tool_name") or f"proposal {index}")
-        if proposal != expected or raw != expected:
-            return False, f"{label} raw parameters are not the exact canonical values."
+        if not _well_formed_call(attempt.get("canonical")):
+            return False, f"{label} canonical execution evidence is malformed."
+        if not _well_formed_call(attempt.get("actual")):
+            return False, f"{label} host execution evidence is malformed."
+        canonical = _canonical_call(attempt["canonical"])
+        actual_value = _mapping(attempt["actual"])
+        actual = _canonical_call(actual_value)
         if canonical != expected:
             return False, f"{label} recorded canonical parameters are inconsistent."
-        if normalized != expected:
-            return False, f"{label} normalized parameters differ from canonical values."
-        if actual_value.get("kind") != actual_kind or actual != expected:
+        if index < model_proposal_count:
+            if not (
+                _well_formed_call(proposals[index])
+                and _well_formed_call(attempt.get("raw"))
+                and _well_formed_call(attempt.get("normalized"))
+            ):
+                return False, f"{label} model execution evidence is malformed."
+            proposal = _canonical_call(proposals[index])
+            raw = _canonical_call(attempt["raw"])
+            normalized = _canonical_call(attempt["normalized"])
+            if proposal != expected or raw != expected:
+                return (
+                    False,
+                    f"{label} raw parameters are not the exact canonical values.",
+                )
+            if normalized != expected:
+                return (
+                    False,
+                    f"{label} normalized parameters differ from canonical values.",
+                )
+            expected_kind = "model_execution"
+        else:
+            if (
+                "raw" not in attempt
+                or attempt["raw"] is not None
+                or "normalized" not in attempt
+                or attempt["normalized"] is not None
+            ):
+                return (
+                    False,
+                    f"{label} host continuation unexpectedly contains a model proposal.",
+                )
+            expected_kind = "host_execution"
+        if actual_value.get("kind") != expected_kind or actual != expected:
             return (
                 False,
-                f"{label} actual host parameters differ from normalized values.",
+                f"{label} actual execution owner or parameters differ from the "
+                "canonical values.",
             )
     return True, ""
+
+
+def _well_formed_call(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    return (
+        isinstance(value.get("tool_name"), str)
+        and bool(str(value["tool_name"]).strip())
+        and "parameters" in value
+        and isinstance(value["parameters"], Mapping)
+    )
 
 
 def _canonical_call(value: object) -> dict[str, Any]:

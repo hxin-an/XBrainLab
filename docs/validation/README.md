@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-23`
+最後更新：`2026-07-29`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -20,6 +20,47 @@
 | launcher smoke | launcher / startup baseline。 | signed installer、release approval。 |
 
 ## Latest Desktop MVP Handoff Evidence
+
+### 2026-07-29 Granite 2B Teacher Candidate Gate
+
+- Agent unit/core/integration regression：`1236 passed`。獨立 architecture reviewer 重跑
+  explanatory-intent、turn scope、host continuation、schema-v5 evidence 與 fail-closed probes：
+  `190 passed`，無剩餘 finding。
+- 產品預設模型是 exact `ibm-granite/granite-3.3-2b-instruct`；runtime inspection 回報
+  `gpu-ready`、local cache `12.77 GB / 20 GB`。resolver 不會因 requested model 不可用而
+  自動切換 catalog model。
+- 真 Granite GPU boundary walkthrough 使用一般使用者請求啟動 Data Import：初始
+  `scan_source` 由 model 提案；模型第一次 envelope 格式錯誤時只允許一次 bounded repair；
+  parameter-free `preview_interpretation` / `validate_interpretation` 由 host policy 續行，並在
+  metadata / label decision 出現時開啟既有 Review Metadata wizard。取消後沒有 apply，backend
+  generation 與 state 不變，runtime 乾淨關閉。
+- host deterministic continuation 的 allowlist 由 `ToolAttemptCoordinator` 單一持有；白名單外
+  mutation 在讀 context、schema verifier 或 registry 前就以 non-recoverable contract failure
+  fail closed。白名單內也仍需通過 schema、registration、capability、auto-execution 與
+  confirmation policy。
+- required data gate 重新通過：Data Interpretation lifecycle `20/20`、required formats `14/14`、
+  7 個 hash-pinned public cases / 5 個 source families、7 個 external placement contracts、
+  4 個 internal-event profiles與固定 11 個 reviewed-label cases。真五步 wizard / recovery
+  `17 passed`；IO / public BIDS / cross-source pipeline `36 passed`；strict cross-source runner
+  `4/4`（2 training + 2 IO/epoch-only）。
+- 最終 relevant regression 在修復 artifact Waiting guard、terminal endpoint stage order、host
+  continuation params contract、Qt runtime fake 與五層 scope ownership guard 後為
+  `2700 passed`；完整 Qt assistant dock integration 為 `17 passed`。
+- human-like teacher candidate、exact Granite local workflow 與 adaptive boundary 三套 artifact
+  都是 PASS。確認卡、等待決策、既有 Review Metadata dialog 與取消後狀態由主 agent逐張檢視；
+  UI reviewer re-gate PASS。
+- Ruff、full-repo Basedpyright `0 errors / 0 warnings / 0 notes`、architecture compliance 與
+  `mkdocs build --strict` PASS。fast dashboard 的所有技術 check PASS；提交前 overall WARN
+  僅代表 worktree 尚未形成 exact commit，提交後結果以 `artifacts/quality/latest.md` 為準。
+- Architecture reviewer 在第一次退件後重新驗證 endpoint stage order、parameter-free early
+  rejection、無手動 execution-mode transport、五層 source guard、Granite docs truth與 Qt
+  integration signature，最終 PASS。
+
+這些結果支撐「可交給老師進一步 Windows 手測的工程候選」。它仍不是 product complete：
+Windows click-through、DPI / 多螢幕、互動式 3D 與長時間 local-model session 尚待真人驗收。
+Granite walkthrough 是 host-assisted product evidence，不是 raw-model accuracy；XBrainLab
+benchmark 要等 working candidate freeze 後，依 [Agent target](../target/agent.md) 另建 cases /
+scorer / repeats。
 
 2026-07-20 published automated handoff candidate 已重建 backend、UI、agent、資料與產品
 walkthrough evidence。以下數字綁定候選 branch；commit `aaa47923cf5e` 的 fast dashboard

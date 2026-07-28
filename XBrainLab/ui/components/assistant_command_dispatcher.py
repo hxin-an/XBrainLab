@@ -182,7 +182,6 @@ class AssistantCommandDispatcher(QObject):
         "initialize",
         "stop_generation",
         "set_model",
-        "set_execution_mode",
         "reset_conversation",
         "on_user_confirmation_resolved",
         "on_workflow_ui_handoff_resolved",
@@ -194,7 +193,6 @@ class AssistantCommandDispatcher(QObject):
     input_requested = pyqtSignal(object)
     stop_requested = pyqtSignal()
     model_requested = pyqtSignal(object)
-    mode_requested = pyqtSignal(str)
     reset_requested = pyqtSignal()
     confirmation_requested = pyqtSignal(object)
     workflow_ui_handoff_resolved_requested = pyqtSignal(object)
@@ -266,7 +264,6 @@ class AssistantCommandDispatcher(QObject):
         )
         self.stop_requested.connect(qt_controller.stop_generation)
         self.model_requested.connect(qt_controller.set_model)
-        self.mode_requested.connect(qt_controller.set_execution_mode)
         self.reset_requested.connect(qt_controller.reset_conversation)
         self.confirmation_requested.connect(qt_controller.on_user_confirmation_resolved)
         self.workflow_ui_handoff_resolved_requested.connect(
@@ -314,13 +311,6 @@ class AssistantCommandDispatcher(QObject):
 
     def set_model(self, launch_spec: AssistantRuntimeLaunchSpec) -> bool:
         return self._emit_or_call(self.model_requested, "set_model", launch_spec)
-
-    def set_mode(self, mode: str) -> bool:
-        return self._emit_or_call(
-            self.mode_requested,
-            "set_execution_mode",
-            mode,
-        )
 
     def reset(self) -> bool:
         return self._emit_or_call(self.reset_requested, "reset_conversation")

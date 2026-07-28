@@ -18,13 +18,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tests.qt_lifecycle import close_controller_and_wait
+from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.agent.tool_attempt_coordinator import (
-    ToolAttemptAction,
-    ToolAttemptRequest,
-)
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationDispatchAcknowledgement,
     AssistantGenerationDispatchPhase,
@@ -36,6 +33,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
     AssistantTurnRequest,
 )
+from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 from XBrainLab.llm.agent.worker import AgentWorker
 
 
@@ -151,6 +149,7 @@ class ProductHarness:
     def send(self, user_text: str, model_text: str | None = None) -> None:
         self.turn_sequence += 1
         self.chat.add_user_message(user_text)
+        scope = resolve_assistant_turn_scope(user_text)
         self.controller.handle_user_turn(
             AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(
@@ -158,6 +157,8 @@ class ProductHarness:
                     turn_id=self.turn_sequence,
                 ),
                 text=user_text,
+                scope=scope.scope,
+                terminal_command=scope.terminal_command,
             )
         )
         if model_text is not None:
@@ -337,7 +338,7 @@ def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
         controller.generation_event.connect(generation_events.append)
 
         controller.handle_user_turn(
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text=f"Show files in {tmp_path}",
             )
@@ -432,32 +433,32 @@ def test_successful_command_result_summary_flow(product_harness):
     _assert_no_raw_tool_language(visible)
 
 
-def test_workflow_scan_continuation_authorizes_fresh_preview_candidate(
+def test_workflow_scan_continuation_reaches_typed_import_review_boundary(
     product_harness,
 ):
     source = Path("tests/fixtures/data/A01T.gdf").resolve()
     request_text = f"Load {source} and continue until a decision is needed."
-    product_harness.controller.set_execution_mode(LLMController.MODE_MULTI)
 
     product_harness.send(
         request_text,
         _tool_json("scan_source", {"source_path": str(source)}),
     )
 
-    publication = product_harness.controller._active_tool_publication
-    assert publication.authorized_command == "preview_interpretation"
-    assert publication.tool_names == frozenset({"preview_interpretation"})
-    decision = product_harness.controller._tool_attempt_coordinator.evaluate(
-        ToolAttemptRequest(
-            command_name="preview_interpretation",
-            params={},
-            confidence=0.9,
-            publication=publication,
-            latest_user_text=request_text,
-        )
-    )
+    publication = get_application_service(
+        product_harness.controller.study
+    ).get_view_publication()
+    interpretation = publication.state.interpretation
+    assert interpretation.has_preview is True
+    assert interpretation.has_validation_decision is True
+    assert interpretation.validation_decision == "needs_confirmation"
+    assert interpretation.has_applied_interpretation is False
+    assert publication.state.raw.loaded is False
 
-    assert decision.action is ToolAttemptAction.EXECUTE
+    handoff = product_harness.controller.pending_interactions.workflow_handoff
+    assert handoff is not None
+    assert handoff.command is CommandName.APPLY_INTERPRETATION
+    assert set(handoff.decision_fields) == {"metadata_review", "label_matching"}
+    assert "Import review needs your input:" in product_harness.visible_assistant_text
 
 
 def test_local_runtime_disabled_flow_is_user_visible(qtbot):

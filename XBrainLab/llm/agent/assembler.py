@@ -45,7 +45,11 @@ from .prompt_policy import (
     request_scoped_tool_names,
 )
 from .tool_feedback import ToolRecoveryFeedback
-from .turn import AssistantGenerationRequest, AssistantResponseContract
+from .turn import (
+    AssistantGenerationRequest,
+    AssistantResponseContract,
+    AssistantTurnScope,
+)
 
 _BACKEND_DEFAULT_CONTINUATION_TOOLS = frozenset(
     {
@@ -138,7 +142,7 @@ instead of inventing a workflow fact.
         self._latest_tool_publication = PromptToolPublication.empty()
         self._turn_authorized_command: str | None = None
         self._turn_authorization_is_continuation = False
-        self.execution_mode = STEP_BY_STEP_MODE
+        self._turn_policy_mode = STEP_BY_STEP_MODE
         self.max_history_messages = 4
 
     def _get_stage_config(
@@ -352,7 +356,7 @@ instead of inventing a workflow fact.
             if unavailable_reason is None and publication is not None:
                 unavailable_reason = PUBLIC_VIEW_UNAVAILABLE_MESSAGE
             decision_context = WorkflowDecisionContext(
-                mode=normalize_workflow_mode(self.execution_mode),
+                mode=normalize_workflow_mode(self._turn_policy_mode),
                 workflow_stage="Workflow status unavailable",
                 latest_user_request=latest_user_text.strip(),
                 blocked_reasons=[unavailable_reason or PUBLIC_VIEW_UNAVAILABLE_MESSAGE],
@@ -362,7 +366,7 @@ instead of inventing a workflow fact.
             decision_context = build_workflow_decision_context(
                 self.study_state,
                 latest_user_text=latest_user_text,
-                mode=self.execution_mode,
+                mode=self._turn_policy_mode,
                 publication=publication,
             )
 
@@ -577,9 +581,11 @@ instead of inventing a workflow fact.
             for marker in ("這", "那", "它", "剛剛", "上面", "前面")
         )
 
-    def set_execution_mode(self, mode: str) -> None:
-        """Set the prompt-facing workflow autonomy mode."""
-        self.execution_mode = normalize_workflow_mode(mode)
+    def bind_turn_scope(self, scope: AssistantTurnScope) -> None:
+        """Bind prompt autonomy to the host-admitted immutable turn scope."""
+        if not isinstance(scope, AssistantTurnScope):
+            raise TypeError("Assistant prompt scope must be typed.")
+        self._turn_policy_mode = normalize_workflow_mode(scope.policy_mode)
 
     def _history_for_llm(self, history: list) -> list[dict[str, Any]]:
         """Return short user-visible history for the LLM prompt.

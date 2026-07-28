@@ -84,7 +84,6 @@ from XBrainLab.ui.dialogs.visualization.saliency_setting_dialog import (
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.training.panel import TrainingPanel
-from XBrainLab.ui.product_language import ASSISTANT_MODE_LABELS
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -433,17 +432,15 @@ def _data_splitting_preview_dialog() -> DataSplittingPreviewDialog:
     return dialog
 
 
-def _assistant_ask_narrow() -> ChatPanel:
+def _assistant_setup_required_narrow() -> ChatPanel:
     panel = ChatPanel()
-    panel.set_execution_mode("single")
     panel.set_runtime_state("idle")
     panel.resize(QSize(320, 650))
     return panel
 
 
-def _assistant_workflow_narrow() -> ChatPanel:
+def _assistant_active_turn_narrow() -> ChatPanel:
     panel = ChatPanel()
-    panel.set_execution_mode("multi")
     panel.set_runtime_state("ready")
     panel.resize(QSize(420, 650))
     panel.show()
@@ -701,8 +698,8 @@ def _capture_factories() -> tuple[tuple[str, Callable[[], QWidget]], ...]:
         ("data-splitting-dialog.png", _data_splitting_dialog),
         ("data-splitting-dialog-narrow.png", _data_splitting_dialog_narrow),
         ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog),
-        ("assistant-ask-narrow.png", _assistant_ask_narrow),
-        ("assistant-workflow-narrow.png", _assistant_workflow_narrow),
+        ("assistant-setup-required-narrow.png", _assistant_setup_required_narrow),
+        ("assistant-active-turn-narrow.png", _assistant_active_turn_narrow),
         ("assistant-loading.png", _assistant_loading_standard),
         ("assistant-failed.png", _assistant_failed_standard),
         ("assistant-recovery-loading.png", _assistant_recovery_standard),
@@ -852,8 +849,6 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
             {
                 "Assistant composer": widget.control_panel,
                 "Assistant input": widget.input_field,
-                "Assistant Single action mode": widget.ask_mode_btn,
-                "Assistant Guided workflow mode": widget.workflow_mode_btn,
                 "Assistant Send/Stop action": widget.send_btn,
             }
         )
@@ -1234,24 +1229,11 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             raise RuntimeError(
                 f"{filename} leaves startup progress visible while runtime is {phase}."
             )
-        mode_controls = {
-            "single": widget.ask_mode_btn,
-            "multi": widget.workflow_mode_btn,
-        }
-        for mode_key, control in mode_controls.items():
-            expected_label = ASSISTANT_MODE_LABELS[mode_key]
-            if control.text() != expected_label:
-                raise RuntimeError(
-                    f"{filename} shows stale assistant mode copy; "
-                    f"expected {expected_label!r}."
-                )
         if widget.is_processing and widget.send_btn.text() != "Stop":
             raise RuntimeError(f"{filename} processing state does not expose Stop.")
         if not widget.is_processing and widget.send_btn.text() == "Stop":
             raise RuntimeError(f"{filename} exposes Stop while not processing.")
         for control_name in (
-            "ask_mode_btn",
-            "workflow_mode_btn",
             "input_field",
             "send_btn",
         ):
@@ -1270,8 +1252,8 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
                 )
 
         expected_widths = {
-            "assistant-ask-narrow.png": 320,
-            "assistant-workflow-narrow.png": 420,
+            "assistant-setup-required-narrow.png": 320,
+            "assistant-active-turn-narrow.png": 420,
             "assistant-loading.png": 420,
             "assistant-failed.png": 420,
             "assistant-recovery-loading.png": 420,
@@ -1282,7 +1264,7 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
                 f"{filename} is {widget.width()}px, expected {expected_width}px."
             )
         expected_runtime_titles = {
-            "assistant-ask-narrow.png": "Assistant setup required",
+            "assistant-setup-required-narrow.png": "Assistant setup required",
             "assistant-loading.png": "Loading local assistant",
             "assistant-failed.png": "Assistant unavailable",
             "assistant-recovery-loading.png": "Retrying local assistant",
@@ -1649,10 +1631,9 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "status: generated focused UI review evidence\n"
         "generator: `scripts/dev/capture_ui_polish_surfaces.py`\n"
         "environment: PyQt offscreen capture\n"
-        "supports: current visual state for assistant Single action/Guided workflow "
-        "narrow "
-        "surfaces, model selection, data splitting, and evaluation metrics "
-        "table polish\n"
+        "supports: current visual state for adaptive assistant setup, active-turn, "
+        "and runtime recovery surfaces, plus model selection, data splitting, "
+        "and evaluation metrics table polish\n"
         "does_not_support: end-to-end training quality, human desktop "
         "acceptance, or long-running runtime behavior\n"
         "next_human_or_runtime_gate: open the same dialogs in the Windows "
@@ -1668,8 +1649,8 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "```bash\n"
         "QT_QPA_PLATFORM=offscreen poetry run python "
         "scripts/dev/capture_ui_polish_surfaces.py "
-        "--only assistant-ask-narrow.png "
-        "--only assistant-workflow-narrow.png "
+        "--only assistant-setup-required-narrow.png "
+        "--only assistant-active-turn-narrow.png "
         "--only assistant-loading.png "
         "--only assistant-failed.png "
         "--only assistant-recovery-loading.png\n"
@@ -1682,8 +1663,9 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "- `data-splitting-dialog.png` (752 x 470 scroll fallback)\n"
         "- `data-splitting-dialog-narrow.png` (752 x 700 full reflow)\n"
         "- `data-splitting-preview-dialog.png`\n"
-        "- `assistant-ask-narrow.png` (320 x 650, setup-required recovery)\n"
-        "- `assistant-workflow-narrow.png` (420 x 650, ready Guided workflow "
+        "- `assistant-setup-required-narrow.png` (320 x 650, setup-required "
+        "recovery)\n"
+        "- `assistant-active-turn-narrow.png` (420 x 650, adaptive active-turn "
         "processing)\n"
         "- `assistant-loading.png` (420 x 650, inline runtime loading)\n"
         "- `assistant-failed.png` (420 x 650, unavailable recovery action)\n"

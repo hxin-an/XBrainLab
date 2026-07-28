@@ -21,11 +21,11 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _assert_capture_geometry,
     _assert_surface_pixels,
     _assert_training_history_reference_pixels,
-    _assistant_ask_narrow,
+    _assistant_active_turn_narrow,
     _assistant_failed_standard,
     _assistant_loading_standard,
     _assistant_recovery_standard,
-    _assistant_workflow_narrow,
+    _assistant_setup_required_narrow,
     _capture,
     _data_splitting_preview_dialog,
     _data_splitting_preview_semantics,
@@ -141,32 +141,30 @@ def test_bids_epoch_capture_rejects_missing_primary_action(qtbot) -> None:
 
 
 def test_assistant_setup_capture_is_a_valid_320px_state(qtbot) -> None:
-    panel = _assistant_ask_narrow()
+    panel = _assistant_setup_required_narrow()
     qtbot.addWidget(panel)
     panel.show()
 
-    _assert_capture_geometry("assistant-ask-narrow.png", panel)
+    _assert_capture_geometry("assistant-setup-required-narrow.png", panel)
 
     assert panel.width() == 320
     assert panel._runtime_phase.value == "idle"
     assert panel.is_processing is False
-    assert panel.ask_mode_btn.text() == "Single action"
-    assert panel.workflow_mode_btn.text() == "Guided workflow"
+    assert not hasattr(panel, "mode_selector_widget")
     assert panel.setup_btn.isVisible()
     assert panel.send_btn.text() == "Send"
     assert panel.send_btn.isEnabled() is False
 
 
-def test_assistant_workflow_capture_is_ready_before_processing(qtbot) -> None:
-    panel = _assistant_workflow_narrow()
+def test_assistant_active_turn_capture_is_ready_before_processing(qtbot) -> None:
+    panel = _assistant_active_turn_narrow()
     qtbot.addWidget(panel)
     panel.show()
 
     assert panel.width() == 420
     assert panel._runtime_phase.value == "ready"
     assert panel.is_processing is True
-    assert panel.ask_mode_btn.text() == "Single action"
-    assert panel.workflow_mode_btn.text() == "Guided workflow"
+    assert not hasattr(panel, "mode_selector_widget")
     assert panel._turn_presentation.phase.value == "working"
     assert panel._turn_presentation.cancelability.value == "cancellable"
     assert not panel.turn_activity_widget.isHidden()
@@ -215,7 +213,7 @@ def test_assistant_standard_runtime_captures_are_semantically_valid(
 
 
 def test_assistant_capture_rejects_setup_required_with_stop(qtbot) -> None:
-    panel = _assistant_ask_narrow()
+    panel = _assistant_setup_required_narrow()
     qtbot.addWidget(panel)
     panel.is_processing = True
     panel.send_btn.setText("Stop")
@@ -225,7 +223,7 @@ def test_assistant_capture_rejects_setup_required_with_stop(qtbot) -> None:
 
 
 def test_assistant_capture_rejects_missing_setup_action(qtbot) -> None:
-    panel = _assistant_ask_narrow()
+    panel = _assistant_setup_required_narrow()
     qtbot.addWidget(panel)
     panel.show()
     panel.setup_btn.hide()
@@ -238,7 +236,7 @@ def test_assistant_pixel_gate_rejects_same_theme_erased_activity_and_stop(
     qtbot,
     tmp_path,
 ) -> None:
-    panel = _assistant_workflow_narrow()
+    panel = _assistant_active_turn_narrow()
     qtbot.addWidget(panel)
     panel.show()
     qtbot.wait(20)
@@ -249,8 +247,6 @@ def test_assistant_pixel_gate_rejects_same_theme_erased_activity_and_stop(
     draw = ImageDraw.Draw(damaged)
     for control in (
         panel.turn_activity_widget,
-        panel.ask_mode_btn,
-        panel.workflow_mode_btn,
         panel.send_btn,
     ):
         top_left = control.mapTo(panel, QPoint(0, 0))

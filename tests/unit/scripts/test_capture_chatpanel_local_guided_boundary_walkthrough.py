@@ -2,6 +2,7 @@ import ast
 import copy
 import inspect
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -51,6 +52,28 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 )
 
 _SYNTHETIC_CURRENT_SOURCE_IDENTITY = collect_source_identity()
+
+
+def test_prepare_capture_config_uses_only_the_isolated_config_dir(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    original_dir = tmp_path / "original-config"
+    isolated_dir = tmp_path / "isolated-config"
+    monkeypatch.setenv(guided_boundary_runtime.CONFIG_DIR_ENV, str(original_dir))
+
+    config = guided_boundary_runtime._prepare_capture_config(
+        DEFAULT_MODEL_ID,
+        isolated_dir,
+    )
+
+    assert config.model_name == DEFAULT_MODEL_ID
+    assert os.environ[guided_boundary_runtime.CONFIG_DIR_ENV] == str(isolated_dir)
+    assert (isolated_dir / "settings.json").is_file()
+    assert not (original_dir / "settings.json").exists()
+
+    guided_boundary_runtime._restore_capture_config_env(str(original_dir))
+    assert os.environ[guided_boundary_runtime.CONFIG_DIR_ENV] == str(original_dir)
 
 
 def validate_guided_boundary_payload(
@@ -165,8 +188,8 @@ def _valid_payload(tmp_path: Path) -> dict:
         "Open Import Review to resolve these choices."
     )
     return {
-        "schema_version": 3,
-        "walkthrough": "guided_workflow_ui_handoff_boundary",
+        "schema_version": 5,
+        "walkthrough": "adaptive_workflow_ui_handoff_boundary",
         "status": "passed",
         "failure_reason": "",
         "source_path": str(source),
@@ -199,12 +222,12 @@ def _valid_payload(tmp_path: Path) -> dict:
             "HF_HUB_OFFLINE": "1",
             "TRANSFORMERS_OFFLINE": "1",
         },
-        "mode_selection": {
-            "selected_by_click": True,
-            "button_checked": True,
-            "panel": "multi",
-            "manager": "multi",
-            "controller": "multi",
+        "scope_resolution": {
+            "source": "request_text",
+            "scope": "guided_workflow",
+            "policy_mode": "multi",
+            "terminal_command": None,
+            "legacy_selector_present": False,
         },
         "screenshots": screenshots,
         "screenshot_artifacts": collect_screenshot_artifacts(screenshots),
@@ -215,19 +238,22 @@ def _valid_payload(tmp_path: Path) -> dict:
             "new_tools": [
                 {"name": command, "success": True} for command in EXPECTED_AUTO_CHAIN
             ],
-            "tool_proposals": first_calls,
+            "tool_proposals": first_calls[:1],
             "tool_attempts": [
                 {
-                    "raw": call,
+                    "raw": call if index == 0 else None,
                     "canonical": call,
-                    "normalized": call,
-                    "actual": {"kind": "execution", **call},
+                    "normalized": call if index == 0 else None,
+                    "actual": {
+                        "kind": ("model_execution" if index == 0 else "host_execution"),
+                        **call,
+                    },
                 }
-                for call in first_calls
+                for index, call in enumerate(first_calls)
             ],
             "metrics": {
                 "completed_turn_count": 1,
-                "llm_calls": 3,
+                "llm_calls": 1,
                 "tool_executions": [
                     {"name": command, "success": True}
                     for command in EXPECTED_AUTO_CHAIN
@@ -244,6 +270,17 @@ def _valid_payload(tmp_path: Path) -> dict:
                 "requires_confirmation": True,
                 "confirmation_required": True,
                 "can_auto_execute": False,
+            },
+            "assistant_waiting_surface": {
+                "turn_phase": "waiting",
+                "header_status": "Local · Waiting",
+                "send_button_text": "Waiting",
+                "send_button_enabled": False,
+                "input_enabled": False,
+                "cancelability_text": (
+                    "Use the open confirmation or XBrainLab dialog to continue "
+                    "or cancel."
+                ),
             },
         },
         "workflow_handoff": {
@@ -320,8 +357,9 @@ def _valid_payload(tmp_path: Path) -> dict:
         "transcript_clean": True,
         "ui_state": {
             "send_button_text": "Send",
-            "send_button_enabled": True,
+            "send_button_enabled": False,
             "input_enabled": True,
+            "input_text": "",
             "chat_processing": False,
             "controller_processing": False,
             "runtime_turn_in_flight": False,
@@ -331,7 +369,7 @@ def _valid_payload(tmp_path: Path) -> dict:
             "created",
             "starting",
             "waiting_for_ready",
-            "selecting_guided_mode",
+            "resolving_turn_scope",
             "running_auto_chain",
             "waiting_at_boundary",
             "workflow_handoff_open",
@@ -352,7 +390,7 @@ def test_guided_prompts_are_natural_and_exact(tmp_path):
     assert prompts == (
         (
             f"Use the EEG recording at {source} to prepare the data for analysis. "
-            "Continue through safe steps, and stop when the app needs my input."
+            "Continue until a decision is needed."
         ),
     )
     assert not any(tool in " ".join(prompts) for tool in EXPECTED_AUTO_CHAIN)
@@ -382,7 +420,7 @@ def test_event_loop_reconciliation_requires_both_shutdown_owners_closed():
     for phase in (
         GuidedBoundaryPhase.STARTING,
         GuidedBoundaryPhase.WAITING_FOR_READY,
-        GuidedBoundaryPhase.SELECTING_GUIDED_MODE,
+        GuidedBoundaryPhase.RESOLVING_TURN_SCOPE,
         GuidedBoundaryPhase.RUNNING_AUTO_CHAIN,
         GuidedBoundaryPhase.WAITING_AT_BOUNDARY,
         GuidedBoundaryPhase.WORKFLOW_HANDOFF_OPEN,
@@ -421,6 +459,18 @@ def test_validator_accepts_exact_guided_boundary_contract(tmp_path):
     assert reason == ""
 
 
+def test_validator_rejects_working_copy_at_decision_boundary(tmp_path) -> None:
+    payload = _valid_payload(tmp_path)
+    waiting = payload["boundary"]["assistant_waiting_surface"]
+    waiting["header_status"] = "Local · Working"
+    waiting["send_button_text"] = "Working"
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is False
+    assert "presented as active assistant work" in reason
+
+
 def _publish_valid_current(tmp_path: Path) -> tuple[Path, dict]:
     current_root = tmp_path / "chatpanel-guided-boundary"
     staging = tmp_path / ".chatpanel-guided-boundary-staging-valid"
@@ -438,14 +488,14 @@ def _publish_valid_current(tmp_path: Path) -> tuple[Path, dict]:
     return destination, published
 
 
-def test_schema_3_runner_publishes_one_canonical_current_root(tmp_path) -> None:
+def test_schema_4_runner_publishes_one_canonical_current_root(tmp_path) -> None:
     current_root, published = _publish_valid_current(tmp_path)
 
     assert current_root == tmp_path / "chatpanel-guided-boundary"
     assert (current_root / JSON_ARTIFACT).is_file()
     assert (current_root / MARKDOWN_ARTIFACT).is_file()
     stored = json.loads((current_root / JSON_ARTIFACT).read_text(encoding="utf-8"))
-    assert stored["schema_version"] == 3
+    assert stored["schema_version"] == 5
     assert stored["generated_at_utc"]
     assert stored["source_identity"] == _SYNTHETIC_CURRENT_SOURCE_IDENTITY
     for key in (
@@ -531,23 +581,15 @@ def test_unfrozen_passed_run_cannot_replace_canonical_current(tmp_path) -> None:
     assert (current_root / JSON_ARTIFACT).read_bytes() == current_json
 
 
-def test_cli_freezes_source_only_after_settings_restore(monkeypatch, tmp_path) -> None:
+def test_cli_freezes_source_only_after_isolated_config_env_restore(
+    monkeypatch,
+    tmp_path,
+) -> None:
     events: list[str] = []
     source_reads = 0
 
-    class Snapshot:
-        def restore(self) -> None:
-            events.append("restore")
-
-    class SnapshotFactory:
-        @staticmethod
-        def capture(_path: Path) -> Snapshot:
-            events.append("snapshot")
-            return Snapshot()
-
     class Config:
-        def save_to_file(self, _path: str) -> None:
-            events.append("temporary-settings")
+        pass
 
     def freeze(*_args, **_kwargs):
         nonlocal source_reads
@@ -562,15 +604,17 @@ def test_cli_freezes_source_only_after_settings_restore(monkeypatch, tmp_path) -
         return destination, dict(kwargs["payload"])
 
     monkeypatch.setattr(
-        guided_boundary_runtime, "SettingsFileSnapshot", SnapshotFactory
-    )
-    monkeypatch.setattr(
         guided_boundary_runtime, "_enforce_offline_runtime", lambda: None
     )
     monkeypatch.setattr(
         guided_boundary_runtime,
-        "_load_capture_config",
-        lambda _model: Config(),
+        "_prepare_capture_config",
+        lambda _model, _config_dir: (events.append("isolated-config") or Config()),
+    )
+    monkeypatch.setattr(
+        guided_boundary_runtime,
+        "_restore_capture_config_env",
+        lambda _previous: events.append("restore-config-env"),
     )
     monkeypatch.setattr(
         guided_boundary_runtime,
@@ -597,8 +641,8 @@ def test_cli_freezes_source_only_after_settings_restore(monkeypatch, tmp_path) -
     )
 
     assert result == 2
-    assert events.index("source-at-start") < events.index("temporary-settings")
-    assert events.index("restore") < events.index("freeze-source")
+    assert events.index("source-at-start") < events.index("isolated-config")
+    assert events.index("restore-config-env") < events.index("freeze-source")
     assert events.index("freeze-source") < events.index("publish-current-contract")
 
 
@@ -614,18 +658,8 @@ def test_cli_source_drift_cannot_publish_canonical_current(
     ]
     published: dict[str, object] = {}
 
-    class Snapshot:
-        def restore(self) -> None:
-            return None
-
-    class SnapshotFactory:
-        @staticmethod
-        def capture(_path: Path) -> Snapshot:
-            return Snapshot()
-
     class Config:
-        def save_to_file(self, _path: str) -> None:
-            return None
+        pass
 
     def publish(**kwargs):
         payload = dict(kwargs["payload"])
@@ -635,15 +669,17 @@ def test_cli_source_drift_cannot_publish_canonical_current(
         return destination, payload
 
     monkeypatch.setattr(
-        guided_boundary_runtime, "SettingsFileSnapshot", SnapshotFactory
-    )
-    monkeypatch.setattr(
         guided_boundary_runtime, "_enforce_offline_runtime", lambda: None
     )
     monkeypatch.setattr(
         guided_boundary_runtime,
-        "_load_capture_config",
-        lambda _model: Config(),
+        "_prepare_capture_config",
+        lambda _model, _config_dir: Config(),
+    )
+    monkeypatch.setattr(
+        guided_boundary_runtime,
+        "_restore_capture_config_env",
+        lambda _previous: None,
     )
     monkeypatch.setattr(
         guided_boundary_runtime,
@@ -750,6 +786,16 @@ def test_validator_recomputes_visible_transcript_leakage(tmp_path):
     assert "transcript" in reason.lower()
 
 
+def test_validator_requires_empty_idle_composer_with_disabled_send(tmp_path):
+    payload = _valid_payload(tmp_path)
+    payload["ui_state"]["send_button_enabled"] = True
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is False
+    assert "idle" in reason.lower()
+
+
 def test_validator_rejects_noncanonical_proposal_parameters(tmp_path):
     payload = _valid_payload(tmp_path)
     payload["first_turn"]["tool_proposals"][0]["parameters"] = {
@@ -772,6 +818,48 @@ def test_validator_rejects_normalized_and_actual_parameter_drift(tmp_path):
 
     assert ok is False
     assert "actual" in reason.lower()
+
+
+def test_validator_rejects_host_continuation_marked_as_model_execution(tmp_path):
+    payload = _valid_payload(tmp_path)
+    payload["first_turn"]["tool_attempts"][1]["actual"]["kind"] = "model_execution"
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is False
+    assert "execution owner" in reason.lower()
+
+
+def test_validator_rejects_model_payload_on_host_continuation(tmp_path):
+    payload = _valid_payload(tmp_path)
+    preview_call = payload["first_turn"]["tool_attempts"][1]["canonical"]
+    payload["first_turn"]["tool_attempts"][1]["raw"] = preview_call
+    payload["first_turn"]["tool_attempts"][1]["normalized"] = preview_call
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is False
+    assert "host continuation" in reason.lower()
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda attempt: attempt["actual"].pop("parameters"),
+        lambda attempt: attempt["actual"].__setitem__("parameters", "not-an-object"),
+        lambda attempt: attempt["canonical"].pop("parameters"),
+        lambda attempt: attempt.pop("raw"),
+        lambda attempt: attempt.pop("normalized"),
+    ),
+)
+def test_validator_rejects_malformed_host_execution_evidence(mutate, tmp_path):
+    payload = _valid_payload(tmp_path)
+    mutate(payload["first_turn"]["tool_attempts"][1])
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is False
+    assert "host" in reason.lower() or "canonical" in reason.lower()
 
 
 @pytest.mark.parametrize(
@@ -997,9 +1085,40 @@ def test_tool_trace_recorder_observes_normalized_and_actual_parameters():
                 "parameters": {"source_path": "/tmp/recording.fif"},
             },
             "actual": {
-                "kind": "execution",
+                "kind": "model_execution",
                 "tool_name": "scan_source",
                 "parameters": {"source_path": "/tmp/recording.fif"},
+            },
+        }
+    ]
+
+
+def test_tool_trace_recorder_marks_unproposed_execution_as_host_owned():
+    class Controller:
+        def _select_tool_proposal(self, _command_result):
+            return None
+
+        def _execute_tool_no_loop(self, command_name, parameters, *, context=None):
+            return command_name, parameters, context
+
+    controller = Controller()
+    recorder = GuidedToolTraceRecorder(copy.deepcopy)
+    recorder.attach(controller)
+
+    result = controller._execute_tool_no_loop(
+        "preview_interpretation",
+        {},
+        context="current",
+    )
+
+    assert result == ("preview_interpretation", {}, "current")
+    assert recorder.snapshot() == [
+        {
+            "normalized": None,
+            "actual": {
+                "kind": "host_execution",
+                "tool_name": "preview_interpretation",
+                "parameters": {},
             },
         }
     ]
@@ -1216,8 +1335,8 @@ def test_evidence_assembler_preserves_stable_schema():
         structured_value=lambda value: value,
     ).build()
 
-    assert payload["schema_version"] == 3
-    assert payload["walkthrough"] == "guided_workflow_ui_handoff_boundary"
+    assert payload["schema_version"] == 5
+    assert payload["walkthrough"] == "adaptive_workflow_ui_handoff_boundary"
     assert payload["expected_auto_chain"] == list(EXPECTED_AUTO_CHAIN)
     assert set(payload["screenshots"]) == {
         "ready",

@@ -181,7 +181,7 @@ def _submit_user_turn(
     text: str,
 ) -> None:
     harness.controller.handle_user_turn(
-        AssistantTurnRequest(
+        AssistantTurnRequest.single_action(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
             text=text,
         )

@@ -11,8 +11,8 @@ from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import (
     allowed_local_model_ids,
     default_local_model_id,
-    fallback_local_model_id,
     format_bytes,
+    legacy_local_model_ids,
     local_model_spec,
     plan_model_download,
 )
@@ -30,7 +30,7 @@ def build_plan(model_id: str | None = None) -> dict[str, object]:
         "model_id": selected_model,
         "cache_dir": config.cache_dir,
         "primary_model": default_local_model_id(),
-        "fallback_model": fallback_local_model_id(),
+        "legacy_compatibility_models": legacy_local_model_ids(),
         "allowed_models": allowed_local_model_ids(),
         "message": preflight.message,
         "estimated_download": format_bytes(preflight.estimated_download_bytes),
@@ -54,7 +54,9 @@ def render_markdown(plan: dict[str, object]) -> str:
         f"- ok: `{plan['ok']}`",
         f"- model: `{plan['model_id']}`",
         f"- primary model: `{plan['primary_model']}`",
-        f"- fallback model: `{plan['fallback_model']}`",
+        "- automatic fallback: `disabled`",
+        "- legacy explicit choices: "
+        f"`{', '.join(plan['legacy_compatibility_models'])}`",
         f"- cache directory: `{plan['cache_dir']}`",
         f"- estimated download: `{plan['estimated_download']}`",
         f"- current cache: `{plan['current_cache']}`",

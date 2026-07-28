@@ -29,7 +29,6 @@ from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_selection import (
     AssistantRuntimeLaunchSpec,
     AssistantRuntimeSelectionFailureCode,
-    AssistantRuntimeSelectionOutcome,
 )
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeActivationRequest,
@@ -98,7 +97,6 @@ class _Dispatcher:
         self.bind_calls = 0
         self.initialized = False
         self.launch_specs: list[AssistantRuntimeLaunchSpec] = []
-        self.modes: list[str] = []
         self.models: list[AssistantRuntimeLaunchSpec] = []
         self.submissions: list[str] = []
         self.turn_requests: list[object] = []
@@ -115,10 +113,6 @@ class _Dispatcher:
     def initialize(self, launch_spec: AssistantRuntimeLaunchSpec) -> bool:
         self.initialized = True
         self.launch_specs.append(launch_spec)
-        return True
-
-    def set_mode(self, mode: str) -> bool:
-        self.modes.append(mode)
         return True
 
     def set_model(self, launch_spec: AssistantRuntimeLaunchSpec) -> bool:
@@ -290,7 +284,7 @@ def test_lifecycle_owns_start_snapshot_dispatch_and_shutdown(qtbot) -> None:
     lifecycle.runtime_snapshot_changed.connect(published.append)
     lifecycle.controller_created.connect(created.append)
 
-    assert lifecycle.start("multi") is True
+    assert lifecycle.start() is True
     assert lifecycle.initialized is True
     assert lifecycle.controller is controller
     assert lifecycle.current.phase is AssistantRuntimePhase.LOADING
@@ -302,7 +296,6 @@ def test_lifecycle_owns_start_snapshot_dispatch_and_shutdown(qtbot) -> None:
     assert created == [controller]
     assert dispatcher.bound_controller is controller
     assert dispatcher.initialized is True
-    assert dispatcher.modes == ["multi"]
     assert len(dispatcher.launch_specs) == 1
     launch_spec = dispatcher.launch_specs[0]
     assert launch_spec.model_id == LLMConfig.default_local_model_id()
@@ -339,7 +332,7 @@ def test_start_fails_and_cleans_controller_without_terminal_signal() -> None:
         config_loader=_ready_config,
     )
 
-    assert lifecycle.start("single") is False
+    assert lifecycle.start() is False
 
     assert controller.closed is True
     assert lifecycle.controller is None
@@ -361,7 +354,7 @@ def test_submit_admission_is_owned_by_the_ready_runtime_phase() -> None:
     assert idle.status is RuntimeCommandAdmissionStatus.REJECTED
     assert dispatcher.submissions == []
 
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     loading = lifecycle.submit("during startup")
     assert loading.status is RuntimeCommandAdmissionStatus.REJECTED
     assert dispatcher.submissions == []
@@ -397,7 +390,7 @@ def test_rapid_double_submit_reserves_one_turn_until_processing_finishes() -> No
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -435,7 +428,7 @@ def test_stale_terminal_cannot_release_a_newer_turn() -> None:
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -474,7 +467,7 @@ def test_reset_is_rejected_until_active_turn_reaches_its_terminal_signal() -> No
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -508,7 +501,7 @@ def test_model_switch_is_rejected_while_a_turn_is_active() -> None:
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -539,7 +532,7 @@ def test_blank_submit_is_rejected_without_reserving_a_turn() -> None:
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -569,7 +562,7 @@ def test_oversized_submit_is_rejected_before_turn_reservation_or_dispatch() -> N
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -599,7 +592,7 @@ def test_cancel_keeps_turn_reserved_until_terminal_processing_finished() -> None
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -636,7 +629,7 @@ def test_stop_reaches_active_turn_after_runtime_phase_becomes_failed() -> None:
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -672,7 +665,7 @@ def test_pending_interaction_resolutions_use_control_plane_after_runtime_failure
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     lifecycle.mark_unavailable("runtime failed while the dialog was open")
 
     confirmation_request = AgentConfirmationRequest.for_action(
@@ -711,7 +704,7 @@ def test_interaction_resolution_rejection_is_typed_after_runtime_close() -> None
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     assert lifecycle.close() is True
     request = WorkflowUiHandoffRequest.for_decision("create_epoch")
     resolution = WorkflowUiHandoffResolution.for_request(
@@ -734,7 +727,7 @@ def test_error_signal_waits_for_terminal_finish_before_releasing_turn() -> None:
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -772,7 +765,7 @@ def test_failed_transport_admission_releases_reserved_turn() -> None:
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -800,7 +793,7 @@ def test_close_preserves_turn_until_typed_shutdown_terminal() -> None:
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -836,7 +829,7 @@ def test_async_cleanup_signal_completes_the_same_typed_shutdown_terminal() -> No
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -883,7 +876,7 @@ def test_controller_terminal_signal_resumes_pending_dispatcher_cleanup() -> None
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     cleanup_events: list[tuple[bool, str]] = []
     lifecycle.cleanup_finished.connect(
         lambda ok, message: cleanup_events.append((ok, message))
@@ -914,7 +907,6 @@ def test_lifecycle_activation_owns_readiness_start_and_model_switch() -> None:
 
     started = lifecycle.activate(
         _ready_config(primary_model),
-        execution_mode="single",
     )
     assert started.status is RuntimeActivationStatus.STARTED
     assert started.model_id == primary_model
@@ -931,14 +923,12 @@ def test_lifecycle_activation_owns_readiness_start_and_model_switch() -> None:
     )
     unchanged = lifecycle.activate(
         _ready_config(primary_model),
-        execution_mode="single",
     )
     assert unchanged.status is RuntimeActivationStatus.ALREADY_READY
     assert dispatcher.models == []
 
     switched = lifecycle.activate(
         _ready_config(fallback_model),
-        execution_mode="single",
     )
     assert switched.status is RuntimeActivationStatus.SWITCHING
     assert switched.launch_spec is dispatcher.models[0]
@@ -947,9 +937,7 @@ def test_lifecycle_activation_owns_readiness_start_and_model_switch() -> None:
     assert lifecycle.current.model_id == fallback_model
 
 
-def test_activation_freezes_fallback_and_config_mutation_cannot_change_startup() -> (
-    None
-):
+def test_activation_does_not_fallback_to_a_ready_legacy_model() -> None:
     primary_model = LLMConfig.default_local_model_id()
     fallback_model = LLMConfig.fallback_local_model_id()
     config = LLMConfig(model_name=primary_model)
@@ -972,31 +960,20 @@ def test_activation_freezes_fallback_and_config_mutation_cannot_change_startup()
         config_loader=lambda: config,
     )
 
-    activation = lifecycle.activate(config, execution_mode="single")
+    activation = lifecycle.activate(config)
 
-    assert activation.status is RuntimeActivationStatus.STARTED
-    assert activation.launch_spec is dispatcher.launch_specs[0]
-    launch_spec = activation.launch_spec
-    assert launch_spec is not None
-    assert launch_spec.requested_model_id == primary_model
-    assert launch_spec.model_id == fallback_model
-    assert launch_spec.outcome is AssistantRuntimeSelectionOutcome.FALLBACK
-    assert activation.fallback_used is True
-    assert primary_model in activation.message
-    assert fallback_model in activation.message
-    assert lifecycle.current.model_id == fallback_model
-    assert lifecycle.current.requested_model_id == primary_model
-    assert lifecycle.current.selection_outcome is (
-        AssistantRuntimeSelectionOutcome.FALLBACK
+    assert activation.status is RuntimeActivationStatus.UNAVAILABLE
+    assert activation.launch_spec is None
+    assert activation.failure is not None
+    assert activation.failure.code is (
+        AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE
     )
-    assert lifecycle.current.selection_detail == launch_spec.selection_detail
-
-    config.model_name = primary_model
-    config.temperature = 1.9
-
-    assert dispatcher.launch_specs[0] is launch_spec
-    assert launch_spec.build_config().model_name == fallback_model
-    assert launch_spec.build_config().temperature != config.temperature
+    assert primary_model in activation.message
+    assert fallback_model not in activation.message
+    assert dispatcher.launch_specs == []
+    assert lifecycle.current.model_id == ""
+    assert lifecycle.current.requested_model_id == primary_model
+    assert lifecycle.current.phase is AssistantRuntimePhase.FAILED
 
 
 def test_activation_typed_fails_unknown_ids_without_starting_or_switching() -> None:
@@ -1012,7 +989,6 @@ def test_activation_typed_fails_unknown_ids_without_starting_or_switching() -> N
 
     backend_result = lifecycle.activate(
         unknown_backend,
-        execution_mode="single",
     )
 
     assert backend_result.status is RuntimeActivationStatus.UNAVAILABLE
@@ -1025,7 +1001,7 @@ def test_activation_typed_fails_unknown_ids_without_starting_or_switching() -> N
 
     unknown_model = _ready_config()
     unknown_model.model_name = "unknown/model"
-    model_result = lifecycle.activate(unknown_model, execution_mode="single")
+    model_result = lifecycle.activate(unknown_model)
 
     assert model_result.status is RuntimeActivationStatus.UNAVAILABLE
     assert model_result.failure is not None
@@ -1047,7 +1023,7 @@ def test_model_switch_resolves_once_and_dispatches_the_exact_spec() -> None:
         dispatcher=dispatcher,
         config_loader=lambda: config,
     )
-    started = lifecycle.activate(config, execution_mode="single")
+    started = lifecycle.activate(config)
     assert started.launch_spec is not None
     lifecycle.accept_runtime_snapshot(
         AssistantRuntimeSnapshot(
@@ -1104,7 +1080,7 @@ def test_model_switch_registers_expected_activation_before_dispatch() -> None:
         dispatcher=dispatcher,
         config_loader=lambda: _ready_config(fallback_model),
     )
-    started = lifecycle.activate(_ready_config(primary_model), execution_mode="single")
+    started = lifecycle.activate(_ready_config(primary_model))
     assert started.launch_spec is not None
     lifecycle.accept_runtime_snapshot(
         _ActivationTransition(
@@ -1139,7 +1115,7 @@ def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
         dispatcher=dispatcher,
         config_loader=lambda: _ready_config(fallback_model),
     )
-    started = lifecycle.activate(_ready_config(primary_model), execution_mode="single")
+    started = lifecycle.activate(_ready_config(primary_model))
     assert started.launch_spec is not None
     lifecycle.accept_runtime_snapshot(
         _ActivationTransition(
@@ -1202,7 +1178,7 @@ def test_failed_reconfiguration_preserves_live_runtime_identity_and_delete_guard
         dispatcher=dispatcher,
         config_loader=lambda: _ready_config(model_id),
     )
-    started = lifecycle.activate(_ready_config(model_id), execution_mode="single")
+    started = lifecycle.activate(_ready_config(model_id))
     assert started.activation_id is not None
     lifecycle.accept_runtime_snapshot(
         _ActivationTransition(
@@ -1216,7 +1192,7 @@ def test_failed_reconfiguration_preserves_live_runtime_identity_and_delete_guard
     invalid = _ready_config(model_id)
     invalid.inference_mode = "not-a-runtime"
 
-    result = lifecycle.activate(invalid, execution_mode="single")
+    result = lifecycle.activate(invalid)
 
     assert result.status is RuntimeActivationStatus.UNAVAILABLE
     assert lifecycle.controller is controller
@@ -1231,7 +1207,6 @@ def test_failed_reconfiguration_preserves_live_runtime_identity_and_delete_guard
 
     recovered = lifecycle.activate(
         _ready_config(model_id),
-        execution_mode="single",
     )
     assert recovered.status is RuntimeActivationStatus.ALREADY_READY
     assert lifecycle.current.phase is AssistantRuntimePhase.READY
@@ -1256,7 +1231,7 @@ def test_activation_watchdog_fails_and_retry_restores_ready(qtbot) -> None:
         activation_timeout_ms=10,
     )
 
-    started = lifecycle.activate(_ready_config(model_id), execution_mode="single")
+    started = lifecycle.activate(_ready_config(model_id))
     assert started.status is RuntimeActivationStatus.STARTED
     qtbot.waitUntil(
         lambda: lifecycle.current.phase is AssistantRuntimePhase.FAILED,
@@ -1264,7 +1239,7 @@ def test_activation_watchdog_fails_and_retry_restores_ready(qtbot) -> None:
     )
     assert "timed out" in lifecycle.current.error.lower()
 
-    retried = lifecycle.activate(_ready_config(model_id), execution_mode="single")
+    retried = lifecycle.activate(_ready_config(model_id))
     assert retried.status is RuntimeActivationStatus.SWITCHING
     assert retried.launch_spec is not None
     assert lifecycle.current.phase is AssistantRuntimePhase.LOADING
@@ -1293,7 +1268,7 @@ def test_timed_out_activation_recovers_when_its_late_ready_arrives(qtbot) -> Non
         activation_timeout_ms=10,
     )
 
-    started = lifecycle.activate(_ready_config(model_id), execution_mode="single")
+    started = lifecycle.activate(_ready_config(model_id))
     assert started.activation_id is not None
     qtbot.waitUntil(
         lambda: lifecycle.current.phase is AssistantRuntimePhase.FAILED,
@@ -1327,7 +1302,7 @@ def test_stale_same_model_completion_does_not_finish_new_activation() -> None:
         dispatcher=_Dispatcher(),
         config_loader=lambda: _ready_config(fallback_model),
     )
-    started = lifecycle.activate(_ready_config(primary_model), execution_mode="single")
+    started = lifecycle.activate(_ready_config(primary_model))
     assert started.launch_spec is not None
     lifecycle.accept_runtime_snapshot(
         _ActivationTransition(
@@ -1389,7 +1364,7 @@ def test_start_rolls_back_factory_failure_and_can_retry(qtbot) -> None:
     )
     lifecycle.controller_created.connect(created.append)
 
-    assert lifecycle.start("single") is False
+    assert lifecycle.start() is False
     assert lifecycle.current.phase is AssistantRuntimePhase.FAILED
     assert lifecycle.current.initialized is False
     assert lifecycle.current.model_id == ""
@@ -1397,7 +1372,7 @@ def test_start_rolls_back_factory_failure_and_can_retry(qtbot) -> None:
     assert lifecycle.initialized is False
     assert created == []
 
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     assert lifecycle.controller is controller
     assert lifecycle.initialized is True
     assert created == [controller]
@@ -1416,7 +1391,7 @@ def test_start_rolls_back_bind_failure_without_publishing_controller(qtbot) -> N
     )
     lifecycle.controller_created.connect(created.append)
 
-    assert lifecycle.start("single") is False
+    assert lifecycle.start() is False
 
     assert lifecycle.current.phase is AssistantRuntimePhase.FAILED
     assert lifecycle.controller is None
@@ -1441,7 +1416,7 @@ def test_start_rolls_back_initialize_failure_and_closes_bound_dispatcher(
     )
     lifecycle.controller_created.connect(created.append)
 
-    assert lifecycle.start("multi") is False
+    assert lifecycle.start() is False
 
     assert lifecycle.current.phase is AssistantRuntimePhase.FAILED
     assert lifecycle.controller is None
@@ -1465,7 +1440,7 @@ def test_failed_start_retains_controller_until_rollback_cleanup_succeeds(
     )
     lifecycle.controller_created.connect(created.append)
 
-    assert lifecycle.start("single") is False
+    assert lifecycle.start() is False
 
     assert dispatcher.close_attempts == 1
     assert lifecycle.controller is controller
@@ -1487,7 +1462,7 @@ def test_failed_close_blocks_dispatch_and_late_ready_until_cleanup_succeeds() ->
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     ready = AssistantRuntimeSnapshot(
@@ -1514,7 +1489,7 @@ def test_failed_close_blocks_dispatch_and_late_ready_until_cleanup_succeeds() ->
     assert admission.status is RuntimeCommandAdmissionStatus.REJECTED
     assert "shutdown" in admission.message.lower()
     assert lifecycle.current.phase is AssistantRuntimePhase.FAILED
-    assert lifecycle.start("single") is False
+    assert lifecycle.start() is False
     assert lifecycle.close() is True
     assert dispatcher.close_attempts == 2
     assert lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
@@ -1531,7 +1506,7 @@ def test_close_exception_keeps_runtime_retryable_until_cleanup_succeeds() -> Non
         dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start("single") is True
+    assert lifecycle.start() is True
 
     assert lifecycle.close() is False
 
@@ -1571,7 +1546,7 @@ def test_activate_closed_lifecycle_reports_unavailable_instead_of_started() -> N
     )
     assert lifecycle.close() is True
 
-    result = lifecycle.activate(_ready_config(), execution_mode="single")
+    result = lifecycle.activate(_ready_config())
 
     assert result.status is RuntimeActivationStatus.UNAVAILABLE
     assert "closed" in result.message.lower()

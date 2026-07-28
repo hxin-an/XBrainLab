@@ -17,9 +17,13 @@ from XBrainLab.llm.core.model_catalog import (
     plan_model_download,
 )
 
-PRIMARY_MODEL_ID = "microsoft/Phi-4-mini-instruct"
+PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 PRIMARY_MODEL_REVISION = (
-    "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
+    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
+)
+LEGACY_MODEL_IDS = (
+    "microsoft/Phi-4-mini-instruct",
+    "microsoft/Phi-3.5-mini-instruct",
 )
 VALID_TEST_WEIGHT_BYTES = 300_000_000
 
@@ -61,7 +65,7 @@ def _write_complete_hf_cache(
 
 def test_catalog_excludes_chinese_model_providers():
     allowed = allowed_local_model_ids()
-    assert default_local_model_id() == "microsoft/Phi-4-mini-instruct"
+    assert default_local_model_id() == PRIMARY_MODEL_ID
     assert all("Qwen" not in model_id for model_id in allowed)
     assert local_model_policy_error("Qwen/Qwen2.5-7B-Instruct") is not None
     deepseek_error = local_model_policy_error("deepseek-ai/deepseek-llm-7b-chat")
@@ -77,9 +81,43 @@ def test_catalog_pins_supported_models_to_immutable_revisions() -> None:
     assert len(primary.revision) == 40
 
 
+def test_primary_granite_catalog_metadata_is_truthful() -> None:
+    primary = local_model_spec(PRIMARY_MODEL_ID)
+
+    assert allowed_local_model_ids()[0] == PRIMARY_MODEL_ID
+    assert primary is not None
+    assert primary.label == "Granite 3.3 2B Instruct (Primary)"
+    assert primary.provider == "IBM"
+    assert primary.role == "primary"
+    assert primary.license == "Apache-2.0"
+    assert primary.parameters == "2.5B (2B class)"
+    assert primary.context_tokens == 128_000
+    assert primary.runtime_context_tokens == 8_192
+    assert primary.estimated_download_gb == pytest.approx(5.08)
+    assert primary.estimated_download_gb < 10.0
+    assert primary.quantization.startswith("BF16 safetensors")
+    assert primary.trust_remote_code is False
+    assert primary.supports_system_role is True
+    assert primary.preferred_cuda_dtype == "bfloat16"
+    assert primary.source_url == (
+        "https://huggingface.co/ibm-granite/granite-3.3-2b-instruct"
+    )
+
+
+def test_phi_models_remain_explicit_legacy_catalog_entries() -> None:
+    assert allowed_local_model_ids() == [PRIMARY_MODEL_ID, *LEGACY_MODEL_IDS]
+
+    for model_id in LEGACY_MODEL_IDS:
+        spec = local_model_spec(model_id)
+        assert spec is not None
+        assert spec.provider == "Microsoft"
+        assert spec.role == "legacy"
+        assert spec.license == "MIT"
+
+
 def test_download_preflight_allows_primary_under_limits(tmp_path: Path):
     result = plan_model_download(
-        "microsoft/Phi-4-mini-instruct",
+        PRIMARY_MODEL_ID,
         str(tmp_path / "models"),
     )
 
@@ -96,7 +134,7 @@ def test_download_preflight_fails_closed_when_disk_capacity_is_unknown(
         return_value=0,
     ):
         result = plan_model_download(
-            "microsoft/Phi-4-mini-instruct",
+            PRIMARY_MODEL_ID,
             str(tmp_path / "models"),
         )
 
@@ -112,7 +150,7 @@ def test_download_preflight_preserves_disk_reserve_after_download(
         return_value=10_000_000_000,
     ):
         result = plan_model_download(
-            "microsoft/Phi-4-mini-instruct",
+            PRIMARY_MODEL_ID,
             str(tmp_path / "models"),
         )
 
@@ -124,7 +162,7 @@ def test_download_preflight_allows_already_cached_model_without_increment(
     tmp_path: Path,
 ):
     cache_dir = tmp_path / "models"
-    repo_id = "microsoft/Phi-4-mini-instruct"
+    repo_id = PRIMARY_MODEL_ID
     cached_model = _write_complete_hf_cache(cache_dir, repo_id)
 
     result = plan_model_download(
@@ -172,7 +210,7 @@ def test_pinned_snapshot_is_discoverable_by_huggingface_local_cache_lookup(
 
 def test_internal_hf_blob_symlinks_are_supported(tmp_path: Path) -> None:
     cache_dir = tmp_path / "models"
-    model_root = cache_dir / "models--microsoft--Phi-4-mini-instruct"
+    model_root = cache_dir / f"models--{PRIMARY_MODEL_ID.replace('/', '--')}"
     snapshot = model_root / "snapshots" / PRIMARY_MODEL_REVISION
     blobs = model_root / "blobs"
     snapshot.mkdir(parents=True)
@@ -198,7 +236,7 @@ def test_sharded_weights_require_every_indexed_artifact(tmp_path: Path) -> None:
     cache_dir = tmp_path / "models"
     snapshot = (
         cache_dir
-        / "models--microsoft--Phi-4-mini-instruct"
+        / f"models--{PRIMARY_MODEL_ID.replace('/', '--')}"
         / "snapshots"
         / PRIMARY_MODEL_REVISION
     )
@@ -297,7 +335,7 @@ def test_partial_cache_never_bypasses_download_estimate(
     tmp_path: Path,
     partial_layout: str,
 ) -> None:
-    repo_id = "microsoft/Phi-4-mini-instruct"
+    repo_id = PRIMARY_MODEL_ID
     cache_dir = tmp_path / "models"
     project_root = cache_dir / repo_id.replace("/", "_")
     hf_root = cache_dir / f"models--{repo_id.replace('/', '--')}"
@@ -345,7 +383,7 @@ def test_partial_cache_never_bypasses_download_estimate(
 
 
 def test_large_partial_cache_cannot_bypass_total_limit(tmp_path: Path) -> None:
-    repo_id = "microsoft/Phi-4-mini-instruct"
+    repo_id = PRIMARY_MODEL_ID
     cache_dir = tmp_path / "models"
     partial = cache_dir / repo_id.replace("/", "_")
     partial.mkdir(parents=True)
@@ -369,7 +407,7 @@ def test_download_preflight_blocks_total_cache_over_limit(tmp_path: Path):
         f.truncate(15_000_000_000)
 
     result = plan_model_download(
-        "microsoft/Phi-4-mini-instruct",
+        PRIMARY_MODEL_ID,
         str(cache_dir),
     )
 

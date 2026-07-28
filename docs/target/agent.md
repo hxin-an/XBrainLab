@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-05-31`
+最後更新：`2026-07-29`
 
 這份文件定義 XBrainLab agent 的目標態。
 
@@ -34,7 +34,8 @@ XBrainLab 的 assistant 是 app 內 EEG workflow operator。
   `api` / `gemini`，必須 migrate local 或 fail closed，不可 instantiate remote backend。
 - `openai` / `google-genai` 不在 default dependencies；若歷史研究需要，只能放在 optional
   `legacy-remote-llm` dependency group / legacy fixture，不可由 product code import。
-- local model cache、dependency、GPU / CPU fallback 要可檢查。
+- local model cache、dependency、GPU / CPU execution 要可檢查。
+- 產品啟動必須使用使用者選定的 exact model；不可因模型缺失而靜默換成另一個模型。
 - model switch、stop generation、timeout、VRAM diagnostics 要可驗證。
 - 真 local LLM 長時間 ChatPanel walkthrough 仍未完成，不能用 prompt smoke 取代。
 
@@ -42,7 +43,9 @@ XBrainLab 的 assistant 是 app 內 EEG workflow operator。
 
 tool-call validation 不只看回答像不像，也不應停在人工讀幾個範例。
 
-目標是建立一套可重跑的 agent tool-call scoring system，用固定 benchmark cases 評估 agent 在 XBrainLab workflow 中的操作準確率。
+目標是建立一套可重跑的 agent tool-call scoring system，用固定 benchmark cases 評估 agent 在
+XBrainLab workflow 中的操作準確率。這個 benchmark 只在老師可用的產品候選固定後啟動；否則
+source、tool contracts 與 UI handoff 持續變動，分數不具可比較性。
 
 它應驗證：
 
@@ -85,7 +88,7 @@ case 數量目標：
 - 每個主要 workflow stage 至少 `10` 個 cases。
 - negative / blocked / missing-parameter / recovery cases 至少佔 `30%`。
 - multi-turn workflow cases 至少 `15` 個。
-- local LLM primary / fallback runner 至少重跑 `3` 次；不足時只能標成 exploratory。
+- 每個正式納入主張的 local LLM runner 至少重跑 `3` 次；不足時只能標成 exploratory。
 
 先前的 primary / fallback `117 / 117` artifacts 使用舊 prompt 與舊 scorer schema；該
 prompt 會加入 evaluator 推導的 intent、direct command 和 case-specific blocked reason，
@@ -94,7 +97,7 @@ prompt 會加入 evaluator 推導的 intent、direct command 和 case-specific b
 目前 runner 已把 primary prompt condition 固定為
 `state_capability_unassisted`：只提供使用者對話、compact backend state 與 capability-filtered
 tool contracts；raw model score 與 host-assisted normalization / blocking score 分開保存。新的
-primary / fallback 正式主張必須在乾淨 checkpoint 上，以新版 schema 各跑至少 `100` cases、
+模型正式主張必須在乾淨、可重建的產品 checkpoint 上，以新版 schema 跑至少 `100` cases、
 `3` repeats，並保存 prompt condition、完整 attempts、source fingerprints 和 failure taxonomy。
 在重跑完成前，目前只能宣稱 strict-envelope implementation contract 有測試保護，不能宣稱
 任何 local-model tool-call accuracy 或 thesis-candidate benchmark 結果。

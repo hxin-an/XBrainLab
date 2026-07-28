@@ -72,6 +72,13 @@ _FINGERPRINT_BOUND_RESOURCE_COMMANDS = frozenset(
     }
 )
 
+_HOST_DETERMINISTIC_CONTINUATION_TOOLS = frozenset(
+    {
+        "preview_interpretation",
+        "validate_interpretation",
+    }
+)
+
 
 def _resource_receipt_contract_error(
     command_name: str,
@@ -407,6 +414,116 @@ class ToolAttemptCoordinator:
                 "until workflow state can be verified.",
             )
         return context
+
+    def evaluate_host_deterministic_continuation(
+        self,
+        command_name: str,
+        params: dict[str, Any],
+    ) -> ToolAttemptDecision:
+        """Verify one host-selected, parameter-free continuation fail closed.
+
+        The host may select only an allowlisted workflow transition, but the
+        transition still has to satisfy the same registry schema, capability,
+        and confirmation policy as a model proposal.
+        """
+        if command_name not in _HOST_DETERMINISTIC_CONTINUATION_TOOLS:
+            message = f"Tool '{command_name}' is not an allowlisted host continuation."
+            return ToolAttemptDecision(
+                ToolAttemptAction.VERIFICATION_BLOCKED,
+                command_name,
+                params,
+                result=ToolCommandResult.failure(
+                    command_name,
+                    message,
+                    command_name=command_name,
+                    error_type="contract",
+                    recoverable=False,
+                ),
+            )
+        if params:
+            message = (
+                f"Tool '{command_name}' is an allowlisted host continuation only "
+                "when it is parameter-free."
+            )
+            return ToolAttemptDecision(
+                ToolAttemptAction.VERIFICATION_BLOCKED,
+                command_name,
+                params,
+                result=ToolCommandResult.failure(
+                    command_name,
+                    message,
+                    command_name=command_name,
+                    error_type="contract",
+                    recoverable=False,
+                ),
+            )
+        context = self.context_for(command_name)
+        validation = self._verifier.verify_tool_call(
+            (command_name, params),
+            confidence=1.0,
+        )
+        if not validation.is_valid:
+            message = validation.error_message or "Tool call did not pass validation."
+            return ToolAttemptDecision(
+                ToolAttemptAction.VERIFICATION_BLOCKED,
+                command_name,
+                params,
+                context=context,
+                result=ToolCommandResult.failure(
+                    command_name,
+                    message,
+                    command_name=context.availability.command_name,
+                    state=context.state,
+                    error_type="contract",
+                    recoverable=False,
+                    capability=context.availability.to_dict(),
+                    diagnostics={"publication_generation": context.generation},
+                ),
+            )
+        if not context.availability.enabled:
+            return ToolAttemptDecision(
+                ToolAttemptAction.CAPABILITY_BLOCKED,
+                command_name,
+                params,
+                context=context,
+                result=self.blocked_result(command_name, context),
+            )
+        tool = self._registry.get_tool(command_name)
+        if tool is None:
+            return ToolAttemptDecision(
+                ToolAttemptAction.VERIFICATION_BLOCKED,
+                command_name,
+                params,
+                context=context,
+                result=ToolCommandResult.failure(
+                    command_name,
+                    "The deterministic continuation tool is not registered.",
+                    command_name=context.availability.command_name,
+                    state=context.state,
+                    error_type="contract",
+                    recoverable=False,
+                    capability=context.availability.to_dict(),
+                    diagnostics={"publication_generation": context.generation},
+                ),
+            )
+        if self._execution_policy.needs_confirmation(
+            context.availability,
+            tool_requires_confirmation=tool.requires_confirmation,
+        ):
+            return ToolAttemptDecision(
+                ToolAttemptAction.CONFIRMATION_REQUIRED,
+                command_name,
+                params,
+                context=context,
+                tool=tool,
+            )
+        return ToolAttemptDecision(
+            ToolAttemptAction.EXECUTE,
+            command_name,
+            params,
+            context=context,
+            tool=tool,
+        )
 
     @staticmethod
     def unavailable_context(

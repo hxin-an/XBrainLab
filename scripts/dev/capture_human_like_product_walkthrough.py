@@ -154,7 +154,10 @@ from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import local_result_payload
 from XBrainLab.ui.chat.message_bubble import MessageBubble
-from XBrainLab.ui.chat.presentation import ChatTurnCancelability
+from XBrainLab.ui.chat.presentation import (
+    ChatTurnCancelability,
+    ChatTurnPresentationPhase,
+)
 from XBrainLab.ui.chat.suggestion_card import AssistantSuggestionCard
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
@@ -316,7 +319,6 @@ MAIN_NAVIGATION_TITLES = (
     "Evaluation",
     "Visualization",
 )
-ASSISTANT_MODE_TITLES = ("Single action", "Guided workflow")
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
@@ -1860,7 +1862,9 @@ def _required_capture_region_names(widget: QWidget) -> list[str]:
         else widget.findChild(QWidget, "AssistantPanel")
     )
     if panel is not None:
-        regions.extend(["Assistant composer", "Assistant modes", "Assistant feedback"])
+        regions.extend(
+            ["Assistant composer", "Assistant activity", "Assistant feedback"]
+        )
     return regions or ["Complete widget"]
 
 
@@ -2515,7 +2519,7 @@ def _assert_assistant_dock_rendered(
     *,
     logical_name: str | None = None,
 ) -> None:
-    """Require assistant modes and the current Send/Stop action to be painted."""
+    """Require the current assistant composer and Send/Stop action to be painted."""
     panel = (
         widget
         if widget.objectName() == "AssistantPanel"
@@ -2548,27 +2552,31 @@ def _assert_assistant_dock_rendered(
     title = widget.findChild(QWidget, "AssistantDockTitle")
     control_panel = panel.findChild(QWidget, "ControlPanel")
     send_button = getattr(panel, "send_btn", None)
-    ask_mode = getattr(panel, "ask_mode_btn", None)
-    workflow_mode = getattr(panel, "workflow_mode_btn", None)
-    expected_controls = (ask_mode, workflow_mode, send_button)
-    if not all(isinstance(control, QAbstractButton) for control in expected_controls):
+    input_field = getattr(panel, "input_field", None)
+    if not isinstance(send_button, QAbstractButton) or not isinstance(
+        input_field,
+        QWidget,
+    ):
         raise RuntimeError(
-            "Assistant capture is missing its mode selector or Send/Stop action."
+            "Assistant capture is missing its composer or Send/Stop action."
         )
-    mode_titles = (
-        str(cast(QAbstractButton, ask_mode).text()),
-        str(cast(QAbstractButton, workflow_mode).text()),
-    )
-    if mode_titles != ASSISTANT_MODE_TITLES:
-        raise RuntimeError("Assistant capture uses stale mode selector labels.")
+    if any(
+        hasattr(panel, name)
+        for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
+    ):
+        raise RuntimeError("Assistant capture still exposes the legacy mode selector.")
     is_processing = bool(getattr(panel, "is_processing", False))
+    turn_presentation = getattr(panel, "_turn_presentation", None)
+    phase = getattr(turn_presentation, "phase", None)
     cancelability = getattr(
-        getattr(panel, "_turn_presentation", None),
+        turn_presentation,
         "cancelability",
         ChatTurnCancelability.NONE,
     )
     if not is_processing:
         expected_action = "Send"
+    elif phase is ChatTurnPresentationPhase.WAITING:
+        expected_action = "Waiting"
     elif cancelability is ChatTurnCancelability.CANCELLABLE:
         expected_action = "Stop"
     elif cancelability is ChatTurnCancelability.STOPPING:
@@ -2580,11 +2588,7 @@ def _assert_assistant_dock_rendered(
             f"Assistant capture expected {expected_action}, got "
             f"{cast(QAbstractButton, send_button).text()!r}."
         )
-    paint_controls = [
-        cast(QWidget, ask_mode),
-        cast(QWidget, workflow_mode),
-        cast(QWidget, send_button),
-    ]
+    paint_controls = [cast(QWidget, send_button)]
     empty_action = getattr(panel, "empty_state_action_button", None)
     legacy_empty_action = (
         cast(QAbstractButton, empty_action)
@@ -2628,7 +2632,7 @@ def _assert_assistant_dock_rendered(
         widget,
         screenshot,
         paint_controls,
-        surface_name="Assistant mode and primary controls",
+        surface_name="Assistant primary controls",
     )
     _assert_widget_regions_painted(
         widget,

@@ -53,7 +53,7 @@ def test_assistant_ready_requires_visible_enabled_idle_controls() -> None:
 
     class FakePanel:
         input_field = FakeControl()
-        send_btn = FakeControl()
+        send_btn = FakeControl(enabled=False)
 
     class FakeController:
         is_processing = False
@@ -67,10 +67,10 @@ def test_assistant_ready_requires_visible_enabled_idle_controls() -> None:
     manager = FakeManager()
     assert _assistant_is_ready(manager) is True
 
-    manager.chat_panel.send_btn.enabled = False
+    manager.chat_panel.input_field.enabled = False
     assert _assistant_is_ready(manager) is False
 
-    manager.chat_panel.send_btn.enabled = True
+    manager.chat_panel.input_field.enabled = True
     manager.chat_controller.is_processing = True
     assert _assistant_is_ready(manager) is False
 

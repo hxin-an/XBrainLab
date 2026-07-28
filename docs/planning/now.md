@@ -1,18 +1,17 @@
 # XBrainLab Now
 
-最後更新：`2026-07-23`
+最後更新：`2026-07-29`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Run Windows acceptance from the published Agent presentation checkpoint.**
+**Close one Granite 2B, multi-format teacher candidate, then run Windows acceptance.**
 
-先前稽核列出的 product、scientific correctness、Qt lifecycle 與 agent host-safety blocker 已完成
-實作、完整回歸、獨立 reviewer、commit / push 與 exact-commit dashboard 都已關閉。現在不再
-擴張功能；`ux/gui-review-preprocess-polish` 已完成 Agent presentation 自動化、可見 artifact
-與獨立 reviewer gate，presentation checkpoint `915e5ac4` 已 push。下一步是 Windows 真人
-click-through，接受後才進 stabilization / main merge gate。
+老師下週要用不同格式資料操作 GUI。本輪只收斂一個可手測候選：保留現有 EEG workflow，
+把 assistant 簡化為自然語言決定本回合 scope，產品預設切到 exact Granite 3.3 2B，並用真實
+多格式 / 多來源資料、真人式 wizard、跨來源 epoch / training 與可見 Agent artifacts 驗證。
+候選可動且 Windows acceptance 完成後，才 freeze benchmark；現在不先做 accuracy 主張。
 
 ## 本輪 To-do
 
@@ -31,11 +30,14 @@ click-through，接受後才進 stabilization / main merge gate。
 | Done | Validation truth reset | Windows launcher 已改指向唯一 active repo；walkthrough 要求 reload/reapply、training completion、evaluation、visualization 真成功，scripted assistant transcript 只算 layout evidence。 |
 | Done | Scientific training correctness | validation-only checkpoint、final test evaluation、split provenance、undefined AUC、BIDS bounds/run mapping、overlapping-window leakage 與 saliency atomicity都有 regression。 |
 | Done | Non-blocking application view / shutdown | 原子 publication、non-blocking query、recovery path、background snapshot generation、owner-bound Qt receiver 與 native teardown regression 已通過。 |
-| Done | Agent verified host loop | strict envelope、repair context、turn guard、request admission、confirmation / UI handoff 與真 Phi-4 ChatPanel workflow 已完成；raw model accuracy 仍明確列為 research gap。 |
-| Done | Agent Panel product UI | Header、loading / empty / ready / working / error、responsive composer、`Single action` / `Guided workflow` selector、suggestion prompts、inline typed confirmation、retry 與 Settings 已統一；owner-bound deferred reflow 不會在 widget 刪除後回呼。最新 focused presentation / regression suite `511/511`，exact focused / human-like source fingerprints 穩定，human-like walkthrough `42/42` phases、44 screenshots，100% / 125% / 150% Qt subprocess gate 與兩個 reviewer gate 均通過。 |
-| Done | Candidate closure | 完整 unit `9006`、integration `388`、靜態 / architecture / docs、多資料集、UI walkthrough、兩個獨立 reviewer 與 exact-commit dashboard 全數 PASS；branch 已 push。 |
+| Done | Natural-language turn scope | 移除可見 `Single action` / `Guided workflow` selector；host 依單一 request 建立 immutable no-tool / single-step / continue-until-decision / terminal-endpoint scope。解釋型 prompt 不取得 mutation admission。 |
+| Done | Granite 3.3 2B exact runtime | IBM Granite 3.3 2B 是 product primary；runtime 不自動 fallback。catalog trust、dtype、context truncation、prompt / structured smoke 與真 GPU workflow 有 regression。Phi 只保留明確 legacy choice。 |
+| Done | Host continuation safety | 只有 parameter-free preview / validate 可由 host deterministic continuation；allowlist、schema、registry、capability、auto-execution 與 confirmation policy 全由 coordinator fail closed。非空參數會在讀 context / verifier / registry 前被拒絕。 |
+| Done | Teacher data-format gate | lifecycle `20/20`、required formats `14/14`、7 public cases / 5 source families、real five-step wizard `17 passed`、IO/BIDS/cross-source integration `36 passed`、strict cross-source `4/4`。 |
 | Done | Review / preprocess / visualization repair | Step 5 recipe 與 Epoch 解耦且 optional；Smart Parser、preprocess dialogs、三態 preview、固定 History、Explanation Plots 與共用色階 spectrogram 已完成 focused `567`、product `7`、human-like `42/42` 與多資料集 gate。 |
-| Next | Windows user acceptance | 從本次 Agent presentation checkpoint 所在候選 branch 做真人 click-through；通過前不直接合併 `main`。 |
+| Done | Candidate closure | Relevant regression `2700 passed`、Qt assistant integration `17 passed`、Ruff / full Basedpyright / architecture / MkDocs PASS；human-like、Granite 2B workflow、adaptive boundary artifacts 由主 agent 檢視，UI 與 architecture reviewer re-gate PASS。候選提交與 push 後只保留受保護的本機設定差異。 |
+| Next | Windows user acceptance | 從同一個已 push 候選做真人 click-through；通過前不合併 `main`。 |
+| Later | XBrainLab benchmark | working candidate 通過後，另外 freeze case suite、scorer、prompt condition、source fingerprint 與 repeats。產品 host-assisted score和 raw-model score分開。 |
 
 ## 2026-07-04 Rebaseline 結論
 
@@ -66,7 +68,7 @@ click-through，接受後才進 stabilization / main merge gate。
 | --- | --- | --- |
 | Windows desktop UX | Xvfb screenshots不能證明實際 Windows DPI、遠端桌面、雙螢幕和長時間互動。 | 使用者在單一 stabilization branch 做真人 click-through。 |
 | Interactive 3D | headless gate只能驗證 unavailable / framing boundary，不能操作 OpenGL 視圖。 | Windows GPU 桌面手測。 |
-| Local agent accuracy | raw Phi-4 candidate目前 `6/12`；backend policy雖使產品安全分數達 `12/12`，但不是模型準確率。 | 後續獨立 research protocol，至少 50/100 cases 與 3 repeats。 |
+| Local agent accuracy | Granite 真實 boundary workflow 已通過，但尚未跑 frozen benchmark。 | working candidate 通過後才建立至少 50/100 cases、30% negative/recovery 與 3 repeats 的獨立 research protocol。 |
 | Architecture debt | Data Import dialog、LLM controller 等 orchestrator 仍偏大；目前有 focused helpers 和 source guards，但未宣稱 target architecture fully complete。 | 下一輪按責任切片，不在 handoff 前做純行數型重構。 |
 
 ### Handoff gate reset

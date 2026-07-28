@@ -1,4 +1,4 @@
-"""Typed lifecycle state for the real-model Guided Workflow walkthrough."""
+"""Typed lifecycle state for the real-model adaptive-workflow walkthrough."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ class GuidedBoundaryPhase(str, Enum):
     CREATED = "created"
     STARTING = "starting"
     WAITING_FOR_READY = "waiting_for_ready"
-    SELECTING_GUIDED_MODE = "selecting_guided_mode"
+    RESOLVING_TURN_SCOPE = "resolving_turn_scope"
     RUNNING_AUTO_CHAIN = "running_auto_chain"
     WAITING_AT_BOUNDARY = "waiting_at_boundary"
     WORKFLOW_HANDOFF_OPEN = "workflow_handoff_open"
@@ -26,8 +26,8 @@ class GuidedBoundaryPhase(str, Enum):
 _NORMAL_TRANSITIONS: dict[GuidedBoundaryPhase, GuidedBoundaryPhase] = {
     GuidedBoundaryPhase.CREATED: GuidedBoundaryPhase.STARTING,
     GuidedBoundaryPhase.STARTING: GuidedBoundaryPhase.WAITING_FOR_READY,
-    GuidedBoundaryPhase.WAITING_FOR_READY: GuidedBoundaryPhase.SELECTING_GUIDED_MODE,
-    GuidedBoundaryPhase.SELECTING_GUIDED_MODE: GuidedBoundaryPhase.RUNNING_AUTO_CHAIN,
+    GuidedBoundaryPhase.WAITING_FOR_READY: GuidedBoundaryPhase.RESOLVING_TURN_SCOPE,
+    GuidedBoundaryPhase.RESOLVING_TURN_SCOPE: GuidedBoundaryPhase.RUNNING_AUTO_CHAIN,
     GuidedBoundaryPhase.RUNNING_AUTO_CHAIN: GuidedBoundaryPhase.WAITING_AT_BOUNDARY,
     GuidedBoundaryPhase.WAITING_AT_BOUNDARY: GuidedBoundaryPhase.WORKFLOW_HANDOFF_OPEN,
     GuidedBoundaryPhase.WORKFLOW_HANDOFF_OPEN: GuidedBoundaryPhase.WAITING_AFTER_CANCEL,
@@ -53,7 +53,7 @@ class GuidedTurnContext:
 
 @dataclass
 class GuidedBoundaryState:
-    """Mutable evidence owned by one Guided Workflow harness process."""
+    """Mutable evidence owned by one adaptive-workflow harness process."""
 
     source_path: str
     model_id: str
@@ -75,7 +75,7 @@ class GuidedBoundaryState:
             "failure": "",
         }
     )
-    mode_selection: dict[str, Any] = field(default_factory=dict)
+    scope_resolution: dict[str, Any] = field(default_factory=dict)
     initial_publication: dict[str, Any] = field(default_factory=dict)
     command_observations: list[dict[str, Any]] = field(default_factory=list)
     first_turn: dict[str, Any] = field(default_factory=dict)

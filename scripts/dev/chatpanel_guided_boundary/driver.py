@@ -1,4 +1,4 @@
-"""Qt driver for the real-model Guided Workflow UI handoff boundary."""
+"""Qt driver for the real-model adaptive workflow UI handoff boundary."""
 
 from __future__ import annotations
 
@@ -31,6 +31,8 @@ from scripts.dev.chatpanel_guided_boundary.validation import (
     validate_guided_boundary_payload,
 )
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
+from XBrainLab.llm.agent.turn import AssistantTurnScope
+from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
@@ -253,35 +255,36 @@ class GuidedBoundaryDriver:
                 return
             self._reschedule(self._wait_for_ready)
             return
-        self._select_guided_mode(manager)
+        self._resolve_turn_scope(manager)
 
-    def _select_guided_mode(self, manager: Any) -> None:
-        self._state.advance(GuidedBoundaryPhase.SELECTING_GUIDED_MODE)
+    def _resolve_turn_scope(self, manager: Any) -> None:
+        self._state.advance(GuidedBoundaryPhase.RESOLVING_TURN_SCOPE)
         panel = manager.chat_panel
-        controller = manager.agent_controller
-        button = panel.workflow_mode_btn
-        clicked: list[bool] = []
-        button.clicked.connect(lambda _checked=False: clicked.append(True))
-        was_checked = button.isChecked()
-        button.click()
-        self._app.processEvents()
-        self._state.mode_selection = {
-            "selected_by_click": bool(clicked),
-            "button_was_checked_before_click": was_checked,
-            "button_checked": button.isChecked(),
-            "panel": str(panel.current_execution_mode),
-            "manager": str(getattr(manager, "_execution_mode", "")),
-            "controller": str(getattr(controller, "execution_mode", "")),
+        resolution = resolve_assistant_turn_scope(self._state.prompts[0])
+        legacy_selector_present = any(
+            hasattr(panel, attribute)
+            for attribute in (
+                "single_action_mode_btn",
+                "workflow_mode_btn",
+                "current_execution_mode",
+            )
+        )
+        self._state.scope_resolution = {
+            "source": "request_text",
+            "scope": resolution.scope.value,
+            "policy_mode": resolution.scope.policy_mode,
+            "terminal_command": resolution.terminal_command,
+            "legacy_selector_present": legacy_selector_present,
         }
         if (
-            not clicked
-            or not button.isChecked()
-            or any(
-                self._state.mode_selection.get(owner) != "multi"
-                for owner in ("panel", "manager", "controller")
-            )
+            resolution.scope is not AssistantTurnScope.GUIDED_WORKFLOW
+            or resolution.terminal_command is not None
+            or legacy_selector_present
         ):
-            self._fail("Guided Workflow mode did not reach every runtime owner.")
+            self._fail(
+                "The natural request did not resolve to an unbounded guided "
+                "workflow without a legacy mode selector."
+            )
             return
         ready_path = self._output_dir / "chatpanel-guided-boundary-ready.png"
         if self._hooks.capture(self._window, ready_path) != 0:
@@ -363,6 +366,19 @@ class GuidedBoundaryDriver:
             assistant_texts,
         )
         self._state.boundary = self._atomic_boundary_evidence()
+        panel = manager.chat_panel
+        turn_presentation = getattr(panel, "_turn_presentation", None)
+        turn_phase = getattr(getattr(turn_presentation, "phase", None), "value", "")
+        self._state.boundary["assistant_waiting_surface"] = {
+            "turn_phase": str(turn_phase),
+            "header_status": str(getattr(panel, "header_status_text", "")),
+            "send_button_text": panel.send_btn.text(),
+            "send_button_enabled": panel.send_btn.isEnabled(),
+            "input_enabled": panel.input_field.isEnabled(),
+            "cancelability_text": str(
+                getattr(turn_presentation, "cancelability_text", "")
+            ),
+        }
         ok, reason = validate_auto_chain_boundary(
             source_path=self._state.source_path,
             initial_publication=self._state.initial_publication,
@@ -619,6 +635,7 @@ class GuidedBoundaryDriver:
             "send_button_text": panel.send_btn.text(),
             "send_button_enabled": panel.send_btn.isEnabled(),
             "input_enabled": panel.input_field.isEnabled(),
+            "input_text": panel.input_field.toPlainText(),
             "chat_processing": bool(manager.chat_controller.is_processing),
             "controller_processing": bool(getattr(controller, "is_processing", False)),
             "runtime_turn_in_flight": bool(manager.assistant_runtime.turn_in_flight),

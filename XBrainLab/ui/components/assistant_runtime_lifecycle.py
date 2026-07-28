@@ -29,6 +29,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnRequest,
     AssistantTurnTerminal,
 )
+from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffResolution
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_selection import (
@@ -61,8 +62,6 @@ class _RuntimeDispatcher(Protocol):
     def stop(self) -> bool: ...
 
     def set_model(self, launch_spec: AssistantRuntimeLaunchSpec) -> bool: ...
-
-    def set_mode(self, mode: str) -> bool: ...
 
     def reset(self) -> bool: ...
 
@@ -506,8 +505,6 @@ class AssistantRuntimeLifecycle(QObject):
     def activate(
         self,
         config: LLMConfig,
-        *,
-        execution_mode: str,
     ) -> RuntimeActivationResult:
         """Start or reconcile the active controller with persisted settings."""
         if not self._lifecycle_is_open:
@@ -519,14 +516,25 @@ class AssistantRuntimeLifecycle(QObject):
             )
         resolution = self._resolve_launch(config)
         if resolution.failure is not None:
-            self.mark_unavailable(resolution.failure.message)
-            return self._unavailable_result(resolution.failure)
+            failure = resolution.failure
+            self._stop_activation_watchdog()
+            self._coordinator.mark_unavailable(
+                redact_public_text(failure.message),
+                request_context=AssistantRuntimeSnapshot(
+                    phase=AssistantRuntimePhase.FAILED,
+                    initialized=False,
+                    backend_mode=failure.requested_backend_id,
+                    requested_model_id=failure.requested_model_id,
+                    selection_detail=failure.message,
+                ),
+            )
+            return self._unavailable_result(failure)
         launch_spec = resolution.launch_spec
         if launch_spec is None:  # pragma: no cover - resolution invariant
             raise RuntimeError("Assistant runtime resolution returned no outcome.")
 
         if not self._initialized or self._controller is None:
-            if not self.start(execution_mode, launch_spec=launch_spec):
+            if not self.start(launch_spec=launch_spec):
                 message = self.current.error or self._START_FAILURE_MESSAGE
                 return RuntimeActivationResult(
                     RuntimeActivationStatus.UNAVAILABLE,
@@ -558,8 +566,8 @@ class AssistantRuntimeLifecycle(QObject):
             return self._busy_activation_result()
         return self._queue_model_switch(launch_spec)
 
-    def activate_persisted(self, *, execution_mode: str) -> RuntimeActivationResult:
-        return self.activate(self.load_config(), execution_mode=execution_mode)
+    def activate_persisted(self) -> RuntimeActivationResult:
+        return self.activate(self.load_config())
 
     @staticmethod
     def _require_delivery(delivered: object, command_name: str) -> None:
@@ -571,7 +579,6 @@ class AssistantRuntimeLifecycle(QObject):
 
     def start(
         self,
-        execution_mode: str,
         *,
         launch_spec: AssistantRuntimeLaunchSpec | None = None,
     ) -> bool:
@@ -607,11 +614,6 @@ class AssistantRuntimeLifecycle(QObject):
 
             self._dispatcher.bind(controller)
             dispatcher_bound = True
-            mode = "multi" if execution_mode == "multi" else "single"
-            self._require_delivery(
-                self._dispatcher.set_mode(mode),
-                "execution mode",
-            )
             self._require_delivery(
                 self._dispatcher.initialize(activation_request),
                 "initialization",
@@ -1101,7 +1103,13 @@ class AssistantRuntimeLifecycle(QObject):
             generation=generation,
             turn_id=next(self._turn_ids),
         )
-        request = AssistantTurnRequest(correlation=correlation, text=normalized)
+        scope = resolve_assistant_turn_scope(normalized)
+        request = AssistantTurnRequest(
+            correlation=correlation,
+            text=normalized,
+            scope=scope.scope,
+            terminal_command=scope.terminal_command,
+        )
         self._active_turn = correlation
         self._arm_turn_delivery_watchdog(correlation)
         admission = self._dispatch_if_open("submit", request)
@@ -1144,13 +1152,6 @@ class AssistantRuntimeLifecycle(QObject):
             message=admission.message,
             turn_id=active.turn_id,
             generation=active.generation,
-        )
-
-    def set_execution_mode(self, mode: str) -> RuntimeCommandAdmissionResult:
-        return self._dispatch_if_open(
-            "set_mode",
-            "multi" if mode == "multi" else "single",
-            require_ready=False,
         )
 
     def reset_conversation(self) -> RuntimeCommandAdmissionResult:

@@ -1,8 +1,8 @@
 """Chat Panel - Main chat interface component.
 
 Provides the ``ChatPanel`` widget implementing a Copilot-style chat interface
-using ``MessageBubble`` widgets. Handles user input, workflow mode selection,
-streaming responses, and debug-mode interception.
+using ``MessageBubble`` widgets. Handles user input, streaming responses, and
+debug-mode interception. Execution scope is inferred by the host per turn.
 """
 
 from contextlib import suppress
@@ -41,12 +41,7 @@ from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationResolutionStatus,
 )
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
-from XBrainLab.ui.product_language import (
-    ASSISTANT_MODE_DESCRIPTIONS,
-    ASSISTANT_MODE_LABELS,
-    command_labels,
-    workflow_stage_text_label,
-)
+from XBrainLab.ui.product_language import command_labels, workflow_stage_text_label
 
 from ..styles.theme import Theme
 from .action_card import AssistantConfirmationCard
@@ -60,7 +55,6 @@ from .presentation import (
     ChatTurnPresentation,
     ChatTurnPresentationPhase,
 )
-from .segmented_control import AssistantSegmentedControl
 from .status_presenter import build_assistant_empty_state
 from .styles import (
     ASSISTANT_PANEL_STYLE,
@@ -111,16 +105,6 @@ WORKFLOW_RUN_STATUS_STYLE = f"""
     }}
 """
 
-EXECUTION_MODE_DESCRIPTION_STYLE = f"""
-    QLabel#AssistantModeDescription {{
-        color: {Theme.TEXT_SECONDARY};
-        background: transparent;
-        border: none;
-        padding: 0px;
-        font-size: 11px;
-    }}
-"""
-
 
 class ChatPanel(QWidget):
     """Copilot-style chat interface using MessageBubble widgets.
@@ -142,7 +126,6 @@ class ChatPanel(QWidget):
     # UI-driven Signals
     send_message = pyqtSignal(str)
     stop_generation = pyqtSignal()
-    execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
     debug_tool_requested = pyqtSignal(str, dict, bool, str)
     open_settings_requested = pyqtSignal()
     retry_local_assistant_requested = pyqtSignal()
@@ -156,7 +139,6 @@ class ChatPanel(QWidget):
         super().__init__()
         self.is_processing = False
         self._runtime_phase = AssistantRuntimePhase.IDLE
-        self.current_execution_mode = "single"
         self._workflow_status_text = ""
         self._pending_scroll_to_bottom = False
         self._applying_tail_scroll = False
@@ -282,64 +264,6 @@ class ChatPanel(QWidget):
         self.control_layout = control_layout
         control_layout.setContentsMargins(12, 10, 12, 11)
         control_layout.setSpacing(8)
-        self.mode_section_label = QLabel("Agent mode", control_panel)
-        self.mode_section_label.setObjectName("AssistantModeSectionLabel")
-        self.mode_section_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; background: transparent; "
-            "border: none; font-size: 11px; font-weight: 700;"
-        )
-        self.mode_section_label.setMaximumWidth(CHAT_CONTROL_MAX_WIDTH)
-        self.mode_section_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.mode_section_label.setVisible(False)
-
-        mode_row = AssistantSegmentedControl(
-            (
-                ("single", ASSISTANT_MODE_LABELS["single"]),
-                ("multi", ASSISTANT_MODE_LABELS["multi"]),
-            ),
-            descriptions=ASSISTANT_MODE_DESCRIPTIONS,
-        )
-        self.mode_selector_widget = mode_row
-        mode_row.setMaximumWidth(CHAT_CONTROL_MAX_WIDTH)
-        mode_row.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.ask_mode_btn = mode_row.button("single")
-        self.ask_mode_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.ask_mode_btn.setAccessibleName(ASSISTANT_MODE_LABELS["single"])
-        self.ask_mode_btn.setToolTip(ASSISTANT_MODE_DESCRIPTIONS["single"])
-        self.ask_mode_btn.setAccessibleDescription(
-            ASSISTANT_MODE_DESCRIPTIONS["single"]
-        )
-        self.workflow_mode_btn = mode_row.button("multi")
-        self.workflow_mode_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.workflow_mode_btn.setAccessibleName(ASSISTANT_MODE_LABELS["multi"])
-        self.workflow_mode_btn.setToolTip(ASSISTANT_MODE_DESCRIPTIONS["multi"])
-        self.workflow_mode_btn.setAccessibleDescription(
-            ASSISTANT_MODE_DESCRIPTIONS["multi"]
-        )
-        mode_row.selection_changed.connect(self._set_execution_mode)
-        mode_row.set_selected("single")
-
-        self.mode_description_label = QLabel("", control_panel)
-        self.mode_description_label.setObjectName("AssistantModeDescription")
-        self.mode_description_label.setStyleSheet(EXECUTION_MODE_DESCRIPTION_STYLE)
-        self.mode_description_label.setWordWrap(True)
-        self.mode_description_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.mode_description_label.setContentsMargins(4, 0, 4, 0)
-        self.mode_description_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum,
-        )
-        self.mode_description_label.setAccessibleName("Execution mode behavior")
-        self.mode_description_label.setVisible(False)
-        self._update_mode_description()
 
         self.workflow_run_status_label = QLabel("")
         self.workflow_run_status_label.setObjectName("AssistantWorkflowRunStatus")
@@ -405,9 +329,7 @@ class ChatPanel(QWidget):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
 
-        self.mode_control_host = self._build_centered_control_host(mode_row)
         self.composer_host = self._build_centered_control_host(input_widget)
-        control_layout.addWidget(self.mode_control_host)
         control_layout.addWidget(self.composer_host)
 
         self.notice_label = QLabel("")
@@ -895,36 +817,6 @@ class ChatPanel(QWidget):
         self._reflow_chat_content()
         self._scroll_to_bottom()
 
-    def _set_execution_mode(self, mode_key: str):
-        """Update the execution mode selector and emit mode change signal.
-
-        Args:
-            mode_key: The mode identifier (``'single'`` or ``'multi'``).
-        """
-        normalized_mode = "multi" if mode_key in {"multi", "workflow"} else "single"
-        self.current_execution_mode = normalized_mode
-        self.ask_mode_btn.setChecked(normalized_mode == "single")
-        self.workflow_mode_btn.setChecked(normalized_mode == "multi")
-        self._update_mode_description()
-        self._sync_control_context_visibility()
-        self.execution_mode_changed.emit(normalized_mode)
-
-    def set_execution_mode(self, mode: str) -> None:
-        """Synchronize the product selector without emitting another change."""
-        normalized_mode = "multi" if mode in {"multi", "workflow"} else "single"
-        self.current_execution_mode = normalized_mode
-        self.ask_mode_btn.setChecked(normalized_mode == "single")
-        self.workflow_mode_btn.setChecked(normalized_mode == "multi")
-        self._update_mode_description()
-        self._sync_control_context_visibility()
-
-    def _update_mode_description(self) -> None:
-        """Keep visible and accessible mode guidance on one product truth."""
-        description = ASSISTANT_MODE_DESCRIPTIONS[self.current_execution_mode]
-        self.mode_description_label.setText(description)
-        self.mode_description_label.setToolTip(description)
-        self.mode_description_label.setAccessibleDescription(description)
-
     def set_workflow_status(self, text: str) -> None:
         """Update a legacy status caller without using its text as state."""
         self._workflow_status_text = " ".join(str(text or "").split())
@@ -944,9 +836,7 @@ class ChatPanel(QWidget):
                 )
 
     def _sync_control_context_visibility(self) -> None:
-        """Keep mode choices discoverable while limiting contextual guidance."""
-        self.mode_selector_widget.setVisible(True)
-        self.mode_description_label.setVisible(False)
+        """Keep transient workflow copy in the typed activity surface."""
         self.workflow_run_status_label.setVisible(False)
 
     def set_turn_activity(self, presentation: ChatTurnPresentation) -> None:
@@ -989,7 +879,18 @@ class ChatPanel(QWidget):
             or self.debug_mode is not None
         )
         cancelability = self._turn_presentation.cancelability
-        if self.is_processing and cancelability is ChatTurnCancelability.CANCELLABLE:
+        waiting_for_user = (
+            self._turn_presentation.phase is ChatTurnPresentationPhase.WAITING
+        )
+        if self.is_processing and waiting_for_user:
+            self.send_btn.setText("Waiting")
+            self.send_btn.setIcon(QIcon())
+            self.send_btn.setFixedSize(92, 38)
+            self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            self.send_btn.setToolTip(self._turn_presentation.cancelability_text)
+            self.send_btn.setStyleSheet(SEND_BUTTON_LOCKED_STYLE)
+            send_enabled = False
+        elif self.is_processing and cancelability is ChatTurnCancelability.CANCELLABLE:
             self.send_btn.setText("Stop")
             self.send_btn.setIcon(QIcon())
             self.send_btn.setFixedSize(72, 38)
@@ -1029,8 +930,6 @@ class ChatPanel(QWidget):
 
         self.input_field.setEnabled(not self.is_processing and runtime_ready)
         self.send_btn.setEnabled(send_enabled)
-        self.ask_mode_btn.setEnabled(not self.is_processing and runtime_ready)
-        self.workflow_mode_btn.setEnabled(not self.is_processing and runtime_ready)
         for button in getattr(self, "suggestion_prompt_buttons", ()):
             prompt = button.property("assistantPrompt")
             button.setEnabled(
@@ -1221,8 +1120,7 @@ class ChatPanel(QWidget):
         elif self._runtime_phase is AssistantRuntimePhase.READY:
             self.input_widget.setVisible(True)
             self.input_field.setPlaceholderText("Ask about the current EEG workflow...")
-            if not (self.is_processing and self.current_execution_mode == "multi"):
-                self.workflow_run_status_label.setVisible(False)
+            self.workflow_run_status_label.setVisible(False)
             self.runtime_progress.setVisible(False)
             self.retry_runtime_btn.setVisible(False)
             self.retry_runtime_btn.setEnabled(False)
@@ -1284,11 +1182,14 @@ class ChatPanel(QWidget):
         elif self._runtime_phase is AssistantRuntimePhase.FAILED:
             status = "Local · Error"
         elif self._runtime_phase is AssistantRuntimePhase.READY:
-            status = (
-                "Local · Working"
-                if self._turn_presentation.is_busy
-                else "Local · Ready"
-            )
+            if self._turn_presentation.phase is ChatTurnPresentationPhase.WAITING:
+                status = "Local · Waiting"
+            else:
+                status = (
+                    "Local · Working"
+                    if self._turn_presentation.is_busy
+                    else "Local · Ready"
+                )
         else:
             status = "Local · Setup"
         self._header_status_text = status

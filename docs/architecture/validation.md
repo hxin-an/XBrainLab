@@ -208,11 +208,12 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
 
 目前狀態：
 
-- 2026-05-02 已建立 local model catalog / preflight / health check。
-- primary `microsoft/Phi-4-mini-instruct` 和 fallback
-  `microsoft/Phi-3.5-mini-instruct` 是目前允許的 non-China local catalog candidates。
-- 目前 inspect evidence 是 `classification: gpu-ready`，兩個 approved cache 共 `15.34 GB`；
-  primary Phi-4 mini 的真 ChatPanel state-query / general-answer workflow 已通過。
+- local model catalog / preflight / health check 已建立。
+- exact primary 是 `ibm-granite/granite-3.3-2b-instruct`；Phi-4 Mini 與 Phi-3.5 Mini
+  只保留為使用者明確選取的 legacy compatibility choice，不是自動 fallback。
+- 目前 Granite inspect evidence 是 `classification: gpu-ready`，catalog cache 共
+  `12.77 GB / 20 GB`；prompt smoke、structured-output smoke 與真 GPU ChatPanel
+  boundary workflow 已通過。
 - Qwen cache 已刪除；中國公司或中國來源模型不列入 local validation 候選。
 - local agent runtime 是獨立的 candidate evidence，不塞進 fast dashboard 以免每次工程檢查都載入
   7B 級模型。
@@ -220,9 +221,8 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
   package 移除，legacy API/Gemini selection 會 migrate local 或 fail closed。
 - `openai` / `google-genai` 不在 default dependencies，只保留於 optional
   `legacy-remote-llm` dependency group。
-- 長時間 ChatPanel、fallback model、Windows human acceptance 尚未跑；目前兩個 turn 的 workflow
-  不能取代完整 product acceptance。Raw candidate 是 `6/12`，host-assisted product policy 是
-  `12/12`；兩者必須分開報告。
+- 長時間 ChatPanel、Windows native DPI / multi-monitor 與真人 click-through 尚未跑；目前
+  host-assisted Granite product workflow 不能取代 frozen benchmark 或完整 product acceptance。
 
 後續 local-only validation 應該覆蓋：
 
@@ -239,7 +239,7 @@ poetry run python scripts/dev/plan_local_model_download.py --format markdown
 poetry run python scripts/dev/inspect_local_assistant_runtime.py \
   --format markdown --prompt-smoke --structured-smoke
 poetry run python scripts/dev/inspect_local_assistant_runtime.py \
-  --model microsoft/Phi-3.5-mini-instruct \
+  --model ibm-granite/granite-3.3-2b-instruct \
   --format markdown --prompt-smoke --structured-smoke
 ```
 

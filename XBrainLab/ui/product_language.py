@@ -15,15 +15,6 @@ from XBrainLab.product_language import tool_action_label as shared_tool_action_l
 
 COMMAND_LABELS = WORKFLOW_COMMAND_LABELS
 
-ASSISTANT_MODE_LABELS: dict[str, str] = {
-    "single": "Single action",
-    "multi": "Guided workflow",
-}
-ASSISTANT_MODE_DESCRIPTIONS: dict[str, str] = {
-    "single": "Runs one action and stops.",
-    "multi": "Continues safe actions and pauses before a decision.",
-}
-
 DECISION_FIELD_LABELS: dict[str, str] = {
     "epoch_window": "epoch window",
     "target_event": "target events",

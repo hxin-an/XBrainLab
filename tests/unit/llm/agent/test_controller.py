@@ -57,6 +57,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ResourcePreflightReceipt,
     ToolAttemptAction,
     ToolAttemptDecision,
+    ToolAttemptFeedback,
     ToolAttemptRequest,
 )
 from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionOutcome
@@ -70,6 +71,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
+    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -120,8 +122,15 @@ def _submit_user_turn(ctrl: Any, text: str) -> AssistantTurnCorrelation:
         generation=sequence,
         turn_id=sequence,
     )
-    ctrl.handle_user_turn(AssistantTurnRequest(correlation=correlation, text=text))
+    ctrl.handle_user_turn(
+        AssistantTurnRequest.single_action(correlation=correlation, text=text)
+    )
     return correlation
+
+
+def _set_guided_turn_scope(ctrl: Any) -> None:
+    """Set the immutable scope used by focused controller-policy tests."""
+    ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
 
 
 def _tool_outcome(
@@ -599,7 +608,6 @@ def ctrl():
             "sig_cancel_generation",
             "sig_shutdown_worker",
             "sig_rag_context_ready",
-            "execution_mode_changed",
             "application_command_completed",
             "application_command_started",
             "runtime_state_changed",
@@ -662,7 +670,12 @@ def test_blocked_request_is_presented_before_rag_or_model_generation(ctrl):
         get_service.return_value.get_view_publication.return_value = publication
         _submit_user_turn(ctrl, "Train now.")
 
-    ctrl._request_admission.evaluate.assert_called_once_with("Train now.", publication)
+    ctrl._request_admission.evaluate.assert_called_once_with(
+        "Train now.",
+        publication,
+        scope=AssistantTurnScope.SINGLE_ACTION,
+        terminal_command=None,
+    )
     assert rag.requests == []
     ctrl._generate_response.assert_not_called()
     presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
@@ -799,7 +812,7 @@ def test_runtime_snapshot_rejects_untyped_payload_without_losing_truth(ctrl):
 class TestHandleUserInput:
     def test_ignores_empty(self, ctrl):
         with pytest.raises(ValueError, match="must not be empty"):
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text="   ",
             )
@@ -887,8 +900,18 @@ class TestHandleUserInput:
             lifecycle.complete(features="stale scan_source example")
 
         assert ctrl._request_admission.evaluate.call_args_list == [
-            call("Continue the workflow.", first_publication),
-            call("Continue the workflow.", current_publication),
+            call(
+                "Continue the workflow.",
+                first_publication,
+                scope=AssistantTurnScope.SINGLE_ACTION,
+                terminal_command=None,
+            ),
+            call(
+                "Continue the workflow.",
+                current_publication,
+                scope=AssistantTurnScope.SINGLE_ACTION,
+                terminal_command=None,
+            ),
         ]
         assert ctrl.assembler.set_turn_authorized_command.call_args_list == [
             call(CommandName.SCAN_SOURCE.value),
@@ -1586,7 +1609,7 @@ class TestProcessToolCalls:
 
     def test_ui_request_stops_before_workflow_continuation(self, ctrl):
         _allow_prompt_tools(ctrl)
-        ctrl.set_execution_mode("multi")
+        _set_guided_turn_scope(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=ToolExecutionOutcome(
                 True,
@@ -1615,12 +1638,11 @@ class TestProcessToolCalls:
         )
 
     def test_workflow_executes_one_command_then_rereads_policy(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
         context = _enabled_tool_context("first", generation=12)
         context_reader = _set_context_reader(ctrl, return_value=context)
-        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        _set_guided_turn_scope(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -1655,11 +1677,10 @@ class TestProcessToolCalls:
         ctrl._generate_response.assert_called_once()
 
     def test_recoverable_failure_is_published_to_next_model_generation(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
         from XBrainLab.llm.agent.tool_feedback import ToolRecoveryFeedback
 
         _allow_prompt_tools(ctrl)
-        ctrl._execution_mode = LLMController.MODE_MULTI
+        _set_guided_turn_scope(ctrl)
         failure = ToolCommandResult.failure(
             "cmd",
             "Temporary runtime failure",
@@ -1729,7 +1750,7 @@ class TestProcessToolCalls:
         build_context.assert_called_once_with(
             ctrl.study,
             latest_user_text=ctrl._latest_user_request_text(),
-            mode=ctrl._execution_mode,
+            mode=ctrl._active_policy_mode(),
             publication=publication,
         )
         assert snapshot.state_reliable is True
@@ -1826,10 +1847,9 @@ class TestProcessToolCalls:
         assert snapshot.state_reliable is False
 
     def test_workflow_decision_needed_opens_existing_ui_boundary(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
-        ctrl._execution_mode = LLMController.MODE_MULTI
+        _set_guided_turn_scope(ctrl)
         ctrl._tool_execution_count = 1
         ctrl._refresh_execution_snapshot = MagicMock(
             return_value=ExecutionSnapshot(
@@ -1842,7 +1862,7 @@ class TestProcessToolCalls:
         ctrl._generate_response = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
 
-        ctrl._handle_tool_success(None)
+        ctrl._handle_tool_success(None, command_name="query_state")
 
         ctrl.workflow_ui_handoff_requested.emit.assert_called_once()
         emitted_request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
@@ -1855,11 +1875,43 @@ class TestProcessToolCalls:
         assert ctrl.pending_interactions.workflow_handoff is emitted_request
         ctrl._finalize_turn_after_tool.assert_not_called()
 
-    def test_import_review_continuation_binds_current_domain_identity(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
+    def test_workflow_decision_publishes_concrete_tool_summary_before_handoff(
+        self,
+        ctrl,
+    ):
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
-        ctrl._execution_mode = LLMController.MODE_MULTI
+        summary = (
+            "Import review needs your input:\n"
+            "- Confirm subject metadata for recording.fif.\n"
+            "- Confirm which events are class labels.\n"
+            "Open Import Review to resolve these choices."
+        )
+        _set_guided_turn_scope(ctrl)
+        ctrl._tool_execution_count = 1
+        ctrl._last_tool_summary = summary
+        ctrl._last_tool_summary_kind = AssistantResponseKind.TOOL_RESULT
+        ctrl._visible_response_sent = False
+        ctrl._refresh_execution_snapshot = MagicMock(
+            return_value=ExecutionSnapshot(
+                state_reliable=True,
+                decision_needed=("metadata_review", "label_matching"),
+                can_auto_continue=False,
+                recommended_next_step="apply_interpretation",
+            )
+        )
+
+        ctrl._handle_tool_success(None, command_name="validate_interpretation")
+
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.text == summary
+        assert presentation.kind is AssistantResponseKind.TOOL_RESULT
+        ctrl.workflow_ui_handoff_requested.emit.assert_called_once()
+
+    def test_import_review_continuation_binds_current_domain_identity(self, ctrl):
+        from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
+
+        _set_guided_turn_scope(ctrl)
         ctrl._tool_execution_count = 1
         publication = MagicMock()
         publication.usable = True
@@ -1879,7 +1931,7 @@ class TestProcessToolCalls:
         with patch(
             "XBrainLab.llm.agent.controller.get_application_service"
         ) as get_service:
-            ctrl._handle_tool_success(None)
+            ctrl._handle_tool_success(None, command_name="query_state")
 
         get_service.assert_not_called()
         request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
@@ -1891,10 +1943,9 @@ class TestProcessToolCalls:
         )
 
     def test_workflow_decision_without_command_fails_closed(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
-        ctrl._execution_mode = LLMController.MODE_MULTI
+        _set_guided_turn_scope(ctrl)
         ctrl._refresh_execution_snapshot = MagicMock(
             return_value=ExecutionSnapshot(
                 state_reliable=True,
@@ -1905,7 +1956,7 @@ class TestProcessToolCalls:
         )
         ctrl._finalize_turn_after_tool = MagicMock()
 
-        ctrl._handle_tool_success(None)
+        ctrl._handle_tool_success(None, command_name="query_state")
 
         ctrl.workflow_ui_handoff_requested.emit.assert_not_called()
         ctrl.status_update.emit.assert_any_call(
@@ -1925,10 +1976,8 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_failure_without_reliable_state_finishes_without_retry(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
-
         _allow_prompt_tools(ctrl)
-        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        _set_guided_turn_scope(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=_tool_outcome("err", ok=False)
         )
@@ -2067,6 +2116,97 @@ class TestProcessToolCalls:
         assert result.message == "bad call"
         assert result.error_type == "input"
         ctrl._generate_response.assert_not_called()
+
+    def test_guided_turn_retries_one_unpublished_model_tool_before_presenting_error(
+        self,
+        ctrl,
+    ):
+        from XBrainLab.llm.agent.assembler import PromptToolPublication
+
+        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._active_tool_publication = PromptToolPublication(
+            tool_names=frozenset({"validate_interpretation"}),
+            backend_generation=3,
+            recommended_command="validate_interpretation",
+            authorized_command="validate_interpretation",
+        )
+        ctrl._generate_response = MagicMock()
+        ctrl._handle_tool_attempt_blocked = MagicMock()
+        result = ToolCommandResult.failure(
+            "eegdatapreparationtool",
+            "This assistant tool was not published for the current model turn.",
+            error_type="tool_not_published",
+            recoverable=True,
+        )
+
+        handled = ctrl._present_tool_attempt_boundary(
+            ToolAttemptDecision(
+                ToolAttemptAction.PUBLICATION_BLOCKED,
+                "eegdatapreparationtool",
+                {},
+                result=result,
+            )
+        )
+
+        assert handled is True
+        assert ctrl._tool_failure_count == 1
+        ctrl.assembler.set_recovery_feedback.assert_called_once()
+        feedback = ctrl.assembler.set_recovery_feedback.call_args.args[0]
+        assert feedback.guidance == (
+            "The only permitted action is validate_interpretation. Return that "
+            "exact tool name using its published JSON contract."
+        )
+        ctrl._generate_response.assert_called_once_with()
+        ctrl._handle_tool_attempt_blocked.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("scope", "failure_count"),
+        [
+            (AssistantTurnScope.SINGLE_ACTION, 0),
+            (AssistantTurnScope.GUIDED_WORKFLOW, 1),
+        ],
+    )
+    def test_unpublished_model_tool_is_presented_after_repair_boundary(
+        self,
+        ctrl,
+        scope,
+        failure_count,
+    ):
+        from XBrainLab.llm.agent.assembler import PromptToolPublication
+
+        ctrl._active_turn_scope = scope
+        ctrl._tool_failure_count = failure_count
+        ctrl._active_tool_publication = PromptToolPublication(
+            tool_names=frozenset({"validate_interpretation"}),
+            backend_generation=3,
+            recommended_command="validate_interpretation",
+            authorized_command="validate_interpretation",
+        )
+        ctrl._generate_response = MagicMock()
+        ctrl._handle_tool_attempt_blocked = MagicMock()
+        result = ToolCommandResult.failure(
+            "eegdatapreparationtool",
+            "This assistant tool was not published for the current model turn.",
+            error_type="tool_not_published",
+            recoverable=True,
+        )
+
+        handled = ctrl._present_tool_attempt_boundary(
+            ToolAttemptDecision(
+                ToolAttemptAction.PUBLICATION_BLOCKED,
+                "eegdatapreparationtool",
+                {},
+                result=result,
+            )
+        )
+
+        assert handled is True
+        ctrl._generate_response.assert_not_called()
+        ctrl._handle_tool_attempt_blocked.assert_called_once_with(
+            "eegdatapreparationtool",
+            result,
+            feedback=ToolAttemptFeedback.SYSTEM_REJECTION,
+        )
 
     def test_requested_intent_boundary_rejects_before_verification(self, ctrl):
         from XBrainLab.llm.tools.application_surface import (
@@ -3286,6 +3426,7 @@ class TestOnUserConfirmed:
         )
         ctrl._handle_tool_success.assert_called_once_with(
             context.availability,
+            command_name="start_training",
             after_confirmation=True,
         )
 
@@ -3431,6 +3572,7 @@ class TestOnUserConfirmed:
         ctrl._handle_tool_result_logic.assert_called_once()
         ctrl._handle_tool_success.assert_called_once_with(
             context.availability,
+            command_name="apply_interpretation",
             after_confirmation=True,
         )
 
@@ -3648,7 +3790,7 @@ class TestOnUserConfirmed:
         assert "completed" not in presentation.text.lower()
 
         ctrl.handle_user_turn(
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=40, turn_id=40),
                 text="hello",
             )
@@ -3682,7 +3824,7 @@ class TestOnUserConfirmed:
         # projection incorrectly clears the legacy processing flag.
         ctrl.is_processing = False
         ctrl.handle_user_turn(
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=41, turn_id=41),
                 text="hello",
             )
@@ -3701,7 +3843,7 @@ class TestOnUserConfirmed:
         assert ctrl.pending_interactions.workflow_handoff is None
         assert ctrl.is_processing is False
         ctrl.handle_user_turn(
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=42, turn_id=42),
                 text="hello",
             )
@@ -4892,34 +5034,50 @@ class TestPipelineGate:
         ctrl.application_command_completed.emit.assert_not_called()
 
 
-# --- Execution Mode (Single / Multi) ---
-class TestExecutionMode:
-    def test_default_mode_is_single(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
+# --- Immutable turn scope ---
+class TestTurnScope:
+    def test_idle_policy_is_single_action(self, ctrl):
+        assert (
+            ctrl._active_policy_mode() == AssistantTurnScope.SINGLE_ACTION.policy_mode
+        )
 
-        assert ctrl.execution_mode == LLMController.MODE_SINGLE
+    def test_guided_turn_stops_after_its_declared_endpoint(self, ctrl):
+        from XBrainLab.backend.application import CommandName
+        from XBrainLab.llm.agent.turn import AssistantTurnScope
 
-    def test_set_mode_to_multi(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
+        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._active_turn_terminal_command = CommandName.CREATE_EPOCH.value
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._generate_response = MagicMock()
 
-        ctrl.set_execution_mode(LLMController.MODE_MULTI)
-        assert ctrl.execution_mode == LLMController.MODE_MULTI
-        ctrl.assembler.set_execution_mode.assert_called_with(LLMController.MODE_MULTI)
-        ctrl.execution_mode_changed.emit.assert_called_with(LLMController.MODE_MULTI)
+        ctrl._handle_tool_success(None, command_name="epoch_data")
 
-    def test_set_mode_back_to_single(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
+        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._generate_response.assert_not_called()
 
-        ctrl.set_execution_mode(LLMController.MODE_MULTI)
-        ctrl.set_execution_mode(LLMController.MODE_SINGLE)
-        assert ctrl.execution_mode == LLMController.MODE_SINGLE
-        ctrl.assembler.set_execution_mode.assert_called_with(LLMController.MODE_SINGLE)
+    def test_guided_turn_cannot_continue_past_its_declared_endpoint(self, ctrl):
+        from XBrainLab.backend.application import CommandName
+        from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
+        from XBrainLab.llm.agent.turn import AssistantTurnScope
 
-    def test_invalid_mode_ignored(self, ctrl):
-        from XBrainLab.llm.agent.controller import LLMController
+        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._active_turn_terminal_command = CommandName.CREATE_EPOCH.value
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._generate_response = MagicMock()
+        ctrl._refresh_execution_snapshot = MagicMock(
+            return_value=ExecutionSnapshot(
+                state_reliable=True,
+                decision_needed=(),
+                can_auto_continue=True,
+                recommended_next_step=CommandName.GENERATE_DATASET.value,
+            )
+        )
 
-        ctrl.set_execution_mode("turbo")
-        assert ctrl.execution_mode == LLMController.MODE_SINGLE
+        ctrl._handle_tool_success(None, command_name="preprocess")
+
+        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl.assembler.set_turn_authorized_command.assert_not_called()
+        ctrl._generate_response.assert_not_called()
 
     def test_single_mode_finalizes_on_success(self, ctrl):
         """In single mode, a successful tool call finalizes immediately."""
@@ -4935,15 +5093,16 @@ class TestExecutionMode:
         ctrl._finalize_turn_after_tool.assert_called_once()
         ctrl._generate_response.assert_not_called()
 
-    def test_multi_mode_auto_continues(self, ctrl):
-        """In multi mode, a successful tool call triggers another generation."""
-        from XBrainLab.llm.agent.controller import LLMController
+    def test_multi_mode_uses_host_for_deterministic_import_continuation(self, ctrl):
+        """A safe no-input import step does not depend on another model call."""
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
-        _allow_prompt_tools(ctrl)
-        ctrl.set_execution_mode(LLMController.MODE_MULTI)
-        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
-        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        _set_guided_turn_scope(ctrl)
+        context = _enabled_tool_context("preview_interpretation", generation=7)
+        _set_context_reader(ctrl, return_value=context)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        ctrl._execute_tool_attempt = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._generate_response = MagicMock()
         ctrl._refresh_execution_snapshot = MagicMock(
@@ -4954,23 +5113,85 @@ class TestExecutionMode:
                 recommended_next_step="preview_interpretation",
             )
         )
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
-        ctrl._process_tool_calls([("cmd", {})], "json")
-        ctrl.assembler.set_turn_authorized_command.assert_called_with(
-            "preview_interpretation",
+        ctrl._handle_tool_success(None, command_name="scan_source")
+
+        decision = ctrl._execute_tool_attempt.call_args.args[0]
+        assert decision.action is ToolAttemptAction.EXECUTE
+        assert decision.command_name == "preview_interpretation"
+        assert decision.params == {}
+        assert decision.context is context
+        ctrl._generate_response.assert_not_called()
+        ctrl._finalize_turn_after_tool.assert_not_called()
+
+    def test_host_deterministic_continuation_respects_registry_confirmation(
+        self,
+        ctrl,
+    ):
+        context = _enabled_tool_context("preview_interpretation", generation=7)
+        _set_context_reader(ctrl, return_value=context)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = True
+        ctrl._execute_tool_attempt = MagicMock()
+
+        executed = ctrl._execute_host_deterministic_continuation(
+            "preview_interpretation"
+        )
+
+        assert executed is False
+        ctrl._execute_tool_attempt.assert_not_called()
+
+    def test_host_deterministic_continuation_requires_schema_verification(
+        self,
+        ctrl,
+    ):
+        context = _enabled_tool_context("preview_interpretation", generation=7)
+        _set_context_reader(ctrl, return_value=context)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(
+            is_valid=False,
+            error_message="schema rejected",
+        )
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        ctrl._execute_tool_attempt = MagicMock()
+
+        executed = ctrl._execute_host_deterministic_continuation(
+            "preview_interpretation"
+        )
+
+        assert executed is False
+        ctrl._execute_tool_attempt.assert_not_called()
+
+    def test_multi_mode_uses_model_for_non_deterministic_continuation(self, ctrl):
+        """A parameter-bearing workflow step still requires model generation."""
+        from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
+
+        _set_guided_turn_scope(ctrl)
+        ctrl._execute_tool_attempt = MagicMock()
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._generate_response = MagicMock()
+        ctrl._refresh_execution_snapshot = MagicMock(
+            return_value=ExecutionSnapshot(
+                state_reliable=True,
+                decision_needed=(),
+                can_auto_continue=True,
+                recommended_next_step="apply_standard_preprocess",
+            )
+        )
+
+        ctrl._handle_tool_success(None, command_name="query_state")
+
+        ctrl.assembler.set_turn_authorized_command.assert_called_once_with(
+            "apply_standard_preprocess",
             continuation=True,
         )
         ctrl._generate_response.assert_called_once()
+        ctrl._execute_tool_attempt.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_not_called()
 
     def test_multi_mode_stops_at_cap(self, ctrl):
         """Multi mode stops after reaching the max successful tool count."""
-        from XBrainLab.llm.agent.controller import LLMController
-
         _allow_prompt_tools(ctrl)
-        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        _set_guided_turn_scope(ctrl)
         ctrl._tool_execution_count = ctrl._max_tool_executions - 1
         ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)

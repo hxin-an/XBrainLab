@@ -72,19 +72,23 @@ class GuidedToolTraceRecorder:
             parameters: Mapping[str, Any],
             *,
             context: Any = None,
+            expected_publication_generation: int | None = None,
         ) -> Any:
-            self._record_actual("execution", command_name, parameters)
-            return original(command_name, parameters, context=context)
+            self._record_actual(command_name, parameters)
+            kwargs = {"context": context}
+            if expected_publication_generation is not None:
+                kwargs["expected_publication_generation"] = (
+                    expected_publication_generation
+                )
+            return original(command_name, parameters, **kwargs)
 
         setattr(controller, name, observe_execution)
 
     def _record_actual(
         self,
-        kind: str,
         tool_name: str,
         parameters: Mapping[str, Any],
     ) -> None:
-        actual = {"kind": kind, **self._call(tool_name, parameters)}
         for attempt in reversed(self._attempts):
             if attempt.get("actual") is not None:
                 continue
@@ -93,9 +97,20 @@ class GuidedToolTraceRecorder:
                 isinstance(normalized, Mapping)
                 and normalized.get("tool_name") == tool_name
             ):
-                attempt["actual"] = actual
+                attempt["actual"] = {
+                    "kind": "model_execution",
+                    **self._call(tool_name, parameters),
+                }
                 return
-        self._attempts.append({"normalized": None, "actual": actual})
+        self._attempts.append(
+            {
+                "normalized": None,
+                "actual": {
+                    "kind": "host_execution",
+                    **self._call(tool_name, parameters),
+                },
+            }
+        )
 
     def _call(
         self,

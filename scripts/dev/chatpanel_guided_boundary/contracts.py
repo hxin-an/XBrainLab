@@ -1,4 +1,4 @@
-"""Injected runtime hooks for the Guided Workflow walkthrough driver."""
+"""Injected runtime hooks for the adaptive-workflow walkthrough driver."""
 
 from __future__ import annotations
 

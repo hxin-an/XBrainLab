@@ -193,6 +193,46 @@ def test_schema_rejection_prevents_registry_and_confirmation_checks() -> None:
     assert registry.reads == 0
 
 
+def test_host_deterministic_continuation_rejects_non_allowlisted_mutation() -> None:
+    coordinator, source, verifier, registry = _coordinator(
+        _context(tool_name="apply_standard_preprocess"),
+    )
+
+    decision = coordinator.evaluate_host_deterministic_continuation(
+        "apply_standard_preprocess",
+        {},
+    )
+
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert decision.result is not None
+    assert decision.result.error_type == "contract"
+    assert "not an allowlisted host continuation" in decision.result.message
+    assert source.reads == 0
+    assert verifier.calls == 0
+    assert registry.reads == 0
+
+
+def test_host_deterministic_continuation_rejects_parameterized_allowlisted_tool() -> (
+    None
+):
+    coordinator, source, verifier, registry = _coordinator(
+        _context(tool_name="preview_interpretation"),
+    )
+
+    decision = coordinator.evaluate_host_deterministic_continuation(
+        "preview_interpretation",
+        {"unexpected": True},
+    )
+
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert decision.result is not None
+    assert decision.result.error_type == "contract"
+    assert "parameter-free" in decision.result.message
+    assert source.reads == 0
+    assert verifier.calls == 0
+    assert registry.reads == 0
+
+
 def test_capability_block_prevents_registry_lookup() -> None:
     coordinator, source, verifier, registry = _coordinator(_context(enabled=False))
 

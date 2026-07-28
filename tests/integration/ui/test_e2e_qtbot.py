@@ -154,7 +154,7 @@ class TestAIAssistantDock:
         monkeypatch.setattr(
             runtime,
             "activate",
-            lambda _config, *, execution_mode: RuntimeActivationResult(
+            lambda _config: RuntimeActivationResult(
                 RuntimeActivationStatus.STARTED,
             ),
         )

@@ -27,6 +27,10 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatResponseActionKind,
 )
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
+from XBrainLab.llm.agent.assistant_activity import (
+    AssistantTurnActivity,
+    AssistantTurnActivityPhase,
+)
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
     AgentConfirmationResolution,
@@ -42,6 +46,7 @@ from XBrainLab.ui.chat.presentation import (
     ChatTurnCancelability,
     ChatTurnPresentation,
     ChatTurnPresentationPhase,
+    present_assistant_activity,
 )
 
 
@@ -116,10 +121,7 @@ class TestChatPanelInit:
         assert chat_panel.empty_state_title.text() == (
             "How can I help with your EEG workflow?"
         )
-        assert chat_panel.mode_section_label.parentWidget() is chat_panel.control_panel
-        assert (
-            chat_panel.mode_description_label.parentWidget() is chat_panel.control_panel
-        )
+        assert chat_panel.composer_host.parentWidget() is chat_panel.control_panel
         assert len(prompts) == 4
         assert {button.text() for button in prompts} == {
             "Check the current workflow status",
@@ -145,7 +147,7 @@ class TestChatPanelInit:
         assert chat_panel.send_btn.isEnabled()
         assert emitted == []
 
-    def test_mode_selector_precedes_two_line_composer_and_empty_send_is_disabled(
+    def test_two_line_composer_is_primary_control_and_empty_send_is_disabled(
         self,
         chat_panel,
         qtbot,
@@ -154,11 +156,8 @@ class TestChatPanelInit:
         chat_panel.show()
         qtbot.wait(10)
 
-        mode_top = chat_panel.mode_selector_widget.mapTo(chat_panel, QPoint(0, 0)).y()
-        composer_top = chat_panel.input_widget.mapTo(chat_panel, QPoint(0, 0)).y()
-
-        assert chat_panel.mode_section_label.isHidden()
-        assert mode_top < composer_top
+        assert not hasattr(chat_panel, "mode_selector_widget")
+        assert not hasattr(chat_panel, "mode_section_label")
         assert chat_panel.input_field.height() >= 70
         assert chat_panel.input_field.placeholderText() == (
             "Ask about the current EEG workflow..."
@@ -675,10 +674,6 @@ class TestChatPanelInit:
             panel.show()
 
         panel.set_runtime_state("idle")
-        assert panel.mode_selector_widget.isVisibleTo(panel)
-        assert panel.ask_mode_btn.isEnabled() is False
-        assert panel.workflow_mode_btn.isEnabled() is False
-        assert panel.mode_description_label.isHidden()
         assert panel.retry_runtime_btn.isHidden()
         assert panel.retry_runtime_btn.isEnabled() is False
         emissions: list[str] = []
@@ -703,7 +698,7 @@ class TestChatPanelInit:
         assert panel.retry_runtime_btn.isHidden()
         assert panel.retry_runtime_btn.isEnabled() is False
 
-    def test_runtime_actions_and_mode_selector_have_keyboard_focus_targets(
+    def test_runtime_actions_have_keyboard_focus_targets(
         self,
         qtbot,
     ):
@@ -720,8 +715,6 @@ class TestChatPanelInit:
         for control in (
             panel.retry_runtime_btn,
             panel.setup_btn,
-            panel.ask_mode_btn,
-            panel.workflow_mode_btn,
             panel.send_btn,
         ):
             assert control.focusPolicy() == Qt.FocusPolicy.StrongFocus
@@ -1084,7 +1077,6 @@ class TestChatPanelInit:
         qtbot.wait(30)
 
         scrollbar = chat_panel.scroll_area.verticalScrollBar()
-        assert scrollbar.maximum() > 0
         assert scrollbar.value() <= 2
         title_top = chat_panel.empty_state_title.mapTo(
             chat_panel.scroll_area.viewport(),
@@ -1092,7 +1084,7 @@ class TestChatPanelInit:
         ).y()
         assert title_top >= 0
 
-    def test_wide_panel_uses_available_width_for_mode_and_composer(
+    def test_wide_panel_uses_available_width_for_composer(
         self,
         chat_panel,
         qtbot,
@@ -1102,7 +1094,7 @@ class TestChatPanelInit:
         chat_panel.show()
         qtbot.wait(20)
 
-        assert chat_panel.mode_selector_widget.width() == 620
+        assert not hasattr(chat_panel, "mode_selector_widget")
         assert chat_panel.input_widget.width() == 620
 
     def test_input_placeholder_is_short_for_narrow_panel(self, chat_panel):
@@ -1131,25 +1123,13 @@ class TestChatPanelInit:
     def test_not_processing_initially(self, chat_panel):
         assert chat_panel.is_processing is False
 
-    def test_ask_workflow_selector_is_visible_and_defaults_to_ask(self, chat_panel):
-        assert chat_panel.ask_mode_btn.isVisibleTo(chat_panel)
-        assert chat_panel.workflow_mode_btn.isVisibleTo(chat_panel)
-        assert chat_panel.ask_mode_btn.text() == "Single action"
-        assert chat_panel.workflow_mode_btn.text() == "Guided workflow"
-        assert chat_panel.mode_description_label.isHidden()
-        assert chat_panel.mode_description_label.text() == "Runs one action and stops."
-        assert chat_panel.ask_mode_btn.toolTip() == "Runs one action and stops."
-        assert chat_panel.ask_mode_btn.accessibleDescription() == (
-            "Runs one action and stops."
-        )
-        assert chat_panel.workflow_mode_btn.toolTip() == (
-            "Continues safe actions and pauses before a decision."
-        )
-        assert chat_panel.workflow_mode_btn.accessibleDescription() == (
-            "Continues safe actions and pauses before a decision."
-        )
-        assert chat_panel.ask_mode_btn.isChecked()
-        assert chat_panel.current_execution_mode == "single"
+    def test_execution_scope_is_inferred_without_a_visible_mode_selector(
+        self,
+        chat_panel,
+    ):
+        assert not hasattr(chat_panel, "mode_selector_widget")
+        assert not hasattr(chat_panel, "ask_mode_btn")
+        assert not hasattr(chat_panel, "workflow_mode_btn")
 
     def test_composer_uses_compact_integrated_send_action(
         self,
@@ -1170,43 +1150,6 @@ class TestChatPanelInit:
         assert not chat_panel.input_field.geometry().intersects(
             chat_panel.send_btn.geometry()
         )
-
-    def test_workflow_selector_emits_internal_multi_mode(self, chat_panel, qtbot):
-        with qtbot.waitSignal(
-            chat_panel.execution_mode_changed,
-            timeout=1000,
-        ) as emitted:
-            chat_panel.workflow_mode_btn.click()
-
-        assert emitted.args == ["multi"]
-        assert chat_panel.workflow_mode_btn.isChecked()
-        assert chat_panel.current_execution_mode == "multi"
-        assert chat_panel.mode_description_label.isHidden()
-        assert chat_panel.mode_description_label.text() == (
-            "Continues safe actions and pauses before a decision."
-        )
-
-    @pytest.mark.parametrize("mode", ["single", "multi"])
-    def test_mode_guidance_remains_accessible_without_adding_a_layout_row(
-        self,
-        chat_panel,
-        qtbot,
-        mode,
-    ):
-        chat_panel.resize(320, 620)
-        chat_panel.show()
-        chat_panel.set_execution_mode(mode)
-        qtbot.wait(0)
-
-        description = chat_panel.mode_description_label
-        assert description.isHidden()
-        assert description.toolTip() == description.text()
-        assert description.accessibleDescription() == description.text()
-        selected = (
-            chat_panel.workflow_mode_btn if mode == "multi" else chat_panel.ask_mode_btn
-        )
-        assert selected.isChecked()
-        assert selected.toolTip() == description.text()
 
     def test_progress_status_is_compact_and_visible_while_processing(
         self,
@@ -1309,14 +1252,38 @@ class TestChatPanelInit:
             "This XBrainLab action has already started and cannot be stopped safely."
         )
 
-    def test_workflow_status_fits_below_selector_in_narrow_dock(
+    def test_waiting_for_decision_is_locked_without_claiming_active_work(
+        self,
+        chat_panel,
+    ) -> None:
+        presentation = present_assistant_activity(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name="apply_interpretation",
+            )
+        )
+
+        chat_panel.set_turn_activity(presentation)
+
+        assert chat_panel.is_processing is True
+        assert chat_panel.input_field.isEnabled() is False
+        assert chat_panel.send_btn.text() == "Waiting"
+        assert chat_panel.send_btn.isEnabled() is False
+        assert chat_panel.send_btn.toolTip() == (
+            "Use the open confirmation or XBrainLab dialog to continue or cancel."
+        )
+        assert chat_panel.header_status_text == "Local · Waiting"
+        assert chat_panel.turn_activity_cancelability.text() == (
+            "Use the open confirmation or XBrainLab dialog to continue or cancel."
+        )
+
+    def test_workflow_status_fits_in_narrow_dock(
         self,
         chat_panel,
         qtbot,
     ):
         chat_panel.resize(320, 620)
         chat_panel.show()
-        chat_panel.set_execution_mode("multi")
         chat_panel.set_processing_state(True)
         chat_panel.set_workflow_status("Waiting for decision")
         qtbot.wait(0)
@@ -1333,7 +1300,7 @@ class TestChatPanelInit:
             chat_panel.scroll_area.viewport().width()
         )
 
-    def test_processing_status_replaces_mode_hint_and_wraps_in_narrow_dock(
+    def test_processing_status_wraps_in_narrow_dock(
         self,
         chat_panel,
         qtbot,
@@ -1343,8 +1310,6 @@ class TestChatPanelInit:
         )
         chat_panel.resize(320, 620)
         chat_panel.show()
-        chat_panel.set_execution_mode("multi")
-
         chat_panel.set_processing_state(True)
         chat_panel.set_workflow_status(status_text)
         qtbot.wait(20)
@@ -1355,7 +1320,6 @@ class TestChatPanelInit:
             int(Qt.TextFlag.TextWordWrap),
             status.text(),
         )
-        assert chat_panel.mode_description_label.isHidden()
         assert chat_panel.turn_activity_widget.isVisible()
         assert status.isVisible()
         assert status.wordWrap()
@@ -1363,7 +1327,6 @@ class TestChatPanelInit:
 
         chat_panel.set_processing_state(False)
         qtbot.wait(0)
-        assert chat_panel.mode_description_label.isHidden()
         assert chat_panel.turn_activity_widget.isHidden()
 
     def test_new_turn_does_not_restore_the_previous_turn_status(
@@ -1655,9 +1618,7 @@ class TestChatPanelCallbacks:
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.send_btn.accessibleName() == "Send"
         assert not chat_panel.send_btn.icon().isNull()
-        assert chat_panel.ask_mode_btn.isHidden() is False
-        assert chat_panel.workflow_mode_btn.isHidden() is False
-        assert chat_panel.ask_mode_btn.isChecked()
+        assert not hasattr(chat_panel, "mode_selector_widget")
         visible_footer_labels = [
             label.text()
             for label in chat_panel.control_panel.findChildren(QLabel)
@@ -1869,14 +1830,8 @@ class TestChatPanelCallbacks:
         assert not chat_panel.input_field.geometry().intersects(
             chat_panel.send_btn.geometry()
         )
-        assert chat_panel.ask_mode_btn.isVisible()
-        assert chat_panel.workflow_mode_btn.isVisible()
-        assert not chat_panel.ask_mode_btn.geometry().intersects(
-            chat_panel.workflow_mode_btn.geometry()
-        )
-        mode_row = chat_panel.workflow_mode_btn.parentWidget()
-        assert mode_row is not None
-        assert chat_panel.workflow_mode_btn.geometry().right() < mode_row.width()
+        assert not hasattr(chat_panel, "mode_selector_widget")
+        _assert_inside_panel_on_all_sides(chat_panel, chat_panel.input_widget)
 
     @pytest.mark.parametrize("height", [520, 650])
     def test_long_clarification_keeps_fixed_controls_inside_narrow_panel(
@@ -1931,11 +1886,11 @@ class TestChatPanelCallbacks:
         for control in (
             chat_panel.input_field,
             chat_panel.send_btn,
-            chat_panel.mode_selector_widget,
             action,
         ):
             assert control.isVisibleTo(chat_panel)
             _assert_inside_panel_on_all_sides(chat_panel, control)
+        assert not hasattr(chat_panel, "mode_selector_widget")
         assert action.toolTip() == full_label
         assert action.text().endswith("…")
         assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
@@ -1946,15 +1901,17 @@ class TestChatPanelCallbacks:
             ).y()
             < chat_panel.control_panel.mapTo(chat_panel, QPoint(0, 0)).y()
         )
-        mode_bottom = chat_panel.mode_selector_widget.mapTo(
-            chat_panel,
-            QPoint(0, chat_panel.mode_selector_widget.height()),
-        ).y()
         composer_top = chat_panel.input_widget.mapTo(
             chat_panel,
             QPoint(0, 0),
         ).y()
-        assert mode_bottom < composer_top
+        assert (
+            composer_top
+            >= chat_panel.control_panel.mapTo(
+                chat_panel,
+                QPoint(0, 0),
+            ).y()
+        )
         assert chat_panel.scroll_area.geometry().bottom() < (
             chat_panel.control_panel.geometry().top()
         )

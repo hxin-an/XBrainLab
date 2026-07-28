@@ -82,12 +82,14 @@ class AssistantRuntimeCoordinator:
         message: str,
         *,
         preserve_active_runtime: bool = True,
+        request_context: AssistantRuntimeSnapshot | None = None,
     ) -> None:
         self._expected_launch_spec = None
         self._expected_activation_id = None
         self._publish_failed(
             message,
             preserve_active_runtime=preserve_active_runtime,
+            request_context=request_context,
         )
 
     def clear_active_runtime(self, message: str) -> None:
@@ -247,12 +249,21 @@ class AssistantRuntimeCoordinator:
                     selection_detail=request_context.selection_detail,
                 )
             return failed
-        return AssistantRuntimeSnapshot(
+        failed = AssistantRuntimeSnapshot(
             phase=AssistantRuntimePhase.FAILED,
             initialized=False,
             error=normalized_message,
             activation_id=activation_id,
         )
+        if request_context is not None:
+            failed = replace(
+                failed,
+                backend_mode=request_context.backend_mode,
+                requested_model_id=request_context.requested_model_id,
+                selection_outcome=request_context.selection_outcome,
+                selection_detail=request_context.selection_detail,
+            )
+        return failed
 
     @staticmethod
     def _activation_id(payload: object) -> int | None:

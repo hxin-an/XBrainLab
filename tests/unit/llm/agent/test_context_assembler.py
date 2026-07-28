@@ -23,7 +23,7 @@ from XBrainLab.backend.application.view_publication import ApplicationViewPublic
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.decision_context import build_workflow_decision_context
-from XBrainLab.llm.agent.turn import AssistantResponseContract
+from XBrainLab.llm.agent.turn import AssistantResponseContract, AssistantTurnScope
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
@@ -885,7 +885,7 @@ def test_assembler_sends_decision_context_and_short_clean_history():
         return_value=PipelineStage.EMPTY,
     ):
         assembler = ContextAssembler(registry, mock_study)
-        assembler.execution_mode = "continue_until_decision"
+        assembler.bind_turn_scope(AssistantTurnScope.GUIDED_WORKFLOW)
         messages = assembler.get_messages(history)
 
     assert "Workflow Decision Context:" in messages[0]["content"]
@@ -988,7 +988,7 @@ def test_continue_mode_advances_from_completed_scan_to_preview_tool() -> None:
         Study(),
         application_runtime=_ApplicationRuntimeFake(publication),
     )
-    assembler.execution_mode = "continue_until_decision"
+    assembler.bind_turn_scope(AssistantTurnScope.GUIDED_WORKFLOW)
     assembler.set_turn_authorized_command(
         "preview_interpretation",
         continuation=True,

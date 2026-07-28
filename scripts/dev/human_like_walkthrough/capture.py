@@ -147,6 +147,11 @@ def isolated_assistant_settings():
                 "_default_settings_path",
                 staticmethod(lambda: str(settings_path)),
             ),
+            patch.object(
+                LLMConfig,
+                "_legacy_settings_path",
+                staticmethod(lambda: str(root / "legacy-settings.json")),
+            ),
             patch.object(LLMConfig, "_local_cache_candidates", cache_candidates),
         ):
             yield isolation
@@ -484,8 +489,17 @@ def _drive_settings_recovery(
         dialog = dialogs[0]
         evidence["dialog_opened"] = True
         evidence["dialog_title"] = dialog.windowTitle()
-        evidence["selected_model"] = dialog.local_model_combo.currentText()
+        selected_model = LLMConfig.default_local_model_id()
+        selected_index = dialog.local_model_combo.findText(selected_model)
+        if selected_index < 0:
+            callback_error.append(
+                f"Primary local model is missing from Assistant Settings: "
+                f"{selected_model}."
+            )
+            dialog.reject()
+            return
         dialog.config.cache_dir = str(isolation.cache_root)
+        dialog.local_model_combo.setCurrentIndex(selected_index)
         dialog.check_local_model_status()
         deadline = time.monotonic() + 20.0
         while (
@@ -501,6 +515,7 @@ def _drive_settings_recovery(
         dialog.local_enable_chk.setChecked(True)
         dialog.response_style_control.set_selected("precise", emit=True)
         dialog.update_validation_state()
+        evidence["selected_model"] = dialog.local_model_combo.currentText()
         evidence["controlled_temperature"] = dialog.temperature_spin.value()
         screenshot = dependencies.capture_named(
             dialog,
@@ -525,9 +540,12 @@ def _drive_settings_recovery(
     if not isolation.settings_path.exists():
         raise RuntimeError("Assistant Settings did not save the isolated config.")
     saved = json.loads(isolation.settings_path.read_text(encoding="utf-8"))
-    evidence["save_observed"] = saved.get("generation", {}).get(
-        "temperature"
-    ) == 0.2 and bool(saved.get("local", {}).get("enabled"))
+    saved_local = saved.get("local", {})
+    evidence["save_observed"] = (
+        saved.get("generation", {}).get("temperature") == 0.2
+        and bool(saved_local.get("enabled"))
+        and saved_local.get("model_name") == LLMConfig.default_local_model_id()
+    )
     if not evidence["save_observed"]:
         raise RuntimeError("Assistant Settings save did not preserve the test setting.")
 
@@ -581,7 +599,6 @@ def _capture_request_states(
         dependencies=dependencies,
     )
 
-    click_assistant_control(cast(QWidget, panel.workflow_mode_btn))
     drive_assistant_request(
         app,
         manager,
@@ -651,8 +668,6 @@ def _capture_request_states(
         dependencies=dependencies,
     )
 
-    click_assistant_control(cast(QWidget, panel.ask_mode_btn))
-    app.processEvents()
     drive_assistant_request(app, manager, ASSISTANT_CLARIFICATION_REQUEST)
     app.processEvents()
     _capture_phase(
@@ -868,6 +883,10 @@ def _capture_confirmation_interactions(
             "request_correlated": request_correlated,
             "primary_action": card.primary_button.text(),
             "secondary_action": card.secondary_button.text(),
+            "waiting_surface": assistant_processing_evidence(
+                panel,
+                controller_processing=manager.chat_controller.is_processing,
+            ),
         }
         if scenario_name == "confirmed":
             screenshot = dependencies.capture_named(
@@ -910,6 +929,7 @@ def _capture_confirmation_interactions(
             "request_correlated": card_state["request_correlated"],
             "primary_action": card_state["primary_action"],
             "secondary_action": card_state["secondary_action"],
+            "waiting_surface": card_state["waiting_surface"],
             "card_screenshot": card_state.get("screenshot", ""),
             "terminal_messages": terminal,
             "confirmed_execution_count": (

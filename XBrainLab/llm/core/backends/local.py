@@ -184,13 +184,9 @@ class LocalBackend(BaseBackend):
         )
         try:
             self._patch_remote_code_compat()
-            trust_remote_code = bool(
-                getattr(
-                    self.config,
-                    "trust_remote_code",
-                    spec.trust_remote_code,
-                )
-            )
+            # Remote-code policy belongs to the immutable model catalog. A
+            # mutable local settings file must not broaden this trust boundary.
+            trust_remote_code = spec.trust_remote_code
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.config.model_name,
                 cache_dir=self.config.cache_dir,
@@ -214,8 +210,11 @@ class LocalBackend(BaseBackend):
                 model_kwargs["quantization_config"] = BitsAndBytesConfig(
                     load_in_4bit=True,
                 )
-            elif self.config.device == "cuda":
-                model_kwargs["dtype"] = cast(Any, torch).float16
+            elif str(self.config.device).startswith("cuda"):
+                model_kwargs["dtype"] = getattr(
+                    cast(Any, torch),
+                    spec.preferred_cuda_dtype,
+                )
 
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.config.model_name,
@@ -296,14 +295,18 @@ class LocalBackend(BaseBackend):
         if not messages:
             return messages
 
-        # Step 1: Extract and remove system messages
+        spec = local_model_spec(self.config.model_name)
+        preserves_system_role = bool(spec and spec.supports_system_role)
+
+        # Step 1: Preserve native system-role support where the pinned model
+        # declares it; legacy strict templates receive the compatibility merge.
         system_content = None
         filtered = []
         for msg in messages:
-            if msg.get("role") == "system":
+            if msg.get("role") == "system" and not preserves_system_role:
                 system_content = msg.get("content", "")
             else:
-                filtered.append(msg)
+                filtered.append(dict(msg))
 
         # Step 2: Merge system into first user message
         if system_content:
@@ -405,9 +408,24 @@ class LocalBackend(BaseBackend):
                 tokenize=False,
                 add_generation_prompt=True,
             )
+            spec = local_model_spec(self.config.model_name)
+            if spec is None:
+                raise RuntimeError(
+                    "Configured local model has no runtime specification: "
+                    f"{self.config.model_name}."
+                )
+            max_input_tokens = spec.runtime_context_tokens - options.max_new_tokens
+            if max_input_tokens <= 0:
+                raise RuntimeError(
+                    "Generation output budget exceeds the local model runtime "
+                    "context limit."
+                )
+            lease.tokenizer.truncation_side = "left"
             inputs = lease.tokenizer(
                 prompt,
                 return_tensors="pt",
+                truncation=True,
+                max_length=max_input_tokens,
             ).to(lease.model.device)
 
             streamer = text_iterator_streamer_cls(

@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-07-23`
+最後更新：`2026-07-29`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
@@ -14,9 +14,12 @@ run mapping、overlapping-window split protection、post-training saliency atomi
 最新 `ux/gui-review-preprocess-polish` repair candidate 另完成 Data Import Step 5、Smart Parser、
 preprocess dialogs / preview / history、Training History 與 attribution spectrogram 的局部修復；
 focused regression、product walkthrough、42-phase human-like walkthrough 與 required multi-dataset
-gate 已通過。Agent Panel presentation 也已完成 Header、狀態畫面、suggestions、mode selector、
-composer 與 Settings 的一致化，並通過窄版、DPI、狀態切換與完整 product walkthrough。
-Windows 真人 click-through 尚未完成，因此仍不能稱 product complete 或合併 `main`。
+gate 已通過。最新老師試用候選把 Agent Panel 的可見 mode selector 移除，改由每一回合的自然語言
+產生 immutable execution scope；產品預設模型改為 exact-only
+`ibm-granite/granite-3.3-2b-instruct`，不會因模型不可用而靜默換成另一個模型。真實 Granite GPU
+流程已走到 Data Import 的 typed review boundary，資料面也重新通過 14 種格式、7 個公開 cases /
+5 個來源 family 與跨來源 training / epoch smoke。Windows 真人 click-through 尚未完成，因此
+仍不能稱 product complete 或合併 `main`。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -30,20 +33,21 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 | Backend | `ApplicationService / Command API` 是主要 command spine；mutation lock 由 Study 擁有。`ApplicationViewPublication` 原子綁定 state、capability 與 generation：lock 空閒時刷新背景 truth，長 mutation 時立即回最後一份已驗證狀態。Training model selection 已移除 test-based checkpoint path。 | object-bearing `data_lists` / history query 仍刻意序列化；panels 仍有 injected controller observer / compatibility adapter，不能宣稱 zero-controller UI。 |
 | UI | command 執行期間會抑制 observer duplicate refresh，完成後依 `changed_state` 走 shared refresh coordinator。Async command result/error 綁到 owner-child QObject，owner 被刪除時由 Qt 自動斷線；獨立 cleanup receiver 保留到 terminal `finished` 才解除 busy、suppression 與 worker ownership。Data Import 最後一步使用 compact import review；preprocess preview 明確分成 no-data / loaded / epoched-locked，兩種 History 使用固定外部高度與內部 scrollbar。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through，尤其是真訓練中關閉與 Windows/WSLg native teardown。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、strict BIDS folder events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成獨立 epoch handoff 建議。Import Recipe 只保存重新載入 EEG、metadata、label source 與 label mapping 所需的選擇；Epoch window / baseline 不在 recipe 內，Epoch 尚未完成也不會阻止 import。`task`、`run` 缺失只顯示 optional note；這類來源仍可匯入，但不宣稱為 BIDS-complete。Label carrier pairing 現由 backend domain policy 統一供 candidate、apply 與 UI 使用；只配到部分 selected EEG 時會在載入前 blocked。 | BIDS 支援目前是 EEG task import MVP，不是 full BIDS validator；每個 selected run 必須有實際可解析的 events carrier，目前不宣稱 BIDS events inheritance。一般 folder 掃到 `events.tsv` 仍走普通 label-file flow。P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。 |
-| Assistant / Agent | in-app assistant 提供 `Single action` 與 `Guided workflow`。Panel 已統一 Header、loading / empty / ready / working / waiting / error 狀態、可點選 suggestions、兩行 composer、inline typed confirmation card 與窄版 responsive layout；Settings 使用可捲動內容與固定 footer，在受限高度仍保留 Save / Cancel。重要 action 仍由既有 confirmation contract 處理；card 保留原始 request identity，完成 command 後只依 `changed_state` refresh GUI。Microsoft Phi-4 mini 的真實 GPU ChatPanel workflow 已完成 state query 與一般問答；視窗關閉後 runtime / dispatcher 都進入 `closed`、controller 釋放且 generation thread 歸零。 | raw-model candidate eval 目前只有 `6/12`；host-assisted product policy 是 `12/12`，兩者不可混稱。Linux/Qt 100% / 125% / 150% scale gate 不等於 Windows native DPI、多螢幕、長時間 local-model session 或 assistant acceptance。 |
+| Assistant / Agent | Panel 已統一 Header、loading / empty / ready / working / waiting / error、suggestions、兩行 composer、typed confirmation card 與 responsive layout。使用者不再先選 `Single action` / `Guided workflow`；host 依本回合請求建立 immutable scope：說明不動工具、單一操作只做一步、明確要求「繼續到需要我決定」才允許受 policy 保護的安全續行。產品預設是 exact-only IBM Granite 3.3 2B；Phi 系列只保留為使用者明確選取的 legacy compatibility choice。host continuation 只允許 parameter-free `preview_interpretation` / `validate_interpretation`，仍需通過 schema、registry、capability 與 confirmation policy。 | 真 Granite boundary walkthrough 是 host-assisted 產品流程證據，不是 raw-model benchmark。它允許一次 strict-envelope 格式修復，且明確區分 model-owned scan 與 host-owned deterministic continuation；仍不等於 thesis accuracy、Windows native DPI、多螢幕或長時間 session acceptance。 |
 | MCP | 從 active plan 移除。 | 不再追求 MCP hardening、MCP client certification、MCP external-agent product path 或 MCP thesis evidence。 |
 | Packaging | Windows launcher / startup smoke 有 evidence。 | 還不是 signed installer，也不是 release approval。 |
 
 ## 下一個真正 blocker
 
-**從已發佈的單一候選分支完成 Windows 真人 acceptance。**
+**從已完成自動化 gate 的同一候選分支做 Windows 真人 acceptance。**
 
 目前優先順序：
 
-1. 從 `ux/gui-review-preprocess-polish` 啟動 Windows GUI，依手測清單走 Data Import、
-   preprocess / epoch、split / train、evaluation / visualization 與 assistant。
-2. 若發現問題，以目前候選 commit 為基底建立 focused repair，不把未驗證修復直接合併 `main`。
-3. Windows acceptance 通過後，才 fast-forward stabilization line 並準備 main merge gate。
+1. 從已 push 的 `ux/gui-review-preprocess-polish` 候選啟動 Windows GUI，依手測清單走
+   Data Import、preprocess / epoch、
+   split / train、evaluation / visualization 與 assistant。
+2. 老師可用版確認後才 freeze XBrainLab benchmark 的 source、cases 與 scorer；不在產品候選仍變動
+   時先做論文準確率主張。
 
 Rebaseline 後的工程入口：
 
@@ -95,13 +99,13 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | Gate | 最近結果 | 用途 |
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
-| fast quality dashboard | `artifacts/quality/latest.md` overall PASS；workspace traceability 只列出 protected local config `settings.json`。 | 支撐 automated handoff candidate；不等於 Windows 真人 acceptance。 |
+| fast quality dashboard | Ruff、Basedpyright、architecture、startup、7 張 UI baseline、dialog、product walkthrough、BIDS visible matrix、UI unit `2128 passed`、real IO `31 passed` 全數 PASS。提交前 dashboard 只因 dirty-worktree traceability 為 WARN；exact-commit 結果以 `artifacts/quality/latest.md` 為準。 | 支撐 automated handoff candidate；不等於 Windows 真人 acceptance。 |
 | Full unit / integration | `9006 passed, 1 skipped`；integration `388 passed`。 | 支撐目前 Python / Qt / backend / agent regression；不等於真人 UX acceptance。 |
-| Architecture / static quality | architecture compliance PASS；本輪 Ruff PASS；本輪 touched product files 的 BasedPyright 為 `0 errors / 0 warnings / 0 notes`。 | full-repo BasedPyright 仍有 `122` 個既有 errors，不能把本輪 scoped clean 說成全 repo type-clean；靜態檢查也不能證明所有 runtime 行為。 |
+| Architecture / static quality | architecture compliance PASS；Ruff PASS；full-repo Basedpyright `0 errors / 0 warnings / 0 notes`。五層 turn-scope ownership guard 覆蓋 assembler、controller、dispatcher、runtime lifecycle 與 AgentManager。 | 靜態檢查不能證明所有 runtime 行為。 |
 | Required multi-dataset gate | Data Interpretation real lifecycle `20/20`、14 種 format paths、7 個 public cases / 5 source families、7 個 pinned fixture fact contracts、7 個 external placement contracts、4 個 internal profiles、固定 11 個 reviewed label/event cases；strict cross-source `4/4`（2 training + 2 IO/epoch-only）。 | 支撐列出的真實資料與格式邊界；SCCN `rt` / `square` 與 CNT marker 不是 protocol-grounded supervised classes，也不是 training evidence；不是 full BIDS validator 或任意 proprietary format claim。 |
-| UI integration / walkthrough | 本輪 focused regression `567 passed`、product walkthrough `7 passed`；human-like walkthrough `42/42` phases、44 required screenshots、resource smoke PASS，table geometry findings / clipped rows 均為 0。 | 支撐 Xvfb 可觀察流程；不等於 Windows DPI、雙螢幕或真人 acceptance。 |
-| Agent Panel product UI | 最新 focused presentation / regression suite `511 passed`；compact evidence 在 `artifacts/ui/assistant-presentation-current/`，涵蓋 loading、empty、conversation、confirmation、error、320 / 420 / 760 responsive、Settings collapsed / expanded / constrained-height 與 150% scale。focused 與 DPI source fingerprint 穩定；human-like walkthrough `42/42` phases、44 required screenshots、resource smoke PASS。 | 支撐目前 Qt layout、typed confirmation、scroll-follow、owner-bound deferred reflow、signal path與 Linux offscreen scale contract；不證明 Windows native DPI、真實模型長 session、實際下載中的 Settings 畫面或 raw-model accuracy。 |
-| Local assistant | Phi-4 mini GPU ChatPanel workflow PASS；post-close runtime / dispatcher `closed`、controller released、generation threads `0`；raw tool-call `6/12`，host-assisted product policy `12/12`。 | 支撐狹義 local runtime、terminal ownership 與產品安全邊界；不支撐 thesis-grade accuracy 或長時間 session。 |
+| UI integration / walkthrough | current relevant regression `2700 passed`；Qt assistant dock integration `17 passed`；human-like teacher candidate 與 waiting confirmation artifact PASS。UI reviewer 在修復後 re-gate PASS。 | 支撐 offscreen / Xvfb 可觀察流程；不等於 Windows DPI、雙螢幕或真人 acceptance。 |
+| Agent / policy regression | Agent unit/core/integration baseline `1236 passed`；最終 relevant regression `2700 passed`。Architecture reviewer 在修復 endpoint order、host params 與五層 scope ownership 後 re-gate PASS。 | 支撐 request admission、immutable turn scope、terminal endpoint、schema/capability/confirmation 與 host-continuation allowlist；不是 UX 或模型準確率證據。 |
+| Local assistant | Granite 3.3 2B 為 exact primary，runtime inspection `gpu-ready`，cache `12.77 GB / 20 GB`。真 GPU workflow 與 adaptive boundary artifacts 都 PASS：model-owned scan、host-owned preview/validate、typed review handoff、Waiting 呈現及取消後 state 不變。 | 這是單一受控 product workflow，不是 raw Granite benchmark、長時間 session 或 Windows acceptance。 |
 | Resource guard calibration | RTX 5070 Ti bounded probe 已量測 EEGNet、SCCNet、ShallowConvNet；三者保守估算皆覆蓋觀察到的單步 peak。 | 只涵蓋 batch 8、22 channels、301 samples 的校準範圍；不是所有模型、batch 或完整訓練 peak 的普遍證明。 |
 | Windows launcher walkthrough | PASS | 自動化 launcher command / bounded startup evidence，不是 signed installer 或真人 click-through。 |
 

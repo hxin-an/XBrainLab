@@ -132,7 +132,7 @@ def lifecycle_harness(
         Study(),
         controller_factory=_controller_factory,
     )
-    assert lifecycle.start("single", launch_spec=_launch_spec()) is True
+    assert lifecycle.start(launch_spec=_launch_spec()) is True
     qtbot.waitUntil(
         lambda: lifecycle.current.phase is AssistantRuntimePhase.READY,
         timeout=2_000,
@@ -182,7 +182,7 @@ def manager_lifecycle_harness(qtbot, monkeypatch):
         study,
         runtime_lifecycle=lifecycle,
     )
-    assert lifecycle.start("single", launch_spec=_launch_spec()) is True
+    assert lifecycle.start(launch_spec=_launch_spec()) is True
     qtbot.waitUntil(
         lambda: lifecycle.current.phase is AssistantRuntimePhase.READY,
         timeout=2_000,
@@ -680,7 +680,7 @@ def test_post_rag_context_failure_releases_full_topology_leases_and_next_turn(
         study,
         runtime_lifecycle=lifecycle,
     )
-    assert lifecycle.start("single", launch_spec=_launch_spec()) is True
+    assert lifecycle.start(launch_spec=_launch_spec()) is True
     qtbot.waitUntil(
         lambda: lifecycle.current.phase is AssistantRuntimePhase.READY,
         timeout=2_000,
@@ -801,7 +801,7 @@ def test_worker_dispatch_setup_and_model_faults_release_manager_turns(
         study,
         runtime_lifecycle=lifecycle,
     )
-    assert lifecycle.start("single", launch_spec=_launch_spec()) is True
+    assert lifecycle.start(launch_spec=_launch_spec()) is True
     qtbot.waitUntil(
         lambda: lifecycle.current.phase is AssistantRuntimePhase.READY,
         timeout=2_000,

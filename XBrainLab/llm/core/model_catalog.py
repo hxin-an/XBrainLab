@@ -19,14 +19,23 @@ MAX_TOTAL_MODEL_CACHE_GB = 20.0
 MIN_DISK_FREE_AFTER_DOWNLOAD_GB = 5.0
 MIN_MODEL_WEIGHT_BYTES = 256_000_000
 
-PRIMARY_LOCAL_MODEL_ID = "microsoft/Phi-4-mini-instruct"
-FALLBACK_LOCAL_MODEL_ID = "microsoft/Phi-3.5-mini-instruct"
+PRIMARY_LOCAL_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 PRIMARY_LOCAL_MODEL_REVISION = (
+    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
+)
+LEGACY_PHI4_MODEL_ID = "microsoft/Phi-4-mini-instruct"
+LEGACY_PHI4_MODEL_REVISION = (
     "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
 )
-FALLBACK_LOCAL_MODEL_REVISION = (
+LEGACY_PHI35_MODEL_ID = "microsoft/Phi-3.5-mini-instruct"
+LEGACY_PHI35_MODEL_REVISION = (
     "2fe192450127e6a83f7441aef6e3ca586c338b77"  # pragma: allowlist secret
 )
+
+# Compatibility aliases for callers that still expose the former secondary
+# model as an explicit choice. Runtime selection does not use these as fallback.
+FALLBACK_LOCAL_MODEL_ID = LEGACY_PHI35_MODEL_ID
+FALLBACK_LOCAL_MODEL_REVISION = LEGACY_PHI35_MODEL_REVISION
 
 DISALLOWED_LOCAL_MODEL_PREFIXES = (
     "Qwen/",
@@ -60,6 +69,9 @@ class LocalModelSpec:
     estimated_download_gb: float
     estimated_vram_gb: float
     quantization: str
+    runtime_context_tokens: int = 8_192
+    supports_system_role: bool = False
+    preferred_cuda_dtype: str = "float16"
     trust_remote_code: bool = False
     attn_implementation: str | None = None
     source_url: str = ""
@@ -105,9 +117,32 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
     LocalModelSpec(
         repo_id=PRIMARY_LOCAL_MODEL_ID,
         revision=PRIMARY_LOCAL_MODEL_REVISION,
-        label="Phi-4 Mini Instruct (Primary)",
-        provider="Microsoft",
+        label="Granite 3.3 2B Instruct (Primary)",
+        provider="IBM",
         role="primary",
+        license="Apache-2.0",
+        parameters="2.5B (2B class)",
+        context_tokens=128_000,
+        estimated_download_gb=5.08,
+        estimated_vram_gb=6.0,
+        quantization=(
+            "BF16 safetensors; optional runtime 4-bit if bitsandbytes is installed"
+        ),
+        runtime_context_tokens=8_192,
+        supports_system_role=True,
+        preferred_cuda_dtype="bfloat16",
+        source_url=("https://huggingface.co/ibm-granite/granite-3.3-2b-instruct"),
+        notes=(
+            "IBM Granite 3.3 instruction model with function-calling, multilingual, "
+            "and 128K-context support; pinned BF16 weights remain under 10GB."
+        ),
+    ),
+    LocalModelSpec(
+        repo_id=LEGACY_PHI4_MODEL_ID,
+        revision=LEGACY_PHI4_MODEL_REVISION,
+        label="Phi-4 Mini Instruct (Legacy)",
+        provider="Microsoft",
+        role="legacy",
         license="MIT",
         parameters="3.8B",
         context_tokens=128_000,
@@ -120,16 +155,16 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
         attn_implementation="eager",
         source_url="https://huggingface.co/microsoft/Phi-4-mini-instruct",
         notes=(
-            "Non-Chinese model with documented tool-enabled prompt format, "
-            "multilingual support including Chinese, and download size under 10GB."
+            "Legacy explicit-selection model retained for existing installations; "
+            "it is never selected as an automatic runtime fallback."
         ),
     ),
     LocalModelSpec(
-        repo_id=FALLBACK_LOCAL_MODEL_ID,
-        revision=FALLBACK_LOCAL_MODEL_REVISION,
-        label="Phi-3.5 Mini Instruct (Fallback)",
+        repo_id=LEGACY_PHI35_MODEL_ID,
+        revision=LEGACY_PHI35_MODEL_REVISION,
+        label="Phi-3.5 Mini Instruct (Legacy)",
         provider="Microsoft",
-        role="fallback",
+        role="legacy",
         license="MIT",
         parameters="3.8B",
         context_tokens=128_000,
@@ -141,7 +176,10 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
         trust_remote_code=True,
         attn_implementation="eager",
         source_url="https://huggingface.co/microsoft/Phi-3.5-mini-instruct",
-        notes="Smaller stable fallback from the same non-Chinese provider family.",
+        notes=(
+            "Legacy explicit-selection model retained for compatibility; it is "
+            "never selected as an automatic runtime fallback."
+        ),
     ),
 )
 
@@ -149,8 +187,13 @@ _SPECS_BY_ID = {spec.repo_id: spec for spec in LOCAL_MODEL_SPECS}
 
 
 def allowed_local_model_ids() -> list[str]:
-    """Return supported model IDs in UI priority order."""
+    """Return explicit supported choices with the product default first."""
     return [spec.repo_id for spec in LOCAL_MODEL_SPECS]
+
+
+def legacy_local_model_ids() -> list[str]:
+    """Return models retained only as explicit compatibility choices."""
+    return [spec.repo_id for spec in LOCAL_MODEL_SPECS if spec.role == "legacy"]
 
 
 def default_local_model_id() -> str:
@@ -159,7 +202,7 @@ def default_local_model_id() -> str:
 
 
 def fallback_local_model_id() -> str:
-    """Return the product fallback local model ID."""
+    """Return the legacy fallback identifier retained for API compatibility."""
     return FALLBACK_LOCAL_MODEL_ID
 
 

@@ -6678,3 +6678,37 @@ call sites into explicit legacy/fallback helpers.
 
 - Windows human acceptance is still required for real training close, Alt+F4, WSLg/native teardown,
   and actual long-running Data Splitting cancellation.
+
+## 2026-07-29 Granite 2B Teacher Candidate
+
+### 實作
+
+- Changed the product default to exact IBM Granite 3.3 2B while retaining Phi models only as
+  explicit legacy choices; runtime selection no longer silently falls back to another model.
+- Removed the visible Single action / Guided workflow selector. Each request now produces an
+  immutable host-owned scope for explanation, one action, continue-until-decision, or an explicit
+  terminal endpoint.
+- Added bounded host continuation for parameter-free Data Interpretation preview / validation.
+  The coordinator owns the allowlist and still enforces schema, registry, capability, automatic
+  execution, and confirmation policy.
+- Hardened the real Granite walkthrough evidence so model-owned and host-owned calls cannot be
+  conflated and malformed evidence fails closed.
+
+### 驗證
+
+- Agent unit/core/integration baseline: `1236 passed`; final relevant regression after all reviewer
+  findings: `2700 passed`.
+- Full Qt assistant dock integration: `17 passed`.
+- Data lifecycle `20/20`, required formats `14/14`, real five-step wizard `17 passed`,
+  IO/BIDS/cross-source integration `36 passed`, strict cross-source runner `4/4`.
+- Granite runtime inspection: `gpu-ready`, cache `12.77 GB / 20 GB`; real GPU review-boundary
+  walkthrough, adaptive decision-boundary walkthrough, and human-like teacher candidate PASS.
+- Ruff, full-repo Basedpyright, architecture compliance, and strict MkDocs build PASS.
+- Independent UI and architecture reviewers both rejected the first candidate, then re-gated the
+  repaired Waiting state, Qt activation signature, endpoint stage order, host parameter contract,
+  and five-layer scope ownership as PASS.
+
+### 邊界
+
+- This is host-assisted product-flow evidence, not a raw Granite accuracy claim.
+- Windows human acceptance still precedes the XBrainLab benchmark.

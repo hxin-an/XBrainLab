@@ -1,4 +1,4 @@
-"""Real-model Guided Workflow UI-handoff boundary walkthrough."""
+"""Real-model adaptive-workflow UI-handoff boundary walkthrough."""
 
 from scripts.dev.chatpanel_guided_boundary.dialog import (
     capture_and_cancel_workflow_dialog,

@@ -13,6 +13,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationEventPhase,
     AssistantGenerationRequest,
     AssistantResponseContract,
+    AssistantTurnScope,
 )
 from XBrainLab.llm.tools.application_surface import ToolCommandResult
 from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
@@ -118,7 +119,7 @@ def _make_ctrl():
     ctrl._tool_failure_count = 0
     ctrl._max_tool_failures = 3
     ctrl._successful_tool_count = 0
-    ctrl._execution_mode = ctrl.MODE_SINGLE
+    ctrl._active_turn_scope = AssistantTurnScope.SINGLE_ACTION
     ctrl._tool_execution_count = 0
     ctrl._max_tool_executions = 5
     ctrl._turn_cancelled = False

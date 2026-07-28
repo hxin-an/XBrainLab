@@ -45,7 +45,7 @@ def _write_complete_model_cache(cache_dir: Path, model_id: str) -> Path:
 class TestDefaults:
     def test_default_model_name(self):
         cfg = LLMConfig()
-        assert cfg.model_name == "microsoft/Phi-4-mini-instruct"
+        assert cfg.model_name == "ibm-granite/granite-3.3-2b-instruct"
 
     def test_default_device_is_string(self):
         cfg = LLMConfig()

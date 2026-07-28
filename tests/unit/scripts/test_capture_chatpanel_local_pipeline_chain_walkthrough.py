@@ -283,7 +283,7 @@ def test_approve_product_dialog_uses_custom_accept_role_case_insensitively(qtbot
 
 def test_assistant_surface_ready_requires_runtime_and_composer_truth():
     panel = SimpleNamespace(
-        send_btn=SimpleNamespace(isEnabled=lambda: True, text=lambda: "Send"),
+        send_btn=SimpleNamespace(isEnabled=lambda: False, text=lambda: "Send"),
         input_field=SimpleNamespace(isEnabled=lambda: True),
     )
     manager = SimpleNamespace(

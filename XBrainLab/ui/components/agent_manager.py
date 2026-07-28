@@ -128,7 +128,6 @@ _ASSISTANT_CONTROLLER_UI_SIGNALS = (
     "workflow_ui_handoff_requested",
     "application_command_completed",
     "application_command_started",
-    "execution_mode_changed",
     "turn_finished",
 )
 
@@ -299,7 +298,6 @@ class AgentManager(QObject):
             model_download_lifecycle or ModelDownloadLifecycle(parent=self)
         )
         self._presentation = AgentPresentationService()
-        self._execution_mode = "single"
         self._workflow_ui_handoff_host = WorkflowUiHandoffHost(
             self.main_window,
             application_service=self.application_service,
@@ -371,7 +369,6 @@ class AgentManager(QObject):
         # Connect ChatPanel signals to self (for further dispatch)
         self.chat_panel.send_message.connect(self.handle_user_input)
         self.chat_panel.stop_generation.connect(self.stop_generation)
-        self.chat_panel.execution_mode_changed.connect(self._on_execution_mode_changed)
         self.chat_panel.debug_tool_requested.connect(self._handle_debug_tool_requested)
         self.chat_panel.open_settings_requested.connect(self.open_settings_dialog)
         retry_runtime_requested = getattr(
@@ -606,7 +603,6 @@ class AgentManager(QObject):
 
             activation = self._assistant_runtime.activate(
                 config,
-                execution_mode=self._execution_mode,
             )
             self.refresh_backend_status()
             if activation.available:
@@ -677,9 +673,7 @@ class AgentManager(QObject):
         if not dialog.exec():
             return
 
-        activation = self._assistant_runtime.activate_persisted(
-            execution_mode=self._execution_mode,
-        )
+        activation = self._assistant_runtime.activate_persisted()
         self.refresh_backend_status()
         if not activation.available:
             if self._activation_is_disabled_setup(activation):
@@ -730,7 +724,7 @@ class AgentManager(QObject):
         """Start the runtime owner after the assistant UI is available."""
         if not self.chat_panel:
             return
-        if self._assistant_runtime.start(self._execution_mode):
+        if self._assistant_runtime.start():
             self.refresh_backend_status()
 
     def _create_assistant_controller(self, study: object) -> LLMController:
@@ -780,9 +774,6 @@ class AgentManager(QObject):
         controller.application_command_started.connect(
             self._on_application_command_started
         )
-        controller.execution_mode_changed.connect(
-            self._sync_execution_mode_ui,
-        )
 
     def _on_application_command_started(self) -> None:
         """Suppress observer refresh until the agent command result arrives."""
@@ -827,9 +818,7 @@ class AgentManager(QObject):
         if not text:
             return
         if self.agent_controller is None:
-            activation = self._assistant_runtime.activate_persisted(
-                execution_mode=self._execution_mode,
-            )
+            activation = self._assistant_runtime.activate_persisted()
             if activation.available:
                 self._show_low_priority_notice(
                     "Wait for the local assistant to finish loading."
@@ -1197,9 +1186,7 @@ class AgentManager(QObject):
         """Retry the persisted local runtime after a visible startup failure."""
         if self._assistant_runtime.current.phase is AssistantRuntimePhase.LOADING:
             return
-        activation = self._assistant_runtime.activate_persisted(
-            execution_mode=self._execution_mode,
-        )
+        activation = self._assistant_runtime.activate_persisted()
         self.refresh_backend_status()
         if not activation.available:
             if self._activation_is_disabled_setup(activation):
@@ -1333,36 +1320,6 @@ class AgentManager(QObject):
             )
         if hasattr(self, "clear_conversation_title_action"):
             self.clear_conversation_title_action.setEnabled(enabled)
-
-    def _on_execution_mode_changed(self, mode: str):
-        """Forward execution mode change from ChatPanel to controller.
-
-        Args:
-            mode: ``'single'`` or ``'multi'``.
-
-        """
-        self._execution_mode = "multi" if mode == "multi" else "single"
-        result = self._assistant_runtime.set_execution_mode(self._execution_mode)
-        if isinstance(result, RuntimeCommandAdmissionResult) and not result.accepted:
-            # The selected mode is still retained locally and will be applied
-            # during the next activation; no transient startup notice is needed.
-            logger.info(
-                "Assistant mode update deferred: %s",
-                redact_public_text(result.message),
-            )
-
-    def _sync_execution_mode_ui(self, mode: str):
-        """Sync execution mode button text from controller to ChatPanel.
-
-        Args:
-            mode: ``'single'`` or ``'multi'``.
-
-        """
-        self._execution_mode = "multi" if mode == "multi" else "single"
-        if self.chat_panel:
-            sync_mode = getattr(self.chat_panel, "set_execution_mode", None)
-            if callable(sync_mode):
-                sync_mode(self._execution_mode)
 
     def start_new_conversation(self):
         """Start a new chat without mutating the application workflow state."""

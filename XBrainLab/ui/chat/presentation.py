@@ -294,7 +294,7 @@ def present_assistant_activity(
             step=step,
             cancelability=ChatTurnCancelability.NOT_CANCELLABLE,
             cancelability_text=(
-                "Review the suggested action below to continue or cancel."
+                "Use the open confirmation or XBrainLab dialog to continue or cancel."
             ),
         )
     if phase is AssistantTurnActivityPhase.STOPPING:

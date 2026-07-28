@@ -133,6 +133,7 @@ def test_local_backend_load_success(mock_model_cls, mock_tokenizer_cls, mock_con
 
 def test_local_backend_template_processing(mock_config):
     """Test the template processing logic (merging system prompts)."""
+    mock_config.model_name = "microsoft/Phi-4-mini-instruct"
     backend = LocalBackend(mock_config)
 
     messages = [

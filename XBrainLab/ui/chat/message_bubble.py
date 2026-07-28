@@ -358,8 +358,8 @@ class MessageBubble(QWidget):
 
         """
         super().showEvent(event)
-        parent = self.parent()
-        if parent and hasattr(parent, "width"):
+        parent = self.parentWidget()
+        if parent is not None:
             self.adjust_width(parent.width())
 
     def setText(self, text):  # noqa: N802

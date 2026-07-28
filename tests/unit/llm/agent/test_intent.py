@@ -94,6 +94,17 @@ def test_infers_product_language_data_import_chain() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Explain how the model understands loading and standard preprocessing.",
+        "Compare how XBrainLab understands preprocessing and training.",
+    ),
+)
+def test_explanatory_understanding_language_does_not_authorize_mutation(text):
+    assert infer_user_intent(text) == "no_tool"
+
+
 def test_infers_multilingual_no_call_and_clarification_boundaries():
     assert infer_user_intent("Load /data/A01T.gdf") == "scan_source"
     assert infer_user_intent("Import my EEG folder /data/session01") == "scan_source"
@@ -222,6 +233,24 @@ def test_knowledge_why_questions_do_not_become_workflow_explanations(
     text: str,
 ) -> None:
     assert resolve_blocked_explanation_intent(text) is None
+    assert infer_user_intent(text) == "no_tool"
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Compare standard preprocessing and training settings.",
+        "I want to understand loading and standard preprocessing.",
+        "I am trying to understand loading and preprocessing.",
+        "請比較標準前處理和訓練設定",
+        "我想了解載入和標準前處理",
+        "想了解載入和標準前處理",
+        "了解載入和前處理的差異",
+    ),
+)
+def test_comparison_or_understanding_requests_do_not_authorize_mutation(
+    text: str,
+) -> None:
     assert infer_user_intent(text) == "no_tool"
 
 

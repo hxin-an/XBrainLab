@@ -154,7 +154,6 @@ def agent_mgr(qtbot) -> Any:
         )
         for method_name in (
             "stop_generation",
-            "set_execution_mode",
             "reset_conversation",
             "confirm",
             "resolve_ui_handoff",
@@ -338,8 +337,6 @@ class TestAgentManagerMethods:
         incomplete_controller.workflow_ui_handoff_requested = None
         incomplete_controller.application_command_completed.connect = MagicMock()
         incomplete_controller.application_command_started.connect = MagicMock()
-        incomplete_controller.execution_mode_changed.connect = MagicMock()
-
         with (
             patch(
                 "XBrainLab.ui.components.agent_manager.LLMController",
@@ -1434,8 +1431,6 @@ class TestAgentManagerMethods:
         raw_status,
     ):
         agent_mgr.chat_panel = MagicMock()
-        agent_mgr._execution_mode = "multi"
-
         agent_mgr.on_agent_status_update(raw_status)
 
         agent_mgr.chat_panel.set_workflow_status.assert_not_called()
@@ -1500,7 +1495,6 @@ class TestAgentManagerMethods:
         agent_mgr,
     ):
         agent_mgr.chat_panel = MagicMock()
-        agent_mgr._execution_mode = "multi"
         request = WorkflowUiHandoffRequest.for_decision(
             "create_epoch",
             decision_fields=("epoch_window", "target_event"),
@@ -1528,7 +1522,6 @@ class TestAgentManagerMethods:
         agent_mgr,
     ):
         agent_mgr.chat_panel = MagicMock()
-        agent_mgr._execution_mode = "multi"
         agent_mgr._open_assistant_panel_target = MagicMock()
         request = AssistantPanelNavigationRequest(target=AssistantPanelTarget.TRAINING)
 
@@ -1558,7 +1551,6 @@ class TestAgentManagerMethods:
         status,
     ):
         agent_mgr.chat_panel = MagicMock()
-        agent_mgr._execution_mode = "multi"
         request = WorkflowUiHandoffRequest.for_decision("create_epoch")
         resolution = _handoff_resolution(request, status)
         agent_mgr._workflow_ui_handoff_host.open = MagicMock(return_value=resolution)
@@ -1794,9 +1786,7 @@ class TestAgentManagerMethods:
             MockDlg.return_value.exec.return_value = True
             agent_mgr.open_settings_dialog()
 
-        agent_mgr._assistant_runtime.activate_persisted.assert_called_once_with(
-            execution_mode="single",
-        )
+        agent_mgr._assistant_runtime.activate_persisted.assert_called_once_with()
 
     def test_runtime_publication_controls_the_visible_composer(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -1853,7 +1843,6 @@ class TestAgentManagerMethods:
         agent_mgr.chat_dock.show.assert_called_once()
         agent_mgr._assistant_runtime.activate.assert_called_once_with(
             agent_mgr._assistant_runtime.load_config.return_value,
-            execution_mode="single",
         )
 
     @pytest.mark.parametrize(
@@ -2013,8 +2002,7 @@ class TestAgentManagerMethods:
     ):
         missing_message = "Model cache not found."
 
-        def activation_sequence(*, execution_mode):
-            assert execution_mode == "single"
+        def activation_sequence():
             call_index = agent_mgr._assistant_runtime.activate_persisted.call_count
             if call_index == 1:
                 agent_mgr._render_assistant_runtime(
@@ -2082,9 +2070,7 @@ class TestAgentManagerMethods:
 
         agent_mgr.retry_local_assistant()
 
-        agent_mgr._assistant_runtime.activate_persisted.assert_called_once_with(
-            execution_mode="single",
-        )
+        agent_mgr._assistant_runtime.activate_persisted.assert_called_once_with()
         assert agent_mgr._runtime_unavailable_notice is None
 
     def test_init_ui_uses_draggable_product_dock_titlebar(self, qtbot):
@@ -2320,7 +2306,6 @@ class _FakeAgentController(QObject):
     workflow_ui_handoff_requested = pyqtSignal(object)
     application_command_completed = pyqtSignal(object)
     application_command_started = pyqtSignal()
-    execution_mode_changed = pyqtSignal(str)
     runtime_state_changed = pyqtSignal(object)
     activity_changed = pyqtSignal(object)
 
@@ -2422,9 +2407,6 @@ class _FakeAgentController(QObject):
             self._active_correlation = None
 
     def execute_debug_tool(self, _request: object):
-        return None
-
-    def set_execution_mode(self, _mode: str):
         return None
 
     def set_model(self, _model: str):

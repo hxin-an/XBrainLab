@@ -72,15 +72,64 @@ def test_resolver_freezes_the_exact_launch_selection_and_settings(
         setattr(spec, "model_id", alternate)  # noqa: B010 - exercise frozen guard.
 
 
-def test_resolver_returns_an_explicit_visible_fallback_outcome(
+def test_resolver_fails_visibly_without_checking_catalog_fallbacks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     primary = LLMConfig.default_local_model_id()
-    fallback = LLMConfig.fallback_local_model_id()
+    ready_legacy_model = LLMConfig.fallback_local_model_id()
     config = _runtime_config(
         monkeypatch,
         model_id=primary,
-        ready_models={fallback},
+        ready_models={ready_legacy_model},
+    )
+    readiness_calls: list[str | None] = []
+    status_calls: list[str | None] = []
+    monkeypatch.setattr(
+        config,
+        "local_backend_ready",
+        lambda candidate=None: (
+            readiness_calls.append(candidate) or candidate == ready_legacy_model
+        ),
+    )
+    monkeypatch.setattr(
+        config,
+        "local_backend_status_message",
+        lambda candidate=None: (
+            status_calls.append(candidate)
+            or f"Model cache not found for {candidate or config.model_name}."
+        ),
+    )
+
+    resolution = AssistantRuntimeLaunchResolver().resolve(config)
+
+    assert resolution.available is False
+    assert resolution.launch_spec is None
+    assert resolution.failure is not None
+    assert resolution.failure.code is (
+        AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE
+    )
+    assert resolution.failure.requested_model_id == primary
+    assert primary in resolution.failure.message
+    assert ready_legacy_model not in resolution.failure.message
+    assert readiness_calls == [primary]
+    assert status_calls == [primary]
+
+
+@pytest.mark.parametrize(
+    "legacy_model",
+    [
+        "microsoft/Phi-4-mini-instruct",
+        "microsoft/Phi-3.5-mini-instruct",
+    ],
+)
+def test_resolver_supports_explicit_legacy_models_as_exact_selections(
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_model: str,
+) -> None:
+    config = _runtime_config(
+        monkeypatch,
+        model_id=legacy_model,
+        ready_models={legacy_model},
     )
 
     resolution = AssistantRuntimeLaunchResolver().resolve(config)
@@ -88,13 +137,10 @@ def test_resolver_returns_an_explicit_visible_fallback_outcome(
     assert resolution.available is True
     spec = resolution.launch_spec
     assert spec is not None
-    assert spec.requested_model_id == primary
-    assert spec.model_id == fallback
-    assert spec.outcome is AssistantRuntimeSelectionOutcome.FALLBACK
-    assert spec.fallback_used is True
-    assert primary in spec.selection_detail
-    assert fallback in spec.selection_detail
-    assert spec.build_config().model_name == fallback
+    assert spec.requested_model_id == legacy_model
+    assert spec.model_id == legacy_model
+    assert spec.outcome is AssistantRuntimeSelectionOutcome.EXACT
+    assert spec.fallback_used is False
 
 
 @pytest.mark.parametrize("backend_id", ["", "gemini", "unknown-runtime"])
@@ -119,7 +165,7 @@ def test_resolver_typed_fails_unknown_backend_ids_without_defaulting(
 
 
 @pytest.mark.parametrize("model_id", ["", "gpt-4o", "unknown/model"])
-def test_resolver_typed_fails_unknown_model_ids_before_readiness_or_fallback(
+def test_resolver_typed_fails_unknown_model_ids_before_readiness(
     monkeypatch: pytest.MonkeyPatch,
     model_id: str,
 ) -> None:

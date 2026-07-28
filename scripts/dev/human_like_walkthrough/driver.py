@@ -139,7 +139,6 @@ class WalkthroughAssistantController(QObject):
     error_occurred = pyqtSignal(str)
     panel_navigation_requested = pyqtSignal(object)
     workflow_ui_handoff_requested = pyqtSignal(object)
-    execution_mode_changed = pyqtSignal(str)
     application_command_completed = pyqtSignal(object)
     application_command_started = pyqtSignal()
     runtime_state_changed = pyqtSignal(object)
@@ -154,7 +153,6 @@ class WalkthroughAssistantController(QObject):
         self._generation_sequence = 0
         self._walkthrough_generation_id: int | None = None
         self._stop_pending = False
-        self.execution_mode = "single"
         self.events: list[str] = []
         self.confirmed_execution_count = 0
         self.session_generation = 0
@@ -501,11 +499,6 @@ class WalkthroughAssistantController(QObject):
         self.processing_finished.emit()
         if correlation is not None:
             self.turn_finished.emit(AssistantTurnTerminal(correlation=correlation))
-
-    def set_execution_mode(self, mode: str) -> None:
-        self.execution_mode = "multi" if mode == "multi" else "single"
-        self.events.append(f"mode:{self.execution_mode}")
-        self.execution_mode_changed.emit(self.execution_mode)
 
     def set_model(self, model_request: object) -> None:
         self._active_launch_spec = model_request

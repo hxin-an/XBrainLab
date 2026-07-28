@@ -1,4 +1,4 @@
-"""Staging and canonical publication for Guided Workflow evidence."""
+"""Staging and canonical publication for adaptive-workflow evidence."""
 
 from __future__ import annotations
 

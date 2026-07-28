@@ -13,6 +13,7 @@ from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionOutcome
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationEvent,
     AssistantGenerationEventPhase,
+    AssistantTurnScope,
 )
 from XBrainLab.llm.tools import application_surface
 from XBrainLab.llm.tools.application_surface import (
@@ -357,7 +358,7 @@ def _make_ctrl() -> Any:
     ctrl._tool_execution_count = 0
     ctrl._max_tool_executions = 5
     ctrl._turn_cancelled = False
-    ctrl._execution_mode = ctrl.MODE_SINGLE
+    ctrl._active_turn_scope = AssistantTurnScope.SINGLE_ACTION
     from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
 
     ctrl._pending_interactions = PendingInteractionCoordinator()

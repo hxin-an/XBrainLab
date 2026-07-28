@@ -16580,3 +16580,23 @@
   - `onset` / `duration` remain label-placement evidence and may seed the separate Epoch handoff;
     they are not saved as an Epoch window or baseline configuration. Native Windows DPI still
     requires human acceptance.
+
+### 2026-07-29 Granite 2B and multi-format teacher candidate
+
+- completed：
+  - Replaced the visible Agent mode selector with request-derived immutable turn scope.
+  - Made Granite 3.3 2B the exact product primary and removed automatic catalog fallback.
+  - Centralized the two-command host continuation allowlist and all execution checks in
+    `ToolAttemptCoordinator`.
+  - Rebuilt schema-v5 Granite boundary evidence with explicit model/host ownership.
+- validation：
+  - Agent baseline -> `1236 passed`; final relevant regression after reviewer repairs ->
+    `2700 passed`; Qt assistant integration -> `17 passed`.
+  - Data Interpretation -> `20/20` lifecycle, `14/14` formats, 7 public cases / 5 source families.
+  - Real wizard -> `17 passed`; IO/BIDS/cross-source -> `36 passed`; strict runner -> `4/4`.
+  - Exact Granite workflow, adaptive boundary, and human-like teacher artifacts -> PASS; UI and
+    architecture reviewers re-gated the repaired candidate -> PASS.
+  - Ruff, full Basedpyright, architecture compliance, and strict MkDocs build -> PASS.
+- claim boundary：
+  - The Granite walkthrough proves one bounded host-assisted product path, not benchmark accuracy.
+    Windows acceptance and a frozen candidate are required before thesis benchmark work begins.

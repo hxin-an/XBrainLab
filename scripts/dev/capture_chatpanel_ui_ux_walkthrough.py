@@ -251,10 +251,6 @@ class _TeardownProbeController(QObject):
     def set_model(self, _payload: object) -> None:
         return None
 
-    @pyqtSlot(str)
-    def set_execution_mode(self, _mode: str) -> None:
-        return None
-
     @pyqtSlot()
     def reset_conversation(self) -> None:
         return None
@@ -1022,11 +1018,6 @@ def _panel_relative_geometry(panel: ChatPanel) -> dict[str, Any]:
     return {
         "composer": _widget_panel_geometry(panel, panel.input_field),
         "send": _widget_panel_geometry(panel, panel.send_btn),
-        "mode_control": _widget_panel_geometry(panel, panel.mode_selector_widget),
-        "mode_description": _widget_panel_geometry(
-            panel,
-            panel.mode_description_label,
-        ),
         "response_action": _widget_panel_geometry(panel, response_action),
     }
 
@@ -1117,12 +1108,9 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
             panel_geometry["composer"]
         ),
         "send_inside_panel_on_all_sides": _geometry_inside(panel_geometry["send"]),
-        "mode_control_inside_panel_on_all_sides": _geometry_inside(
-            panel_geometry["mode_control"]
-        ),
-        "mode_description_inside_panel_when_visible": (
-            not panel.mode_description_label.isVisibleTo(panel)
-            or _geometry_inside(panel_geometry["mode_description"])
+        "legacy_mode_selector_absent": not any(
+            hasattr(panel, name)
+            for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
         ),
         "response_action_inside_panel_on_all_sides": (
             not response_actions or _geometry_inside(panel_geometry["response_action"])
@@ -1421,21 +1409,16 @@ def _first_paint_panel_state(panel: ChatPanel, *, surface: str) -> dict[str, Any
     horizontal = panel.scroll_area.horizontalScrollBar()
     runtime_phase = str(getattr(getattr(panel, "_runtime_phase", None), "value", ""))
     geometry = _panel_relative_geometry(panel)
-    mode_controls_visible = bool(
-        panel.ask_mode_btn.isVisibleTo(panel)
-        and panel.workflow_mode_btn.isVisibleTo(panel)
-    )
-    mode_controls_enabled = bool(
-        panel.ask_mode_btn.isEnabled() or panel.workflow_mode_btn.isEnabled()
+    manual_mode_selector_present = any(
+        hasattr(panel, name)
+        for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
     )
     text_overflow = human_evidence._assistant_text_overflow(panel)
     checks = {
         "first_paint_event_is_first": True,
         "assistant_usable_width_is_320": panel.width() == 320,
         "runtime_not_ready": runtime_phase == "idle",
-        "mode_selector_visible": panel.mode_selector_widget.isVisibleTo(panel),
-        "mode_controls_visible": mode_controls_visible,
-        "mode_controls_disabled": not mode_controls_enabled,
+        "manual_mode_selector_absent": not manual_mode_selector_present,
         "composer_visible": panel.input_field.isVisibleTo(panel),
         "composer_disabled": not panel.input_field.isEnabled(),
         "send_visible": panel.send_btn.isVisibleTo(panel),
@@ -1446,21 +1429,13 @@ def _first_paint_panel_state(panel: ChatPanel, *, surface: str) -> dict[str, Any
         "visible_text_fits": not text_overflow,
         "composer_inside_panel": _geometry_inside(geometry["composer"]),
         "send_inside_panel": _geometry_inside(geometry["send"]),
-        "mode_selector_inside_panel": _geometry_inside(geometry["mode_control"]),
-        "mode_description_geometry_recorded": isinstance(
-            geometry["mode_description"],
-            dict,
-        ),
     }
     return {
         "surface": surface,
         "assistant_usable_width": panel.width(),
         "assistant_height": panel.height(),
         "runtime_phase": runtime_phase,
-        "mode_selector_visible": panel.mode_selector_widget.isVisibleTo(panel),
-        "mode_controls_visible": mode_controls_visible,
-        "mode_controls_enabled": mode_controls_enabled,
-        "mode_description_visible": panel.mode_description_label.isVisibleTo(panel),
+        "manual_mode_selector_present": manual_mode_selector_present,
         "composer_enabled": panel.input_field.isEnabled(),
         "send_enabled": panel.send_btn.isEnabled(),
         "text_overflow": text_overflow,
@@ -1529,7 +1504,6 @@ def _capture_standalone_first_paint(
         show=panel.show,
         required_content_widgets={
             "runtime_state": panel.runtime_state_widget,
-            "mode_selector": panel.mode_selector_widget,
             "composer": panel.input_widget,
         },
     )
@@ -1668,12 +1642,9 @@ def _main_window_screen_record(
             panel_geometry["composer"]
         ),
         "send_inside_panel_on_all_sides": _geometry_inside(panel_geometry["send"]),
-        "mode_control_inside_panel_on_all_sides": _geometry_inside(
-            panel_geometry["mode_control"]
-        ),
-        "mode_description_inside_panel_when_visible": (
-            not panel.mode_description_label.isVisibleTo(panel)
-            or _geometry_inside(panel_geometry["mode_description"])
+        "legacy_mode_selector_absent": not any(
+            hasattr(panel, name)
+            for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
         ),
         "response_action_inside_panel_on_all_sides": (
             not response_actions or _geometry_inside(panel_geometry["response_action"])
@@ -1891,7 +1862,6 @@ def _capture_main_window_dock_walkthrough(
         show=dock.show,
         required_content_widgets={
             "assistant_runtime_state": panel.runtime_state_widget,
-            "assistant_mode_selector": panel.mode_selector_widget,
             "assistant_composer": panel.input_widget,
         },
     )
@@ -2220,8 +2190,7 @@ def _first_paint_contract_failures(payload: dict[str, Any]) -> list[str]:
             and evidence.get("settle_layout_called_before_observation") is False
             and evidence.get("assistant_usable_width") == 320
             and evidence.get("runtime_phase") == "idle"
-            and evidence.get("mode_selector_visible") is True
-            and evidence.get("mode_controls_enabled") is False
+            and evidence.get("manual_mode_selector_present") is False
             and evidence.get("composer_enabled") is False
             and evidence.get("send_enabled") is False
             and evidence.get("passed") is True
@@ -2600,8 +2569,8 @@ def render_readme(payload: dict[str, Any]) -> str:
             "",
             "The standalone ChatPanel and the real MainWindow dock are both sampled "
             "inside their first 320 px ChatPanel paint event, before the layout-settle "
-            "helper runs. The mode selector must already be visible while its controls, "
-            "composer, and Send action remain disabled for the idle runtime.",
+            "helper runs. The assistant activity state must already be visible while "
+            "its composer and Send action remain disabled for the idle runtime.",
             "",
             f"- first-paint contract passed: "
             f"`{payload['first_paint_320_contract']['passed']}`",

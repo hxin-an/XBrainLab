@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture a real Phi-4 Guided Workflow UI-handoff boundary proof."""
+"""Capture a real Granite adaptive-workflow UI-handoff boundary proof."""
 
 from scripts.dev.chatpanel_guided_boundary.runtime import cli_main
 

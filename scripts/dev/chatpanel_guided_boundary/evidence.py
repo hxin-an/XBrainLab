@@ -1,4 +1,4 @@
-"""Stable JSON and Markdown evidence for the Guided Workflow walkthrough."""
+"""Stable JSON and Markdown evidence for the adaptive-workflow walkthrough."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 from scripts.dev.chatpanel_guided_boundary.state import GuidedBoundaryState
 from scripts.dev.chatpanel_guided_boundary.validation import EXPECTED_AUTO_CHAIN
 
-SCHEMA_VERSION = 3
-WALKTHROUGH_NAME = "guided_workflow_ui_handoff_boundary"
+SCHEMA_VERSION = 5
+WALKTHROUGH_NAME = "adaptive_workflow_ui_handoff_boundary"
 CLAIM_BOUNDARY = (
     "This is deterministic offscreen/local-runtime product evidence. Offscreen "
     "evidence is not human Windows desktop acceptance."
@@ -53,7 +53,7 @@ class GuidedBoundaryEvidenceAssembler:
                 "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
                 "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
             },
-            "mode_selection": self.state.mode_selection,
+            "scope_resolution": self.state.scope_resolution,
             "screenshots": self.state.screenshots,
             "screenshot_artifacts": collect_screenshot_artifacts(
                 self.state.screenshots
@@ -92,7 +92,7 @@ def render_guided_boundary_markdown(payload: Mapping[str, Any]) -> str:
     """Render a compact human-readable summary from the stable JSON contract."""
     runtime = _mapping(payload.get("runtime"))
     screenshots = _mapping(payload.get("screenshots"))
-    mode = _mapping(payload.get("mode_selection"))
+    scope = _mapping(payload.get("scope_resolution"))
     boundary = _mapping(payload.get("boundary"))
     boundary_publication = _mapping(boundary.get("publication"))
     handoff = _mapping(payload.get("workflow_handoff"))
@@ -103,7 +103,7 @@ def render_guided_boundary_markdown(payload: Mapping[str, Any]) -> str:
     source_identity = _mapping(payload.get("source_identity"))
     screenshot_artifacts = _mapping(payload.get("screenshot_artifacts"))
     lines = [
-        "# ChatPanel Local Guided Workflow Boundary Walkthrough",
+        "# ChatPanel Local Adaptive Workflow Boundary Walkthrough",
         "",
         f"- status: `{payload.get('status', 'unknown')}`",
         f"- generated at (UTC): `{payload.get('generated_at_utc', '')}`",
@@ -117,9 +117,11 @@ def render_guided_boundary_markdown(payload: Mapping[str, Any]) -> str:
         f"- runtime classification: `{runtime.get('classification', 'unknown')}`",
         f"- runtime phase: `{runtime.get('phase', 'unknown')}`",
         f"- fallback used: `{runtime.get('fallback_used', False)}`",
-        f"- Guided mode selected by click: `{mode.get('selected_by_click', False)}`",
-        f"- panel / manager / controller mode: `{mode.get('panel', '')}` / "
-        f"`{mode.get('manager', '')}` / `{mode.get('controller', '')}`",
+        f"- turn scope source: `{scope.get('source', '')}`",
+        f"- resolved turn scope: `{scope.get('scope', '')}`",
+        f"- terminal command: `{scope.get('terminal_command')}`",
+        f"- legacy mode selector present: "
+        f"`{scope.get('legacy_selector_present', True)}`",
         f"- expected auto-chain: `{', '.join(payload.get('expected_auto_chain', []))}`",
         f"- boundary generation: `{boundary_publication.get('generation')}`",
         f"- workflow handoff request: `{handoff_request.get('request_id', '')}`",

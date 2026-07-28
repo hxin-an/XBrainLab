@@ -15,7 +15,7 @@ from scripts.dev.human_like_walkthrough.contract import (
     ASSISTANT_STOPPED_MESSAGE,
     build_artifact_contract,
 )
-from XBrainLab.ui.product_language import ASSISTANT_MODE_LABELS
+from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
 
 ASSISTANT_REVIEW_KEYS = (
     "assistant_processing_contract_review",
@@ -210,41 +210,17 @@ def build_assistant_processing_contract_review(
         item for item in phase.get("button_state", []) if isinstance(item, dict)
     ]
 
-    if (
-        processing.get("execution_mode") != "multi"
-        or not bool(processing.get("controller_processing"))
-        or not bool(processing.get("panel_processing"))
+    if not bool(processing.get("controller_processing")) or not bool(
+        processing.get("panel_processing")
     ):
-        findings.append(
-            "assistant processing did not capture active Guided workflow mode"
-        )
+        findings.append("assistant processing did not capture active request state")
     if processing.get("runtime_phase") != "ready":
         findings.append("assistant processing occurred before runtime was ready")
     if bool(processing.get("composer_input_enabled", True)):
         findings.append("assistant processing composer input is not disabled")
 
-    workflow_mode = processing.get("workflow_mode", {})
-    workflow_mode = workflow_mode if isinstance(workflow_mode, dict) else {}
-    workflow_button = next(
-        (
-            item
-            for item in button_states
-            if item.get("text") == ASSISTANT_MODE_LABELS["multi"]
-        ),
-        None,
-    )
-    if (
-        workflow_mode.get("text") != ASSISTANT_MODE_LABELS["multi"]
-        or not bool(workflow_mode.get("visible"))
-        or bool(workflow_mode.get("enabled", True))
-        or not bool(workflow_mode.get("checked"))
-        or workflow_button is None
-        or bool(workflow_button.get("enabled", True))
-        or not bool(workflow_button.get("checked"))
-    ):
-        findings.append(
-            "assistant processing Guided workflow selection evidence is missing"
-        )
+    if bool(processing.get("manual_mode_selector_present")):
+        findings.append("assistant processing still exposes a manual mode selector")
 
     stop_button = processing.get("stop_button", {})
     stop_button = stop_button if isinstance(stop_button, dict) else {}
@@ -312,14 +288,12 @@ def build_assistant_processing_contract_review(
         else {}
     )
     restored_ok = (
-        restored.get("execution_mode") == "multi"
+        not bool(restored.get("manual_mode_selector_present"))
         and not bool(restored.get("controller_processing", True))
         and not bool(restored.get("panel_processing", True))
         and bool(restored.get("composer_input_enabled"))
         and restored.get("send_button_text") == "Send"
         and not bool(restored.get("workflow_status_visible", True))
-        and bool(restored.get("workflow_checked"))
-        and not bool(restored.get("one_step_checked"))
         and idle_evidence == restored
     )
     if not restored_ok:
@@ -1025,6 +999,32 @@ def build_assistant_interaction_contract_review(
             interaction.get("destructive")
         ):
             findings.append(f"{phase_name} did not mark the reset as destructive")
+        if request_kind == "production_confirmation_card":
+            waiting = interaction.get("waiting_surface", {})
+            waiting = waiting if isinstance(waiting, dict) else {}
+            waiting_activity = waiting.get("turn_activity", {})
+            waiting_activity = (
+                waiting_activity if isinstance(waiting_activity, dict) else {}
+            )
+            waiting_button = waiting.get("stop_button", {})
+            waiting_button = waiting_button if isinstance(waiting_button, dict) else {}
+            cancelability = waiting_activity.get("cancelability_text", {})
+            cancelability = cancelability if isinstance(cancelability, dict) else {}
+            if (
+                waiting.get("header_status") != "Local · Waiting"
+                or waiting_activity.get("phase") != "waiting"
+                or waiting_button.get("text") != "Waiting"
+                or bool(waiting_button.get("enabled"))
+                or bool(waiting.get("composer_input_enabled", True))
+                or cancelability.get("text")
+                != (
+                    "Use the open confirmation or XBrainLab dialog to continue "
+                    "or cancel."
+                )
+            ):
+                findings.append(
+                    f"{phase_name} presents a pending decision as active work"
+                )
         if request_kind == "typed_workflow_ui_handoff":
             if (
                 interaction.get("handoff_kind") != "decision_required"
@@ -1173,6 +1173,11 @@ def build_assistant_settings_recovery_review(
             findings.append(f"assistant recovery lacks {label} evidence")
     if evidence.get("dialog_title") != "Assistant Settings":
         findings.append("assistant recovery did not open the real settings dialog")
+    if evidence.get("selected_model") != PRIMARY_LOCAL_MODEL_ID:
+        findings.append(
+            "assistant recovery did not capture the primary local model "
+            f"{PRIMARY_LOCAL_MODEL_ID}"
+        )
     if list(evidence.get("runtime_sequence", [])) != [
         "failed",
         "loading",

@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-07-15`
+最後更新：`2026-07-29`
 
 ## 範圍
 
@@ -123,10 +123,12 @@ command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 
 
 ### 執行模式
 
-- `One Step`：每次只執行一個已通過 schema、verification、capability 與 confirmation policy 的步驟。
-- `Workflow`：可連續執行安全步驟，直到 backend 回報 confirmation、`decision_needed`、
-  `can_auto_execute=False`、`stop_after_success=True`，或需要開啟既有 UI dialog。Evaluate
-  是 read-only terminal step，成功後停止，不會因 state 未改變而重複執行。
+- 使用者不再先選可見 execution mode。host 會從本回合自然語言產生 immutable
+  `AssistantTurnScope`：說明型請求不執行 tool、一般操作只執行一個已驗證步驟，只有明確要求
+  「繼續到需要我決定」或明確指定終點時才允許 bounded continuation。
+- continuation 只能連續執行安全步驟，直到 backend 回報 confirmation、`decision_needed`、
+  `can_auto_execute=False`、`stop_after_success=True`、到達 terminal endpoint，或需要開啟既有 UI
+  dialog。Evaluate 是 read-only terminal step，成功後停止，不會因 state 未改變而重複執行。
 - descriptive `decision_boundary` metadata 本身不是停止條件；真正的 backend policy 和當前 state
   才決定能否繼續，避免每個 tool 都被靜態描述過早截斷。
 - `recommended_next_step` 只由 `WorkflowDecisionContext` 產生；AgentManager 不再維護另一份推測。
@@ -139,7 +141,8 @@ workflow truth。`ContextAssembler` 會先從 `ApplicationService.get_state()` �
 
 目前 decision context 會明確列出：
 
-- `mode`：`step_by_step` 或 `continue_until_decision`。
+- `mode`：由 immutable turn scope 投影成 `step_by_step` 或 `continue_until_decision`，不是 UI
+  selector 的第二份狀態。
 - `workflow_stage`：使用者可理解的目前階段。
 - `recommended_next_step` / `recommended_label`：下一個建議 backend command。
 - `decision_needed`：缺哪些使用者決定，例如資料來源、epoch window、split strategy、model。
@@ -174,17 +177,18 @@ applied         -> loaded raw data / preprocess
 - local model backend。
 - 不依賴 API key。
 - 不把 Gemini/API 當成產品 execution mode。
-- 優先讓本地模型、模型 cache、GPU/CPU fallback 可理解、可測、可交接。
+- 優先讓本地模型、模型 cache、GPU/CPU execution 可理解、可測、可交接。
 - 模型選型不使用中國公司或中國來源模型。
-- Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 primary / fallback 選型。
+- Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 product / legacy 選型。
 - 優先考慮非中國來源、授權清楚、可本地部署的模型。
 
-2026-07-15 local runtime truth：
+2026-07-29 local runtime truth：
 
 | role | model | provider | estimated download | cache status | smoke |
 | --- | --- | --- | ---: | --- | --- |
-| primary | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | cached | real GPU ChatPanel workflow PASS |
-| fallback | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | cached | cache/preflight present; no current full ChatPanel run |
+| primary | `ibm-granite/granite-3.3-2b-instruct` | IBM | 5.08 GB | cached | prompt / structured / real GPU boundary workflow PASS |
+| legacy explicit choice | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | cached | older ChatPanel evidence only |
+| legacy explicit choice | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | not required by current candidate | no current full ChatPanel run |
 
 cache 位置：
 
@@ -192,10 +196,12 @@ cache 位置：
 XBrainLab/llm/core/models
 ```
 
-`scripts/dev/inspect_local_assistant_runtime.py --format markdown` reports
-`classification: gpu-ready`, `has_local_cache: True`, and cache usage `15.34 GB` against the
-20 GB product limit. The active model is Phi-4 mini. The real ChatPanel artifact covers one
-state-query tool turn and one normal answer turn; it is not a long-session or fallback-model claim.
+`scripts/dev/inspect_local_assistant_runtime.py --model
+ibm-granite/granite-3.3-2b-instruct --format json` reports `classification: gpu-ready`,
+`has_local_cache: true`, and cache usage `12.77 GB` against the 20 GB product limit. Granite is the
+exact product primary. The real boundary artifact covers one model-owned scan, host-owned
+parameter-free preview / validate continuation, typed Data Import review handoff, cancellation and
+shutdown; it is not a long-session or raw-model accuracy claim.
 舊 Qwen cache 已刪除，catalog / architecture guards 會阻止被禁用來源重新進入 product path。
 
 新增 runtime policy：
@@ -205,11 +211,11 @@ state-query tool turn and one normal answer turn; it is not a long-session or fa
 - `AgentManager` first-run consent 會在首次啟用 local runtime 前顯示 GPU/CPU resource
   notice、download estimate、cache status，並提供 Enable / Download / Use existing cache /
   Later / Disable；app startup 不會自動載入大型 local model。
-- `AgentWorker` 啟動 local runtime 時會先嘗試設定中的 local model；若不可用且 fallback cache 可用，
-  會依 policy 切到 fallback model，而不是啟動 API / Gemini。
+- runtime resolver 只啟動設定中明確選定且可用的 exact model；若不可用就回 typed unavailable，
+  不靜默改用另一個 catalog model。
 - `LocalBackend` 會阻擋未列入 product catalog 或被中國模型 policy 擋下的 repo id。
-- Phi remote-code compatibility patch 目前只針對 runtime annotation / cache API 差異，並用
-  prompt smoke 與 structured-output smoke 驗證。
+- `LocalBackend` 的 `trust_remote_code`、CUDA dtype、system-role 與 runtime context budget 都來自
+  immutable catalog spec；本機 settings 不能放寬 remote-code trust。
 - `LLMConfig` 會把舊 `INFERENCE_MODE=api` 或 settings 裡的 Gemini/API mode 讀成 `local`。
 - `LLMEngine` 只會 instantiate `LocalBackend`；product package 已移除 remote backend modules。
 - `AgentWorker.reinitialize_agent(...)` 只接受 `allowed_local_model_ids()` 裡的本地模型或 generic
@@ -227,11 +233,11 @@ state-query tool turn and one normal answer turn; it is not a long-session or fa
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前 primary / fallback cache 都存在，且 primary GPU ChatPanel workflow 已通過。新的 unassisted
-raw candidate score 是 `6/12`；host-assisted product policy score 是 `12/12`，因為 host 會執行
-request admission、normalization、verification 和 capability blocking。後者不能替代 raw-model
-accuracy，也不能把歷史 `117/117` 或 `121/121` artifact 恢復成 thesis claim。兩種分數都不能
-替代長時間 ChatPanel workflow、Windows launcher、UI usability 或 human desktop acceptance。
+目前只宣稱 Granite 的產品 boundary workflow 通過。host 會執行 request admission、
+normalization、schema / capability / confirmation verification，並只對 allowlisted parameter-free
+`preview_interpretation` / `validate_interpretation` 做 deterministic continuation。這種
+host-assisted evidence 不能替代 raw-model accuracy，也不能把歷史 `117/117`、`121/121` 或 Phi
+candidate 分數移植成 Granite thesis claim。正式 benchmark 要等 working candidate freeze 後另跑。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -275,7 +281,7 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 - `AgentManager` header 將 runtime 與 turn state投影成 `Local · Loading / Ready / Working / Error`；
   窄 dock 先保留產品標題、New chat、Settings、Close，再隱藏非必要 badge / action。
 - message area 擁有 loading、empty、transcript、activity、response action 與 confirmation card；
-  composer / mode selector 固定在底部 layout，不用 absolute positioning。
+  composer 固定在底部 layout，不用 absolute positioning。Panel 不顯示 execution-mode selector。
 - setting change 與高風險 action 使用 transient `AssistantConfirmationCard`。Card 持有原始
   `AgentConfirmationRequest`，Apply / Cancel 產生同 identity 的 typed
   `AgentConfirmationResolution`，不從顯示文字重建 command。
@@ -423,13 +429,14 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 已在本輪 runtime 驗證的部分：
 
 - local model catalog、download preflight 和 health-check script 存在。
-- runtime inspection 回報 Phi-4 mini `gpu-ready`，兩個 approved model cache 共 `15.34 GB`。
-- 真 ChatPanel workflow 已完成 state-query tool turn 和一般回答 turn，並正常回 idle / shutdown。
+- runtime inspection 回報 Granite 3.3 2B `gpu-ready`，catalog cache 共 `12.77 GB / 20 GB`。
+- 真 Granite ChatPanel boundary workflow 已完成 model-owned scan、host-owned preview / validate、
+  typed review handoff、取消後 state 不變與正常 shutdown。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
-- assistant product UI 已改成使用者語言：workflow stage、local model status、next steps 和
-  execution mode 不再用 raw command names 或 developer labels 當第一層資訊；model /
-  execution mode 轉到 Options 或底部低干擾 status。
+- assistant product UI 已改成使用者語言：workflow stage、local model status 與 next steps
+  不再用 raw command names 或 developer labels 當第一層資訊；execution scope 由 request
+  推導，不再要求使用者先理解 Agent mode。
 - product-flow tests 覆蓋 normal chat response、empty response、worker error、local unavailable、
   blocked command feedback、assistant click-through layout。
 
@@ -439,7 +446,7 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 - 長時間、多步 tool-call loop 在真實使用者 workflow 中是否穩定。
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
-- fallback model 的完整 ChatPanel run、長時間真人桌面 session 與跨重啟 cache lifecycle。
+- 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
 
 ## 架構評斷
 
@@ -512,8 +519,8 @@ Data / Training / Evaluation / Persistence
 
 這份文件目前是 `verified engineering checkpoint`。
 
-它已對照主要 source code、真 Phi-4 ChatPanel workflow 與 candidate eval；仍沒有證明 RAG 品質、
-長時間多步 tool-call workflow、fallback model UI session 或 thesis-grade raw accuracy。
+它已對照主要 source code、真 Granite ChatPanel boundary workflow 與 host policy gate；仍沒有證明
+RAG 品質、長時間多步 tool-call workflow 或 thesis-grade raw accuracy。
 
 local-only runtime cleanup 已對齊 product source：remote backend modules、remote key handling、
 model settings remote UI 和 product remote switch path 已移除；剩餘驗證重點是長時間 local model

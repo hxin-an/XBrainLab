@@ -141,7 +141,13 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
 )
+from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
 from XBrainLab.ui.chat.message_bubble import MessageBubble
+from XBrainLab.ui.chat.presentation import (
+    ChatTurnCancelability,
+    ChatTurnPresentation,
+    ChatTurnPresentationPhase,
+)
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
@@ -153,7 +159,7 @@ def _admit_walkthrough_turn(
     controller: WalkthroughAssistantController,
     text: str,
 ) -> AssistantTurnRequest:
-    request = AssistantTurnRequest(
+    request = AssistantTurnRequest.single_action(
         correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
         text=text,
     )
@@ -316,6 +322,7 @@ def _base_payload() -> dict:
         "host_config_unchanged": True,
         "runtime_sequence": ["failed", "loading", "ready"],
         "settings_screenshot": "assistant-settings.png",
+        "selected_model": PRIMARY_LOCAL_MODEL_ID,
     }
     runtime_ready_phase["notes"]["assistant_settings_recovery"] = settings_evidence
     success_phase = next(
@@ -525,17 +532,11 @@ def _valid_assistant_processing_phase() -> dict[str, Any]:
         "phase": "assistant_processing_state",
         "screenshot": "assistant-processing.png",
         "visible_text": [
-            "Guided workflow",
             "Preparing your request",
             "Current step: Checking the current EEG workflow",
             "Stop",
         ],
         "button_state": [
-            {
-                "text": "Guided workflow",
-                "enabled": False,
-                "checked": True,
-            },
             {
                 "text": "Stop",
                 "enabled": True,
@@ -545,17 +546,11 @@ def _valid_assistant_processing_phase() -> dict[str, Any]:
         "workflow_state": {},
         "notes": {
             "assistant_processing": {
-                "execution_mode": "multi",
+                "manual_mode_selector_present": False,
                 "runtime_phase": "ready",
                 "controller_processing": True,
                 "panel_processing": True,
                 "composer_input_enabled": False,
-                "workflow_mode": {
-                    "text": "Guided workflow",
-                    "visible": True,
-                    "enabled": False,
-                    "checked": True,
-                },
                 "stop_button": {
                     "text": "Stop",
                     "visible": True,
@@ -609,14 +604,12 @@ def _valid_assistant_processing_phase() -> dict[str, Any]:
                 },
             },
             "restored_state": {
-                "execution_mode": "multi",
+                "manual_mode_selector_present": False,
                 "controller_processing": False,
                 "panel_processing": False,
                 "composer_input_enabled": True,
                 "send_button_text": "Send",
                 "workflow_status_visible": False,
-                "one_step_checked": False,
-                "workflow_checked": True,
             },
         },
     }
@@ -627,13 +620,8 @@ def _valid_assistant_idle_phase() -> dict[str, Any]:
     return {
         "phase": "assistant_idle_after_stop",
         "screenshot": "assistant-idle.png",
-        "visible_text": ["Guided workflow", "Send", ASSISTANT_STOPPED_MESSAGE],
+        "visible_text": ["Send", ASSISTANT_STOPPED_MESSAGE],
         "button_state": [
-            {
-                "text": "Guided workflow",
-                "enabled": True,
-                "checked": True,
-            },
             {"text": "Send", "enabled": True, "checked": None},
         ],
         "workflow_state": {},
@@ -1713,6 +1701,27 @@ def test_assistant_claim_review_rejects_failed_command_with_success_copy() -> No
 
 
 def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
+    waiting_surface = {
+        "header_status": "Local · Waiting",
+        "controller_processing": True,
+        "panel_processing": True,
+        "composer_input_enabled": False,
+        "stop_button": {
+            "text": "Waiting",
+            "visible": True,
+            "enabled": False,
+        },
+        "turn_activity": {
+            "phase": "waiting",
+            "cancelability": "not_cancellable",
+            "cancelability_text": {
+                "text": (
+                    "Use the open confirmation or XBrainLab dialog to continue "
+                    "or cancel."
+                ),
+            },
+        },
+    }
     return [
         {
             "phase": "assistant_confirmation_cancelled",
@@ -1730,6 +1739,7 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
                     "request_correlated": True,
                     "primary_action": "Start a new session",
                     "secondary_action": "Cancel",
+                    "waiting_surface": deepcopy(waiting_surface),
                     "terminal_messages": [
                         "Session reset cancelled. Your current workflow is unchanged."
                     ],
@@ -1755,6 +1765,7 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
                     "request_correlated": True,
                     "primary_action": "Start a new session",
                     "secondary_action": "Cancel",
+                    "waiting_surface": deepcopy(waiting_surface),
                     "terminal_messages": [ASSISTANT_CONFIRMED_TERMINAL_MESSAGE],
                     "confirmed_execution_count": 1,
                     "duplicate_terminal_message": False,
@@ -1844,6 +1855,20 @@ def test_assistant_interaction_review_requires_cancel_confirm_and_handoff() -> N
     assert review["checked_phases"] == 3
 
 
+def test_assistant_interaction_review_rejects_working_copy_at_decision_boundary() -> (
+    None
+):
+    phases = _valid_assistant_interaction_phases()
+    waiting = phases[1]["notes"]["assistant_interaction"]["waiting_surface"]
+    waiting["header_status"] = "Local · Working"
+    waiting["stop_button"]["text"] = "Working"
+
+    review = build_assistant_interaction_contract_review(phases)
+
+    assert review["passed"] is False
+    assert "pending decision as active work" in "; ".join(review["findings"])
+
+
 def test_assistant_interaction_review_rejects_duplicate_or_success_after_cancel() -> (
     None
 ):
@@ -1930,6 +1955,7 @@ def test_settings_recovery_review_requires_real_dialog_save_and_runtime_sequence
                 "host_config_unchanged": True,
                 "runtime_sequence": ["failed", "loading", "ready"],
                 "settings_screenshot": "assistant-settings.png",
+                "selected_model": PRIMARY_LOCAL_MODEL_ID,
             }
         },
     }
@@ -1941,6 +1967,31 @@ def test_settings_recovery_review_requires_real_dialog_save_and_runtime_sequence
 
     assert review["passed"] is False
     assert "save" in "; ".join(review["findings"]).lower()
+
+
+def test_settings_recovery_review_rejects_non_primary_model_evidence() -> None:
+    phase = {
+        "phase": "assistant_runtime_ready",
+        "notes": {
+            "assistant_settings_recovery": {
+                "open_settings_clicked": True,
+                "dialog_opened": True,
+                "dialog_title": "Assistant Settings",
+                "activate_clicked": True,
+                "save_observed": True,
+                "isolated_config": True,
+                "host_config_unchanged": True,
+                "runtime_sequence": ["failed", "loading", "ready"],
+                "settings_screenshot": "assistant-settings.png",
+                "selected_model": "microsoft/Phi-4-mini-instruct",
+            }
+        },
+    }
+
+    review = build_assistant_settings_recovery_review([phase])
+
+    assert review["passed"] is False
+    assert PRIMARY_LOCAL_MODEL_ID in "; ".join(review["findings"])
 
 
 @pytest.mark.parametrize(
@@ -2058,7 +2109,6 @@ def test_walkthrough_processing_request_shows_workflow_feedback(qtbot) -> None:
         controller.publish_runtime("ready")
         panel = manager.chat_panel
         assert panel is not None
-        panel.workflow_mode_btn.click()
         app = QApplication.instance()
         assert isinstance(app, QApplication)
 
@@ -2974,7 +3024,7 @@ def test_right_panel_guard_accepts_compact_main_window_layout(
     _assert_right_panels_rendered(window, screenshot)
 
 
-def test_assistant_loading_guard_requires_modes_and_send_to_be_painted(
+def test_assistant_loading_guard_requires_composer_and_send_to_be_painted(
     qtbot,
     tmp_path,
 ) -> None:
@@ -2988,12 +3038,6 @@ def test_assistant_loading_guard_requires_modes_and_send_to_be_painted(
     control_panel = QWidget(panel)
     control_panel.setObjectName("ControlPanel")
     control_layout = QVBoxLayout(control_panel)
-    mode_row = QHBoxLayout()
-    ask_mode = QPushButton("Single action", control_panel)
-    workflow_mode = QPushButton("Guided workflow", control_panel)
-    mode_row.addWidget(ask_mode)
-    mode_row.addWidget(workflow_mode)
-    control_layout.addLayout(mode_row)
     input_field = QLineEdit(control_panel)
     input_field.setPlaceholderText("Ask about the current workflow")
     control_layout.addWidget(input_field)
@@ -3006,8 +3050,6 @@ def test_assistant_loading_guard_requires_modes_and_send_to_be_painted(
     panel_layout.addWidget(control_panel)
     root_layout.addWidget(panel)
     panel_state = cast(Any, panel)
-    panel_state.ask_mode_btn = ask_mode
-    panel_state.workflow_mode_btn = workflow_mode
     panel_state.input_field = input_field
     panel_state.send_btn = send
     panel_state.empty_state_action_button = empty_action
@@ -3027,11 +3069,11 @@ def test_assistant_loading_guard_requires_modes_and_send_to_be_painted(
     ):
         _assert_assistant_dock_rendered(root, blank)
 
-    workflow_mode.hide()
-    with pytest.raises(RuntimeError, match="control is hidden"):
+    input_field.hide()
+    with pytest.raises(RuntimeError, match="visible composer input"):
         _assert_assistant_dock_rendered(root, complete)
 
-    workflow_mode.show()
+    input_field.show()
     empty_action.setAccessibleName("stale action")
     with pytest.raises(RuntimeError, match="current action copy"):
         _assert_assistant_dock_rendered(root, complete)
@@ -3047,15 +3089,12 @@ def test_assistant_processing_guard_rejects_send_for_non_cancelable_work(
     panel = QWidget(root)
     panel.setObjectName("AssistantPanel")
     panel.setGeometry(0, 0, 420, 180)
-    ask_mode = QPushButton("Single action", panel)
-    ask_mode.setGeometry(10, 20, 180, 34)
-    workflow_mode = QPushButton("Guided workflow", panel)
-    workflow_mode.setGeometry(200, 20, 200, 34)
+    input_field = QLineEdit(panel)
+    input_field.setGeometry(10, 70, 290, 40)
     send = QPushButton("Send", panel)
     send.setGeometry(310, 120, 90, 34)
     panel_state = cast(Any, panel)
-    panel_state.ask_mode_btn = ask_mode
-    panel_state.workflow_mode_btn = workflow_mode
+    panel_state.input_field = input_field
     panel_state.send_btn = send
     panel_state.is_processing = True
     root.show()
@@ -3067,6 +3106,42 @@ def test_assistant_processing_guard_rejects_send_for_non_cancelable_work(
         _assert_assistant_dock_rendered(root, screenshot)
 
 
+def test_assistant_processing_guard_accepts_typed_waiting_action(
+    qtbot,
+    tmp_path,
+) -> None:
+    root = QWidget()
+    qtbot.addWidget(root)
+    root.resize(420, 180)
+    panel = QWidget(root)
+    panel.setObjectName("AssistantPanel")
+    panel.setGeometry(0, 0, 420, 180)
+    input_field = QLineEdit(panel)
+    input_field.setGeometry(10, 70, 290, 40)
+    activity = QLabel("Waiting for your decision", panel)
+    activity.setGeometry(10, 10, 260, 40)
+    send = QPushButton("Waiting", panel)
+    send.setGeometry(310, 120, 90, 34)
+    panel_state = cast(Any, panel)
+    panel_state.input_field = input_field
+    panel_state.send_btn = send
+    panel_state.turn_activity_widget = activity
+    panel_state.is_processing = True
+    panel_state._turn_presentation = ChatTurnPresentation(
+        phase=ChatTurnPresentationPhase.WAITING,
+        primary_status="Waiting for your decision",
+        step="Use the open confirmation to continue or cancel",
+        cancelability=ChatTurnCancelability.NOT_CANCELLABLE,
+        cancelability_text="Use the open confirmation to continue or cancel.",
+    )
+    root.show()
+    qtbot.wait(20)
+    screenshot = tmp_path / "assistant-processing-waiting.png"
+    assert root.grab().save(str(screenshot))
+
+    _assert_assistant_dock_rendered(root, screenshot)
+
+
 def test_assistant_empty_capture_requires_current_action_button(
     qtbot,
     tmp_path,
@@ -3076,14 +3151,12 @@ def test_assistant_empty_capture_requires_current_action_button(
     panel = QWidget(dock)
     panel.setObjectName("AssistantPanel")
     layout = QVBoxLayout(panel)
-    ask_mode = QPushButton("Single action", panel)
-    workflow_mode = QPushButton("Guided workflow", panel)
+    input_field = QLineEdit(panel)
     send = QPushButton("Send", panel)
-    for control in (ask_mode, workflow_mode, send):
+    for control in (input_field, send):
         layout.addWidget(control)
     state = cast(Any, panel)
-    state.ask_mode_btn = ask_mode
-    state.workflow_mode_btn = workflow_mode
+    state.input_field = input_field
     state.send_btn = send
     state.is_processing = False
     dock.setWidget(panel)
@@ -3492,8 +3565,8 @@ def test_assistant_processing_contract_accepts_readable_loading_evidence() -> No
     [
         ("composer_enabled", "composer input is not disabled"),
         (
-            "workflow_unlocked",
-            "Guided workflow selection evidence is missing",
+            "legacy_mode_selector",
+            "manual mode selector",
         ),
         ("status_hidden", "typed turn activity is not visible"),
         ("status_overflow", "turn activity text overflows"),
@@ -3513,8 +3586,8 @@ def test_assistant_processing_contract_rejects_incomplete_loading_evidence(
     restored = phase["notes"]["restored_state"]
     if mutation == "composer_enabled":
         processing["composer_input_enabled"] = True
-    elif mutation == "workflow_unlocked":
-        processing["workflow_mode"]["enabled"] = True
+    elif mutation == "legacy_mode_selector":
+        processing["manual_mode_selector_present"] = True
     elif mutation == "status_hidden":
         processing["turn_activity"]["primary_status"]["visible"] = False
     elif mutation == "status_overflow":
@@ -3524,7 +3597,7 @@ def test_assistant_processing_contract_rejects_incomplete_loading_evidence(
     elif mutation == "missing_stop_text":
         phase["visible_text"].remove("Stop")
     elif mutation == "not_restored":
-        restored["execution_mode"] = "single"
+        restored["manual_mode_selector_present"] = True
     elif mutation == "missing_terminal":
         idle_phase["notes"]["assistant_cancelled_turn"]["terminal_messages"] = []
 

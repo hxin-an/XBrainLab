@@ -22,6 +22,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
+    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -118,6 +119,7 @@ class _DeliveryDispatcher:
         self.controller: _LifecycleController | None = None
         self.outcomes: dict[str, bool | None] = {}
         self.calls: list[str] = []
+        self.turn_requests: list[AssistantTurnRequest] = []
         self.debug_requests: list[AssistantDebugToolRequest] = []
 
     def _deliver(self, command_name: str) -> bool | None:
@@ -130,7 +132,8 @@ class _DeliveryDispatcher:
     def initialize(self, _launch_spec: AssistantRuntimeLaunchSpec) -> bool | None:
         return self._deliver("initialize")
 
-    def submit(self, _request: AssistantTurnRequest) -> bool | None:
+    def submit(self, request: AssistantTurnRequest) -> bool | None:
+        self.turn_requests.append(request)
         return self._deliver("submit")
 
     def stop(self) -> bool | None:
@@ -138,9 +141,6 @@ class _DeliveryDispatcher:
 
     def set_model(self, _launch_spec: AssistantRuntimeLaunchSpec) -> bool | None:
         return self._deliver("set_model")
-
-    def set_mode(self, _mode: str) -> bool | None:
-        return self._deliver("set_mode")
 
     def reset(self) -> bool | None:
         return self._deliver("reset")
@@ -205,7 +205,7 @@ def _ready_lifecycle(
         config_loader=lambda: LLMConfig(model_name=model_id),
         resolver=cast(Any, resolver) if resolver is not None else None,
     )
-    assert lifecycle.start("single", launch_spec=_launch_spec(model_id)) is True
+    assert lifecycle.start(launch_spec=_launch_spec(model_id)) is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -222,7 +222,7 @@ def _ready_lifecycle(
 
 @pytest.mark.parametrize(
     "command_name",
-    ["stop", "set_mode", "reset", "confirm", "resolve_ui_handoff", "debug"],
+    ["stop", "reset", "confirm", "resolve_ui_handoff", "debug"],
 )
 def test_lifecycle_never_accepts_none_delivery(command_name: str) -> None:
     dispatcher = _DeliveryDispatcher()
@@ -232,8 +232,6 @@ def test_lifecycle_never_accepts_none_delivery(command_name: str) -> None:
     if command_name == "stop":
         assert lifecycle.submit("active request").accepted
         result = lifecycle.stop_generation()
-    elif command_name == "set_mode":
-        result = lifecycle.set_execution_mode("multi")
     elif command_name == "reset":
         result = lifecycle.reset_conversation()
     elif command_name == "confirm":
@@ -257,6 +255,31 @@ def test_rejected_submit_releases_the_reserved_turn() -> None:
     assert result.status is RuntimeCommandAdmissionStatus.REJECTED
     assert result.turn_id is None
     assert lifecycle.turn_in_flight is False
+
+
+def test_submit_resolves_one_immutable_scope_from_each_natural_request() -> None:
+    dispatcher = _DeliveryDispatcher()
+    lifecycle, controller = _ready_lifecycle(dispatcher)
+
+    single = lifecycle.submit("Explain the current workflow status.")
+
+    assert single.accepted is True
+    [single_request] = dispatcher.turn_requests
+    assert single_request.scope is AssistantTurnScope.SINGLE_ACTION
+    assert single_request.terminal_command is None
+    controller.turn_finished.emit(
+        AssistantTurnTerminal(
+            correlation=single_request.correlation,
+            outcome="completed",
+        )
+    )
+
+    guided = lifecycle.submit("Load this EEG file, preprocess it, and create epochs.")
+
+    assert guided.accepted is True
+    guided_request = dispatcher.turn_requests[-1]
+    assert guided_request.scope is AssistantTurnScope.GUIDED_WORKFLOW
+    assert guided_request.terminal_command == "create_epoch"
 
 
 def test_delivery_error_releases_only_its_correlated_turn() -> None:
@@ -335,13 +358,7 @@ def test_rejected_terminal_handoff_delivery_finalizes_one_correlated_turn() -> N
         dispatcher=cast(Any, dispatcher),
         config_loader=lambda: LLMConfig(model_name="test/local-primary"),
     )
-    assert (
-        lifecycle.start(
-            "single",
-            launch_spec=_launch_spec("test/local-primary"),
-        )
-        is True
-    )
+    assert lifecycle.start(launch_spec=_launch_spec("test/local-primary")) is True
     activation_id = lifecycle.expected_activation_id
     assert activation_id is not None
     lifecycle.accept_runtime_snapshot(
@@ -370,14 +387,12 @@ def test_rejected_terminal_handoff_delivery_finalizes_one_correlated_turn() -> N
     assert failed.status is WorkflowUiHandoffResolutionStatus.FAILED
 
 
-@pytest.mark.parametrize("command_name", ["set_mode", "initialize"])
 @pytest.mark.parametrize("delivery_result", [False, None])
 def test_start_rolls_back_when_initial_command_delivery_is_rejected(
-    command_name: str,
     delivery_result: bool | None,
 ) -> None:
     dispatcher = _DeliveryDispatcher()
-    dispatcher.outcomes[command_name] = delivery_result
+    dispatcher.outcomes["initialize"] = delivery_result
     controller = _LifecycleController()
     lifecycle = AssistantRuntimeLifecycle(
         study=object(),
@@ -385,13 +400,7 @@ def test_start_rolls_back_when_initial_command_delivery_is_rejected(
         dispatcher=cast(Any, dispatcher),
     )
 
-    assert (
-        lifecycle.start(
-            "single",
-            launch_spec=_launch_spec("test/local-primary"),
-        )
-        is False
-    )
+    assert lifecycle.start(launch_spec=_launch_spec("test/local-primary")) is False
     assert lifecycle.initialized is False
     assert lifecycle.controller is None
     assert controller.closed is True

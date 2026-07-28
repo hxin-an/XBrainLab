@@ -109,9 +109,6 @@ class _DirectController:
     def set_model(self, _launch_spec: AssistantRuntimeLaunchSpec) -> bool | None:
         return self._deliver("set_model")
 
-    def set_execution_mode(self, _mode: str) -> bool | None:
-        return self._deliver("set_mode")
-
     def reset_conversation(self) -> bool | None:
         return self._deliver("reset")
 
@@ -155,9 +152,6 @@ class _QueuedController(QObject):
 
     def set_model(self, _launch_spec: AssistantRuntimeLaunchSpec) -> None:
         self.calls.append("set_model")
-
-    def set_execution_mode(self, _mode: str) -> None:
-        self.calls.append("set_mode")
 
     def reset_conversation(self) -> None:
         self.calls.append("reset")
@@ -262,14 +256,13 @@ def _dispatch_all(dispatcher: AssistantCommandDispatcher) -> dict[str, bool]:
     return {
         "initialize": dispatcher.initialize(launch_spec),
         "submit": dispatcher.submit(
-            AssistantTurnRequest(
+            AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text="inspect state",
             )
         ),
         "stop": dispatcher.stop(),
         "set_model": dispatcher.set_model(launch_spec),
-        "set_mode": dispatcher.set_mode("single"),
         "reset": dispatcher.reset(),
         "confirm": dispatcher.confirm(_confirmation()),
         "resolve_ui_handoff": dispatcher.resolve_ui_handoff(_handoff()),
@@ -299,7 +292,6 @@ def test_direct_dispatch_treats_none_or_true_callbacks_as_delivered(
             "submit",
             "stop",
             "set_model",
-            "set_mode",
             "reset",
             "confirm",
             "resolve_ui_handoff",
@@ -441,11 +433,11 @@ def test_queued_submit_exception_is_acknowledged_without_sys_excepthook(
         lambda _type, value, _traceback: uncaught.append(value),
     )
     dispatcher.bind(controller)
-    first = AssistantTurnRequest(
+    first = AssistantTurnRequest.single_action(
         correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
         text="first",
     )
-    second = AssistantTurnRequest(
+    second = AssistantTurnRequest.single_action(
         correlation=AssistantTurnCorrelation(generation=2, turn_id=2),
         text="second",
     )

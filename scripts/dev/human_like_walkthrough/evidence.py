@@ -684,8 +684,6 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
     """Return named assistant widgets whose rendered text exceeds bounds."""
     overflows: list[str] = []
     for name in (
-        "ask_mode_btn",
-        "workflow_mode_btn",
         "send_btn",
         "empty_state_action_button",
         "setup_btn",
@@ -715,7 +713,6 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
         "turn_activity_title",
         "turn_activity_step",
         "turn_activity_cancelability",
-        "mode_description_label",
     ):
         label = getattr(panel, name, None)
         if label is None or not label.isVisible() or not label.text():
@@ -958,7 +955,6 @@ def assistant_processing_evidence(
     """Return readable state and geometry evidence while processing."""
     input_field = panel.input_field
     send_button = panel.send_btn
-    workflow_button = panel.workflow_mode_btn
     status_label = panel.workflow_run_status_label
     status_text = " ".join(status_label.text().split())
     text_width = status_label.fontMetrics().horizontalAdvance(status_text)
@@ -991,19 +987,17 @@ def assistant_processing_evidence(
         }
 
     return {
-        "execution_mode": str(panel.current_execution_mode),
+        "manual_mode_selector_present": any(
+            hasattr(panel, name)
+            for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
+        ),
         "runtime_phase": str(
             getattr(getattr(panel, "_runtime_phase", None), "value", "")
         ),
+        "header_status": str(getattr(panel, "header_status_text", "")),
         "controller_processing": bool(controller_processing),
         "panel_processing": bool(panel.is_processing),
         "composer_input_enabled": input_field.isEnabled(),
-        "workflow_mode": {
-            "text": workflow_button.text(),
-            "visible": workflow_button.isVisible(),
-            "enabled": workflow_button.isEnabled(),
-            "checked": workflow_button.isChecked(),
-        },
         "stop_button": {
             "text": send_button.text(),
             "visible": send_button.isVisible(),
@@ -1090,12 +1084,13 @@ def assistant_restored_state(
 ) -> dict[str, Any]:
     """Return evidence that Stop restored an idle, usable composer."""
     return {
-        "execution_mode": str(panel.current_execution_mode),
+        "manual_mode_selector_present": any(
+            hasattr(panel, name)
+            for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
+        ),
         "controller_processing": bool(controller_processing),
         "panel_processing": bool(panel.is_processing),
         "composer_input_enabled": panel.input_field.isEnabled(),
         "send_button_text": panel.send_btn.text(),
         "workflow_status_visible": panel.workflow_run_status_label.isVisible(),
-        "one_step_checked": panel.ask_mode_btn.isChecked(),
-        "workflow_checked": panel.workflow_mode_btn.isChecked(),
     }

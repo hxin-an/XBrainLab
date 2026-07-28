@@ -207,6 +207,20 @@ class AssistantTurnCorrelation:
                 raise ValueError(f"Assistant turn {field_name} must be positive.")
 
 
+class AssistantTurnScope(str, Enum):
+    """Immutable host autonomy granted to one admitted user turn."""
+
+    SINGLE_ACTION = "single_action"
+    GUIDED_WORKFLOW = "guided_workflow"
+
+    @property
+    def policy_mode(self) -> str:
+        """Return the existing policy vocabulary without exposing it in the UI."""
+        if self is AssistantTurnScope.GUIDED_WORKFLOW:
+            return "multi"
+        return "single"
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantTurnDeliveryAcknowledgement:
     """Controller delivery evidence returned through the host transport."""
@@ -231,10 +245,45 @@ class AssistantTurnRequest:
 
     correlation: AssistantTurnCorrelation
     text: str
+    scope: AssistantTurnScope
+    terminal_command: str | None
+
+    @classmethod
+    def single_action(
+        cls,
+        *,
+        correlation: AssistantTurnCorrelation,
+        text: str,
+    ) -> AssistantTurnRequest:
+        """Build an explicitly atomic request for tests and non-product hosts."""
+        return cls(
+            correlation=correlation,
+            text=text,
+            scope=AssistantTurnScope.SINGLE_ACTION,
+            terminal_command=None,
+        )
+
+    @classmethod
+    def guided_workflow(
+        cls,
+        *,
+        correlation: AssistantTurnCorrelation,
+        text: str,
+        terminal_command: str | None = None,
+    ) -> AssistantTurnRequest:
+        """Build an explicitly bounded workflow request."""
+        return cls(
+            correlation=correlation,
+            text=text,
+            scope=AssistantTurnScope.GUIDED_WORKFLOW,
+            terminal_command=terminal_command,
+        )
 
     def __post_init__(self) -> None:
         if not isinstance(self.correlation, AssistantTurnCorrelation):
             raise TypeError("Assistant turn requests require typed correlation.")
+        if not isinstance(self.scope, AssistantTurnScope):
+            raise TypeError("Assistant turn requests require a typed execution scope.")
         object.__setattr__(
             self,
             "text",
@@ -246,6 +295,22 @@ class AssistantTurnRequest:
         )
         if not self.text.strip():
             raise ValueError("Assistant turn text must not be empty.")
+        terminal = self.terminal_command
+        if terminal is not None:
+            if not isinstance(terminal, str):
+                raise TypeError("Assistant turn terminal command must be a string.")
+            terminal = terminal.strip()
+            if not terminal:
+                raise ValueError("Assistant turn terminal command must not be empty.")
+            if self.scope is not AssistantTurnScope.GUIDED_WORKFLOW:
+                raise ValueError(
+                    "Only guided workflow turns may define a terminal command."
+                )
+            if len(terminal) > 128:
+                raise ValueError(
+                    "Assistant turn terminal commands are limited to 128 characters."
+                )
+            object.__setattr__(self, "terminal_command", terminal)
 
     @property
     def turn_id(self) -> int:

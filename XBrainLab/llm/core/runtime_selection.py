@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.model_catalog import (
-    allowed_local_model_ids,
-    local_model_policy_error,
-)
+from XBrainLab.llm.core.model_catalog import local_model_policy_error
 
 
 class AssistantRuntimeBackend(str, Enum):
@@ -22,6 +19,8 @@ class AssistantRuntimeSelectionOutcome(str, Enum):
     """How the concrete launch model relates to the requested model."""
 
     EXACT = "exact"
+    # Retained so historical runtime snapshots remain deserializable. The
+    # product resolver no longer emits fallback selections.
     FALLBACK = "fallback"
 
 
@@ -138,7 +137,7 @@ class AssistantRuntimeLaunchResolution:
 
 
 class AssistantRuntimeLaunchResolver:
-    """Resolve backend, model readiness, and fallback policy exactly once."""
+    """Resolve one exact backend/model request without catalog fallback."""
 
     def resolve(
         self,
@@ -188,59 +187,42 @@ class AssistantRuntimeLaunchResolver:
                 model_id=model_id,
             )
 
-        candidates = [model_id]
-        candidates.extend(
-            candidate
-            for candidate in allowed_local_model_ids()
-            if candidate != model_id
-        )
-        first_failure = ""
-        for candidate in candidates:
-            try:
-                ready = bool(config.local_backend_ready(candidate))
-                detail = config.local_backend_status_message(candidate)
-            except Exception as exc:
-                return self._failure(
-                    AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE,
-                    f"Local runtime readiness check failed: {exc!s}",
-                    backend_id=backend_id,
-                    model_id=model_id,
-                )
+        try:
+            ready = bool(config.local_backend_ready(model_id))
+            detail = config.local_backend_status_message(model_id)
+        except Exception as exc:
+            return self._failure(
+                AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE,
+                (
+                    "Local runtime readiness check failed for requested model "
+                    f"{model_id}: {exc!s}"
+                ),
+                backend_id=backend_id,
+                model_id=model_id,
+            )
 
-            if ready:
-                outcome = (
-                    AssistantRuntimeSelectionOutcome.EXACT
-                    if candidate == model_id
-                    else AssistantRuntimeSelectionOutcome.FALLBACK
-                )
-                if outcome is AssistantRuntimeSelectionOutcome.FALLBACK:
-                    preferred_detail = first_failure or (
-                        config.local_backend_status_message(model_id)
-                    )
-                    detail = (
-                        f"{preferred_detail} Falling back from {model_id} to "
-                        f"supported local model {candidate}."
-                    )
-                return AssistantRuntimeLaunchResolution(
-                    launch_spec=AssistantRuntimeLaunchSpec(
-                        backend=AssistantRuntimeBackend.LOCAL,
-                        requested_backend_id=backend_id,
-                        requested_model_id=model_id,
-                        model_id=candidate,
-                        outcome=outcome,
-                        selection_detail=" ".join(str(detail or "").split()),
-                        settings=AssistantRuntimeSettingsSnapshot.from_config(config),
-                    )
-                )
+        if not ready:
+            unavailable_detail = " ".join(str(detail or "").split())
+            message = f"Requested local model {model_id} is unavailable."
+            if unavailable_detail:
+                message = f"{message} {unavailable_detail}"
+            return self._failure(
+                AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE,
+                message,
+                backend_id=backend_id,
+                model_id=model_id,
+            )
 
-            if not first_failure:
-                first_failure = detail
-
-        return self._failure(
-            AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE,
-            first_failure or "No supported local model is ready.",
-            backend_id=backend_id,
-            model_id=model_id,
+        return AssistantRuntimeLaunchResolution(
+            launch_spec=AssistantRuntimeLaunchSpec(
+                backend=AssistantRuntimeBackend.LOCAL,
+                requested_backend_id=backend_id,
+                requested_model_id=model_id,
+                model_id=model_id,
+                outcome=AssistantRuntimeSelectionOutcome.EXACT,
+                selection_detail=" ".join(str(detail or "").split()),
+                settings=AssistantRuntimeSettingsSnapshot.from_config(config),
+            )
         )
 
     @staticmethod

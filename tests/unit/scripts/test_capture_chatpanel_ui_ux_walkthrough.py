@@ -144,16 +144,11 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
             assert list(captured.size) == screen["pixel_size"]
             assert captured.mode == screen["png_color_mode"] == "RGB"
         geometry = screen["panel_relative_geometry"]
-        for required_control in ("composer", "send", "mode_control"):
+        for required_control in ("composer", "send"):
             assert geometry[required_control]["inside_panel_on_all_sides"] is True
             assert all(geometry[required_control]["sides"].values()), geometry[
                 required_control
             ]
-        mode_description = geometry["mode_description"]
-        assert isinstance(mode_description["visible"], bool)
-        if mode_description["visible"]:
-            assert mode_description["inside_panel_on_all_sides"] is True
-            assert all(mode_description["sides"].values()), mode_description
         if screen.get("visible_response_actions"):
             assert geometry["response_action"]["inside_panel_on_all_sides"] is True
             assert all(geometry["response_action"]["sides"].values()), geometry[
@@ -196,8 +191,7 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         assert evidence["settle_layout_called_before_observation"] is False
         assert evidence["assistant_usable_width"] == 320
         assert evidence["runtime_phase"] == "idle"
-        assert evidence["mode_selector_visible"] is True
-        assert evidence["mode_controls_enabled"] is False
+        assert evidence["manual_mode_selector_present"] is False
         assert evidence["composer_enabled"] is False
         assert evidence["send_enabled"] is False
         assert evidence["render_content"]["passed"] is True
@@ -286,7 +280,7 @@ def test_validate_payload_rejects_one_failed_geometry_check(qapp, tmp_path) -> N
 
     first_paint = copy.deepcopy(payload)
     first_paint["first_paint_320_contract"]["standalone"]["checks"][
-        "mode_selector_visible"
+        "manual_mode_selector_absent"
     ] = False
     first_paint["first_paint_320_contract"]["standalone"]["passed"] = False
     first_paint["first_paint_320_contract"]["passed"] = False
@@ -354,24 +348,19 @@ def test_scaled_child_regions_maps_logical_geometry_to_physical_pixels(
     qapp.processEvents()
 
 
-def test_mode_description_participates_in_overflow_and_geometry_evidence(
-    qapp,
-) -> None:
+def test_product_panel_does_not_expose_legacy_mode_selector(qapp) -> None:
     panel = ChatPanel()
     panel.resize(320, 520)
     panel.set_runtime_state("ready")
     panel.show()
     qapp.processEvents()
-    panel.mode_description_label.setFixedHeight(1)
-    panel.mode_description_label.show()
-    qapp.processEvents()
-
     overflow = human_evidence._assistant_text_overflow(panel)
     geometry = walkthrough_module._panel_relative_geometry(panel)
 
-    assert "mode_description_label" in overflow
-    assert geometry["mode_description"]["visible"] is True
-    assert "inside_panel_on_all_sides" in geometry["mode_description"]
+    assert "mode_description_label" not in overflow
+    assert "mode_control" not in geometry
+    assert "mode_description" not in geometry
+    assert not hasattr(panel, "mode_selector_widget")
     panel.close()
     panel.deleteLater()
     qapp.processEvents()

@@ -1390,6 +1390,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    turn_scope_ownership_violations = check_assistant_turn_scope_ownership(
+        Path(root_dir)
+    )
+    if turn_scope_ownership_violations:
+        print("\nAssistant Turn Scope Ownership Violations Found:")
+        for violation in turn_scope_ownership_violations:
+            print(f" - {violation}")
+        return 1
+
     llm_study_state_violations = check_llm_direct_study_state_reads(Path(root_dir))
     if llm_study_state_violations:
         print("\nLLM Direct Study State Read Violations Found:")
@@ -8682,6 +8691,56 @@ def check_assistant_presentation_ownership(root_dir: Path) -> list[str]:
                 "AssistantTurnActivity; the controller is the sole "
                 "AssistantTurnActivity publisher."
             )
+    return violations
+
+
+def check_assistant_turn_scope_ownership(root_dir: Path) -> list[str]:
+    """Keep assistant autonomy request-derived instead of manually mutable."""
+    forbidden_tokens = {
+        Path("XBrainLab/llm/agent/controller.py"): (
+            "def set_execution_mode(",
+            "execution_mode_changed =",
+            "self._execution_mode",
+        ),
+        Path("XBrainLab/ui/components/assistant_command_dispatcher.py"): (
+            "def set_mode(",
+            "mode_requested =",
+            '"set_execution_mode"',
+        ),
+        Path("XBrainLab/ui/components/assistant_runtime_lifecycle.py"): (
+            "def set_execution_mode(",
+            "def set_mode(",
+            "execution_mode:",
+        ),
+        Path("XBrainLab/ui/components/agent_manager.py"): (
+            "_ASSISTANT_IDLE_POLICY_MODE",
+            "execution_mode=",
+            "self._execution_mode",
+            "def _on_execution_mode_changed(",
+            "def _sync_execution_mode_ui(",
+        ),
+        Path("XBrainLab/llm/agent/assembler.py"): (
+            "def set_execution_mode(",
+            "self._execution_mode",
+        ),
+    }
+    violations: list[str] = []
+    for relative_path, tokens in forbidden_tokens.items():
+        path = root_dir / relative_path
+        if not path.exists():
+            continue
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(),
+            start=1,
+        ):
+            for token in tokens:
+                if token not in line:
+                    continue
+                violations.append(
+                    f"{relative_path}:{line_number} retains {token}; product "
+                    "assistant autonomy must come only from the immutable "
+                    "AssistantTurnRequest scope."
+                )
     return violations
 
 

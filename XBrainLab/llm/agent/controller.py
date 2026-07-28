@@ -8,6 +8,7 @@ worker thread.
 import logging
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import replace
 from enum import Enum
 from typing import Any, cast
 
@@ -19,6 +20,7 @@ from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
 from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
@@ -118,8 +120,10 @@ from .turn import (
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
+    AssistantTurnScope,
     AssistantTurnTerminal,
 )
+from .turn_scope import workflow_command_is_within_endpoint
 from .ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
@@ -228,10 +232,6 @@ class LLMController(QObject):
 
     """
 
-    # Execution mode constants
-    MODE_SINGLE = "single"
-    MODE_MULTI = "multi"
-
     # Signals to UI
     response_presentation_ready = pyqtSignal(object)
     generation_event = pyqtSignal(object)
@@ -240,7 +240,6 @@ class LLMController(QObject):
     status_update = pyqtSignal(str)  # status message
     error_occurred = pyqtSignal(str)  # error message
     panel_navigation_requested = pyqtSignal(object)
-    execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
     application_command_completed = pyqtSignal(object)
     application_command_started = pyqtSignal()
     runtime_state_changed = pyqtSignal(object)
@@ -381,6 +380,8 @@ class LLMController(QObject):
         self._active_rag_turn_id: int | None = None
         self._active_host_turn_id: int | None = None
         self._active_host_turn_generation: int | None = None
+        self._active_turn_scope: AssistantTurnScope | None = None
+        self._active_turn_terminal_command: str | None = None
         self._generation_id = 0
         self._active_generation_id: int | None = None
         self._active_generation_dispatch_phase: (
@@ -393,8 +394,6 @@ class LLMController(QObject):
         self._admitted_publication_generation: int | None = None
         self._initialize_shutdown_lifecycle()
 
-        # Execution mode: 'single' stops after success, 'multi' auto-continues
-        self._execution_mode: str = self.MODE_SINGLE
         self._successful_tool_count = 0
         self._max_tool_executions = 5
 
@@ -413,11 +412,6 @@ class LLMController(QObject):
         self._shutdown_retry_timer = QTimer(self)
         self._shutdown_retry_timer.setSingleShot(True)
         self._shutdown_retry_timer.timeout.connect(self._request_worker_shutdown)
-
-    @property
-    def execution_mode(self) -> str:
-        """The current execution mode ('single' or 'multi')."""
-        return self._execution_mode
 
     @property
     def accepts_commands(self) -> bool:
@@ -485,24 +479,12 @@ class LLMController(QObject):
         if marks_current_turn:
             self._visible_response_sent = True
 
-    def set_execution_mode(self, mode: str) -> None:
-        """Set the execution mode.
-
-        Args:
-            mode: Either ``'single'`` (stop after success) or
-                ``'multi'`` (continue one verified command at a time up to the
-                per-turn host tool cap).
-
-        """
-        if self._reject_command_while_closing("set execution mode"):
-            return
-        if mode not in (self.MODE_SINGLE, self.MODE_MULTI):
-            logger.warning("Invalid execution mode: %s", mode)
-            return
-        self._execution_mode = mode
-        self.assembler.set_execution_mode(mode)
-        self.execution_mode_changed.emit(mode)
-        logger.info("Execution mode changed to: %s", mode)
+    def _active_policy_mode(self) -> str:
+        """Return immutable autonomy for the active turn."""
+        active_scope = getattr(self, "_active_turn_scope", None)
+        if active_scope is not None:
+            return active_scope.policy_mode
+        return AssistantTurnScope.SINGLE_ACTION.policy_mode
 
     def initialize(self, launch_spec: AssistantRuntimeLaunchSpec):
         """Initializes the underlying worker engine and RAG retriever.
@@ -585,6 +567,9 @@ class LLMController(QObject):
                 )
             self._active_host_turn_id = payload.turn_id
             self._active_host_turn_generation = payload.generation
+            self._active_turn_scope = payload.scope
+            self._active_turn_terminal_command = payload.terminal_command
+            self.assembler.bind_turn_scope(payload.scope)
             self._handle_admitted_user_input(payload.text)
         except Exception as exc:
             failure = safe_unexpected_failure(
@@ -641,6 +626,8 @@ class LLMController(QObject):
         self._stopping_generation_id = None
         self._admitted_command_name = None
         self._admitted_publication_generation = None
+        self._active_turn_scope = None
+        self._active_turn_terminal_command = None
         self._active_tool_publication = PromptToolPublication.empty()
         self._active_response_contract = AssistantResponseContract.STRUCTURED_ACTION
         self._retry_count = 0
@@ -675,6 +662,8 @@ class LLMController(QObject):
         correlation = self._active_turn_correlation()
         self._active_host_turn_id = None
         self._active_host_turn_generation = None
+        self._active_turn_scope = None
+        self._active_turn_terminal_command = None
         self._active_generation_id = None
         self._active_generation_dispatch_phase = None
         self._stopping_generation_id = None
@@ -853,7 +842,12 @@ class LLMController(QObject):
             )
             publication = None
 
-        decision = self._request_admission.evaluate(text, publication)
+        decision = self._request_admission.evaluate(
+            text,
+            publication,
+            scope=self._active_turn_scope or AssistantTurnScope.SINGLE_ACTION,
+            terminal_command=self._active_turn_terminal_command,
+        )
         if decision.action is UserRequestAdmissionAction.GENERATE:
             self._admitted_command_name = (
                 decision.command.value if decision.command is not None else None
@@ -1415,7 +1409,7 @@ class LLMController(QObject):
         ]
         selection = self._tool_attempt_coordinator.select_proposal(
             normalized_commands,
-            mode=self._execution_mode,
+            mode=self._active_policy_mode(),
             execution_count=self._tool_execution_count,
             workflow_tool_cap=self._max_tool_executions,
             cancelled=self._turn_cancelled,
@@ -1463,6 +1457,8 @@ class LLMController(QObject):
         if decision.action is ToolAttemptAction.LOOP:
             self._handle_loop_detected(cmd)
             return True
+        if self._retry_single_published_workflow_action(decision):
+            return True
         if decision.action in {
             ToolAttemptAction.PUBLICATION_BLOCKED,
             ToolAttemptAction.PROVENANCE_BLOCKED,
@@ -1482,6 +1478,48 @@ class LLMController(QObject):
             self._request_tool_confirmation(decision)
             return True
         return False
+
+    def _retry_single_published_workflow_action(
+        self,
+        decision: ToolAttemptDecision,
+    ) -> bool:
+        """Repair one invented tool name without weakening the policy gate."""
+        result = decision.result
+        publication = self._active_tool_publication
+        if (
+            decision.action is not ToolAttemptAction.PUBLICATION_BLOCKED
+            or self._active_policy_mode()
+            != AssistantTurnScope.GUIDED_WORKFLOW.policy_mode
+            or self._tool_failure_count != 0
+            or not isinstance(result, ToolCommandResult)
+            or result.error_type != "tool_not_published"
+            or not result.recoverable
+            or len(publication.tool_names) != 1
+        ):
+            return False
+
+        expected_tool = next(iter(publication.tool_names))
+        feedback = build_recovery_feedback(decision.command_name, result)
+        if feedback is None:
+            return False
+        feedback = replace(
+            feedback,
+            guidance=(
+                f"The only permitted action is {expected_tool}. Return that "
+                "exact tool name using its published JSON contract."
+            ),
+        )
+        self._tool_failure_count = 1
+        self.assembler.set_recovery_feedback(feedback)
+        self.status_update.emit("Assistant action did not match; retrying...")
+        logger.warning(
+            "Guided workflow rejected unpublished tool %s and allowed one "
+            "bounded repair for %s.",
+            redact_public_text(decision.command_name),
+            redact_public_text(expected_tool),
+        )
+        self._generate_response()
+        return True
 
     def _request_tool_confirmation(
         self,
@@ -1582,7 +1620,11 @@ class LLMController(QObject):
                 self._refresh_execution_snapshot()
                 self._finalize_turn_after_tool()
                 return
-            self._handle_tool_success(autonomy, after_confirmation=True)
+            self._handle_tool_success(
+                autonomy,
+                command_name=cmd,
+                after_confirmation=True,
+            )
             return
         if not success and self._should_wait_for_user_after_tool_failure(result):
             self._finalize_turn_after_tool()
@@ -1590,7 +1632,7 @@ class LLMController(QObject):
         if not success:
             self._handle_tool_failure(autonomy, result)
             return
-        self._handle_tool_success(autonomy)
+        self._handle_tool_success(autonomy, command_name=cmd)
 
     def _present_tool_execution_outcome(
         self,
@@ -1693,7 +1735,7 @@ class LLMController(QObject):
         """Apply host retry limits after one failed command."""
         self._tool_failure_count += 1
         decision = self._tool_attempt_coordinator.after_failure(
-            mode=self._execution_mode,
+            mode=self._active_policy_mode(),
             availability=autonomy,
             failure_count=self._tool_failure_count,
             global_retry_limit=self._max_tool_failures,
@@ -1730,19 +1772,43 @@ class LLMController(QObject):
         self,
         autonomy: ToolAvailability | None,
         *,
+        command_name: str,
         after_confirmation: bool = False,
     ) -> None:
         """Refresh workflow truth, then apply host continuation policy."""
         self.assembler.clear_recovery_feedback()
         self._tool_failure_count = 0
         self._successful_tool_count += 1
-        if self._execution_mode == self.MODE_MULTI or after_confirmation:
+        if self._turn_endpoint_reached(command_name):
+            logger.info(
+                "Assistant workflow reached its user-authored endpoint: %s",
+                redact_public_text(command_name),
+            )
+            self._finalize_turn_after_tool()
+            return
+        if (
+            self._active_policy_mode() == AssistantTurnScope.GUIDED_WORKFLOW.policy_mode
+            or after_confirmation
+        ):
             snapshot = self._refresh_execution_snapshot()
         else:
             snapshot = ExecutionSnapshot.safe_to_continue()
 
+        if snapshot.recommended_next_step and not workflow_command_is_within_endpoint(
+            snapshot.recommended_next_step,
+            self._active_turn_terminal_command,
+        ):
+            logger.info(
+                "Assistant workflow stopped before exceeding its user-authored "
+                "endpoint: next=%s endpoint=%s",
+                redact_public_text(snapshot.recommended_next_step),
+                redact_public_text(self._active_turn_terminal_command or ""),
+            )
+            self._finalize_turn_after_tool()
+            return
+
         decision = self._tool_attempt_coordinator.after_success(
-            mode=self._execution_mode,
+            mode=self._active_policy_mode(),
             availability=autonomy,
             snapshot=snapshot,
             execution_count=self._tool_execution_count,
@@ -1755,6 +1821,10 @@ class LLMController(QObject):
                 logger.error("Workflow continuation was allowed without a next command")
                 self.status_update.emit("Workflow could not determine the next step.")
                 self._finalize_turn_after_tool()
+                return
+            if self._execute_host_deterministic_continuation(
+                snapshot.recommended_next_step
+            ):
                 return
             self.assembler.set_turn_authorized_command(
                 snapshot.recommended_next_step,
@@ -1771,6 +1841,11 @@ class LLMController(QObject):
         if decision.reason == "decision_needed":
             self.status_update.emit("Waiting for workflow decision.")
             if snapshot.recommended_next_step:
+                if self._last_tool_summary and not self._visible_response_sent:
+                    self._publish_response(
+                        self._last_tool_summary,
+                        kind=self._last_tool_summary_kind,
+                    )
                 request = self._workflow_ui_handoff_request(
                     snapshot.recommended_next_step,
                     decision_fields=snapshot.decision_needed,
@@ -1799,6 +1874,40 @@ class LLMController(QObject):
         )
         self._finalize_turn_after_tool()
 
+    def _execute_host_deterministic_continuation(
+        self,
+        command_name: str,
+    ) -> bool:
+        """Execute a parameter-free import transition already fixed by policy."""
+        decision = (
+            self._tool_attempt_coordinator.evaluate_host_deterministic_continuation(
+                command_name,
+                {},
+            )
+        )
+        if decision.action is not ToolAttemptAction.EXECUTE:
+            logger.info(
+                "Host deterministic continuation remained model-owned after "
+                "policy verification: %s (%s)",
+                redact_public_text(command_name),
+                decision.action.value,
+            )
+            return False
+        logger.info(
+            "Host workflow policy is executing deterministic continuation: %s",
+            redact_public_text(command_name),
+        )
+        self._execute_tool_attempt(decision)
+        return True
+
+    def _turn_endpoint_reached(self, tool_name: str) -> bool:
+        """Return whether one verified tool completed the delegated endpoint."""
+        terminal = self._active_turn_terminal_command
+        if terminal is None:
+            return False
+        command = AGENT_ACTION_CONTRACTS.tool_to_command().get(tool_name)
+        return command is not None and command.value == terminal
+
     def _refresh_execution_snapshot(self) -> ExecutionSnapshot:
         """Re-read state, capabilities, and decision context after a command."""
         try:
@@ -1809,7 +1918,7 @@ class LLMController(QObject):
             context = build_workflow_decision_context(
                 self.study,
                 latest_user_text=self._latest_user_request_text(),
-                mode=self._execution_mode,
+                mode=self._active_policy_mode(),
                 publication=publication,
             )
             next_capability = None
