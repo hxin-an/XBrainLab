@@ -1,0 +1,52 @@
+{
+  "commands": {
+    "backend_timing_and_epoch": {
+      "command": [
+        "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python",
+        "scripts/dev/report_teacher_dataset_preflight.py",
+        "--strict",
+        "--format",
+        "json",
+        "--write-artifacts",
+        "--output-dir",
+        "/mnt/d/workspace_v2/projects/lab/xbrainlab/artifacts/data_interpretation"
+      ],
+      "duration_seconds": 38.095,
+      "ok": true,
+      "returncode": 0,
+      "stderr_tail": "Wrote /mnt/d/workspace_v2/projects/lab/xbrainlab/artifacts/data_interpretation/teacher-dataset-preflight.json\nWrote /mnt/d/workspace_v2/projects/lab/xbrainlab/artifacts/data_interpretation/teacher-dataset-preflight.md\n",
+      "stdout_tail": ": {\n          \"message\": \"Interpretation validation: safe.\",\n          \"ok\": true\n        }\n      },\n      \"status\": \"passed\"\n    },\n    {\n      \"case_id\": \"chbmit_raw_edf\",\n      \"dataset\": \"CHB-MIT chb01\",\n      \"evidence_tier\": \"raw_import_only\",\n      \"failed_stage\": \"\",\n      \"format\": \"EDF\",\n      \"message\": \"The selected EDF recording imported as raw EEG; its companion annotation/report file remained an explicit unsupported sidecar.\",\n      \"observations\": {\n        \"channel_count\": 23,\n        \"context_format\": \"Seizure annotation sidecar\",\n        \"context_role\": \"sidecar\",\n        \"context_status\": \"unsupported\",\n        \"eeg_files\": [\n          \"/mnt/d/workspace_v2/projects/lab/xbrainlab/tests/fixtures/data/public/chbmit-chb01/chb01_03.edf\"\n        ],\n        \"label_carriers\": [],\n        \"raw_file_count\": 1,\n        \"sample_count\": 921600,\n        \"sampling_frequency_hz\": 256.0,\n        \"supervised_ready\": false,\n        \"validation_decision\": \"needs_confirmation\"\n      },\n      \"stages\": {\n        \"apply\": {\n          \"message\": \"Applied interpretation and loaded 1 file(s).\",\n          \"ok\": true\n        },\n        \"folder_scan\": {\n          \"message\": \"Scanned source and found 1 EEG file(s).\",\n          \"ok\": true\n        },\n        \"preview\": {\n          \"message\": \"Interpretation preview ready.\",\n          \"ok\": true\n        },\n        \"scan\": {\n          \"message\": \"Scanned source and found 1 EEG file(s).\",\n          \"ok\": true\n        },\n        \"validate\": {\n          \"message\": \"Interpretation validation: needs_confirmation.\",\n          \"ok\": true\n        }\n      },\n      \"status\": \"passed\"\n    },\n    {\n      \"case_id\": \"sleep_edfx_psg\",\n      \"dataset\": \"Sleep-EDF Expanded ST7011\",\n      \"evidence_tier\": \"raw_import_only\",\n      \"failed_stage\": \"\",\n      \"format\": \"EDF\",\n      \"message\": \"The PSG recording imported as raw EEG. Its 231 reviewed hypnogram intervals remained a detected, unsupported sidecar and were not promoted to labels.\",\n      \"observations\": {\n        \"channel_count\": 5,\n        \"context_format\": \"EDF+ annotations\",\n        \"context_role\": \"sidecar\",\n        \"context_status\": \"limited\",\n        \"eeg_files\": [\n          \"/mnt/d/workspace_v2/projects/lab/xbrainlab/tests/fixtures/data/public/sleep-edfx-st7011/ST7011J0-PSG.edf\"\n        ],\n        \"label_carriers\": [],\n        \"raw_file_count\": 1,\n        \"sample_count\": 3590000,\n        \"sampling_frequency_hz\": 100.0,\n        \"sidecar_evidence\": {\n          \"all_durations_positive\": true,\n          \"annotation_classes\": [\n            \"Sleep stage 1\",\n            \"Sleep stage 2\",\n            \"Sleep stage 3\",\n            \"Sleep stage 4\",\n            \"Sleep stage R\",\n            \"Sleep stage W\"\n          ],\n          \"annotation_count\": 231,\n          \"onset_range_seconds\": [\n            0.0,\n            31500.0\n          ]\n        },\n        \"supervised_ready\": false,\n        \"validation_decision\": \"needs_confirmation\"\n      },\n      \"stages\": {\n        \"apply\": {\n          \"message\": \"Applied interpretation and loaded 1 file(s).\",\n          \"ok\": true\n        },\n        \"folder_scan\": {\n          \"message\": \"Scanned source and found 1 EEG file(s).\",\n          \"ok\": true\n        },\n        \"preview\": {\n          \"message\": \"Interpretation preview ready.\",\n          \"ok\": true\n        },\n        \"scan\": {\n          \"message\": \"Scanned source and found 1 EEG file(s).\",\n          \"ok\": true\n        },\n        \"validate\": {\n          \"message\": \"Interpretation validation: needs_confirmation.\",\n          \"ok\": true\n        }\n      },\n      \"status\": \"passed\"\n    }\n  ],\n  \"schema_version\": 1,\n  \"summary\": {\n    \"absent_case_ids\": [],\n    \"all_required_passed\": true,\n    \"failed_case_ids\": [],\n    \"manifest_verified\": true,\n    \"missing_case_ids\": [],\n    \"passed_case_ids\": [\n      \"chbmit_raw_edf\",\n      \"openneuro_p300_bids\",\n      \"sleep_edfx_psg\"\n    ],\n    \"passed_required_case_count\": 3,\n    \"required_case_count\": 3,\n    \"strict_ok\": true\n  }\n}\n"
+    },
+    "real_gui_workflows": {
+      "command": [
+        "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python",
+        "-m",
+        "pytest",
+        "--capture=sys",
+        "tests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py",
+        "-q"
+      ],
+      "duration_seconds": 179.547,
+      "ok": true,
+      "returncode": 0,
+      "stderr_tail": "",
+      "stdout_tail": "4: RuntimeWarning: Could not define the number of bytes automatically. Defaulting to 2.\n    return mne.io.read_raw_cnt(path, preload=False, verbose=\"ERROR\")\n\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_public_file_formats_run_five_steps_and_apply_without_labels[mne-testing-cnt]\n  /mnt/d/workspace_v2/projects/lab/xbrainlab/XBrainLab/backend/load_data/raw_data_loader.py:551: RuntimeWarning:   Could not parse meas date from the header. Setting to None.\n    selected_data = mne.io.read_raw_cnt(filepath, preload=False)\n\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_public_file_formats_run_five_steps_and_apply_without_labels[mne-testing-cnt]\n  /mnt/d/workspace_v2/projects/lab/xbrainlab/XBrainLab/backend/load_data/raw_data_loader.py:551: RuntimeWarning: Could not define the number of bytes automatically. Defaulting to 2.\n    selected_data = mne.io.read_raw_cnt(filepath, preload=False)\n\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg[chbmit-chb01]\n  /mnt/d/workspace_v2/projects/lab/xbrainlab/XBrainLab/backend/load_data/raw_data_loader.py:387: RuntimeWarning: Channel names are not unique, found duplicates for: {'T8-P8'}. Applying running numbers for duplicates.\n    selected_data = mne.io.read_raw_edf(filepath, preload=False)\n\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg[sleep-edfx-st7011]\n  /mnt/d/workspace_v2/projects/lab/xbrainlab/XBrainLab/backend/load_data/raw_data_loader.py:387: RuntimeWarning: Channels contain different highpass filters. Highest filter setting will be stored.\n    selected_data = mne.io.read_raw_edf(filepath, preload=False)\n\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg[sleep-edfx-st7011]\n  /mnt/d/workspace_v2/projects/lab/xbrainlab/XBrainLab/backend/load_data/raw_data_loader.py:387: RuntimeWarning: Channels contain different lowpass filters. Lowest filter setting will be stored.\n    selected_data = mne.io.read_raw_edf(filepath, preload=False)\n\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies\n  /mnt/d/workspace_v2/projects/lab/xbrainlab/XBrainLab/backend/load_data/raw_data_loader.py:232: RuntimeWarning: Unknown types found, setting as type EEG:\n  temp: ['Temp']\n    selected_data = mne.io.read_raw_eeglab(\n\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies\ntests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py::test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies\n  /mnt/d/workspace_v2/projects/lab/xbrainlab/XBrainLab/backend/load_data/raw_data_loader.py:232: RuntimeWarning: Not setting positions of 14 gsr/misc/resp channels found in montage:\n  ['EXG1', 'EXG2', 'EXG3', 'EXG4', 'EXG5', 'EXG6', 'EXG7', 'EXG8', 'GSR1', 'GSR2', 'Erg1', 'Erg2', 'Resp', 'Plet']\n  Consider setting the channel types to be of EEG/sEEG/ECoG/DBS/fNIRS using inst.set_channel_types before calling inst.set_montage, or omit these channels when creating your montage.\n    selected_data = mne.io.read_raw_eeglab(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n10 passed, 20 warnings in 178.28s (0:02:58)\n"
+    }
+  },
+  "fixture_profile": {
+    "group_count": 10,
+    "invalid_files": [],
+    "ok": true,
+    "size_bytes": 277106963
+  },
+  "generated_at": "2026-07-29T10:33:58.661865+00:00",
+  "schema_version": 1,
+  "screenshots": [
+    "openneuro-event-value-controls.png",
+    "openneuro-match-labels-dialog.png",
+    "openneuro-review-and-import.png"
+  ],
+  "source_commit": "1623c5b9136bee0993a27dc89f496c598be6c2b8",
+  "source_dirty_paths_before_gate": [],
+  "strict_ok": true
+}
