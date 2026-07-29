@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import stat
 from collections.abc import Iterable, Iterator, Mapping
@@ -43,11 +44,20 @@ class AdmittedFileIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class AdmittedRecordingBounds:
+    """Continuous-recording bounds obtained by the authoritative preflight."""
+
+    sample_count: int
+    sampling_frequency_hz: float
+
+
+@dataclass(frozen=True, slots=True)
 class AdmittedResourceReader:
     """Verify every parser input against one exact preflight-admitted scope."""
 
     admitted_files: dict[str, AdmittedFileIdentity]
     dependent_files: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    recording_bounds: dict[str, AdmittedRecordingBounds] = field(default_factory=dict)
 
     def admits(self, path: str | Path) -> bool:
         """Return whether this exact resolved file belongs to the admitted scope."""
@@ -99,6 +109,10 @@ class AdmittedResourceReader:
                 preflight_dependencies,
                 explicit_dependencies,
             ),
+            recording_bounds=_preflight_recording_bounds(
+                preflight,
+                admitted=set(admitted),
+            ),
         )
 
     def with_dependent_files(
@@ -116,7 +130,15 @@ class AdmittedResourceReader:
                 self.dependent_files,
                 explicit_dependencies,
             ),
+            recording_bounds=dict(self.recording_bounds),
         )
+
+    def recording_bounds_for(
+        self,
+        path: str | Path,
+    ) -> AdmittedRecordingBounds | None:
+        """Return trustworthy header bounds for an admitted continuous recording."""
+        return self.recording_bounds.get(_path_key(Path(path)))
 
     def assert_unchanged(
         self,
@@ -207,6 +229,7 @@ class AdmittedResourceReader:
             "dependent_path_count": sum(
                 len(paths) for paths in self.dependent_files.values()
             ),
+            "recording_bounds_count": len(self.recording_bounds),
             "identity_fields": [
                 "file_bytes",
                 "device",
@@ -260,6 +283,51 @@ def _preflight_dependencies(
             continue
         dependencies.setdefault(owner, []).append(dependency)
     return {owner: tuple(dict.fromkeys(paths)) for owner, paths in dependencies.items()}
+
+
+def _preflight_recording_bounds(
+    preflight: ResourcePreflightResult,
+    *,
+    admitted: set[str],
+) -> dict[str, AdmittedRecordingBounds]:
+    bounds: dict[str, AdmittedRecordingBounds] = {}
+    rows = preflight.to_diagnostics().get("files")
+    if not isinstance(rows, list):
+        return bounds
+    for row in rows:
+        if not isinstance(row, dict) or row.get("size_bound_known", True) is not True:
+            continue
+        raw_path = str(row.get("path") or "").strip()
+        sample_count = row.get("time_samples")
+        sampling_frequency = row.get("sampling_rate_hz")
+        if (
+            not raw_path
+            or isinstance(sample_count, bool)
+            or not isinstance(sample_count, int)
+            or sample_count <= 0
+            or isinstance(sampling_frequency, bool)
+            or not isinstance(sampling_frequency, int | float)
+            or not math.isfinite(float(sampling_frequency))
+            or float(sampling_frequency) <= 0
+            or not _is_continuous_recording(row.get("trials"))
+        ):
+            continue
+        key = _path_key(Path(raw_path))
+        if key not in admitted:
+            continue
+        bounds[key] = AdmittedRecordingBounds(
+            sample_count=sample_count,
+            sampling_frequency_hz=float(sampling_frequency),
+        )
+    return bounds
+
+
+def _is_continuous_recording(raw_trials: Any) -> bool:
+    if raw_trials is None:
+        return True
+    if isinstance(raw_trials, bool) or not isinstance(raw_trials, int | float):
+        return False
+    return math.isfinite(float(raw_trials)) and float(raw_trials) == 1.0
 
 
 def _explicit_dependencies(

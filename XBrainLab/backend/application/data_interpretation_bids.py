@@ -130,6 +130,7 @@ def review_strict_bids_event_runs(
                 eeg_path=eeg_path,
                 events_path=events_path,
                 plan=plan,
+                resource_reader=resource_reader,
             )
         if effective_class_map:
             plan["run_class_map"] = effective_class_map
@@ -206,6 +207,7 @@ def _review_one_run(
     eeg_path: str,
     events_path: str,
     plan: dict[str, Any],
+    resource_reader: AdmittedResourceReader | None = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     schema_issues: list[dict[str, Any]] = []
     legal_special_values = {
@@ -343,7 +345,7 @@ def _review_one_run(
         )
 
     evidence["bids_schema"]["status"] = "invalid" if schema_issues else "valid"
-    recording = _recording_metadata(eeg_file)
+    recording = _recording_metadata(eeg_file, resource_reader=resource_reader)
     recording_issue = recording["issue"]
     recording_duration: Decimal | None = recording["recording_duration"]
     if recording_issue is None and recording_duration is not None:
@@ -713,7 +715,34 @@ def _finite_float(value: Any, *, field: str, row: int) -> float:
     return result
 
 
-def _recording_metadata(path: Path) -> dict[str, Any]:
+def _recording_metadata(
+    path: Path,
+    *,
+    resource_reader: AdmittedResourceReader | None = None,
+) -> dict[str, Any]:
+    if resource_reader is not None:
+        bounds = resource_reader.recording_bounds_for(path)
+        if bounds is None:
+            return {
+                "sample_count": None,
+                "sampling_frequency_hz": None,
+                "recording_duration": None,
+                "issue": _issue(
+                    "recording_metadata_unavailable",
+                    None,
+                    "recording bounds were not established by resource preflight",
+                ),
+            }
+        duration = Decimal(bounds.sample_count) / Decimal(
+            str(bounds.sampling_frequency_hz)
+        )
+        return {
+            "sample_count": bounds.sample_count,
+            "sampling_frequency_hz": bounds.sampling_frequency_hz,
+            "recording_duration": duration,
+            "issue": None,
+        }
+
     wrapper: Any | None = None
     try:
         wrapper = load_raw_data(str(path))

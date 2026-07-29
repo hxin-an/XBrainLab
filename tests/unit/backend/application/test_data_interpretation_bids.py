@@ -696,6 +696,56 @@ def test_strict_bids_accepts_zero_duration_and_interval_ending_at_recording_end(
     )
 
 
+def test_strict_bids_preview_uses_admitted_header_bounds_without_loading_raw(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    eeg_path, events_path = _write_bids_run(
+        root,
+        run="1",
+        event_rows=[
+            ("9.99", "0", "point", "1"),
+            ("9.5", "0.5", "exact-end", "2"),
+        ],
+    )
+    service = ApplicationService()
+    scan_result = service.execute(
+        ScanSourceCommand(source_path=str(root), source_hint="bids")
+    )
+    monkeypatch.setattr(
+        data_interpretation_bids,
+        "load_raw_data",
+        lambda _path: pytest.fail("BIDS preview reloaded admitted EEG signal data"),
+    )
+
+    preview_result = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier_choices": {
+                    str(events_path): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "duration_field": "duration",
+                        "time_model": "seconds",
+                        "placement_method": "interval",
+                        "value_decisions": _value_decisions_from_events(events_path),
+                    }
+                },
+            }
+        )
+    )
+
+    assert scan_result.ok is True
+    assert preview_result.ok is True
+    run = preview_result.diagnostics["preview"]["bids"]["event_validation"]["runs"][0]
+    assert run["status"] == "safe"
+    assert run["sample_count"] == 1000
+    assert run["sampling_frequency_hz"] == 100.0
+    assert run["recording_duration_seconds"] == 10.0
+
+
 def test_strict_bids_rejects_events_carriers_swapped_between_runs(
     tmp_path: Path,
 ) -> None:

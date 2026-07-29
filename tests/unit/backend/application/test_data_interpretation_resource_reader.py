@@ -154,6 +154,35 @@ def test_guard_expands_eeglab_set_to_its_admitted_external_data_file(
     assert raised.value.diagnostics["purpose"] == "embedded EEG event preview"
 
 
+def test_reader_exposes_admitted_recording_bounds_without_loading_signal_data(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import mne
+    import numpy as np
+
+    fif_path = tmp_path / "subject_raw.fif"
+    raw = mne.io.RawArray(
+        np.zeros((2, 10)),
+        mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+        verbose="ERROR",
+    )
+    raw.save(fif_path, overwrite=True, verbose="ERROR")
+    paths = [str(fif_path)]
+
+    reader = AdmittedResourceReader.from_resource_preflight(
+        paths,
+        _preflight(paths, monkeypatch),
+    )
+    bounds = reader.recording_bounds_for(fif_path)
+
+    assert bounds is not None
+    assert bounds.sample_count == 10
+    assert bounds.sampling_frequency_hz == 100.0
+    rebound = reader.with_dependent_files({})
+    assert rebound.recording_bounds_for(fif_path) == bounds
+
+
 def test_guard_expands_explicit_brainvision_parser_dependencies(
     tmp_path,
     monkeypatch,
