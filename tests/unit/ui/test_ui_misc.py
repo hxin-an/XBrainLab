@@ -473,6 +473,7 @@ class TestDatasetActionHandler:
             ReviewInterpretationCommand,
             ApplyInterpretationCommand,
         ]
+        assert commands[0].source_hint == "file"
         assert commands[-1].candidate_id == "candidate-1"
         assert commands[-1].confirmed is False
         handler.panel.controller.import_files.assert_not_called()
@@ -550,7 +551,10 @@ class TestDatasetActionHandler:
 
         assert outcome.status is InteractionStatus.ACCEPTED
         mock_fd.getOpenFileNames.assert_called_once()
-        mock_interpret.assert_called_once_with(["/tmp/sub-01_task-mi_raw.fif"])
+        mock_interpret.assert_called_once_with(
+            ["/tmp/sub-01_task-mi_raw.fif"],
+            source_hint="file",
+        )
         mock_mb.warning.assert_not_called()
 
     def test_import_data_refuses_real_study_no_capability_lock_fallback(

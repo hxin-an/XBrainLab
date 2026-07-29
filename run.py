@@ -227,6 +227,9 @@ def main() -> None:
         logger.info("CLI override: inference mode set to '%s'", args.model)
 
     app.setStyle("Fusion")
+    from XBrainLab.ui.dialog_button_policy import install_dialog_button_policy
+
+    install_dialog_button_policy(app)
 
     study = Study()
 

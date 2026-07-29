@@ -56,7 +56,10 @@ from .data_interpretation_resource_reader import AdmittedResourceReader
 from .data_interpretation_resource_receipt import (
     DataInterpretationResourceReceiptAuthority,
 )
-from .data_interpretation_scan import discover_source_preflight_scope
+from .data_interpretation_scan import (
+    discover_explicit_file_preflight_scope,
+    discover_source_preflight_scope,
+)
 from .data_interpretation_state import DataInterpretationSessionState
 from .errors import ApplicationError, ConfirmationRequiredError, PreconditionError
 from .label_resource_admission import (
@@ -621,11 +624,19 @@ class DataInterpretationCommandService:
         additional_admission_paths: list[str] | None = None,
     ) -> tuple[Any, _PreviewResourceAdmission]:
         """Admit scan payloads and metadata before BIDS tables are parsed."""
-        scope = discover_source_preflight_scope(
-            source_path=source_path,
-            source_hint=source_hint,
-            label_sources=label_sources,
-        )
+        selected_eeg_files = self._explicit_selected_eeg_files(choices)
+        if str(source_hint).strip().lower() == "file" and selected_eeg_files:
+            scope = discover_explicit_file_preflight_scope(
+                source_path=source_path,
+                selected_eeg_files=selected_eeg_files,
+                label_sources=label_sources,
+            )
+        else:
+            scope = discover_source_preflight_scope(
+                source_path=source_path,
+                source_hint=source_hint,
+                label_sources=label_sources,
+            )
         provisional_scan_id = scan_id or "resource-preflight"
         admission = self._resolve_preview_resource_preflight(
             scan=scope.selection_scan_result(scan_id=provisional_scan_id),
@@ -651,6 +662,27 @@ class DataInterpretationCommandService:
             resource_reader=admission.resource_reader,
         )
         return scan, admission
+
+    @staticmethod
+    def _explicit_selected_eeg_files(choices: dict[str, Any]) -> list[str]:
+        """Return selected EEG paths after applying an optional recipe remap."""
+        raw_selected = choices.get(
+            "eeg_files",
+            choices.get("selected_eeg_files", []),
+        )
+        if not isinstance(raw_selected, (list, tuple)):
+            return []
+        raw_remap = choices.get("eeg_file_remap")
+        remap = raw_remap if isinstance(raw_remap, dict) else {}
+        selected: list[str] = []
+        for value in raw_selected:
+            source = str(value).strip()
+            if not source:
+                continue
+            target = str(remap.get(source, source)).strip()
+            if target and target not in selected:
+                selected.append(target)
+        return selected
 
     @staticmethod
     def _candidate_resource_paths(candidate: InterpretationCandidate) -> list[str]:

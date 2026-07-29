@@ -456,6 +456,115 @@ def discover_source_preflight_scope(
     )
 
 
+def discover_explicit_file_preflight_scope(
+    *,
+    source_path: str,
+    selected_eeg_files: list[str],
+    label_sources: list[str] | None = None,
+) -> ScanPreflightScope:
+    """Discover only explicitly selected EEG files and their nearby labels.
+
+    A multi-file picker commonly returns several files from one directory. The
+    directory remains useful as the displayed scan location, but it must not
+    silently widen the EEG selection into a recursive folder import.
+    """
+    selected_paths = _dedupe_paths(
+        [
+            Path(item).expanduser().resolve(strict=False)
+            for item in selected_eeg_files
+            if str(item).strip()
+        ],
+    )
+    if not selected_paths:
+        return discover_source_preflight_scope(
+            source_path=source_path,
+            source_hint="file",
+            label_sources=label_sources,
+        )
+
+    scan_budget = _ScanBudget()
+    bounded_selected_paths: list[Path] = []
+    for selected_path in selected_paths:
+        if not selected_path.is_file():
+            raise FileNotFoundError(
+                f"Selected EEG file does not exist: {selected_path}",
+            )
+        if not scan_budget.claim_file(selected_path):
+            break
+        bounded_selected_paths.append(selected_path)
+    selected_paths = bounded_selected_paths
+
+    eeg_files = [
+        str(path)
+        for path in selected_paths
+        if _has_supported_suffix(path, SUPPORTED_EEG_EXTENSIONS)
+    ]
+    auto_label_carriers = _dedupe_paths(
+        [
+            carrier
+            for selected_path in selected_paths
+            for carrier in _auto_label_carriers_for_source(
+                selected_path,
+                [selected_path],
+                scan_budget,
+            )
+        ],
+    )
+    normalized_label_sources, source_label_carriers, source_warnings = (
+        _label_carriers_from_sources(label_sources or [], scan_budget)
+    )
+    label_carrier_sources: dict[str, str] = {
+        str(carrier): "auto" for carrier in auto_label_carriers
+    }
+    for label_source, carriers in source_label_carriers:
+        for carrier in carriers:
+            label_carrier_sources.setdefault(str(carrier), str(label_source))
+    label_carriers = sorted(label_carrier_sources)
+    source_label_files = [
+        carrier for _, carriers in source_label_carriers for carrier in carriers
+    ]
+
+    requested_source = Path(source_path).expanduser().resolve(strict=False)
+    scan_root = (
+        requested_source.parent if requested_source.is_file() else requested_source
+    )
+    bids = _bids_summary(
+        scan_root,
+        "file",
+        eeg_files,
+        label_carriers,
+        materialize=False,
+    )
+    bids.update(
+        {
+            "looks_like_bids": False,
+            "is_bids": False,
+            "root_validation_issue": "",
+            "metadata_discovery": scan_budget.metadata_discovery_diagnostics(),
+        },
+    )
+    return ScanPreflightScope(
+        source_path=str(requested_source),
+        source_hint="file",
+        source_kind="file",
+        scan_root=str(scan_root),
+        eeg_files=eeg_files,
+        label_sources=[str(item) for item in normalized_label_sources],
+        label_carriers=label_carriers,
+        label_carrier_sources=label_carrier_sources,
+        metadata_files=[],
+        all_files=[
+            str(item)
+            for item in _dedupe_paths(
+                [*selected_paths, *auto_label_carriers, *source_label_files],
+            )
+        ],
+        bids=bids,
+        skipped_nested_bids_roots=[],
+        discovery_warnings=[*scan_budget.warnings, *source_warnings],
+    )
+
+
 def _source_kind(
     path: Path,
     source_hint: str,

@@ -388,6 +388,56 @@ def test_scan_preview_includes_labels_from_external_folder(
     assert snapshot.action_items
 
 
+def test_review_explicit_file_selection_does_not_scan_unselected_subfolders(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    label_dir = source_dir / "label"
+    unrelated_dir = source_dir / "multiformat"
+    label_dir.mkdir(parents=True)
+    unrelated_dir.mkdir()
+    selected_eeg_files = [
+        source_dir / "A01T.fif",
+        source_dir / "A02T.fif",
+        source_dir / "A03T.fif",
+    ]
+    for eeg_path in selected_eeg_files:
+        eeg_path.write_bytes(b"header only")
+        (label_dir / f"{eeg_path.stem}.csv").write_text(
+            "label\n1\n",
+            encoding="utf-8",
+        )
+    unrelated_eeg = unrelated_dir / "A01T-mini-real.edf"
+    unrelated_eeg.write_bytes(b"not part of the explicit file selection")
+    (label_dir / "unrelated.csv").write_text("label\n2\n", encoding="utf-8")
+    service, _dataset = _service()
+
+    _message, payload = _expect_payload(
+        service.handle_review_interpretation(
+            ReviewInterpretationCommand(
+                source_path=str(source_dir),
+                source_hint="file",
+                choices={
+                    "selected_eeg_files": [
+                        str(path.resolve()) for path in selected_eeg_files
+                    ],
+                },
+            ),
+        ),
+    )
+
+    expected_eeg_files = [str(path.resolve()) for path in selected_eeg_files]
+    expected_label_files = [
+        str((label_dir / f"{path.stem}.csv").resolve()) for path in selected_eeg_files
+    ]
+    assert payload["scan_result"]["source_kind"] == "file"
+    assert payload["scan_result"]["eeg_files"] == expected_eeg_files
+    assert payload["scan_result"]["label_carriers"] == expected_label_files
+    assert payload["candidate"]["selected_eeg_files"] == expected_eeg_files
+    assert payload["resource_preflight"]["eeg_path_count"] == 3
+    assert str(unrelated_eeg.resolve()) not in payload["scan_result"]["eeg_files"]
+
+
 def test_review_blocks_external_label_before_candidate_materialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -343,7 +343,10 @@ class DatasetActionHandler:
             return InteractionOutcome.cancelled("No EEG source was selected.")
 
         try:
-            outcome = self._run_data_interpretation_import(list(filepaths))
+            outcome = self._run_data_interpretation_import(
+                list(filepaths),
+                source_hint="file",
+            )
             if outcome is not None:
                 return outcome
             if scan_capability is not None:

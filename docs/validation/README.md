@@ -43,6 +43,11 @@
   4 個 internal-event profiles與固定 11 個 reviewed-label cases。真五步 wizard / recovery
   `20 passed`；IO / public BIDS / cross-source pipeline `39 passed`；strict cross-source runner
   `4/4`（2 training + 2 IO/epoch-only）。
+- `Import file` 的 explicit-scope regression 以真實 A01T/A02T/A03T GDF 驗證：共同父資料夾內即使
+  存在 `multiformat/` 子目錄，也只 review 3 個明確選取的 EEG 與 3 個同名 MAT carriers。
+  focused regression `251 passed`；可見 evidence 位於
+  `artifacts/ui/file-import-scope-fix/`。同一 artifact 也驗證標準錯誤對話框保留錯誤圖示，
+  但 OK / Cancel 不再顯示 Return / Enter glyph。
 - 老師試用前另跑 local-only extended gate：`teacher-preflight` manifest
   `277,106,963 bytes`、10 groups 全部 hash/size verified。OpenNeuro ds003061 三個 BIDS /
   EEGLAB P300 runs 經 scan -> preview -> validate -> apply，三 run 分別套用

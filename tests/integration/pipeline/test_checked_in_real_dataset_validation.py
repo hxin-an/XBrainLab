@@ -23,6 +23,7 @@ from XBrainLab.backend.application import (
     PreprocessOperation,
     PreviewInterpretationCommand,
     QueryStateCommand,
+    ReviewInterpretationCommand,
     ScanSourceCommand,
     TrainCommand,
     ValidateInterpretationCommand,
@@ -118,6 +119,37 @@ def test_real_gdf_internal_event_evidence_identifies_class_candidates():
     assert {"768", "1023", "32766"} <= set(excluded_by_code)
     assert excluded_by_code["1023"]["use_as"] == "Exclude bad trials"
     assert excluded_by_code["32766"]["use_as"] == "Ignore"
+
+
+def test_real_gdf_file_picker_scope_excludes_unselected_nested_formats():
+    selected_files = [
+        str((TEST_DATA_DIR / f"{stem}.gdf").resolve()) for stem in CHECKED_IN_GDF_STEMS
+    ]
+    if not all(Path(path).exists() for path in selected_files):
+        pytest.skip("Checked-in GDF fixtures are unavailable")
+
+    service = ApplicationService()
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(TEST_DATA_DIR.resolve()),
+            source_hint="file",
+            choices={"selected_eeg_files": selected_files},
+        ),
+    )
+
+    assert review.ok is True
+    scan = review.diagnostics["scan_result"]
+    assert scan["source_kind"] == "file"
+    assert scan["eeg_files"] == selected_files
+    assert [Path(path).name for path in scan["label_carriers"]] == [
+        "A01T.mat",
+        "A02T.mat",
+        "A03T.mat",
+    ]
+    assert review.diagnostics["resource_preflight"]["eeg_path_count"] == 3
+    assert not any(
+        "multiformat" in path for path in [*scan["eeg_files"], *scan["label_carriers"]]
+    )
 
 
 def test_real_gdf_internal_labels_apply_the_same_artifact_policy():
