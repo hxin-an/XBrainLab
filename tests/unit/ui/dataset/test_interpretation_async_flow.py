@@ -535,7 +535,7 @@ def _review_state(
     publication_generation: int | None = None,
 ) -> _InterpretationReviewState:
     return _InterpretationReviewState(
-        scan={},
+        scan={"scan_id": "scan-1"},
         preview={},
         candidate={"candidate_id": "candidate-1"},
         candidate_id="candidate-1",
@@ -570,34 +570,61 @@ def test_label_field_repreview_reopens_match_labels_instead_of_applying(
             }
 
     monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
-    restart = MagicMock(
+    repreview = MagicMock(
         return_value=InteractionOutcome.accepted("Preview refresh scheduled.")
     )
     apply_review = MagicMock()
-    monkeypatch.setattr(handler, "_start_interpretation_review_async", restart)
+    monkeypatch.setattr(handler, "_repreview_interpretation_async", repreview)
     monkeypatch.setattr(
         handler,
         "_review_interpretation_for_apply_async",
         apply_review,
     )
+    review_state = _review_state()
 
     outcome = handler._continue_data_interpretation_import(
         source_path="/data",
         source_hint="bids",
         choices={},
         label_sources=[],
-        review_state=_review_state(),
+        review_state=review_state,
     )
 
     assert outcome.status is InteractionStatus.ACCEPTED
-    restart.assert_called_once_with(
-        "/data",
-        "bids",
-        revised_choices,
-        [],
+    repreview.assert_called_once_with(
+        source_path="/data",
+        source_hint="bids",
+        choices=revised_choices,
+        label_sources=[],
+        review_state=review_state,
         initial_step="Match Labels",
     )
     apply_review.assert_not_called()
+
+
+def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> None:
+    handler = DatasetActionHandler(MagicMock())
+    execute = MagicMock(
+        return_value=InteractionOutcome.accepted("Preview refresh scheduled.")
+    )
+    monkeypatch.setattr(handler, "_execute_interpretation_command_async", execute)
+
+    outcome = handler._repreview_interpretation_async(
+        source_path="/data",
+        source_hint="bids",
+        choices={"label_carrier_choices": {}},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+        initial_step="Match Labels",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    command = execute.call_args.args[0]
+    assert isinstance(command, PreviewInterpretationCommand)
+    assert command.scan_id == "scan-1"
+    assert command.choices == {"label_carrier_choices": {}}
+    assert execute.call_args.kwargs["expected_publication_generation"] == 17
 
 
 def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):

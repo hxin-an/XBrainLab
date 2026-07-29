@@ -1028,20 +1028,19 @@ class DatasetActionHandler:
         if updated_choices != choices:
             resume_step = str(dialog_result.get("resume_step") or "").strip()
             if resume_step == "Match Labels":
-                return self._start_interpretation_review_async(
-                    source_path,
-                    source_hint,
-                    updated_choices,
-                    label_sources,
+                return self._repreview_interpretation_async(
+                    source_path=source_path,
+                    source_hint=source_hint,
+                    choices=updated_choices,
+                    label_sources=label_sources,
+                    review_state=review_state,
                     initial_step=resume_step,
                 ) or InteractionOutcome.blocked(
                     "Data interpretation preview could not be refreshed."
                 )
             return self._review_interpretation_for_apply_async(
-                source_path=source_path,
-                source_hint=source_hint,
                 choices=updated_choices,
-                label_sources=label_sources,
+                review_state=review_state,
                 dialog_result=dialog_result,
             ) or InteractionOutcome.blocked(
                 "Data interpretation review could not be refreshed."
@@ -1190,34 +1189,53 @@ class DatasetActionHandler:
 
         return _dispatch()
 
-    def _review_interpretation_for_apply_async(
+    def _preview_and_validate_interpretation_async(
         self,
         *,
-        source_path: str,
-        source_hint: str,
         choices: dict[str, Any],
-        label_sources: list[str],
-        dialog_result: dict[str, Any],
+        review_state: _InterpretationReviewState,
+        on_validated: Callable[
+            [_InterpretationReviewState],
+            InteractionOutcome,
+        ],
+        error_title: str,
     ) -> InteractionOutcome | None:
-        """Refresh edited choices, then apply the resulting candidate."""
-
-        def _handle_review_result(review_result) -> InteractionOutcome:
-            resource_outcome = self._preview_resource_preflight_outcome(
-                review_result,
-                retry=lambda token: _dispatch(
-                    resource_preflight_confirmed=True,
-                    resource_preflight_token=token,
-                ),
+        """Rebuild choices from the admitted scan, then validate the candidate."""
+        scan = dict(review_state.scan)
+        scan_id = self._optional_payload_id(scan, "scan_id")
+        if scan_id is None:
+            message = (
+                "The Data Import scan identity is unavailable. Reopen the source "
+                "and try again."
             )
-            if resource_outcome is not None:
-                return resource_outcome
-            if self._result_failed(review_result, "Interpretation review failed"):
+            QMessageBox.warning(self.panel, "Import review changed", message)
+            return InteractionOutcome.blocked(message)
+
+        def _handle_validation(
+            validation_result,
+            *,
+            preview: dict[str, Any],
+            candidate: dict[str, Any],
+        ) -> InteractionOutcome:
+            if self._result_failed(
+                validation_result,
+                "Interpretation validation failed",
+            ):
                 return self._interaction_failure_outcome(
-                    review_result,
-                    review_result.message,
+                    validation_result,
+                    validation_result.message,
                 )
+            decision = self._diagnostic_payload(
+                validation_result,
+                "validation_decision",
+            )
             try:
-                review_state = self._review_state_from_review_result(review_result)
+                validated_state = self._review_state_from_parts(
+                    scan=scan,
+                    preview=preview,
+                    candidate=candidate,
+                    decision=decision,
+                )
             except (
                 ApplicationError,
                 ControllerCompatibilityUnavailableError,
@@ -1228,39 +1246,151 @@ class DatasetActionHandler:
                     str(exc),
                 )
                 return InteractionOutcome.blocked(str(exc))
-            if str(review_state.decision.get("decision")) == "blocked":
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation blocked",
-                    self._decision_reason(review_state.decision),
-                )
-                return InteractionOutcome.blocked(
-                    self._decision_reason(review_state.decision)
-                )
-            return self._apply_interpretation_async(review_state, dialog_result)
+            return on_validated(validated_state)
 
-        def _dispatch(
+        def _handle_preview_result(preview_result) -> InteractionOutcome:
+            resource_outcome = self._preview_resource_preflight_outcome(
+                preview_result,
+                retry=lambda token: _dispatch_preview(
+                    resource_preflight_confirmed=True,
+                    resource_preflight_token=token,
+                ),
+            )
+            if resource_outcome is not None:
+                return resource_outcome
+            if self._result_failed(preview_result, error_title):
+                return self._interaction_failure_outcome(
+                    preview_result,
+                    preview_result.message,
+                )
+            preview = self._diagnostic_payload(preview_result, "preview")
+            candidate = self._diagnostic_payload(preview_result, "candidate")
+            candidate_id = self._optional_payload_id(candidate, "candidate_id")
+            try:
+                preview_state = self._review_state_from_parts(
+                    scan=scan,
+                    preview=preview,
+                    candidate=candidate,
+                    decision={},
+                )
+            except (
+                ApplicationError,
+                ControllerCompatibilityUnavailableError,
+            ) as exc:
+                QMessageBox.warning(
+                    self.panel,
+                    "Import review changed",
+                    str(exc),
+                )
+                return InteractionOutcome.blocked(str(exc))
+            started = self._execute_interpretation_command_async(
+                ValidateInterpretationCommand(candidate_id=candidate_id),
+                on_result=lambda result: _handle_validation(
+                    result,
+                    preview=preview,
+                    candidate=candidate,
+                ),
+                error_title="Interpretation validation failed",
+                expected_publication_generation=(preview_state.publication_generation),
+                unexpected_error_context=(
+                    UnexpectedErrorContext.DATA_INTERPRETATION_VALIDATION
+                ),
+            )
+            if started is not None:
+                return started
+            message = "Data Interpretation validation service is unavailable."
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation validation unavailable",
+                message,
+            )
+            return InteractionOutcome.blocked(message)
+
+        def _dispatch_preview(
             *,
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome | None:
             return self._execute_interpretation_command_async(
-                ReviewInterpretationCommand(
-                    source_path=source_path,
-                    source_hint=source_hint,
-                    label_sources=label_sources,
+                PreviewInterpretationCommand(
+                    scan_id=scan_id,
                     choices=choices,
                     resource_preflight_confirmed=resource_preflight_confirmed,
                     resource_preflight_token=resource_preflight_token,
                 ),
-                on_result=_handle_review_result,
-                error_title="Interpretation review failed",
+                on_result=_handle_preview_result,
+                error_title=error_title,
+                expected_publication_generation=(review_state.publication_generation),
                 unexpected_error_context=(
-                    UnexpectedErrorContext.DATA_INTERPRETATION_REVIEW
+                    UnexpectedErrorContext.DATA_INTERPRETATION_PREVIEW
                 ),
             )
 
-        return _dispatch()
+        return _dispatch_preview()
+
+    def _repreview_interpretation_async(
+        self,
+        *,
+        source_path: str,
+        source_hint: str,
+        choices: dict[str, Any],
+        label_sources: list[str],
+        review_state: _InterpretationReviewState,
+        initial_step: str,
+    ) -> InteractionOutcome | None:
+        """Reopen edited choices without rediscovering the admitted source."""
+
+        def _open_validated_review(
+            validated_state: _InterpretationReviewState,
+        ) -> InteractionOutcome:
+            return self._continue_data_interpretation_import(
+                source_path=source_path,
+                source_hint=source_hint,
+                choices=dict(choices),
+                label_sources=list(label_sources),
+                review_state=validated_state,
+                initial_step=initial_step,
+            )
+
+        return self._preview_and_validate_interpretation_async(
+            choices=choices,
+            review_state=review_state,
+            on_validated=_open_validated_review,
+            error_title="Interpretation preview failed",
+        )
+
+    def _review_interpretation_for_apply_async(
+        self,
+        *,
+        choices: dict[str, Any],
+        review_state: _InterpretationReviewState,
+        dialog_result: dict[str, Any],
+    ) -> InteractionOutcome | None:
+        """Validate edited choices from the existing scan, then apply."""
+
+        def _apply_validated_review(
+            validated_state: _InterpretationReviewState,
+        ) -> InteractionOutcome:
+            if str(validated_state.decision.get("decision")) == "blocked":
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation blocked",
+                    self._decision_reason(validated_state.decision),
+                )
+                return InteractionOutcome.blocked(
+                    self._decision_reason(validated_state.decision)
+                )
+            return self._apply_interpretation_async(
+                validated_state,
+                dialog_result,
+            )
+
+        return self._preview_and_validate_interpretation_async(
+            choices=choices,
+            review_state=review_state,
+            on_validated=_apply_validated_review,
+            error_title="Interpretation preview failed",
+        )
 
     def _apply_interpretation_async(
         self,

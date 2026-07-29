@@ -1712,6 +1712,7 @@ class DataInterpretationPreviewDialog(
         self._fit_all_tree_columns_to_viewport()
         self._fit_event_tree_height()
         if final_step:
+            self._sync_review_status_copy()
             self._refresh_review_action_cards()
             self._refresh_review_import_summary()
             if not self.import_report_card.isHidden():
@@ -4078,6 +4079,11 @@ class DataInterpretationPreviewDialog(
 
     def _handle_event_value_decisions_changed(self) -> None:
         self._sync_apply_state()
+        if (
+            not hasattr(self, "step_stack")
+            or self.step_stack.currentIndex() != len(self._step_titles) - 1
+        ):
+            return
         self._sync_review_status_copy()
         if hasattr(self, "review_actions_layout"):
             self._refresh_review_action_cards()

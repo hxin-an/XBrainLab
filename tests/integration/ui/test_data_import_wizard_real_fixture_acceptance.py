@@ -203,6 +203,12 @@ class _WizardDriver:
     heartbeat_count: int = 0
     last_heartbeat_at: float = field(default_factory=time.monotonic)
     max_heartbeat_gap_seconds: float = 0.0
+    openneuro_values_started: bool = False
+    openneuro_value_index: int = 0
+    openneuro_value_stage: int = 0
+    last_surface_key: tuple[int, int] | None = None
+    last_heartbeat_context: str = "driver startup"
+    max_heartbeat_gap_context: str = ""
 
 
 def _require_manifest_group(group_name: str) -> None:
@@ -358,9 +364,11 @@ def _complete_bids_event_values(dialog: DataInterpretationPreviewDialog) -> None
         )
 
 
-def _complete_openneuro_event_values(
+def _advance_openneuro_event_values(
     dialog: DataInterpretationPreviewDialog,
-) -> None:
+    driver: _WizardDriver,
+) -> bool:
+    """Perform one human-scale OpenNeuro control action per timer callback."""
     if dialog.label_source_mode_combo.currentData() != "loaded_label_files":
         _select_combo_data(dialog.label_source_mode_combo, "loaded_label_files")
     editor = dialog.event_value_editor
@@ -376,11 +384,15 @@ def _complete_openneuro_event_values(
         "standard",
         "standard_with_reponse",
     }
-    if set(editor.unresolved_values()) != expected:
+    if (
+        not driver.openneuro_values_started
+        and set(editor.unresolved_values()) != expected
+    ):
         raise AssertionError(
             "OpenNeuro value preview did not refresh to the selected `value` "
             f"column: {editor.unresolved_values()!r}"
         )
+    driver.openneuro_values_started = True
     values = [
         label.text()
         for label in editor.findChildren(QLabel)
@@ -423,59 +435,78 @@ def _complete_openneuro_event_values(
         )
         for raw_value in expected
     }
-    for raw_value, role_selector, use_selector, class_editor in zip(
-        values,
-        role_selectors,
-        use_selectors,
-        class_editors,
-        strict=True,
-    ):
-        if raw_value not in decisions:
-            raise AssertionError(f"Unexpected OpenNeuro event value: {raw_value}")
-        role, use, class_name = decisions[raw_value]
-        dialog.scroll_area.ensureWidgetVisible(role_selector)
-        QApplication.processEvents()
-        if (
-            not role_selector.isEnabled()
-            or not use_selector.isEnabled()
-            or role_selector.size().isEmpty()
-            or use_selector.size().isEmpty()
-        ):
-            raise AssertionError(
-                f"OpenNeuro controls are not operable for {raw_value!r}."
-            )
-        _select_combo_data(role_selector, role)
-        _select_combo_data(use_selector, use)
-        if class_name:
-            if class_editor.isReadOnly() or class_editor.size().isEmpty():
-                raise AssertionError(
-                    f"Class-name editor is not operable for {raw_value!r}."
-                )
-            _replace_line_edit_text(class_editor, class_name)
-            if class_editor.text() != class_name:
-                raise AssertionError(
-                    f"Class name did not retain the typed value for {raw_value!r}."
-                )
-    if not editor.is_complete():
-        raise AssertionError(
-            "OpenNeuro event-value decisions remain incomplete: "
-            f"{editor.unresolved_values()!r}"
+    rows = list(
+        zip(
+            values,
+            role_selectors,
+            use_selectors,
+            class_editors,
+            strict=True,
         )
-    scroll_content = dialog.scroll_area.widget()
-    if scroll_content is None:
-        raise AssertionError("Match Labels scroll content is unavailable.")
-    editor_top = editor.mapTo(scroll_content, QPoint(0, 0)).y()
-    dialog.scroll_area.verticalScrollBar().setValue(max(editor_top - 96, 0))
+    )
+    if driver.openneuro_value_index >= len(rows):
+        if not editor.is_complete():
+            raise AssertionError(
+                "OpenNeuro event-value decisions remain incomplete: "
+                f"{editor.unresolved_values()!r}"
+            )
+        scroll_content = dialog.scroll_area.widget()
+        if scroll_content is None:
+            raise AssertionError("Match Labels scroll content is unavailable.")
+        editor_top = editor.mapTo(scroll_content, QPoint(0, 0)).y()
+        vertical_scrollbar = dialog.scroll_area.verticalScrollBar()
+        if vertical_scrollbar is None:
+            raise AssertionError("Match Labels vertical scrollbar is unavailable.")
+        vertical_scrollbar.setValue(max(editor_top - 96, 0))
+        QApplication.processEvents()
+        _capture_teacher_ui(
+            dialog,
+            "openneuro-match-labels-dialog.png",
+        )
+        _capture_teacher_ui(
+            dialog,
+            "openneuro-event-value-controls.png",
+            widget=editor,
+        )
+        return True
+
+    raw_value, role_selector, use_selector, class_editor = rows[
+        driver.openneuro_value_index
+    ]
+    if raw_value not in decisions:
+        raise AssertionError(f"Unexpected OpenNeuro event value: {raw_value}")
+    role, use, class_name = decisions[raw_value]
+    dialog.scroll_area.ensureWidgetVisible(role_selector)
     QApplication.processEvents()
-    _capture_teacher_ui(
-        dialog,
-        "openneuro-match-labels-dialog.png",
-    )
-    _capture_teacher_ui(
-        dialog,
-        "openneuro-event-value-controls.png",
-        widget=editor,
-    )
+    if (
+        not role_selector.isEnabled()
+        or not use_selector.isEnabled()
+        or role_selector.size().isEmpty()
+        or use_selector.size().isEmpty()
+    ):
+        raise AssertionError(f"OpenNeuro controls are not operable for {raw_value!r}.")
+
+    if driver.openneuro_value_stage == 0:
+        _select_combo_data(role_selector, role)
+        driver.openneuro_value_stage = 1
+        return False
+    if driver.openneuro_value_stage == 1:
+        _select_combo_data(use_selector, use)
+        driver.openneuro_value_stage = 2
+        return False
+    if class_name:
+        if class_editor.isReadOnly() or class_editor.size().isEmpty():
+            raise AssertionError(
+                f"Class-name editor is not operable for {raw_value!r}."
+            )
+        _replace_line_edit_text(class_editor, class_name)
+        if class_editor.text() != class_name:
+            raise AssertionError(
+                f"Class name did not retain the typed value for {raw_value!r}."
+            )
+    driver.openneuro_value_index += 1
+    driver.openneuro_value_stage = 0
+    return False
 
 
 def _complete_required_metadata(dialog: DataInterpretationPreviewDialog) -> None:
@@ -554,13 +585,20 @@ def _start_wizard_driver(
 
     def _poll() -> None:
         heartbeat_at = time.monotonic()
-        driver.max_heartbeat_gap_seconds = max(
-            driver.max_heartbeat_gap_seconds,
-            heartbeat_at - driver.last_heartbeat_at,
-        )
+        heartbeat_gap = heartbeat_at - driver.last_heartbeat_at
+        if heartbeat_gap > driver.max_heartbeat_gap_seconds:
+            driver.max_heartbeat_gap_seconds = heartbeat_gap
+            driver.max_heartbeat_gap_context = driver.last_heartbeat_context
         driver.last_heartbeat_at = heartbeat_at
         driver.heartbeat_count += 1
         modal = QApplication.activeModalWidget()
+        driver.last_heartbeat_context = (
+            f"phase={driver.phase}; dialog_count={driver.dialog_count}; "
+            f"modal={type(modal).__name__ if modal is not None else 'None'}; "
+            f"last_trace={driver.trace[-1] if driver.trace else 'none'}; "
+            f"openneuro_row={driver.openneuro_value_index}; "
+            f"openneuro_stage={driver.openneuro_value_stage}"
+        )
         try:
             if isinstance(modal, QMessageBox):
                 if modal.windowTitle() != "Dataset Resource Check":
@@ -601,7 +639,10 @@ def _start_wizard_driver(
             if driver.phase >= len(STEP_TITLES):
                 return
             _assert_step_surface(modal, driver.phase)
-            driver.trace.append(STEP_TITLES[driver.phase])
+            surface_key = (driver.dialog_count, driver.phase)
+            if driver.last_surface_key != surface_key:
+                driver.trace.append(STEP_TITLES[driver.phase])
+                driver.last_surface_key = surface_key
 
             if driver.phase == 0:
                 driver.phase = 1
@@ -650,7 +691,8 @@ def _start_wizard_driver(
                     QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
                     return
                 if driver.resolve_openneuro_values:
-                    _complete_openneuro_event_values(modal)
+                    if not _advance_openneuro_event_values(modal, driver):
+                        return
                     driver.trace.append("review OpenNeuro event values")
                 if driver.resolve_bids_values:
                     _complete_bids_event_values(modal)
@@ -1013,7 +1055,10 @@ def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
         "standard",
     ]
     assert driver.heartbeat_count >= 100
-    assert driver.max_heartbeat_gap_seconds < 5.0
+    assert driver.max_heartbeat_gap_seconds < 5.0, (
+        f"Maximum GUI heartbeat gap was {driver.max_heartbeat_gap_seconds:.3f}s "
+        f"after {driver.max_heartbeat_gap_context}."
+    )
     assert panel.data_surface.currentWidget() is panel.table
     assert panel.table.rowCount() == 3
 

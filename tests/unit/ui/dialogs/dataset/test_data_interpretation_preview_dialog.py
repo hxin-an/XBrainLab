@@ -3077,6 +3077,42 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     assert submission.confirmed_on_accept is True
 
 
+def test_event_value_edits_defer_hidden_review_rebuilds(qtbot, monkeypatch):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={},
+        preview={},
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    _show_step(dialog, "Match Labels")
+    calls: list[str] = []
+    monkeypatch.setattr(
+        dialog,
+        "_sync_apply_state",
+        lambda: calls.append("apply"),
+    )
+    monkeypatch.setattr(
+        dialog,
+        "_sync_review_status_copy",
+        lambda: calls.append("status"),
+    )
+    monkeypatch.setattr(
+        dialog,
+        "_refresh_review_action_cards",
+        lambda: calls.append("actions"),
+    )
+    monkeypatch.setattr(
+        dialog,
+        "_refresh_review_import_summary",
+        lambda: calls.append("summary"),
+    )
+
+    dialog._handle_event_value_decisions_changed()
+
+    assert calls == ["apply"]
+
+
 def test_completed_event_values_can_recheck_with_only_optional_metadata_missing(qtbot):
     events_path = "/tmp/source/sub-01_task-mi_events.tsv"
     dialog = DataInterpretationPreviewDialog(
