@@ -21,19 +21,19 @@ from PyQt6.QtWidgets import (
 
 _ROLE_CHOICES = (
     ("Choose role", ""),
-    ("Stimulus / cue", "stimulus"),
+    ("Stimulus", "stimulus"),
     ("Response", "response"),
     ("Artifact", "artifact"),
     ("Boundary", "boundary"),
     ("System", "system"),
     ("Annotation", "annotation"),
-    ("Other / unknown", "unknown"),
+    ("Other", "unknown"),
 )
 
 _USE_CHOICES = (
     ("Choose use", ""),
-    ("Class label", "class"),
-    ("Keep as event", "event"),
+    ("Class", "class"),
+    ("Keep event", "event"),
     ("Ignore", "ignore"),
 )
 
@@ -132,10 +132,10 @@ class EventValueDecisionEditor(QWidget):
             grid.addWidget(row.class_name_editor, row_index, 3)
             grid.addWidget(row.coverage_label, row_index, 4)
 
-        grid.setColumnStretch(0, 2)
-        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(0, 5)
+        grid.setColumnStretch(1, 3)
         grid.setColumnStretch(2, 2)
-        grid.setColumnStretch(3, 3)
+        grid.setColumnStretch(3, 2)
         grid.setColumnStretch(4, 2)
         self._layout.addWidget(table)
         self.updateGeometry()
@@ -157,7 +157,10 @@ class EventValueDecisionEditor(QWidget):
 
     def coverage_text(self, raw_value: str) -> str:
         matching = [
-            row.coverage_label.text()
+            str(
+                row.coverage_label.property("fullCoverageText")
+                or row.coverage_label.text()
+            )
             for row in self._rows
             if row.raw_value == str(raw_value)
         ]
@@ -185,6 +188,7 @@ class EventValueDecisionEditor(QWidget):
             self._set_combo_data(row.use_selector, use)
             if class_name:
                 row.class_name_editor.setText(class_name)
+                row.class_name_editor.setCursorPosition(0)
             self._sync_class_name_editor(row)
             matched = True
         if not matched:
@@ -208,14 +212,22 @@ class EventValueDecisionEditor(QWidget):
         representative = occurrences[0].decision
         role_selector = QComboBox(self)
         role_selector.setObjectName("EventValueRoleSelector")
-        role_selector.setMinimumWidth(135)
+        role_selector.setMinimumWidth(100)
+        role_selector.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )
         role_selector.addItems([display for display, _value in _ROLE_CHOICES])
         for index, (_display, value) in enumerate(_ROLE_CHOICES):
             role_selector.setItemData(index, value)
 
         use_selector = QComboBox(self)
         use_selector.setObjectName("EventValueUseSelector")
-        use_selector.setMinimumWidth(125)
+        use_selector.setMinimumWidth(90)
+        use_selector.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )
         use_selector.addItems([display for display, _value in _USE_CHOICES])
         for index, (_display, value) in enumerate(_USE_CHOICES):
             use_selector.setItemData(index, value)
@@ -227,17 +239,30 @@ class EventValueDecisionEditor(QWidget):
         class_name_editor = QLineEdit(self)
         class_name_editor.setObjectName("EventValueClassNameEditor")
         class_name_editor.setPlaceholderText("Required for class labels")
-        class_name_editor.setMinimumWidth(165)
+        class_name_editor.setMinimumWidth(135)
+        class_name_editor.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )
         class_name_editor.setText(initial["class_name"])
+        class_name_editor.setCursorPosition(0)
+        class_name_editor.setToolTip(initial["class_name"])
 
         count = sum(
             self._safe_count(item.decision.get("count")) for item in occurrences
         )
         file_count = len({item.carrier_key for item in occurrences})
-        coverage_label = QLabel(
-            f"{count} rows · {file_count}/{max(self._carrier_count, 1)} files"
-        )
+        total_files = max(self._carrier_count, 1)
+        full_coverage_text = f"{count} rows · {file_count}/{total_files} files"
+        coverage_label = QLabel(f"{count} rows · {file_count}/{total_files}")
         coverage_label.setObjectName("DataImportValueDecisionCoverage")
+        coverage_label.setProperty("fullCoverageText", full_coverage_text)
+        coverage_label.setToolTip(full_coverage_text)
+        coverage_label.setWordWrap(True)
+        coverage_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
 
         row = _DecisionRow(
             occurrences=occurrences,
@@ -252,6 +277,10 @@ class EventValueDecisionEditor(QWidget):
             lambda _index, current=row: self._use_changed(current)
         )
         class_name_editor.textChanged.connect(self._emit_change)
+        class_name_editor.textChanged.connect(class_name_editor.setToolTip)
+        class_name_editor.editingFinished.connect(
+            lambda current=class_name_editor: current.setCursorPosition(0)
+        )
         return row
 
     def _use_changed(self, row: _DecisionRow) -> None:
@@ -435,6 +464,11 @@ class EventValueDecisionEditor(QWidget):
         value_label = QLabel(raw_value, cell)
         value_label.setObjectName("DataImportValueDecisionValue")
         value_label.setToolTip(tooltip)
+        value_label.setWordWrap(True)
+        value_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         layout.addWidget(value_label)
         if show_source:
             source_label = QLabel(self._source_display(occurrences), cell)
@@ -443,6 +477,10 @@ class EventValueDecisionEditor(QWidget):
             source_label.setToolTip(tooltip)
             layout.addWidget(source_label)
         cell.setToolTip(tooltip)
+        cell.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         return cell
 
     @staticmethod

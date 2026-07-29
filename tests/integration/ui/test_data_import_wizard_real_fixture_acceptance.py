@@ -11,13 +11,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PyQt6.QtCore import QPoint, Qt, QThreadPool, QTimer
+from PyQt6.QtCore import QPoint, QRect, Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
     QFileDialog,
+    QFrame,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -309,7 +310,15 @@ def _capture_teacher_ui(
     output_dir.mkdir(parents=True, exist_ok=True)
     QApplication.processEvents()
     target = widget or dialog
-    pixmap = target.grab()
+    if widget is None:
+        pixmap = target.grab()
+    else:
+        target_rect = QRect(target.mapTo(dialog, QPoint(0, 0)), target.size())
+        if not dialog.rect().contains(target_rect):
+            raise AssertionError(
+                f"UI artifact target is not fully visible in the dialog: {filename}"
+            )
+        pixmap = dialog.grab(target_rect)
     output_path = output_dir / filename
     if pixmap.isNull() or not pixmap.save(str(output_path), "PNG"):
         raise AssertionError(f"Failed to capture current UI artifact: {output_path}")
@@ -463,10 +472,13 @@ def _advance_openneuro_event_values(
             dialog,
             "openneuro-match-labels-dialog.png",
         )
+        value_table = editor.findChild(QFrame, "DataImportValueDecisionTable")
+        if value_table is None:
+            raise AssertionError("OpenNeuro event-value table is unavailable.")
         _capture_teacher_ui(
             dialog,
             "openneuro-event-value-controls.png",
-            widget=editor,
+            widget=value_table,
         )
         return True
 

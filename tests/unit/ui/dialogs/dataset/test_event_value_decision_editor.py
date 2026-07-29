@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QScrollArea
+from PyQt6.QtWidgets import QComboBox, QFrame, QLabel, QLineEdit, QScrollArea
 
 from XBrainLab.ui.dialogs.dataset.event_value_decision_editor import (
     EventValueDecisionEditor,
@@ -87,6 +87,7 @@ def test_editor_round_trips_boundary_and_system_as_distinct_roles(qtbot) -> None
     }
     assert role_choices["Boundary"] == "boundary"
     assert role_choices["System"] == "system"
+    assert role_choices["Stimulus"] == "stimulus"
 
     editor.set_value_decision("boundary", role="boundary", use="event")
     editor.set_value_decision("start_experiment", role="system", use="event")
@@ -95,6 +96,29 @@ def test_editor_round_trips_boundary_and_system_as_distinct_roles(qtbot) -> None
     assert decisions["boundary"]["role"] == "boundary"
     assert decisions["start_experiment"]["role"] == "system"
     assert editor.is_complete()
+
+
+def test_class_editor_returns_to_the_start_after_editing_finishes(qtbot) -> None:
+    editor = EventValueDecisionEditor(
+        [_carrier("/data/run-01_events.tsv", {"ignore": _unresolved("ignore")})]
+    )
+    qtbot.addWidget(editor)
+    editor.show()
+    class_editor = editor.findChildren(QLineEdit, "EventValueClassNameEditor")[0]
+    assert class_editor.cursorPosition() == 0
+    editor.set_value_decision(
+        "ignore",
+        role="system",
+        use="class",
+        class_name="Ignore - not a real event",
+    )
+    assert class_editor.cursorPosition() == 0
+    assert class_editor.toolTip() == "Ignore - not a real event"
+    class_editor.setCursorPosition(len(class_editor.text()))
+
+    class_editor.editingFinished.emit()
+
+    assert class_editor.cursorPosition() == 0
 
 
 def test_editor_groups_identical_values_across_files_and_preserves_output(
@@ -193,3 +217,65 @@ def test_editor_uses_editable_controls_without_nested_scroll(qtbot) -> None:
     assert editor.findChildren(QComboBox)
     assert editor.findChildren(QLineEdit)
     assert editor.findChildren(QScrollArea) == []
+
+
+def test_editor_fits_a_narrow_wizard_viewport_without_horizontal_clipping(
+    qtbot,
+) -> None:
+    values = (
+        "ignore",
+        "noise_with_reponse",
+        "oddball_with_reponse",
+        "response",
+        "standard_with_reponse",
+    )
+    editor = EventValueDecisionEditor(
+        [
+            _carrier(
+                "/data/run-01_events.tsv",
+                {value: _unresolved(value, count=100) for value in values},
+            )
+        ]
+    )
+    qtbot.addWidget(editor)
+    editor.show()
+    editor.adjustSize()
+    editor.resize(650, editor.height())
+    qtbot.wait(10)
+
+    table = editor.findChild(QFrame, "DataImportValueDecisionTable")
+    assert table is not None
+    role_selector = editor.findChildren(QComboBox, "EventValueRoleSelector")[0]
+    use_selector = editor.findChildren(QComboBox, "EventValueUseSelector")[0]
+    class_name_editor = editor.findChildren(QLineEdit, "EventValueClassNameEditor")[0]
+    assert (
+        role_selector.minimumWidth()
+        + use_selector.minimumWidth()
+        + class_name_editor.minimumWidth()
+        <= 325
+    )
+    assert editor.minimumSizeHint().width() <= 650
+    assert editor.width() == 650
+    assert all(
+        control.geometry().right() <= table.contentsRect().right()
+        for control in (
+            *editor.findChildren(QComboBox),
+            *editor.findChildren(QLineEdit),
+        )
+    )
+    value_widths = [
+        (
+            label.text(),
+            label.width(),
+            label.fontMetrics().horizontalAdvance(label.text()),
+        )
+        for label in editor.findChildren(QLabel, "DataImportValueDecisionValue")
+    ]
+    assert all(
+        label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
+        for label in editor.findChildren(QLabel, "DataImportValueDecisionValue")
+    ), value_widths
+    assert all(
+        label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
+        for label in editor.findChildren(QLabel, "DataImportValueDecisionCoverage")
+    )
