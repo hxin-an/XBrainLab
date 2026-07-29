@@ -22,6 +22,21 @@ UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("developer-scripts", ("tests/unit/scripts",)),
     ("ui", ("tests/unit/ui",)),
 )
+UI_UNIT_ROOT_TESTS = tuple(
+    str(path) for path in sorted(Path("tests/unit/ui").glob("test_*.py"))
+)
+UI_UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("root-contracts", UI_UNIT_ROOT_TESTS),
+    ("chat", ("tests/unit/ui/chat",)),
+    ("components", ("tests/unit/ui/components",)),
+    ("core", ("tests/unit/ui/core",)),
+    ("dataset", ("tests/unit/ui/dataset",)),
+    ("dialogs", ("tests/unit/ui/dialogs",)),
+    ("preprocess", ("tests/unit/ui/preprocess",)),
+    ("styles", ("tests/unit/ui/styles",)),
+    ("training", ("tests/unit/ui/training",)),
+    ("visualization", ("tests/unit/ui/visualization",)),
+)
 INTEGRATION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("agent", ("tests/integration/agent",)),
     ("backend", ("tests/integration/backend",)),
@@ -94,10 +109,17 @@ def backend() -> None:
 
 
 def ui() -> None:
-    """Run UI unit tests."""
+    """Run UI unit domains without sharing Qt or native-library state."""
     print("Running UI Tests...")
     configure_headless_ui_env()
-    _run_one_or_exit(["--capture=sys", "tests/unit/ui"])
+    _assert_all_test_domains_declared(
+        root=Path("tests/unit/ui"),
+        shards=UI_UNIT_SHARDS[1:],
+    )
+    _run_shards(
+        gate_name="UI unit",
+        shards=UI_UNIT_SHARDS,
+    )
 
 
 def run_llm_tests() -> None:

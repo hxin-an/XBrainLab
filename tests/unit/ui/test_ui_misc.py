@@ -1378,7 +1378,9 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
             ReviewInterpretationCommand,
+            ValidateInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -1394,31 +1396,41 @@ class TestDatasetActionHandler:
             },
         }
         reviews: list[ReviewInterpretationCommand] = []
+        previews: list[PreviewInterpretationCommand] = []
+        validations: list[ValidateInterpretationCommand] = []
         applied: list[ApplyInterpretationCommand] = []
 
         def fake_execute(_panel, command):
             if isinstance(command, ReviewInterpretationCommand):
                 reviews.append(command)
-                candidate_id = f"candidate-{len(reviews)}"
-                first_review = len(reviews) == 1
                 return _command_result(
                     scan_result={
                         "scan_id": "scan-1",
                         "source_path": command.source_path,
                     },
                     preview={"summary": "Found 1 EEG file(s)."},
-                    candidate={"candidate_id": candidate_id},
+                    candidate={"candidate_id": "candidate-1"},
                     validation_decision={
-                        "candidate_id": candidate_id,
-                        "decision": (
-                            "blocked" if first_review else "needs_confirmation"
-                        ),
-                        "required_confirmations": (
-                            [] if first_review else ["Confirm event roles."]
-                        ),
-                        "blocked_reasons": (
-                            ["Event mapping is incomplete."] if first_review else []
-                        ),
+                        "candidate_id": "candidate-1",
+                        "decision": "blocked",
+                        "required_confirmations": [],
+                        "blocked_reasons": ["Event mapping is incomplete."],
+                    },
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                previews.append(command)
+                return _command_result(
+                    preview={"summary": "Edited event mapping ready."},
+                    candidate={"candidate_id": "candidate-2"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                validations.append(command)
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-2",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm event roles."],
+                        "blocked_reasons": [],
                     },
                 )
             if isinstance(command, ApplyInterpretationCommand):
@@ -1434,14 +1446,17 @@ class TestDatasetActionHandler:
         ):
             handler.import_data()
 
-        assert len(reviews) == 2
-        assert reviews[1].choices["metadata_overrides"] == {
+        assert len(reviews) == 1
+        assert len(previews) == 1
+        assert previews[0].scan_id == "scan-1"
+        assert previews[0].choices["metadata_overrides"] == {
             "sub-01_task-mi.fif": {"session": "session-01"}
         }
-        assert reviews[1].choices["class_map"] == {
+        assert previews[0].choices["class_map"] == {
             "1": "left hand",
             "2": "right hand",
         }
+        assert [command.candidate_id for command in validations] == ["candidate-2"]
         assert applied
         assert applied[0].candidate_id == "candidate-2"
         assert applied[0].confirmed is True
@@ -1458,7 +1473,9 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
             ReviewInterpretationCommand,
+            ValidateInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -1534,6 +1551,20 @@ class TestDatasetActionHandler:
                         "blocked_reasons": [],
                     },
                 )
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={"summary": "Edited label mapping ready."},
+                    candidate={"candidate_id": "candidate-with-labels-reviewed"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-with-labels-reviewed",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm label matching."],
+                        "blocked_reasons": [],
+                    },
+                )
             if isinstance(command, ApplyInterpretationCommand):
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
@@ -1556,7 +1587,12 @@ class TestDatasetActionHandler:
             for command in commands
             if isinstance(command, ApplyInterpretationCommand)
         ]
-        assert len(reviews) == 3
+        previews = [
+            command
+            for command in commands
+            if isinstance(command, PreviewInterpretationCommand)
+        ]
+        assert len(reviews) == 2
         assert reviews[0].label_sources == []
         assert reviews[1].label_sources == [label_folder]
         assert "label_carrier" not in reviews[1].choices
@@ -1564,14 +1600,16 @@ class TestDatasetActionHandler:
         assert "class_map" not in reviews[1].choices
         second_dialog_kwargs = mock_preview_dialog.call_args_list[1].kwargs
         assert second_dialog_kwargs["initial_step"] == "Review Metadata"
-        assert reviews[-1].choices["metadata_overrides"] == {
+        assert len(previews) == 1
+        assert previews[0].scan_id == "scan-2"
+        assert previews[0].choices["metadata_overrides"] == {
             "sub-01_task-mi_raw.fif": {"subject": "S01", "task": "mi"}
         }
         assert (
-            reviews[-1].choices["label_carrier_choices"][label_file]["label_field"]
+            previews[0].choices["label_carrier_choices"][label_file]["label_field"]
             == "trial_type"
         )
-        assert applies[-1].candidate_id == "candidate-with-labels"
+        assert applies[-1].candidate_id == "candidate-with-labels-reviewed"
         assert applies[-1].confirmed is True
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")

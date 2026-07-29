@@ -114,6 +114,40 @@ def test_declared_integration_shards_cover_every_test_domain() -> None:
     assert declared_paths == actual_domains
 
 
+def test_ui_gate_runs_every_ui_domain_in_isolated_processes(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        run_tests,
+        "configure_headless_ui_env",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        run_tests,
+        "run_pytest",
+        lambda args: calls.append(tuple(args)) or 0,
+    )
+
+    run_tests.ui()
+
+    expected_paths = {
+        path for _label, paths in run_tests.UI_UNIT_SHARDS for path in paths
+    }
+    root_tests = {str(path) for path in Path("tests/unit/ui").glob("test_*.py")}
+    domain_paths = {
+        str(path)
+        for path in Path("tests/unit/ui").iterdir()
+        if path.is_dir() and any(path.rglob("test_*.py"))
+    }
+
+    assert expected_paths == root_tests | domain_paths
+    assert calls == [
+        ("--capture=sys", *paths, "-q") for _label, paths in run_tests.UI_UNIT_SHARDS
+    ]
+
+
 def test_mcp_compatibility_is_explicitly_outside_default_all_gate() -> None:
     assert run_tests.MCP_COMPATIBILITY_SHARDS == (
         ("unit", ("tests/unit/mcp",)),
