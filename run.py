@@ -14,6 +14,7 @@ import argparse
 import os
 import sys
 from time import monotonic, sleep
+from typing import Protocol
 
 # Ensure the project root is importable when running the script directly.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -22,7 +23,7 @@ from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
 
 configure_qt_platform_for_runtime()
 
-from PyQt6.QtCore import QSettings, QSize, Qt
+from PyQt6.QtCore import QSettings, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen, QPixmap
 from PyQt6.QtWidgets import QApplication, QWidget
 
@@ -65,6 +66,13 @@ class _Splash(QWidget):
         _ = window
         self.hide()
         self.deleteLater()
+
+
+class _SplashFinisher(Protocol):
+    """Minimal splash contract needed when presenting the main window."""
+
+    def finish(self, window: QWidget) -> None:
+        """Release the splash after the product window is visible."""
 
 
 def _create_splash_pixmap() -> QPixmap:
@@ -137,6 +145,38 @@ def _show_centered_splash(
     _flush_splash_paint(app, splash, paint_wait_ms=paint_wait_ms)
 
 
+def _request_main_window_activation(
+    app: QApplication,
+    window: QWidget,
+) -> None:
+    """Bring the product window forward after the splash releases focus."""
+    try:
+        if window.isMinimized():
+            window.showNormal()
+        app.setActiveWindow(window)
+        window.raise_()
+        window.activateWindow()
+    except RuntimeError:
+        # The queued request may race with an immediate application shutdown.
+        return
+
+
+def _present_main_window(
+    app: QApplication,
+    splash: _SplashFinisher,
+    window: QWidget,
+) -> None:
+    """Show and activate the main window reliably across WSLg and remote desktops."""
+    window.show()
+    app.processEvents()
+    splash.finish(window)
+    app.processEvents()
+    _request_main_window_activation(app, window)
+
+    # WSLg can ignore an activation request issued before the event loop starts.
+    QTimer.singleShot(0, lambda: _request_main_window_activation(app, window))
+
+
 def main() -> None:
     """Parse CLI arguments, create the application, and show the main window.
 
@@ -191,10 +231,9 @@ def main() -> None:
     study = Study()
 
     window = MainWindow(study)
-    window.show()
+    _present_main_window(app, splash, window)
     if startup_geometry_diagnostics_enabled():
         logger.info(widget_geometry_diagnostic_line("main_window.after_show", window))
-    splash.finish(window)
 
     sys.exit(app.exec())
 
