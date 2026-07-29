@@ -14,6 +14,8 @@ from urllib.parse import quote, urlparse
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
 CI_REQUIRED_MAX_BYTES = 20 * 1024 * 1024
+TEACHER_PREFLIGHT_MAX_BYTES = 320 * 1024 * 1024
+DEFAULT_FIXTURE_PROFILE = "required-ci"
 MNE_BIDS_TINY_NAME = "mne-bids-tiny-eeg"
 MNE_BIDS_TINY_REVISION = (
     "9dc7b5b8bdfb8bbdb72983900e2df7be484f2b0c"  # pragma: allowlist secret
@@ -29,6 +31,9 @@ MNE_BIDS_TINY_ENTRYPOINT = (
 MNE_TESTING_DATA_REVISION = (
     "f9dc9fc10d35e817e45136d9a3932f2ee0d7053c"  # pragma: allowlist secret
 )
+OPENNEURO_P300_NAME = "openneuro-ds003061-p300"
+OPENNEURO_P300_VERSION = "1.1.2"
+OPENNEURO_P300_BASE_URL = "https://s3.amazonaws.com/openneuro.org/ds003061"
 
 
 class FixtureFile(TypedDict):
@@ -250,6 +255,152 @@ def _mne_bids_tiny_downloads() -> list[FixtureFile]:
     ]
 
 
+OPENNEURO_P300_FILES: tuple[tuple[str, str, int], ...] = (
+    (
+        "README",
+        "38453943c3d1564fb4b45ed9e59276684a25d38139f60e30242534960994c1b0",  # pragma: allowlist secret
+        1742,
+    ),
+    (
+        "dataset_description.json",
+        "e4a6f4095f4dc7c4b84b7d2930eeb618262d231e473e503013273f780d64c753",  # pragma: allowlist secret
+        501,
+    ),
+    (
+        "participants.json",
+        "afa01f868867780199fe6c3b03666febc94206a526329ee04763653856868f58",  # pragma: allowlist secret
+        768,
+    ),
+    (
+        "participants.tsv",
+        "aa1262f77a7e9fc9c5ec66629507e3ff49efc4fb32a9833615325bb53074a8c1",  # pragma: allowlist secret
+        377,
+    ),
+    (
+        "task-P300_events.json",
+        "ddfe630b881248dfcd66a90794e39bd8ee6b1391bb9f12755c78b1a46293f92e",  # pragma: allowlist secret
+        2983,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-1_channels.tsv",
+        "2ff571acb0e9f9fe82027fb00bcf3927ff9f6794eeaa978ff4b9580a3b7907be",  # pragma: allowlist secret
+        1152,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-1_coordsystem.json",
+        "38cbd743cd80f8243716dcfe326138c49c124855551fbed50f935724a5ee71d3",  # pragma: allowlist secret
+        97,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-1_eeg.json",
+        "e8f1e276ae3c50a5cf2f11251eb11c5166197ca456f5bed56ff72fc4a268ddaa",  # pragma: allowlist secret
+        1377,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-1_eeg.set",
+        "e07138cd7f7509fe40655691f61df29324f89d40141dae701407fc6cbca8646c",  # pragma: allowlist secret
+        63516912,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-1_electrodes.tsv",
+        "7159f6f8f95410bfa3653d42985a10cf176400486a4ec8732b42bde7eebe30c0",  # pragma: allowlist secret
+        1717,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-1_events.json",
+        "1c1447887fded4c86acf66cc6a35326a5b56152c14a47163c111c48fced966c5",  # pragma: allowlist secret
+        1893,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-1_events.tsv",
+        "1851175f4a5f11c604708510ec2843ed57e9d70cdf2147fda5451878fc9b3131",  # pragma: allowlist secret
+        45335,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-2_channels.tsv",
+        "2ff571acb0e9f9fe82027fb00bcf3927ff9f6794eeaa978ff4b9580a3b7907be",  # pragma: allowlist secret
+        1152,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-2_coordsystem.json",
+        "38cbd743cd80f8243716dcfe326138c49c124855551fbed50f935724a5ee71d3",  # pragma: allowlist secret
+        97,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-2_eeg.json",
+        "6d7dae55f96d3f5f643f1a9df944f51fbb9011d0966794136b69bf0025cf6fdf",  # pragma: allowlist secret
+        1377,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-2_eeg.set",
+        "4a4fd78720ebf0a00b91eba6465162da7d4cfe74c485cef0e838a7a86c963602",  # pragma: allowlist secret
+        63433336,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-2_electrodes.tsv",
+        "7159f6f8f95410bfa3653d42985a10cf176400486a4ec8732b42bde7eebe30c0",  # pragma: allowlist secret
+        1717,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-2_events.json",
+        "1c1447887fded4c86acf66cc6a35326a5b56152c14a47163c111c48fced966c5",  # pragma: allowlist secret
+        1893,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-2_events.tsv",
+        "58afc85d5fe1e85a19ca8f0115dcc825b35a007668cc3a15518526c583b0631a",  # pragma: allowlist secret
+        45307,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-3_channels.tsv",
+        "2ff571acb0e9f9fe82027fb00bcf3927ff9f6794eeaa978ff4b9580a3b7907be",  # pragma: allowlist secret
+        1152,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-3_coordsystem.json",
+        "38cbd743cd80f8243716dcfe326138c49c124855551fbed50f935724a5ee71d3",  # pragma: allowlist secret
+        97,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-3_eeg.json",
+        "6644b91106926737f5eb63f4b5ce6640c73175ffe686222d3947dba950749aae",  # pragma: allowlist secret
+        1377,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-3_eeg.set",
+        "0ea43ace2bd0010dadb99c3e50161a981b5ff834a69c895727008a2088915ecb",  # pragma: allowlist secret
+        63349072,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-3_electrodes.tsv",
+        "7159f6f8f95410bfa3653d42985a10cf176400486a4ec8732b42bde7eebe30c0",  # pragma: allowlist secret
+        1717,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-3_events.json",
+        "1c1447887fded4c86acf66cc6a35326a5b56152c14a47163c111c48fced966c5",  # pragma: allowlist secret
+        1893,
+    ),
+    (
+        "sub-001/eeg/sub-001_task-P300_run-3_events.tsv",
+        "0bc2d6c2e7334add8d95c472a34e4fab72ea101f81d1580940736a08d1d547ae",  # pragma: allowlist secret
+        45156,
+    ),
+)
+
+
+def _openneuro_p300_downloads() -> list[FixtureFile]:
+    return [
+        {
+            "filename": f"{OPENNEURO_P300_NAME}/{relative_path}",
+            "url": f"{OPENNEURO_P300_BASE_URL}/{quote(relative_path, safe='/')}",
+            "sha256": sha256,
+            "size_bytes": size_bytes,
+        }
+        for relative_path, sha256, size_bytes in OPENNEURO_P300_FILES
+    ]
+
+
 FIXTURE_GROUPS: list[FixtureGroup] = [
     {
         "name": "physionet-edf-rest",
@@ -366,6 +517,84 @@ FIXTURE_GROUPS: list[FixtureGroup] = [
         "entrypoint": MNE_BIDS_TINY_ENTRYPOINT,
         "files": _mne_bids_tiny_downloads(),
     },
+    {
+        "name": OPENNEURO_P300_NAME,
+        "description": (
+            "OpenNeuro ds003061 auditory P300 BIDS dataset: one subject, three "
+            "EEGLAB runs, and per-run events.tsv label carriers."
+        ),
+        "source": (
+            f"OpenNeuro ds003061 snapshot {OPENNEURO_P300_VERSION}, mirrored "
+            "from the public S3 object paths. The local cache is exact-byte "
+            "pinned by size and SHA-256; a changed upstream object fails "
+            "verification instead of being accepted silently"
+        ),
+        "entrypoint": OPENNEURO_P300_NAME,
+        "files": _openneuro_p300_downloads(),
+    },
+    {
+        "name": "chbmit-chb01",
+        "description": (
+            "CHB-MIT scalp EEG seizure recording with the source summary and "
+            "seizure sidecar retained for boundary testing."
+        ),
+        "source": "PhysioNet CHB-MIT Scalp EEG Database 1.0.0",
+        "entrypoint": "chbmit-chb01/chb01_03.edf",
+        "files": [
+            {
+                "filename": "chbmit-chb01/chb01_03.edf",
+                "url": "https://physionet.org/files/chbmit/1.0.0/chb01/chb01_03.edf",
+                "sha256": "4c4a95a9b4331aeaadadd538763eb2e735950d9aa615b85ee6246c784be8ae90",  # pragma: allowlist secret
+                "size_bytes": 42399744,
+            },
+            {
+                "filename": "chbmit-chb01/chb01_03.edf.seizures",
+                "url": (
+                    "https://physionet.org/files/chbmit/1.0.0/chb01/"
+                    "chb01_03.edf.seizures"
+                ),
+                "sha256": "eb521b5e1a521f70fb8224e4205f0826c5ade093f29765d057b5db4d6b6594ab",  # pragma: allowlist secret
+                "size_bytes": 54,
+            },
+            {
+                "filename": "chbmit-chb01/chb01-summary.txt",
+                "url": (
+                    "https://physionet.org/files/chbmit/1.0.0/chb01/chb01-summary.txt"
+                ),
+                "sha256": "77e86183845192d147c88a9bb4263c2b4a32e936c6236029770f86ca2ea023db",  # pragma: allowlist secret
+                "size_bytes": 5355,
+            },
+        ],
+    },
+    {
+        "name": "sleep-edfx-st7011",
+        "description": (
+            "Sleep-EDF telemetry PSG recording with its independent EDF+ "
+            "hypnogram annotation file."
+        ),
+        "source": "PhysioNet Sleep-EDF Expanded 1.0.0",
+        "entrypoint": "sleep-edfx-st7011/ST7011J0-PSG.edf",
+        "files": [
+            {
+                "filename": "sleep-edfx-st7011/ST7011J0-PSG.edf",
+                "url": (
+                    "https://physionet.org/files/sleep-edfx/1.0.0/"
+                    "sleep-telemetry/ST7011J0-PSG.edf"
+                ),
+                "sha256": "6f14ca2c42184c5114e2d220d91c4f0d7bc627fb53f6760c4c9997272cf4319b",  # pragma: allowlist secret
+                "size_bytes": 29439536,
+            },
+            {
+                "filename": "sleep-edfx-st7011/ST7011JP-Hypnogram.edf",
+                "url": (
+                    "https://physionet.org/files/sleep-edfx/1.0.0/"
+                    "sleep-telemetry/ST7011JP-Hypnogram.edf"
+                ),
+                "sha256": "e4c8dcc87611e3daa559f633b43d51b47e0ba6ad1f246fc9af3327e4e4e885a8",  # pragma: allowlist secret
+                "size_bytes": 6356,
+            },
+        ],
+    },
 ]
 
 CI_REQUIRED_GROUP_NAMES = frozenset(
@@ -379,9 +608,18 @@ CI_REQUIRED_GROUP_NAMES = frozenset(
         MNE_BIDS_TINY_NAME,
     }
 )
+TEACHER_PREFLIGHT_GROUP_NAMES = frozenset(
+    {
+        *CI_REQUIRED_GROUP_NAMES,
+        OPENNEURO_P300_NAME,
+        "chbmit-chb01",
+        "sleep-edfx-st7011",
+    }
+)
 
 _ALLOWED_DOWNLOAD_HOSTS = {
     "physionet.org",
+    "s3.amazonaws.com",
     "www.bbci.de",
     "sccn.ucsd.edu",
     "raw.githubusercontent.com",
@@ -412,6 +650,20 @@ def fixture_groups_for_profile(profile: str) -> list[FixtureGroup]:
         if missing_groups:
             raise RuntimeError(
                 "Required CI fixture groups are not defined: "
+                + ", ".join(sorted(missing_groups))
+            )
+        return selected
+    if profile == "teacher-preflight":
+        selected = [
+            group
+            for group in FIXTURE_GROUPS
+            if group["name"] in TEACHER_PREFLIGHT_GROUP_NAMES
+        ]
+        selected_names = {group["name"] for group in selected}
+        missing_groups = TEACHER_PREFLIGHT_GROUP_NAMES - selected_names
+        if missing_groups:
+            raise RuntimeError(
+                "Teacher preflight fixture groups are not defined: "
                 + ", ".join(sorted(missing_groups))
             )
         return selected
@@ -550,9 +802,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--profile",
-        choices=("all", "required-ci"),
-        default="all",
-        help="Select all fixtures or the size-bounded required CI profile.",
+        choices=("all", "required-ci", "teacher-preflight"),
+        default=DEFAULT_FIXTURE_PROFILE,
+        help=(
+            "Select all fixtures, the compact required CI profile, or the "
+            "larger local teacher-preflight profile."
+        ),
     )
     parser.add_argument(
         "--verify-only",
@@ -566,6 +821,14 @@ def main() -> int:
         raise ValueError(
             "Required CI fixture profile exceeds its download boundary: "
             f"{profile_size_bytes} > {CI_REQUIRED_MAX_BYTES} bytes"
+        )
+    if (
+        args.profile == "teacher-preflight"
+        and profile_size_bytes > TEACHER_PREFLIGHT_MAX_BYTES
+    ):
+        raise ValueError(
+            "Teacher preflight fixture profile exceeds its download boundary: "
+            f"{profile_size_bytes} > {TEACHER_PREFLIGHT_MAX_BYTES} bytes"
         )
 
     if args.list:

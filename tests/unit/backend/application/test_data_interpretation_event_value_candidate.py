@@ -306,7 +306,9 @@ def _mixed_bids_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
         encoding="utf-8",
     )
     (eeg_dir / "sub-01_task-mi_channels.tsv").write_text(
-        "name\tstatus\tstatus_description\nC3\tgood\tn/a\nC4\tbad\tflat\n",
+        "name\ttype\tunits\tstatus\tstatus_description\n"
+        "C3\tEEG\tuV\tgood\tn/a\n"
+        "C4\tEEG\tuV\tbad\tflat\n",
         encoding="utf-8",
     )
     return root, eeg.resolve(), events.resolve()

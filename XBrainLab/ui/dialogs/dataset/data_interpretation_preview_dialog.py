@@ -1647,7 +1647,16 @@ class DataInterpretationPreviewDialog(
             self._resume_step_after_accept = "Review Metadata"
             self.accept()
             return
-        self._go_to_step(self.step_stack.currentIndex() + 1)
+        current = self.step_stack.currentIndex()
+        if (
+            current < len(self._step_titles)
+            and self._step_titles[current] == "Match Labels"
+            and self._label_field_requires_backend_refresh()
+        ):
+            self._resume_step_after_accept = "Match Labels"
+            self.accept()
+            return
+        self._go_to_step(current + 1)
 
     def _go_previous_step(self) -> None:
         self._go_to_step(self.step_stack.currentIndex() - 1)
@@ -1851,8 +1860,8 @@ class DataInterpretationPreviewDialog(
         if self._extra_label_sources != self._initial_label_sources:
             result["label_sources"] = list(self._extra_label_sources)
             result["label_sources_changed"] = True
-            if self._resume_step_after_accept:
-                result["resume_step"] = self._resume_step_after_accept
+        if self._resume_step_after_accept:
+            result["resume_step"] = self._resume_step_after_accept
         return result
 
     @staticmethod

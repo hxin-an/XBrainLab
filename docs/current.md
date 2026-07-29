@@ -14,7 +14,10 @@ run mapping、overlapping-window split protection、post-training saliency atomi
 最新 `ux/gui-review-preprocess-polish` repair candidate 另完成 Data Import Step 5、Smart Parser、
 preprocess dialogs / preview / history、Training History 與 attribution spectrogram 的局部修復；
 focused regression、product walkthrough、42-phase human-like walkthrough 與 required multi-dataset
-gate 已通過。最新老師試用候選把 Agent Panel 的可見 mode selector 移除，改由每一回合的自然語言
+gate 已通過。老師試用前的擴充資料 gate 另驗證 277 MB、10 組 hash-pinned fixtures：
+OpenNeuro ds003061 三個 BIDS P300 runs 完成 reviewed class-label import，CHB-MIT 與
+Sleep-EDF 完成 raw import 並正確保留 seizure / hypnogram sidecar 邊界。最新老師試用候選把
+Agent Panel 的可見 mode selector 移除，改由每一回合的自然語言
 產生 immutable execution scope；產品預設模型改為 exact-only
 `ibm-granite/granite-3.3-2b-instruct`，不會因模型不可用而靜默換成另一個模型。真實 Granite GPU
 流程已走到 Data Import 的 typed review boundary，資料面也重新通過 14 種格式、7 個公開 cases /
@@ -103,6 +106,7 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | Full unit / integration | `9006 passed, 1 skipped`；integration `388 passed`。 | 支撐目前 Python / Qt / backend / agent regression；不等於真人 UX acceptance。 |
 | Architecture / static quality | architecture compliance PASS；Ruff PASS；full-repo Basedpyright `0 errors / 0 warnings / 0 notes`。五層 turn-scope ownership guard 覆蓋 assembler、controller、dispatcher、runtime lifecycle 與 AgentManager。 | 靜態檢查不能證明所有 runtime 行為。 |
 | Required multi-dataset gate | Data Interpretation real lifecycle `20/20`、14 種 format paths、7 個 public cases / 5 source families、7 個 pinned fixture fact contracts、7 個 external placement contracts、4 個 internal profiles、固定 11 個 reviewed label/event cases；strict cross-source `4/4`（2 training + 2 IO/epoch-only）。 | 支撐列出的真實資料與格式邊界；SCCN `rt` / `square` 與 CNT marker 不是 protocol-grounded supervised classes，也不是 training evidence；不是 full BIDS validator 或任意 proprietary format claim。 |
+| Teacher dataset preflight | local-only manifest `277,106,963 bytes`、10 groups 全部 hash/size verified；OpenNeuro P300、CHB-MIT、Sleep-EDF 三個較大型 ApplicationService cases `3/3` PASS。OpenNeuro 三 run 的 `747 / 750 / 748` 個來源 `(sample, class label)` 與匯入後逐筆一致，並成功建立合計 `2,245` epochs；真 GUI 另走完五步 wizard、label-field repreview、8 個 value controls 與三 run apply。 | OpenNeuro case支撐該資料集三 run 的 reviewed class-label import 與 bounded epoch handoff；CHB-MIT / Sleep-EDF 只支撐 raw import 與 sidecar 分類，不支撐 seizure / hypnogram 自動標籤或一般化臨床資料認證。完整三-run BIDS GUI gate約需 5 分鐘，是 Windows 真人試用仍需觀察的延遲風險。 |
 | UI integration / walkthrough | current relevant regression `2700 passed`；Qt assistant dock integration `17 passed`；human-like teacher candidate 與 waiting confirmation artifact PASS。UI reviewer 在修復後 re-gate PASS。 | 支撐 offscreen / Xvfb 可觀察流程；不等於 Windows DPI、雙螢幕或真人 acceptance。 |
 | Agent / policy regression | Agent unit/core/integration baseline `1236 passed`；最終 relevant regression `2700 passed`。Architecture reviewer 在修復 endpoint order、host params 與五層 scope ownership 後 re-gate PASS。 | 支撐 request admission、immutable turn scope、terminal endpoint、schema/capability/confirmation 與 host-continuation allowlist；不是 UX 或模型準確率證據。 |
 | Local assistant | Granite 3.3 2B 為 exact primary，runtime inspection `gpu-ready`，cache `12.77 GB / 20 GB`。真 GPU workflow 與 adaptive boundary artifacts 都 PASS：model-owned scan、host-owned preview/validate、typed review handoff、Waiting 呈現及取消後 state 不變。 | 這是單一受控 product workflow，不是 raw Granite benchmark、長時間 session 或 Windows acceptance。 |

@@ -1726,6 +1726,21 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         }
         return next(iter(values)) if len(values) == 1 else ""
 
+    def _label_field_requires_backend_refresh(self) -> bool:
+        """Return whether the selected field needs a new value preview."""
+        if not self._label_rule_controls_changed or not self._label_carrier_items:
+            return False
+        selected = self._combo_current_data(self.rule_label_field_combo)
+        if not selected:
+            return False
+        return any(
+            selected != str(original.get("selected_label_field") or "").strip()
+            for item, original in self._label_carrier_items
+            if not self._is_label_carrier_excluded(
+                self._label_carrier_key(item, original)
+            )
+        )
+
     def _apply_label_rule_to_preview(self) -> None:
         if self._updating_label_rule:
             return

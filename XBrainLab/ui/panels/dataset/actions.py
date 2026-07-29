@@ -1026,6 +1026,17 @@ class DatasetActionHandler:
             )
 
         if updated_choices != choices:
+            resume_step = str(dialog_result.get("resume_step") or "").strip()
+            if resume_step == "Match Labels":
+                return self._start_interpretation_review_async(
+                    source_path,
+                    source_hint,
+                    updated_choices,
+                    label_sources,
+                    initial_step=resume_step,
+                ) or InteractionOutcome.blocked(
+                    "Data interpretation preview could not be refreshed."
+                )
             return self._review_interpretation_for_apply_async(
                 source_path=source_path,
                 source_hint=source_hint,
@@ -1650,7 +1661,7 @@ class DatasetActionHandler:
     ) -> dict[str, Any]:
         """Replace mutually exclusive label choices while merging metadata edits."""
         merged = dict(base)
-        for key in (
+        label_choice_keys = (
             "skip_labels",
             "label_carrier",
             "class_map",
@@ -1658,7 +1669,20 @@ class DatasetActionHandler:
             "excluded_label_carriers",
             "label_carrier_choices",
             "label_carrier_remap",
-        ):
+        )
+        if not any(key in updates for key in label_choice_keys):
+            for key, value in updates.items():
+                if key == "metadata_overrides" and isinstance(value, dict):
+                    previous = merged.get(key)
+                    merged[key] = {
+                        **(previous if isinstance(previous, dict) else {}),
+                        **value,
+                    }
+                else:
+                    merged[key] = value
+            return merged
+
+        for key in label_choice_keys:
             merged.pop(key, None)
 
         skip_labels = bool(updates.get("skip_labels"))

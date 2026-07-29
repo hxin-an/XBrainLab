@@ -29,6 +29,57 @@ def _write_valid_bids_description(root: Path) -> None:
     )
 
 
+def _write_minimal_edf_header(
+    path: Path,
+    signal_labels: list[str],
+    *,
+    samples_per_record: int = 1,
+) -> None:
+    signal_count = len(signal_labels)
+    header_bytes = 256 + signal_count * 256
+    fixed_header = bytearray(b" " * 256)
+    fixed_header[:8] = b"0       "
+    fixed_header[184:192] = f"{header_bytes:<8}".encode("ascii")
+    fixed_header[236:244] = b"1       "
+    fixed_header[244:252] = b"1       "
+    fixed_header[252:256] = f"{signal_count:<4}".encode("ascii")
+    labels = b"".join(f"{label:<16}".encode("ascii") for label in signal_labels)
+    signal_header = b"".join(
+        (
+            labels,
+            b" " * (signal_count * 80),
+            b"uV      " * signal_count,
+            b"-100    " * signal_count,
+            b"100     " * signal_count,
+            b"-32768  " * signal_count,
+            b"32767   " * signal_count,
+            b" " * (signal_count * 80),
+            f"{samples_per_record:<8}".encode("ascii") * signal_count,
+            b" " * (signal_count * 32),
+        )
+    )
+    payload = b"\0" * (signal_count * samples_per_record * 2)
+    path.write_bytes(bytes(fixed_header) + signal_header + payload)
+
+
+def _scan_folder_with_admitted_resources(root: Path) -> ScanResult:
+    scope = discover_source_preflight_scope(
+        source_path=str(root),
+        source_hint="folder",
+    )
+    reader = AdmittedResourceReader.from_resource_preflight(
+        scope.paths,
+        check_import_resource_preflight(scope.paths),
+    )
+    return scan_source_path(
+        scan_id="scan-1",
+        source_path=str(root),
+        source_hint="folder",
+        preflight_scope=scope,
+        resource_reader=reader,
+    )
+
+
 def test_scan_source_path_collects_bids_files_labels_and_metadata(tmp_path: Path):
     _write_valid_bids_description(tmp_path)
     eeg_file = (
@@ -529,6 +580,169 @@ def test_scan_source_path_for_single_eeg_file_does_not_select_siblings(
     assert scan.eeg_files == [str(selected_eeg.resolve())]
     assert str(sibling_eeg.resolve()) not in scan.eeg_files
     assert candidate.selected_eeg_files == [str(selected_eeg.resolve())]
+
+
+def test_folder_scan_does_not_treat_annotation_only_edf_as_eeg(
+    tmp_path: Path,
+) -> None:
+    psg = tmp_path / "subject-PSG.edf"
+    hypnogram = tmp_path / "subject-Hypnogram.edf"
+    _write_minimal_edf_header(psg, ["EEG Fpz-Cz", "EOG horizontal"])
+    _write_minimal_edf_header(hypnogram, ["EDF Annotations"])
+
+    preflight_scope = discover_source_preflight_scope(
+        source_path=str(tmp_path),
+        source_hint="folder",
+    )
+    assert str(hypnogram.resolve()) in preflight_scope.eeg_files
+
+    scan = _scan_folder_with_admitted_resources(tmp_path)
+
+    assert scan.eeg_files == [str(psg.resolve())]
+    hypnogram_capability = next(
+        item
+        for item in scan.format_capabilities
+        if item["path"] == str(hypnogram.resolve())
+    )
+    assert hypnogram_capability["format"] == "EDF+ annotations"
+    assert hypnogram_capability["role"] == "sidecar"
+    assert hypnogram_capability["status"] == "limited"
+
+
+@pytest.mark.parametrize(
+    "signal_labels",
+    (
+        ["EEG Fpz-Cz", "EDF Annotations"],
+        ["EOG horizontal", "EDF Annotations"],
+    ),
+)
+def test_edf_with_physiological_and_annotation_signals_remains_eeg(
+    tmp_path: Path,
+    signal_labels: list[str],
+) -> None:
+    mixed_edf = tmp_path / "mixed.edf"
+    _write_minimal_edf_header(mixed_edf, signal_labels)
+
+    scan = _scan_folder_with_admitted_resources(tmp_path)
+
+    assert scan.eeg_files == [str(mixed_edf.resolve())]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        b"short",
+        bytes(bytearray(b" " * 252)),
+        bytes(bytearray(b" " * 256) + b"EDF Annotations "),
+    ),
+)
+def test_malformed_or_truncated_edf_is_not_misclassified_as_annotation_only(
+    tmp_path: Path,
+    payload: bytes,
+) -> None:
+    malformed = tmp_path / "malformed.edf"
+    malformed.write_bytes(payload)
+
+    scan = _scan_folder_with_admitted_resources(tmp_path)
+
+    assert scan.eeg_files == [str(malformed.resolve())]
+
+
+def test_edf_with_complete_header_but_truncated_payload_is_not_annotation_sidecar(
+    tmp_path: Path,
+) -> None:
+    malformed = tmp_path / "truncated-annotations.edf"
+    _write_minimal_edf_header(
+        malformed,
+        ["EDF Annotations"],
+        samples_per_record=10,
+    )
+    malformed.write_bytes(malformed.read_bytes()[:-1])
+
+    scan = _scan_folder_with_admitted_resources(tmp_path)
+
+    assert scan.eeg_files == [str(malformed.resolve())]
+
+
+def test_folder_scan_does_not_treat_human_readable_summary_as_label_sequence(
+    tmp_path: Path,
+) -> None:
+    eeg_file = tmp_path / "subject.edf"
+    summary = tmp_path / "subject-summary.txt"
+    eeg_file.write_bytes(b"header")
+    summary.write_text(
+        "File Name: subject.edf\nNumber of Seizures in File: 1\n",
+        encoding="utf-8",
+    )
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(tmp_path),
+        source_hint="folder",
+    )
+
+    assert scan.eeg_files == [str(eeg_file.resolve())]
+    assert scan.label_carriers == []
+    summary_capability = next(
+        item
+        for item in scan.format_capabilities
+        if item["path"] == str(summary.resolve())
+    )
+    assert summary_capability["format"] == "Text metadata / report"
+    assert summary_capability["role"] == "sidecar"
+    assert summary_capability["status"] == "limited"
+
+
+def test_explicit_summary_named_txt_file_is_respected_as_a_label_source(
+    tmp_path: Path,
+) -> None:
+    eeg_file = tmp_path / "subject.edf"
+    explicit_labels = tmp_path / "run-summary.txt"
+    eeg_file.write_bytes(b"header")
+    explicit_labels.write_text("left\nright\nleft\n", encoding="utf-8")
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(eeg_file),
+        source_hint="file",
+        label_sources=[str(explicit_labels)],
+    )
+
+    assert scan.label_sources == [str(explicit_labels.resolve())]
+    assert scan.label_carriers == [str(explicit_labels.resolve())]
+    assert scan.label_carrier_sources[str(explicit_labels.resolve())] == str(
+        explicit_labels.resolve()
+    )
+    assert not any(
+        "did not contain a supported label/event file" in warning
+        for warning in scan.warnings
+    )
+
+
+def test_chbmit_seizure_binary_is_visible_as_an_unsupported_sidecar(
+    tmp_path: Path,
+) -> None:
+    eeg_file = tmp_path / "chb01_03.edf"
+    seizure_sidecar = tmp_path / "chb01_03.edf.seizures"
+    eeg_file.write_bytes(b"header")
+    seizure_sidecar.write_bytes(b"\x00CHB-MIT seizure annotations")
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(tmp_path),
+        source_hint="folder",
+    )
+
+    assert scan.eeg_files == [str(eeg_file.resolve())]
+    assert scan.label_carriers == []
+    capability = next(
+        item
+        for item in scan.format_capabilities
+        if item["path"] == str(seizure_sidecar.resolve())
+    )
+    assert capability["format"] == "Seizure annotation sidecar"
+    assert capability["role"] == "sidecar"
+    assert capability["status"] == "unsupported"
 
 
 def test_scan_source_path_for_single_eeg_file_detects_same_stem_label_carriers(

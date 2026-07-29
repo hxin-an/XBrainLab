@@ -150,6 +150,33 @@ def test_event_loader_timestamp_labels_use_class_map_names():
     assert sorted(event_id) == ["Left hand", "Right hand"]
 
 
+def test_timestamp_labels_accept_mne_microsecond_quantization():
+    """Fractional-sample BIDS onsets survive MNE annotation quantization."""
+    raw_mne = _generate_mne_raw(fs=256, duration=6)
+    raw = Raw("p300.set", raw_mne)
+    loader = EventLoader(raw)
+    loader.label_list = [
+        {"onset": 4.44921875, "duration": 0.0, "label": "standard"},
+        {"onset": 5.2578125, "duration": 0.0, "label": "oddball"},
+    ]
+
+    events, event_id = loader.create_event(
+        {"standard": "Standard", "oddball": "Oddball"}
+    )
+    loader.apply()
+
+    assert events is not None
+    assert events[:, 0].tolist() == [1139, 1346]
+    assert event_id == {"Oddball": 1, "Standard": 2}
+    assert raw_mne.annotations.description.tolist() == ["Standard", "Oddball"]
+    np.testing.assert_allclose(
+        raw_mne.annotations.onset,
+        [4.44921875, 5.2578125],
+        atol=1e-6,
+        rtol=0.0,
+    )
+
+
 def test_timestamp_labels_preserve_existing_annotations_without_event_pollution():
     """External label events stay authoritative without erasing EEG context."""
     raw_mne = _generate_mne_raw(duration=5)

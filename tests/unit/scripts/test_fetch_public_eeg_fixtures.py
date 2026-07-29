@@ -10,13 +10,19 @@ import scripts.dev.fetch_public_eeg_fixtures as fixture_fetcher
 from scripts.dev.fetch_public_eeg_fixtures import (
     CI_REQUIRED_GROUP_NAMES,
     CI_REQUIRED_MAX_BYTES,
+    DEFAULT_FIXTURE_PROFILE,
     MNE_BIDS_TINY_ENTRYPOINT,
     MNE_BIDS_TINY_NAME,
     MNE_BIDS_TINY_REVISION,
     MNE_TESTING_DATA_REVISION,
+    OPENNEURO_P300_NAME,
+    OPENNEURO_P300_VERSION,
+    TEACHER_PREFLIGHT_GROUP_NAMES,
+    TEACHER_PREFLIGHT_MAX_BYTES,
     FixtureFile,
     FixtureGroup,
     _mne_bids_tiny_downloads,
+    _openneuro_p300_downloads,
     download_fixture_file,
     fixture_file_is_valid,
     fixture_groups_for_profile,
@@ -82,6 +88,57 @@ def test_required_ci_profile_is_small_pinned_and_source_diverse():
         for group in groups
         for fixture_file in group["files"]
     )
+
+
+def test_teacher_preflight_profile_adds_independent_real_dataset_models():
+    required_groups = fixture_groups_for_profile("required-ci")
+    teacher_groups = fixture_groups_for_profile("teacher-preflight")
+    teacher_names = {str(group["name"]) for group in teacher_groups}
+
+    assert teacher_names == set(TEACHER_PREFLIGHT_GROUP_NAMES)
+    assert {
+        OPENNEURO_P300_NAME,
+        "chbmit-chb01",
+        "sleep-edfx-st7011",
+    }.issubset(teacher_names)
+    assert fixture_profile_size_bytes(teacher_groups) > fixture_profile_size_bytes(
+        required_groups
+    )
+    assert fixture_profile_size_bytes(teacher_groups) <= TEACHER_PREFLIGHT_MAX_BYTES
+    assert len(teacher_groups) == 10
+    assert fixture_profile_size_bytes(teacher_groups) == 277_106_963
+
+
+def test_default_download_profile_stays_within_compact_ci_boundary() -> None:
+    assert DEFAULT_FIXTURE_PROFILE == "required-ci"
+    assert (
+        fixture_profile_size_bytes(fixture_groups_for_profile(DEFAULT_FIXTURE_PROFILE))
+        <= CI_REQUIRED_MAX_BYTES
+    )
+
+
+def test_openneuro_p300_manifest_contains_three_paired_bids_runs():
+    downloads = _openneuro_p300_downloads()
+    filenames = {download["filename"] for download in downloads}
+
+    assert f"{OPENNEURO_P300_NAME}/dataset_description.json" in filenames
+    for run in (1, 2, 3):
+        prefix = f"{OPENNEURO_P300_NAME}/sub-001/eeg/sub-001_task-P300_run-{run}"
+        assert f"{prefix}_eeg.set" in filenames
+        assert f"{prefix}_events.tsv" in filenames
+        assert f"{prefix}_channels.tsv" in filenames
+    assert all(
+        download["url"].startswith("https://s3.amazonaws.com/openneuro.org/ds003061/")
+        for download in downloads
+    )
+    assert all(len(download["sha256"]) == 64 for download in downloads)
+    openneuro_group = next(
+        group
+        for group in fixture_groups_for_profile("teacher-preflight")
+        if group["name"] == OPENNEURO_P300_NAME
+    )
+    assert OPENNEURO_P300_VERSION == "1.1.2"
+    assert OPENNEURO_P300_VERSION in openneuro_group["source"]
 
 
 def test_mne_testing_data_downloads_are_pinned_to_revision():

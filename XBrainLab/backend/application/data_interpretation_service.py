@@ -155,12 +155,24 @@ class DataInterpretationCommandService:
         if not isinstance(command, ScanSourceCommand):
             raise TypeError("Invalid command for scan_source")
         scan_id = self.state.next_id("scan")
+        scope = discover_source_preflight_scope(
+            source_path=command.source_path,
+            source_hint=command.source_hint,
+            label_sources=command.label_sources,
+        )
+        preflight = check_import_resource_preflight(scope.paths)
+        resource_reader = AdmittedResourceReader.from_resource_preflight(
+            scope.paths,
+            preflight,
+        )
         scan = scan_source_path(
             scan_id=scan_id,
             source_path=command.source_path,
             source_hint=command.source_hint,
             label_sources=command.label_sources,
+            preflight_scope=scope,
             materialize_metadata=False,
+            resource_reader=resource_reader,
         )
         self.state.record_scan(scan)
         return (

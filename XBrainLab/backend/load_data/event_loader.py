@@ -17,6 +17,7 @@ from XBrainLab.backend.utils import validate_type
 from XBrainLab.backend.utils.logger import logger
 
 _MNE_EXCLUDED_CLASS_PREFIXES = ("bad", "edge")
+_MNE_ANNOTATION_TIME_TOLERANCE_SECONDS = 1e-6
 
 
 def _require_equal_annotation_counts(
@@ -369,18 +370,18 @@ def _normalize_timestamp_rows(
     return unique_rows
 
 
-def _attached_relative_annotation_keys(
+def _attached_relative_annotation_rows(
     annotations: mne.Annotations,
     *,
     first_time: float,
-) -> list[tuple[float, float, str, tuple[str, ...]]]:
+) -> list[tuple[str, tuple[str, ...], float, float]]:
     return sorted(
         [
-            _annotation_key(
-                onset=float(onset) - first_time,
-                duration=float(duration),
-                description=str(description),
-                ch_names=tuple(str(name) for name in annotations.ch_names[index]),
+            (
+                str(description),
+                tuple(str(name) for name in annotations.ch_names[index]),
+                float(onset) - first_time,
+                float(duration),
             )
             for index, (onset, duration, description) in enumerate(
                 zip(
@@ -392,6 +393,64 @@ def _attached_relative_annotation_keys(
             )
         ]
     )
+
+
+def _reviewed_annotation_rows(
+    rows: list[_TimestampRow],
+) -> list[tuple[str, tuple[str, ...], float, float]]:
+    return sorted(
+        (row.description, row.ch_names, row.onset, row.duration) for row in rows
+    )
+
+
+def _require_matching_reviewed_annotations(
+    applied: mne.Annotations,
+    rows: list[_TimestampRow],
+    *,
+    first_time: float,
+) -> None:
+    """Verify MNE retained every reviewed row and its semantic placement.
+
+    MNE stores annotation timestamps at microsecond precision. BIDS event
+    onsets derived from a sampling grid can therefore move by a fraction of a
+    microsecond when attached to a Raw object. Counts and semantic fields stay
+    exact; only onset and duration use this bounded storage tolerance.
+    """
+    if len(applied) != len(rows):
+        raise ValueError(
+            "MNE timestamp annotation output did not match every reviewed row.",
+        )
+    expected = _reviewed_annotation_rows(rows)
+    produced = _attached_relative_annotation_rows(
+        applied,
+        first_time=first_time,
+    )
+    for expected_row, produced_row in zip(expected, produced, strict=True):
+        expected_description, expected_channels, expected_onset, expected_duration = (
+            expected_row
+        )
+        produced_description, produced_channels, produced_onset, produced_duration = (
+            produced_row
+        )
+        if (
+            produced_description != expected_description
+            or produced_channels != expected_channels
+            or not math.isclose(
+                produced_onset,
+                expected_onset,
+                rel_tol=0.0,
+                abs_tol=_MNE_ANNOTATION_TIME_TOLERANCE_SECONDS,
+            )
+            or not math.isclose(
+                produced_duration,
+                expected_duration,
+                rel_tol=0.0,
+                abs_tol=_MNE_ANNOTATION_TIME_TOLERANCE_SECONDS,
+            )
+        ):
+            raise ValueError(
+                "MNE timestamp annotation output did not match every reviewed row.",
+            )
 
 
 def _prepare_external_annotations(
@@ -410,15 +469,11 @@ def _prepare_external_annotations(
             warnings.simplefilter("error", RuntimeWarning)
             raw_mne.set_annotations(external)
         applied = _annotation_snapshot(raw_mne, fallback=external)
-        expected_keys = sorted(row.annotation_key() for row in rows)
-        produced_keys = _attached_relative_annotation_keys(
+        _require_matching_reviewed_annotations(
             applied,
             first_time=float(getattr(raw_mne, "first_time", 0.0) or 0.0),
+            rows=rows,
         )
-        if produced_keys != expected_keys:
-            raise ValueError(
-                "MNE timestamp annotation output did not match every reviewed row.",
-            )
         return applied
     finally:
         _set_attached_annotations(raw_mne, existing)

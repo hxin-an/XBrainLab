@@ -386,11 +386,129 @@ def load_edf_file(filepath):
     try:
         selected_data = mne.io.read_raw_edf(filepath, preload=False)
         if selected_data:
-            return Raw(filepath, selected_data)
+            inference_detail = _apply_mne_edf_channel_type_inference(
+                filepath,
+                selected_data,
+            )
+            raw_wrapper = Raw(filepath, selected_data)
+            raw_wrapper.set_runtime_detail(
+                "edf_channel_type_inference",
+                inference_detail,
+            )
+            return raw_wrapper
     except Exception as e:
         logger.error("Failed to load EDF file %s: %s", filepath, e, exc_info=True)
         raise FileCorruptedError(filepath, str(e)) from e
     return None
+
+
+def _apply_mne_edf_channel_type_inference(filepath, selected_data):
+    """Transfer MNE's standard EDF type inference without changing channel names."""
+    preserved_names = list(selected_data.ch_names)
+    inferred_data = None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            inferred_data = mne.io.read_raw_edf(
+                filepath,
+                preload=False,
+                infer_types=True,
+                verbose="ERROR",
+            )
+        inferred_names = list(inferred_data.ch_names)
+        inferred_types = list(inferred_data.get_channel_types())
+        if len(inferred_names) != len(preserved_names):
+            reason = "MNE EDF type inference returned a different channel count."
+            logger.warning(
+                "MNE EDF channel-type inference was unavailable for %s: %s",
+                filepath,
+                reason,
+            )
+            return _edf_inference_unavailable_detail(
+                selected_data,
+                preserved_names,
+                reason=reason,
+            )
+        selected_data.set_channel_types(
+            dict(zip(preserved_names, inferred_types, strict=True)),
+            on_unit_change="ignore",
+        )
+        recognized_prefix_channels = [
+            preserved
+            for preserved, inferred in zip(
+                preserved_names,
+                inferred_names,
+                strict=True,
+            )
+            if preserved != inferred
+        ]
+        defaulted_to_eeg_channels = [
+            preserved
+            for preserved, inferred, channel_type in zip(
+                preserved_names,
+                inferred_names,
+                inferred_types,
+                strict=True,
+            )
+            if preserved == inferred and channel_type == "eeg"
+        ]
+        return {
+            "status": "applied",
+            "method": "mne_edf_infer_types",
+            "channel_names_preserved": True,
+            "inferred_channel_types": dict(
+                zip(preserved_names, inferred_types, strict=True)
+            ),
+            "recognized_prefix_channels": recognized_prefix_channels,
+            "defaulted_to_eeg_channels": defaulted_to_eeg_channels,
+            "claim_boundary": (
+                "Channels without an MNE-recognized EDF type prefix retain the "
+                "reader's default EEG type; XBrainLab does not guess from names."
+            ),
+        }
+    except Exception as exc:
+        logger.warning(
+            "MNE EDF channel-type inference was unavailable for %s: %s",
+            filepath,
+            exc,
+        )
+        return _edf_inference_unavailable_detail(
+            selected_data,
+            preserved_names,
+            reason=f"{type(exc).__name__}: {exc}",
+        )
+    finally:
+        if inferred_data is not None:
+            close = getattr(inferred_data, "close", None)
+            if callable(close):
+                close()
+
+
+def _edf_inference_unavailable_detail(selected_data, preserved_names, *, reason):
+    channel_types = list(selected_data.get_channel_types())
+    return {
+        "status": "unavailable",
+        "method": "mne_edf_infer_types",
+        "channel_names_preserved": True,
+        "inferred_channel_types": dict(
+            zip(preserved_names, channel_types, strict=True)
+        ),
+        "recognized_prefix_channels": [],
+        "defaulted_to_eeg_channels": [
+            name
+            for name, channel_type in zip(
+                preserved_names,
+                channel_types,
+                strict=True,
+            )
+            if channel_type == "eeg"
+        ],
+        "claim_boundary": (
+            "MNE EDF type inference could not be aligned safely; existing "
+            "reader types and channel names were retained."
+        ),
+        "reason": reason,
+    }
 
 
 def load_bdf_file(filepath):

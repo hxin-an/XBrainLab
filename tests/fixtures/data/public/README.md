@@ -27,6 +27,40 @@ poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
 - cache 過期或內容損壞時，下載器會逐檔驗證並修復；`--verify-only` 缺件或損壞會非零結束
 - 不包含完整公開資料集、模型權重、訓練輸出或使用者資料
 
+老師試用前另有較大的 local-only profile。它不進一般 CI，也不會進 Git：
+
+```bash
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+  --profile teacher-preflight
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+  --profile teacher-preflight --verify-only
+timeout 600s prlimit --core=0 -- poetry run python \
+  scripts/dev/report_teacher_dataset_preflight.py \
+  --strict --write-artifacts
+
+# Final gate from a committed product-source checkpoint. This also runs the
+# real five-step Qt workflows with missing fixtures treated as failures and
+# writes current OpenNeuro screenshots.
+timeout 1800s prlimit --core=0 -- poetry run python \
+  scripts/dev/run_teacher_handoff_gate.py --require-clean-source
+```
+
+- pinned manifest 共 `277,106,963 bytes`，程式內硬上限為 `320 MiB`
+- profile 總共 10 個 fixture groups：既有 required CI 的 7 組，加上三個獨立資料模型：
+  - OpenNeuro ds003061：真實三個 run 的 BIDS / EEGLAB P300，配對三個 `events.tsv`
+  - CHB-MIT chb01：臨床長時間 EDF、seizure sidecar 與人類可讀 summary
+  - Sleep-EDF ST7011：PSG EDF 與獨立 EDF+ hypnogram
+- backend runner 會經真實 `ApplicationService` 跑 scan、preview、validate、apply 與
+  OpenNeuro epoch handoff，並逐 run 比對來源與匯入後的 `(sample, class label)` digest；
+  artifact 寫到
+  `artifacts/data_interpretation/teacher-dataset-preflight.{json,md}`
+- final gate 會先驗證 exact manifest，再跑 backend runner 與不可 skip 的真 Qt wizard，
+  screenshot / evidence 寫到 `artifacts/ui/teacher-data-preflight/`
+- OpenNeuro case 是 reviewed class-label placement evidence；CHB-MIT 與 Sleep-EDF
+  目前只宣稱 raw import 與 sidecar 分類正確
+- CHB-MIT seizure sidecar 與 Sleep-EDF hypnogram 尚不會自動轉成 supervised labels；這是
+  明確產品邊界，不可由 raw import PASS 外推
+
 一般本機 pytest 仍允許在尚未下載 public fixtures 時 skip，方便日常開發。CI 的
 `Required Public Multi-Dataset Gate` 不依賴這個 skip：它會先下載 required profile、
 執行 `--verify-only` 與 strict dataset matrix，再跑 public IO、BIDS、cross-source

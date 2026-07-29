@@ -41,8 +41,23 @@
 - required data gate 重新通過：Data Interpretation lifecycle `20/20`、required formats `14/14`、
   7 個 hash-pinned public cases / 5 個 source families、7 個 external placement contracts、
   4 個 internal-event profiles與固定 11 個 reviewed-label cases。真五步 wizard / recovery
-  `17 passed`；IO / public BIDS / cross-source pipeline `36 passed`；strict cross-source runner
+  `20 passed`；IO / public BIDS / cross-source pipeline `39 passed`；strict cross-source runner
   `4/4`（2 training + 2 IO/epoch-only）。
+- 老師試用前另跑 local-only extended gate：`teacher-preflight` manifest
+  `277,106,963 bytes`、10 groups 全部 hash/size verified。OpenNeuro ds003061 三個 BIDS /
+  EEGLAB P300 runs 經 scan -> preview -> validate -> apply，三 run 分別套用
+  `747 / 750 / 748` 個 reviewed class events；來源 `events.tsv` 與 runtime 的
+  `(sample, class label)` digest 逐 run 完全一致，並以 `[-0.1, 0.04]` 秒 bounded window
+  成功建立合計 `2,245` epochs。CHB-MIT chb01 與 Sleep-EDF ST7011 真實 EDF 均完成 raw
+  import；CHB summary 不再被當成逐行 labels，Sleep hypnogram 不再被當成第二個 EEG。artifact 位於
+  `artifacts/data_interpretation/teacher-dataset-preflight.{json,md}`。
+- 真 GUI OpenNeuro acceptance 會從 `Import BIDS` 選取公開 root，走完五個 wizard steps，
+  將 label field 從 `trial_type` 改為 `value` 後重新 preview，確認 8 個實際值、以 onset
+  做 time placement，再把三個 runs apply 到產品 state。QTimer heartbeat 會同時驗證長任務
+  期間 GUI event loop 沒有連續 5 秒失去回應。單一三-run case 在目前 WSL/Qt 環境約需
+  5 分鐘；它支撐正確性與有界 responsiveness，不支撐「大型 BIDS folder 即時完成」的效能主張。
+- 上述 extended gate 不把 CHB-MIT seizure sidecar 或 Sleep-EDF hypnogram 宣稱為自動
+  supervised labels，也不外推為 full BIDS validator、所有 P300 或任意臨床資料認證。
 - 最終 relevant regression 在修復 artifact Waiting guard、terminal endpoint stage order、host
   continuation params contract、Qt runtime fake 與五層 scope ownership guard 後為
   `2700 passed`；完整 Qt assistant dock integration 為 `17 passed`。
@@ -416,13 +431,13 @@ poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/ui/test_data_import_wizard_format_matrix.py -q
-# 9 passed
+# 10 passed
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/io/test_io_integration.py \
   tests/integration/io/test_public_bids_fixture.py \
   tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
-# 36 passed
+# 39 passed
 
 poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict
 # 4 passed, 0 missing, 0 failed

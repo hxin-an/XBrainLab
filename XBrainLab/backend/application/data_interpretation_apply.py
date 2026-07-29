@@ -190,7 +190,7 @@ class DataInterpretationApplyService:
         self,
         candidate: InterpretationCandidate,
     ) -> list[dict[str, Any]]:
-        """Apply exact local BIDS channels.tsv status to each loaded run."""
+        """Apply exact local BIDS channels.tsv types, units, and status."""
         review = candidate.bids.get("channel_review")
         if not isinstance(review, dict):
             return []

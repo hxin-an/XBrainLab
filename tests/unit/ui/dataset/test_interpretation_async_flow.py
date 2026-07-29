@@ -121,6 +121,36 @@ def test_label_configuration_merge_replaces_mutually_exclusive_source_state():
         assert stale_key not in merged
 
 
+def test_label_configuration_merge_preserves_reviewed_external_choices_when_unchanged():
+    reviewed_choices = {
+        "/bids/sub-01_task-p300_events.tsv": {
+            "label_field": "value",
+            "anchor": "onset",
+            "placement_method": "time_field",
+            "value_decisions": {
+                "standard": {
+                    "role": "stimulus",
+                    "keep_event": True,
+                    "use_as_class": True,
+                    "class_name": "standard",
+                }
+            },
+        }
+    }
+    merged = DatasetActionHandler._merge_interpretation_choices(
+        {
+            "selected_eeg_files": ["/bids/sub-01_task-p300_eeg.set"],
+            "label_carrier_choices": reviewed_choices,
+        },
+        {"metadata_overrides": {"sub-01_task-p300_eeg.set": {"task": "p300"}}},
+    )
+
+    assert merged["label_carrier_choices"] == reviewed_choices
+    assert merged["metadata_overrides"] == {
+        "sub-01_task-p300_eeg.set": {"task": "p300"}
+    }
+
+
 def test_label_configuration_merge_clears_external_state_for_embedded_events():
     merged = DatasetActionHandler._merge_interpretation_choices(
         {
@@ -512,6 +542,62 @@ def _review_state(
         decision={"candidate_id": "candidate-1", "decision": "safe"},
         publication_generation=publication_generation,
     )
+
+
+def test_label_field_repreview_reopens_match_labels_instead_of_applying(
+    monkeypatch,
+) -> None:
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    revised_choices = {
+        "label_carrier_choices": {"/data/sub-01_events.tsv": {"label_field": "value"}}
+    }
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {
+                "confirmed": False,
+                "choices": revised_choices,
+                "resume_step": "Match Labels",
+            }
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    restart = MagicMock(
+        return_value=InteractionOutcome.accepted("Preview refresh scheduled.")
+    )
+    apply_review = MagicMock()
+    monkeypatch.setattr(handler, "_start_interpretation_review_async", restart)
+    monkeypatch.setattr(
+        handler,
+        "_review_interpretation_for_apply_async",
+        apply_review,
+    )
+
+    outcome = handler._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="bids",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(),
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    restart.assert_called_once_with(
+        "/data",
+        "bids",
+        revised_choices,
+        [],
+        initial_step="Match Labels",
+    )
+    apply_review.assert_not_called()
 
 
 def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):

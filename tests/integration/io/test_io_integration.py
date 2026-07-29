@@ -2,15 +2,24 @@ import os
 from typing import Any
 
 import pytest
+from mne.io.constants import FIFF
 
 from XBrainLab.backend.application import (
     ApplicationService,
     LoadDataCommand,
     QueryStateCommand,
 )
+from XBrainLab.backend.application.data_interpretation_bids_channels import (
+    apply_bids_channel_review,
+    review_bids_channel_sidecars,
+)
 from XBrainLab.backend.exceptions import FileCorruptedError
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_raw_data
+from XBrainLab.backend.load_data.raw_data_loader import (
+    load_edf_file,
+    load_gdf_file,
+    load_raw_data,
+)
 
 # Path to the small real-data fixtures stored under tests/fixtures/data
 TEST_DATA_DIR = os.path.abspath(
@@ -36,6 +45,30 @@ PUBLIC_REAL_DATA_FIXTURES = [
     os.path.join(PUBLIC_DATA_DIR, "scan41_short.cnt"),
     os.path.join(PUBLIC_DATA_DIR, "test_NO.vhdr"),
 ]
+OPENNEURO_P300_EEG = os.path.join(
+    PUBLIC_DATA_DIR,
+    "openneuro-ds003061-p300",
+    "sub-001",
+    "eeg",
+    "sub-001_task-P300_run-1_eeg.set",
+)
+OPENNEURO_P300_CHANNELS = os.path.join(
+    PUBLIC_DATA_DIR,
+    "openneuro-ds003061-p300",
+    "sub-001",
+    "eeg",
+    "sub-001_task-P300_run-1_channels.tsv",
+)
+SLEEP_EDFX_PSG = os.path.join(
+    PUBLIC_DATA_DIR,
+    "sleep-edfx-st7011",
+    "ST7011J0-PSG.edf",
+)
+CHBMIT_EDF = os.path.join(
+    PUBLIC_DATA_DIR,
+    "chbmit-chb01",
+    "chb01_03.edf",
+)
 
 
 def _assert_raw(value: object) -> Raw:
@@ -197,6 +230,89 @@ class TestIOIntegration:
         assert raw.get_sfreq() > 0
 
         _assert_real_data_shape(raw)
+
+    def test_openneuro_bids_channels_apply_to_real_mne_raw(self):
+        """Real BIDS sidecar semantics must survive the product load/apply helpers."""
+        if not os.path.exists(OPENNEURO_P300_EEG):
+            pytest.skip(
+                "OpenNeuro teacher fixture not downloaded; run the "
+                "teacher-preflight fixture fetch first."
+            )
+
+        raw = _assert_raw(load_raw_data(OPENNEURO_P300_EEG))
+        review = review_bids_channel_sidecars(
+            bids={
+                "is_bids": True,
+                "layout": [
+                    {
+                        "file": OPENNEURO_P300_EEG,
+                        "channels_file": OPENNEURO_P300_CHANNELS,
+                    }
+                ],
+            },
+            selected_eeg_files=[OPENNEURO_P300_EEG],
+        )
+        applied = apply_bids_channel_review(
+            review=review,
+            loaded_data=[raw],
+            data_filepath=lambda item: item.get_filepath(),
+        )
+
+        mne_raw = raw.get_mne()
+        types_by_name = dict(
+            zip(mne_raw.ch_names, mne_raw.get_channel_types(), strict=True)
+        )
+        assert types_by_name["EXG1"] == "misc"
+        assert types_by_name["GSR1"] == "gsr"
+        assert types_by_name["Resp"] == "resp"
+        assert types_by_name["Temp"] == "temperature"
+        temp_index = mne_raw.ch_names.index("Temp")
+        assert mne_raw.info["chs"][temp_index]["unit"] == FIFF.FIFF_UNIT_CEL
+        assert applied[0]["channel_units"]["Temp"] == "n/a"
+        assert "Temp" in applied[0]["unmapped_unit_channels"]
+
+    def test_sleep_edf_infers_prefixed_types_without_renaming_channels(self):
+        """MNE EDF prefix inference must not change the product channel identity."""
+        if not os.path.exists(SLEEP_EDFX_PSG):
+            pytest.skip(
+                "Sleep-EDF teacher fixture not downloaded; run the "
+                "teacher-preflight fixture fetch first."
+            )
+
+        raw = _assert_raw(load_edf_file(SLEEP_EDFX_PSG))
+
+        assert raw.get_mne().ch_names == [
+            "EEG Fpz-Cz",
+            "EEG Pz-Oz",
+            "EOG horizontal",
+            "EMG submental",
+            "Marker",
+        ]
+        assert raw.get_mne().get_channel_types() == [
+            "eeg",
+            "eeg",
+            "eog",
+            "emg",
+            "eeg",
+        ]
+        detail = raw.get_runtime_detail("edf_channel_type_inference")
+        assert detail["method"] == "mne_edf_infer_types"
+        assert detail["defaulted_to_eeg_channels"] == ["Marker"]
+
+    def test_chbmit_duplicate_channel_names_keep_mne_unique_identity(self):
+        """EDF inference must retain MNE's duplicate-name compatibility."""
+        if not os.path.exists(CHBMIT_EDF):
+            pytest.skip(
+                "CHB-MIT teacher fixture not downloaded; run the "
+                "teacher-preflight fixture fetch first."
+            )
+
+        raw = _assert_raw(load_edf_file(CHBMIT_EDF))
+
+        assert raw.get_mne().ch_names.count("T8-P8-0") == 1
+        assert raw.get_mne().ch_names.count("T8-P8-1") == 1
+        assert "T8-P8" not in raw.get_mne().ch_names
+        assert len(raw.get_mne().ch_names) == len(set(raw.get_mne().ch_names))
 
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
     def test_application_service_import_public_real_formats(self, filepath):

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import pytest
-from PyQt6.QtCore import Qt, QThreadPool, QTimer
+from PyQt6.QtCore import QPoint, Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QApplication,
@@ -46,6 +48,11 @@ BBCI_GDF = PUBLIC_ROOT / "bbci-competition-iii-O3VR.gdf"
 SCCN_EEGLAB_SET = PUBLIC_ROOT / "sccn-eeglab_data.set"
 MNE_CNT = PUBLIC_ROOT / "scan41_short.cnt"
 MNE_BRAINVISION = PUBLIC_ROOT / "test_NO.vhdr"
+CHBMIT_ROOT = PUBLIC_ROOT / "chbmit-chb01"
+CHBMIT_EDF = CHBMIT_ROOT / "chb01_03.edf"
+SLEEP_EDFX_ROOT = PUBLIC_ROOT / "sleep-edfx-st7011"
+SLEEP_EDFX_PSG = SLEEP_EDFX_ROOT / "ST7011J0-PSG.edf"
+OPENNEURO_P300_ROOT = PUBLIC_ROOT / "openneuro-ds003061-p300"
 PUBLIC_BIDS_ROOT = PUBLIC_ROOT / "mne-bids-tiny-eeg"
 PUBLIC_BIDS_EEG = (
     PUBLIC_BIDS_ROOT
@@ -63,6 +70,9 @@ STEP_TITLES = (
     "Review and Import",
 )
 QTEST: Any = QTest
+REQUIRE_REAL_FIXTURES = (
+    os.environ.get("XBRAINLAB_REQUIRE_REAL_FIXTURES", "").strip() == "1"
+)
 
 
 @dataclass(frozen=True)
@@ -72,6 +82,13 @@ class _PublicFileAcceptanceCase:
     expected_event_total: int
     expected_unique_events: tuple[str, ...]
     expected_table_summary: str
+
+
+@dataclass(frozen=True)
+class _PublicFolderAcceptanceCase:
+    fixture_group: str
+    source: Path
+    expected_eeg: Path
 
 
 PUBLIC_FILE_ACCEPTANCE_CASES = (
@@ -119,6 +136,19 @@ PUBLIC_FILE_ACCEPTANCE_CASES = (
     ),
 )
 
+PUBLIC_FOLDER_ACCEPTANCE_CASES = (
+    _PublicFolderAcceptanceCase(
+        "chbmit-chb01",
+        CHBMIT_ROOT,
+        CHBMIT_EDF,
+    ),
+    _PublicFolderAcceptanceCase(
+        "sleep-edfx-st7011",
+        SLEEP_EDFX_ROOT,
+        SLEEP_EDFX_PSG,
+    ),
+)
+
 
 @pytest.fixture(autouse=True)
 def mock_ui_blocking() -> Iterator[None]:
@@ -161,12 +191,18 @@ class _WizardDriver:
     timer: QTimer
     skip_labels: bool = False
     resolve_bids_values: bool = False
+    resolve_openneuro_values: bool = False
     expect_blocked: bool = False
+    awaiting_label_field_refresh: bool = False
+    dialog_count: int = 0
     phase: int = 0
     dialog: DataInterpretationPreviewDialog | None = None
     trace: list[str] = field(default_factory=list)
     blocked_reasons: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    heartbeat_count: int = 0
+    last_heartbeat_at: float = field(default_factory=time.monotonic)
+    max_heartbeat_gap_seconds: float = 0.0
 
 
 def _require_manifest_group(group_name: str) -> None:
@@ -181,9 +217,22 @@ def _require_manifest_group(group_name: str) -> None:
         if not (PUBLIC_ROOT / item["filename"]).exists()
     ]
     if missing:
-        pytest.skip(
+        present = [
+            item["filename"]
+            for item in group["files"]
+            if (PUBLIC_ROOT / item["filename"]).exists()
+        ]
+        if present:
+            pytest.fail(
+                f"Public fixture group {group_name} is partially installed. "
+                f"Present: {present}; missing: {missing}."
+            )
+        message = (
             f"Public fixture group {group_name} is not downloaded: {', '.join(missing)}"
         )
+        if REQUIRE_REAL_FIXTURES:
+            pytest.fail(message)
+        pytest.skip(message)
     invalid = [
         item["filename"]
         for item in group["files"]
@@ -241,6 +290,25 @@ def _replace_line_edit_text(editor: QLineEdit, value: str) -> None:
     QTEST.keyClicks(editor, value)
 
 
+def _capture_teacher_ui(
+    dialog: DataInterpretationPreviewDialog,
+    filename: str,
+    *,
+    widget: QWidget | None = None,
+) -> None:
+    raw_output_dir = os.environ.get("XBRAINLAB_TEACHER_UI_ARTIFACT_DIR", "").strip()
+    if not raw_output_dir:
+        return
+    output_dir = Path(raw_output_dir).expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    QApplication.processEvents()
+    target = widget or dialog
+    pixmap = target.grab()
+    output_path = output_dir / filename
+    if pixmap.isNull() or not pixmap.save(str(output_path), "PNG"):
+        raise AssertionError(f"Failed to capture current UI artifact: {output_path}")
+
+
 def _complete_bids_event_values(dialog: DataInterpretationPreviewDialog) -> None:
     if dialog.label_source_mode_combo.currentData() != "loaded_label_files":
         _select_combo_data(dialog.label_source_mode_combo, "loaded_label_files")
@@ -288,6 +356,126 @@ def _complete_bids_event_values(dialog: DataInterpretationPreviewDialog) -> None
         raise AssertionError(
             f"BIDS event-value decisions remain incomplete: {editor.unresolved_values()!r}"
         )
+
+
+def _complete_openneuro_event_values(
+    dialog: DataInterpretationPreviewDialog,
+) -> None:
+    if dialog.label_source_mode_combo.currentData() != "loaded_label_files":
+        _select_combo_data(dialog.label_source_mode_combo, "loaded_label_files")
+    editor = dialog.event_value_editor
+    if editor is None or not editor.isVisibleTo(dialog):
+        raise AssertionError("OpenNeuro Match Labels did not expose value decisions.")
+    expected = {
+        "ignore",
+        "noise",
+        "noise_with_reponse",
+        "oddball",
+        "oddball_with_reponse",
+        "response",
+        "standard",
+        "standard_with_reponse",
+    }
+    if set(editor.unresolved_values()) != expected:
+        raise AssertionError(
+            "OpenNeuro value preview did not refresh to the selected `value` "
+            f"column: {editor.unresolved_values()!r}"
+        )
+    values = [
+        label.text()
+        for label in editor.findChildren(QLabel)
+        if label.objectName() == "DataImportValueDecisionValue"
+    ]
+    role_selectors = editor.findChildren(QComboBox, "EventValueRoleSelector")
+    use_selectors = editor.findChildren(QComboBox, "EventValueUseSelector")
+    class_editors = editor.findChildren(QLineEdit, "EventValueClassNameEditor")
+    if not (
+        len(values)
+        == len(role_selectors)
+        == len(use_selectors)
+        == len(class_editors)
+        == len(expected)
+    ):
+        raise AssertionError(
+            "OpenNeuro value controls are incomplete: "
+            f"values={values!r}, roles={len(role_selectors)}, "
+            f"uses={len(use_selectors)}, classes={len(class_editors)}."
+        )
+    decisions = {
+        raw_value: (
+            (
+                "response",
+                "ignore",
+                "",
+            )
+            if raw_value == "response"
+            else (
+                "system",
+                "ignore",
+                "",
+            )
+            if raw_value == "ignore"
+            else (
+                "stimulus",
+                "class",
+                raw_value.replace("_with_reponse", ""),
+            )
+        )
+        for raw_value in expected
+    }
+    for raw_value, role_selector, use_selector, class_editor in zip(
+        values,
+        role_selectors,
+        use_selectors,
+        class_editors,
+        strict=True,
+    ):
+        if raw_value not in decisions:
+            raise AssertionError(f"Unexpected OpenNeuro event value: {raw_value}")
+        role, use, class_name = decisions[raw_value]
+        dialog.scroll_area.ensureWidgetVisible(role_selector)
+        QApplication.processEvents()
+        if (
+            not role_selector.isEnabled()
+            or not use_selector.isEnabled()
+            or role_selector.size().isEmpty()
+            or use_selector.size().isEmpty()
+        ):
+            raise AssertionError(
+                f"OpenNeuro controls are not operable for {raw_value!r}."
+            )
+        _select_combo_data(role_selector, role)
+        _select_combo_data(use_selector, use)
+        if class_name:
+            if class_editor.isReadOnly() or class_editor.size().isEmpty():
+                raise AssertionError(
+                    f"Class-name editor is not operable for {raw_value!r}."
+                )
+            _replace_line_edit_text(class_editor, class_name)
+            if class_editor.text() != class_name:
+                raise AssertionError(
+                    f"Class name did not retain the typed value for {raw_value!r}."
+                )
+    if not editor.is_complete():
+        raise AssertionError(
+            "OpenNeuro event-value decisions remain incomplete: "
+            f"{editor.unresolved_values()!r}"
+        )
+    scroll_content = dialog.scroll_area.widget()
+    if scroll_content is None:
+        raise AssertionError("Match Labels scroll content is unavailable.")
+    editor_top = editor.mapTo(scroll_content, QPoint(0, 0)).y()
+    dialog.scroll_area.verticalScrollBar().setValue(max(editor_top - 96, 0))
+    QApplication.processEvents()
+    _capture_teacher_ui(
+        dialog,
+        "openneuro-match-labels-dialog.png",
+    )
+    _capture_teacher_ui(
+        dialog,
+        "openneuro-event-value-controls.png",
+        widget=editor,
+    )
 
 
 def _complete_required_metadata(dialog: DataInterpretationPreviewDialog) -> None:
@@ -346,12 +534,14 @@ def _start_wizard_driver(
     *,
     skip_labels: bool = False,
     resolve_bids_values: bool = False,
+    resolve_openneuro_values: bool = False,
     expect_blocked: bool = False,
 ) -> _WizardDriver:
     driver = _WizardDriver(
         timer=QTimer(),
         skip_labels=skip_labels,
         resolve_bids_values=resolve_bids_values,
+        resolve_openneuro_values=resolve_openneuro_values,
         expect_blocked=expect_blocked,
     )
     driver.timer.setInterval(5)
@@ -363,6 +553,13 @@ def _start_wizard_driver(
             modal.reject()
 
     def _poll() -> None:
+        heartbeat_at = time.monotonic()
+        driver.max_heartbeat_gap_seconds = max(
+            driver.max_heartbeat_gap_seconds,
+            heartbeat_at - driver.last_heartbeat_at,
+        )
+        driver.last_heartbeat_at = heartbeat_at
+        driver.heartbeat_count += 1
         modal = QApplication.activeModalWidget()
         try:
             if isinstance(modal, QMessageBox):
@@ -384,9 +581,22 @@ def _start_wizard_driver(
                 return
             if driver.dialog is None:
                 driver.dialog = modal
+                driver.dialog_count = 1
             elif modal is not driver.dialog:
-                _fail("The acceptance flow unexpectedly opened a second wizard.", modal)
-                return
+                if (
+                    driver.resolve_openneuro_values
+                    and driver.awaiting_label_field_refresh
+                ):
+                    driver.dialog = modal
+                    driver.dialog_count += 1
+                    driver.awaiting_label_field_refresh = False
+                    driver.trace.append("label field preview refreshed")
+                else:
+                    _fail(
+                        "The acceptance flow unexpectedly opened a second wizard.",
+                        modal,
+                    )
+                    return
 
             if driver.phase >= len(STEP_TITLES):
                 return
@@ -427,6 +637,21 @@ def _start_wizard_driver(
                 return
 
             if driver.phase == 3:
+                if driver.resolve_openneuro_values and driver.dialog_count == 1:
+                    _select_combo_data(modal.rule_label_field_combo, "value")
+                    placement_button = modal.placement_method_buttons["time_field"]
+                    QTEST.mouseClick(
+                        placement_button,
+                        Qt.MouseButton.LeftButton,
+                    )
+                    _select_combo_data(modal.rule_alignment_combo, "onset")
+                    driver.awaiting_label_field_refresh = True
+                    driver.trace.append("choose label field value")
+                    QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                    return
+                if driver.resolve_openneuro_values:
+                    _complete_openneuro_event_values(modal)
+                    driver.trace.append("review OpenNeuro event values")
                 if driver.resolve_bids_values:
                     _complete_bids_event_values(modal)
                     driver.trace.append("review BIDS event values")
@@ -454,6 +679,11 @@ def _start_wizard_driver(
                 QTEST.mouseClick(modal.cancel_button, Qt.MouseButton.LeftButton)
                 return
 
+            if driver.resolve_openneuro_values:
+                _capture_teacher_ui(
+                    modal,
+                    "openneuro-review-and-import.png",
+                )
             if not modal.apply_button.isEnabled():
                 _fail(
                     "Reviewed import did not enable Apply: "
@@ -480,6 +710,7 @@ def _wait_for_applied_interpretation(
     panel: DatasetPanel,
     *,
     timeout: int = 45_000,
+    expected_rows: int = 1,
 ) -> None:
     try:
         qtbot.waitUntil(
@@ -495,7 +726,10 @@ def _wait_for_applied_interpretation(
         lambda: application_command_registry().active_count(panel) == 0,
         timeout=10_000,
     )
-    qtbot.waitUntil(lambda: panel.table.rowCount() == 1, timeout=5_000)
+    qtbot.waitUntil(
+        lambda: panel.table.rowCount() == expected_rows,
+        timeout=5_000,
+    )
 
 
 def _wait_for_blocked_cancel(
@@ -629,6 +863,159 @@ def test_public_file_formats_run_five_steps_and_apply_without_labels(
     assert panel.data_surface.currentWidget() is panel.table
     assert _table_text(panel, 0, 0) == case.source.name
     assert _table_text(panel, 0, 6) == case.expected_table_summary
+
+
+@pytest.mark.parametrize(
+    "case",
+    PUBLIC_FOLDER_ACCEPTANCE_CASES,
+    ids=lambda case: case.fixture_group,
+)
+def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    case: _PublicFolderAcceptanceCase,
+) -> None:
+    """Clinical/sleep folders must not promote context sidecars into EEG data."""
+    _require_manifest_group(case.fixture_group)
+    chooser_calls: list[str] = []
+
+    def _choose_folder(
+        _parent: QWidget,
+        title: str,
+        _directory: str,
+    ) -> str:
+        chooser_calls.append(title)
+        return str(case.source)
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        staticmethod(_choose_folder),
+    )
+    _host, panel, runtime = _build_dataset_panel(qtbot)
+
+    driver = _start_wizard_driver(skip_labels=True)
+    QTEST.mouseClick(panel.sidebar.import_folder_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(
+        qtbot,
+        driver,
+        runtime,
+        panel,
+        timeout=60_000,
+    )
+
+    assert chooser_calls == ["Choose Folder or BIDS Root for Interpretation"]
+    assert driver.phase == 5
+    assert driver.trace == [
+        "Choose EEG Data",
+        "Load Labels",
+        "continue without labels",
+        "Review Metadata",
+        "Match Labels",
+        "Review and Import",
+        "confirm and import",
+    ]
+
+    publication = runtime.get_view_publication()
+    state = publication.state
+    interpretation = state.interpretation
+    assert publication.usable is True
+    assert state.raw.count == 1
+    assert state.raw.files == [case.expected_eeg.name]
+    assert state.raw.event_total == 0
+    assert state.raw.unique_events == []
+    assert interpretation.has_applied_interpretation is True
+    assert interpretation.source_kind == "folder"
+    assert interpretation.label_carriers == []
+    assert interpretation.epoch_handoff["supervised_ready"] is False
+    assert interpretation.epoch_handoff["supervised_blocker_codes"] == [
+        "missing_class_labels"
+    ]
+    assert panel.data_surface.currentWidget() is panel.table
+    assert panel.table.rowCount() == 1
+    assert _table_text(panel, 0, 0) == case.expected_eeg.name
+    assert _table_text(panel, 0, 6) == "Events not scanned"
+
+
+def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A user can choose the public BIDS root and review its real label values."""
+    _require_manifest_group("openneuro-ds003061-p300")
+    chooser_calls: list[str] = []
+
+    def _choose_bids_folder(
+        _parent: QWidget,
+        title: str,
+        _directory: str,
+    ) -> str:
+        chooser_calls.append(title)
+        return str(OPENNEURO_P300_ROOT)
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        staticmethod(_choose_bids_folder),
+    )
+    _host, panel, runtime = _build_dataset_panel(qtbot)
+
+    driver = _start_wizard_driver(resolve_openneuro_values=True)
+    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(
+        qtbot,
+        driver,
+        runtime,
+        panel,
+        timeout=300_000,
+        expected_rows=3,
+    )
+
+    assert chooser_calls == ["Choose BIDS Folder for Import"]
+    assert driver.phase == 5
+    assert driver.trace == [
+        "Choose EEG Data",
+        "Load Labels",
+        "Review Metadata",
+        "Match Labels",
+        "choose label field value",
+        "label field preview refreshed",
+        "Match Labels",
+        "review OpenNeuro event values",
+        "Review and Import",
+        "confirm and import",
+    ]
+    publication = runtime.get_view_publication()
+    state = publication.state
+    interpretation = state.interpretation
+    assert publication.usable is True
+    assert state.raw.count == 3
+    assert state.raw.files == [
+        "sub-001_task-P300_run-1_eeg.set",
+        "sub-001_task-P300_run-2_eeg.set",
+        "sub-001_task-P300_run-3_eeg.set",
+    ]
+    assert interpretation.has_applied_interpretation is True
+    assert interpretation.source_kind == "bids"
+    assert interpretation.bids["is_bids"] is True
+    assert interpretation.class_map == {
+        "noise": "noise",
+        "noise_with_reponse": "noise",
+        "oddball": "oddball",
+        "oddball_with_reponse": "oddball",
+        "standard": "standard",
+        "standard_with_reponse": "standard",
+    }
+    assert interpretation.epoch_handoff["supervised_ready"] is True
+    assert interpretation.epoch_handoff["default_epoch_events"] == [
+        "noise",
+        "oddball",
+        "standard",
+    ]
+    assert driver.heartbeat_count >= 100
+    assert driver.max_heartbeat_gap_seconds < 5.0
+    assert panel.data_surface.currentWidget() is panel.table
+    assert panel.table.rowCount() == 3
 
 
 def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(

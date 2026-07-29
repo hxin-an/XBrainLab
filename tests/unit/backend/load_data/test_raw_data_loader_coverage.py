@@ -4,7 +4,7 @@ Covers: load_edf_file, load_bdf_file, load_cnt_file, load_brainvision_file,
 load_set_file fallbacks, load_raw_data, and factory registration.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -29,11 +29,34 @@ class TestLoadEdf:
     @patch("XBrainLab.backend.load_data.raw.validate_type")
     @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_edf")
     def test_success(self, mock_read, mock_validate):
-        mock_raw = MagicMock()
-        mock_read.return_value = mock_raw
+        preserved_raw = MagicMock()
+        preserved_raw.ch_names = ["EOG horizontal", "Marker"]
+        preserved_raw.get_channel_types.return_value = ["eeg", "eeg"]
+        inferred_raw = MagicMock()
+        inferred_raw.ch_names = ["horizontal", "Marker"]
+        inferred_raw.get_channel_types.return_value = ["eog", "eeg"]
+        mock_read.side_effect = [preserved_raw, inferred_raw]
+
         result = load_edf_file("test.edf")
+
         assert isinstance(result, Raw)
-        mock_read.assert_called_once_with("test.edf", preload=False)
+        assert mock_read.call_args_list == [
+            call("test.edf", preload=False),
+            call(
+                "test.edf",
+                preload=False,
+                infer_types=True,
+                verbose="ERROR",
+            ),
+        ]
+        preserved_raw.set_channel_types.assert_called_once_with(
+            {"EOG horizontal": "eog", "Marker": "eeg"},
+            on_unit_change="ignore",
+        )
+        assert result.get_runtime_detail("edf_channel_type_inference")[
+            "defaulted_to_eeg_channels"
+        ] == ["Marker"]
+        inferred_raw.close.assert_called_once_with()
 
     @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_edf")
     def test_failure(self, mock_read):

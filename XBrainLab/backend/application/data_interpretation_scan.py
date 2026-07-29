@@ -12,6 +12,8 @@ from .data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
     is_bids_metadata_table,
+    is_edf_annotation_sidecar,
+    is_text_context_sidecar,
 )
 from .data_interpretation_formats import (
     format_capabilities as _format_capabilities,
@@ -248,6 +250,15 @@ def scan_source_path(
     normalized_hint = str(scope.source_hint or source_hint or "auto").strip().lower()
     scan_root = Path(scope.scan_root)
     eeg_files = list(scope.eeg_files)
+    if resource_reader is not None:
+        eeg_files = [
+            file_path
+            for file_path in eeg_files
+            if not is_edf_annotation_sidecar(
+                Path(file_path),
+                resource_reader=resource_reader,
+            )
+        ]
     label_carriers = list(scope.label_carriers)
     metadata_guard = (
         resource_reader.guard(
@@ -304,7 +315,10 @@ def scan_source_path(
         for file_path in eeg_files
     ]
     all_files = [Path(item) for item in scope.all_files]
-    format_capabilities = _format_capabilities(all_files)
+    format_capabilities = _format_capabilities(
+        all_files,
+        resource_reader=resource_reader,
+    )
     warnings = _scan_warnings(
         source_kind,
         eeg_files,
@@ -608,11 +622,18 @@ def _label_carriers_from_sources(
         resolved = source.resolve()
         if resolved not in normalized:
             normalized.append(resolved)
-        carriers = [
-            item
-            for item in _candidate_files(resolved, budget=budget)
-            if _is_label_carrier(item) or _is_bids_events_file(item)
-        ]
+        candidates = _candidate_files(resolved, budget=budget)
+        if resolved.is_file():
+            # An explicitly selected TXT file is user intent. Keep automatic
+            # report-name filtering for folder scans, but do not silently
+            # discard a file the user chose as a label source.
+            carriers = [item for item in candidates if _is_explicit_label_carrier(item)]
+        else:
+            carriers = [
+                item
+                for item in candidates
+                if _is_label_carrier(item) or _is_bids_events_file(item)
+            ]
         if not carriers:
             warnings.append(
                 "Label source did not contain a supported label/event file: "
@@ -661,6 +682,12 @@ def _is_raw_bids_eeg_scope_path(path: Path, bids_root: Path) -> bool:
 
 
 def _is_label_carrier(path: Path) -> bool:
+    if is_bids_metadata_table(path) or is_text_context_sidecar(path):
+        return False
+    return _has_supported_suffix(path, LABEL_CARRIER_EXTENSIONS)
+
+
+def _is_explicit_label_carrier(path: Path) -> bool:
     if is_bids_metadata_table(path):
         return False
     return _has_supported_suffix(path, LABEL_CARRIER_EXTENSIONS)

@@ -105,3 +105,41 @@ def test_load_label_folder_rescan_selects_loaded_labels_for_matching(
     assert label_file.name in "\n".join(
         combo.currentText() for combo in dialog._eeg_label_widgets.values()
     )
+
+
+def test_changing_label_field_requests_backend_repreview_at_match_labels(
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    eeg_file = tmp_path / "sub-01_task-mi_raw.fif"
+    label_file = tmp_path / "sub-01_task-mi_events.tsv"
+    eeg_file.write_bytes(b"not loaded during interpretation scan")
+    label_file.write_text(
+        "onset\ttrial_type\tvalue\n0.0\tstimulus\tleft\n1.0\tstimulus\tright\n",
+        encoding="utf-8",
+    )
+    service = ApplicationService()
+    dialog = _start_dialog(
+        service,
+        eeg_file,
+        label_sources=[str(label_file)],
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+
+    _show_step(dialog, "Match Labels")
+    value_index = dialog.rule_label_field_combo.findData("value")
+    assert value_index >= 0
+    dialog.rule_label_field_combo.setCurrentIndex(value_index)
+    dialog.next_button.click()
+    qtbot.wait(0)
+
+    result = dialog.get_result()
+    assert dialog.result() == dialog.DialogCode.Accepted
+    assert result["resume_step"] == "Match Labels"
+    assert {
+        choice["label_field"]
+        for choice in result["choices"]["label_carrier_choices"].values()
+    } == {"value"}

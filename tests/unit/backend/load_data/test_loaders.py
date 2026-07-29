@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from XBrainLab.backend.exceptions import FileCorruptedError
 from XBrainLab.backend.load_data import Raw
@@ -33,7 +33,18 @@ class TestLoaders(unittest.TestCase):
         mock_read.return_value = MagicMock()
         result = load_edf_file("test.edf")
         self.assertIsInstance(result, Raw)
-        mock_read.assert_called_with("test.edf", preload=False)
+        self.assertEqual(
+            mock_read.call_args_list,
+            [
+                call("test.edf", preload=False),
+                call(
+                    "test.edf",
+                    preload=False,
+                    infer_types=True,
+                    verbose="ERROR",
+                ),
+            ],
+        )
 
     @patch("mne.io.read_raw_bdf")
     def test_load_bdf_file(self, mock_read):
