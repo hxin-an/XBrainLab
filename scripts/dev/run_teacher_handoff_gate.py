@@ -101,7 +101,9 @@ def _git_output(*args: str) -> str:
         capture_output=True,
         text=True,
     )
-    return completed.stdout.strip()
+    # Git porcelain output uses a leading status column. Preserve leading
+    # whitespace so the first path is parsed from the same offset as later rows.
+    return completed.stdout.rstrip()
 
 
 def _source_dirty_paths() -> list[str]:
