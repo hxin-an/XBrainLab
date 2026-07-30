@@ -1,8 +1,8 @@
-"""
-End-to-end integration test: Load → Preprocess → Split → Train → Evaluate.
+"""Trainer/model integration smokes on a real MNE-backed Dataset.
 
-Uses real MNE processing with synthetic data and a real EEGNet model
-(1-2 epochs, 6 trials per class) to verify the complete pipeline works.
+These tests intentionally construct epochs and split masks directly. They prove
+real model execution and metrics, not the user-facing import-to-visualization
+command workflow.
 """
 
 from unittest.mock import patch
@@ -76,20 +76,20 @@ def _make_synthetic_dataset():
 
 
 class TestFullPipeline:
-    """Complete load → preprocess → split → train → evaluate pipeline."""
+    """Historical suite name for focused trainer/evaluation integration."""
 
     @pytest.fixture
     def synthetic_dataset(self):
-        """Create a mock dataset with realistic synthetic data."""
+        """Create a tiny real Dataset with deterministic synthetic samples."""
         return _make_synthetic_dataset()
 
-    def test_train_and_evaluate_metrics(self, synthetic_dataset):
-        """Full pipeline produces valid training records with real metrics."""
+    def test_train_and_evaluate_metrics(self, synthetic_dataset, tmp_path):
+        """Real EEGNet execution produces finite training and evaluation records."""
         dataset, _n_classes, _n_channels, _n_samples = synthetic_dataset
 
         holder = ModelHolder(EEGNet, {}, None)
         option = TrainingOption(
-            output_dir="test_output",
+            output_dir=str(tmp_path / "training-output"),
             optim=torch.optim.Adam,
             optim_params={},
             use_cpu=True,
@@ -134,7 +134,7 @@ class TestFullPipeline:
             # Eval record should exist
             assert record.eval_record is not None
 
-    def test_sccnet_model(self, synthetic_dataset):
+    def test_sccnet_model(self, synthetic_dataset, tmp_path):
         """Pipeline also works with SCCNet model."""
         from XBrainLab.backend.model_base import SCCNet
 
@@ -142,7 +142,7 @@ class TestFullPipeline:
 
         holder = ModelHolder(SCCNet, {}, None)
         option = TrainingOption(
-            output_dir="test_output",
+            output_dir=str(tmp_path / "training-output"),
             optim=torch.optim.Adam,
             optim_params={},
             use_cpu=True,
@@ -174,13 +174,13 @@ class TestFullPipeline:
 class TestMultiRepeatTraining:
     """Tests for multi-repeat and multi-plan training scenarios."""
 
-    def test_two_repeats(self):
+    def test_two_repeats(self, tmp_path):
         """Training with repeat_num=2 produces two records."""
         dataset, _n_cls, _n_ch, _n_samp = _make_synthetic_dataset()
 
         holder = ModelHolder(EEGNet, {}, None)
         option = TrainingOption(
-            output_dir="test_output",
+            output_dir=str(tmp_path / "training-output"),
             optim=torch.optim.Adam,
             optim_params={},
             use_cpu=True,
