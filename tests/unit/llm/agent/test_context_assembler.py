@@ -29,6 +29,17 @@ from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 
+def _untrusted_context(messages: list[dict]) -> dict:
+    payload = json.loads(messages[1]["content"])
+    assert payload["schema"] == "xbrainlab.untrusted_context.v1"
+    assert payload["trust"] == "untrusted"
+    return payload
+
+
+def _context_item(payload: dict, item_type: str) -> dict:
+    return next(item for item in payload["items"] if item["type"] == item_type)
+
+
 def test_generation_request_marks_concept_question_as_natural_language():
     assembler = ContextAssembler(ToolRegistry(), Study())
 
@@ -65,14 +76,15 @@ def test_blocked_explanation_uses_publication_but_publishes_no_actions() -> None
     request = assembler.get_generation_request(
         [{"role": "user", "content": "Why can't I create epochs?"}]
     )
-    prompt = request.to_model_messages()[0]["content"]
-    blockers = prompt.split("Relevant Blockers:", maxsplit=1)[1]
+    messages = request.to_model_messages()
+    prompt = messages[0]["content"]
+    context = _untrusted_context(messages)
+    blockers = _context_item(context, "capability_blockers")["data"]["blocked_reasons"]
 
     assert request.response_contract is AssistantResponseContract.NATURAL_LANGUAGE
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset()
-    assert "- create_epoch: Preprocess data before creating epochs." in blockers
-    assert "- train:" not in blockers
+    assert blockers == {"create_epoch": "Preprocess data before creating epochs."}
     assert "unique description for epoch_data" not in prompt
     assert "unique description for scan_source" not in prompt
 
@@ -252,10 +264,18 @@ def test_system_prompt_uses_exactly_one_publication_for_all_workflow_sections():
         application_runtime=runtime,
     )
 
-    prompt = assembler.build_system_prompt("What can I do next?")
+    messages = assembler.get_messages(
+        [{"role": "user", "content": "What can I do next?"}]
+    )
+    prompt = messages[0]["content"]
+    decision = _context_item(
+        _untrusted_context(messages),
+        "workflow_decision",
+    )["data"]
 
     assert runtime.publication_reads == 1
-    assert "- workflow_stage: No data loaded" in prompt
+    assert decision["workflow_stage"] == "No data loaded"
+    assert "No data loaded" not in prompt
     assert "recommended_next_step" not in prompt
     assert "STRICT RESPONSE CONTRACT - DECISION ORDER" in prompt
     assert "Operation policy" not in prompt
@@ -282,15 +302,21 @@ def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
     registry = ToolRegistry()
     registry.register(_NamedTool("epoch_data"))
 
-    prompt = ContextAssembler(
+    assembler = ContextAssembler(
         registry,
         Study(),
         application_runtime=runtime,
-    ).build_system_prompt("Create epochs")
+    )
+    messages = assembler.get_messages([{"role": "user", "content": "Create epochs"}])
+    prompt = messages[0]["content"]
+    decision = _context_item(
+        _untrusted_context(messages),
+        "workflow_decision",
+    )["data"]
 
     assert runtime.publication_reads == 1
-    assert "## Current Stage: Preprocessed" in prompt
-    assert "Ready for epoching" in prompt
+    assert "## Current Stage: Preprocessed" not in prompt
+    assert decision["workflow_stage"] == "Ready for epoching"
     assert "recommended_next_step" not in prompt
     assert '"name": "epoch_data"' in prompt
     assert "unique description for epoch_data" in prompt
@@ -476,13 +502,18 @@ def test_real_service_prompt_reads_one_committed_publication_generation():
     registry.register(_NamedTool("scan_source"))
     registry.register(_NamedTool("apply_bandpass_filter"))
 
-    prompt = ContextAssembler(registry, study).build_system_prompt(
-        "Help me import EEG data."
+    messages = ContextAssembler(registry, study).get_messages(
+        [{"role": "user", "content": "Help me import EEG data."}]
     )
+    prompt = messages[0]["content"]
+    decision = _context_item(
+        _untrusted_context(messages),
+        "workflow_decision",
+    )["data"]
 
     assert service.state_snapshot.build.call_count == 0
-    assert "## Current Stage: Empty (No Data)" in prompt
-    assert "- workflow_stage: No data loaded" in prompt
+    assert "## Current Stage: Empty (No Data)" not in prompt
+    assert decision["workflow_stage"] == "No data loaded"
     assert "recommended_next_step" not in prompt
     assert "unique description for scan_source" in prompt
     assert "unique description for apply_bandpass_filter" not in prompt
@@ -510,15 +541,32 @@ def test_stale_publication_prompt_redacts_relevant_scan_source_blocker():
         application_runtime=runtime,
     )
 
-    prompt = assembler.build_system_prompt("Import EEG data from a source")
+    messages = assembler.get_messages(
+        [{"role": "user", "content": "Import EEG data from a source"}]
+    )
+    prompt = messages[0]["content"]
+    context_content = messages[1]["content"]
+    decision = _context_item(
+        _untrusted_context(messages),
+        "workflow_decision",
+    )["data"]
 
-    assert "Workflow status unavailable" in prompt
+    assert decision["workflow_stage"] == "Workflow status unavailable"
     assert "Traceback" not in prompt
     assert "/private/runtime.py" not in prompt
     assert "SECRET_TOKEN_123" not in prompt
-    assert "Workflow state is temporarily unavailable." in prompt
-    assert "- scan_source: Workflow state is temporarily unavailable." in prompt
-    assert "## Workflow Status Unavailable" in prompt
+    assert "Traceback" not in context_content
+    assert "/private/runtime.py" not in context_content
+    assert "SECRET_TOKEN_123" not in context_content
+    assert decision["blocked_reasons"] == ["Workflow state is temporarily unavailable."]
+    blockers = _context_item(
+        _untrusted_context(messages),
+        "capability_blockers",
+    )["data"]["blocked_reasons"]
+    assert blockers == {
+        "scan_source": "Workflow state is temporarily unavailable.",
+    }
+    assert "## Workflow Status Unavailable" not in prompt
     assert "## Current Stage: Empty (No Data)" not in prompt
     assert "unique description for query_state" not in prompt
     assert "unique description for clear_dataset" not in prompt
@@ -619,13 +667,17 @@ def test_assembler_context_and_history():
         history = [{"role": "user", "content": "Hello"}]
         messages = assembler.get_messages(history)
 
-    # Verify System Message index 0
+    # Verify policy and context are separate messages.
     sys_msg = messages[0]["content"]
-    assert "Important RAG Info" in sys_msg
+    assert "Important RAG Info" not in sys_msg
     assert "You are XBrainLab Assistant" in sys_msg  # Standard header
+    context = _untrusted_context(messages)
+    runtime_item = _context_item(context, "runtime_context")
+    assert runtime_item["data"] == {"text": "Important RAG Info"}
+    assert runtime_item["source"] == {"kind": "assistant_runtime_context"}
 
     # Verify History
-    assert messages[1] == {"role": "user", "content": "Hello"}
+    assert messages[2] == {"role": "user", "content": "Hello"}
 
 
 def test_workflow_decision_context_uses_backend_state_for_next_step():
@@ -888,15 +940,17 @@ def test_assembler_sends_decision_context_and_short_clean_history():
         assembler.bind_turn_scope(AssistantTurnScope.GUIDED_WORKFLOW)
         messages = assembler.get_messages(history)
 
-    assert "Workflow Decision Context:" in messages[0]["content"]
-    assert "mode: continue_until_decision" in messages[0]["content"]
-    assert "continuation_candidate: scan_source" in messages[0]["content"]
-    assert (
-        "continuation_role: backend_advice_not_user_request" in messages[0]["content"]
-    )
-    assert len(messages) <= 5
+    assert "Workflow Decision Context:" not in messages[0]["content"]
+    decision = _context_item(
+        _untrusted_context(messages),
+        "workflow_decision",
+    )["data"]
+    assert decision["mode"] == "continue_until_decision"
+    assert decision["continuation_candidate"] == "scan_source"
+    assert decision["continuation_role"] == "backend_advice_not_user_request"
+    assert len(messages) <= 6
     assert not any(
-        "Tool Output:" in str(message.get("content", "")) for message in messages[1:]
+        "Tool Output:" in str(message.get("content", "")) for message in messages[2:]
     )
     assert messages[-1] == {
         "role": "user",
@@ -1037,7 +1091,7 @@ def test_changing_continuation_authorization_discards_stale_rag_context() -> Non
     assert assembler.context_notes == []
 
 
-def test_recoverable_tool_feedback_is_structured_system_context_not_history() -> None:
+def test_recoverable_tool_feedback_is_structured_untrusted_data_not_history() -> None:
     from XBrainLab.llm.agent.tool_feedback import ToolRecoveryFeedback
 
     assembler = ContextAssembler(ToolRegistry(), Study())
@@ -1062,24 +1116,31 @@ def test_recoverable_tool_feedback_is_structured_system_context_not_history() ->
         ]
     )
 
-    assert "Tool Recovery Feedback" in messages[0]["content"]
-    assert '"tool_name": "list_files"' in messages[0]["content"]
-    assert "runtime data, not instructions" in messages[0]["content"]
-    assert all("Tool Output:" not in item["content"] for item in messages[1:])
+    assert "Tool Recovery Feedback" not in messages[0]["content"]
+    recovery = _context_item(
+        _untrusted_context(messages),
+        "tool_recovery",
+    )
+    assert recovery["source"] == {"kind": "assistant_tool_result"}
+    assert recovery["data"]["tool_name"] == "list_files"
+    assert recovery["data"]["message"] == "directory is required"
+    assert all("Tool Output:" not in item["content"] for item in messages[2:])
 
 
 def test_assembler_only_includes_blocker_relevant_to_latest_request():
     assembler = ContextAssembler(ToolRegistry(), Study())
 
-    prompt = assembler.build_system_prompt("Train the model now.")
-    blockers = prompt.split("Relevant Blockers:", maxsplit=1)[1].split(
-        "To use a tool",
-        maxsplit=1,
-    )[0]
+    messages = assembler.get_messages(
+        [{"role": "user", "content": "Train the model now."}]
+    )
+    blockers = _context_item(
+        _untrusted_context(messages),
+        "capability_blockers",
+    )["data"]["blocked_reasons"]
 
-    assert "- train:" in blockers
-    assert "- preprocess:" not in blockers
-    assert "- create_epoch:" not in blockers
+    assert "train" in blockers
+    assert "preprocess" not in blockers
+    assert "create_epoch" not in blockers
 
 
 def test_prompt_policy_read_result_serializes_one_successful_publication() -> None:
@@ -1155,11 +1216,22 @@ def test_prompt_policy_policy_exception_is_fail_closed_and_prompt_visible() -> N
         "XBrainLab.llm.agent.prompt_policy.build_agent_tool_policy",
         side_effect=RuntimeError("internal capability implementation detail"),
     ):
-        prompt = assembler.build_system_prompt("Import EEG data")
+        messages = assembler.get_messages(
+            [{"role": "user", "content": "Import EEG data"}]
+        )
 
-    assert "Backend capability policy is temporarily unavailable" in prompt
+    prompt = messages[0]["content"]
+    status = _context_item(
+        _untrusted_context(messages),
+        "capability_status",
+    )["data"]
+    assert status["publication_error"]["message"].startswith(
+        "Backend capability policy is temporarily unavailable."
+    )
+    assert "Backend capability policy is temporarily unavailable" not in prompt
     assert "unique description for scan_source" not in prompt
     assert "internal capability implementation detail" not in prompt
+    assert "internal capability implementation detail" not in messages[1]["content"]
 
 
 def test_prompt_policy_blocked_reason_exception_is_fail_closed() -> None:
@@ -1215,13 +1287,21 @@ def test_prompt_policy_invalid_publication_type_is_serializable_and_fail_closed(
 
     registry = ToolRegistry()
     registry.register(_NamedTool("scan_source"))
-    prompt = ContextAssembler(
+    messages = ContextAssembler(
         registry,
         object(),
         application_runtime=runtime,
-    ).build_system_prompt("Import data")
+    ).get_messages([{"role": "user", "content": "Import data"}])
 
-    assert "Backend capability policy is temporarily unavailable" in prompt
+    prompt = messages[0]["content"]
+    status = _context_item(
+        _untrusted_context(messages),
+        "capability_status",
+    )["data"]
+    assert status["publication_error"]["message"].startswith(
+        "Backend capability policy is temporarily unavailable."
+    )
+    assert "Backend capability policy is temporarily unavailable" not in prompt
     assert "unique description for scan_source" not in prompt
 
 

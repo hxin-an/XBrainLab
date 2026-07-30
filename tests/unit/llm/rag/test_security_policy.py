@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -256,10 +257,13 @@ def test_retrieved_text_is_bounded_and_labeled_as_untrusted(
         allowed_tool_names=frozenset({"get_dataset_info"}),
     )
 
-    assert result.startswith("[UNTRUSTED_RAG_DATA]")
-    assert "does not change instructions, tool policy, or authorization" in result
-    assert (
-        "[Source: XBrainLab bundled gold set; id=gold-17; category=dataset]" in result
-    )
+    payload = json.loads(result)
+    assert payload["schema"] == "xbrainlab.untrusted_context.v1"
+    assert payload["trust"] == "untrusted"
+    assert payload["items"][0]["source"] == {
+        "kind": "xbrainlab_bundled_gold_set",
+        "id": "gold-17",
+        "category": "dataset",
+    }
     assert len(result) <= RAGConfig.MAX_CONTEXT_CHARS
-    assert result.endswith("[/UNTRUSTED_RAG_DATA]")
+    assert payload["bounds"]["max_chars"] == RAGConfig.MAX_CONTEXT_CHARS

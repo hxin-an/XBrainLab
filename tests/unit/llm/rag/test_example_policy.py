@@ -223,15 +223,19 @@ def test_retriever_filters_legacy_examples_from_existing_vector_store() -> None:
     finally:
         retriever.close()
 
+    envelope = json.loads(result)
+    assert envelope["schema"] == "xbrainlab.untrusted_context.v1"
+    assert len(envelope["items"]) == 1
+    example = envelope["items"][0]
     assert "scan_source" in result
     assert "Scan the EEG source" in result
     assert "```" not in result
     assert '[{"tool_name"' not in result
     assert "Assistant action:" not in result
-    assert (
-        'Assistant:\n{"tool_name": "scan_source", '
-        '"parameters": {"source_path": "/tmp/eeg"}}'
-    ) in result
+    expected_action = example["data"]["expected_action"]
+    assert expected_action["tool_name"] == "scan_source"
+    assert "/tmp/eeg" not in expected_action["parameters"]["source_path"]
+    assert "[REDACTED_PATH]" in expected_action["parameters"]["source_path"]
     assert "load_data" not in result
     assert "Load the file" not in result
     assert "Scan without identifying a source" not in result

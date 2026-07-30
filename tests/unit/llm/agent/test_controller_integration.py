@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from contextlib import suppress
 from copy import deepcopy
@@ -187,8 +188,12 @@ def test_controller_prompt_generation(controller: LLMController) -> None:
     controller._append_history("user", "Hello")
 
     msgs = controller.assembler.get_messages(controller.history)
-    assert len(msgs) == 2
+    assert len(msgs) == 3
     assert "Available Action Contracts (exhaustive JSON array):" in msgs[0]["content"]
+    context = json.loads(msgs[1]["content"])
+    assert context["schema"] == "xbrainlab.untrusted_context.v1"
+    assert context["trust"] == "untrusted"
+    assert msgs[2] == {"role": "user", "content": "Hello"}
 
 
 def test_direct_uncorrelated_user_input_fails_closed(

@@ -1,7 +1,8 @@
-"""Tests for stage-based ContextAssembler behaviour."""
+"""Tests for ContextAssembler policy and stage-filtered tool behaviour."""
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 from XBrainLab.llm.agent.assembler import ContextAssembler
@@ -146,9 +147,9 @@ class TestStageBasedFiltering:
         )
 
         assert STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions() in prompt
-        assert "request-scoped action contracts below are authoritative" in prompt
-        assert "Workflow Decision Context" in prompt
-        assert "mode: step_by_step" in prompt
+        assert "request-scoped action contracts are" in prompt
+        assert "Workflow Decision Context" not in prompt
+        assert 'schema "xbrainlab.untrusted_context.v1"' in prompt
         assert "Only the listed workflow action is available" in prompt
 
     def test_stage_filter_keeps_legacy_tools_out_of_primary_prompt(self):
@@ -196,9 +197,9 @@ class TestStageBasedFiltering:
 
 
 class TestPromptContent:
-    """System prompt includes stage name and guidance."""
+    """System prompt remains policy-only while context is separately encoded."""
 
-    def test_contains_stage_name(self):
+    def test_stage_name_is_not_in_system_policy(self):
         registry = ToolRegistry()
         study = MagicMock()
         with patch(
@@ -208,9 +209,10 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, study)
             prompt = assembler.build_system_prompt()
 
-        assert "Preprocessed" in prompt
+        assert "Preprocessed" not in prompt
+        assert "EEG workflow guide" in prompt
 
-    def test_contains_guidance(self):
+    def test_stage_guidance_is_not_in_system_policy(self):
         registry = ToolRegistry()
         study = MagicMock()
         with patch(
@@ -220,25 +222,38 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, study)
             prompt = assembler.build_system_prompt()
 
-        # Per-stage prompt should contain stage-specific guidance
-        assert "no data is loaded" in prompt.lower()
+        assert "no data is loaded" not in prompt.lower()
+        assert "runtime context" in prompt.lower()
 
-    def test_rag_context_appended(self):
+    def test_rag_context_is_in_separate_untrusted_message(self):
         registry = ToolRegistry()
         study = MagicMock()
-        with patch(
-            "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-            return_value=PipelineStage.EMPTY,
+        with (
+            patch(
+                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
+                return_value=PipelineStage.EMPTY,
+            ),
+            patch(
+                "XBrainLab.llm.agent.assembler.read_prompt_policy",
+                return_value=PromptPolicyReadResult.not_applicable(),
+            ),
         ):
             assembler = ContextAssembler(registry, study)
             assembler.add_context("RAG info")
-            prompt = assembler.build_system_prompt()
+            messages = assembler.get_messages(
+                [{"role": "user", "content": "Import EEG data."}]
+            )
 
-        assert "RAG info" in prompt
-        assert "Additional Context" in prompt
+        assert "RAG info" not in messages[0]["content"]
+        context = json.loads(messages[1]["content"])
+        runtime_item = next(
+            item for item in context["items"] if item["type"] == "runtime_context"
+        )
+        assert runtime_item["data"] == {"text": "RAG info"}
+        assert runtime_item["source"] == {"kind": "assistant_runtime_context"}
 
-    def test_each_stage_has_unique_prompt(self):
-        """Every stage should produce a distinct system prompt."""
+    def test_each_stage_uses_the_same_policy_prompt(self):
+        """Workflow state changes data, not policy prose."""
         prompts = set()
         for stage in PipelineStage:
             registry = ToolRegistry()
@@ -250,7 +265,7 @@ class TestPromptContent:
                 assembler = ContextAssembler(registry, study)
                 prompt = assembler.build_system_prompt()
             prompts.add(prompt)
-        assert len(prompts) == len(PipelineStage)
+        assert len(prompts) == 1
 
     def test_rule_6_only_listed_tools(self):
         """Prompt instructs LLM not to call unlisted tools."""
@@ -263,5 +278,5 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, study)
             prompt = assembler.build_system_prompt()
 
-        assert "action contracts below are authoritative" in prompt
+        assert "request-scoped action contracts are" in prompt
         assert "Use only an action contract listed for this exact turn" in prompt

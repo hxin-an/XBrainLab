@@ -47,18 +47,23 @@ def test_get_similar_examples_success(mock_retriever):
 
     result = mock_retriever.get_similar_examples("query")
 
-    assert "Example 1:" in result
-    assert result.startswith("[UNTRUSTED_RAG_DATA]")
-    assert "[Source: XBrainLab bundled gold set;" in result
-    assert 'User: "User input"' in result
-    assert 'Assistant:\n{"tool_name": "get_dataset_info", "parameters": {}}' in result
+    payload = json.loads(result)
+    assert payload["schema"] == "xbrainlab.untrusted_context.v1"
+    assert payload["trust"] == "untrusted"
+    assert len(payload["items"]) == 1
+    example = payload["items"][0]
+    assert example["type"] == "rag_example"
+    assert example["source"]["kind"] == "xbrainlab_bundled_gold_set"
+    assert example["data"]["input"] == "User input"
+    assert example["data"]["expected_action"] == {
+        "tool_name": "get_dataset_info",
+        "parameters": {},
+    }
     assert "Assistant action:" not in result
     assert "```" not in result
 
-    assistant_payload = result.split("Assistant:\n", maxsplit=1)[1].splitlines()[0]
-    parsed_payload = json.loads(assistant_payload)
-    assert list(parsed_payload) == ["tool_name", "parameters"]
-    assert parsed_payload == {"tool_name": "get_dataset_info", "parameters": {}}
+    parsed_payload = example["data"]["expected_action"]
+    assert list(parsed_payload) == ["parameters", "tool_name"]
 
 
 def test_get_similar_examples_empty(mock_retriever):
