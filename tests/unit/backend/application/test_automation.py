@@ -27,12 +27,21 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.backend.study import Study
 
 
-def test_command_specs_cover_application_commands_with_autonomy_policy():
+def test_command_specs_cover_primary_application_commands_with_autonomy_policy():
     service = ApplicationService(Study())
 
     specs = {spec.name: spec for spec in command_specs(service)}
 
-    assert set(specs) == {name.value for name in CommandName}
+    assert set(specs) == {
+        name.value
+        for name in CommandName
+        if name
+        not in {
+            CommandName.LOAD_DATA,
+            CommandName.ATTACH_LABELS,
+            CommandName.IMPORT_LABELS,
+        }
+    }
     scan = specs[CommandName.SCAN_SOURCE.value]
     assert scan.taxonomy == "data_interpretation"
     assert scan.input_schema["required"] == ["source_path"]
@@ -48,12 +57,6 @@ def test_command_specs_cover_application_commands_with_autonomy_policy():
         == "boolean"
     )
     assert apply_spec.input_schema["properties"]["resource_preflight_token"] == {
-        "type": "string",
-        "nullable": True,
-    }
-
-    load_spec = specs[CommandName.LOAD_DATA.value]
-    assert load_spec.input_schema["properties"]["resource_preflight_token"] == {
         "type": "string",
         "nullable": True,
     }
@@ -203,11 +206,37 @@ def test_automation_rejects_ui_only_payload_flags(command_name, field_name):
         )
 
 
-def test_legacy_compatibility_commands_are_not_primary_mcp_workflow():
+def test_legacy_compatibility_commands_require_explicit_schema_opt_in():
     service = ApplicationService(Study())
 
     specs = {spec.name: spec for spec in command_specs(service)}
     tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
+
+    assert {
+        CommandName.LOAD_DATA.value,
+        CommandName.ATTACH_LABELS.value,
+        CommandName.IMPORT_LABELS.value,
+    }.isdisjoint(specs)
+    assert {
+        CommandName.LOAD_DATA.value,
+        CommandName.ATTACH_LABELS.value,
+        CommandName.IMPORT_LABELS.value,
+    }.isdisjoint(tools)
+
+    specs = {
+        spec.name: spec
+        for spec in command_specs(
+            service,
+            include_legacy_compatibility=True,
+        )
+    }
+    tools = {
+        tool["name"]: tool
+        for tool in mcp_tool_specs(
+            service,
+            include_legacy_compatibility=True,
+        )
+    }
 
     for command_name in (
         CommandName.LOAD_DATA.value,
@@ -226,6 +255,26 @@ def test_legacy_compatibility_commands_are_not_primary_mcp_workflow():
         assert metadata["legacy_compatibility"] is True
         assert metadata["primary_workflow"] is False
         assert "review_interpretation" in metadata["preferred_commands"]
+
+
+@pytest.mark.parametrize(
+    "command_name",
+    [
+        CommandName.LOAD_DATA.value,
+        CommandName.ATTACH_LABELS.value,
+        CommandName.IMPORT_LABELS.value,
+    ],
+)
+def test_legacy_compatibility_payload_requires_explicit_execution_opt_in(
+    command_name: str,
+) -> None:
+    with pytest.raises(
+        AutomationPayloadError,
+        match="requires explicit compatibility opt-in",
+    ):
+        build_command_from_payload(
+            {"command": command_name, "arguments": {}},
+        )
 
 
 def test_build_command_from_payload_validates_required_and_unknown_arguments():
@@ -460,6 +509,7 @@ def test_headless_load_requires_explicit_resource_warning_confirmation(
     blocked = execute_automation_payload(
         service,
         {"command": "load_data", "arguments": {"paths": [str(path)]}},
+        allow_legacy_compatibility=True,
     )
 
     assert blocked.result is not None
@@ -484,6 +534,7 @@ def test_headless_load_requires_explicit_resource_warning_confirmation(
                 "resource_preflight_token": challenge["challenge_id"],
             },
         },
+        allow_legacy_compatibility=True,
     )
 
     assert continued.result is not None
@@ -524,3 +575,21 @@ def test_headless_cli_lists_mcp_tool_specs():
 
     tools = json.loads(completed.stdout)
     assert any(tool["name"] == "scan_source" for tool in tools)
+    assert not any(tool["name"] == "load_data" for tool in tools)
+
+
+def test_headless_cli_legacy_compatibility_requires_explicit_opt_in():
+    completed = subprocess.run(  # noqa: S603
+        [
+            sys.executable,
+            "scripts/dev/run_application_command.py",
+            "--mcp-tools",
+            "--include-legacy-compatibility",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    tools = json.loads(completed.stdout)
+    assert any(tool["name"] == "load_data" for tool in tools)

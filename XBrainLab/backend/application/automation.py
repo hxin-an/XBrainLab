@@ -196,8 +196,10 @@ LEGACY_COMMAND_DESCRIPTIONS: dict[CommandName, str] = {
 
 def command_specs(
     service: ApplicationService | None = None,
+    *,
+    include_legacy_compatibility: bool = False,
 ) -> list[AutomationCommandSpec]:
-    """Return all command schemas with optional live capability policy."""
+    """Return product command schemas with optional compatibility commands."""
     capabilities = (
         service.get_view_publication().effective_capabilities
         if service is not None
@@ -205,6 +207,11 @@ def command_specs(
     )
     specs: list[AutomationCommandSpec] = []
     for command_name in CommandName:
+        if (
+            command_name in LEGACY_COMPATIBILITY_COMMANDS
+            and not include_legacy_compatibility
+        ):
+            continue
         command_type = COMMAND_TYPES[command_name]
         capability = (
             capabilities.get(command_name).to_dict()
@@ -228,6 +235,8 @@ def command_specs(
 
 def mcp_tool_specs(
     service: ApplicationService | None = None,
+    *,
+    include_legacy_compatibility: bool = False,
 ) -> list[dict[str, Any]]:
     """Return MCP-shaped tool specs backed by the same command schemas."""
     return [
@@ -246,11 +255,18 @@ def mcp_tool_specs(
                 "preferred_commands": list(spec.preferred_commands),
             },
         }
-        for spec in command_specs(service)
+        for spec in command_specs(
+            service,
+            include_legacy_compatibility=include_legacy_compatibility,
+        )
     ]
 
 
-def build_command_from_payload(payload: dict[str, Any]) -> Command:
+def build_command_from_payload(
+    payload: dict[str, Any],
+    *,
+    allow_legacy_compatibility: bool = False,
+) -> Command:
     """Build a typed command object from a JSON-shaped automation payload."""
     if not isinstance(payload, dict):
         raise AutomationPayloadError("Payload must be an object.")
@@ -264,6 +280,13 @@ def build_command_from_payload(payload: dict[str, Any]) -> Command:
     except ValueError as exc:
         raise AutomationPayloadError(f"Unsupported command: {command_value}") from exc
 
+    if command_name in LEGACY_COMPATIBILITY_COMMANDS and not allow_legacy_compatibility:
+        preferred = ", ".join(LEGACY_PREFERRED_COMMANDS)
+        raise AutomationPayloadError(
+            f"{command_name.value} is a legacy compatibility command and requires "
+            f"explicit compatibility opt-in. Prefer: {preferred}."
+        )
+
     arguments = payload.get("arguments", {})
     if not isinstance(arguments, dict):
         raise AutomationPayloadError("Payload arguments must be an object.")
@@ -274,6 +297,8 @@ def build_command_from_payload(payload: dict[str, Any]) -> Command:
 def execute_automation_payload(
     service: ApplicationService,
     payload: dict[str, Any],
+    *,
+    allow_legacy_compatibility: bool = False,
 ) -> AutomationExecution:
     """Execute one automation payload through ApplicationService."""
     publication = service.get_view_publication()
@@ -292,7 +317,10 @@ def execute_automation_payload(
     }
 
     try:
-        command = build_command_from_payload(payload)
+        command = build_command_from_payload(
+            payload,
+            allow_legacy_compatibility=allow_legacy_compatibility,
+        )
     except AutomationPayloadError as exc:
         verification["error"] = str(exc)
         return AutomationExecution(

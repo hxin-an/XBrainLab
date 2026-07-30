@@ -261,7 +261,11 @@ def test_public_label_import_plan_and_production_schema_have_no_label_map() -> N
     assert "label_map" not in {field.name for field in fields(LabelImportPlan)}
     with pytest.raises(TypeError, match="label_map"):
         LabelImportPlan(label_map={"labels.txt": [1]})  # type: ignore[call-arg]
-    spec = next(item for item in command_specs() if item.name == "import_labels")
+    spec = next(
+        item
+        for item in command_specs(include_legacy_compatibility=True)
+        if item.name == "import_labels"
+    )
     plan_schema = spec.input_schema["properties"]["plan"]
     assert "label_map" not in plan_schema["properties"]
 

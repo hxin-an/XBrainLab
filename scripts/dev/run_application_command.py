@@ -41,6 +41,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print MCP-shaped tool schemas backed by ApplicationService commands.",
     )
+    parser.add_argument(
+        "--include-legacy-compatibility",
+        action="store_true",
+        help=(
+            "Explicitly expose and allow deprecated direct load/label commands "
+            "for migration tooling."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -52,7 +60,15 @@ def main() -> int:
     if args.list_schemas:
         print(
             json.dumps(
-                [spec.to_dict() for spec in command_specs(service)],
+                [
+                    spec.to_dict()
+                    for spec in command_specs(
+                        service,
+                        include_legacy_compatibility=(
+                            args.include_legacy_compatibility
+                        ),
+                    )
+                ],
                 ensure_ascii=False,
                 indent=2,
             )
@@ -60,12 +76,26 @@ def main() -> int:
         return 0
 
     if args.mcp_tools:
-        print(json.dumps(mcp_tool_specs(service), ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                mcp_tool_specs(
+                    service,
+                    include_legacy_compatibility=args.include_legacy_compatibility,
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
 
     payloads = _load_payloads(args)
     executions = [
-        execute_automation_payload(service, payload).to_dict() for payload in payloads
+        execute_automation_payload(
+            service,
+            payload,
+            allow_legacy_compatibility=args.include_legacy_compatibility,
+        ).to_dict()
+        for payload in payloads
     ]
     print(json.dumps(executions, ensure_ascii=False, indent=2))
     return 0 if all(item["accepted"] for item in executions) else 1
