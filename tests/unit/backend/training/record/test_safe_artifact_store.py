@@ -114,6 +114,7 @@ def test_training_record_round_trip_uses_safe_store_and_state_dicts(
     with patch.object(TrainRecord, "init_dir"):
         record = TrainRecord(0, dataset, model, training_option, seed)
     record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
     record.update_train({RecordKey.LOSS: 0.5, RecordKey.ACC: 75.0})
     record.update_validation({RecordKey.LOSS: 0.6, RecordKey.ACC: 70.0})
     record.step()
@@ -139,6 +140,7 @@ def test_training_record_round_trip_uses_safe_store_and_state_dicts(
     with patch.object(TrainRecord, "init_dir"):
         loaded = TrainRecord(0, dataset, model_holder.get_model({}), training_option, 0)
     loaded.target_path = str(tmp_path)
+    loaded._artifact_io_path = str(tmp_path)
     loaded.load()
     assert loaded.seed == 42
     assert loaded.epoch == 1
@@ -170,6 +172,7 @@ def test_legacy_training_record_is_rejected_without_deserialization(
             0,
         )
     record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
 
     with (
         patch("torch.load", side_effect=AssertionError("must not deserialize")),

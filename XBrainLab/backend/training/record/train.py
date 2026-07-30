@@ -15,6 +15,11 @@ from matplotlib.figure import Figure
 from ...dataset import Dataset
 from ...training import TrainingOption
 from ...utils import get_random_state, set_random_state
+from ...utils.filesystem_identity import (
+    ContainedOutputDirectory,
+    create_contained_output_directory,
+    filesystem_safe_identity,
+)
 from ...utils.logger import logger
 from .artifact_store import (
     TRAINING_RECORD_ARTIFACT_TYPE,
@@ -272,7 +277,8 @@ class TrainRecord:
         """Initialize a training record.
 
         Sets up the model, optimizer, criterion, record dictionaries, and
-        output directory. Loads any existing data from disk if available.
+        a new exclusive output directory. Existing runs are never resumed
+        implicitly.
 
         Args:
             repeat: Zero-based index of the training repetition.
@@ -309,13 +315,12 @@ class TrainRecord:
 
         self.epoch = 0
         self.target_path: str | None = None
+        self._artifact_io_path: str | None = None
+        self._output_directory: ContainedOutputDirectory | None = None
         self.init_dir()
         self.random_state = get_random_state()
         self.start_timestamp: float | None = None
         self.end_timestamp: float | None = None
-
-        # Load existing data if available
-        self.load()
 
     def bind_state_tracker(self, tracker: TrainingStateTracker) -> None:
         """Bind record mutations to the owning trainer's state token."""
@@ -330,25 +335,32 @@ class TrainRecord:
         """Initialize the output directory for saving checkpoints and records.
 
         Creates the directory tree:
-        ``output_dir / dataset_name / model_planid / repeat``.
+        ``output_dir / dataset_filesystem_identity / model_planid / repeat``.
         """
-        record_name = self.dataset.get_name()
+        display_name = self.dataset.get_name()
+        record_name = filesystem_safe_identity(
+            display_name,
+            field="dataset display metadata",
+        )
         repeat_name = self.get_name()
 
-        # Construct unique path: output / dataset / model_timestamp / repeat
         model_name = self.model.__class__.__name__
         unique_id = f"{model_name}_{self.plan_id}" if self.plan_id else model_name
 
-        target_path = os.path.join(
+        output_directory = create_contained_output_directory(
             self.option.get_output_dir(),
             record_name,
             unique_id,
             repeat_name,
+            exclusive=True,
+            legacy_components=(display_name,),
         )
-
-        # Do NOT backup automatically. Just ensure it exists.
-        os.makedirs(target_path, exist_ok=True)
-        self.target_path = target_path
+        previous_directory = self._output_directory
+        self._output_directory = output_directory
+        self.target_path = str(output_directory.path)
+        self._artifact_io_path = str(output_directory.io_path)
+        if previous_directory is not None:
+            previous_directory.close()
 
     def resume(self) -> None:
         """Resume training by restoring the saved random state.
@@ -517,11 +529,12 @@ class TrainRecord:
         """
         epoch = len(self.train[RecordKey.LOSS])
 
-        if not self.target_path:
+        target_path = self._artifact_io_path
+        if not target_path:
             return
 
         if self.eval_record:
-            self.eval_record.export(self.target_path)
+            self.eval_record.export(target_path)
 
         for key in RecordKey():
             full_key = f"best_val_{key}_model"
@@ -529,13 +542,13 @@ class TrainRecord:
             if model:
                 save_model_state_dict(
                     model,
-                    os.path.join(self.target_path, full_key),
+                    os.path.join(target_path, full_key),
                 )
 
         fname = f"Epoch-{epoch}-model"
         save_model_state_dict(
             self.model.state_dict(),
-            os.path.join(self.target_path, fname),
+            os.path.join(target_path, fname),
         )
         arrays: dict[str, object] = {}
         payload = {
@@ -560,7 +573,7 @@ class TrainRecord:
             "seed": self.seed,
         }
         write_json_npz_artifact(
-            os.path.join(self.target_path, "record"),
+            os.path.join(target_path, "record"),
             artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
             payload=payload,
             arrays=arrays,
@@ -571,14 +584,15 @@ class TrainRecord:
         """Load a previously saved training record from disk.
 
         Restores training statistics, best records, seed, and evaluation record
-        from :attr:`target_path` if files exist.
+        only from the already-bound secure artifact directory.
         """
         with self._state_mutation():
-            if not self.target_path or not os.path.exists(self.target_path):
+            target_path = self._artifact_io_path
+            if not target_path or not os.path.exists(target_path):
                 return
 
             # Load record dict
-            record_path = os.path.join(self.target_path, "record")
+            record_path = os.path.join(target_path, "record")
             if os.path.exists(record_path):
                 try:
                     data, arrays = read_json_npz_artifact(
@@ -613,7 +627,7 @@ class TrainRecord:
                     )
 
             # Load EvalRecord
-            self.eval_record = EvalRecord.load(self.target_path)
+            self.eval_record = EvalRecord.load(target_path)
 
     def get_model_output(self) -> str:
         """Return a formatted string summary of the training history.

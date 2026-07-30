@@ -711,7 +711,7 @@ def test_dataset_generator_generate(
     generator = DatasetGenerator(epochs, config)
 
     def handle():
-        generator.datasets = datasets
+        generator.datasets.extend(datasets)
 
     with patch.object(generator, handle_func_name, side_effect=handle) as handle_mock:
         if has_error:

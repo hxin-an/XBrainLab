@@ -142,9 +142,9 @@ def model_holder():
 
 
 @pytest.fixture
-def training_option():
+def training_option(tmp_path):
     args = {
-        "output_dir": "ok",
+        "output_dir": str(tmp_path / "training-output"),
         "optim": torch.optim.Adam,
         "optim_params": {},
         "use_cpu": True,

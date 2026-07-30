@@ -1,5 +1,6 @@
 import os
 import shutil
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -25,6 +26,7 @@ from XBrainLab.backend.training.record import (
     TrainRecordKey,
 )
 from XBrainLab.backend.utils import set_seed
+from XBrainLab.backend.utils.filesystem_identity import filesystem_safe_identity
 
 
 def test_train_record(
@@ -38,6 +40,22 @@ def test_train_record(
     with patch.object(TrainRecord, "init_dir") as init_dir_mock:
         TrainRecord(repeat, dataset, model, training_option, seed)
         init_dir_mock.assert_called_once()
+
+
+def test_train_record_does_not_implicitly_load_existing_output(
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+):
+    seed = set_seed(0)
+    model = model_holder.get_model({})
+    with (
+        patch.object(TrainRecord, "init_dir"),
+        patch.object(TrainRecord, "load") as load_mock,
+    ):
+        TrainRecord(0, dataset, model, training_option, seed, plan_id="fresh-plan")
+
+    load_mock.assert_not_called()
 
 
 def test_train_record_getter(
@@ -85,13 +103,17 @@ def test_train_record_init_dir(
     seed = set_seed(0)
     model = model_holder.get_model({})
     record = TrainRecord(repeat, dataset, model, training_option, seed)
-    expected_path = os.path.join(
-        training_option.get_output_dir(),
-        dataset.get_name(),
-        f"FakeModel_{record.plan_id}" if record.plan_id else "FakeModel",
-        record.get_name(),
+    expected_path = (
+        Path(training_option.get_output_dir()).resolve()
+        / filesystem_safe_identity(
+            dataset.get_name(),
+            field="dataset display metadata",
+        )
+        / (f"FakeModel_{record.plan_id}" if record.plan_id else "FakeModel")
+        / record.get_name()
     )
-    assert record.target_path == expected_path
+    assert record.target_path is not None
+    assert Path(record.target_path) == expected_path
     assert os.path.exists(record.target_path)
     assert os.path.isdir(record.target_path)
 
@@ -104,6 +126,7 @@ def train_record(tmp_path, dataset, training_option, model_holder):  # noqa: F81
     with patch.object(TrainRecord, "init_dir"):
         record = TrainRecord(repeat, dataset, model, training_option, seed)
     record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
     return record
 
 

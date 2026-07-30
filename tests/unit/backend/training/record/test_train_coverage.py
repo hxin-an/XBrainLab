@@ -126,6 +126,7 @@ class TestExportLoadRoundTrip:
         with patch.object(TrainRecord, "init_dir"):
             record = TrainRecord(0, dataset, model, training_option, seed)
             record.target_path = str(tmp_path)
+            record._artifact_io_path = str(tmp_path)
 
         # Simulate training
         for i in range(5):
@@ -145,6 +146,7 @@ class TestExportLoadRoundTrip:
         with patch.object(TrainRecord, "init_dir"):
             record2 = TrainRecord(0, dataset, model, training_option, seed)
             record2.target_path = str(tmp_path)
+            record2._artifact_io_path = str(tmp_path)
             record2.load()
 
         assert record2.epoch == 5
@@ -155,6 +157,7 @@ class TestExportLoadRoundTrip:
     def test_load_nonexistent_path(self, train_record):
         """Loading from nonexistent path should be a no-op."""
         train_record.target_path = "/nonexistent/path"
+        train_record._artifact_io_path = "/nonexistent/path"
 
         train_record.load()
 
@@ -163,12 +166,14 @@ class TestExportLoadRoundTrip:
     def test_load_no_target_path(self, train_record):
         """Loading with None target_path should be a no-op."""
         train_record.target_path = None
+        train_record._artifact_io_path = None
         train_record.load()
         assert train_record.epoch == 0
 
     def test_export_no_target_path(self, train_record):
         """Exporting with None target_path should be a no-op."""
         train_record.target_path = None
+        train_record._artifact_io_path = None
 
         train_record.export_checkpoint()
         assert train_record.target_path is None
@@ -186,6 +191,7 @@ class TestExportLoadRoundTrip:
         with patch.object(TrainRecord, "init_dir"):
             record = TrainRecord(0, dataset, model, training_option, seed)
             record.target_path = str(tmp_path)
+            record._artifact_io_path = str(tmp_path)
 
         label = np.array([0, 1])
         output = np.array([[1.0, 0.0], [0.0, 1.0]])

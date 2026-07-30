@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..utils import validate_type
+from ..utils.filesystem_identity import validate_filesystem_metadata
 from ..utils.logger import logger
 from .data_splitter import DataSplittingConfig
 from .dataset import Dataset, Epochs
@@ -113,8 +114,15 @@ class DatasetGenerator:
         """Wrapper for generating datasets for individual scheme.
         Called by :func:`generate`.
         """
-        for subject_idx in range(len(self.epoch_data.get_subject_index_list())):
-            name_prefix = f"Subject-{self.epoch_data.get_subject_name(subject_idx)}"
+        subject_names = [
+            self.epoch_data.get_subject_name(subject_idx)
+            for subject_idx in range(len(self.epoch_data.get_subject_index_list()))
+        ]
+        for subject_name in subject_names:
+            validate_filesystem_metadata(subject_name, field="subject metadata")
+
+        for subject_idx, subject_name in enumerate(subject_names):
+            name_prefix = f"Subject-{subject_name}"
 
             def hook(dataset, subject_idx=subject_idx):
                 dataset.set_remaining_by_subject_idx(subject_idx)
@@ -333,21 +341,35 @@ class DatasetGenerator:
             )
         if self.datasets:
             return self.datasets
-        Dataset.SEQ = 0
-        self.epoch_data.reset_trial_selection_evidence()
-        # individual scheme
+        committed_datasets = self.datasets
+        pending_datasets: list[Dataset] = []
+        initial_dataset_sequence = Dataset.SEQ
+        self.datasets = pending_datasets
+        try:
+            Dataset.SEQ = 0
+            self.epoch_data.reset_trial_selection_evidence()
+            self._populate_pending_datasets()
+        except BaseException:
+            self.datasets = committed_datasets
+            Dataset.SEQ = initial_dataset_sequence
+            self.preview_failed = True
+            raise
+        else:
+            committed_datasets.extend(pending_datasets)
+            self.datasets = committed_datasets
+
+        return self.datasets
+
+    def _populate_pending_datasets(self) -> None:
+        """Populate the transaction-local dataset list or fail before commit."""
         if self.config.train_type == TrainingType.IND:
             self.handle_ind()
         elif self.config.train_type == TrainingType.FULL:
             self.handle_full()
         else:
             raise NotImplementedError
-
-        if len(self.datasets) == 0:
-            self.preview_failed = True
-            raise ValueError
-
-        return self.datasets
+        if not self.datasets:
+            raise ValueError("No datasets were generated.")
 
     def set_interrupt(self) -> None:
         """Set the interrupt flag to break the dataset generation."""
