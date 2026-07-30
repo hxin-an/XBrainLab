@@ -73,6 +73,44 @@ def test_dashboard_registers_public_bids_visible_ui_wizard_format_matrix(
     assert matrix["validator"] is dashboard.validate_required_pytest_matrix
 
 
+def test_handoff_dashboard_registers_manifest_before_strict_public_gates(
+    monkeypatch,
+):
+    checks: list[dict[str, object]] = []
+
+    def record_check(**kwargs):
+        checks.append(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(dashboard, "run_check", record_check)
+
+    dashboard.build_checks_for_mode(
+        include_slow_checks=True,
+        include_handoff_checks=True,
+    )
+
+    keys = [str(check["key"]) for check in checks]
+    manifest_index = keys.index("required_public_fixture_manifest")
+    integration_index = keys.index("required_public_dataset_integration")
+    smoke_index = keys.index("required_public_cross_source_smoke")
+    assert manifest_index < integration_index < smoke_index
+
+    manifest = checks[manifest_index]
+    assert "--profile required-ci --verify-only" in str(manifest["command"])
+
+    integration = checks[integration_index]
+    assert integration["validator"] is dashboard.validate_required_pytest_matrix
+    assert "test_public_bids_fixture.py" in str(integration["command"])
+    assert "test_public_cross_source_training_smoke.py" in str(integration["command"])
+
+
+def test_dashboard_handoff_profile_is_explicit() -> None:
+    args = dashboard.parse_args(["--handoff"])
+
+    assert args.handoff is True
+    assert args.include_slow_checks is False
+
+
 def test_dashboard_gives_the_isolated_ui_suite_a_gate_level_timeout(monkeypatch):
     checks: dict[str, dict[str, object]] = {}
 

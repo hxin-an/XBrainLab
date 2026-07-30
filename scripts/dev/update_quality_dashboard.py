@@ -795,10 +795,17 @@ def write_report(report: dict) -> None:
 
 def build_checks() -> list[CheckResult]:
     """Run the current dashboard check set."""
-    return build_checks_for_mode(include_slow_checks=False)
+    return build_checks_for_mode(
+        include_slow_checks=False,
+        include_handoff_checks=False,
+    )
 
 
-def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
+def build_checks_for_mode(
+    *,
+    include_slow_checks: bool,
+    include_handoff_checks: bool = False,
+) -> list[CheckResult]:
     """Run the dashboard checks for the requested speed profile."""
     checks = [
         resource_calibration_evidence_check(),
@@ -926,7 +933,96 @@ def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
                 ),
             ),
         )
+    if include_handoff_checks:
+        checks.extend(_build_handoff_dataset_checks())
     return checks
+
+
+def _build_handoff_dataset_checks() -> list[CheckResult]:
+    """Build mandatory public-data checks for a human-handoff candidate."""
+    return [
+        run_check(
+            key="required_public_fixture_manifest",
+            label="Required Public Fixture Manifest",
+            category="io",
+            command=(
+                f"{POETRY} run python scripts/dev/fetch_public_eeg_fixtures.py "
+                "--profile required-ci --verify-only"
+            ),
+            ui=False,
+            validator=lambda code, output: validate_text_command(
+                code,
+                output,
+                success_fallback="Required public fixture manifest verified.",
+            ),
+        ),
+        run_check(
+            key="required_dataset_validation_matrix",
+            label="Required Dataset Validation Matrix",
+            category="io",
+            command=(
+                f"{POETRY} run python "
+                "scripts/dev/report_dataset_validation_matrix.py "
+                "--strict --format json"
+            ),
+            ui=False,
+            validator=lambda code, output: validate_text_command(
+                code,
+                output,
+                success_fallback="Required dataset validation matrix passed.",
+            ),
+            timeout_seconds=900,
+        ),
+        run_check(
+            key="required_data_interpretation_matrix",
+            label="Required Data Interpretation Matrix",
+            category="io",
+            command=(
+                f"{POETRY} run python "
+                "scripts/dev/report_data_interpretation_format_matrix.py "
+                "--strict --format json --write-artifacts"
+            ),
+            ui=False,
+            validator=lambda code, output: validate_text_command(
+                code,
+                output,
+                success_fallback="Required Data Interpretation matrix passed.",
+            ),
+            timeout_seconds=900,
+        ),
+        run_check(
+            key="required_public_dataset_integration",
+            label="Required Public Dataset Integration",
+            category="io",
+            command=(
+                f"{POETRY} run pytest --capture=sys "
+                "tests/integration/io/test_io_integration.py "
+                "tests/integration/io/test_public_bids_fixture.py "
+                "tests/integration/pipeline/"
+                "test_public_cross_source_training_smoke.py -q"
+            ),
+            ui=False,
+            validator=validate_required_pytest_matrix,
+            timeout_seconds=1200,
+        ),
+        run_check(
+            key="required_public_cross_source_smoke",
+            label="Required Public Cross-Source Smoke",
+            category="io",
+            command=(
+                f"{POETRY} run python "
+                "scripts/dev/run_public_cross_source_training_smoke.py "
+                "--format json --strict"
+            ),
+            ui=False,
+            validator=lambda code, output: validate_text_command(
+                code,
+                output,
+                success_fallback="Required public cross-source smoke passed.",
+            ),
+            timeout_seconds=1200,
+        ),
+    ]
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -945,13 +1041,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Include slower full-repo checks such as mypy in addition to the default fast dashboard checks.",
     )
+    parser.add_argument(
+        "--handoff",
+        action="store_true",
+        help=(
+            "Run the full handoff profile, including strict hash-pinned "
+            "multi-dataset gates that reject skipped mandatory cases."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Refresh the dashboard unless it is still fresh enough."""
     args = parse_args(argv or sys.argv[1:])
-    profile = "full" if args.include_slow_checks else "fast"
+    include_slow_checks = bool(args.include_slow_checks or args.handoff)
+    profile = "handoff" if args.handoff else ("full" if include_slow_checks else "fast")
     git_state = collect_git_state()
     if latest_is_fresh(
         args.skip_if_fresh_minutes,
@@ -963,7 +1068,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    checks = build_checks_for_mode(include_slow_checks=args.include_slow_checks)
+    checks = build_checks_for_mode(
+        include_slow_checks=include_slow_checks,
+        include_handoff_checks=bool(args.handoff),
+    )
     checks.insert(0, workspace_traceability_check(git_state))
     generated_at = datetime.now(UTC).isoformat()
     report = {
