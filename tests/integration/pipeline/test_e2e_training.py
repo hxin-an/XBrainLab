@@ -53,10 +53,10 @@ def _stable_mock_trainer() -> MagicMock:
 
 
 @pytest.fixture
-def real_training_option():
+def real_training_option(tmp_path):
     """Create a real TrainingOption with minimal epochs for testing."""
     return TrainingOption(
-        output_dir="./test_output",
+        output_dir=str(tmp_path / "training-output"),
         optim=torch.optim.Adam,
         optim_params={},
         use_cpu=True,
@@ -328,14 +328,14 @@ class TestVisualizationPanelIntegration:
 class TestTrainingWorkflowWithUI:
     """Test complete training workflow including UI updates."""
 
-    def test_progress_bar_calculation_with_string_epoch(self, qtbot):
+    def test_progress_bar_calculation_with_string_epoch(self, qtbot, tmp_path):
         """Test that progress bar works even if epoch types are mixed."""
 
         service = ApplicationService()
         study = service.study
         configure_result = service.execute(
             ConfigureTrainingCommand(
-                output_dir="./test_output",
+                output_dir=str(tmp_path / "training-output"),
                 device="cpu",
                 epoch=_ui_text("10"),
                 batch_size=_ui_text("4"),

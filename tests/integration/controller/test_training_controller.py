@@ -27,9 +27,9 @@ def training_controller(study):
 
 
 @pytest.fixture
-def valid_training_option():
+def valid_training_option(tmp_path):
     return TrainingOption(
-        output_dir="./test_output",
+        output_dir=str(tmp_path / "training-output"),
         optim=torch.optim.Adam,
         optim_params={},
         use_cpu=True,

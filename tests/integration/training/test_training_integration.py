@@ -29,10 +29,10 @@ def _ui_text(value: str) -> Any:
 
 
 @pytest.fixture
-def real_training_option():
+def real_training_option(tmp_path):
     """Create a real TrainingOption object (not a mock)."""
     return TrainingOption(
-        output_dir="./test_output",
+        output_dir=str(tmp_path / "training-output"),
         optim=torch.optim.Adam,
         optim_params={},  # Bug fix: lr should NOT be in optim_params
         use_cpu=True,
@@ -64,10 +64,10 @@ class TestTrainingOptionBugFix:
         assert optimizer is not None
         assert optimizer.param_groups[0]["lr"] == 0.001
 
-    def test_optim_with_extra_params(self):
+    def test_optim_with_extra_params(self, tmp_path):
         """Test optimizer with additional parameters (not lr)."""
         option = TrainingOption(
-            output_dir="./test_output",
+            output_dir=str(tmp_path / "training-output"),
             optim=torch.optim.Adam,
             optim_params={"weight_decay": 0.01, "amsgrad": True},
             use_cpu=True,
@@ -128,12 +128,12 @@ class TestEpochDurationValidation:
 class TestCompleteTrainingWorkflow:
     """Integration test for complete training workflow using real objects."""
 
-    def test_training_option_validation_in_workflow(self):
+    def test_training_option_validation_in_workflow(self, tmp_path):
         """Test that invalid training options are caught."""
         # Invalid option: missing optimizer
         with pytest.raises(ValueError, match="Optimizer not set"):
             TrainingOption(
-                output_dir="./test_output",
+                output_dir=str(tmp_path / "training-output"),
                 optim=None,  # Invalid
                 optim_params={},
                 use_cpu=True,

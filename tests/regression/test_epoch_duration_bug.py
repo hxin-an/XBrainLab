@@ -11,7 +11,7 @@ from XBrainLab.backend.training import ModelHolder, TrainingOption, TrainingPlan
 from XBrainLab.backend.training.option import TrainingEvaluation
 
 
-def test_epoch_duration_too_short():
+def test_epoch_duration_too_short(tmp_path):
     """Test that generates the 'Epoch duration is too short' error.
 
     This test reproduces the bug: When samples are too few for model architecture.
@@ -35,7 +35,7 @@ def test_epoch_duration_too_short():
 
     # Create training option
     training_option = TrainingOption(
-        output_dir="./test_output",
+        output_dir=str(tmp_path / "training-output"),
         optim=torch.optim.Adam,
         optim_params={},
         use_cpu=True,

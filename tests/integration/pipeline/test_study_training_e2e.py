@@ -77,9 +77,9 @@ def _make_tiny_dataset(n_trials=12, n_channels=4, n_samples=168, n_classes=2):
     return dataset
 
 
-def _make_option(epoch=1, repeat=1):
+def _make_option(tmp_path, epoch=1, repeat=1):
     return TrainingOption(
-        output_dir="test_output",
+        output_dir=str(tmp_path / "training-output"),
         optim=torch.optim.Adam,
         optim_params={},
         use_cpu=True,
@@ -133,9 +133,9 @@ class TestStudyTrainingManagerDelegation:
         assert published.model_params_map == holder.model_params_map
         assert published.pretrained_weight_path == holder.pretrained_weight_path
 
-    def test_training_option_property(self):
+    def test_training_option_property(self, tmp_path):
         study = Study()
-        opt = _make_option()
+        opt = _make_option(tmp_path)
         study.training_option = opt
         published = study.training_manager.training_option
 
@@ -164,10 +164,10 @@ class TestStudyGeneratePlan:
     """Study.generate_plan passes datasets from DataManager to TrainingManager."""
 
     @pytest.fixture
-    def ready_study(self):
+    def ready_study(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset()]
-        study.set_training_option(_make_option())
+        study.set_training_option(_make_option(tmp_path))
         study.set_model_holder(ModelHolder(EEGNet, {}))
         return study
 
@@ -182,9 +182,9 @@ class TestStudyGeneratePlan:
             assert ready_study.trainer is not None
             assert ready_study.has_trainer()
 
-    def test_generate_plan_no_datasets_raises(self):
+    def test_generate_plan_no_datasets_raises(self, tmp_path):
         study = Study()
-        study.set_training_option(_make_option())
+        study.set_training_option(_make_option(tmp_path))
         study.set_model_holder(ModelHolder(EEGNet, {}))
         with pytest.raises(ValueError, match="No valid dataset"):
             study.generate_plan()
@@ -196,10 +196,10 @@ class TestStudyGeneratePlan:
         with pytest.raises(ValueError, match="training option"):
             study.generate_plan()
 
-    def test_generate_plan_no_model_raises(self):
+    def test_generate_plan_no_model_raises(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset()]
-        study.set_training_option(_make_option())
+        study.set_training_option(_make_option(tmp_path))
         with pytest.raises(ValueError, match="model holder"):
             study.generate_plan()
 
@@ -218,10 +218,10 @@ class TestStudyTrainCycle:
             study.generate_plan(force_update=True)
             study.trainer.job()
 
-    def test_full_cycle_eegnet(self):
+    def test_full_cycle_eegnet(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset()]
-        study.set_training_option(_make_option(epoch=2))
+        study.set_training_option(_make_option(tmp_path, epoch=2))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
         self._run_training(study)
@@ -232,10 +232,10 @@ class TestStudyTrainCycle:
         assert TrainRecordKey.LOSS in record.train
         assert len(record.train[TrainRecordKey.LOSS]) == 2  # 2 epochs
 
-    def test_full_cycle_sccnet(self):
+    def test_full_cycle_sccnet(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset()]
-        study.set_training_option(_make_option(epoch=1))
+        study.set_training_option(_make_option(tmp_path, epoch=1))
         study.set_model_holder(ModelHolder(SCCNet, {}))
 
         self._run_training(study)
@@ -243,10 +243,10 @@ class TestStudyTrainCycle:
         plan = study.trainer.get_training_plan_holders()[0]
         assert len(plan.train_record_list) == 1
 
-    def test_multi_repeat(self):
+    def test_multi_repeat(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset()]
-        study.set_training_option(_make_option(epoch=1, repeat=2))
+        study.set_training_option(_make_option(tmp_path, epoch=1, repeat=2))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
         self._run_training(study)
@@ -254,10 +254,10 @@ class TestStudyTrainCycle:
         plan = study.trainer.get_training_plan_holders()[0]
         assert len(plan.train_record_list) == 2
 
-    def test_multi_datasets(self):
+    def test_multi_datasets(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset(), _make_tiny_dataset()]
-        study.set_training_option(_make_option(epoch=1))
+        study.set_training_option(_make_option(tmp_path, epoch=1))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
         self._run_training(study)
@@ -271,10 +271,10 @@ class TestStudyTrainCycle:
 class TestAppendPlan:
     """Study.generate_plan(append=True) adds to existing trainer."""
 
-    def test_append_doubles_plans(self):
+    def test_append_doubles_plans(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset()]
-        study.set_training_option(_make_option())
+        study.set_training_option(_make_option(tmp_path))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
         with (
@@ -356,10 +356,10 @@ class TestIsTraining:
 class TestSaliencyPropagation:
     """Setting saliency params propagates to existing plan holders."""
 
-    def test_propagation_through_study(self):
+    def test_propagation_through_study(self, tmp_path):
         study = Study()
         study.datasets = [_make_tiny_dataset()]
-        study.set_training_option(_make_option())
+        study.set_training_option(_make_option(tmp_path))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
         with (

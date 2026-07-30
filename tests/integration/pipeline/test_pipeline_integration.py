@@ -14,7 +14,7 @@ from XBrainLab.backend.training import (
 from XBrainLab.backend.training.record import RecordKey
 
 
-def test_pipeline_integration():
+def test_pipeline_integration(tmp_path):
     # 1. Setup Mock Data and Environment
     # We allow real GPU usage if available
     use_cuda = torch.cuda.is_available()
@@ -33,6 +33,7 @@ def test_pipeline_integration():
 
     # Mock the dataset object directly to avoid complex file I/O mocking.
     dataset_mock = MagicMock()
+    dataset_mock.get_name.return_value = "Synthetic pipeline dataset"
 
     # Mock get_training_data, get_val_data, get_test_data to return (X, y)
     # X needs to be numpy array, y needs to be numpy array
@@ -81,7 +82,7 @@ def test_pipeline_integration():
 
     # 4. Setup Training Option
     option_args = {
-        "output_dir": "test_output",
+        "output_dir": str(tmp_path / "training-output"),
         "optim": torch.optim.Adam,
         "optim_params": {},  # lr is handled by 'lr' argument
         "use_cpu": not use_cuda,

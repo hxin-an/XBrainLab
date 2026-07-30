@@ -40,7 +40,7 @@ EXPECTED_A01T_SPLIT_SUMMARY = {
 
 
 @pytest.mark.skipif(not os.path.exists(GDF_FILE), reason="Real test data not found")
-def test_real_data_pipeline():
+def test_real_data_pipeline(tmp_path):
     """
     Test the full pipeline with REAL data (A01T.gdf).
     This verifies that:
@@ -117,7 +117,7 @@ def test_real_data_pipeline():
     model_result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
     training_result = service.execute(
         ConfigureTrainingCommand(
-            output_dir="test_real_output",
+            output_dir=str(tmp_path / "training-output"),
             device="cpu",
             epoch=1,
             batch_size=16,

@@ -1,5 +1,7 @@
 """Unit-level Study training configuration compatibility contracts."""
 
+import ast
+from pathlib import Path
 from typing import Any, cast
 
 import torch
@@ -7,15 +9,27 @@ import torch
 from XBrainLab import Study
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 
+_TRAINING_OUTPUT_TEST_PATHS = (
+    "tests/regression/test_epoch_duration_bug.py",
+    "tests/integration/training/test_training_integration.py",
+    "tests/integration/pipeline/test_study_training_e2e.py",
+    "tests/integration/pipeline/test_pipeline_integration.py",
+    "tests/integration/pipeline/test_full_pipeline.py",
+    "tests/integration/pipeline/test_real_data_pipeline.py",
+    "tests/integration/controller/test_training_controller.py",
+    "tests/integration/pipeline/test_e2e_training.py",
+    "tests/unit/backend/test_study_training_contract.py",
+)
+
 
 def _ui_text(value: str) -> Any:
     """Represent text-field values passed through runtime validation."""
     return cast(Any, value)
 
 
-def _training_option() -> TrainingOption:
+def _training_option(tmp_path) -> TrainingOption:
     return TrainingOption(
-        output_dir="./test_output",
+        output_dir=str(tmp_path / "training-output"),
         optim=torch.optim.Adam,
         optim_params={},
         use_cpu=True,
@@ -37,10 +51,10 @@ def test_study_exposes_training_option_property_not_training_setting():
     assert not hasattr(study, "training_setting")
 
 
-def test_study_set_training_option_updates_training_manager():
+def test_study_set_training_option_updates_training_manager(tmp_path):
     """Study.set_training_option remains a domain compatibility contract."""
     study = Study()
-    option = _training_option()
+    option = _training_option(tmp_path)
 
     study.set_training_option(option)
 
@@ -55,3 +69,43 @@ def test_study_set_training_option_updates_training_manager():
     assert option.epoch == 5
     assert option.lr == 0.001
     assert option.optim == torch.optim.Adam
+
+
+def test_training_output_paths_are_scoped_to_pytest_tmp_path():
+    repo_root = Path(__file__).resolve().parents[3]
+    violations = []
+
+    for relative_path in _TRAINING_OUTPUT_TEST_PATHS:
+        tree = ast.parse((repo_root / relative_path).read_text(encoding="utf-8"))
+        output_dir_values = [
+            keyword.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            for keyword in node.keywords
+            if keyword.arg == "output_dir"
+        ]
+        output_dir_values.extend(
+            value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Dict)
+            for key, value in zip(node.keys, node.values, strict=True)
+            if isinstance(key, ast.Constant) and key.value == "output_dir"
+        )
+
+        if not output_dir_values:
+            violations.append(f"{relative_path}: no output_dir assignment inspected")
+            continue
+
+        violations.extend(
+            f"{relative_path}:{value.lineno}"
+            for value in output_dir_values
+            if not any(
+                isinstance(node, ast.Name) and node.id == "tmp_path"
+                for node in ast.walk(value)
+            )
+        )
+
+    assert not violations, (
+        "Training tests must scope every output_dir to pytest tmp_path:\n"
+        + "\n".join(violations)
+    )
