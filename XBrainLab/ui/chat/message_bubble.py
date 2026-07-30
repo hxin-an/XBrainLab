@@ -4,8 +4,6 @@ Provides the ``MessageBubble`` widget that renders a single chat message
 with dynamic width adjustment, link handling, and sender-based styling.
 """
 
-import platform
-import subprocess
 from math import ceil
 
 from PyQt6.QtCore import Qt, QTimer, QUrl
@@ -14,6 +12,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QSizePolicy,
     QTextBrowser,
     QVBoxLayout,
@@ -71,7 +70,7 @@ class MessageBubble(QWidget):
 
     Contains a ``QFrame`` bubble container with a ``QTextBrowser`` for
     rich text display. Supports dynamic width adjustment on window resize,
-    Markdown rendering, and clickable links (including local ``file://`` URLs).
+    Markdown rendering, and confirmed HTTPS links.
 
     Attributes:
         is_user: Whether this bubble represents a user message.
@@ -161,9 +160,7 @@ class MessageBubble(QWidget):
             | Qt.TextInteractionFlag.LinksAccessibleByMouse
             | Qt.TextInteractionFlag.LinksAccessibleByKeyboard,
         )
-        self.text_edit.setOpenExternalLinks(
-            False,
-        )  # We handle links manually for file:// support
+        self.text_edit.setOpenExternalLinks(False)
         self.text_edit.anchorClicked.connect(self._on_link_clicked)
 
         self.text_edit.setWordWrapMode(
@@ -230,33 +227,32 @@ class MessageBubble(QWidget):
         if self.isVisible():
             self._reflow_timer.start(0)
 
-    def _on_link_clicked(self, url: QUrl):
-        """Handle link clicks, supporting local file URLs.
+    def _on_link_clicked(self, url: QUrl) -> bool:
+        """Open a valid HTTPS link only after the user confirms its host.
 
-        On Windows, opens Explorer with the file selected for ``file://``
-        URLs. For other schemes, delegates to ``QDesktopServices``.
-
-        Args:
-            url: The clicked URL.
-
+        Assistant-authored Markdown is untrusted content. Local files and custom
+        schemes must be exposed through a typed host action rather than opened
+        directly from generated text.
         """
-        scheme = url.scheme()
-        if scheme == "file":
-            local_path = url.toLocalFile()
-            if platform.system() == "Windows":
-                # Open explorer with file selected
-                try:
-                    subprocess.Popen(  # noqa: S603
-                        ["explorer", "/select,", local_path],  # noqa: S607
-                    )
-                except Exception:
-                    logger.exception("Failed to open explorer for %s", local_path)
-                    # Fallback to standard open
-                    QDesktopServices.openUrl(url)
-            else:
-                QDesktopServices.openUrl(url)
-        else:
-            QDesktopServices.openUrl(url)
+        scheme = url.scheme().lower()
+        host = url.host().strip()
+        if not url.isValid() or scheme != "https" or not host:
+            logger.warning(
+                "Blocked Assistant link with unsupported scheme '%s'",
+                scheme or "none",
+            )
+            return False
+
+        reply = QMessageBox.question(
+            self,
+            "Open external link?",
+            f"Open this website in your browser?\n\n{host}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return False
+        return QDesktopServices.openUrl(url)
 
     def adjust_width(self, container_width: int):
         """Adjust bubble width based on container and content size.

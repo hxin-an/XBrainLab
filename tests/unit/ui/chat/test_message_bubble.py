@@ -1,8 +1,9 @@
 from math import ceil
 from unittest.mock import patch
 
+import pytest
 from PyQt6.QtCore import QEvent, Qt, QUrl
-from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QMessageBox, QVBoxLayout, QWidget
 
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 
@@ -45,53 +46,71 @@ class TestMessageBubble:
         assert document is not None
         assert document.textWidth() == 404  # 440 - margins - guard
 
-    def test_link_handling(self, qtbot):
+    def test_https_link_opens_after_host_confirmation(self, qtbot):
         bubble = MessageBubble("[Link](https://example.com)", is_user=False)
         qtbot.addWidget(bubble)
 
-        with patch("PyQt6.QtGui.QDesktopServices.openUrl") as mock_open:
+        with (
+            patch(
+                "XBrainLab.ui.chat.message_bubble.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as mock_question,
+            patch(
+                "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
+            ) as mock_open,
+        ):
             url = QUrl("https://example.com")
             bubble._on_link_clicked(url)
-            mock_open.assert_called_with(url)
 
-    def test_file_link_windows_opens_explorer_selection(self, qtbot):
-        bubble = MessageBubble("[File](file:///C:/test.txt)", is_user=False)
+        assert "example.com" in mock_question.call_args.args[2]
+        mock_open.assert_called_once_with(url)
+
+    def test_https_link_does_not_open_when_confirmation_is_declined(self, qtbot):
+        bubble = MessageBubble("[Link](https://example.com)", is_user=False)
         qtbot.addWidget(bubble)
-
         with (
             patch(
-                "XBrainLab.ui.chat.message_bubble.platform.system",
-                return_value="Windows",
-            ),
-            patch("XBrainLab.ui.chat.message_bubble.subprocess.Popen") as mock_popen,
+                "XBrainLab.ui.chat.message_bubble.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.No,
+            ) as mock_question,
             patch(
                 "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
             ) as mock_open_url,
         ):
-            url = QUrl("file:///C:/test.txt")
+            url = QUrl("https://example.com/private")
             bubble._on_link_clicked(url)
 
-        mock_popen.assert_called_once_with(["explorer", "/select,", "/C:/test.txt"])
+        mock_question.assert_called_once()
         mock_open_url.assert_not_called()
 
-    def test_file_link_non_windows_uses_desktop_services(self, qtbot):
-        bubble = MessageBubble("[File](file:///tmp/test.txt)", is_user=False)
+    @pytest.mark.parametrize(
+        "target",
+        [
+            "file:///tmp/private.edf",
+            "data:text/html,<script>alert(1)</script>",
+            "javascript:alert(1)",
+            "http://example.com",
+            "ftp://example.com/file",
+            "custom://action",
+            "/relative/path",
+        ],
+    )
+    def test_untrusted_link_schemes_are_rejected(self, qtbot, target):
+        bubble = MessageBubble(f"[Link]({target})", is_user=False)
         qtbot.addWidget(bubble)
 
         with (
             patch(
-                "XBrainLab.ui.chat.message_bubble.platform.system", return_value="Linux"
-            ),
-            patch("XBrainLab.ui.chat.message_bubble.subprocess.Popen") as mock_popen,
+                "XBrainLab.ui.chat.message_bubble.QMessageBox.question"
+            ) as mock_question,
             patch(
                 "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
             ) as mock_open_url,
         ):
-            url = QUrl("file:///tmp/test.txt")
-            bubble._on_link_clicked(url)
+            bubble._on_link_clicked(QUrl(target))
 
-        mock_popen.assert_not_called()
-        mock_open_url.assert_called_once_with(url)
+        mock_question.assert_not_called()
+        mock_open_url.assert_not_called()
 
     def test_dynamic_resizing(self, qtbot):
         """Verify bubble adapts when container width changes (simulating resize)."""
