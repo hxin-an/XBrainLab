@@ -533,6 +533,105 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         assert getattr(test_app, attr).isVisible()
 
 
+def test_assistant_dock_restores_product_width_across_states_and_reopens(
+    test_app,
+    qtbot,
+) -> None:
+    """The standard desktop Assistant stays 420 px through its UI lifecycle."""
+    qtbot.wait(300)
+    test_app.resize(1280, 800)
+    qtbot.wait(50)
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    dock = manager.chat_dock
+    panel = manager.chat_panel
+
+    assert dock.isHidden()
+    with (
+        patch.object(
+            manager.assistant_runtime,
+            "load_config",
+            return_value=SimpleNamespace(),
+        ),
+        patch.object(
+            manager.assistant_runtime,
+            "needs_first_run",
+            return_value=False,
+        ),
+        patch.object(
+            manager.assistant_runtime,
+            "activate",
+            return_value=RuntimeActivationResult(
+                RuntimeActivationStatus.UNAVAILABLE,
+                message="Model cache not found.",
+            ),
+        ),
+    ):
+        _click(qtbot, test_app.ai_btn)
+        assert dock.isVisible()
+        assert dock.width() == 420
+        assert panel.width() == 420
+
+        for phase, message in (
+            ("idle", "Choose a local model."),
+            ("loading", "Loading assistant."),
+            ("ready", ""),
+            ("failed", "The selected local model could not start."),
+        ):
+            panel.set_runtime_state(phase, message)
+            qtbot.wait(10)
+            assert dock.width() == 420, phase
+            assert panel.width() == 420, phase
+
+        panel.set_runtime_state("ready")
+        panel.set_processing_state(True)
+        qtbot.wait(10)
+        assert dock.width() == 420
+        assert panel.width() == 420
+        panel.set_processing_state(False)
+
+        dock.setFixedWidth(320)
+        qtbot.waitUntil(lambda: dock.width() == 420, timeout=2_000)
+        assert panel.width() == 420
+        assert dock.minimumWidth() == 420
+
+        for _cycle in range(2):
+            _click(qtbot, test_app.ai_btn)
+            assert dock.isHidden()
+            _click(qtbot, test_app.ai_btn)
+            assert dock.isVisible()
+            assert dock.width() == 420
+            assert panel.width() == 420
+
+
+def test_assistant_dock_width_stays_within_responsive_product_bounds(
+    test_app,
+    qtbot,
+) -> None:
+    """Narrow windows preserve workflow space without losing the 320 px floor."""
+    qtbot.wait(300)
+    test_app.resize(1280, 800)
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    dock = manager.chat_dock
+    panel = manager.chat_panel
+    dock.show()
+    qtbot.waitUntil(dock.isVisible, timeout=2_000)
+
+    observed_widths = []
+    for window_width in (760, 820, 860, 1280):
+        test_app.resize(window_width, 800)
+        qtbot.wait(50)
+        observed_widths.append(dock.width())
+        assert 320 <= dock.width() <= 420
+        assert panel.width() == dock.width()
+        assert test_app.centralWidget().width() >= 436
+
+    assert observed_widths[0] == 320
+    assert observed_widths[-1] == 420
+    assert observed_widths == sorted(observed_widths)
+
+
 @pytest.mark.parametrize(
     ("choice", "outcome_message", "visible_message"),
     [
@@ -759,9 +858,9 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     assert refreshed_projection.recommended_command == CommandName.CREATE_EPOCH.value
     assert panel.empty_state_title.text() == "Define the analysis windows"
     assert [button.text() for button in panel.suggestion_prompt_buttons] == [
-        "Explain epoch anchors",
-        "Review epoch settings",
-        "Open epoch setup",
+        "Explain EEG epoch anchors",
+        "Review EEG epoch settings",
+        "Open EEG epoch setup",
     ]
 
 

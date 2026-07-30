@@ -16,6 +16,7 @@ from typing import Any
 from PyQt6 import sip
 from PyQt6.QtCore import (
     QCoreApplication,
+    QEvent,
     QObject,
     QSignalBlocker,
     Qt,
@@ -379,6 +380,9 @@ class MainWindow(QMainWindow):
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
     COMPACT_NAV_BREAKPOINT = 720
+    ASSISTANT_DOCK_STANDARD_WIDTH = 420
+    ASSISTANT_DOCK_MINIMUM_WIDTH = 320
+    ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH = 440
 
     def __init__(self, study):
         """Initialize the main window.
@@ -431,6 +435,7 @@ class MainWindow(QMainWindow):
         self._model_download_lifecycle = None
         self._defer_initial_application_runtime = True
         self._startup_prewarm_retry_pending = False
+        self._assistant_dock_resize_pending = False
 
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -675,6 +680,7 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "top_bar"):
             QTimer.singleShot(0, self._update_navigation_layout)
+        self._schedule_assistant_dock_resize()
 
     def _update_navigation_layout(self) -> None:
         """Keep every workflow destination readable in the available top bar."""
@@ -1085,8 +1091,76 @@ class MainWindow(QMainWindow):
         self.agent_manager.status_message_received.connect(
             self._on_agent_status_message,
         )
+        self._bind_assistant_dock_presentation()
         self._connect_assistant_cleanup_signal()
         self._connect_agent_visualization_monitor()
+
+    def _assistant_dock(self) -> QDockWidget | None:
+        """Return the live Assistant dock when its UI has been constructed."""
+        dock = getattr(self.agent_manager, "chat_dock", None)
+        return dock if isinstance(dock, QDockWidget) else None
+
+    def _bind_assistant_dock_presentation(self) -> None:
+        """Keep dock sizing under the product shell's presentation policy."""
+        dock = self._assistant_dock()
+        if dock is None:
+            return
+        dock.installEventFilter(self)
+        dock.visibilityChanged.connect(self._on_assistant_dock_visibility_changed)
+        dock.topLevelChanged.connect(self._on_assistant_dock_top_level_changed)
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        """Reapply dock policy after Qt or child layouts resize the Assistant."""
+        dock = self._assistant_dock()
+        if watched is dock and event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.LayoutRequest,
+            QEvent.Type.Show,
+        ):
+            self._schedule_assistant_dock_resize()
+        return super().eventFilter(watched, event)
+
+    def _on_assistant_dock_visibility_changed(self, visible: bool) -> None:
+        """Restore the standard dock width after every open."""
+        if visible:
+            self._schedule_assistant_dock_resize()
+
+    def _on_assistant_dock_top_level_changed(self, floating: bool) -> None:
+        """Restore the docked width after a floating Assistant is reattached."""
+        if not floating:
+            self._schedule_assistant_dock_resize()
+
+    def _schedule_assistant_dock_resize(self) -> None:
+        """Apply dock geometry after Qt has settled the current shell layout."""
+        if self._assistant_dock_resize_pending:
+            return
+        dock = self._assistant_dock()
+        if dock is None or not dock.isVisible() or dock.isFloating():
+            return
+        self._assistant_dock_resize_pending = True
+        QTimer.singleShot(0, self._apply_assistant_dock_width)
+
+    def _apply_assistant_dock_width(self) -> None:
+        """Use 420 px normally and shrink only to preserve workflow space."""
+        self._assistant_dock_resize_pending = False
+        dock = self._assistant_dock()
+        if dock is None or not dock.isVisible() or dock.isFloating():
+            return
+        available_for_dock = (
+            self.contentsRect().width() - self.ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH
+        )
+        target_width = min(
+            self.ASSISTANT_DOCK_STANDARD_WIDTH,
+            max(self.ASSISTANT_DOCK_MINIMUM_WIDTH, available_for_dock),
+        )
+        # Make the responsive target authoritative over competing central-panel
+        # size hints. Narrow shells lower this back to the supported 320 px floor.
+        dock.setMinimumWidth(target_width)
+        self.resizeDocks(
+            [dock],
+            [target_width],
+            Qt.Orientation.Horizontal,
+        )
 
     def _connect_agent_visualization_monitor(self) -> None:
         """Connect VRAM monitoring once both agent and visualization panel exist."""

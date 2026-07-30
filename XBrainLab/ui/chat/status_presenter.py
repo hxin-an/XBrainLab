@@ -38,11 +38,11 @@ _EMPTY_STATE_COPY: dict[str, tuple[str, str]] = {
     ),
     "Ready for epoching": (
         "Define the analysis windows",
-        "Ask me to explain event anchors or prepare the epoch settings.",
+        "Ask me to explain event anchors or prepare the EEG epoch settings.",
     ),
     "Ready to build dataset": (
         "Build the training dataset",
-        "Ask me to review the epoch data or prepare the dataset split.",
+        "Ask me to review the EEG epochs or prepare the dataset split.",
     ),
     "Dataset ready": (
         "Set up training",
@@ -123,27 +123,27 @@ _STAGE_SUGGESTIONS: dict[str, tuple[AssistantPromptSuggestion, ...]] = {
     ),
     "Ready for epoching": (
         AssistantPromptSuggestion(
-            "Explain epoch anchors",
+            "Explain EEG epoch anchors",
             "Review which events can define analysis windows.",
-            "Explain the available epoch anchors",
+            "Explain the available EEG epoch anchors",
         ),
         AssistantPromptSuggestion(
-            "Review epoch settings",
+            "Review EEG epoch settings",
             "Check the current window and baseline choices.",
-            "Explain the current epoch settings",
+            "Explain the current EEG epoch settings",
         ),
         AssistantPromptSuggestion(
-            "Open epoch setup",
+            "Open EEG epoch setup",
             "Continue in the existing Time Epoching dialog.",
-            "Help me configure epoching",
+            "Help me configure EEG epoching",
             required_command="create_epoch",
         ),
     ),
     "Ready to build dataset": (
         AssistantPromptSuggestion(
-            "Review epoch data",
-            "Check the available epochs before creating a split.",
-            "Explain whether the current epochs are ready for dataset creation",
+            "Review EEG epochs",
+            "Check the available EEG epochs before creating a split.",
+            "Explain whether the current EEG epochs are ready for dataset creation",
         ),
         AssistantPromptSuggestion(
             "Explain data splitting",
