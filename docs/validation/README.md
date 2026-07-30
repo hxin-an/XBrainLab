@@ -1451,7 +1451,9 @@ UI gate passed:
 ```
 
 These tests no longer depend on root `settings.json` or a machine-specific model cache. Native
-Windows click-through remains a separate acceptance boundary.
+Windows click-through remains a separate acceptance boundary. The dashboard gives the ten-shard
+UI suite a `900s` gate-level bound instead of the generic `300s`; each shard retains its own
+bounded timeout, so a stalled shard still fails rather than running indefinitely.
 
 ## 常用 docs gate
 

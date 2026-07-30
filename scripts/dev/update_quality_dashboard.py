@@ -41,6 +41,7 @@ MAX_UI_MEAN_DIFF = 1.5
 MAX_UI_CHANGED_RATIO = 0.02
 PIXEL_DIFF_THRESHOLD = 12
 DEFAULT_CHECK_TIMEOUT_SECONDS = 300
+UI_UNIT_SUITE_TIMEOUT_SECONDS = 900
 CHECK_TERMINATION_GRACE_SECONDS = 5
 RESOURCE_CALIBRATION_PATH = ROOT / "artifacts" / "resource_guard" / "calibration.json"
 PROTECTED_LOCAL_CONFIG_PATHS = frozenset({"settings.json"})
@@ -896,6 +897,7 @@ def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
             command=f"{POETRY} run python scripts/dev/run_tests.py ui",
             ui=True,
             validator=validate_pytest_like,
+            timeout_seconds=UI_UNIT_SUITE_TIMEOUT_SECONDS,
         ),
         run_check(
             key="io_integration",

@@ -73,6 +73,26 @@ def test_dashboard_registers_public_bids_visible_ui_wizard_format_matrix(
     assert matrix["validator"] is dashboard.validate_required_pytest_matrix
 
 
+def test_dashboard_gives_the_isolated_ui_suite_a_gate_level_timeout(monkeypatch):
+    checks: dict[str, dict[str, object]] = {}
+
+    def record_check(**kwargs):
+        checks[str(kwargs["key"])] = kwargs
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(dashboard, "run_check", record_check)
+
+    dashboard.build_checks()
+
+    assert checks["ui_unit_suite"]["timeout_seconds"] == (
+        dashboard.UI_UNIT_SUITE_TIMEOUT_SECONDS
+    )
+    assert (
+        dashboard.UI_UNIT_SUITE_TIMEOUT_SECONDS
+        > dashboard.DEFAULT_CHECK_TIMEOUT_SECONDS
+    )
+
+
 def test_required_pytest_matrix_passes_only_when_every_case_ran():
     status, summary = dashboard.validate_required_pytest_matrix(
         0,

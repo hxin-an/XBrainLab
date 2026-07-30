@@ -6747,7 +6747,9 @@ call sites into explicit legacy/fallback helpers.
   fixture now injects deterministic local-runtime readiness. A same-class sweep also fixed an
   auxiliary worker that was told to quit without a terminal wait. The threading file passed `15`
   tests, the threading/real-runtime sequence passed `32` tests, `ui/components` passed `392` tests
-  in three independent processes, and the complete isolated UI gate passed all ten shards.
+  in three independent processes, and the complete isolated UI gate passed all ten shards. The
+  dashboard now gives that ten-shard gate a dedicated `900s` outer bound while retaining
+  per-shard timeouts.
 
 ### 邊界
 
