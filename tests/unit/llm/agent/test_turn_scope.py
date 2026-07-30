@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+
 import pytest
 
 from XBrainLab.backend.application import CommandName
@@ -246,3 +250,72 @@ def test_explicit_stop_training_endpoint_is_resolved_without_crashing(
 
     assert resolution.scope is AssistantTurnScope.GUIDED_WORKFLOW
     assert resolution.terminal_command == CommandName.STOP_TRAINING.value
+
+
+@pytest.mark.parametrize(
+    ("text", "terminal"),
+    (
+        (
+            "Load the data, visualize it, then compute saliency.",
+            CommandName.SALIENCY.value,
+        ),
+        (
+            "Load the data, compute saliency, then visualize it.",
+            CommandName.VISUALIZE.value,
+        ),
+        (
+            "載入資料、視覺化結果, 最後計算顯著圖",
+            CommandName.SALIENCY.value,
+        ),
+        (
+            "載入資料、計算顯著圖, 最後視覺化結果",
+            CommandName.VISUALIZE.value,
+        ),
+    ),
+)
+def test_equal_rank_endpoint_uses_last_textual_mention(
+    text: str,
+    terminal: str,
+) -> None:
+    resolution = resolve_assistant_turn_scope(text)
+
+    assert resolution.scope is AssistantTurnScope.GUIDED_WORKFLOW
+    assert resolution.terminal_command == terminal
+
+
+@pytest.mark.parametrize("hash_seed", ("1", "2", "17", "101"))
+def test_equal_rank_endpoint_is_stable_across_hash_seeds(hash_seed: str) -> None:
+    script = """
+from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
+
+resolution = resolve_assistant_turn_scope(
+    "Load the data, visualize it, then compute saliency."
+)
+print(resolution.terminal_command)
+"""
+    environment = {**os.environ, "PYTHONHASHSEED": hash_seed}
+
+    completed = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        env=environment,
+        text=True,
+        timeout=20,
+    )
+
+    assert completed.stdout.strip() == CommandName.SALIENCY.value
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Load the data, then either visualize it or compute saliency; ask me which.",
+        "載入資料後, 視覺化或計算顯著圖都可以, 先問我選哪一個。",
+    ),
+)
+def test_unresolved_endpoint_choice_does_not_expand_workflow_scope(text: str) -> None:
+    resolution = resolve_assistant_turn_scope(text)
+
+    assert resolution.scope is AssistantTurnScope.SINGLE_ACTION
+    assert resolution.terminal_command is None

@@ -530,7 +530,7 @@ def _is_file_browse_request(normalized: str) -> bool:
 
 
 def _is_ambiguous_workflow_request(normalized: str) -> bool:
-    return any(
+    if any(
         marker in normalized
         for marker in (
             "help me process the data",
@@ -541,7 +541,33 @@ def _is_ambiguous_workflow_request(normalized: str) -> bool:
             "把資料處理一下",
             "幫我貼標籤",
         )
+    ):
+        return True
+
+    explicit_choice = bool(
+        re.search(
+            r"\beither\b.+\bor\b.+\b(?:ask|tell)\s+me\s+which\b",
+            normalized,
+        )
+        or re.search(
+            r"(?:或|還是).{0,32}(?:先)?問我.{0,8}(?:選|要)(?:哪|那)",
+            normalized,
+        )
     )
+    if not explicit_choice:
+        return False
+
+    endpoint_concepts = sum(
+        (
+            bool(re.search(r"\bvisuali[sz]", normalized))
+            or "視覺化" in normalized
+            or "可視化" in normalized,
+            "saliency" in normalized or "顯著圖" in normalized,
+            bool(re.search(r"\bevaluat", normalized)) or "評估" in normalized,
+            bool(re.search(r"\btrain(?:ing)?\b", normalized)) or "訓練" in normalized,
+        )
+    )
+    return endpoint_concepts >= 2
 
 
 def _is_primary_train_with_conditional_fallback(normalized: str) -> bool:

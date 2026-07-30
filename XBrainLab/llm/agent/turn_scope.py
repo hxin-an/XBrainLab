@@ -348,13 +348,28 @@ def _explicit_workflow_endpoint(normalized: str) -> CommandName | None:
     commands = {command for _, command in stages}
     if len(commands) < 2:
         return None
-    return max(commands, key=lambda command: _WORKFLOW_ORDER[command.value])
+    highest_order = max(_WORKFLOW_ORDER[command.value] for command in commands)
+    highest_stage_mentions = [
+        (position, command)
+        for position, command in stages
+        if _WORKFLOW_ORDER[command.value] == highest_order
+    ]
+    latest_position = max(position for position, _ in highest_stage_mentions)
+    latest_commands = {
+        command
+        for position, command in highest_stage_mentions
+        if position == latest_position
+    }
+    if len(latest_commands) != 1:
+        return None
+    return latest_commands.pop()
 
 
 def _ordered_stage_mentions(normalized: str) -> list[tuple[int, CommandName]]:
     mentions: list[tuple[int, CommandName]] = []
     for stage in _WORKFLOW_STAGE_SPECS:
-        match = re.search(stage.mention_pattern, normalized)
-        if match is not None:
-            mentions.append((match.start(), stage.command))
-    return mentions
+        mentions.extend(
+            (match.start(), stage.command)
+            for match in re.finditer(stage.mention_pattern, normalized)
+        )
+    return sorted(mentions, key=lambda mention: mention[0])

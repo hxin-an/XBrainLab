@@ -118,6 +118,19 @@ def test_infers_multilingual_no_call_and_clarification_boundaries():
 
 
 @pytest.mark.parametrize(
+    "text",
+    (
+        "Either visualize the result or compute saliency; ask me which one.",
+        "視覺化結果或計算顯著圖都可以, 先問我選哪一個。",
+    ),
+)
+def test_unresolved_equal_rank_endpoint_choice_requires_clarification(
+    text: str,
+) -> None:
+    assert infer_user_intent(text) == "ask_clarification"
+
+
+@pytest.mark.parametrize(
     ("text", "expected_intent", "expected_command"),
     (
         (
