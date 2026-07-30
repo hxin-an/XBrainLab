@@ -1,3 +1,4 @@
+import datetime
 import time
 from threading import Event
 from unittest.mock import Mock, patch
@@ -465,6 +466,20 @@ def test_training_plan_holder_trivial_getter(base_holder, dataset):
     assert base_holder.get_name() == "Fold_0"
     assert base_holder.get_dataset() == dataset
     assert len(base_holder.get_plans()) == REPEAT
+
+
+def test_training_plan_ids_do_not_collide_within_one_second(
+    dataset,
+    model_holder,
+    training_option,
+):
+    frozen = datetime.datetime(2026, 7, 30, 12, 0, 0)
+    with patch("XBrainLab.backend.training.training_plan.datetime.datetime") as clock:
+        clock.now.return_value = frozen
+        first = TrainingPlanHolder(model_holder, dataset, training_option, {})
+        second = TrainingPlanHolder(model_holder, dataset, training_option, {})
+
+    assert first.plan_id != second.plan_id
 
 
 @pytest.mark.timeout(10)

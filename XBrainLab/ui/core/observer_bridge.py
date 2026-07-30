@@ -161,18 +161,22 @@ class QtObserverBridge(QObject):
         if not self._active or sip.isdeleted(self):
             return False
         slot = self._slot
-        if slot is not None:
-            try:
-                slot(*args, **kwargs)
-            except Exception:
-                self._synchronous_dispatch_result = False
-                logger.exception(
-                    "Qt observer slot failed for %s",
-                    self.event_name,
-                )
-                return False
-        self._synchronous_dispatch_result = True
-        return True
+        if slot is None:
+            acknowledged = not self._require_slot_acknowledgement
+            self._synchronous_dispatch_result = acknowledged
+            return acknowledged
+        try:
+            result = slot(*args, **kwargs)
+        except Exception:
+            self._synchronous_dispatch_result = False
+            logger.exception(
+                "Qt observer slot failed for %s",
+                self.event_name,
+            )
+            return False
+        acknowledged = not self._require_slot_acknowledgement or result is True
+        self._synchronous_dispatch_result = acknowledged
+        return acknowledged
 
     def cleanup(self):
         """Unsubscribe from the backend observable event and disconnect signals."""

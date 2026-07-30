@@ -10,6 +10,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import numpy as np
 import torch
@@ -259,6 +260,7 @@ class Status(Enum):
     INIT = "Initializing {}"
     EVAL = "Evaluating {}"
     TRAIN = "Training {}"
+    CANCELLED = "Cancelled"
 
 
 class TrainingPlanHolder:
@@ -318,8 +320,9 @@ class TrainingPlanHolder:
 
         self.check_data()
 
-        # Generate unique plan ID (timestamp) to avoid directory collision
-        self.plan_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        # Human-readable time plus random identity prevents concurrent collisions.
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        self.plan_id = f"{timestamp}-{uuid4().hex[:12]}"
 
         self.train_record_list = []
         self._state_tracker: TrainingStateTracker | None = None
@@ -716,6 +719,11 @@ class TrainingPlanHolder:
         with self._state_mutation():
             self.error = None
             self._interrupt.clear()
+
+    def mark_cancelled(self) -> None:
+        """Record terminal cancellation without making the holder retryable."""
+        with self._state_mutation():
+            self.status = Status.CANCELLED.value
 
     # getter
     def get_name(self) -> str:

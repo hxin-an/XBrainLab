@@ -80,6 +80,8 @@ class Trainer:
         self.progress_text: Status | str = Status.PENDING
         self.training_plan_holders = list(training_plan_holders)
         self.current_idx = 0
+        self._active_run_start_index = 0
+        self._active_run_end_index = 0
         self.job_thread: threading.Thread | None = None
         for holder in self.training_plan_holders:
             self._bind_plan_holder(holder)
@@ -182,6 +184,8 @@ class Trainer:
                     and self._interrupt.is_set()
                 ):
                     outcome_state = TrainingOutcomeState.CANCELLED
+                if outcome_state is TrainingOutcomeState.CANCELLED:
+                    self._retire_cancelled_run_locked()
                 if outcome_state is not TrainingOutcomeState.FAILED:
                     self.progress_text = Status.PENDING
                 self._terminal_outcome = TrainingTerminalOutcome(
@@ -209,7 +213,18 @@ class Trainer:
                     run=self._active_run,
                 )
                 self._run_admitted = True
+                self._active_run_start_index = self.current_idx
+                self._active_run_end_index = len(self.training_plan_holders)
             return self._active_run
+
+    def _retire_cancelled_run_locked(self) -> None:
+        """Retire every holder admitted to a cancelled run exactly once."""
+        holder_count = len(self.training_plan_holders)
+        start = max(0, min(self._active_run_start_index, holder_count))
+        end = max(start, min(self._active_run_end_index, holder_count))
+        for holder in self.training_plan_holders[start:end]:
+            holder.mark_cancelled()
+        self.current_idx = max(self.current_idx, end)
 
     @staticmethod
     def _plan_failure_message(plan_holder: TrainingPlanHolder) -> str | None:
@@ -250,6 +265,8 @@ class Trainer:
                 state=TrainingOutcomeState.RUNNING,
                 run=self._active_run,
             )
+            self._active_run_start_index = self.current_idx
+            self._active_run_end_index = len(holders)
             run = self._active_run
             if interact:
                 try:
@@ -280,6 +297,7 @@ class Trainer:
                         if self.job_thread is thread:
                             self.job_thread = None
                         self.progress_text = Status.PENDING
+                        self._retire_cancelled_run_locked()
                         self._terminal_outcome = TrainingTerminalOutcome(
                             state=TrainingOutcomeState.CANCELLED,
                             run=run,

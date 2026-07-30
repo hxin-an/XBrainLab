@@ -309,16 +309,40 @@ class TestAgentManagerMethods:
             refresh_error="state refresh failed",
         )
 
-        agent_mgr._on_application_view_publication_changed(first)
+        assert agent_mgr._on_application_view_publication_changed(first) is True
         agent_mgr.chat_panel.set_product_status.reset_mock()
-        agent_mgr._on_application_view_publication_changed(first)
+        assert agent_mgr._on_application_view_publication_changed(first) is True
         agent_mgr.chat_panel.set_product_status.assert_not_called()
 
-        agent_mgr._on_application_view_publication_changed(stale)
+        assert agent_mgr._on_application_view_publication_changed(stale) is True
 
         assert agent_mgr.assistant_status_projection.publication_revision == 9
         assert agent_mgr.assistant_status_projection.usable is False
         agent_mgr.chat_panel.set_product_status.assert_called_once()
+
+    def test_backend_publication_is_not_acknowledged_before_chat_panel_exists(
+        self,
+        agent_mgr,
+    ):
+        agent_mgr.chat_panel = None
+        state = ApplicationStateSnapshot.empty()
+        publication = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        agent_mgr.application_service.acknowledge_view_publication_delivery = (
+            MagicMock()
+        )
+
+        assert agent_mgr._on_application_view_publication_changed(publication) is False
+        (
+            agent_mgr.application_service.acknowledge_view_publication_delivery
+        ).assert_not_called()
+
+    def test_malformed_backend_publication_returns_false(self, agent_mgr):
+        assert agent_mgr._on_application_view_publication_changed(object()) is False
 
     def test_pull_and_push_of_one_publication_render_exactly_once(
         self,

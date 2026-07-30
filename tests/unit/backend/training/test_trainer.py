@@ -588,6 +588,43 @@ def test_stop_request_is_not_terminal_until_background_thread_exits(
     assert cancelled.run == requested.run
 
 
+def test_stop_retires_cancelled_queue_before_a_new_plan_runs(
+    training_plan_holders,
+):
+    old_holder, new_holder = training_plan_holders
+    trainer = Trainer([old_holder])
+    entered = threading.Event()
+    release = threading.Event()
+
+    def interrupted_train() -> None:
+        entered.set()
+        assert release.wait(timeout=2.0)
+
+    with patch.object(old_holder, "train", side_effect=interrupted_train) as old_train:
+        trainer.run(interact=True)
+        assert entered.wait(timeout=2.0)
+        assert trainer.stop(wait_timeout=0.01) is False
+        release.set()
+        assert trainer.wait_for_completion(timeout=2.0) is True
+
+    assert old_train.call_count == 1
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.CANCELLED
+    assert trainer.get_current_index() == 1
+    assert old_holder.get_training_status() == "Cancelled"
+
+    trainer.add_plan(new_holder)
+    with (
+        patch.object(old_holder, "train") as old_retry,
+        patch.object(new_holder, "train") as new_train,
+    ):
+        trainer.run(interact=False)
+
+    old_retry.assert_not_called()
+    new_train.assert_called_once()
+    assert trainer.get_current_index() == 2
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.COMPLETED
+
+
 def test_each_training_run_has_a_distinct_typed_identity(training_plan_holders):
     trainer = Trainer(training_plan_holders)
     for holder in training_plan_holders:

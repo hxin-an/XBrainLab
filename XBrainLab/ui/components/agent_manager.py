@@ -1607,12 +1607,12 @@ class AgentManager(QObject):
     def _on_application_view_publication_changed(
         self,
         publication: object,
-    ) -> None:
+    ) -> bool:
         """Render only current committed backend truth delivered across Qt."""
         if not isinstance(publication, ApplicationViewPublication):
             logger.error("Ignored malformed application publication event")
-            return
-        self._render_backend_publication(
+            return False
+        return self._render_backend_publication(
             cast(ApplicationViewPublication, publication),
         )
 
@@ -1626,7 +1626,7 @@ class AgentManager(QObject):
         current = self._assistant_status_projection
         if current is not None and publication.revision <= current.publication_revision:
             self._acknowledge_application_view_publication(publication.revision)
-            return False
+            return True
         try:
             projection = build_assistant_status_projection(publication)
             self._render_assistant_status_projection(projection)

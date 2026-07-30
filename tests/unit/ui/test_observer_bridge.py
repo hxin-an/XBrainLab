@@ -14,7 +14,7 @@ from XBrainLab.backend.application.view_event_publisher import (
 )
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
-from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.backend.utils.observer import Observable, ObserverDeliveryStatus
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 
@@ -87,10 +87,11 @@ def test_publication_delivery_retries_same_revision_after_qt_render_failure(qtbo
     )
     attempts: list[int] = []
 
-    def render(candidate) -> None:
+    def render(candidate) -> bool:
         attempts.append(candidate.revision)
         if len(attempts) == 1:
             raise RuntimeError("transient render failure")
+        return True
 
     bridge.connect_to(render)
     publisher = ApplicationViewEventPublisher(
@@ -125,9 +126,10 @@ def test_background_publication_is_acknowledged_only_after_qt_render(qtbot):
     attempts: list[int] = []
     publisher: ApplicationViewEventPublisher
 
-    def render(candidate) -> None:
+    def render(candidate) -> bool:
         attempts.append(candidate.revision)
         publisher.acknowledge(candidate.revision)
+        return True
 
     bridge.connect_to(render)
     publisher = ApplicationViewEventPublisher(
@@ -148,6 +150,42 @@ def test_background_publication_is_acknowledged_only_after_qt_render(qtbot):
     qtbot.waitUntil(lambda: attempts == [publication.revision], timeout=1_000)
     assert publisher.publish(publication) is True
     assert attempts == [publication.revision]
+
+
+def test_acknowledgement_bridge_rejects_missing_or_false_slot_result() -> None:
+    observable = MockObservable()
+    bridge = QtObserverBridge(
+        observable,
+        "view_publication_changed",
+        require_slot_acknowledgement=True,
+    )
+
+    assert (
+        observable.notify_delivery("view_publication_changed", object())
+        is ObserverDeliveryStatus.FAILED
+    )
+
+    bridge.connect_to(lambda _publication: False)
+
+    assert (
+        observable.notify_delivery("view_publication_changed", object())
+        is ObserverDeliveryStatus.FAILED
+    )
+
+
+def test_acknowledgement_bridge_accepts_only_explicit_true_slot_result() -> None:
+    observable = MockObservable()
+    bridge = QtObserverBridge(
+        observable,
+        "view_publication_changed",
+        require_slot_acknowledgement=True,
+    )
+    bridge.connect_to(lambda _publication: True)
+
+    assert (
+        observable.notify_delivery("view_publication_changed", object())
+        is ObserverDeliveryStatus.DELIVERED
+    )
 
 
 def test_observer_bridge_connect_to_dispatches_background_event_on_qt_thread(qtbot):
