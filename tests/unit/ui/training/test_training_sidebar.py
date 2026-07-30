@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QLabel, QMainWindow, QMessageBox, QPushButton
 
 from XBrainLab.backend.application import (
     ChangedState,
+    CommandName,
     CommandResult,
     ConfigureTrainingCommand,
     ErrorType,
@@ -23,7 +24,9 @@ from XBrainLab.backend.application.resource_guard import (
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import CommandReviewContext
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
+from XBrainLab.ui.refresh_coordinator import refresh_after_command
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 
 @pytest.fixture
@@ -40,24 +43,7 @@ def sidebar(qtbot):
 
 @pytest.fixture
 def real_study_sidebar(qtbot):
-    class EEGNet:
-        pass
-
     study = Study()
-    dataset = SimpleNamespace(name="current training dataset")
-    option = SimpleNamespace(
-        use_cpu=False,
-        gpu_idx=0,
-        bs=256,
-        epoch=1,
-        lr=0.001,
-        repeat_num=1,
-        get_device=lambda: "cuda:0",
-    )
-    holder = SimpleNamespace(target_model=EEGNet, model_params_map={})
-    study.datasets = cast(Any, [dataset])
-    study.training_option = cast(Any, option)
-    study.model_holder = cast(Any, holder)
 
     main_window = QMainWindow()
     cast(Any, main_window).study = study
@@ -71,7 +57,7 @@ def real_study_sidebar(qtbot):
     panel.main_window = main_window
     widget = TrainingSidebar(panel, parent=None)
     qtbot.addWidget(widget)
-    return widget, study, dataset, option, holder
+    return widget, study
 
 
 def _training_preflight(
@@ -542,6 +528,322 @@ def test_check_ready_to_train(sidebar):
     sidebar.controller.validate_ready.return_value = True
     sidebar.check_ready_to_train()
     assert sidebar.btn_start.isEnabled() is True
+
+
+def test_training_readiness_shows_only_first_blocking_next_action(sidebar, qtbot):
+    capability = CommandCapability(
+        command_name="train",
+        enabled=False,
+        reasons=[
+            "Generate datasets before training.",
+            "Select a model before training.",
+        ],
+    )
+    publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            active_dataset=SimpleNamespace(
+                has_raw_data=True,
+                has_preprocessed_data=True,
+                has_epoch_data=True,
+                has_datasets=False,
+            ),
+            active_training=SimpleNamespace(
+                has_model=False,
+                has_training_option=False,
+            ),
+        ),
+        effective_capabilities={CommandName.TRAIN: capability},
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            side_effect=AssertionError(
+                "readiness must use the capability from the same publication",
+            ),
+        ),
+        patch.object(sidebar, "split_data") as split_data,
+    ):
+        sidebar.check_ready_to_train()
+        qtbot.wait(0)
+        visible_actions = [
+            button
+            for button in sidebar.readiness_group.findChildren(QPushButton)
+            if not button.isHidden()
+        ]
+        assert visible_actions == [sidebar.readiness_next_button]
+        assert sidebar.readiness_next_button.text() == "Next: Configure dataset split"
+        assert "Generate datasets before training." in sidebar.readiness_blocker.text()
+        assert sidebar.readiness_status_labels["EEG epochs"].text() == "Ready"
+        assert sidebar.readiness_status_labels["Training datasets"].text() == "Needed"
+        assert (
+            f"color: {Theme.LOG_INFO};"
+            in sidebar.readiness_status_labels["EEG epochs"].styleSheet()
+        )
+        assert (
+            f"color: {Theme.LOG_WARNING};"
+            in sidebar.readiness_status_labels["Training datasets"].styleSheet()
+        )
+
+        sidebar.readiness_next_button.click()
+
+    split_data.assert_called_once_with()
+
+
+def test_training_readiness_fails_closed_when_product_publication_is_unavailable(
+    sidebar,
+):
+    publication = SimpleNamespace(usable=False, state=None)
+    capability = CommandCapability(
+        command_name="train",
+        enabled=False,
+        reasons=["Training state is unavailable."],
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
+            return_value=True,
+        ),
+        patch.object(
+            sidebar,
+            "_compatibility_readiness",
+            side_effect=AssertionError(
+                "product readiness must not fall back to controller state",
+            ),
+        ),
+    ):
+        sidebar._update_readiness_presentation(publication, capability)
+
+    assert all(
+        label.text() == "Needed" for label in sidebar.readiness_status_labels.values()
+    )
+    assert (
+        sidebar.readiness_blocker.text()
+        == "Training state is unavailable. Reopen Training or reload the workflow."
+    )
+    assert sidebar.readiness_next_button.isHidden()
+    assert sidebar._readiness_next_action is None
+
+
+def test_real_study_controller_compatibility_stops_before_fallback_gateway(
+    real_study_sidebar,
+):
+    sidebar, *_ = real_study_sidebar
+    fallback = MagicMock()
+
+    with patch(
+        "XBrainLab.ui.panels.training.sidebar.run_controller_compatibility_call",
+        side_effect=AssertionError(
+            "real Study context must not enter controller compatibility",
+        ),
+    ):
+        available, value = sidebar._compatibility_controller_value(fallback)
+
+    assert available is False
+    assert value is None
+    fallback.assert_not_called()
+
+
+def test_real_study_missing_publication_never_reads_controller(
+    real_study_sidebar,
+):
+    sidebar, *_ = real_study_sidebar
+    controller = sidebar.controller
+    for method_name in (
+        "validate_ready",
+        "has_datasets",
+        "has_model",
+        "has_training_option",
+    ):
+        getattr(controller, method_name).side_effect = AssertionError(
+            f"product readiness must not call controller.{method_name}",
+        )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.run_controller_compatibility_call",
+            side_effect=AssertionError(
+                "missing product publication must not enter controller compatibility",
+            ),
+        ),
+    ):
+        sidebar.check_ready_to_train()
+
+    assert not sidebar.btn_start.isEnabled()
+    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
+    assert (
+        sidebar.readiness_blocker.text()
+        == "Training state is unavailable. Reopen Training or reload the workflow."
+    )
+    assert sidebar.readiness_next_button.isHidden()
+
+
+def test_product_action_result_refresh_reads_the_next_publication(
+    real_study_sidebar,
+):
+    sidebar, *_ = real_study_sidebar
+    controller = sidebar.controller
+    for method_name in (
+        "validate_ready",
+        "has_datasets",
+        "has_model",
+        "has_training_option",
+    ):
+        getattr(controller, method_name).side_effect = AssertionError(
+            f"product refresh must not call controller.{method_name}",
+        )
+
+    blocked_capability = CommandCapability(
+        command_name="train",
+        enabled=False,
+        reasons=["Select a model before training."],
+    )
+    ready_capability = CommandCapability(command_name="train", enabled=True)
+    dataset_state = SimpleNamespace(
+        has_raw_data=True,
+        has_preprocessed_data=True,
+        has_epoch_data=True,
+        has_datasets=True,
+    )
+    publications = (
+        SimpleNamespace(
+            usable=True,
+            state=SimpleNamespace(
+                active_dataset=dataset_state,
+                active_training=SimpleNamespace(
+                    has_model=False,
+                    has_training_option=True,
+                ),
+            ),
+            effective_capabilities={CommandName.TRAIN: blocked_capability},
+        ),
+        SimpleNamespace(
+            usable=True,
+            state=SimpleNamespace(
+                active_dataset=dataset_state,
+                active_training=SimpleNamespace(
+                    has_model=True,
+                    has_training_option=True,
+                ),
+            ),
+            effective_capabilities={CommandName.TRAIN: ready_capability},
+        ),
+    )
+    panel = sidebar.panel
+    main_window = sidebar.main_window
+    cast(Any, main_window).training_panel = panel
+    panel.update_panel.side_effect = sidebar.check_ready_to_train
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            side_effect=publications,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.run_controller_compatibility_call",
+            side_effect=AssertionError(
+                "product refresh must not enter controller compatibility",
+            ),
+        ),
+    ):
+        sidebar.check_ready_to_train()
+        assert not sidebar.btn_start.isEnabled()
+
+        refreshed = refresh_after_command(
+            sidebar,
+            _training_result(preflight=_training_preflight()),
+        )
+
+    assert refreshed is True
+    panel.update_panel.assert_called_once_with()
+    assert sidebar.btn_start.isEnabled()
+    assert sidebar.readiness_blocker.text() == "Ready to start training."
+    assert sidebar.readiness_next_button.isHidden()
+
+
+def test_check_ready_to_train_never_reads_controller_when_product_truth_is_missing(
+    sidebar,
+):
+    publication = SimpleNamespace(usable=False, state=None)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
+            return_value=True,
+        ),
+        patch.object(
+            sidebar,
+            "_compatibility_controller_value",
+            side_effect=AssertionError(
+                "product readiness must not read controller compatibility state",
+            ),
+        ),
+    ):
+        sidebar.check_ready_to_train()
+
+    assert not sidebar.btn_start.isEnabled()
+    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
+    assert (
+        sidebar.readiness_blocker.text()
+        == "Training state is unavailable. Reopen Training or reload the workflow."
+    )
+    assert sidebar.readiness_next_button.isHidden()
+
+
+def test_check_ready_to_train_rejects_enabled_capability_from_unusable_publication(
+    sidebar,
+):
+    publication = SimpleNamespace(
+        usable=False,
+        state=None,
+        effective_capabilities={
+            CommandName.TRAIN: CommandCapability(
+                command_name="train",
+                enabled=True,
+            )
+        },
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
+            return_value=True,
+        ),
+        patch.object(
+            sidebar,
+            "_compatibility_controller_value",
+            side_effect=AssertionError(
+                "unusable product publication must not enter compatibility",
+            ),
+        ),
+    ):
+        sidebar.check_ready_to_train()
+
+    assert not sidebar.btn_start.isEnabled()
+    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
+    assert "state is unavailable" in sidebar.readiness_blocker.text()
 
 
 def test_on_training_stopped(sidebar):

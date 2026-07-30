@@ -4485,6 +4485,18 @@ def rename_subject(self):
     assert "ApplicationService" in violations[0]
 
 
+def test_training_sidebar_direct_controller_calls_are_compatibility_gated():
+    root = Path(__file__).resolve().parents[2]
+
+    violations = [
+        violation
+        for violation in check_ui_direct_controller_mutations(root)
+        if "XBrainLab/ui/panels/training/sidebar.py" in violation
+    ]
+
+    assert violations == []
+
+
 def test_direct_controller_mutation_guard_resolves_alias_chain_getattr_and_bound_alias(
     tmp_path,
 ):

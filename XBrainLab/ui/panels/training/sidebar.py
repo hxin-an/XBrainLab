@@ -6,7 +6,9 @@ from typing import Any
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QGroupBox,
+    QLabel,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -64,6 +66,7 @@ from XBrainLab.ui.dialogs.training import ModelSelectionDialog, TrainingSettingD
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 _TRAINING_SETTING_SUGGESTION_KEYS = frozenset(
     {
@@ -137,25 +140,9 @@ class TrainingSidebar(QWidget):
         root_layout.addWidget(self.scroll_area)
         layout = self.scroll_area.content_layout
 
-        # 1. Aggregate Information
-        # Note: AggregateInfoPanel expects "main_window" as parent
-        # potentially for referencing?
-        # Let's check AggregateInfoPanel signature.
-        # It usually takes parent=None.
-        # In current code: self.info_panel = AggregateInfoPanel(self.main_window)
-        # So we pass main_window.
-        self.info_panel = AggregateInfoPanel(self.main_window)
-        self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        layout.addWidget(self.info_panel)
-
-        layout.addSpacing(10)
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet(Stylesheets.SEPARATOR_HORIZONTAL)
-        line.setFixedHeight(1)
-        layout.addWidget(line)
-        layout.addSpacing(10)
+        self.readiness_group = self._create_readiness_group()
+        layout.addWidget(self.readiness_group)
+        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
         # Group 1: Configuration
         config_group = QGroupBox("CONFIGURATION")
@@ -208,10 +195,57 @@ class TrainingSidebar(QWidget):
         exec_layout.addWidget(self.btn_clear)
 
         layout.addWidget(exec_group)
+
+        layout.addSpacing(10)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet(Stylesheets.SEPARATOR_HORIZONTAL)
+        line.setFixedHeight(1)
+        layout.addWidget(line)
+        layout.addSpacing(10)
+
+        self.info_panel = AggregateInfoPanel(self.main_window)
+        self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        layout.addWidget(self.info_panel)
         layout.addStretch()
 
         # Initial check
         self.check_ready_to_train()
+
+    def _create_readiness_group(self) -> QGroupBox:
+        group = QGroupBox("READINESS")
+        group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        group.setObjectName("TrainingReadiness")
+        layout = QGridLayout(group)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(3)
+
+        self.readiness_status_labels: dict[str, QLabel] = {}
+        for row, label_text in enumerate(
+            ("EEG epochs", "Training datasets", "Model", "Training settings")
+        ):
+            label = QLabel(label_text)
+            status = QLabel("Needed")
+            status.setAlignment(Qt.AlignmentFlag.AlignRight)
+            status.setObjectName(f"TrainingReadinessStatus{row}")
+            self.readiness_status_labels[label_text] = status
+            layout.addWidget(label, row, 0)
+            layout.addWidget(status, row, 1)
+
+        self.readiness_blocker = QLabel()
+        self.readiness_blocker.setObjectName("TrainingReadinessBlocker")
+        self.readiness_blocker.setWordWrap(True)
+        layout.addWidget(self.readiness_blocker, 4, 0, 1, 2)
+
+        self.readiness_next_button = QPushButton()
+        self.readiness_next_button.setObjectName("TrainingReadinessNextAction")
+        self.readiness_next_button.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.readiness_next_button.clicked.connect(self._run_readiness_next_action)
+        layout.addWidget(self.readiness_next_button, 5, 0, 1, 2)
+        self._readiness_next_action: str | None = None
+        return group
 
     def _compatibility_controller_value(
         self,
@@ -220,6 +254,14 @@ class TrainingSidebar(QWidget):
         blocked_title: str | None = None,
     ) -> tuple[bool, Any]:
         """Read controller compatibility state only for mock UI contexts."""
+        if has_real_application_context(self):
+            if blocked_title is not None:
+                QMessageBox.warning(
+                    self,
+                    blocked_title,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                )
+            return False, None
         try:
             return True, run_controller_compatibility_call(self, fallback)
         except ControllerCompatibilityUnavailableError as exc:
@@ -229,7 +271,25 @@ class TrainingSidebar(QWidget):
 
     def check_ready_to_train(self, *args):
         """Check if all configurations are set and enable/disable start button."""
-        train_capability = get_command_capability(self, CommandName.TRAIN)
+        publication = get_application_view_publication(self)
+        real_application_context = has_real_application_context(self)
+        if publication is not None and bool(getattr(publication, "usable", False)):
+            capabilities = getattr(publication, "effective_capabilities", {})
+            capability_lookup = getattr(capabilities, "get", None)
+            train_capability = (
+                capability_lookup(CommandName.TRAIN)
+                if callable(capability_lookup)
+                else None
+            )
+        elif real_application_context:
+            train_capability = None
+        else:
+            train_capability = get_command_capability(self, CommandName.TRAIN)
+        if train_capability is None and real_application_context:
+            self.btn_start.setEnabled(False)
+            self.btn_start.setToolTip("Training state is unavailable right now.")
+            self._update_readiness_presentation(publication, train_capability)
+            return
         if train_capability is None:
             available, ready_value = self._compatibility_controller_value(
                 self.controller.validate_ready,
@@ -265,6 +325,141 @@ class TrainingSidebar(QWidget):
                 )
         else:
             self.btn_start.setToolTip("Start Training")
+        self._update_readiness_presentation(publication, train_capability)
+
+    def _update_readiness_presentation(self, publication, train_capability) -> None:
+        state = getattr(publication, "state", None)
+        active_dataset = getattr(state, "active_dataset", None)
+        active_training = getattr(state, "active_training", None)
+        state_unavailable = False
+        if getattr(publication, "usable", False) and active_dataset is not None:
+            readiness = {
+                "EEG epochs": bool(active_dataset.has_epoch_data),
+                "Training datasets": bool(active_dataset.has_datasets),
+                "Model": bool(getattr(active_training, "has_model", False)),
+                "Training settings": bool(
+                    getattr(active_training, "has_training_option", False)
+                ),
+            }
+            route = self._publication_readiness_route(active_dataset, readiness)
+        elif has_real_application_context(self):
+            readiness = {
+                "EEG epochs": False,
+                "Training datasets": False,
+                "Model": False,
+                "Training settings": False,
+            }
+            route = None
+            state_unavailable = True
+        else:
+            readiness = self._compatibility_readiness()
+            route = self._configured_readiness_route(readiness)
+
+        for label, is_ready in readiness.items():
+            status = self.readiness_status_labels[label]
+            status.setText("Ready" if is_ready else "Needed")
+            status.setStyleSheet(
+                f"color: {Theme.LOG_INFO};"
+                if is_ready
+                else f"color: {Theme.LOG_WARNING};"
+            )
+
+        if state_unavailable:
+            self.readiness_blocker.setText(
+                "Training state is unavailable. Reopen Training or reload the workflow."
+            )
+            self.readiness_next_button.hide()
+            self._readiness_next_action = None
+            return
+
+        capability_reason = ""
+        if train_capability is not None and not train_capability.enabled:
+            reasons = list(getattr(train_capability, "reasons", []) or [])
+            capability_reason = reasons[0] if reasons else ""
+
+        if route is None and train_capability is not None and train_capability.enabled:
+            self.readiness_blocker.setText("Ready to start training.")
+            self.readiness_next_button.hide()
+            self._readiness_next_action = None
+            return
+
+        if route is None:
+            route = (
+                "training_settings",
+                "Review training settings",
+                capability_reason or "Review training configuration before starting.",
+            )
+        action, label, fallback_reason = route
+        self._readiness_next_action = action
+        self.readiness_blocker.setText(capability_reason or fallback_reason)
+        self.readiness_next_button.setText(f"Next: {label}")
+        self.readiness_next_button.show()
+
+    def _compatibility_readiness(self) -> dict[str, bool]:
+        def ready(fallback: Callable[[], Any]) -> bool:
+            available, value = self._compatibility_controller_value(fallback)
+            return bool(value) if available else False
+
+        has_datasets = ready(self.controller.has_datasets)
+        return {
+            "EEG epochs": has_datasets,
+            "Training datasets": has_datasets,
+            "Model": ready(self.controller.has_model),
+            "Training settings": ready(self.controller.has_training_option),
+        }
+
+    @staticmethod
+    def _publication_readiness_route(active_dataset, readiness):
+        if not active_dataset.has_raw_data:
+            return ("dataset", "Import EEG data", "Import EEG data before training.")
+        if not active_dataset.has_preprocessed_data:
+            return (
+                "preprocess",
+                "Preprocess EEG",
+                "Preprocess the imported EEG data before training.",
+            )
+        if not readiness["EEG epochs"]:
+            return (
+                "preprocess",
+                "Create EEG epochs",
+                "Create EEG epochs before configuring training datasets.",
+            )
+        return TrainingSidebar._configured_readiness_route(readiness)
+
+    @staticmethod
+    def _configured_readiness_route(readiness):
+        routes = (
+            (
+                "Training datasets",
+                "dataset_split",
+                "Configure dataset split",
+                "Generate training datasets before training.",
+            ),
+            ("Model", "model", "Select model", "Select a model before training."),
+            (
+                "Training settings",
+                "training_settings",
+                "Set training options",
+                "Set training options before training.",
+            ),
+        )
+        for key, action, label, reason in routes:
+            if not readiness[key]:
+                return (action, label, reason)
+        return None
+
+    def _run_readiness_next_action(self) -> None:
+        action = self._readiness_next_action
+        if action == "dataset_split":
+            self.split_data()
+        elif action == "model":
+            self.select_model()
+        elif action == "training_settings":
+            self.training_setting()
+        elif action in {"dataset", "preprocess"}:
+            switch_page = getattr(self.main_window, "switch_page", None)
+            if callable(switch_page):
+                switch_page(0 if action == "dataset" else 1)
 
     def _compatibility_missing_training_config(self) -> list[str]:
         missing = []
@@ -508,7 +703,7 @@ class TrainingSidebar(QWidget):
         )
         if dialog_context is None:
             return InteractionOutcome.blocked(
-                "Epoch data is unavailable for data splitting."
+                "EEG epochs are unavailable for data splitting."
             )
 
         dialog_kwargs = dict(dialog_context)
@@ -658,8 +853,8 @@ class TrainingSidebar(QWidget):
         if epoch_data is None:
             QMessageBox.warning(
                 self,
-                "No Epoched Data",
-                "Please perform epoching in the Preprocess panel first.",
+                "No EEG Epochs",
+                "Create EEG epochs in the Preprocess panel first.",
             )
             return True
 
@@ -697,7 +892,7 @@ class TrainingSidebar(QWidget):
             "Data Splitting Blocked",
             blocked_reason(
                 generate_capability,
-                "Create epochs before generating datasets.",
+                "Create EEG epochs before generating training datasets.",
             ),
         )
         return True
@@ -1312,7 +1507,7 @@ class TrainingSidebar(QWidget):
         return train_capability.enabled
 
     def stop_training(self):
-        """Request the controller to stop the current training run."""
+        """Request ApplicationService to stop the current training run."""
         stop_capability = get_command_capability(self, CommandName.STOP_TRAINING)
         if stop_capability is not None and not stop_capability.enabled:
             QMessageBox.warning(
@@ -1347,7 +1542,7 @@ class TrainingSidebar(QWidget):
             return
         self.btn_stop.setEnabled(False)
         self._show_status("Training stop requested")
-        # Controller will emit stopped event which panel handles
+        # The publication/observer path reconciles the terminal panel state.
 
     def clear_history(self):
         """Clear all training history records.
