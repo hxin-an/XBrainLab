@@ -1,11 +1,12 @@
 """Aggregate information panel displaying dataset summary statistics."""
 
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
     QFrame,
     QGroupBox,
     QHeaderView,
+    QLabel,
     QLayout,
     QScrollArea,
     QSizePolicy,
@@ -19,10 +20,30 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
-INFO_ROW_HEIGHT = 22
+INFO_ROW_MIN_HEIGHT = 22
+INFO_ROW_VERTICAL_PADDING = 2
 INFO_TABLE_FRAME_BUFFER = 6
 INFO_GROUP_VERTICAL_BUFFER = 42
 INFO_KEY_COLUMN_PADDING = 20
+INFO_VALUE_COLUMN_PADDING = 16
+INFO_TABLE_HORIZONTAL_BUFFER = 0
+INFO_EMPTY_HEIGHT = 66
+
+_SUMMARY_KEYS = (
+    "Type",
+    "EEG files",
+    "Subjects",
+    "Sessions",
+    "EEG epochs",
+    "EEG events",
+    "Channels",
+    "Sampling rate",
+    "EEG epoch start",
+    "EEG epoch duration",
+    "High-pass filter",
+    "Low-pass filter",
+    "Training classes",
+)
 
 
 class SidebarScrollArea(QScrollArea):
@@ -62,6 +83,8 @@ class AggregateInfoPanel(QGroupBox):
 
     """
 
+    presentation_changed = pyqtSignal()
+
     def __init__(self, parent=None):
         """Initialize the aggregate info panel.
 
@@ -70,7 +93,8 @@ class AggregateInfoPanel(QGroupBox):
                 ``info_service`` attribute, the panel auto-registers.
 
         """
-        super().__init__("Aggregate Information", parent)
+        super().__init__("Data Summary", parent)
+        self._has_data = False
         self.init_ui()
 
         # Auto-register with InfoPanelService if available
@@ -102,6 +126,7 @@ class AggregateInfoPanel(QGroupBox):
         self.table.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
+        self.table.installEventFilter(self)
 
         self.table.setStyleSheet(
             f"""
@@ -112,7 +137,7 @@ class AggregateInfoPanel(QGroupBox):
                 color: {Theme.TEXT_MUTED};
             }}
             QTableWidget::item {{
-                padding: 4px;
+                padding: 1px 4px;
                 border: none;
             }}
             """,
@@ -123,26 +148,18 @@ class AggregateInfoPanel(QGroupBox):
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
 
-        keys = [
-            "Type",
-            "Total Files",
-            "Subjects",
-            "Sessions",
-            "Total Epochs",
-            "Total Events",
-            "Channel",
-            "Sample rate",
-            "tmin (sec)",
-            "duration (sec)",
-            "Highpass",
-            "Lowpass",
-            "Classes",
-        ]
+        self.empty_label = QLabel("No EEG data loaded")
+        self.empty_label.setObjectName("DataSummaryEmpty")
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; padding: 12px 4px;"
+        )
+        main_layout.addWidget(self.empty_label)
 
-        self.table.setRowCount(len(keys))
+        self.table.setRowCount(len(_SUMMARY_KEYS))
         self.row_map = {}
 
-        for i, key in enumerate(keys):
+        for i, key in enumerate(_SUMMARY_KEYS):
             # Key Item
             key_item = QTableWidgetItem(key)
             key_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -163,18 +180,8 @@ class AggregateInfoPanel(QGroupBox):
 
         v_header = self.table.verticalHeader()
         if v_header is not None:
-            v_header.setDefaultSectionSize(INFO_ROW_HEIGHT)
-            v_header.setMinimumSectionSize(INFO_ROW_HEIGHT)
             v_header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-
-        total_height = len(keys) * INFO_ROW_HEIGHT + INFO_TABLE_FRAME_BUFFER
-        self.table.setMinimumHeight(total_height)
-        self.table.setMaximumHeight(total_height)
-
-        # Limit the GroupBox height so it doesn't consume extra space when expanded
-        # Table height + padding for GroupBox title and margins.
-        self.setMinimumHeight(total_height + INFO_GROUP_VERTICAL_BUFFER)
-        self.setMaximumHeight(total_height + INFO_GROUP_VERTICAL_BUFFER)
+        self._refresh_table_metrics()
 
         self.setMinimumWidth(200)
         # Use Expanding to ensure it takes up available space up to MaximumHeight
@@ -186,6 +193,7 @@ class AggregateInfoPanel(QGroupBox):
 
         # Apply GroupBox Style
         self.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        self.reset_labels()
 
     def changeEvent(self, event: QEvent) -> None:  # noqa: N802
         """Keep metric labels readable after font or DPI-related changes."""
@@ -194,18 +202,87 @@ class AggregateInfoPanel(QGroupBox):
             QEvent.Type.FontChange,
             QEvent.Type.ApplicationFontChange,
         } and hasattr(self, "table"):
-            self._refresh_key_column_width()
+            self._refresh_table_metrics()
+            self.presentation_changed.emit()
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        """Respond when the table receives a font change independently."""
+        if watched is getattr(self, "table", None) and event.type() in {
+            QEvent.Type.FontChange,
+            QEvent.Type.ApplicationFontChange,
+        }:
+            self._refresh_table_metrics()
+            self.presentation_changed.emit()
+        return super().eventFilter(watched, event)
+
+    @property
+    def has_data(self) -> bool:
+        """Return whether this presentation currently contains dataset metrics."""
+        return self._has_data
 
     def _refresh_key_column_width(self) -> None:
+        visible_rows = [
+            row
+            for row in range(self.table.rowCount())
+            if not self.table.isRowHidden(row)
+        ]
+        rows = visible_rows or list(range(self.table.rowCount()))
         key_width = max(
             (
                 self.table.fontMetrics().horizontalAdvance(item.text())
-                for row in range(self.table.rowCount())
+                for row in rows
                 if (item := self.table.item(row, 0)) is not None
             ),
             default=0,
         )
         self.table.setColumnWidth(0, key_width + INFO_KEY_COLUMN_PADDING)
+
+    def minimum_readable_table_width(self) -> int:
+        """Return the width needed by the currently visible key/value cells."""
+        metrics = self.table.fontMetrics()
+        visible_rows = [
+            row
+            for row in range(self.table.rowCount())
+            if not self.table.isRowHidden(row)
+        ]
+        if not visible_rows:
+            return 0
+        key_width = max(
+            metrics.horizontalAdvance(item.text())
+            for row in visible_rows
+            if (item := self.table.item(row, 0)) is not None
+        )
+        value_width = max(
+            metrics.horizontalAdvance(item.text())
+            for row in visible_rows
+            if (item := self.table.item(row, 1)) is not None
+        )
+        return (
+            key_width
+            + INFO_KEY_COLUMN_PADDING
+            + value_width
+            + INFO_VALUE_COLUMN_PADDING
+            + INFO_TABLE_HORIZONTAL_BUFFER
+        )
+
+    def _refresh_table_metrics(self) -> None:
+        """Fit rows and key labels to the active font and display scale."""
+        row_height = max(
+            INFO_ROW_MIN_HEIGHT,
+            self.table.fontMetrics().height() + INFO_ROW_VERTICAL_PADDING,
+        )
+        header = self.table.verticalHeader()
+        if header is not None:
+            header.setMinimumSectionSize(row_height)
+            header.setDefaultSectionSize(row_height)
+            for row in range(self.table.rowCount()):
+                header.resizeSection(row, row_height)
+        self._refresh_key_column_width()
+        visible_count = sum(
+            not self.table.isRowHidden(row) for row in range(self.table.rowCount())
+        )
+        if visible_count:
+            self._fit_visible_rows(visible_count)
 
     def update_info(self, loaded_data_list=None, preprocessed_data_list=None):
         """Update displayed metrics from the provided data lists.
@@ -229,58 +306,81 @@ class AggregateInfoPanel(QGroupBox):
             self.reset_labels()
             return
 
-        subject_set = set()
-        session_set = set()
+        subject_set: set[str] = set()
+        session_set: set[str] = set()
         classes_set = set()
 
         total_epochs = 0
         total_events = 0
+        event_count_available = False
 
         first_data = data_list[0]
 
         for data in data_list:
-            subject_set.add(data.get_subject_name())
-            session_set.add(data.get_session_name())
+            subject = self._available_text(data.get_subject_name())
+            session = self._available_text(data.get_session_name())
+            if subject:
+                subject_set.add(subject)
+            if session:
+                session_set.add(session)
             event_summary = self._event_summary_for_render(data)
             classes_set.update(event_summary.get("labels", []))
 
             total_epochs += data.get_epochs_length()
 
             count = event_summary.get("count")
-            if isinstance(count, int):
+            if isinstance(count, int) and count > 0:
                 total_events += count
+                event_count_available = True
 
-        tmin = "None"
-        duration = "None"
+        tmin: str | None = None
+        duration: str | None = None
 
         if not first_data.is_raw():
-            tmin = str(first_data.get_tmin())
+            tmin_value = first_data.get_tmin()
+            if tmin_value is not None:
+                tmin = self._format_measurement(tmin_value, "s")
             try:
                 dur_val = (
                     int(first_data.get_epoch_duration() * 100 / first_data.get_sfreq())
                     / 100
                 )
-                duration = str(dur_val)
+                duration = f"{self._format_number(dur_val)} s"
             except Exception as e:
                 logger.warning("Failed to calc duration: %s", e)
-                duration = "?"
 
         highpass, lowpass = first_data.get_filter_range()
-        text_type = "raw" if first_data.is_raw() else "epochs"
-
-        self.set_val("Type", str(text_type))
-        self.set_val("Total Files", str(len(data_list)))
-        self.set_val("Subjects", str(len(subject_set)))
-        self.set_val("Sessions", str(len(session_set)))
-        self.set_val("Total Epochs", str(total_epochs))
-        self.set_val("Total Events", str(total_events))
-        self.set_val("Channel", str(first_data.get_nchan()))
-        self.set_val("Sample rate", str(first_data.get_sfreq()))
-        self.set_val("tmin (sec)", tmin)
-        self.set_val("duration (sec)", duration)
-        self.set_val("Highpass", f"{highpass:.2f}" if highpass is not None else "N/A")
-        self.set_val("Lowpass", f"{lowpass:.2f}" if lowpass is not None else "N/A")
-        self.set_val("Classes", str(len(classes_set)))
+        is_raw = bool(first_data.is_raw())
+        channels = first_data.get_nchan()
+        sample_rate = first_data.get_sfreq()
+        values: dict[str, str | None] = {
+            "Type": "Continuous EEG" if is_raw else "Epochs",
+            "EEG files": str(len(data_list)),
+            "Subjects": str(len(subject_set)) if subject_set else None,
+            "Sessions": str(len(session_set)) if session_set else None,
+            "EEG epochs": (
+                str(total_epochs) if not is_raw and total_epochs > 0 else None
+            ),
+            "EEG events": str(total_events) if event_count_available else None,
+            "Channels": str(channels) if self._positive_number(channels) else None,
+            "Sampling rate": (
+                self._format_measurement(sample_rate, "Hz")
+                if self._positive_number(sample_rate)
+                else None
+            ),
+            "EEG epoch start": tmin,
+            "EEG epoch duration": duration,
+            "High-pass filter": (
+                self._format_measurement(highpass, "Hz")
+                if highpass is not None
+                else None
+            ),
+            "Low-pass filter": (
+                self._format_measurement(lowpass, "Hz") if lowpass is not None else None
+            ),
+            "Training classes": str(len(classes_set)) if classes_set else None,
+        }
+        self._render_values(values)
 
     @staticmethod
     def _event_summary_for_render(data) -> dict:
@@ -322,10 +422,77 @@ class AggregateInfoPanel(QGroupBox):
             item = self.table.item(row, 1)
             if item:
                 item.setText(value)
+                item.setToolTip(value)
+
+    def _render_values(self, values: dict[str, str | None]) -> None:
+        self.empty_label.setVisible(False)
+        self.table.setVisible(True)
+        visible_count = 0
+        for key in _SUMMARY_KEYS:
+            row = self.row_map[key]
+            value = values.get(key)
+            available = bool(str(value).strip()) if value is not None else False
+            self.table.setRowHidden(row, not available)
+            if not available:
+                continue
+            self.set_val(key, str(value))
+            visible_count += 1
+        self._refresh_key_column_width()
+        self._fit_visible_rows(visible_count)
+        self._has_data = visible_count > 0
+        self.presentation_changed.emit()
+
+    def _fit_visible_rows(self, visible_count: int) -> None:
+        if visible_count <= 0:
+            self.table.setVisible(False)
+            self.empty_label.setVisible(True)
+            self.setMinimumHeight(INFO_EMPTY_HEIGHT)
+            self.setMaximumHeight(INFO_EMPTY_HEIGHT)
+            return
+        row_height = max(
+            INFO_ROW_MIN_HEIGHT,
+            self.table.fontMetrics().height() + INFO_ROW_VERTICAL_PADDING,
+        )
+        total_height = visible_count * row_height + INFO_TABLE_FRAME_BUFFER
+        self.table.setMinimumHeight(total_height)
+        self.table.setMaximumHeight(total_height)
+        group_height = total_height + INFO_GROUP_VERTICAL_BUFFER
+        self.setMinimumHeight(group_height)
+        self.setMaximumHeight(group_height)
+
+    @staticmethod
+    def _available_text(value: object) -> str:
+        text = str(value or "").strip()
+        return "" if text.casefold() in {"", "-", "none", "unknown", "n/a"} else text
+
+    @staticmethod
+    def _positive_number(value: object) -> bool:
+        try:
+            return float(str(value)) > 0
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _format_number(value: object) -> str:
+        try:
+            number = float(str(value))
+        except (TypeError, ValueError):
+            return ""
+        return str(int(number)) if number.is_integer() else f"{number:g}"
+
+    @classmethod
+    def _format_measurement(cls, value: object, unit: str) -> str | None:
+        number = cls._format_number(value)
+        return f"{number} {unit}" if number else None
 
     def reset_labels(self):
-        """Reset all metric values to the default placeholder ``'-'``."""
+        """Hide unavailable metric rows and show one product empty state."""
         for i in range(self.table.rowCount()):
             item = self.table.item(i, 1)
             if item:
-                item.setText("-")
+                item.setText("")
+                item.setToolTip("")
+            self.table.setRowHidden(i, True)
+        self._fit_visible_rows(0)
+        self._has_data = False
+        self.presentation_changed.emit()

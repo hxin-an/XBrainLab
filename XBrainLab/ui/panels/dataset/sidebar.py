@@ -5,10 +5,14 @@ from typing import Any, Protocol, cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QBoxLayout,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QVBoxLayout,
     QWidget,
 )
@@ -37,6 +41,10 @@ from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ChannelSelectionDialog: Any | None = None
+_SIDEBAR_WIDTH = 260
+_COMPACT_VERTICAL_MARGIN = 8
+_DEFAULT_VERTICAL_MARGIN = 20
+_QWIDGETSIZE_MAX = 16777215
 
 
 class _EpochStatePort(Protocol):
@@ -110,7 +118,7 @@ class DatasetSidebar(QWidget):
 
     def init_ui(self):
         """Build sidebar layout: info panel, operation and execution buttons."""
-        self.setFixedWidth(260)
+        self.setFixedWidth(_SIDEBAR_WIDTH)
         self.setObjectName("RightPanel")
         self.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
 
@@ -127,22 +135,34 @@ class DatasetSidebar(QWidget):
         layout.addWidget(self.info_panel)
 
         # Separator
-        layout.addSpacing(10)
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet(Stylesheets.SEPARATOR_HORIZONTAL)
-        line.setFixedHeight(1)
-        layout.addWidget(line)
-        layout.addSpacing(10)
+        self.info_separator_before = QSpacerItem(
+            0,
+            10,
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+        layout.addItem(self.info_separator_before)
+        self.info_separator_line = QFrame()
+        self.info_separator_line.setFrameShape(QFrame.Shape.HLine)
+        self.info_separator_line.setFrameShadow(QFrame.Shadow.Sunken)
+        self.info_separator_line.setStyleSheet(Stylesheets.SEPARATOR_HORIZONTAL)
+        self.info_separator_line.setFixedHeight(1)
+        layout.addWidget(self.info_separator_line)
+        self.info_separator_after = QSpacerItem(
+            0,
+            10,
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+        layout.addItem(self.info_separator_after)
 
         # 2. Import Group
-        ops_group = QGroupBox("IMPORT")
-        ops_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        ops_group.setMinimumHeight(Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT)
-        ops_layout = QVBoxLayout(ops_group)
-        ops_layout.setContentsMargins(0, 10, 0, 0)
-        ops_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.ops_group = QGroupBox("IMPORT")
+        self.ops_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        self.ops_group.setMinimumHeight(Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT)
+        self.ops_layout = QGridLayout(self.ops_group)
+        self.ops_layout.setContentsMargins(0, 10, 0, 0)
+        self.ops_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.import_btn = QPushButton("Import file")
         self.import_btn.setToolTip(
@@ -150,7 +170,7 @@ class DatasetSidebar(QWidget):
         )
         self.import_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
-        ops_layout.addWidget(self.import_btn)
+        self.ops_layout.addWidget(self.import_btn, 0, 0)
 
         self.import_folder_btn = QPushButton("Import folder")
         self.import_folder_btn.setToolTip(
@@ -160,7 +180,7 @@ class DatasetSidebar(QWidget):
         self.import_folder_btn.clicked.connect(
             self.panel.action_handler.import_folder_source,
         )
-        ops_layout.addWidget(self.import_folder_btn)
+        self.ops_layout.addWidget(self.import_folder_btn, 1, 0)
 
         self.import_bids_btn = QPushButton("Import BIDS folder")
         self.import_bids_btn.setToolTip(
@@ -170,7 +190,7 @@ class DatasetSidebar(QWidget):
         self.import_bids_btn.clicked.connect(
             self.panel.action_handler.import_bids_source,
         )
-        ops_layout.addWidget(self.import_bids_btn)
+        self.ops_layout.addWidget(self.import_bids_btn, 2, 0)
 
         self.reload_recipe_btn = QPushButton("Reload Import Recipe")
         self.reload_recipe_btn.setToolTip(
@@ -180,9 +200,9 @@ class DatasetSidebar(QWidget):
         self.reload_recipe_btn.clicked.connect(
             self.panel.action_handler.reload_interpretation_recipe,
         )
-        ops_layout.addWidget(self.reload_recipe_btn)
+        self.ops_layout.addWidget(self.reload_recipe_btn, 3, 0)
 
-        self.smart_parse_btn = QPushButton("Smart Parse Metadata", ops_group)
+        self.smart_parse_btn = QPushButton("Smart Parse Metadata", self.ops_group)
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
         self.smart_parse_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.smart_parse_btn.clicked.connect(
@@ -190,39 +210,134 @@ class DatasetSidebar(QWidget):
         )
         self.smart_parse_btn.setVisible(False)
 
-        layout.addWidget(ops_group)
+        self._import_buttons = (
+            self.import_btn,
+            self.import_folder_btn,
+            self.import_bids_btn,
+            self.reload_recipe_btn,
+        )
+        layout.addWidget(self.ops_group)
         layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
         # 3. Dataset Group
         exec_group = QGroupBox("DATASET")
         exec_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        exec_layout = QVBoxLayout(exec_group)
-        exec_layout.setContentsMargins(0, 10, 0, 0)
-        exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.exec_layout = QVBoxLayout(exec_group)
+        self.exec_layout.setContentsMargins(0, 10, 0, 0)
+        self.exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.import_label_btn = QPushButton("Add labels")
         self.import_label_btn.setToolTip("Attach labels to the loaded EEG data")
         self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
         self.import_label_btn.setVisible(False)
-        exec_layout.addWidget(self.import_label_btn)
+        self.exec_layout.addWidget(self.import_label_btn)
 
         self.chan_select_btn = QPushButton("Channel Selection")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
         self.chan_select_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
-        exec_layout.addWidget(self.chan_select_btn)
+        self.exec_layout.addWidget(self.chan_select_btn)
 
         self.clear_btn = QPushButton("Reset Session")
         self.clear_btn.setStyleSheet(Stylesheets.BTN_DANGER)
         self.clear_btn.setToolTip("No active session to reset.")
         self.clear_btn.clicked.connect(self.clear_dataset)
-        exec_layout.addWidget(self.clear_btn)
+        self.exec_layout.addWidget(self.clear_btn)
 
         layout.addWidget(exec_group)
 
         layout.addStretch()
         self._apply_startup_bootstrap_state()
+
+    def set_compact_mode(self, compact: bool) -> None:
+        """Reflow actions when the Dataset panel is stacked below a dock."""
+        if compact:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(_QWIDGETSIZE_MAX)
+            self.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Preferred,
+            )
+            self.scroll_area.content_layout.setContentsMargins(
+                10,
+                _COMPACT_VERTICAL_MARGIN,
+                10,
+                _COMPACT_VERTICAL_MARGIN,
+            )
+            self.ops_group.setMinimumHeight(0)
+            import_columns = 2
+            direction = QBoxLayout.Direction.LeftToRight
+        else:
+            self.setFixedWidth(_SIDEBAR_WIDTH)
+            self.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Expanding,
+            )
+            self.scroll_area.content_layout.setContentsMargins(
+                10,
+                _DEFAULT_VERTICAL_MARGIN,
+                10,
+                _DEFAULT_VERTICAL_MARGIN,
+            )
+            self.ops_group.setMinimumHeight(
+                Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT
+            )
+            import_columns = 1
+            direction = QBoxLayout.Direction.TopToBottom
+        available_wide_button_width = _SIDEBAR_WIDTH - 20
+        use_short_copy = compact or (
+            self.fontMetrics().horizontalAdvance("Reload Import Recipe") + 32
+            > available_wide_button_width
+        )
+        self.import_bids_btn.setText(
+            "Import BIDS" if use_short_copy else "Import BIDS folder"
+        )
+        self.reload_recipe_btn.setText(
+            "Reload Recipe" if use_short_copy else "Reload Import Recipe"
+        )
+        self.chan_select_btn.setText(
+            "Select Channels" if use_short_copy else "Channel Selection"
+        )
+        for button in self._import_buttons:
+            self.ops_layout.removeWidget(button)
+        for index, button in enumerate(self._import_buttons):
+            self.ops_layout.addWidget(
+                button,
+                index // import_columns,
+                index % import_columns,
+            )
+        for column in range(2):
+            self.ops_layout.setColumnStretch(
+                column,
+                1 if column < import_columns else 0,
+            )
+        if self.exec_layout.direction() != direction:
+            self.exec_layout.setDirection(direction)
+        self.ops_layout.invalidate()
+        self.exec_layout.invalidate()
+        self.scroll_area.content_layout.invalidate()
+        self.updateGeometry()
+
+    def set_summary_visible(self, visible: bool) -> None:
+        """Keep the summary separator tied to the summary it introduces."""
+        self.info_panel.setVisible(visible)
+        spacer_height = 10 if visible else 0
+        self.info_separator_before.changeSize(
+            0,
+            spacer_height,
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.info_separator_after.changeSize(
+            0,
+            spacer_height,
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.info_separator_line.setVisible(visible)
+        self.scroll_area.content_layout.invalidate()
+        self.updateGeometry()
 
     def _apply_startup_bootstrap_state(self) -> None:
         """Present the known empty-workspace actions before command runtime startup."""

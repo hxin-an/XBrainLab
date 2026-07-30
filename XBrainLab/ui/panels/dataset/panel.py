@@ -8,15 +8,20 @@ from PyQt6.QtCore import QModelIndex, Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QBoxLayout,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
+    QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -41,8 +46,10 @@ from XBrainLab.ui.application_capabilities import (
     local_result_payload,
     run_controller_compatibility_call,
 )
+from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.status import show_status_message
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 from XBrainLab.ui.table_sizing import scaled_column_widths
 
@@ -90,10 +97,11 @@ class DatasetPanel(BasePanel):
 
     _TABLE_BASE_WIDTHS: tuple[int, ...] = (240, 84, 112, 56, 64, 74, 112)
     _TABLE_MIN_WIDTH = 48
-    _COMPACT_TABLE_WIDTH = 336
+    _COMPACT_TABLE_WIDTH = 620
     _FILE_ONLY_TABLE_WIDTH = 240
     _COMPACT_COLUMNS = (0, 3, 6)
     _ROW_IDENTITY_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+    _SUMMARY_TAB_BREAKPOINT = 760
 
     def __init__(self, controller=None, parent=None):
         """Initialize the dataset panel.
@@ -118,6 +126,7 @@ class DatasetPanel(BasePanel):
         # 3. Helpers
         self.action_handler = DatasetActionHandler(self)
         self._table_fit_pending = False
+        self._summary_layout_refresh_pending = False
         self._table_publication_generation: int | None = None
         self._table_metadata_capability = None
         self._metadata_edit_selections: dict[int, DatasetTableSelection] = {}
@@ -139,9 +148,59 @@ class DatasetPanel(BasePanel):
     def init_ui(self):
         """Build the panel layout with a file table and sidebar."""
         # Main Layout: Horizontal Split (Table | Info & Controls)
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        self.content_column = QWidget()
+        content_layout = QVBoxLayout(self.content_column)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
+        self.post_import_action_bar = QFrame()
+        self.post_import_action_bar.setObjectName("DatasetPostImportAction")
+        self.post_import_action_bar.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+        self.post_import_layout = QHBoxLayout(self.post_import_action_bar)
+        self.post_import_layout.setContentsMargins(12, 8, 12, 8)
+        self.post_import_layout.setSpacing(10)
+        self.post_import_action_label = QLabel("Import complete")
+        self.post_import_action_label.setObjectName("DatasetPostImportLabel")
+        self.post_import_action_label.setWordWrap(True)
+        self.post_import_action_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+        self.post_import_layout.addWidget(self.post_import_action_label)
+        self.post_import_action_button = QPushButton()
+        self.post_import_action_button.setObjectName("DatasetPostImportButton")
+        self.post_import_action_button.setStyleSheet(Stylesheets.BTN_PRIMARY)
+        self.post_import_action_button.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.post_import_action_button.clicked.connect(
+            self._open_post_import_destination
+        )
+        self.post_import_layout.addWidget(self.post_import_action_button)
+        self.post_import_action_bar.setStyleSheet(
+            f"""
+            QFrame#DatasetPostImportAction {{
+                background-color: {Theme.BACKGROUND_MID};
+                border-bottom: 1px solid {Theme.BORDER};
+            }}
+            QLabel#DatasetPostImportLabel {{
+                color: {Theme.TEXT_PRIMARY};
+                font-weight: 600;
+            }}
+            """
+        )
+        self.post_import_action_bar.hide()
+        self._post_import_action_requested = False
+        self._post_import_target_index: int | None = None
+        content_layout.addWidget(self.post_import_action_bar)
 
         # --- Left Side: File List Table ---
         self.table = QTableWidget()
@@ -201,19 +260,191 @@ class DatasetPanel(BasePanel):
         self.data_surface.addWidget(self.table)
         self.data_surface.addWidget(self.empty_state)
         self.data_surface.setCurrentWidget(self.empty_state)
-        main_layout.addWidget(self.data_surface, stretch=2)
+
+        self.content_tabs = QTabWidget()
+        self.content_tabs.setObjectName("DatasetContentTabs")
+        self.content_tabs.setStyleSheet(Stylesheets.TAB_WIDGET_CLEAN)
+        self.content_tabs.addTab(self.data_surface, "EEG Files")
+        self.summary_page = SidebarScrollArea()
+        self.summary_page.setObjectName("DatasetDataSummaryPage")
+        self.summary_layout = self.summary_page.content_layout
+        self.summary_layout.setContentsMargins(16, 16, 16, 16)
+        self.summary_layout.setSpacing(0)
+        self.summary_info_panel = AggregateInfoPanel(self.main_window)
+        self.summary_layout.addWidget(
+            self.summary_info_panel,
+            alignment=Qt.AlignmentFlag.AlignTop,
+        )
+        self.summary_layout.addStretch()
+        self.content_tabs.addTab(self.summary_page, "Data Summary")
+        content_layout.addWidget(self.content_tabs, stretch=1)
+        self.main_layout.addWidget(self.content_column, stretch=2)
 
         # --- Right Side: Sidebar ---
         self.sidebar = DatasetSidebar(self, self)
-        main_layout.addWidget(self.sidebar, stretch=0)
+        self.main_layout.addWidget(self.sidebar, stretch=0)
+        self.summary_info_panel.presentation_changed.connect(
+            self._schedule_responsive_summary_layout,
+        )
+        self.sidebar.info_panel.presentation_changed.connect(
+            self._schedule_responsive_summary_layout,
+        )
+        self._update_responsive_summary_layout()
         self._fit_table_columns_to_viewport()
         self._schedule_table_column_fit()
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
         if hasattr(self, "table"):
+            self._update_responsive_summary_layout()
+            self._update_post_import_action_layout()
             self._fit_table_columns_to_viewport()
             self._schedule_table_column_fit()
+
+    def _update_responsive_summary_layout(self) -> None:
+        """Move aggregate details out of the action rail when content is narrow."""
+        if not hasattr(self, "content_tabs") or not hasattr(self, "sidebar"):
+            return
+        compact = self.width() < self._SUMMARY_TAB_BREAKPOINT
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if compact
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if self.main_layout.direction() != direction:
+            self.main_layout.setDirection(direction)
+        self.main_layout.setStretch(0, 1 if compact else 2)
+        self.main_layout.setStretch(1, 0)
+        self.sidebar.set_compact_mode(compact)
+        margin = 10 if compact else 16
+        self.summary_layout.setContentsMargins(margin, margin, margin, margin)
+        sidebar_table_width = max(
+            self.sidebar.width()
+            - self.sidebar.scroll_area.content_layout.contentsMargins().left()
+            - self.sidebar.scroll_area.content_layout.contentsMargins().right()
+            - 2,
+            0,
+        )
+        has_summary = (
+            self.sidebar.info_panel.has_data or self.summary_info_panel.has_data
+        )
+        summary_in_tabs = has_summary and (
+            compact
+            or self.sidebar.info_panel.minimum_readable_table_width()
+            > sidebar_table_width
+        )
+        self.content_tabs.setTabVisible(1, has_summary)
+        tab_bar = self.content_tabs.tabBar()
+        if tab_bar is not None:
+            tab_bar.setVisible(summary_in_tabs)
+        self.sidebar.set_summary_visible(has_summary and not summary_in_tabs)
+        if (not summary_in_tabs or not has_summary) and (
+            self.content_tabs.currentIndex() != 0
+        ):
+            self.content_tabs.setCurrentIndex(0)
+        self.main_layout.invalidate()
+
+    def _schedule_responsive_summary_layout(self) -> None:
+        """Reflow after summary content or font metrics change."""
+        if self._summary_layout_refresh_pending:
+            return
+        self._summary_layout_refresh_pending = True
+        QTimer.singleShot(0, self._run_responsive_summary_layout)
+
+    def _run_responsive_summary_layout(self) -> None:
+        self._summary_layout_refresh_pending = False
+        self._update_responsive_summary_layout()
+        self._fit_table_columns_to_viewport()
+
+    def show_post_import_next_action(self) -> None:
+        """Expose one workflow action after a successful reviewed import."""
+        self._post_import_action_requested = True
+        publication = get_application_view_publication(self)
+        self._sync_post_import_action(publication)
+
+    def _sync_post_import_action(self, publication) -> None:
+        """Keep the offered destination aligned with the current publication."""
+        if not self._post_import_action_requested:
+            return
+        if publication is None or not publication.usable:
+            self._clear_post_import_action()
+            return
+        active = publication.state.active_dataset
+        if active.has_epoch_data or active.has_datasets:
+            button_text, target_index = "Configure Training", 2
+        elif active.has_preprocessed_data:
+            button_text, target_index = "Create EEG epochs", 1
+        elif active.has_raw_data:
+            button_text, target_index = "Continue to Preprocess", 1
+        else:
+            self._clear_post_import_action()
+            return
+        self._post_import_target_index = target_index
+        self.post_import_action_button.setText(button_text)
+        self.post_import_action_bar.show()
+        self._update_post_import_action_layout()
+
+    def _open_post_import_destination(self) -> None:
+        target = self._post_import_target_index
+        self._clear_post_import_action()
+        switch_page = getattr(self.main_window, "switch_page", None)
+        if target is not None and callable(switch_page):
+            switch_page(target)
+
+    def _clear_post_import_action(self) -> None:
+        """Clear an offer that no longer belongs to the visible workflow state."""
+        self.post_import_action_bar.hide()
+        self._post_import_action_requested = False
+        self._post_import_target_index = None
+
+    def _update_post_import_action_layout(self) -> None:
+        """Stack the next action when the dataset content column is narrow."""
+        if not hasattr(self, "post_import_layout"):
+            return
+        available_width = self.post_import_action_bar.width()
+        if self.width() > 0:
+            available_width = min(available_width, self.width())
+        if available_width <= 0 and hasattr(self, "content_column"):
+            available_width = self.content_column.width()
+        self.post_import_action_label.setText(
+            "Imported"
+            if self.width() < self._SUMMARY_TAB_BREAKPOINT
+            else "Import complete"
+        )
+        margins = self.post_import_layout.contentsMargins()
+        inline_width = (
+            margins.left()
+            + margins.right()
+            + self.post_import_layout.spacing()
+            + self.post_import_action_label.sizeHint().width()
+            + self.post_import_action_button.sizeHint().width()
+        )
+        stacked = available_width < inline_width
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if stacked
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if self.post_import_layout.direction() != direction:
+            self.post_import_layout.setDirection(direction)
+        self.post_import_layout.setStretch(0, 0 if stacked else 1)
+        self.post_import_layout.setStretch(1, 0)
+        self.post_import_layout.setAlignment(
+            self.post_import_action_label,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+        )
+        button_alignment = (
+            Qt.AlignmentFlag.AlignLeft
+            if stacked
+            else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.post_import_layout.setAlignment(
+            self.post_import_action_button,
+            button_alignment,
+        )
+        self.post_import_layout.invalidate()
+        self.post_import_layout.activate()
+        self.post_import_action_bar.updateGeometry()
 
     def _schedule_table_column_fit(self) -> None:
         """Refit once Qt has settled row headers and scrollbars."""
@@ -230,11 +461,24 @@ class DatasetPanel(BasePanel):
 
     def _fit_table_columns_to_viewport(self) -> None:
         """Use the full table panel while keeping columns manually resizable."""
+        self._update_responsive_summary_layout()
+        panel_layout = self.layout()
+        if panel_layout is not None:
+            panel_layout.invalidate()
+            panel_layout.activate()
+        content_layout = self.content_column.layout()
+        if content_layout is not None:
+            content_layout.invalidate()
+            content_layout.activate()
+        if self.data_surface.width() != self.content_tabs.contentsRect().width():
+            self.data_surface.resize(
+                self.content_tabs.contentsRect().width(),
+                self.data_surface.height(),
+            )
         for _ in range(3):
-            if self.data_surface.currentWidget() is not self.table:
-                surface_size = self.data_surface.contentsRect().size()
-                if surface_size.isValid():
-                    self.table.resize(surface_size)
+            surface_size = self.data_surface.contentsRect().size()
+            if surface_size.isValid():
+                self.table.resize(surface_size)
             self.table.updateGeometries()
             viewport = self.table.viewport()
             if viewport is None:
@@ -327,6 +571,7 @@ class DatasetPanel(BasePanel):
             self.sidebar.update_sidebar()
 
         if is_application_runtime_deferred(self):
+            self._clear_post_import_action()
             self._clear_table_render_identity()
             self.table.clearContents()
             self.table.setRowCount(0)
@@ -342,6 +587,7 @@ class DatasetPanel(BasePanel):
         self.table.setRowCount(0)
 
         publication = get_application_view_publication(self)
+        self._sync_post_import_action(publication)
         render_generation = (
             int(publication.generation) if publication is not None else None
         )

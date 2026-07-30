@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image, ImageDraw
@@ -1488,6 +1488,22 @@ def test_aggregate_info_readability_gate_rejects_collapsed_key_column(qtbot) -> 
     cast(Any, evaluation_panel).info_panel = info_panel
     layout.addWidget(info_panel)
     qtbot.addWidget(evaluation_panel)
+    data = MagicMock()
+    data.get_subject_name.return_value = "S01"
+    data.get_session_name.return_value = "session-01"
+    data.get_epochs_length.return_value = 120
+    data.is_raw.return_value = False
+    data.get_tmin.return_value = -0.2
+    data.get_epoch_duration.return_value = 250
+    data.get_nchan.return_value = 64
+    data.get_sfreq.return_value = 250
+    data.get_filter_range.return_value = (0.5, 40)
+    data.get_event_summary.return_value = {
+        "available": True,
+        "count": 120,
+        "labels": ["left", "right"],
+    }
+    info_panel.update_info(preprocessed_data_list=[data])
     evaluation_panel.resize(260, 380)
     evaluation_panel.show()
     qtbot.wait(0)
@@ -1497,7 +1513,7 @@ def test_aggregate_info_readability_gate_rejects_collapsed_key_column(qtbot) -> 
 
     assert evidence["visible"] is True
     assert evidence["fully_readable"] is False
-    assert "duration (sec)" in evidence["clipped_labels"]
+    assert "EEG epoch duration" in evidence["clipped_labels"]
 
 
 def test_assistant_dock_contract_rejects_overflow_in_any_assistant_phase() -> None:
@@ -3151,7 +3167,9 @@ def test_text_paint_guard_validates_icon_only_controls_by_icon_and_accessible_na
     button.setText("Send")
     button.setAccessibleName("Send")
     button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-    button.setIcon(root.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward))
+    style = root.style()
+    assert style is not None
+    button.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward))
     button.setGeometry(30, 20, 38, 38)
     root.show()
     qtbot.wait(20)
