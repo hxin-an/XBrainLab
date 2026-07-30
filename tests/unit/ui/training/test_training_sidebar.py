@@ -846,6 +846,48 @@ def test_check_ready_to_train_rejects_enabled_capability_from_unusable_publicati
     assert "state is unavailable" in sidebar.readiness_blocker.text()
 
 
+def test_check_ready_to_train_rejects_malformed_product_capability(sidebar):
+    publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            active_dataset=SimpleNamespace(
+                has_raw_data=True,
+                has_preprocessed_data=True,
+                has_epoch_data=True,
+                has_datasets=True,
+            ),
+            active_training=SimpleNamespace(
+                has_model=True,
+                has_training_option=True,
+            ),
+        ),
+        effective_capabilities={CommandName.TRAIN: object()},
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
+            return_value=True,
+        ),
+        patch.object(
+            sidebar,
+            "_compatibility_controller_value",
+            side_effect=AssertionError(
+                "malformed product publication must fail closed",
+            ),
+        ),
+    ):
+        sidebar.check_ready_to_train()
+
+    assert not sidebar.btn_start.isEnabled()
+    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
+    assert "state is unavailable" in sidebar.readiness_blocker.text()
+
+
 def test_on_training_stopped(sidebar):
     sidebar.on_training_stopped()
     # Button should revert to "Start Training" (primary color)

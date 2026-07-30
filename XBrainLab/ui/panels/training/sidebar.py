@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.application import (
     ClearTrainingHistoryCommand,
+    CommandCapability,
     CommandName,
     ConfigureTrainingCommand,
     DatasetGenerationMode,
@@ -273,22 +274,23 @@ class TrainingSidebar(QWidget):
         """Check if all configurations are set and enable/disable start button."""
         publication = get_application_view_publication(self)
         real_application_context = has_real_application_context(self)
+        train_capability: CommandCapability | None = None
         if publication is not None and bool(getattr(publication, "usable", False)):
             capabilities = getattr(publication, "effective_capabilities", {})
             capability_lookup = getattr(capabilities, "get", None)
-            train_capability = (
+            candidate: object | None = (
                 capability_lookup(CommandName.TRAIN)
                 if callable(capability_lookup)
                 else None
             )
-        elif real_application_context:
-            train_capability = None
-        else:
+            if isinstance(candidate, CommandCapability):
+                train_capability = candidate
+        elif not real_application_context:
             train_capability = get_command_capability(self, CommandName.TRAIN)
         if train_capability is None and real_application_context:
             self.btn_start.setEnabled(False)
             self.btn_start.setToolTip("Training state is unavailable right now.")
-            self._update_readiness_presentation(publication, train_capability)
+            self._update_readiness_presentation(None, None)
             return
         if train_capability is None:
             available, ready_value = self._compatibility_controller_value(
