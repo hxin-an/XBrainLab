@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.application.resource_guard import ResourceChecker
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 
@@ -91,6 +92,21 @@ def _make_config(**overrides):
     for k, v in defaults.items():
         setattr(cfg, k, v)
     return cfg
+
+
+def _safe_gpu_status(gpu_index: int | None = None) -> dict[str, object]:
+    return {
+        "gpu_name": "Test GPU",
+        "available_bytes": 20_000_000_000,
+        "total_bytes": 24_000_000_000,
+        "used_bytes": 4_000_000_000,
+        "allocated_bytes": 0,
+        "reserved_bytes": 0,
+        "gpu_index": 0 if gpu_index is None else gpu_index,
+        "device_count": 1,
+        "reason": None,
+        "query_error_type": None,
+    }
 
 
 class TestLocalBackendInit:
@@ -324,20 +340,27 @@ class TestLocalBackendLoad:
         mock_quantization_config = object()
         mock_bnb_config = MagicMock(return_value=mock_quantization_config)
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "torch": mock_torch,
-                "transformers": MagicMock(
-                    BitsAndBytesConfig=mock_bnb_config,
-                    AutoTokenizer=MagicMock(
-                        from_pretrained=MagicMock(return_value=mock_tokenizer)
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "torch": mock_torch,
+                    "transformers": MagicMock(
+                        BitsAndBytesConfig=mock_bnb_config,
+                        AutoTokenizer=MagicMock(
+                            from_pretrained=MagicMock(return_value=mock_tokenizer)
+                        ),
+                        AutoModelForCausalLM=MagicMock(
+                            from_pretrained=MagicMock(return_value=mock_model)
+                        ),
                     ),
-                    AutoModelForCausalLM=MagicMock(
-                        from_pretrained=MagicMock(return_value=mock_model)
-                    ),
-                ),
-            },
+                },
+            ),
+            patch.object(
+                ResourceChecker,
+                "get_gpu_vram_status",
+                side_effect=_safe_gpu_status,
+            ),
         ):
             backend.load()
 
@@ -363,16 +386,23 @@ class TestLocalBackendLoad:
         mock_model = MagicMock()
         mock_model_cls = MagicMock(from_pretrained=MagicMock(return_value=mock_model))
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "torch": mock_torch,
-                "transformers": MagicMock(
-                    BitsAndBytesConfig=MagicMock(),
-                    AutoTokenizer=mock_tokenizer_cls,
-                    AutoModelForCausalLM=mock_model_cls,
-                ),
-            },
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "torch": mock_torch,
+                    "transformers": MagicMock(
+                        BitsAndBytesConfig=MagicMock(),
+                        AutoTokenizer=mock_tokenizer_cls,
+                        AutoModelForCausalLM=mock_model_cls,
+                    ),
+                },
+            ),
+            patch.object(
+                ResourceChecker,
+                "get_gpu_vram_status",
+                side_effect=_safe_gpu_status,
+            ),
         ):
             backend.load()
 

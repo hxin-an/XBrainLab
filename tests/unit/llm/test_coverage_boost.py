@@ -722,18 +722,36 @@ class TestLocalBackendExtra:
         mock_bnb_config = MagicMock(return_value=object())
         mock_mdl = MagicMock(from_pretrained=MagicMock(return_value=MagicMock()))
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "torch": mock_torch,
-                "transformers": MagicMock(
-                    BitsAndBytesConfig=mock_bnb_config,
-                    AutoTokenizer=MagicMock(
-                        from_pretrained=MagicMock(return_value=MagicMock())
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "torch": mock_torch,
+                    "transformers": MagicMock(
+                        BitsAndBytesConfig=mock_bnb_config,
+                        AutoTokenizer=MagicMock(
+                            from_pretrained=MagicMock(return_value=MagicMock())
+                        ),
+                        AutoModelForCausalLM=mock_mdl,
                     ),
-                    AutoModelForCausalLM=mock_mdl,
-                ),
-            },
+                },
+            ),
+            patch(
+                "XBrainLab.backend.application.resource_guard."
+                "ResourceChecker.get_gpu_vram_status",
+                return_value={
+                    "gpu_name": "Test GPU",
+                    "available_bytes": 20_000_000_000,
+                    "total_bytes": 24_000_000_000,
+                    "used_bytes": 4_000_000_000,
+                    "allocated_bytes": 0,
+                    "reserved_bytes": 0,
+                    "gpu_index": 0,
+                    "device_count": 1,
+                    "reason": None,
+                    "query_error_type": None,
+                },
+            ),
         ):
             b.load()
         mock_bnb_config.assert_called_once_with(load_in_4bit=True)

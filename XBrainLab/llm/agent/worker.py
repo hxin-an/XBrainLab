@@ -11,7 +11,12 @@ from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.runtime_process import LocalRuntimeProcessOwner as LLMEngine
+from XBrainLab.llm.core.runtime_process import (
+    LocalRuntimeLoadError,
+)
+from XBrainLab.llm.core.runtime_process import (
+    LocalRuntimeProcessOwner as LLMEngine,
+)
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
 from XBrainLab.llm.tools.result_contract import (
     SAFE_UNEXPECTED_FAILURE_MESSAGE,
@@ -41,6 +46,19 @@ LIVE_GENERATION_SETTING_FIELDS = (
     "top_p",
     "max_new_tokens",
 )
+
+
+def _runtime_load_failure_message(error: Exception) -> str:
+    """Keep expected recoverable load guidance while redacting unknown failures."""
+    if isinstance(error, LocalRuntimeLoadError) and error.recoverable:
+        logger.warning("Local runtime load stopped with a recoverable error.")
+        return redact_public_text(str(error))
+    return safe_unexpected_failure(
+        logger,
+        error,
+        boundary="assistant_worker",
+        operation="initialize_agent",
+    ).message
 
 
 class AssistantGenerationAdmissionError(RuntimeError):
@@ -256,12 +274,7 @@ class AgentWorker(QObject):
             )
             logger.info("Local Agent initialized successfully")
         except Exception as exc:
-            failure = safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="assistant_worker",
-                operation="initialize_agent",
-            )
+            failure_message = _runtime_load_failure_message(exc)
             close = getattr(candidate_engine, "close", None)
             if callable(close):
                 with contextlib.suppress(Exception):
@@ -269,10 +282,10 @@ class AgentWorker(QObject):
             self.engine = None
             self._publish_runtime(
                 AssistantRuntimePhase.FAILED,
-                error=failure.message,
+                error=failure_message,
                 activation_id=activation_id,
             )
-            self.error.emit(f"Model Load Error: {failure.message}")
+            self.error.emit(f"Model Load Error: {failure_message}")
 
     def _start_runtime_load(self, engine: LLMEngine) -> None:
         """Track one asynchronous process load while retaining close ownership."""
@@ -325,20 +338,15 @@ class AgentWorker(QObject):
             if isinstance(error_payload, Exception)
             else RuntimeError("Local model process failed to load.")
         )
-        failure = safe_unexpected_failure(
-            logger,
-            error,
-            boundary="assistant_worker",
-            operation="initialize_agent",
-        )
+        failure_message = _runtime_load_failure_message(error)
         self._close_engine(thread_payload.engine)
         self.engine = None
         self._publish_runtime(
             AssistantRuntimePhase.FAILED,
-            error=failure.message,
+            error=failure_message,
             activation_id=self._runtime_activation_id,
         )
-        self.error.emit(f"Model Load Error: {failure.message}")
+        self.error.emit(f"Model Load Error: {failure_message}")
 
     def _release_runtime_load_thread(self, thread: RuntimeLoadThread) -> None:
         ACTIVE_RUNTIME_LOAD_THREADS.discard(thread)

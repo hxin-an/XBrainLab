@@ -19,6 +19,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantResponseContract,
 )
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.runtime_process import LocalRuntimeLoadError
 from XBrainLab.llm.core.runtime_selection import (
     AssistantRuntimeLaunchResolver,
     AssistantRuntimeLaunchSpec,
@@ -249,6 +250,34 @@ class TestInitializeAgent:
 
         assert worker.engine is working_engine
         working_engine.load_model.assert_called_once()
+
+    def test_recoverable_model_oom_publishes_retryable_runtime_failure(self, worker):
+        spec = _launch_spec()
+        failed_engine = MagicMock()
+        failed_engine.load_model.side_effect = LocalRuntimeLoadError(
+            "Local model loading ran out of GPU memory. Close other GPU "
+            "applications and retry.",
+            error_code="precondition",
+            recoverable=True,
+        )
+        working_engine = MagicMock()
+        with patch(
+            "XBrainLab.llm.agent.worker.LLMEngine",
+            side_effect=[failed_engine, working_engine],
+        ):
+            worker.initialize_agent(spec)
+            failed_snapshot = worker.runtime_snapshot_changed.emit.call_args.args[0]
+
+            worker.initialize_agent(spec)
+
+        assert failed_snapshot.phase is AssistantRuntimePhase.FAILED
+        assert failed_snapshot.initialized is False
+        assert "GPU memory" in failed_snapshot.error
+        assert "retry" in failed_snapshot.error.lower()
+        failed_engine.close.assert_called_once()
+        working_engine.load_model.assert_called_once()
+        ready_snapshot = worker.runtime_snapshot_changed.emit.call_args.args[0]
+        assert ready_snapshot.phase is AssistantRuntimePhase.READY
 
 
 class TestGenerateFromMessages:

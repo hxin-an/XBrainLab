@@ -8,9 +8,11 @@ from collections.abc import Iterator
 
 import pytest
 
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.core.runtime_process import (
+    LocalRuntimeLoadError,
     LocalRuntimeProcessOwner,
     LocalRuntimeRestartRequiredError,
     LocalRuntimeTurnBusyError,
@@ -82,6 +84,15 @@ class _StubbornEngine(_CooperativeEngine):
 class _StubbornLoadEngine(_FiniteEngine):
     def load_model(self) -> None:
         time.sleep(10)
+
+
+class _RecoverableLoadFailureEngine(_FiniteEngine):
+    def load_model(self) -> None:
+        raise PreconditionError(
+            "Local model loading ran out of GPU memory. Close other GPU "
+            "applications and retry.",
+            diagnostics={"code": "local_model_load_cuda_oom"},
+        )
 
 
 def _config() -> LLMConfig:
@@ -242,6 +253,24 @@ def test_clean_generation_and_close_do_not_require_restart() -> None:
     assert owner.restart_required is False
 
 
+def test_recoverable_load_failure_crosses_process_boundary_without_traceback() -> None:
+    owner = LocalRuntimeProcessOwner(
+        _config(),
+        engine_factory=_RecoverableLoadFailureEngine,
+        startup_timeout=3.0,
+    )
+
+    with pytest.raises(LocalRuntimeLoadError) as raised:
+        owner.load_model()
+
+    assert raised.value.recoverable is True
+    assert raised.value.error_code == "precondition"
+    assert "GPU memory" in str(raised.value)
+    assert owner.is_alive is False
+    assert owner.restart_required is True
+    assert owner.close(wait_timeout=0.2) is True
+
+
 def test_close_during_model_load_terminates_owned_process_within_bound() -> None:
     owner = LocalRuntimeProcessOwner(
         _config(),
@@ -271,5 +300,6 @@ def test_close_during_model_load_terminates_owned_process_within_bound() -> None
     assert owned_pid is not None
     assert owner.last_terminated_pid == owned_pid
     assert owner.is_alive is False
+    assert owner.restart_required is False
     assert load_thread.is_alive() is False
     assert len(load_errors) == 1

@@ -56,7 +56,6 @@ class AssistantRuntimeSettingsSnapshot:
     load_in_4bit: bool
     cache_dir: str
     local_model_enabled: bool
-    local_runtime_notice_acknowledged: bool
 
     @classmethod
     def from_config(cls, config: LLMConfig) -> AssistantRuntimeSettingsSnapshot:
@@ -71,9 +70,6 @@ class AssistantRuntimeSettingsSnapshot:
             load_in_4bit=bool(config.load_in_4bit),
             cache_dir=str(config.cache_dir),
             local_model_enabled=bool(config.local_model_enabled),
-            local_runtime_notice_acknowledged=bool(
-                config.local_runtime_notice_acknowledged
-            ),
         )
 
     def build_config(self, model_id: str) -> LLMConfig:
@@ -91,7 +87,6 @@ class AssistantRuntimeSettingsSnapshot:
             inference_mode=AssistantRuntimeBackend.LOCAL.value,
             active_mode=AssistantRuntimeBackend.LOCAL.value,
             local_model_enabled=self.local_model_enabled,
-            local_runtime_notice_acknowledged=(self.local_runtime_notice_acknowledged),
         )
 
 

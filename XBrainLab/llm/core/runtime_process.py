@@ -10,9 +10,11 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from XBrainLab.backend.application.errors import ApplicationError
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.generation import GenerationProfile
+from XBrainLab.llm.tools.result_contract import redact_public_text
 
 DEFAULT_PROCESS_STARTUP_TIMEOUT_SECONDS = 180.0
 DEFAULT_PROCESS_TERMINATION_TIMEOUT_SECONDS = 0.25
@@ -26,6 +28,21 @@ class LocalRuntimeRestartRequiredError(RuntimeError):
 
 class LocalRuntimeTurnBusyError(RuntimeError):
     """A second generation was rejected while the process owns one turn."""
+
+
+class LocalRuntimeLoadError(RuntimeError):
+    """A redacted recoverable failure returned by the owned model process."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        recoverable: bool,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = str(error_code)
+        self.recoverable = bool(recoverable)
 
 
 class _LocalEngine(Protocol):
@@ -62,6 +79,8 @@ class _RuntimeEvent:
     kind: str
     generation_id: int = 0
     payload: str = ""
+    error_code: str = ""
+    recoverable: bool = False
 
 
 def _default_engine_factory(config: LLMConfig) -> _LocalEngine:
@@ -71,6 +90,21 @@ def _default_engine_factory(config: LLMConfig) -> _LocalEngine:
 def _exception_label(exc: BaseException) -> str:
     """Return a non-sensitive child-process failure label."""
     return type(exc).__name__
+
+
+def _runtime_load_failure_event(exc: BaseException) -> _RuntimeEvent:
+    """Serialize only public-safe recovery guidance from expected load failures."""
+    if isinstance(exc, ApplicationError) and exc.recoverable:
+        return _RuntimeEvent(
+            "load_error",
+            payload=redact_public_text(exc.message),
+            error_code=exc.error_type.value,
+            recoverable=True,
+        )
+    return _RuntimeEvent(
+        "load_error",
+        payload=f"Local model load failed ({_exception_label(exc)}).",
+    )
 
 
 def _monitor_generation_cancel(
@@ -176,12 +210,7 @@ def _local_runtime_process_main(
         engine = engine_factory(config)
         engine.load_model()
     except BaseException as exc:
-        event_connection.send(
-            _RuntimeEvent(
-                "load_error",
-                payload=f"Local model load failed ({_exception_label(exc)}).",
-            )
-        )
+        event_connection.send(_runtime_load_failure_event(exc))
         if engine is not None:
             with contextlib.suppress(BaseException):
                 engine.close()
@@ -321,9 +350,17 @@ class LocalRuntimeProcessOwner:
             if event is not None and event.kind == "loaded":
                 self._initialized = True
                 return
+            if self._close_requested.is_set():
+                raise RuntimeError("Local model process closed during startup.")
             self._terminate_owned_process(restart_required=True)
             if event is None:
                 raise TimeoutError("Local model process startup timed out.")
+            if event.recoverable:
+                raise LocalRuntimeLoadError(
+                    event.payload,
+                    error_code=event.error_code,
+                    recoverable=True,
+                )
             raise RuntimeError(event.payload or "Local model process failed to start.")
         finally:
             self._loading.clear()

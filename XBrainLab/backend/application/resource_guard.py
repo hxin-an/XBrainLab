@@ -93,6 +93,11 @@ TRAINING_VRAM_SUGGESTIONS = (
     "close other GPU applications",
     "choose a smaller model",
 )
+MODEL_LOAD_MEMORY_SUGGESTIONS = (
+    "close other memory-intensive applications",
+    "stop active training or GPU visualization work",
+    "restart the application to release retained runtime memory",
+)
 EPOCH_RAM_SUGGESTIONS = (
     "select fewer event classes",
     "shorten the epoch window",
@@ -276,6 +281,35 @@ def enforce_resource_preflight(
         raise PreconditionError(preflight.message, diagnostics=diagnostics)
     if preflight.requires_confirmation and not confirmed:
         raise ResourceConfirmationRequiredError(preflight)
+
+
+def enforce_model_load_resource_preflight(
+    preflight: ResourcePreflightResult,
+) -> None:
+    """Fail closed when model-load memory risk is not independently confirmed."""
+    diagnostics = {"resource_preflight": preflight.to_diagnostics()}
+    if preflight.blocking:
+        raise PreconditionError(preflight.message, diagnostics=diagnostics)
+    if not preflight.requires_confirmation:
+        return
+
+    raise PreconditionError(
+        (
+            f"{preflight.message}\n\n"
+            "Local model loading was not started because this activation cannot "
+            "safely continue with the current memory risk. Close memory-intensive "
+            "applications, verify the selected device, then choose Retry. Retry "
+            "performs a new memory check."
+        ),
+        diagnostics={
+            **diagnostics,
+            "code": "local_model_load_resource_risk_unconfirmed",
+            "operation": "local_model_load",
+            "retryable": True,
+            "runtime_state": "unloaded",
+            "confirmation_available": False,
+        },
+    )
 
 
 class ResourceChecker:
@@ -820,6 +854,101 @@ class ResourceChecker:
         }
 
     @staticmethod
+    def check_model_load_safe(
+        required_memory_bytes: int,
+        *,
+        device: str,
+    ) -> ResourceCheckResult:
+        """Check the selected device immediately before model materialization."""
+        selected_device = str(device or "cpu").strip().lower()
+        common_details = {
+            "operation": "local_model_load",
+            "selected_device": selected_device,
+        }
+        if selected_device.startswith("cuda"):
+            gpu_idx = _gpu_index_from_device(selected_device)
+            vram = ResourceChecker.get_gpu_vram_status(gpu_idx)
+            details = {
+                **common_details,
+                **vram,
+                "memory_kind": "vram",
+                "gpu_index": vram.get("gpu_index", gpu_idx),
+            }
+            if vram.get("available_bytes") is None:
+                reason = str(vram.get("reason") or "gpu_memory_unavailable")
+                message = _gpu_memory_unavailable_message(reason, gpu_idx)
+                return ResourceCheckResult(
+                    required_memory_bytes=int(required_memory_bytes),
+                    available_memory_bytes=None,
+                    total_memory_bytes=vram.get("total_bytes"),
+                    used_memory_bytes=vram.get("used_bytes"),
+                    risk_level=RISK_UNKNOWN,
+                    message=(
+                        f"{message} Local model loading remains blocked until "
+                        "GPU memory can be queried again."
+                    ),
+                    suggestions=MODEL_LOAD_MEMORY_SUGGESTIONS,
+                    details=details,
+                )
+            return _memory_check_result(
+                required_memory_bytes=required_memory_bytes,
+                available_memory_bytes=vram.get("available_bytes"),
+                total_memory_bytes=vram.get("total_bytes"),
+                used_memory_bytes=vram.get("used_bytes"),
+                warning_ratio=VRAM_WARNING_RATIO,
+                blocking_ratio=VRAM_BLOCKING_RATIO,
+                resource_name="GPU memory",
+                blocking_title=(
+                    "Local model cannot be loaded safely with available GPU memory."
+                ),
+                warning_title=("Local model loading is close to available GPU memory."),
+                operation_risk=(
+                    "Loading may fail with CUDA out of memory or make the "
+                    "application unresponsive."
+                ),
+                suggestions=MODEL_LOAD_MEMORY_SUGGESTIONS,
+                details=details,
+            )
+
+        ram = ResourceChecker.get_system_ram_status()
+        details = {
+            **common_details,
+            "memory_kind": "ram",
+        }
+        result = _memory_check_result(
+            required_memory_bytes=required_memory_bytes,
+            available_memory_bytes=ram.get("available_bytes"),
+            total_memory_bytes=ram.get("total_bytes"),
+            used_memory_bytes=ram.get("used_bytes"),
+            warning_ratio=RAM_WARNING_RATIO,
+            blocking_ratio=RAM_BLOCKING_RATIO,
+            resource_name="RAM",
+            blocking_title="Local model cannot be loaded safely with available RAM.",
+            warning_title="Local model loading is close to available RAM.",
+            operation_risk=(
+                "Loading may exhaust system memory or make the application "
+                "unresponsive."
+            ),
+            suggestions=MODEL_LOAD_MEMORY_SUGGESTIONS,
+            details=details,
+        )
+        if result.risk_level != RISK_UNKNOWN:
+            return result
+        return ResourceCheckResult(
+            required_memory_bytes=result.required_memory_bytes,
+            available_memory_bytes=result.available_memory_bytes,
+            total_memory_bytes=result.total_memory_bytes,
+            used_memory_bytes=result.used_memory_bytes,
+            risk_level=result.risk_level,
+            message=(
+                f"{result.message} Local model loading remains blocked until "
+                "RAM can be queried again."
+            ),
+            suggestions=result.suggestions,
+            details=result.details,
+        )
+
+    @staticmethod
     def check_training_config_safe(
         datasets: Iterable[Any],
         training_option: Any,
@@ -977,6 +1106,23 @@ def check_import_resource_preflight(paths: Iterable[str]) -> ResourcePreflightRe
             "available_ram_bytes": result.available_memory_bytes,
         }
     )
+    issues = (result.message,) if result.blocking else ()
+    warnings = (result.message,) if result.warning else ()
+    unknowns = (result.message,) if result.risk_level == RISK_UNKNOWN else ()
+    return ResourcePreflightResult(issues, diagnostics, warnings, unknowns)
+
+
+def check_model_load_resource_preflight(
+    *,
+    required_memory_bytes: int,
+    device: str,
+) -> ResourcePreflightResult:
+    """Return final selected-device admission before local model loading."""
+    result = ResourceChecker.check_model_load_safe(
+        required_memory_bytes,
+        device=device,
+    )
+    diagnostics = result.to_diagnostics()
     issues = (result.message,) if result.blocking else ()
     warnings = (result.message,) if result.warning else ()
     unknowns = (result.message,) if result.risk_level == RISK_UNKNOWN else ()
@@ -1506,6 +1652,17 @@ def _gpu_memory_unavailable_message(reason: str, gpu_idx: int | None) -> str:
     if reason == "cuda_availability_query_failed":
         return "Unable to estimate GPU memory because CUDA status could not be queried."
     return "Unable to estimate GPU memory because free VRAM could not be queried."
+
+
+def _gpu_index_from_device(device: str) -> int | None:
+    """Return the selected CUDA index, with bare ``cuda`` mapped to device zero."""
+    prefix, separator, raw_index = str(device or "").partition(":")
+    if prefix != "cuda" or not separator:
+        return None
+    try:
+        return int(raw_index)
+    except (TypeError, ValueError):
+        return None
 
 
 def _torch_module() -> Any:

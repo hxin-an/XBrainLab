@@ -10,9 +10,20 @@ from dataclasses import dataclass
 from threading import Event, Lock, Thread
 from typing import Any, cast
 
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.resource_guard import (
+    check_model_load_resource_preflight,
+    enforce_model_load_resource_preflight,
+    is_cuda_oom_error,
+    release_cuda_cache,
+)
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
-from XBrainLab.llm.core.model_catalog import local_model_policy_error, local_model_spec
+from XBrainLab.llm.core.model_catalog import (
+    BYTES_PER_GB,
+    local_model_policy_error,
+    local_model_spec,
+)
 
 from .base import BaseBackend
 
@@ -129,6 +140,11 @@ class LocalBackend(BaseBackend):
             self.config.model_name,
             self.config.device,
         )
+        resource_preflight = check_model_load_resource_preflight(
+            required_memory_bytes=int(spec.estimated_vram_gb * BYTES_PER_GB),
+            device=str(self.config.device),
+        )
+        enforce_model_load_resource_preflight(resource_preflight)
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.config.model_name,
@@ -174,8 +190,36 @@ class LocalBackend(BaseBackend):
             logger.info("Model loaded successfully.")
 
         except Exception as e:
+            if is_cuda_oom_error(e):
+                self._release_materialized_resources()
+                raise PreconditionError(
+                    (
+                        "Local model loading ran out of GPU memory. Partial model "
+                        "resources and the CUDA cache were released. Close other "
+                        "GPU applications and retry."
+                    ),
+                    diagnostics={
+                        "code": "local_model_load_cuda_oom",
+                        "operation": "local_model_load",
+                        "resource": "cuda_memory",
+                        "retryable": True,
+                        "runtime_state": "unloaded",
+                    },
+                ) from e
             logger.error("Failed to load model: %s", e)
             raise
+
+    def _release_materialized_resources(self) -> None:
+        """Release only references and cache owned by this backend."""
+        with self._generation_lock:
+            self.model = None
+            self.tokenizer = None
+            self.is_loaded = False
+        gc.collect()
+        try:
+            release_cuda_cache()
+        except Exception:  # pragma: no cover - defensive cleanup path
+            logger.debug("CUDA cache cleanup failed during local model release.")
 
     def unload(self) -> bool:
         """Release model resources only after active generation has stopped."""
@@ -194,24 +238,7 @@ class LocalBackend(BaseBackend):
             with self._generation_lock:
                 if self._active_generation is not None:
                     return False
-                self.model = None
-                self.tokenizer = None
-                self.is_loaded = False
-            gc.collect()
-
-            try:
-                import torch
-            except ModuleNotFoundError:
-                return True
-
-            cuda = getattr(torch, "cuda", None)
-            if cuda is None:
-                return True
-            try:
-                if cuda.is_available():
-                    cuda.empty_cache()
-            except Exception:  # pragma: no cover - defensive cleanup path
-                logger.debug("CUDA cache cleanup failed during local model unload.")
+            self._release_materialized_resources()
             return True
         finally:
             with self._generation_lock:

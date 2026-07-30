@@ -72,6 +72,24 @@ def test_resolver_freezes_the_exact_launch_selection_and_settings(
         setattr(spec, "model_id", alternate)  # noqa: B010 - exercise frozen guard.
 
 
+def test_persisted_first_run_notice_is_not_copied_into_engine_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _runtime_config(monkeypatch)
+    config.local_runtime_notice_acknowledged = True
+
+    resolution = AssistantRuntimeLaunchResolver().resolve(config)
+
+    assert resolution.launch_spec is not None
+    launch_config = resolution.launch_spec.build_config()
+    assert config.local_runtime_notice_acknowledged is True
+    assert launch_config.local_runtime_notice_acknowledged is False
+    assert not hasattr(
+        resolution.launch_spec.settings,
+        "local_runtime_notice_acknowledged",
+    )
+
+
 def test_resolver_fails_visibly_without_checking_catalog_fallbacks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
