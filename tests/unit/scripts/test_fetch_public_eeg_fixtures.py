@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import sys
 from pathlib import Path
@@ -88,6 +89,36 @@ def test_required_ci_profile_is_small_pinned_and_source_diverse():
         for group in groups
         for fixture_file in group["files"]
     )
+
+
+def test_required_ci_profile_rejects_incomplete_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    groups = copy.deepcopy(fixture_fetcher.FIXTURE_GROUPS)
+    brainvision = next(
+        group for group in groups if group["name"] == "mne-testing-brainvision"
+    )
+    brainvision["files"] = [
+        fixture_file
+        for fixture_file in brainvision["files"]
+        if fixture_file["filename"] != "test_NO.vmrk"
+    ]
+    monkeypatch.setattr(fixture_fetcher, "FIXTURE_GROUPS", groups)
+
+    with pytest.raises(RuntimeError, match="stale or incomplete"):
+        fixture_groups_for_profile("required-ci")
+
+
+def test_required_ci_profile_rejects_stale_manifest_pin(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    groups = copy.deepcopy(fixture_fetcher.FIXTURE_GROUPS)
+    motor = next(group for group in groups if group["name"] == "physionet-edf-motor")
+    motor["files"][0]["sha256"] = "0" * 64
+    monkeypatch.setattr(fixture_fetcher, "FIXTURE_GROUPS", groups)
+
+    with pytest.raises(RuntimeError, match="stale or incomplete"):
+        fixture_groups_for_profile("required-ci")
 
 
 def test_teacher_preflight_profile_adds_independent_real_dataset_models():

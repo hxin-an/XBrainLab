@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import ssl
 import urllib.request
 from pathlib import Path
@@ -608,6 +609,7 @@ CI_REQUIRED_GROUP_NAMES = frozenset(
         MNE_BIDS_TINY_NAME,
     }
 )
+CI_REQUIRED_MANIFEST_SHA256 = "6bf657aafd35c832a521ef52b076adeae5ab7864d40c71d0cd29f8391e047e8c"  # pragma: allowlist secret
 TEACHER_PREFLIGHT_GROUP_NAMES = frozenset(
     {
         *CI_REQUIRED_GROUP_NAMES,
@@ -635,6 +637,50 @@ def _validate_download_url(url: str) -> None:
         raise ValueError(f"Unexpected download host: {parsed.netloc}")
 
 
+def fixture_manifest_sha256(groups: list[FixtureGroup]) -> str:
+    """Return a canonical digest of evidence-critical fixture metadata."""
+    manifest = [
+        {
+            "name": group["name"],
+            "entrypoint": group["entrypoint"],
+            "files": sorted(
+                (
+                    {
+                        "filename": fixture_file["filename"],
+                        "url": fixture_file["url"],
+                        "sha256": fixture_file["sha256"],
+                        "size_bytes": fixture_file["size_bytes"],
+                    }
+                    for fixture_file in group["files"]
+                ),
+                key=lambda fixture_file: fixture_file["filename"],
+            ),
+        }
+        for group in sorted(groups, key=lambda group: group["name"])
+    ]
+    encoded = json.dumps(
+        manifest,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_fixture_profile_manifest(
+    profile: str,
+    groups: list[FixtureGroup],
+) -> None:
+    """Reject a required profile whose fixed manifest denominator drifted."""
+    if profile != "required-ci":
+        return
+    actual_digest = fixture_manifest_sha256(groups)
+    if actual_digest != CI_REQUIRED_MANIFEST_SHA256:
+        raise RuntimeError(
+            "Required CI fixture manifest is stale or incomplete: "
+            f"expected {CI_REQUIRED_MANIFEST_SHA256}, got {actual_digest}"
+        )
+
+
 def fixture_groups_for_profile(profile: str) -> list[FixtureGroup]:
     """Return the pinned groups selected by a download profile."""
     if profile == "all":
@@ -652,6 +698,7 @@ def fixture_groups_for_profile(profile: str) -> list[FixtureGroup]:
                 "Required CI fixture groups are not defined: "
                 + ", ".join(sorted(missing_groups))
             )
+        validate_fixture_profile_manifest(profile, selected)
         return selected
     if profile == "teacher-preflight":
         selected = [

@@ -640,6 +640,9 @@ def latest_is_fresh(
     git_state: GitState | None = None,
 ) -> bool:
     """Return True when the latest report is newer than the requested age."""
+    # Downloaded fixture caches are ignored by git and must be reverified each time.
+    if profile == "handoff":
+        return False
     if max_age_minutes <= 0 or not LATEST_JSON.exists():
         return False
     payload = json.loads(LATEST_JSON.read_text(encoding="utf-8"))

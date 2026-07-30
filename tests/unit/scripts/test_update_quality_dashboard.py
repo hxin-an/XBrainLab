@@ -141,14 +141,15 @@ def test_required_pytest_matrix_passes_only_when_every_case_ran():
     assert "10 passed" in summary
 
 
-def test_required_pytest_matrix_fails_instead_of_passing_with_skips():
-    status, summary = dashboard.validate_required_pytest_matrix(
-        0,
-        "================== 9 passed, 1 skipped in 1.25s ==================",
-    )
+def test_required_pytest_matrix_fails_on_incomplete_outcomes():
+    for outcome in ("skipped", "xfailed", "xpassed", "deselected"):
+        status, summary = dashboard.validate_required_pytest_matrix(
+            0,
+            f"================== 9 passed, 1 {outcome} in 1.25s ==================",
+        )
 
-    assert status == "fail"
-    assert "skipped" in summary.lower()
+        assert status == "fail"
+        assert "incomplete" in summary.lower()
 
 
 def _check(status: str) -> dict[str, object]:
@@ -296,6 +297,50 @@ def test_latest_is_fresh_uses_timestamp(monkeypatch, tmp_path: Path):
             ),
         )
         is True
+    )
+
+
+def test_handoff_profile_never_reuses_cached_report(
+    monkeypatch,
+    tmp_path: Path,
+):
+    latest_json = tmp_path / "latest.json"
+    latest_json.write_text(
+        json.dumps(
+            {
+                "generated_at": "2999-01-01T00:00:00+00:00",
+                "workspace": str(dashboard.ROOT),
+                "profile": "handoff",
+                "git": {
+                    "branch": "main",
+                    "commit": "abcdef1",
+                    "dirty": False,
+                    "dirty_count": 0,
+                    "status_summary": [],
+                    "status_truncated": False,
+                    "worktree_fingerprint": "clean-fingerprint",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard, "LATEST_JSON", latest_json)
+
+    assert (
+        latest_is_fresh(
+            60,
+            profile="handoff",
+            git_state=GitState(
+                branch="main",
+                commit="abcdef1",
+                dirty=False,
+                status_summary=[],
+                dirty_count=0,
+                status_truncated=False,
+                worktree_fingerprint="clean-fingerprint",
+            ),
+        )
+        is False
     )
 
 
