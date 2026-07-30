@@ -6,17 +6,22 @@
 
 ## 目前焦點
 
-**Close one Granite 2B, multi-format teacher candidate, then run Windows acceptance.**
+**Close the verified product-quality audit, then run Windows acceptance.**
 
-老師下週要用不同格式資料操作 GUI。本輪只收斂一個可手測候選：保留現有 EEG workflow，
-把 assistant 簡化為自然語言決定本回合 scope，產品預設切到 exact Granite 3.3 2B，並用真實
-多格式 / 多來源資料、真人式 wizard、跨來源 epoch / training 與可見 Agent artifacts 驗證。
-候選可動且 Windows acceptance 完成後，才 freeze benchmark；現在不先做 accuracy 主張。
+`ux/assistant-product-v1` 是乾淨且已 push 的工程 checkpoint，但 2026-07-30 深度複盤發現
+publication acknowledgement、unsafe training artifact、輸出路徑、Stop/Start lifecycle、
+Agent timeout、RAG 供應鏈、Application/controller 邊界、真 workflow evidence 與 UI 響應式
+品質仍有 code-controllable blocker。因此舊的 handoff-ready 語意已撤銷；本輪以
+[Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 和
+[Product Quality Closure Goal](../agent_goals/product_quality_closure_goal.md) 為施工台帳。
+全部自動化 hard gate 通過後只形成 Windows handoff candidate；真人 acceptance 完成後才
+freeze benchmark 或考慮合併 `main`。
 
 ## 本輪 To-do
 
 | 狀態 | 工作 | 完成判準 |
 | --- | --- | --- |
+| In progress | Product quality closure | Audit 中所有 code-controllable P0/P1 關閉；架構、安全、功能、Agent、UI、測試、文件六類 reviewer gate 及主 agent 複驗通過；同一 clean commit 完成 multi-dataset、Granite、UI artifact、MkDocs 與品質 dashboard。 |
 | Done | Current docs rebaseline | `docs/current.md`、`docs/planning/now.md`、`docs/planning/roadmap.md`、`docs/architecture/README.md`、`docs/validation/README.md` 對目前方向不矛盾。 |
 | Done | MCP 從 active plan 移除 | Roadmap、current truth、target / architecture docs 不再把 MCP 當 MVP、release、thesis 或 handoff gate。 |
 | Done | Roadmap 心智模型定型 | Roadmap 改成 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence；UI/UX blocker 放進 Desktop MVP，視覺一致性放進 Product Polish。 |
