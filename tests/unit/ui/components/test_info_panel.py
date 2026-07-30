@@ -47,6 +47,24 @@ def test_info_panel_rows_fit_without_vertical_clipping(qtbot):
     assert panel.table.visualItemRect(item).bottom() <= viewport.height()
 
 
+def test_info_panel_key_column_preserves_all_labels_at_sidebar_width(qtbot):
+    panel = AggregateInfoPanel(None)
+    qtbot.addWidget(panel)
+
+    panel.resize(240, 340)
+    panel.show()
+    qtbot.wait(0)
+
+    key_items = [panel.table.item(row, 0) for row in range(panel.table.rowCount())]
+    assert all(item is not None for item in key_items)
+    required_text_width = max(
+        panel.table.fontMetrics().horizontalAdvance(item.text())
+        for item in key_items
+        if item is not None
+    )
+    assert panel.table.columnWidth(0) >= required_text_width + 16
+
+
 def test_update_info_no_data(panel, mock_main_window):
     panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
     # Check "Total Files" is "-"

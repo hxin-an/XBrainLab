@@ -38,7 +38,10 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import ModelDownloadOutcome
-from XBrainLab.llm.core.model_catalog import format_bytes
+from XBrainLab.llm.core.model_catalog import (
+    format_bytes,
+    local_model_spec,
+)
 from XBrainLab.llm.core.model_download_lifecycle import (
     ModelCacheCleanupReason,
     ModelCacheCleanupResult,
@@ -331,8 +334,30 @@ class ModelSettingsDialog(BaseDialog):
         # Model Dropdown
         self.local_model_combo = QComboBox()
         self.local_model_combo.setObjectName("AssistantModelCombo")
-        self.local_model_combo.addItems(LLMConfig.allowed_local_model_ids())
-        self.local_model_combo.currentTextChanged.connect(self.check_local_model_status)
+        self.local_model_combo.setAccessibleName("Assistant model")
+        self.local_model_combo.setAccessibleDescription(
+            "Select the exact local model used by XBrainLab Assistant."
+        )
+        self.model_section_label.setBuddy(self.local_model_combo)
+        for model_id in LLMConfig.allowed_local_model_ids():
+            spec = local_model_spec(model_id)
+            self.local_model_combo.addItem(
+                spec.label if spec is not None else model_id,
+                model_id,
+            )
+            index = self.local_model_combo.count() - 1
+            if spec is not None:
+                self.local_model_combo.setItemData(
+                    index,
+                    (
+                        f"{spec.provider} · {spec.parameters} · {spec.license}\n"
+                        f"{spec.repo_id}"
+                    ),
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+        self.local_model_combo.currentIndexChanged.connect(
+            self.check_local_model_status
+        )
         self.local_model_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -358,6 +383,29 @@ class ModelSettingsDialog(BaseDialog):
         status_layout.addWidget(self.local_action_btn)
         layout.addLayout(status_layout)
 
+        runtime_layout = QHBoxLayout()
+        runtime_layout.setContentsMargins(2, 0, 0, 0)
+        runtime_layout.setSpacing(8)
+        self.local_runtime_label = QLabel(
+            "Environment check: Checking...",
+            self.settings_body,
+        )
+        self.local_runtime_label.setObjectName("AssistantSettingsMuted")
+        self.local_runtime_label.setWordWrap(True)
+        runtime_layout.addWidget(self.local_runtime_label, 1)
+        self.check_runtime_btn = QPushButton("Check again", self.settings_body)
+        self.check_runtime_btn.setObjectName("AssistantSecondaryButton")
+        self.check_runtime_btn.clicked.connect(self.check_local_model_status)
+        runtime_layout.addWidget(self.check_runtime_btn)
+        layout.addLayout(runtime_layout)
+
+        self.last_runtime_attempt_label = QLabel(self.settings_body)
+        self.last_runtime_attempt_label.setObjectName("AssistantSettingsMuted")
+        self.last_runtime_attempt_label.setWordWrap(True)
+        self.last_runtime_attempt_label.setStyleSheet("color: #d8a846;")
+        self.last_runtime_attempt_label.setVisible(False)
+        layout.addWidget(self.last_runtime_attempt_label)
+
         self.download_progress = QProgressBar(self)
         self.download_progress.setObjectName("AssistantDownloadProgress")
         self.download_progress.setRange(0, 100)
@@ -377,7 +425,7 @@ class ModelSettingsDialog(BaseDialog):
             (
                 ("precise", "Precise"),
                 ("balanced", "Balanced"),
-                ("exploratory", "Exploratory"),
+                ("exploratory", "Varied"),
             ),
             descriptions={
                 "precise": "More consistent explanatory wording.",
@@ -478,14 +526,6 @@ class ModelSettingsDialog(BaseDialog):
         exact_form.addRow("Maximum tokens", self.max_tokens_spin)
         advanced_layout.addLayout(exact_form)
 
-        self.local_runtime_label = QLabel(
-            "Runtime: Checking...",
-            self.advanced_content,
-        )
-        self.local_runtime_label.setObjectName("AssistantSettingsMuted")
-        self.local_runtime_label.setWordWrap(True)
-        advanced_layout.addWidget(self.local_runtime_label)
-
         self.local_resource_label = QLabel("", self.advanced_content)
         self.local_resource_label.setObjectName("AssistantSettingsMuted")
         self.local_resource_label.setWordWrap(True)
@@ -544,6 +584,11 @@ class ModelSettingsDialog(BaseDialog):
         label = QLabel(text)
         label.setObjectName("AssistantSettingsSection")
         return label
+
+    def _selected_model_id(self) -> str:
+        """Return the stable repository id behind the product-facing label."""
+        value = self.local_model_combo.currentData()
+        return str(value or "").strip()
 
     def _apply_response_style_preset(self, key: str) -> None:
         values = _RESPONSE_STYLE_PRESETS.get(key)
@@ -653,7 +698,7 @@ class ModelSettingsDialog(BaseDialog):
         selection = self.config.assistant_runtime_selection()
 
         with QSignalBlocker(self.local_model_combo):
-            index = self.local_model_combo.findText(self.config.model_name)
+            index = self.local_model_combo.findData(self.config.model_name)
             if index >= 0:
                 self.local_model_combo.setCurrentIndex(index)
 
@@ -684,8 +729,9 @@ class ModelSettingsDialog(BaseDialog):
         self.local_status_label.setText("Model: Checking...")
         self.local_status_label.setStyleSheet("color: #888888;")
         self._set_model_status_tone("neutral")
-        self.local_runtime_label.setText("Runtime: Checking...")
+        self.local_runtime_label.setText("Environment check: Checking...")
         self.local_runtime_label.setStyleSheet("color: #888888;")
+        self._render_runtime_attempt_notice()
         self.local_resource_label.setText("")
         self.local_action_btn.setText("Checking...")
         self.local_action_btn.setEnabled(False)
@@ -726,21 +772,42 @@ class ModelSettingsDialog(BaseDialog):
             self._set_model_status_tone("ready")
             detail = state.runtime_message.removeprefix("Local runtime ready.").strip()
             if not detail:
-                self.local_runtime_label.setText("Runtime: Available")
+                self.local_runtime_label.setText("Environment check: Ready")
                 self.local_runtime_label.setStyleSheet("color: #4caf50;")
             else:
-                self.local_runtime_label.setText(f"Runtime available: {detail}")
+                self.local_runtime_label.setText(
+                    f"Environment check: Ready with notes — {detail}"
+                )
                 self.local_runtime_label.setStyleSheet("color: #ff9800;")
+            self._render_runtime_attempt_notice()
             return
 
         detail = state.runtime_message.removeprefix("Local runtime unavailable. ")
-        self.local_runtime_label.setText(f"Runtime unavailable: {detail}")
+        self.local_runtime_label.setText(f"Environment check: Not ready — {detail}")
         if "Missing optional packages" in state.runtime_message:
             self.local_runtime_label.setStyleSheet("color: #f44336;")
             self._set_model_status_tone("error")
         else:
             self.local_runtime_label.setStyleSheet("color: #ff9800;")
             self._set_model_status_tone("warning")
+        self._render_runtime_attempt_notice()
+
+    def _render_runtime_attempt_notice(self) -> None:
+        """Keep a failed start distinct from prerequisite readiness."""
+        notice_reader = getattr(
+            self.agent_manager,
+            "assistant_runtime_settings_notice",
+            None,
+        )
+        notice = notice_reader() if callable(notice_reader) else ""
+        if not isinstance(notice, str) or not notice.strip():
+            self.last_runtime_attempt_label.clear()
+            self.last_runtime_attempt_label.setVisible(False)
+            return
+        self.last_runtime_attempt_label.setText(
+            f"Last start attempt failed: {notice.strip()}"
+        )
+        self.last_runtime_attempt_label.setVisible(True)
 
     def check_local_model_status(self, *_args):
         """Request one coherent status snapshot without blocking the GUI."""
@@ -749,7 +816,7 @@ class ModelSettingsDialog(BaseDialog):
         self._inspection_request_id += 1
         request = ModelStatusInspectionRequest(
             request_id=self._inspection_request_id,
-            model_name=self.local_model_combo.currentText(),
+            model_name=self._selected_model_id(),
             cache_dir=self.config.cache_dir,
             device=str(self.config.device),
             load_in_4bit=bool(self.config.load_in_4bit),
@@ -783,7 +850,7 @@ class ModelSettingsDialog(BaseDialog):
                 self.config._force_local_runtime_selection()
                 self._apply_config_to_controls()
             self._persisted_config_pending = False
-        if result.request.model_name != self.local_model_combo.currentText():
+        if result.request.model_name != self._selected_model_id():
             return
         self._pending_inspection_request_id = None
         self.is_downloading = self.download_lifecycle.active_target is not None
@@ -793,7 +860,7 @@ class ModelSettingsDialog(BaseDialog):
     def _apply_config_to_controls(self) -> None:
         """Render a background-loaded config without emitting new inspections."""
         with QSignalBlocker(self.local_model_combo):
-            index = self.local_model_combo.findText(self.config.model_name)
+            index = self.local_model_combo.findData(self.config.model_name)
             if index >= 0:
                 self.local_model_combo.setCurrentIndex(index)
         with QSignalBlocker(self.local_enable_chk):
@@ -824,7 +891,7 @@ class ModelSettingsDialog(BaseDialog):
 
     def _start_download(self):
         """Begin downloading the selected local model."""
-        model_name = self.local_model_combo.currentText()
+        model_name = self._selected_model_id()
         state = self._current_local_model_state
         if state is None or state.request.model_name != model_name:
             self.check_local_model_status()
@@ -886,7 +953,7 @@ class ModelSettingsDialog(BaseDialog):
 
     def _delete_model(self):
         """Delete the selected local model from cache after confirmation."""
-        repo_id = self.local_model_combo.currentText()
+        repo_id = self._selected_model_id()
         reply = QMessageBox.warning(
             self,
             "Delete Model",
@@ -930,7 +997,7 @@ class ModelSettingsDialog(BaseDialog):
 
         """
         target = self.download_lifecycle.active_target
-        if target is None or target.repo_id == self.local_model_combo.currentText():
+        if target is None or target.repo_id == self._selected_model_id():
             self.local_status_label.setText(msg)
             if 0 <= int(percent) <= 100:
                 self.download_progress.setRange(0, 100)
@@ -965,7 +1032,7 @@ class ModelSettingsDialog(BaseDialog):
         self.is_downloading = not self.download_lifecycle.is_idle()
         self.download_progress.setVisible(False)
         self._schedule_fit()
-        selected_target = outcome.target.repo_id == self.local_model_combo.currentText()
+        selected_target = outcome.target.repo_id == self._selected_model_id()
         self.check_local_model_status()
         if outcome.cancelled:
             return
@@ -1017,7 +1084,7 @@ class ModelSettingsDialog(BaseDialog):
 
     def update_validation_state(self):
         """Allow Save when disabled, or when the enabled runtime is available."""
-        model_name = self.local_model_combo.currentText()
+        model_name = self._selected_model_id()
         state = self._current_local_model_state
         enabled_runtime_ready = (
             state is not None
@@ -1037,7 +1104,7 @@ class ModelSettingsDialog(BaseDialog):
         self.config.local_model_enabled = self.local_enable_chk.isChecked()
         if self.config.local_model_enabled:
             self.config.local_runtime_notice_acknowledged = True
-        self.config.model_name = self.local_model_combo.currentText()
+        self.config.model_name = self._selected_model_id()
         # Generation parameters
         self.config.temperature = self.temperature_spin.value()
         self.config.top_p = self.top_p_spin.value()

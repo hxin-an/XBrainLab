@@ -23,6 +23,8 @@ class TestMessageBubble:
         # Check interaction flags
         flags = text_edit.textInteractionFlags()
         assert flags & Qt.TextInteractionFlag.LinksAccessibleByMouse
+        assert flags & Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+        assert flags & Qt.TextInteractionFlag.TextSelectableByKeyboard
 
     def test_adjust_width(self, qtbot):
         bubble = MessageBubble("Long text " * 10, is_user=False)

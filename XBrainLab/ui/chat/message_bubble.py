@@ -157,7 +157,9 @@ class MessageBubble(QWidget):
         # Interaction Flags: Enable selection AND links
         self.text_edit.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.LinksAccessibleByMouse,
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByKeyboard,
         )
         self.text_edit.setOpenExternalLinks(
             False,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.controller.chat_controller import (
     ChatMessageRecord,
     ChatPanelTarget,
@@ -42,6 +43,7 @@ class ChatResponseActionViewKind(str, Enum):
 
     SEND_MESSAGE = "send_message"
     OPEN_PANEL = "open_panel"
+    OPEN_DATA_IMPORT = "open_data_import"
 
 
 class ChatResponsePanelTargetView(str, Enum):
@@ -77,8 +79,16 @@ class ChatResponseActionView:
         if self.kind is ChatResponseActionViewKind.SEND_MESSAGE:
             if not self.prompt or self.panel is not None:
                 raise ValueError("Send-message action views require only a prompt.")
-        elif not isinstance(self.panel, ChatResponsePanelTargetView) or self.prompt:
+        elif self.kind is ChatResponseActionViewKind.OPEN_PANEL and (
+            not isinstance(self.panel, ChatResponsePanelTargetView) or self.prompt
+        ):
             raise ValueError("Open-panel action views require only a panel target.")
+        elif self.kind is ChatResponseActionViewKind.OPEN_DATA_IMPORT and (
+            self.prompt or self.panel is not None
+        ):
+            raise ValueError(
+                "Open-data-import action views do not accept payload fields."
+            )
 
     @classmethod
     def from_history_action(
@@ -283,8 +293,13 @@ def present_assistant_activity(
             cancelability_text=("You can stop before an XBrainLab action starts."),
         )
     if phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION:
+        import_handoff = activity.command_name == CommandName.APPLY_INTERPRETATION.value
         step = (
-            tool_action_label(activity.command_name)
+            (
+                "Continue in Import EEG Data"
+                if import_handoff
+                else tool_action_label(activity.command_name)
+            )
             if activity.command_name
             else "Review the open XBrainLab prompt"
         )
@@ -294,7 +309,9 @@ def present_assistant_activity(
             step=step,
             cancelability=ChatTurnCancelability.NOT_CANCELLABLE,
             cancelability_text=(
-                "Use the open confirmation or XBrainLab dialog to continue or cancel."
+                "Continue in the open Import EEG Data window."
+                if import_handoff
+                else "Use the confirmation card to continue or cancel."
             ),
         )
     if phase is AssistantTurnActivityPhase.STOPPING:

@@ -274,7 +274,7 @@ def _interpretation_action_summary(
     ]
     if len(issues) > len(visible):
         lines.append(f"- {len(issues) - len(visible)} more item(s)")
-    lines.append("Open Import Review to resolve these choices.")
+    lines.append("Use the open Import EEG Data window to review these choices.")
     return "\n".join(lines)
 
 

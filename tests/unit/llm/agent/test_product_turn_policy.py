@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 
 import pytest
 
@@ -69,15 +70,37 @@ def test_greeting_returns_stable_product_copy_without_reading_publication(
     assert decision.message == GREETING_COPY
 
 
-def test_clarification_returns_product_copy_without_reading_publication() -> None:
-    def unexpected_read() -> ApplicationViewPublication:
-        raise AssertionError("clarification must not read workflow state")
+def test_clarification_uses_current_publication_for_contextual_next_step() -> None:
+    publication = _publication(
+        CommandName.PREPROCESS,
+        CommandCapability(
+            command_name=CommandName.PREPROCESS.value,
+            enabled=True,
+        ),
+    )
+    publication = ApplicationViewPublication(
+        generation=publication.generation,
+        state=replace(publication.state, pipeline_stage="data_loaded"),
+        capabilities=publication.capabilities,
+    )
 
-    decision = _policy(unexpected_read).evaluate("幫我處理資料")
+    decision = _policy(lambda: publication).evaluate("幫我處理資料")
 
     assert decision is not None
     assert decision.kind is ProductTurnKind.CLARIFICATION
     assert decision.message == CLARIFICATION_COPY
+    assert decision.contextual_command is CommandName.PREPROCESS
+
+
+def test_clarification_fails_closed_when_publication_is_unavailable() -> None:
+    def unavailable_read() -> ApplicationViewPublication:
+        raise RuntimeError("publication unavailable")
+
+    decision = _policy(unavailable_read).evaluate("幫我處理資料")
+
+    assert decision is not None
+    assert decision.kind is ProductTurnKind.CLARIFICATION
+    assert decision.contextual_command is None
 
 
 def test_ordinary_no_tool_question_remains_for_language_generation() -> None:

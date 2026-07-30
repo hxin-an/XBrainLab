@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from math import ceil
+
 from PyQt6.QtCore import QMimeData, Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtGui import QKeyEvent, QResizeEvent, QShowEvent
 from PyQt6.QtWidgets import QPlainTextEdit
 
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
@@ -14,8 +16,8 @@ class AssistantComposer(QPlainTextEdit):
 
     submit_requested = pyqtSignal()
 
-    _MIN_HEIGHT = 76
-    _MAX_HEIGHT = 160
+    _MIN_HEIGHT = 58
+    _MAX_HEIGHT = 144
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -36,6 +38,16 @@ class AssistantComposer(QPlainTextEdit):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        """Fit text entered before the composer had its final viewport width."""
+        super().showEvent(event)
+        self._fit_to_content()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Re-fit wrapped text when the assistant dock changes width."""
+        super().resizeEvent(event)
+        self._fit_to_content()
 
     def insertFromMimeData(self, source: QMimeData) -> None:  # noqa: N802
         """Paste only the bounded plain-text portion of external content."""
@@ -85,7 +97,16 @@ class AssistantComposer(QPlainTextEdit):
 
     def _fit_to_content(self) -> None:
         document = self.document()
-        document_height = int(document.size().height()) if document is not None else 20
+        document_height = 20
+        if document is not None:
+            layout = document.documentLayout()
+            if layout is not None:
+                block = document.begin()
+                measured_height = 0.0
+                while block.isValid():
+                    measured_height += layout.blockBoundingRect(block).height()
+                    block = block.next()
+                document_height = ceil(measured_height)
         target = max(self._MIN_HEIGHT, min(self._MAX_HEIGHT, document_height + 24))
         self.setFixedHeight(target)
         self.setVerticalScrollBarPolicy(

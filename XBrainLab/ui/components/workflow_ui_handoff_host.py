@@ -9,7 +9,11 @@ from typing import Any
 
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.application.view_publication import (
+    ApplicationViewPublication,
     InterpretationReviewIdentity,
+)
+from XBrainLab.backend.application.workflow_projection import (
+    build_workflow_projection,
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.response_presentation import panel_target_for_command
@@ -91,6 +95,16 @@ WorkflowUiHandoffTerminalCallback = Callable[
     bool | None,
 ]
 
+_DATA_IMPORT_COMMANDS = frozenset(
+    {
+        CommandName.SCAN_SOURCE,
+        CommandName.REVIEW_INTERPRETATION,
+        CommandName.PREVIEW_INTERPRETATION,
+        CommandName.VALIDATE_INTERPRETATION,
+        CommandName.APPLY_INTERPRETATION,
+    }
+)
+
 
 @dataclass(slots=True)
 class _ActiveWorkflowUiHandoff:
@@ -129,15 +143,8 @@ class WorkflowUiHandoffHost:
     def __init__(
         self,
         main_window: Any,
-        *,
-        application_service: Any | None = None,
     ) -> None:
         self._main_window = main_window
-        if application_service is not None:
-            logger.debug(
-                "WorkflowUiHandoffHost ignores the legacy ApplicationService "
-                "argument; product actions resolve their typed UI runtime."
-            )
         self._active: _ActiveWorkflowUiHandoff | None = None
         self._navigation_pending_panel: WorkflowPanel | None = None
         self._navigation_generation = 0
@@ -146,6 +153,100 @@ class WorkflowUiHandoffHost:
         self._router = WorkflowSurfaceRouter(
             self._navigate,
             self._build_routes(),
+        )
+
+    def open_current_data_import(
+        self,
+        publication: ApplicationViewPublication | None,
+    ) -> WorkflowUiHandoffResolution:
+        """Open the Data Import surface projected from current backend truth."""
+        fallback_request = WorkflowUiHandoffRequest.for_decision(
+            CommandName.REVIEW_INTERPRETATION
+        )
+        if (
+            not isinstance(publication, ApplicationViewPublication)
+            or not publication.usable
+        ):
+            return self._standalone_failure(
+                fallback_request,
+                "Application state is unavailable. Try again shortly.",
+            )
+
+        try:
+            projection = build_workflow_projection(
+                publication.state,
+                publication.effective_capabilities,
+            )
+        except Exception:
+            logger.exception("Could not project the current Data Import surface")
+            return self._standalone_failure(
+                fallback_request,
+                "The current Data Import step could not be determined.",
+            )
+        try:
+            command = CommandName(
+                projection.recommended_command or projection.blocked_command or ""
+            )
+        except ValueError:
+            return self._standalone_failure(
+                fallback_request,
+                "There is no pending Data Import step to open.",
+            )
+        if command not in _DATA_IMPORT_COMMANDS:
+            return self._standalone_failure(
+                fallback_request,
+                "There is no pending Data Import step to open.",
+            )
+
+        identity = (
+            self._interpretation_review_identity(publication)
+            if command is CommandName.APPLY_INTERPRETATION
+            else None
+        )
+        request = WorkflowUiHandoffRequest.for_decision(
+            command,
+            decision_fields=projection.decision_fields,
+            interpretation_identity=identity,
+        )
+        if command is CommandName.APPLY_INTERPRETATION and identity is None:
+            return self._standalone_failure(
+                request,
+                "The current Data Import review identity is unavailable. Refresh "
+                "the workflow and try again.",
+            )
+        try:
+            resolution = self.open(
+                request,
+                on_terminal=self._present_standalone_terminal,
+            )
+        except Exception:
+            logger.exception("Could not open product surface for %s", command.value)
+            return self._standalone_failure(
+                request,
+                "The requested XBrainLab view could not be opened.",
+            )
+        if resolution.status.is_terminal:
+            self._present_standalone_resolution(resolution)
+        return resolution
+
+    @staticmethod
+    def _interpretation_review_identity(
+        publication: ApplicationViewPublication,
+    ) -> InterpretationReviewIdentity | None:
+        interpretation = publication.state.interpretation
+        scan_id = interpretation.latest_scan_id
+        candidate_id = interpretation.latest_candidate_id
+        if (
+            not isinstance(scan_id, str)
+            or not scan_id.strip()
+            or not isinstance(candidate_id, str)
+            or not candidate_id.strip()
+        ):
+            return None
+        return InterpretationReviewIdentity(
+            publication_generation=publication.generation,
+            scan_id=scan_id,
+            candidate_id=candidate_id,
         )
 
     def open(
@@ -225,6 +326,37 @@ class WorkflowUiHandoffHost:
             self._clear_active(active)
             return failed
         return resolution
+
+    def _standalone_failure(
+        self,
+        request: WorkflowUiHandoffRequest,
+        message: str,
+    ) -> WorkflowUiHandoffResolution:
+        resolution = WorkflowUiHandoffResolution.for_request(
+            request,
+            status=WorkflowUiHandoffResolutionStatus.FAILED,
+            message=message,
+        )
+        self._present_standalone_resolution(resolution)
+        return resolution
+
+    def _present_standalone_terminal(
+        self,
+        resolution: WorkflowUiHandoffResolution,
+    ) -> bool:
+        self._present_standalone_resolution(resolution)
+        return True
+
+    def _present_standalone_resolution(
+        self,
+        resolution: WorkflowUiHandoffResolution,
+    ) -> None:
+        """Present a product action outcome without creating an assistant turn."""
+        if not resolution.status.is_terminal:
+            return
+        status_bar = self._main_window.statusBar()
+        if status_bar is not None and resolution.message:
+            status_bar.showMessage(resolution.message, 6000)
 
     @property
     def active_request(self) -> WorkflowUiHandoffRequest | None:

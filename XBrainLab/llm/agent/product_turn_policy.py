@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, cast
 
 from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.application.workflow_projection import (
+    build_workflow_projection,
+)
 from XBrainLab.llm.tools.result_contract import safe_unexpected_failure
 
 from .intent import infer_user_intent, resolve_blocked_explanation_intent
@@ -78,6 +81,7 @@ class ProductTurnDecision:
 
     kind: ProductTurnKind
     message: str
+    contextual_command: CommandName | None = None
 
 
 class ProductTurnPolicy:
@@ -112,8 +116,32 @@ class ProductTurnPolicy:
             return ProductTurnDecision(
                 ProductTurnKind.CLARIFICATION,
                 _CLARIFICATION_COPY,
+                contextual_command=self._clarification_command(),
             )
         return None
+
+    def _clarification_command(self) -> CommandName | None:
+        """Return the current workflow surface without guessing from user text."""
+        try:
+            publication = self._read_publication()
+            if not publication.usable or not publication.state.state_reliable:
+                return None
+            workflow = build_workflow_projection(
+                publication.state,
+                publication.effective_capabilities,
+            )
+            command_name = workflow.recommended_command or workflow.blocked_command
+            return CommandName(command_name) if command_name else None
+        except (KeyError, TypeError, ValueError):
+            return None
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="product_turn_policy",
+                operation="read_clarification_context",
+            )
+            return None
 
     @staticmethod
     def _is_greeting(text: str) -> bool:

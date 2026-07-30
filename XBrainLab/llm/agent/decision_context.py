@@ -117,8 +117,13 @@ def build_workflow_decision_context(
             mode=normalized_mode,
             workflow_stage=pipeline_stage_status_label(state.pipeline_stage),
             latest_user_request=latest_user_text.strip(),
+            evidence=list(projection.evidence),
             blocked_reasons=list(projection.blocked_reasons),
-            stop_reason="no_available_workflow_step",
+            stop_reason=(
+                "active_operation"
+                if state.active_training.is_running
+                else "no_available_workflow_step"
+            ),
         )
 
     capability = capabilities.get(recommended)

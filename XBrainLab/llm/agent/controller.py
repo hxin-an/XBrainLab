@@ -382,6 +382,7 @@ class LLMController(QObject):
         self._active_host_turn_generation: int | None = None
         self._active_turn_scope: AssistantTurnScope | None = None
         self._active_turn_terminal_command: str | None = None
+        self._active_turn_excluded_commands: frozenset[CommandName] = frozenset()
         self._generation_id = 0
         self._active_generation_id: int | None = None
         self._active_generation_dispatch_phase: (
@@ -569,6 +570,7 @@ class LLMController(QObject):
             self._active_host_turn_generation = payload.generation
             self._active_turn_scope = payload.scope
             self._active_turn_terminal_command = payload.terminal_command
+            self._active_turn_excluded_commands = frozenset(payload.excluded_commands)
             self.assembler.bind_turn_scope(payload.scope)
             self._handle_admitted_user_input(payload.text)
         except Exception as exc:
@@ -628,6 +630,7 @@ class LLMController(QObject):
         self._admitted_publication_generation = None
         self._active_turn_scope = None
         self._active_turn_terminal_command = None
+        self._active_turn_excluded_commands = frozenset()
         self._active_tool_publication = PromptToolPublication.empty()
         self._active_response_contract = AssistantResponseContract.STRUCTURED_ACTION
         self._retry_count = 0
@@ -664,6 +667,7 @@ class LLMController(QObject):
         self._active_host_turn_generation = None
         self._active_turn_scope = None
         self._active_turn_terminal_command = None
+        self._active_turn_excluded_commands = frozenset()
         self._active_generation_id = None
         self._active_generation_dispatch_phase = None
         self._stopping_generation_id = None
@@ -788,16 +792,7 @@ class LLMController(QObject):
             self._publish_response(
                 decision.message,
                 kind=AssistantResponseKind.CLARIFICATION,
-                actions=(
-                    AssistantResponseAction.send_message(
-                        "Check workflow",
-                        "What is ready now?",
-                    ),
-                    AssistantResponseAction.open_panel(
-                        "Open Dataset",
-                        AssistantPanelTarget.DATASET,
-                    ),
-                ),
+                actions=self._clarification_actions(decision.contextual_command),
             )
         else:
             self._publish_response(decision.message)
@@ -805,6 +800,46 @@ class LLMController(QObject):
         self._publish_activity(AssistantTurnActivityPhase.IDLE)
         self._emit_processing_finished()
         return True
+
+    @staticmethod
+    def _clarification_actions(
+        contextual_command: CommandName | None,
+    ) -> tuple[AssistantResponseAction, ...]:
+        """Offer only the existing product surface relevant to current state."""
+        actions = [
+            AssistantResponseAction.send_message(
+                "Check workflow",
+                "What is ready now?",
+            )
+        ]
+        if contextual_command in {
+            CommandName.SCAN_SOURCE,
+            CommandName.REVIEW_INTERPRETATION,
+            CommandName.PREVIEW_INTERPRETATION,
+            CommandName.VALIDATE_INTERPRETATION,
+            CommandName.APPLY_INTERPRETATION,
+        }:
+            actions.append(AssistantResponseAction.open_data_import("Open Data Import"))
+            return tuple(actions)
+
+        if contextual_command is None:
+            return tuple(actions)
+        target = panel_target_for_command(contextual_command.value)
+        if target is None:
+            return tuple(actions)
+        label = {
+            AssistantPanelTarget.DATASET: "Open Dataset",
+            AssistantPanelTarget.PREPROCESS: (
+                "Open Epoch Settings"
+                if contextual_command is CommandName.CREATE_EPOCH
+                else "Open Preprocessing"
+            ),
+            AssistantPanelTarget.TRAINING: "Open Training",
+            AssistantPanelTarget.EVALUATION: "Open Evaluation",
+            AssistantPanelTarget.VISUALIZATION: "Open Visualization",
+        }[target]
+        actions.append(AssistantResponseAction.open_panel(label, target))
+        return tuple(actions)
 
     def _reset_user_turn_state(self) -> None:
         """Reset counters that are scoped to one user-authored turn."""
@@ -848,6 +883,10 @@ class LLMController(QObject):
             scope=self._active_turn_scope or AssistantTurnScope.SINGLE_ACTION,
             terminal_command=self._active_turn_terminal_command,
         )
+        if decision.command is not None and self._reject_excluded_turn_command(
+            decision.command.value
+        ):
+            return True
         if decision.action is UserRequestAdmissionAction.GENERATE:
             self._admitted_command_name = (
                 decision.command.value if decision.command is not None else None
@@ -1384,6 +1423,8 @@ class LLMController(QObject):
             self._finalize_turn_after_tool()
             return
 
+        if self._reject_excluded_turn_command(command[0]):
+            return
         decision = self._evaluate_tool_proposal(command, response_text)
         if self._present_tool_attempt_boundary(decision):
             return
@@ -1577,6 +1618,8 @@ class LLMController(QObject):
     ) -> None:
         """Execute a verified decision and apply its continuation policy."""
         cmd = decision.command_name
+        if self._reject_excluded_turn_command(cmd):
+            return
         params = decision.params if execution_params is None else execution_params
         tool_context = execution_context or cast(
             ToolAvailabilityContext,
@@ -1844,7 +1887,11 @@ class LLMController(QObject):
                 if self._last_tool_summary and not self._visible_response_sent:
                     self._publish_response(
                         self._last_tool_summary,
-                        kind=self._last_tool_summary_kind,
+                        # This is an intermediate workflow update. The open
+                        # product dialog owns completion, so presenting it as a
+                        # completed tool result would contradict the waiting
+                        # state rendered immediately below.
+                        kind=AssistantResponseKind.MESSAGE,
                     )
                 request = self._workflow_ui_handoff_request(
                     snapshot.recommended_next_step,
@@ -1879,6 +1926,8 @@ class LLMController(QObject):
         command_name: str,
     ) -> bool:
         """Execute a parameter-free import transition already fixed by policy."""
+        if self._reject_excluded_turn_command(command_name):
+            return True
         decision = (
             self._tool_attempt_coordinator.evaluate_host_deterministic_continuation(
                 command_name,
@@ -1898,6 +1947,50 @@ class LLMController(QObject):
             redact_public_text(command_name),
         )
         self._execute_tool_attempt(decision)
+        return True
+
+    def _reject_excluded_turn_command(self, command_name: str) -> bool:
+        """Fail closed before any command excluded by the user can run."""
+        mapped_command = AGENT_ACTION_CONTRACTS.tool_to_command().get(command_name)
+        if mapped_command is None:
+            try:
+                mapped_command = CommandName(command_name)
+            except ValueError:
+                return False
+        excluded_commands = getattr(
+            self,
+            "_active_turn_excluded_commands",
+            frozenset(),
+        )
+        if mapped_command not in excluded_commands:
+            return False
+
+        action_label = tool_action_label(command_name)
+        message = (
+            f"{action_label} was not run because your request explicitly excluded "
+            "that workflow stage."
+        )
+        logger.warning(
+            "Turn policy blocked excluded command: %s",
+            redact_public_text(mapped_command.value),
+        )
+        self.status_update.emit(f"Blocked: {message}")
+        self._publish_activity(
+            AssistantTurnActivityPhase.NEEDS_ATTENTION,
+            command_name=command_name,
+            message=message,
+        )
+        self._publish_response(
+            message,
+            kind=AssistantResponseKind.BLOCKED,
+        )
+        self._append_history(
+            "user",
+            f"System: Action excluded by the user: {mapped_command.value}",
+        )
+        self._last_tool_summary = message
+        self._last_tool_summary_kind = AssistantResponseKind.BLOCKED
+        self._finalize_turn_after_tool()
         return True
 
     def _turn_endpoint_reached(self, tool_name: str) -> bool:
@@ -2832,9 +2925,12 @@ class LLMController(QObject):
             self._stopping_generation_id = generation_id
             request = AssistantGenerationStopRequest(generation_id=generation_id)
             worker = getattr(self, "worker", None)
+            worker_object = (
+                cast(QObject, worker) if isinstance(worker, QObject) else None
+            )
             if (
-                isinstance(worker, QObject)
-                and worker.thread() is not QThread.currentThread()
+                worker_object is not None
+                and worker_object.thread() is not QThread.currentThread()
             ):
                 self.sig_cancel_generation.emit(request)
             else:
@@ -2936,12 +3032,18 @@ class LLMController(QObject):
         self._tool_execution_count = 0
         self._turn_cancelled = False
         self._cancellation_response_sent = False
+        self._active_turn_scope = None
+        self._active_turn_terminal_command = None
+        self._active_turn_excluded_commands = frozenset()
+        self._admitted_command_name = None
+        self._admitted_publication_generation = None
 
         # Reset metrics for new conversation
         self.metrics.reset()
 
         # Clear Assembler context as well
         self.assembler.clear_context()
+        self.assembler.clear_turn_authorization()
 
         self.status_update.emit("Conversation reset.")
         self._publish_activity(AssistantTurnActivityPhase.IDLE)

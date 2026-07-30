@@ -85,15 +85,30 @@ class _DownloadLifecycle(QObject):
         self.terminal.emit(False, "Cancelled by user")
 
 
+class _PublicationBridge:
+    def __init__(self):
+        self.cleanup_requests = 0
+
+    def cleanup(self) -> None:
+        self.cleanup_requests += 1
+
+
 class _DownloadOwningAgentManager(QObject):
     """Exercise the real AgentManager close method with focused dependencies."""
 
-    def __init__(self, parent: QObject):
+    def __init__(
+        self,
+        parent: QObject,
+        *,
+        publication_bridge: _PublicationBridge | None = None,
+    ):
         super().__init__(parent)
         self.assistant_runtime = _SignalDrivenAssistantRuntime(self)
         self._assistant_runtime = self.assistant_runtime
         self.model_download_lifecycle = _DownloadLifecycle(self)
         self._model_download_lifecycle = self.model_download_lifecycle
+        if publication_bridge is not None:
+            self._application_publication_bridge = publication_bridge
         self._workflow_ui_handoff_host = MagicMock()
         self._assistant_turn_state = MagicMock()
         self._assistant_turn_state.shutdown_terminal.return_value = None
@@ -289,8 +304,29 @@ def test_app_close_waits_for_active_model_download_terminal(qtbot):
     manager = _DownloadOwningAgentManager(window)
     window.agent_manager = manager
 
+    assert not hasattr(manager, "_application_publication_bridge")
     assert window.close() is False
     assert window.isVisible() is True
+    assert manager.model_download_lifecycle.shutdown_requests == 1
+
+    manager.model_download_lifecycle.complete()
+
+    qtbot.waitUntil(lambda: not window.isVisible(), timeout=1_000)
+    assert manager.close_calls >= 2
+
+
+def test_app_close_cleans_publication_bridge_while_stopping_download(qtbot):
+    window = _make_window(qtbot)
+    publication_bridge = _PublicationBridge()
+    manager = _DownloadOwningAgentManager(
+        window,
+        publication_bridge=publication_bridge,
+    )
+    window.agent_manager = manager
+
+    assert window.close() is False
+    assert window.isVisible() is True
+    assert publication_bridge.cleanup_requests == 1
     assert manager.model_download_lifecycle.shutdown_requests == 1
 
     manager.model_download_lifecycle.complete()

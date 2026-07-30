@@ -18,6 +18,7 @@ import pytest
 import torch
 
 from XBrainLab.backend.application import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     ApplicationService,
     ApplyInterpretationCommand,
     ApplyMontageCommand,
@@ -102,6 +103,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingStateToken,
     TrainingTerminalOutcome,
 )
+from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
 
 THREAD_WATCHDOG_SECONDS = 5.0
 TRAINING_ACTIVE_SALIENCY_REASON = (
@@ -361,6 +363,7 @@ def test_query_state_command_reads_committed_publication_without_mutation_lock()
     assert result.ok is True
     assert result.state == initial.state
     assert result.diagnostics["publication_generation"] == initial.generation
+    assert result.diagnostics["publication_revision"] == initial.revision
     assert result.diagnostics["view_stale"] is False
 
 
@@ -530,6 +533,124 @@ def test_training_terminal_event_is_emitted_once_after_its_publication() -> None
     assert event.outcome.state is TrainingOutcomeState.COMPLETED
 
 
+def test_training_terminal_delivery_waits_for_canonical_view_acknowledgement(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    state = service.get_state()
+    lifecycle_event = MagicMock(spec=TrainingLifecycleEvent)
+    publish_view = MagicMock(return_value=False)
+    deliver_terminal = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_refresh_training_publication",
+        MagicMock(return_value=state),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "terminal_training_publication_event",
+        MagicMock(return_value=lifecycle_event),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_publish_view_changed",
+        publish_view,
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "deliver_training_terminal_publication",
+        deliver_terminal,
+    )
+
+    assert service._publish_training_terminal_state() is False
+    publish_view.assert_called_once()
+    deliver_terminal.assert_called_once_with(lifecycle_event)
+
+
+def test_deferred_view_ack_releases_retained_training_terminal_event() -> None:
+    service = ApplicationService(Study())
+    trainer = Trainer([])
+    service.study.training_manager.trainer = trainer
+    trainer.run(interact=False)
+    deferred_revisions: list[int] = []
+    terminal_events: list[TrainingLifecycleEvent] = []
+
+    def defer_view(publication) -> ObserverDeliveryStatus:
+        deferred_revisions.append(publication.revision)
+        return ObserverDeliveryStatus.DEFERRED
+
+    service.subscribe(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, defer_view)
+    service.training.subscribe(
+        "training_terminal_published",
+        terminal_events.append,
+    )
+
+    assert service._publish_training_terminal_state() is False
+    publication = service.get_view_publication()
+    delivery = service.training_publications.training_delivery_state()
+
+    assert deferred_revisions == [publication.revision]
+    assert terminal_events == []
+    assert delivery.pending_count == 1
+
+    assert service.acknowledge_view_publication_delivery(publication.revision) is True
+
+    delivery = service.training_publications.training_delivery_state()
+    assert len(terminal_events) == 1
+    assert delivery.pending_count == 0
+    assert delivery.delivered_count == 1
+
+
+def test_saliency_delivery_waits_for_canonical_view_acknowledgement(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    publish_view = MagicMock(return_value=False)
+    notify_visualization = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_publish_view_changed",
+        publish_view,
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle._visualization,
+        "notify",
+        notify_visualization,
+    )
+
+    assert service._notify_saliency_publication_changed() is False
+
+    publish_view.assert_called_once()
+    notify_visualization.assert_not_called()
+
+
+def test_saliency_delivery_does_not_publish_stale_view_during_mutation(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    publish_view = MagicMock(return_value=True)
+    notify_visualization = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_publish_view_changed",
+        publish_view,
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle._visualization,
+        "notify",
+        notify_visualization,
+    )
+    service._view_coordinator.mark_stale("mutation in progress")
+    service._mutation_in_progress = True
+    try:
+        assert service._notify_saliency_publication_changed() is False
+    finally:
+        service._mutation_in_progress = False
+
+    publish_view.assert_not_called()
+    notify_visualization.assert_not_called()
+
+
 def test_training_terminal_event_rejects_mismatched_trainer_identity(
     monkeypatch,
 ) -> None:
@@ -657,6 +778,7 @@ def test_training_updated_event_publishes_live_progress_and_policy(
     assert query.ok is True
     assert query.state == after.state
     assert query.diagnostics["publication_generation"] == after.generation
+    assert query.diagnostics["publication_revision"] == after.revision
     assert query.diagnostics["state"]["training"]["progress_message"] == "Epoch 2/5"
 
 
@@ -873,7 +995,11 @@ def test_view_store_restores_only_the_same_verified_generation() -> None:
 
     restored = store.restore_verified(expected)
 
-    assert restored == expected
+    assert restored.generation == expected.generation
+    assert restored.revision == expected.revision + 2
+    assert restored.state == expected.state
+    assert restored.capabilities == expected.capabilities
+    assert restored.training_boundary == expected.training_boundary
     assert restored.usable is True
 
 
@@ -1946,6 +2072,12 @@ def test_successful_mutation_fails_closed_when_updated_state_cannot_be_verified(
     None
 ):
     service = ApplicationService(Study())
+    before_publication = service.get_view_publication()
+    publications = []
+    service.subscribe(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        publications.append,
+    )
     before = service.get_state()
     service.state_snapshot.build = MagicMock(
         side_effect=[before, RuntimeError("refresh unavailable")],
@@ -1960,6 +2092,10 @@ def test_successful_mutation_fails_closed_when_updated_state_cannot_be_verified(
     assert result.diagnostics["state_refresh_failed"] is True
     assert result.diagnostics["command_effect_may_have_applied"] is True
     assert result.changed_state.state_unknown is True
+    assert len(publications) == 1
+    assert publications[0].generation == before_publication.generation
+    assert publications[0].revision > before_publication.revision
+    assert publications[0].usable is False
 
 
 def test_train_capability_blocks_short_epoch_for_selected_model():
@@ -5804,6 +5940,33 @@ def test_new_session_requires_confirmation_and_clears_single_backend_session():
     assert confirmed.ok is True
     assert confirmed.command_name == "new_session"
     assert confirmed.state.raw.loaded is False
+
+
+def test_mutation_publishes_only_committed_application_view(monkeypatch):
+    service = ApplicationService(Study())
+    initial = service.get_view_publication()
+    publications = []
+    original_execute_allowed = service._execute_allowed
+
+    def execute_without_early_publication(command, name):
+        assert publications == []
+        return original_execute_allowed(command, name)
+
+    monkeypatch.setattr(service, "_execute_allowed", execute_without_early_publication)
+    service.subscribe(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        publications.append,
+    )
+
+    result = service.execute(NewSessionCommand(confirmed=True))
+
+    assert result.ok is True
+    assert len(publications) == 1
+    publication = publications[0]
+    assert publication.usable is True
+    assert publication.generation > initial.generation
+    assert publication.state == result.state
+    assert publication == service.get_view_publication()
 
 
 def test_destructive_capabilities_expose_confirmation_boundary_metadata():

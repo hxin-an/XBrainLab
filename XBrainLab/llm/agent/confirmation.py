@@ -17,8 +17,6 @@ _INTERNAL_CONFIRMATION_PARAMS = frozenset(
         "resource_preflight_token",
     }
 )
-_MAX_PARAMETER_ROWS = 12
-_MAX_DISPLAY_VALUE_LENGTH = 160
 
 
 class AgentConfirmationResolutionStatus(str, Enum):
@@ -170,20 +168,14 @@ def _parameter_rows(params: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
             continue
         display_value = _display_value(value)
         rows.append((key.replace("_", " ").strip().capitalize(), display_value))
-        if len(rows) >= _MAX_PARAMETER_ROWS:
-            break
     return tuple(rows)
 
 
 def _display_value(value: Any) -> str:
     normalized = _canonical_value(value)
     if isinstance(normalized, str):
-        text = normalized
-    else:
-        text = json.dumps(normalized, ensure_ascii=True, sort_keys=True)
-    if len(text) <= _MAX_DISPLAY_VALUE_LENGTH:
-        return text
-    return f"{text[: _MAX_DISPLAY_VALUE_LENGTH - 3]}..."
+        return normalized
+    return json.dumps(normalized, ensure_ascii=True, sort_keys=True)
 
 
 def _canonical_value(value: Any) -> Any:

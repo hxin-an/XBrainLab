@@ -7,6 +7,7 @@ from typing import Any, cast
 import pytest
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from XBrainLab.backend.application import CommandName
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
     AgentConfirmationResolution,
@@ -280,6 +281,19 @@ def test_submit_resolves_one_immutable_scope_from_each_natural_request() -> None
     guided_request = dispatcher.turn_requests[-1]
     assert guided_request.scope is AssistantTurnScope.GUIDED_WORKFLOW
     assert guided_request.terminal_command == "create_epoch"
+
+
+def test_submit_does_not_grant_an_excluded_preprocess_endpoint() -> None:
+    dispatcher = _DeliveryDispatcher()
+    lifecycle, _controller = _ready_lifecycle(dispatcher)
+
+    result = lifecycle.submit("Load the data but not preprocess it.")
+
+    assert result.accepted is True
+    [request] = dispatcher.turn_requests
+    assert request.scope is AssistantTurnScope.SINGLE_ACTION
+    assert request.terminal_command is None
+    assert request.excluded_commands == (CommandName.PREPROCESS,)
 
 
 def test_delivery_error_releases_only_its_correlated_turn() -> None:

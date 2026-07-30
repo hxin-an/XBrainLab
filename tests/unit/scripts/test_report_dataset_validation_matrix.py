@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 from scripts.dev.report_data_interpretation_format_matrix import (
@@ -27,6 +29,27 @@ from scripts.dev.run_public_cross_source_training_smoke import (
 def _touch(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("fixture", encoding="utf-8")
+
+
+def test_canonical_direct_script_entrypoint_can_start_from_repo_root() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and script path
+        [
+            sys.executable,
+            "scripts/dev/report_dataset_validation_matrix.py",
+            "--help",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "report_dataset_validation_matrix.py" in result.stdout
+    assert "--strict" in result.stdout
 
 
 def _workflow_snapshot(*, passed: bool = True) -> dict[str, object]:

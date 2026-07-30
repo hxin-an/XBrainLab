@@ -46,6 +46,7 @@ from XBrainLab.llm.agent.request_admission import (
 from XBrainLab.llm.agent.response_presentation import (
     AssistantPanelNavigationRequest,
     AssistantPanelTarget,
+    AssistantResponseActionKind,
     AssistantResponseKind,
     AssistantResponsePresentation,
 )
@@ -974,6 +975,22 @@ class TestHandleUserInput:
 
     def test_clarification_shortcut_emits_typed_contextual_actions(self, ctrl):
         ctrl._generate_response = MagicMock()
+        publication = ApplicationViewPublication(
+            generation=11,
+            state=ApplicationStateSnapshot.empty(),
+            capabilities=CapabilityPolicy(
+                {
+                    CommandName.SCAN_SOURCE.value: CommandCapability(
+                        command_name=CommandName.SCAN_SOURCE.value,
+                        enabled=True,
+                    )
+                }
+            ),
+        )
+        ctrl._product_turn_policy = ProductTurnPolicy(
+            ctrl.study,
+            publication_reader=lambda: publication,
+        )
 
         _submit_user_turn(ctrl, "幫我處理資料")
 
@@ -988,9 +1005,78 @@ class TestHandleUserInput:
         )
         assert [action.label for action in presentation.actions] == [
             "Check workflow",
-            "Open Dataset",
+            "Open Data Import",
         ]
-        assert presentation.actions[1].panel is AssistantPanelTarget.DATASET
+        assert (
+            presentation.actions[1].kind is AssistantResponseActionKind.OPEN_DATA_IMPORT
+        )
+        assert presentation.actions[1].prompt == ""
+        assert presentation.actions[1].panel is None
+
+    def test_clarification_opens_preprocess_for_loaded_data(self, ctrl):
+        ctrl._generate_response = MagicMock()
+        state = replace(
+            ApplicationStateSnapshot.empty(),
+            pipeline_stage="data_loaded",
+        )
+        publication = ApplicationViewPublication(
+            generation=12,
+            state=state,
+            capabilities=CapabilityPolicy(
+                {
+                    CommandName.PREPROCESS.value: CommandCapability(
+                        command_name=CommandName.PREPROCESS.value,
+                        enabled=True,
+                    )
+                }
+            ),
+        )
+        ctrl._product_turn_policy = ProductTurnPolicy(
+            ctrl.study,
+            publication_reader=lambda: publication,
+        )
+
+        _submit_user_turn(ctrl, "幫我處理資料")
+
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert [action.label for action in presentation.actions] == [
+            "Check workflow",
+            "Open Preprocessing",
+        ]
+        assert presentation.actions[1].kind is AssistantResponseActionKind.OPEN_PANEL
+        assert presentation.actions[1].panel is AssistantPanelTarget.PREPROCESS
+
+    def test_clarification_opens_evaluation_when_results_exist(self, ctrl):
+        ctrl._generate_response = MagicMock()
+        state = replace(
+            ApplicationStateSnapshot.empty(),
+            pipeline_stage="trained",
+        )
+        publication = ApplicationViewPublication(
+            generation=13,
+            state=state,
+            capabilities=CapabilityPolicy(
+                {
+                    CommandName.EVALUATE.value: CommandCapability(
+                        command_name=CommandName.EVALUATE.value,
+                        enabled=True,
+                    )
+                }
+            ),
+        )
+        ctrl._product_turn_policy = ProductTurnPolicy(
+            ctrl.study,
+            publication_reader=lambda: publication,
+        )
+
+        _submit_user_turn(ctrl, "幫我處理資料")
+
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert [action.label for action in presentation.actions] == [
+            "Check workflow",
+            "Open Evaluation",
+        ]
+        assert presentation.actions[1].panel is AssistantPanelTarget.EVALUATION
 
     def test_blocked_training_attempt_offers_existing_training_panel(self, ctrl):
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -1885,7 +1971,7 @@ class TestProcessToolCalls:
             "Import review needs your input:\n"
             "- Confirm subject metadata for recording.fif.\n"
             "- Confirm which events are class labels.\n"
-            "Open Import Review to resolve these choices."
+            "Use the open Import EEG Data window to review these choices."
         )
         _set_guided_turn_scope(ctrl)
         ctrl._tool_execution_count = 1
@@ -1905,7 +1991,7 @@ class TestProcessToolCalls:
 
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.text == summary
-        assert presentation.kind is AssistantResponseKind.TOOL_RESULT
+        assert presentation.kind is AssistantResponseKind.MESSAGE
         ctrl.workflow_ui_handoff_requested.emit.assert_called_once()
 
     def test_import_review_continuation_binds_current_domain_identity(self, ctrl):
@@ -3017,10 +3103,21 @@ class TestResetConversation:
         ctrl._retry_count = 5
         ctrl._active_host_turn_generation = None
         ctrl._active_host_turn_id = None
+        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._active_turn_terminal_command = CommandName.CREATE_EPOCH.value
+        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._admitted_command_name = CommandName.SCAN_SOURCE.value
+        ctrl._admitted_publication_generation = 7
         ctrl.reset_conversation()
         assert ctrl.history == []
         assert ctrl._retry_count == 0
+        assert ctrl._active_turn_scope is None
+        assert ctrl._active_turn_terminal_command is None
+        assert ctrl._active_turn_excluded_commands == frozenset()
+        assert ctrl._admitted_command_name is None
+        assert ctrl._admitted_publication_generation is None
         ctrl.assembler.clear_context.assert_called()
+        ctrl.assembler.clear_turn_authorization.assert_called()
 
 
 # --- execute_debug_tool ---
@@ -5078,6 +5175,138 @@ class TestTurnScope:
         ctrl._finalize_turn_after_tool.assert_called_once_with()
         ctrl.assembler.set_turn_authorized_command.assert_not_called()
         ctrl._generate_response.assert_not_called()
+
+    def test_turn_delivery_preserves_host_excluded_commands(self, ctrl):
+        correlation = AssistantTurnCorrelation(generation=4, turn_id=9)
+        request = AssistantTurnRequest(
+            correlation=correlation,
+            text="Load the data without doing preprocessing.",
+            scope=AssistantTurnScope.SINGLE_ACTION,
+            terminal_command=None,
+            excluded_commands=(CommandName.PREPROCESS,),
+        )
+        ctrl._handle_admitted_user_input = MagicMock()
+        ctrl._active_host_turn_id = None
+        ctrl._active_host_turn_generation = None
+        ctrl.is_processing = False
+
+        acknowledgement = ctrl.handle_user_turn(request)
+
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        assert ctrl._active_turn_excluded_commands == frozenset(
+            {CommandName.PREPROCESS}
+        )
+        ctrl._handle_admitted_user_input.assert_called_once_with(request.text)
+
+    def test_model_proposal_cannot_execute_an_excluded_stage(self, ctrl):
+        _allow_prompt_tools(ctrl)
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
+        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._execute_tool_attempt = MagicMock()
+
+        ctrl._process_tool_calls(
+            [("apply_standard_preprocess", {})],
+            '{"tool_name":"apply_standard_preprocess","params":{}}',
+        )
+
+        ctrl._execute_tool_attempt.assert_not_called()
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.BLOCKED
+        assert "explicitly excluded" in presentation.text
+
+    def test_request_admission_cannot_route_to_an_excluded_stage(self, ctrl):
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
+        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._request_admission.evaluate = MagicMock(
+            return_value=UserRequestAdmission(
+                UserRequestAdmissionAction.UI_HANDOFF,
+                command=CommandName.PREPROCESS,
+                decision_fields=("preprocess_settings",),
+            )
+        )
+        publication = MagicMock()
+
+        with patch(
+            "XBrainLab.llm.agent.controller.get_application_service"
+        ) as get_service:
+            get_service.return_value.get_view_publication.return_value = publication
+            handled = ctrl._handle_request_admission(
+                "Load the data without doing preprocessing."
+            )
+
+        assert handled is True
+        ctrl.workflow_ui_handoff_requested.emit.assert_not_called()
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.BLOCKED
+        assert "explicitly excluded" in presentation.text
+
+    def test_generate_admission_cannot_authorize_an_excluded_stage(self, ctrl):
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
+        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._request_admission.evaluate = MagicMock(
+            return_value=UserRequestAdmission(
+                UserRequestAdmissionAction.GENERATE,
+                command=CommandName.PREPROCESS,
+            )
+        )
+        publication = MagicMock(generation=7)
+
+        with patch(
+            "XBrainLab.llm.agent.controller.get_application_service"
+        ) as get_service:
+            get_service.return_value.get_view_publication.return_value = publication
+            handled = ctrl._handle_request_admission(
+                "Do not preprocess with the standard preprocessing defaults."
+            )
+
+        assert handled is True
+        assert ctrl._admitted_command_name is None
+        ctrl.assembler.set_turn_authorized_command.assert_not_called()
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.BLOCKED
+        assert "explicitly excluded" in presentation.text
+
+    def test_host_continuation_cannot_execute_an_excluded_stage(self, ctrl):
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
+        ctrl._active_turn_excluded_commands = frozenset(
+            {CommandName.PREVIEW_INTERPRETATION}
+        )
+        ctrl._tool_attempt_coordinator.evaluate_host_deterministic_continuation = (
+            MagicMock()
+        )
+        ctrl._execute_tool_attempt = MagicMock()
+
+        continued = ctrl._execute_host_deterministic_continuation(
+            CommandName.PREVIEW_INTERPRETATION.value
+        )
+
+        assert continued is True
+        ctrl._tool_attempt_coordinator.evaluate_host_deterministic_continuation.assert_not_called()
+        ctrl._execute_tool_attempt.assert_not_called()
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.BLOCKED
+
+    def test_final_execution_fence_rejects_excluded_confirmed_action(self, ctrl):
+        ctrl._active_host_turn_id = 1
+        ctrl._active_host_turn_generation = 1
+        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._execute_tool_no_loop = MagicMock()
+        decision = ToolAttemptDecision(
+            ToolAttemptAction.EXECUTE,
+            "apply_standard_preprocess",
+            {},
+            context=_enabled_tool_context("apply_standard_preprocess"),
+        )
+
+        ctrl._execute_tool_attempt(decision, after_confirmation=True)
+
+        ctrl._execute_tool_no_loop.assert_not_called()
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.BLOCKED
 
     def test_single_mode_finalizes_on_success(self, ctrl):
         """In single mode, a successful tool call finalizes immediately."""

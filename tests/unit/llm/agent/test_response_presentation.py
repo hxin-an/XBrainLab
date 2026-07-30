@@ -73,6 +73,17 @@ def test_interaction_copy_is_derived_from_structured_outcome(status, expected):
     assert expected in interaction_outcome_message(outcome)
 
 
+def test_cancelled_data_import_uses_product_language() -> None:
+    outcome = AgentInteractionOutcome(
+        status=AgentInteractionStatus.CANCELLED,
+        command_name="apply_interpretation",
+    )
+
+    assert interaction_outcome_message(outcome) == (
+        "Data import was cancelled. No data was added."
+    )
+
+
 def test_handoff_blocker_uses_specific_product_surface_message() -> None:
     outcome = AgentInteractionOutcome(
         status=AgentInteractionStatus.BLOCKED,
@@ -161,6 +172,14 @@ def test_response_presentation_accepts_one_typed_correlated_action() -> None:
 
     assert selection.presentation_id == "presentation-1"
     assert selection.action.panel is AssistantPanelTarget.DATASET
+
+
+def test_data_import_response_action_is_a_typed_product_surface_action() -> None:
+    action = AssistantResponseAction.open_data_import("Open Data Import")
+
+    assert action.kind is AssistantResponseActionKind.OPEN_DATA_IMPORT
+    assert action.prompt == ""
+    assert action.panel is None
 
 
 @pytest.mark.parametrize(

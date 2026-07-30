@@ -173,6 +173,16 @@ def assistant_main_window_evidence(
         if isinstance(button, QAbstractButton)
     ]
     compact_nav = getattr(window, "compact_nav_combo", None)
+    composer_widget = composer if isinstance(composer, QWidget) else None
+    input_widget = input_field if isinstance(input_field, QWidget) else None
+    primary_action_widget = (
+        primary_action if isinstance(primary_action, QWidget) else None
+    )
+    primary_action_button = (
+        primary_action if isinstance(primary_action, QAbstractButton) else None
+    )
+    stack_widget = stack if isinstance(stack, QWidget) else None
+    compact_nav_widget = compact_nav if isinstance(compact_nav, QComboBox) else None
     dock_state = assistant_dock_evidence(dock, panel)
 
     widgets: dict[str, QWidget] = {
@@ -209,38 +219,40 @@ def assistant_main_window_evidence(
     ]
 
     composer_visible = bool(
-        isinstance(composer, QWidget)
-        and composer.isVisible()
-        and isinstance(input_field, QWidget)
-        and input_field.isVisible()
+        composer_widget is not None
+        and composer_widget.isVisible()
+        and input_widget is not None
+        and input_widget.isVisible()
     )
     action_visible = bool(
-        isinstance(primary_action, QWidget) and primary_action.isVisible()
+        primary_action_widget is not None and primary_action_widget.isVisible()
     )
     composer_inside_dock = bool(
-        isinstance(composer, QWidget) and _widget_inside(dock, composer)
+        composer_widget is not None and _widget_inside(dock, composer_widget)
     )
     action_inside_dock = bool(
-        isinstance(primary_action, QWidget) and _widget_inside(dock, primary_action)
+        primary_action_widget is not None
+        and _widget_inside(dock, primary_action_widget)
     )
-    main_content_visible = bool(isinstance(stack, QWidget) and stack.isVisible())
+    main_content_visible = bool(stack_widget is not None and stack_widget.isVisible())
     main_content_inside_window = bool(
-        isinstance(stack, QWidget)
-        and stack.isVisible()
-        and _rect_inside(window, _widget_rect_in(window, stack))
+        stack_widget is not None
+        and stack_widget.isVisible()
+        and _rect_inside(window, _widget_rect_in(window, stack_widget))
     )
     visible_nav_buttons = [button for button in nav_buttons if button.isVisible()]
-    if isinstance(compact_nav, QComboBox) and compact_nav.isVisible():
+    if compact_nav_widget is not None and compact_nav_widget.isVisible():
         compact_nav_visible = True
-        compact_nav_text = " ".join(str(compact_nav.currentText() or "").split())
+        compact_nav_text = " ".join(str(compact_nav_widget.currentText() or "").split())
         compact_nav_inside_window = _rect_inside(
             window,
-            _widget_rect_in(window, compact_nav),
+            _widget_rect_in(window, compact_nav_widget),
         )
         compact_nav_text_fits = bool(
             compact_nav_text
-            and compact_nav.fontMetrics().horizontalAdvance(compact_nav_text) + 36
-            <= compact_nav.contentsRect().width() + 2
+            and compact_nav_widget.fontMetrics().horizontalAdvance(compact_nav_text)
+            + 36
+            <= compact_nav_widget.contentsRect().width() + 2
         )
     else:
         compact_nav_visible = False
@@ -299,8 +311,8 @@ def assistant_main_window_evidence(
         "composer_inside_window": "composer" not in out_of_window,
         "composer_inside_dock": composer_inside_dock,
         "primary_action_text": (
-            str(primary_action.text() or "")
-            if isinstance(primary_action, QAbstractButton)
+            str(primary_action_button.text() or "")
+            if primary_action_button is not None
             else ""
         ),
         "primary_action_visible": action_visible,
@@ -417,6 +429,7 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
     )
     tabbed = bool(chart_tabs is not None and chart_tabs.isVisible())
     responsive_layout_ok = content_width >= 720 or tabbed
+    aggregate_info = aggregate_info_readability_evidence(panel)
     clipped_labels = [str(row["text"]) for row in rows if row["clipped"]]
     canvas_width = int(canvas.width())
     canvas_height = int(canvas.height())
@@ -429,6 +442,7 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
             or overlapping_x_ticks
             or axes_outside_figure
             or not responsive_layout_ok
+            or not aggregate_info["fully_readable"]
         )
     )
     return {
@@ -442,6 +456,7 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
         "content_width": content_width,
         "layout_mode": "tabs" if tabbed else "side_by_side",
         "responsive_layout_ok": responsive_layout_ok,
+        "aggregate_info": aggregate_info,
         "clipped_labels": clipped_labels,
         "overlapping_x_ticks": overlapping_x_ticks,
         "axes_outside_figure": axes_outside_figure,
@@ -450,9 +465,80 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
         "finding": (
             ""
             if fully_visible
-            else "Evaluation plot labels, axes, or responsive layout are not fully "
-            "readable in the full-window assistant handoff artifact."
+            else "Evaluation plot labels, aggregate information, axes, or responsive "
+            "layout are not fully readable in the full-window assistant handoff "
+            "artifact."
         ),
+    }
+
+
+def aggregate_info_readability_evidence(panel: Any) -> dict[str, Any]:
+    """Measure visible aggregate-information cells against rendered text widths."""
+    info_panel = getattr(panel, "info_panel", None)
+    table = getattr(info_panel, "table", None)
+    if info_panel is None or table is None:
+        return {
+            "available": False,
+            "visible": False,
+            "fully_readable": False,
+            "clipped_labels": [],
+            "cells": [],
+        }
+
+    visible = bool(
+        panel is not None and info_panel.isVisible() and info_panel.isVisibleTo(panel)
+    )
+    if not visible:
+        return {
+            "available": True,
+            "visible": False,
+            "fully_readable": True,
+            "clipped_labels": [],
+            "cells": [],
+        }
+
+    cells: list[dict[str, Any]] = []
+    clipped_labels: list[str] = []
+    metrics = table.fontMetrics()
+    viewport = table.viewport()
+    viewport_width = int(viewport.width()) if viewport is not None else 0
+    for row in range(table.rowCount()):
+        for column in range(table.columnCount()):
+            item = table.item(row, column)
+            if item is None:
+                continue
+            text = " ".join(str(item.text() or "").split())
+            rect = table.visualItemRect(item)
+            required_width = metrics.horizontalAdvance(text) + 8
+            clipped = bool(
+                text
+                and (
+                    rect.width() < required_width
+                    or rect.left() < 0
+                    or rect.right() > viewport_width
+                )
+            )
+            if clipped:
+                clipped_labels.append(text)
+            cells.append(
+                {
+                    "row": row,
+                    "column": column,
+                    "text": text,
+                    "cell_width": int(rect.width()),
+                    "required_width": int(required_width),
+                    "clipped": clipped,
+                }
+            )
+    return {
+        "available": True,
+        "visible": True,
+        "fully_readable": bool(cells) and not clipped_labels,
+        "clipped_labels": clipped_labels,
+        "key_column_width": int(table.columnWidth(0)),
+        "value_column_width": int(table.columnWidth(1)),
+        "viewport_width": viewport_width,
+        "cells": cells,
     }
 
 
@@ -668,9 +754,11 @@ def icon_only_control_contrast_evidence(
         right = round((origin.x() + icon_width) * scale_x)
         bottom = round((origin.y() + icon_height) * scale_y)
         crop = captured.convert("L").crop((left, top, right, bottom))
-        low, high = crop.getextrema() or (0, 0)
+        occupied_bins = [value for value, count in enumerate(crop.histogram()) if count]
+        low = occupied_bins[0] if occupied_bins else 0
+        high = occupied_bins[-1] if occupied_bins else 0
         stddev = float(ImageStat.Stat(crop).stddev[0]) if crop.size[0] else 0.0
-    span = int(high) - int(low)
+    span = high - low
     return {
         "passed": span >= 24 and stddev >= 3.0,
         "applicable": True,
@@ -705,7 +793,6 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
     for name in (
         "empty_state_title",
         "empty_state_intro",
-        "empty_state_backend_label",
         "empty_state_next_label",
         "notice_label",
         "runtime_state_title",
@@ -725,13 +812,21 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
         for name in (
             "title_label",
             "description_label",
-            "values_summary",
             "reason_title",
             "reason_label",
         ):
             label = getattr(confirmation_card, name, None)
             if isinstance(label, QLabel) and _label_text_exceeds_bounds(label):
                 overflows.append(f"confirmation_card/{name}")
+        for index, row in enumerate(confirmation_card.proposal_rows):
+            for name in ("label", "current_value", "proposed_value"):
+                label = getattr(row, name, None)
+                if (
+                    isinstance(label, QLabel)
+                    and label.isVisible()
+                    and _label_text_exceeds_bounds(label)
+                ):
+                    overflows.append(f"confirmation_card/row_{index}/{name}")
 
     for index, bubble in enumerate(
         child for child in panel.findChildren(MessageBubble) if child.isVisible()

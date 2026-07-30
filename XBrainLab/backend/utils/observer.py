@@ -4,12 +4,21 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from enum import Enum
 from threading import Lock
 from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
 
 _MAX_RETAINED_BATCH_DELIVERIES = 2048
+
+
+class ObserverDeliveryStatus(str, Enum):
+    """Typed result for consumers that distinguish queued from rendered work."""
+
+    DELIVERED = "delivered"
+    DEFERRED = "deferred"
+    FAILED = "failed"
 
 
 @dataclass(slots=True)
@@ -144,6 +153,36 @@ class Observable:
                 self._safe_call(event_name, callback, *args, **kwargs) and delivered
             )
         return delivered
+
+    def notify_delivery(
+        self,
+        event_name: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> ObserverDeliveryStatus:
+        """Notify subscribers while preserving deferred UI delivery semantics."""
+        batch = self._batch_state.get()
+        if batch is not None:
+            batch.pending_events[event_name] = (args, kwargs)
+            return ObserverDeliveryStatus.DEFERRED
+
+        status = ObserverDeliveryStatus.DELIVERED
+        for callback in self._observer_snapshot(event_name):
+            try:
+                result = callback(*args, **kwargs)
+            except Exception as exc:
+                logger.error(
+                    "Error in subscriber for %s: %s",
+                    event_name,
+                    exc,
+                    exc_info=True,
+                )
+                return ObserverDeliveryStatus.FAILED
+            if result is False or result is ObserverDeliveryStatus.FAILED:
+                return ObserverDeliveryStatus.FAILED
+            if result is ObserverDeliveryStatus.DEFERRED:
+                status = ObserverDeliveryStatus.DEFERRED
+        return status
 
     @contextmanager
     def batch_notifications(self):

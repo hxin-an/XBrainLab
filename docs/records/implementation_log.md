@@ -6712,3 +6712,39 @@ call sites into explicit legacy/fallback helpers.
 
 - This is host-assisted product-flow evidence, not a raw Granite accuracy claim.
 - Windows human acceptance still precedes the XBrainLab benchmark.
+
+## 2026-07-30 Assistant Product V1 Delivery Candidate
+
+### 實作
+
+- Completed the Agent Panel presentation/product pass across header, runtime states, suggestions,
+  transcript, responsive composer, typed confirmation cards, Settings, narrow dock, and full-window
+  layouts without adding a second workflow UI.
+- Replaced the visible execution-mode choice with host-owned immutable turn scope inferred from the
+  current request. Explanation, one-step action, continue-until-decision, and explicit terminal
+  endpoint remain distinct policy states.
+- Separated directly executable UI controls from agent-only recommendations. Added Stop Training as
+  an explicit terminal endpoint that generic continuation cannot infer.
+- Added revision acknowledgement to Application view publication delivery. Terminal training events
+  are retained while Qt delivery is deferred, then delivered exactly once after the matching view
+  revision becomes visible.
+- Hardened Data Import actions to re-read publication and capability truth at click time.
+
+### 驗證
+
+- Backend publication/application: `231 passed`.
+- UI/chat/product: `571 passed`.
+- Agent/core/integration: `2123 passed`.
+- Architecture/source guards: `274 passed`.
+- Ruff, Ruff format, and canonical full-repo Basedpyright: PASS.
+- Required IO/BIDS/cross-source integration: `36 passed, 3 skipped`; strict runner `4/4`.
+- Final focused, human-like `42/42` / `45` screenshots, and exact Granite 3.3 2B boundary artifacts:
+  PASS and manually reviewed.
+- Architecture and clean-code reviewers found two release blockers, then re-gated the repaired
+  terminal delivery and bilingual Stop Training admission with no remaining blocker.
+
+### 邊界
+
+- This is an automated handoff candidate, not product completion or a benchmark result.
+- Windows native click-through, DPI/multi-monitor behavior, interactive 3D, long local-model
+  sessions, and the frozen XBrainLab benchmark still require separate acceptance.

@@ -20,6 +20,7 @@ from .capabilities import (
 )
 from .state import ApplicationStateSnapshot
 
+APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT = "view_publication_changed"
 PUBLIC_VIEW_UNAVAILABLE_CODE = "application_state_unavailable"
 PUBLIC_VIEW_UNAVAILABLE_MESSAGE = "Workflow state is temporarily unavailable."
 
@@ -59,6 +60,7 @@ class ApplicationViewPublication:
     generation: int
     state: ApplicationStateSnapshot
     capabilities: CapabilityPolicy
+    revision: int = 1
     training_boundary: TrainingReadBoundary = field(
         default_factory=TrainingReadBoundary.no_trainer
     )
@@ -130,6 +132,7 @@ class ApplicationViewStore:
             generation=1,
             state=safe_state,
             capabilities=build_capability_policy(safe_state),
+            revision=1,
             training_boundary=deepcopy(initial_training_boundary),
             verified=safe_state.state_reliable,
             stale=not safe_state.state_reliable,
@@ -172,6 +175,7 @@ class ApplicationViewStore:
                 ),
                 state=safe_state,
                 capabilities=capabilities,
+                revision=current.revision + 1,
                 training_boundary=deepcopy(training_boundary),
                 verified=True,
                 stale=False,
@@ -185,10 +189,18 @@ class ApplicationViewStore:
         with self._lock:
             current = self._publication
             fail_closed_state = self._fail_closed_state(current.state)
+            if (
+                current.stale
+                and not current.verified
+                and current.refresh_error == message
+                and current.state == fail_closed_state
+            ):
+                return deepcopy(current)
             self._publication = ApplicationViewPublication(
                 generation=current.generation,
                 state=fail_closed_state,
                 capabilities=build_capability_policy(fail_closed_state),
+                revision=current.revision + 1,
                 training_boundary=deepcopy(current.training_boundary),
                 verified=False,
                 stale=True,
@@ -223,6 +235,7 @@ class ApplicationViewStore:
                 generation=expected.generation,
                 state=deepcopy(expected.state),
                 capabilities=build_capability_policy(expected.state),
+                revision=current.revision + 1,
                 training_boundary=deepcopy(expected.training_boundary),
                 verified=True,
                 stale=False,

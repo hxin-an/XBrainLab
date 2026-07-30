@@ -6,7 +6,16 @@ from __future__ import annotations
 import argparse
 import json
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
+
+if __package__:
+    from scripts.dev.active_checkout import assert_active_checkout_import
+else:
+    from active_checkout import assert_active_checkout_import
+
+ROOT = Path(__file__).resolve().parents[2]
+assert_active_checkout_import(ROOT)
 
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.core.config import LLMConfig

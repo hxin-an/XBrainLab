@@ -1,7 +1,7 @@
 {
   "command": [
-    "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python",
-    "/mnt/d/workspace_v2/projects/lab/xbrainlab/scripts/dev/calibrate_resource_guard.py",
+    "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-Y5M5tkh1-py3.12/bin/python",
+    "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/scripts/dev/calibrate_resource_guard.py",
     "--strict",
     "--output",
     "artifacts/resource_guard/calibration.json"
@@ -15,7 +15,7 @@
         "estimated_vram_bytes": 86326780,
         "fold_count": 3,
         "formula": "(parameters + gradients + optimizer_states + evaluation_model + peak_batch + activations + logits + runtime_workspace) * safety_margin",
-        "loss": 1.3347351551055908,
+        "loss": 1.4629088640213013,
         "model": "EEGNet",
         "observed_peak_allocated_delta_bytes": 21408768,
         "observed_peak_reserved_delta_bytes": 27262976,
@@ -29,7 +29,7 @@
         "estimated_vram_bytes": 87106590,
         "fold_count": 3,
         "formula": "(parameters + gradients + optimizer_states + evaluation_model + peak_batch + activations + logits + runtime_workspace) * safety_margin",
-        "loss": 1.3607767820358276,
+        "loss": 1.4010404348373413,
         "model": "SCCNet",
         "observed_peak_allocated_delta_bytes": 1856000,
         "observed_peak_reserved_delta_bytes": 2097152,
@@ -43,7 +43,7 @@
         "estimated_vram_bytes": 86703820,
         "fold_count": 3,
         "formula": "(parameters + gradients + optimizer_states + evaluation_model + peak_batch + activations + logits + runtime_workspace) * safety_margin",
-        "loss": 1.3765840530395508,
+        "loss": 1.4483027458190918,
         "model": "ShallowConvNet",
         "observed_peak_allocated_delta_bytes": 24632832,
         "observed_peak_reserved_delta_bytes": 44040192,
@@ -62,7 +62,7 @@
     "gpu_index": 0,
     "gpu_name": "NVIDIA GeForce RTX 5070 Ti",
     "python": "3.12.3",
-    "python_executable": "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python",
+    "python_executable": "/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-Y5M5tkh1-py3.12/bin/python",
     "torch": "2.11.0+cu130",
     "torch_cuda": "13.0"
   },
@@ -71,7 +71,7 @@
     "SCCNet",
     "ShallowConvNet"
   ],
-  "generated_at_utc": "2026-07-19T11:01:45.131030+00:00",
+  "generated_at_utc": "2026-07-30T01:22:04.050930+00:00",
   "gpu": {
     "allocated_bytes": 0,
     "available_bytes": 15738077184,
@@ -108,25 +108,21 @@
     "samples": 301
   },
   "ram": {
-    "available_bytes": 31539175424,
-    "total_bytes": 33185521664,
-    "used_bytes": 1293914112
+    "available_bytes": 29748408320,
+    "total_bytes": 33185509376,
+    "used_bytes": 2899451904
   },
   "schema_version": 2,
   "source_identity": {
-    "branch": "fix/nonblocking-state-shutdown-lifecycle",
-    "commit_sha": "faabfe388e3f21434796aafed1cde3f09535063f",
+    "branch": "ux/assistant-product-v1",
+    "commit_sha": "c851f6f01c0aba83dde7e9187b31f015293f7ecc",
     "dirty": true,
-    "dirty_count": 1065,
+    "dirty_count": 197,
     "relevant_dirty_paths": [
-      "XBrainLab/backend/application/resource_guard.py",
-      "XBrainLab/backend/training/input_contract.py",
-      "XBrainLab/backend/training/model_holder.py",
-      "pyproject.toml",
-      "scripts/dev/calibrate_resource_guard.py",
-      "scripts/dev/resource_calibration_contract.py"
+      "poetry.lock",
+      "pyproject.toml"
     ],
-    "source_digest": "05c1f7ab95ffc66849318294d8381041a8b8a411dcba798ab74cf686ebbaa194",
+    "source_digest": "a0c620521ab7e0f9fd8f564a5f8cbf84426c52e2da96d421ae01b3d3bc25adaf",
     "source_paths": [
       "scripts/dev/calibrate_resource_guard.py",
       "scripts/dev/resource_calibration_contract.py",
@@ -139,7 +135,7 @@
       "pyproject.toml",
       "poetry.lock"
     ],
-    "tree_sha": "70235e544d00830accd1c8009a65707461053c45"
+    "tree_sha": "749ecddfe1331b2ae5038e259968f5945132161e"
   },
   "thresholds": {
     "ram_blocking_ratio": 0.8,

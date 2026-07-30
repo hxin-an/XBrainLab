@@ -22,14 +22,15 @@ from PyQt6.QtWidgets import (
 from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 
 from .styles import (
+    ACTION_CARD_CONTEXT_WARNING_STYLE,
     ACTION_CARD_DESTRUCTIVE_BUTTON_STYLE,
     ACTION_CARD_FRAME_STYLE,
     ACTION_CARD_LABEL_STYLE,
     ACTION_CARD_PRIMARY_BUTTON_STYLE,
+    ACTION_CARD_PROPOSAL_ROW_STYLE,
     ACTION_CARD_SECONDARY_BUTTON_STYLE,
     ACTION_CARD_TEXT_STYLE,
     ACTION_CARD_TITLE_STYLE,
-    ACTION_CARD_VALUE_STYLE,
 )
 
 _SOFT_WRAP_MARK = "\u200b"
@@ -91,6 +92,80 @@ class _SoftWrappingValueLabel(QLabel):
         clipboard.setText(selected.replace(_SOFT_WRAP_MARK, "").replace("\u2029", "\n"))
 
 
+class _ProposalRow(QFrame):
+    """One readable current-to-proposed setting comparison."""
+
+    def __init__(
+        self,
+        label: str,
+        current: str | None,
+        proposed: str,
+        parent: QWidget,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("AssistantProposalRow")
+        self.setStyleSheet(ACTION_CARD_PROPOSAL_ROW_STYLE)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        self.label = QLabel(label, self)
+        self.label.setObjectName("AssistantProposalLabel")
+        layout.addWidget(self.label)
+
+        values = QWidget(self)
+        values.setStyleSheet("background: transparent; border: none;")
+        values_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, values)
+        values_layout.setContentsMargins(0, 0, 0, 0)
+        values_layout.setSpacing(5)
+
+        current_group = QWidget(values)
+        current_group.setStyleSheet("background: transparent; border: none;")
+        current_layout = QVBoxLayout(current_group)
+        current_layout.setContentsMargins(0, 0, 0, 0)
+        current_layout.setSpacing(1)
+        self.current_caption = QLabel("Current", current_group)
+        self.current_caption.setObjectName("AssistantProposalCaption")
+        current_layout.addWidget(self.current_caption)
+        self.current_value = _SoftWrappingValueLabel(current_group)
+        self.current_value.setObjectName("AssistantProposalCurrent")
+        self.current_value.set_wrapped_text(current or "")
+        self.current_value.setWordWrap(True)
+        self.current_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        current_layout.addWidget(self.current_value)
+        current_visible = current is not None and current != proposed
+        current_group.setVisible(current_visible)
+        self.current_caption.setVisible(current_visible)
+        self.current_value.setVisible(current_visible)
+        values_layout.addWidget(current_group, 1)
+
+        proposed_group = QWidget(values)
+        proposed_group.setStyleSheet("background: transparent; border: none;")
+        proposed_layout = QVBoxLayout(proposed_group)
+        proposed_layout.setContentsMargins(0, 0, 0, 0)
+        proposed_layout.setSpacing(1)
+        self.proposed_caption = QLabel(
+            "Suggested" if current_visible else "Value",
+            proposed_group,
+        )
+        self.proposed_caption.setObjectName("AssistantProposalCaption")
+        proposed_layout.addWidget(self.proposed_caption)
+        self.proposed_value = _SoftWrappingValueLabel(proposed_group)
+        self.proposed_value.setObjectName("AssistantProposalValue")
+        self.proposed_value.set_wrapped_text(proposed)
+        self.proposed_value.setWordWrap(True)
+        self.proposed_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        proposed_layout.addWidget(self.proposed_value)
+        values_layout.addWidget(proposed_group, 1)
+        layout.addWidget(values)
+
+
 class AssistantConfirmationCard(QFrame):
     """Present one exact correlated assistant action for user approval."""
 
@@ -125,19 +200,27 @@ class AssistantConfirmationCard(QFrame):
         )
         layout.addWidget(self.description_label)
 
-        self.values_summary = _SoftWrappingValueLabel()
-        self.values_summary.setObjectName("AssistantActionCardValues")
-        self.values_summary.setStyleSheet(ACTION_CARD_VALUE_STYLE)
-        self.values_summary.setWordWrap(True)
-        self.values_summary.setSizePolicy(
+        self.context_warning = QLabel("")
+        self.context_warning.setObjectName("AssistantActionContextWarning")
+        self.context_warning.setStyleSheet(ACTION_CARD_CONTEXT_WARNING_STYLE)
+        self.context_warning.setWordWrap(True)
+        self.context_warning.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Minimum,
         )
-        self.values_summary.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        self.context_warning.setVisible(False)
+        layout.addWidget(self.context_warning)
+
+        self.proposal_rows_widget = QWidget(self)
+        self.proposal_rows_widget.setObjectName("AssistantProposalRows")
+        self.proposal_rows_widget.setStyleSheet(
+            "background: transparent; border: none;"
         )
-        layout.addWidget(self.values_summary)
+        self.proposal_rows_layout = QVBoxLayout(self.proposal_rows_widget)
+        self.proposal_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.proposal_rows_layout.setSpacing(6)
+        self.proposal_rows: list[_ProposalRow] = []
+        layout.addWidget(self.proposal_rows_widget)
 
         self.reason_title = QLabel("Reason")
         self.reason_title.setObjectName("AssistantActionCardLabel")
@@ -222,12 +305,14 @@ class AssistantConfirmationCard(QFrame):
         self.description_label.setText(request.action_label)
         self.description_label.setVisible(not request.parameter_rows)
         self.reason_label.setText(request.description)
-        values_text = self._format_values(
-            request,
-            current_values=current_values,
-            current_context_changed=current_context_changed,
+        self.context_warning.setText(
+            "The workflow changed after this suggestion. XBrainLab will validate "
+            "the action again before applying it."
+            if current_context_changed
+            else ""
         )
-        self.values_summary.set_wrapped_text(values_text)
+        self.context_warning.setVisible(current_context_changed)
+        self._render_proposal_rows(request, current_values=current_values)
 
         self.primary_button.setText(request.action_label)
         self.primary_button.setStyleSheet(
@@ -246,6 +331,31 @@ class AssistantConfirmationCard(QFrame):
         if style is not None:
             style.unpolish(self)
             style.polish(self)
+
+    def _render_proposal_rows(
+        self,
+        request: AgentConfirmationRequest,
+        *,
+        current_values: Mapping[str, str] | None,
+    ) -> None:
+        """Render exact request values without parsing display text."""
+        while self.proposal_rows:
+            row = self.proposal_rows.pop()
+            self.proposal_rows_layout.removeWidget(row)
+            row.deleteLater()
+        current = {
+            str(key): str(value) for key, value in (current_values or {}).items()
+        }
+        for label, proposed in request.parameter_rows:
+            row = _ProposalRow(
+                label,
+                current.get(label),
+                proposed,
+                self.proposal_rows_widget,
+            )
+            self.proposal_rows.append(row)
+            self.proposal_rows_layout.addWidget(row)
+        self.proposal_rows_widget.setVisible(bool(self.proposal_rows))
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Stack actions when both labels cannot remain readable."""
@@ -276,32 +386,3 @@ class AssistantConfirmationCard(QFrame):
             return
         self.set_submitting(True)
         self.decision_requested.emit(request, approved)
-
-    @staticmethod
-    def _format_values(
-        request: AgentConfirmationRequest,
-        *,
-        current_values: Mapping[str, str] | None,
-        current_context_changed: bool,
-    ) -> str:
-        if current_context_changed:
-            prefix = (
-                "The workflow changed after this suggestion. XBrainLab will "
-                "validate the action again before applying it."
-            )
-        else:
-            prefix = ""
-
-        rows: list[str] = []
-        current = {
-            str(key): str(value) for key, value in (current_values or {}).items()
-        }
-        for label, proposed in request.parameter_rows:
-            existing = current.get(label)
-            if existing is not None and existing != proposed:
-                rows.append(f"{label}\n{existing}  ->  {proposed}")
-            else:
-                rows.append(f"{label}\n{proposed}")
-        if not rows:
-            rows.append("This action changes the current XBrainLab workflow.")
-        return "\n\n".join(part for part in (prefix, *rows) if part)

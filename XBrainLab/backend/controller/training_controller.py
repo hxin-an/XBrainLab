@@ -32,6 +32,7 @@ class TrainingLifecycleEvent:
     token: TrainingStateToken
     outcome: TrainingTerminalOutcome
     publication_generation: int | None = None
+    publication_revision: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.token, TrainingStateToken):
@@ -47,6 +48,11 @@ class TrainingLifecycleEvent:
             raise TypeError(
                 "training lifecycle publication generation must be positive"
             )
+        revision = self.publication_revision
+        if revision is not None and (
+            isinstance(revision, bool) or not isinstance(revision, int) or revision < 1
+        ):
+            raise TypeError("training lifecycle publication revision must be positive")
 
 
 class _TerminalHandoffPhase(str, Enum):

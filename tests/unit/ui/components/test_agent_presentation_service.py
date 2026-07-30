@@ -8,6 +8,7 @@ import pytest
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
+    ActiveTrainingSnapshot,
     ApplicationStateSnapshot,
     EpochStateSnapshot,
     InterpretationStateSnapshot,
@@ -160,6 +161,21 @@ def test_arbitrary_exception_text_is_never_reflected_to_user():
         assert "ValueError" not in rendered
         assert "secret-token-123" not in rendered
         assert "/private/runtime" not in rendered
+
+
+def test_runtime_settings_notice_does_not_reopen_current_dialog() -> None:
+    notice = AgentPresentationService.runtime_settings_notice(
+        "ValueError: secret-token-123 at /private/model.bin"
+    )
+
+    assert notice == (
+        "The local model could not start. Check the installed model and runtime, "
+        "then try again."
+    )
+    assert "Open assistant settings" not in notice
+    assert "ValueError" not in notice
+    assert "secret-token-123" not in notice
+    assert "/private/model.bin" not in notice
 
 
 def test_legacy_cancelled_turn_copy_is_concise_and_actionable() -> None:
@@ -328,6 +344,7 @@ def test_status_projection_preserves_atomic_backend_workflow_truth(
 
     assert isinstance(projection, AssistantStatusProjection)
     assert projection.publication_generation == publication.generation
+    assert projection.publication_revision == publication.revision
     assert projection.recommended_command == command_name
     assert projection.recommended_command == backend_projection.recommended_command
     assert projection.blocked_command == backend_projection.blocked_command
@@ -365,6 +382,33 @@ def test_status_projection_uses_recommended_command_blocker_not_train_blocker() 
     assert projection.blocked_reasons == ("Resolve label mapping before training.",)
     assert projection.blocked_reason == "Resolve label mapping before training."
     assert "Select a model before training." not in projection.tooltip
+
+
+def test_status_projection_exposes_stop_as_control_not_implicit_next_step() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="training",
+        active_dataset=ActiveDatasetSnapshot(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+            has_epoch_data=True,
+            has_datasets=True,
+        ),
+        active_training=ActiveTrainingSnapshot(
+            has_model=True,
+            has_training_option=True,
+            has_trainer=True,
+            is_running=True,
+        ),
+    )
+
+    projection = build_assistant_status_projection(_publication(state))
+
+    assert projection.recommended_command is None
+    assert projection.available_commands == ("stop_training",)
+    assert projection.blocked_reasons == ()
+    assert projection.blocked_reason is None
+    assert "Action required" not in projection.footer_hint
 
 
 @pytest.mark.parametrize(

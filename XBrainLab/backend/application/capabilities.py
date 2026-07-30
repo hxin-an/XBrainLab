@@ -359,6 +359,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     capabilities[CommandName.STOP_TRAINING.value] = _cap(
         CommandName.STOP_TRAINING,
         stop_reasons,
+        can_auto_execute=False,
+        continue_allowed_after_success=False,
+        retry_limit=0,
+        stop_after_success=True,
     )
 
     clear_history_reasons = []

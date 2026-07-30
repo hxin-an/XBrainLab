@@ -67,7 +67,10 @@ def canonical_turn_calls(source_path: str, *, turn: str) -> list[dict[str, Any]]
         return [
             {
                 "tool_name": "scan_source",
-                "parameters": {"source_path": str(Path(source_path).resolve())},
+                "parameters": {
+                    "source_path": str(Path(source_path).resolve()),
+                    "source_hint": "file",
+                },
             },
             {"tool_name": "preview_interpretation", "parameters": {}},
             {"tool_name": "validate_interpretation", "parameters": {}},
@@ -457,7 +460,7 @@ def _validate_boundary(value: object) -> tuple[bool, str]:
         or bool(waiting.get("send_button_enabled"))
         or bool(waiting.get("input_enabled", True))
         or waiting.get("cancelability_text")
-        != "Use the open confirmation or XBrainLab dialog to continue or cancel."
+        != "Continue in the open Import EEG Data window."
     ):
         return False, "Decision boundary was presented as active assistant work."
     return True, ""
@@ -657,7 +660,7 @@ def _action_item_summary(
     ]
     if len(action_items) > len(visible):
         lines.append(f"- {len(action_items) - len(visible)} more item(s)")
-    lines.append("Open Import Review to resolve these choices.")
+    lines.append("Use the open Import EEG Data window to review these choices.")
     return "\n".join(lines)
 
 
@@ -786,6 +789,7 @@ def _validate_screenshot_artifacts(
 ) -> tuple[bool, str]:
     screenshots = _mapping(payload.get("screenshots"))
     recorded = _mapping(payload.get("screenshot_artifacts"))
+    observed_hashes: list[str] = []
     for name in (
         "ready",
         "auto_chain_complete",
@@ -819,6 +823,9 @@ def _validate_screenshot_artifacts(
                 return False, f"Screenshot metadata/hash mismatch: {name} ({field})."
         if not _HEX_SHA256.fullmatch(str(metadata.get("sha256") or "")):
             return False, f"Required screenshot hash is invalid: {name}."
+        observed_hashes.append(str(observed["sha256"]))
+    if len(observed_hashes) != len(set(observed_hashes)):
+        return False, "Required walkthrough screenshots are duplicated."
     wizard_path = str(_mapping(payload.get("wizard")).get("screenshot") or "")
     if wizard_path != str(screenshots.get("workflow_dialog_open") or ""):
         return False, "Wizard screenshot path does not match screenshot evidence."

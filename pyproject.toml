@@ -72,6 +72,7 @@ types-requests = "^2.32.4.20260107"
 types-pyyaml = "^6.0.12.20250915"
 commitizen = "^4.11.6"
 basedpyright = "^1.39.2"
+pillow = "12.1.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.0"

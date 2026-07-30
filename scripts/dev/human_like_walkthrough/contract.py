@@ -10,13 +10,13 @@ from XBrainLab.product_language import ASSISTANT_CANCELLED_MESSAGE
 
 ROOT = Path(__file__).resolve().parents[3]
 
-ASSISTANT_EVIDENCE_CONTRACT_VERSION = 13
+ASSISTANT_EVIDENCE_CONTRACT_VERSION = 15
 ASSISTANT_STANDARD_DOCK_WIDTH = 420
 ASSISTANT_NARROW_DOCK_WIDTH = 320
 
 ASSISTANT_NORMAL_REQUEST = "Hello."
 ASSISTANT_PROCESSING_REQUEST = "Check the workflow."
-ASSISTANT_CLARIFICATION_REQUEST = "List files."
+ASSISTANT_CLARIFICATION_REQUEST = "Help me with my EEG data."
 ASSISTANT_BLOCKED_REQUEST = "Import another dataset now."
 ASSISTANT_SUCCESS_REQUEST = "What is ready now?"
 ASSISTANT_ERROR_REQUEST = "Show a runtime error."
@@ -26,9 +26,10 @@ ASSISTANT_CONFIRM_CONFIRMATION_REQUEST = "Confirm the proposed session reset."
 ASSISTANT_EXISTING_UI_REQUEST = "Continue evaluation in the existing app view."
 ASSISTANT_HANDOFF_REQUEST_ID = "walkthrough-evaluate-001"
 ASSISTANT_STOPPED_MESSAGE = ASSISTANT_CANCELLED_MESSAGE
-ASSISTANT_PATH_CLARIFICATION_MESSAGE = (
-    "I need a folder path before I can list files. Choose a folder in the app "
-    "or paste the path here."
+ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE = (
+    "Tell me which step you want to do next: import data, preview labels and "
+    "metadata, preprocess, create epochs, build a dataset, train, evaluate, or "
+    "inspect saliency."
 )
 ASSISTANT_CONFIRMED_TERMINAL_MESSAGE = "New session started."
 ASSISTANT_RAW_TRACEBACK = (
@@ -78,11 +79,12 @@ ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS: dict[str, str] = {
 
 ASSISTANT_REQUIRED_PHASES = (
     "assistant_runtime_idle",
-    "assistant_empty_state",
     "assistant_runtime_loading",
     "assistant_runtime_failed",
     "assistant_runtime_recovery_loading",
     "assistant_runtime_ready",
+    "assistant_empty_state",
+    "assistant_repeated_open_close",
     "assistant_normal_message",
     "assistant_processing_state",
     "assistant_idle_after_stop",
@@ -93,7 +95,6 @@ ASSISTANT_REQUIRED_PHASES = (
     "assistant_confirmation_cancelled",
     "assistant_confirmation_confirmed",
     "assistant_existing_ui_handoff",
-    "assistant_repeated_open_close",
     "assistant_narrow_panel",
 )
 
@@ -126,13 +127,20 @@ _ASSISTANT_HELPER_PATHS = (
     Path(__file__).with_name("evidence.py"),
     Path(__file__).with_name("capture.py"),
     Path(__file__).with_name("validation.py"),
+    Path(__file__).with_name("readiness.py"),
 )
 
-ASSISTANT_FINGERPRINT_PATHS = (
+_ASSISTANT_FINGERPRINT_BASE_PATHS = (
     ROOT / "scripts/dev/capture_human_like_product_walkthrough.py",
+    ROOT / "scripts/dev/active_checkout.py",
     *_ASSISTANT_HELPER_PATHS,
+    ROOT / "pyproject.toml",
+    ROOT / "poetry.lock",
     ROOT / "XBrainLab/chat_contract.py",
     ROOT / "XBrainLab/backend/controller/chat_controller.py",
+    ROOT / "XBrainLab/backend/application/service.py",
+    ROOT / "XBrainLab/backend/application/view_publication.py",
+    ROOT / "XBrainLab/backend/application/application_publication_lifecycle.py",
     ROOT / "XBrainLab/ui/chat/panel.py",
     ROOT / "XBrainLab/ui/chat/composer.py",
     ROOT / "XBrainLab/ui/chat/action_card.py",
@@ -155,6 +163,7 @@ ASSISTANT_FINGERPRINT_PATHS = (
     ROOT / "XBrainLab/ui/components/assistant_status_projection.py",
     ROOT / "XBrainLab/ui/components/workflow_surface_router.py",
     ROOT / "XBrainLab/ui/components/workflow_ui_handoff_host.py",
+    ROOT / "XBrainLab/ui/core/observer_bridge.py",
     ROOT / "XBrainLab/ui/dialogs/model_settings_dialog.py",
     ROOT / "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
     ROOT / "XBrainLab/ui/dialogs/training/model_selection_dialog.py",
@@ -183,7 +192,26 @@ ASSISTANT_FINGERPRINT_PATHS = (
     ROOT / "XBrainLab/llm/agent/runtime_state.py",
     ROOT / "XBrainLab/llm/agent/tool_feedback.py",
     ROOT / "XBrainLab/llm/agent/ui_handoff.py",
+    ROOT / "XBrainLab/llm/core/model_download_lifecycle.py",
 )
+
+
+def assistant_fingerprint_paths(root: Path = ROOT) -> tuple[Path, ...]:
+    """Return deterministic capture inputs, including publication publishers."""
+    remapped = (
+        root / path.relative_to(ROOT) for path in _ASSISTANT_FINGERPRINT_BASE_PATHS
+    )
+    publication_sources = sorted(
+        {
+            *root.glob("XBrainLab/backend/application/**/*publication*.py"),
+            *root.glob("XBrainLab/backend/application/**/*publisher*.py"),
+        },
+        key=lambda path: path.as_posix(),
+    )
+    return tuple(dict.fromkeys((*remapped, *publication_sources)))
+
+
+ASSISTANT_FINGERPRINT_PATHS = assistant_fingerprint_paths()
 
 
 def walkthrough_source_fingerprint() -> str:

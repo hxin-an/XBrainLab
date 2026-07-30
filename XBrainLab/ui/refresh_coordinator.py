@@ -467,11 +467,10 @@ def _refresh_panel_after_observer(
 
 
 def _refresh_shared_status(main_window: Any) -> bool:
-    refreshed = _call_noarg(main_window, "update_info_panel")
-
-    agent_manager = getattr(main_window, "agent_manager", None)
-    refreshed = _call_noarg(agent_manager, "refresh_backend_status") or refreshed
-    return refreshed
+    # Assistant workflow status has one live owner: the revisioned
+    # ApplicationService publication subscribed by AgentManager. Pulling here
+    # created a second ordering-dependent render after every command/observer.
+    return _call_noarg(main_window, "update_info_panel")
 
 
 def _is_source_context(context: Any, source_panel: Any) -> bool:

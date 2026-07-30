@@ -21,12 +21,21 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from html import escape
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
+
+ROOT = Path(__file__).resolve().parents[2]
+while str(ROOT) in sys.path:
+    sys.path.remove(str(ROOT))
+sys.path.insert(0, str(ROOT))
+
+from scripts.dev.active_checkout import assert_active_checkout_import
+
+assert_active_checkout_import(ROOT)
 
 from PIL import Image, ImageStat
 from PyQt6.QtCore import (
@@ -107,6 +116,7 @@ from scripts.dev.human_like_walkthrough.readiness import (
 )
 from scripts.dev.human_like_walkthrough.readiness import (
     frame_readiness_payload,
+    inspect_png_artifact,
 )
 from scripts.dev.human_like_walkthrough.validation import (
     ASSISTANT_REVIEW_KEYS,
@@ -152,6 +162,9 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.core.model_download_lifecycle import (
+    MODEL_STATUS_PROBE_THREAD_NAME,
+)
 from XBrainLab.ui.application_capabilities import local_result_payload
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
@@ -202,7 +215,6 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - psutil is optional in script envs
     psutil = None
 
-ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = (
     ROOT / "artifacts" / "ui" / "human-like-walkthrough-runs" / "current"
 )
@@ -217,7 +229,7 @@ RECIPE_ARTIFACT = "walkthrough-import.recipe.json"
 SCREENSHOT_NAMES: dict[str, str] = {
     "main_initial": "01-main-initial.png",
     "dataset_page": "02-dataset-page.png",
-    "source_selection": "02-dataset-page.png",
+    "source_selection": "03-source-selection.png",
     "wizard_preview": "04-interpretation-preview.png",
     "wizard_metadata": "05-interpretation-metadata.png",
     "wizard_confirm": "05-interpretation-match-labels.png",
@@ -245,9 +257,9 @@ REQUIRED_PHASES = (
     "data_interpretation_select_source",
     "data_interpretation_scan_result",
     "data_interpretation_preview",
+    "data_interpretation_confirm_metadata_labels",
     "data_interpretation_review_and_import",
     "data_interpretation_decisions",
-    "data_interpretation_confirm_metadata_labels",
     "data_interpretation_apply",
     "data_interpretation_save_recipe",
     "data_interpretation_reload_recipe",
@@ -322,6 +334,7 @@ MAIN_NAVIGATION_TITLES = (
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
+MAX_PERSISTENT_CUDA_RUNTIME_THREADS = 32
 GEOMETRY_WIDTH_TOLERANCE_PX = 8
 WALKTHROUGH_EVENT_ROWS = tuple(
     f"{0.1 + index * 0.55:.2f}\t0.2\t{'left' if index % 2 == 0 else 'right'}"
@@ -352,9 +365,28 @@ def main() -> int:
         payload=payload,
         run_id=run_id,
     )
+    integrity_ok, integrity_reason = validate_walkthrough_payload(
+        payload,
+        require_files=True,
+    )
+    if not integrity_ok and payload.get("status") == "passed":
+        payload["status"] = "failed"
+        payload["failure_reason"] = integrity_reason
+        summary = dict(payload.get("pass_fail_summary", {}))
+        summary["passed"] = False
+        summary["failed_checks"] = [
+            integrity_reason,
+            *[
+                str(item)
+                for item in summary.get("failed_checks", [])
+                if str(item) != integrity_reason
+            ],
+        ]
+        payload["pass_fail_summary"] = summary
+        write_artifacts(published_dir, payload)
     print(f"Wrote {published_dir / JSON_ARTIFACT}")
     print(f"Wrote {published_dir / MD_ARTIFACT}")
-    return 0 if payload["status"] == "passed" else 1
+    return 0 if payload["status"] == "passed" and integrity_ok else 1
 
 
 def _new_artifact_run_id() -> str:
@@ -713,24 +745,6 @@ def _run_walkthrough_steps(
             "ui_geometry": dataset_page_geometry(window),
         },
     )
-    capture_step(
-        "data_source_selection",
-        "source_selection",
-        notes=lambda: {
-            "selected_source": sanitize_path(str(source_path)),
-            "input_mode": "file",
-            "source_button": window.dataset_panel.sidebar.import_btn.text(),
-        },
-    )
-    append_phase_alias(
-        phases,
-        "data_interpretation_select_source",
-        screenshots["source_selection"],
-        window.dataset_panel,
-        service,
-        {"selected_source": sanitize_path(str(source_path))},
-    )
-
     scan = execute_recorded(
         service,
         ScanSourceCommand(source_path=str(source_path), source_hint="file"),
@@ -768,6 +782,32 @@ def _run_walkthrough_steps(
         validation_decision=validation_payload["validation_decision"],
     )
     dialog.show()
+    app.processEvents()
+    capture_step(
+        "data_source_selection",
+        "source_selection",
+        widget=dialog,
+        notes=lambda: {
+            "active_step": active_dialog_step(dialog),
+            "selected_source": sanitize_path(str(source_path)),
+            "input_mode": "file",
+            "eeg_files": len(scan_payload["scan_result"]["eeg_files"]),
+            "label_carriers": len(scan_payload["scan_result"]["label_carriers"]),
+            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+        },
+    )
+    append_phase_alias(
+        phases,
+        "data_interpretation_select_source",
+        screenshots["source_selection"],
+        dialog,
+        service,
+        {
+            "active_step": active_dialog_step(dialog),
+            "selected_source": sanitize_path(str(source_path)),
+        },
+    )
+    show_dialog_step(dialog, "Load Labels", app)
     app.processEvents()
     capture_step(
         "data_interpretation_scan_result",
@@ -1113,6 +1153,7 @@ def _run_walkthrough_steps(
             "saliency": command_summary(saliency),
         },
     )
+    resource_notes.append(resource_snapshot("after_analysis"))
 
     chat_payload = run_chatpanel_walkthrough(
         app,
@@ -1124,6 +1165,7 @@ def _run_walkthrough_steps(
         user_transcript,
         tool_transcript,
     )
+    resource_notes.append(resource_snapshot("after_assistant"))
 
     new_session_blocked = execute_recorded(
         service,
@@ -1161,8 +1203,14 @@ def _run_walkthrough_steps(
         ScanSourceCommand(source_path=str(source_path.parent)),
         command_results,
     )
+    recovery_preview = execute_recorded(
+        service,
+        PreviewInterpretationCommand(),
+        command_results,
+    )
     tool_transcript.extend(
-        command_summary(item) for item in [preview_missing_scan, recovery_scan]
+        command_summary(item)
+        for item in [preview_missing_scan, recovery_scan, recovery_preview]
     )
     window.agent_manager.refresh_backend_status()
     drive_assistant_request(
@@ -1181,6 +1229,7 @@ def _run_walkthrough_steps(
         notes={
             "blocked_preview": command_summary(preview_missing_scan),
             "recovery_scan": command_summary(recovery_scan),
+            "recovery_preview": command_summary(recovery_preview),
         },
     )
 
@@ -1201,8 +1250,11 @@ def _run_walkthrough_steps(
     )
 
     resource_notes.append(resource_snapshot("before_close"))
-    window.close()
-    app.processEvents()
+    if not settle_window_close_for_capture(app, window):
+        raise RuntimeError(
+            "MainWindow did not complete its fenced shutdown before the "
+            "walkthrough resource snapshot."
+        )
 
     pass_fail_summary = build_pass_fail_summary(
         phases,
@@ -2073,19 +2125,21 @@ def _assert_step_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
     cancel = getattr(widget, "cancel_button", None)
     next_button = getattr(widget, "next_button", None)
     apply_button = getattr(widget, "apply_button", None)
-    if (
-        not isinstance(cancel, QAbstractButton)
-        or not cancel.isVisibleTo(widget)
-        or cancel.text() != "Cancel"
-    ):
+    if not isinstance(cancel, QAbstractButton):
         raise RuntimeError(
             "Import Review capture is missing the visible Cancel action."
         )
-    primary_actions = [
-        control
-        for control in (next_button, apply_button)
-        if isinstance(control, QAbstractButton) and control.isVisibleTo(widget)
-    ]
+    cancel_button = cast(QAbstractButton, cancel)
+    if not cancel_button.isVisibleTo(widget) or cancel_button.text() != "Cancel":
+        raise RuntimeError(
+            "Import Review capture is missing the visible Cancel action."
+        )
+    primary_actions: list[QAbstractButton] = []
+    for control in (next_button, apply_button):
+        if isinstance(control, QAbstractButton):
+            primary_button = cast(QAbstractButton, control)
+            if primary_button.isVisibleTo(widget):
+                primary_actions.append(primary_button)
     if len(primary_actions) != 1:
         raise RuntimeError(
             "Import Review capture must show exactly one visible primary action."
@@ -2101,16 +2155,15 @@ def _assert_step_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
             "Import Review capture has an invalid or stale primary action."
         )
     summary = getattr(widget, "summary_label", None)
-    if (
-        not isinstance(summary, QLabel)
-        or not summary.isVisibleTo(widget)
-        or not summary.text().strip()
-    ):
+    if not isinstance(summary, QLabel):
+        raise RuntimeError("Import Review capture is missing its visible summary.")
+    summary_label = cast(QLabel, summary)
+    if not summary_label.isVisibleTo(widget) or not summary_label.text().strip():
         raise RuntimeError("Import Review capture is missing its visible summary.")
     _assert_text_controls_rendered(
         widget,
         screenshot,
-        [*step_labels, summary, cancel, primary],
+        [*step_labels, summary_label, cancel_button, primary],
         surface_name="Import Review controls",
     )
 
@@ -2137,7 +2190,10 @@ def _assert_main_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
         if isinstance(button, QAbstractButton) and button.isVisibleTo(widget)
     ]
     compact = getattr(widget, "compact_nav_combo", None)
-    compact_visible = isinstance(compact, QComboBox) and compact.isVisibleTo(widget)
+    compact_combo = cast(QComboBox, compact) if isinstance(compact, QComboBox) else None
+    compact_visible = (
+        compact_combo.isVisibleTo(widget) if compact_combo is not None else False
+    )
     if visible_buttons:
         if len(visible_buttons) != len(MAIN_NAVIGATION_TITLES) or compact_visible:
             raise RuntimeError(
@@ -2150,17 +2206,19 @@ def _assert_main_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
             surface_name="Main navigation",
         )
         return
-    if not compact_visible or not isinstance(compact, QComboBox):
+    if compact_combo is None or not compact_visible:
         raise RuntimeError("Main navigation has no visible workflow selector.")
-    compact_items = tuple(compact.itemText(index) for index in range(compact.count()))
+    compact_items = tuple(
+        compact_combo.itemText(index) for index in range(compact_combo.count())
+    )
     if compact_items != MAIN_NAVIGATION_TITLES:
         raise RuntimeError("Compact navigation has a stale workflow destination list.")
-    if compact.currentText() not in MAIN_NAVIGATION_TITLES:
+    if compact_combo.currentText() not in MAIN_NAVIGATION_TITLES:
         raise RuntimeError("Compact navigation has no current workflow destination.")
     _assert_combo_text_rendered(
         widget,
         screenshot,
-        compact,
+        compact_combo,
         surface_name="Compact main navigation",
     )
 
@@ -2462,9 +2520,15 @@ def _assert_right_panels_rendered(widget: QWidget, screenshot: Path) -> None:
         getattr(widget, "nav_btns", None) and getattr(widget, "stack", None)
     )
     compact_navigation = getattr(widget, "compact_nav_combo", None)
+    compact_navigation_combo = (
+        cast(QComboBox, compact_navigation)
+        if isinstance(compact_navigation, QComboBox)
+        else None
+    )
     compact_layout_active = bool(
-        isinstance(compact_navigation, QComboBox)
-        and compact_navigation.isVisibleTo(widget)
+        compact_navigation_combo.isVisibleTo(widget)
+        if compact_navigation_combo is not None
+        else False
     )
     if is_main_window_capture and not right_panels and not compact_layout_active:
         raise RuntimeError("Main product capture is missing its workflow sidebar.")
@@ -2659,12 +2723,15 @@ def _assert_assistant_dock_rendered(
         minimum_ratio=0.05,
     )
     input_field = getattr(panel, "input_field", None)
-    if not isinstance(input_field, QWidget) or not input_field.isVisibleTo(widget):
+    if not isinstance(input_field, QWidget):
+        raise RuntimeError("Assistant capture is missing its visible composer input.")
+    input_widget = cast(QWidget, input_field)
+    if not input_widget.isVisibleTo(widget):
         raise RuntimeError("Assistant capture is missing its visible composer input.")
     _assert_widget_regions_painted(
         widget,
         screenshot,
-        [input_field],
+        [input_widget],
         surface_name="Assistant composer input",
         brightness_threshold=20,
         minimum_ratio=0.65,
@@ -2689,28 +2756,42 @@ def _assert_assistant_feedback_rendered(
     is_processing = bool(getattr(panel, "is_processing", False))
     activity = getattr(panel, "turn_activity_widget", None)
     confirmation_card = getattr(panel, "confirmation_card_widget", None)
+    activity_widget = cast(QWidget, activity) if isinstance(activity, QWidget) else None
+    confirmation_widget = (
+        cast(QWidget, confirmation_card)
+        if isinstance(confirmation_card, QWidget)
+        else None
+    )
     if is_processing:
-        if isinstance(activity, QWidget) and activity.isVisibleTo(root):
-            required_widgets.append(activity)
-        elif isinstance(confirmation_card, QWidget) and confirmation_card.isVisibleTo(
-            root
-        ):
-            required_widgets.append(confirmation_card)
+        if activity_widget is not None and activity_widget.isVisibleTo(root):
+            required_widgets.append(activity_widget)
         else:
-            raise RuntimeError(
-                "Assistant processing capture is missing activity or decision feedback."
+            confirmation_visible = (
+                confirmation_widget.isVisibleTo(root)
+                if confirmation_widget is not None
+                else False
             )
+            if confirmation_widget is not None and confirmation_visible:
+                required_widgets.append(confirmation_widget)
+            else:
+                raise RuntimeError(
+                    "Assistant processing capture is missing activity or decision "
+                    "feedback."
+                )
 
     runtime_phase = getattr(getattr(panel, "_runtime_phase", None), "value", "")
     runtime_state = getattr(panel, "runtime_state_widget", None)
     if runtime_phase in {"idle", "loading", "failed"}:
-        if not isinstance(runtime_state, QWidget) or not runtime_state.isVisibleTo(
-            root
-        ):
+        if not isinstance(runtime_state, QWidget):
             raise RuntimeError(
                 f"Assistant {runtime_phase} capture is missing runtime feedback."
             )
-        required_widgets.append(runtime_state)
+        runtime_state_widget = cast(QWidget, runtime_state)
+        if not runtime_state_widget.isVisibleTo(root):
+            raise RuntimeError(
+                f"Assistant {runtime_phase} capture is missing runtime feedback."
+            )
+        required_widgets.append(runtime_state_widget)
 
     transcript_names = {
         SCREENSHOT_NAMES["assistant_success"],
@@ -3033,10 +3114,12 @@ def build_pass_fail_summary(
 ) -> dict[str, Any]:
     """Validate the artifact against the walkthrough acceptance checklist."""
     failed: list[str] = []
-    phase_names = {phase.get("phase") for phase in phases}
+    phase_names = tuple(str(phase.get("phase") or "") for phase in phases)
     for required in REQUIRED_PHASES:
         if required not in phase_names:
             failed.append(f"missing phase: {required}")
+    if phase_names != REQUIRED_PHASES:
+        failed.append("phase sequence does not match the canonical ordered tuple")
     for key, path in screenshots.items():
         if not Path(path).exists():
             failed.append(f"missing screenshot: {key}")
@@ -3113,7 +3196,7 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         ),
         "visualization_readiness": ("visualize", "saliency"),
         "reset_new_session_boundary": ("confirmed",),
-        "error_recovery": ("recovery_scan",),
+        "error_recovery": ("recovery_scan", "recovery_preview"),
     }.items():
         for note_name in note_names:
             require_command(phase_name, note_name)
@@ -3175,7 +3258,8 @@ def _data_import_visual_evidence_failures(
     phases: list[dict[str, Any]],
 ) -> list[str]:
     expected_steps = {
-        "data_interpretation_scan_result": "Choose EEG Data",
+        "data_source_selection": "Choose EEG Data",
+        "data_interpretation_scan_result": "Load Labels",
         "data_interpretation_preview": "Review Metadata",
         "data_interpretation_confirm_metadata_labels": "Match Labels",
         "data_interpretation_review_and_import": "Review and Import",
@@ -3215,8 +3299,8 @@ def build_resource_smoke_summary(
     if resource_notes is None:
         return {
             "checked": False,
-            "passed": True,
-            "failed_checks": [],
+            "passed": False,
+            "failed_checks": ["resource evidence was not collected"],
             "boundary": boundary,
         }
 
@@ -3232,9 +3316,30 @@ def build_resource_smoke_summary(
             "boundary": boundary,
         }
 
-    start_threads = _resource_int(start, "python_threads")
-    after_threads = _resource_int(after_close, "python_threads")
+    start_threads = _resource_int(start, "live_python_threads")
+    after_threads = _resource_int(after_close, "live_python_threads")
+    start_os_threads = _resource_int(start, "os_threads")
+    after_os_threads = _resource_int(after_close, "os_threads")
     after_qt_threads = _resource_int(after_close, "qt_active_threads")
+    start_live_ids = _resource_int_set(start, "live_python_thread_native_ids")
+    after_live_ids = _resource_int_set(
+        after_close,
+        "live_python_thread_native_ids",
+    )
+    start_os_ids = _resource_int_set(start, "os_thread_ids")
+    after_os_ids = _resource_int_set(after_close, "os_thread_ids")
+    if not start_live_ids or not after_live_ids or not start_os_ids or not after_os_ids:
+        failed.append("resource thread identity evidence is incomplete")
+    extra_live_ids = after_live_ids - start_live_ids
+    extra_os_ids = after_os_ids - start_os_ids
+    persistent_runtime_ids, unexpected_extra_os_ids = (
+        _classify_persistent_runtime_threads(
+            after_close,
+            extra_os_ids,
+            qt_active_threads=after_qt_threads,
+        )
+    )
+    unexpected_extra_live_ids = extra_live_ids - persistent_runtime_ids
     current_rss_growth_kb = _resource_int(
         after_close,
         "current_rss_kb",
@@ -3244,10 +3349,31 @@ def build_resource_smoke_summary(
         "max_rss_kb",
     )
 
-    if after_threads > start_threads + RESOURCE_THREAD_TOLERANCE:
+    if (
+        after_threads > start_threads + RESOURCE_THREAD_TOLERANCE
+        and unexpected_extra_live_ids
+    ):
         failed.append(
             "Python threads did not settle: "
             f"start {start_threads}, after_close {after_threads}."
+        )
+    if unexpected_extra_live_ids:
+        failed.append(
+            "Live Python thread identities remained after close: "
+            f"{sorted(unexpected_extra_live_ids)}."
+        )
+    if (
+        after_os_threads > start_os_threads + RESOURCE_THREAD_TOLERANCE
+        and unexpected_extra_os_ids
+    ):
+        failed.append(
+            "OS threads did not settle: "
+            f"start {start_os_threads}, after_close {after_os_threads}."
+        )
+    if unexpected_extra_os_ids:
+        failed.append(
+            "OS thread identities remained after close: "
+            f"{sorted(unexpected_extra_os_ids)}."
         )
     if after_qt_threads > 0:
         failed.append(f"Qt thread pool still active after close: {after_qt_threads}.")
@@ -3263,6 +3389,12 @@ def build_resource_smoke_summary(
         "failed_checks": failed,
         "start_python_threads": start_threads,
         "after_close_python_threads": after_threads,
+        "start_os_threads": start_os_threads,
+        "after_close_os_threads": after_os_threads,
+        "extra_live_python_thread_native_ids": sorted(extra_live_ids),
+        "extra_os_thread_ids": sorted(extra_os_ids),
+        "persistent_runtime_os_thread_ids": sorted(persistent_runtime_ids),
+        "unexpected_extra_os_thread_ids": sorted(unexpected_extra_os_ids),
         "python_thread_tolerance": RESOURCE_THREAD_TOLERANCE,
         "after_close_qt_active_threads": after_qt_threads,
         "rss_growth_kb": current_rss_growth_kb,
@@ -3271,6 +3403,65 @@ def build_resource_smoke_summary(
         "rss_limit_kb": RESOURCE_RSS_SMOKE_LIMIT_KB,
         "boundary": boundary,
     }
+
+
+def _classify_persistent_runtime_threads(
+    after_close: Mapping[str, Any],
+    extra_os_ids: set[int],
+    *,
+    qt_active_threads: int,
+) -> tuple[set[int], set[int]]:
+    """Separate bounded idle runtime pools from unknown post-close workers."""
+    raw_records = after_close.get("os_thread_records", [])
+    records = {
+        int(record["native_id"]): record
+        for record in raw_records
+        if isinstance(record, Mapping) and isinstance(record.get("native_id"), int)
+    }
+    qt_max_threads = max(_resource_int(after_close, "qt_max_threads"), 0)
+    cuda_initialized = bool(after_close.get("cuda_runtime_initialized", False))
+    idle_qt_ids: set[int] = set()
+    cuda_runtime_ids: set[int] = set()
+    unexpected_ids: set[int] = set()
+
+    for native_id in extra_os_ids:
+        record = records.get(native_id)
+        if record is None:
+            unexpected_ids.add(native_id)
+            continue
+        name = str(record.get("name", ""))
+        wait_channel = str(record.get("wait_channel", ""))
+        if (
+            name == "Thread (pooled)"
+            and qt_active_threads == 0
+            and wait_channel.startswith("futex_wait")
+        ):
+            idle_qt_ids.add(native_id)
+            continue
+        if cuda_initialized and name.startswith(("cuda", "pt_autograd_")):
+            cuda_runtime_ids.add(native_id)
+            continue
+        if (
+            cuda_initialized
+            and name
+            in {
+                MODEL_STATUS_PROBE_THREAD_NAME,
+                MODEL_STATUS_PROBE_THREAD_NAME[:15],
+            }
+            and wait_channel == "do_sys_poll"
+        ):
+            cuda_runtime_ids.add(native_id)
+            continue
+        unexpected_ids.add(native_id)
+
+    if len(idle_qt_ids) > qt_max_threads:
+        unexpected_ids.update(idle_qt_ids)
+        idle_qt_ids.clear()
+    if len(cuda_runtime_ids) > MAX_PERSISTENT_CUDA_RUNTIME_THREADS:
+        unexpected_ids.update(cuda_runtime_ids)
+        cuda_runtime_ids.clear()
+    persistent_ids = idle_qt_ids | cuda_runtime_ids
+    return persistent_ids, unexpected_ids
 
 
 def merge_ui_quality_into_pass_fail_summary(
@@ -3297,11 +3488,22 @@ def _resource_note(
     )
 
 
-def _resource_int(note: dict[str, Any], key: str) -> int:
+def _resource_int(note: Mapping[str, Any], key: str) -> int:
     try:
         return int(note.get(key, 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _resource_int_set(note: Mapping[str, Any], key: str) -> set[int]:
+    value = note.get(key)
+    if not isinstance(value, list):
+        return set()
+    return {
+        int(item)
+        for item in value
+        if isinstance(item, int) and not isinstance(item, bool)
+    }
 
 
 def build_observable_evidence_summary(
@@ -3591,6 +3793,181 @@ def forbidden_visible_text(texts: list[str]) -> list[str]:
     return offenders
 
 
+def _artifact_float(value: object) -> float:
+    if not isinstance(value, str | int | float):
+        raise TypeError
+    return float(value)
+
+
+def _artifact_int(value: object) -> int:
+    if not isinstance(value, str | int | float):
+        raise TypeError
+    return int(value)
+
+
+def _revalidate_frame_readiness(
+    screenshot_key: str,
+    evidence: Any,
+    *,
+    image_width: int,
+    image_height: int,
+) -> str:
+    if not isinstance(evidence, dict):
+        return f"saved frame readiness is missing: {screenshot_key}"
+    if (
+        evidence.get("consecutive_complete_frames") != 2
+        or evidence.get("stable") is not True
+    ):
+        return f"saved frame readiness did not pass: {screenshot_key}"
+    required_regions = evidence.get("required_regions")
+    if (
+        not isinstance(required_regions, list)
+        or not required_regions
+        or any(not str(region).strip() for region in required_regions)
+    ):
+        return f"saved frame readiness has no required regions: {screenshot_key}"
+    try:
+        changed_ratio = _artifact_float(evidence.get("max_changed_pixel_ratio"))
+    except (TypeError, ValueError):
+        return f"saved frame readiness has an invalid pixel ratio: {screenshot_key}"
+    if not 0.0 <= changed_ratio <= 0.12:
+        return f"saved frame readiness pixel ratio is out of bounds: {screenshot_key}"
+
+    reference_regions = evidence.get("reference_regions", [])
+    if not isinstance(reference_regions, list):
+        return f"saved frame readiness reference evidence is invalid: {screenshot_key}"
+    if evidence.get("reference_comparison_count") != len(reference_regions):
+        return (
+            f"saved frame readiness reference count is inconsistent: {screenshot_key}"
+        )
+    if bool(evidence.get("reference_validated")) != bool(reference_regions):
+        return (
+            f"saved frame readiness reference claim is inconsistent: {screenshot_key}"
+        )
+    for index, region in enumerate(reference_regions):
+        if not isinstance(region, dict):
+            return (
+                "saved frame readiness reference region is invalid: "
+                f"{screenshot_key}[{index}]"
+            )
+        bounds = region.get("bounds")
+        if not isinstance(bounds, list) or len(bounds) != 4:
+            return (
+                "saved frame readiness reference geometry is missing: "
+                f"{screenshot_key}[{index}]"
+            )
+        try:
+            left, top, right, bottom = (int(value) for value in bounds)
+            edge_recall = float(region["edge_recall"])
+            changed_pixels = float(region["changed_pixel_ratio"])
+            missing_tiles = float(region["missing_detail_tile_ratio"])
+            minimum_recall = float(region["minimum_required_edge_recall"])
+            maximum_changed = float(region["maximum_allowed_changed_pixel_ratio"])
+            maximum_missing = float(region["maximum_allowed_missing_detail_tile_ratio"])
+            reference_edges = int(region["reference_edge_pixels"])
+            minimum_edges = int(region["minimum_reference_edge_pixels"])
+        except (KeyError, TypeError, ValueError):
+            return (
+                "saved frame readiness reference metrics are invalid: "
+                f"{screenshot_key}[{index}]"
+            )
+        if not (
+            0 <= left < right <= image_width
+            and 0 <= top < bottom <= image_height
+            and 0.0 <= edge_recall <= 1.0
+            and 0.0 <= changed_pixels <= 1.0
+            and 0.0 <= missing_tiles <= 1.0
+            and edge_recall >= minimum_recall
+            and changed_pixels <= maximum_changed
+            and missing_tiles <= maximum_missing
+            and reference_edges >= minimum_edges
+        ):
+            return (
+                "saved frame readiness reference evidence did not revalidate: "
+                f"{screenshot_key}[{index}]"
+            )
+    return ""
+
+
+def _revalidate_full_window_geometry(
+    payload: dict[str, Any],
+    decoded_screenshots: dict[str, dict[str, object]],
+) -> str:
+    phases = {
+        str(phase.get("phase") or ""): phase for phase in payload.get("phases", [])
+    }
+    for (
+        phase_name,
+        screenshot_key,
+    ) in ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS.items():
+        phase = phases.get(phase_name, {})
+        notes = phase.get("notes", {}) if isinstance(phase, dict) else {}
+        geometry = (
+            notes.get("assistant_main_window", {}) if isinstance(notes, dict) else {}
+        )
+        image = decoded_screenshots.get(screenshot_key, {})
+        try:
+            expected_width = int(geometry.get("window_width", 0))
+            expected_height = int(geometry.get("window_height", 0))
+            observed_width = _artifact_int(image.get("width", 0))
+            observed_height = _artifact_int(image.get("height", 0))
+        except (TypeError, ValueError):
+            return f"saved full-window geometry is invalid: {phase_name}"
+        if min(expected_width, expected_height, observed_width, observed_height) <= 0:
+            return f"saved full-window geometry is missing: {phase_name}"
+        scale_x = observed_width / expected_width
+        scale_y = observed_height / expected_height
+        if abs(scale_x - scale_y) > max(scale_x, scale_y) * 0.05:
+            return f"saved full-window geometry does not match PNG pixels: {phase_name}"
+    return ""
+
+
+def _revalidate_saved_screenshot_evidence(
+    payload: dict[str, Any],
+    screenshots: dict[str, str],
+    decoded_screenshots: dict[str, dict[str, object]],
+) -> tuple[bool, str]:
+    ui_quality_review = payload.get("ui_quality_review")
+    if not isinstance(ui_quality_review, dict):
+        return False, "ui quality review is missing"
+    rows = ui_quality_review.get("screenshot_review")
+    if not isinstance(rows, list):
+        return False, "saved screenshot review is missing"
+    row_keys = tuple(
+        str(row.get("screenshot") or "") if isinstance(row, dict) else ""
+        for row in rows
+    )
+    if row_keys != tuple(screenshots):
+        return False, "saved screenshot review does not match required PNG order"
+    for row in rows:
+        key = str(row.get("screenshot") or "")
+        if (
+            row.get("path") != screenshots[key]
+            or row.get("exists") is not True
+            or row.get("nonblank") is not True
+            or row.get("automated_review") != "nonblank"
+        ):
+            return False, f"saved screenshot review did not pass: {key}"
+        image = decoded_screenshots[key]
+        if image.get("nonblank") is not True:
+            return False, f"screenshot pixel evidence did not revalidate: {key}"
+        readiness_failure = _revalidate_frame_readiness(
+            key,
+            row.get("frame_readiness"),
+            image_width=_artifact_int(image["width"]),
+            image_height=_artifact_int(image["height"]),
+        )
+        if readiness_failure:
+            return False, readiness_failure
+    geometry_failure = _revalidate_full_window_geometry(
+        payload,
+        decoded_screenshots,
+    )
+    if geometry_failure:
+        return False, geometry_failure
+    return True, ""
+
+
 def validate_walkthrough_payload(
     payload: dict[str, Any],
     *,
@@ -3602,10 +3979,11 @@ def validate_walkthrough_payload(
     summary = payload.get("pass_fail_summary", {})
     if not summary.get("passed"):
         return False, "; ".join(summary.get("failed_checks", []))
-    phases = {phase.get("phase") for phase in payload.get("phases", [])}
-    missing = [phase for phase in REQUIRED_PHASES if phase not in phases]
-    if missing:
-        return False, f"missing phases: {', '.join(missing)}"
+    phase_sequence = tuple(
+        str(phase.get("phase") or "") for phase in payload.get("phases", [])
+    )
+    if phase_sequence != REQUIRED_PHASES:
+        return False, "walkthrough phase sequence does not match the canonical order"
 
     assistant_ok, assistant_reason = validate_assistant_payload(
         payload,
@@ -3615,10 +3993,40 @@ def validate_walkthrough_payload(
         return False, assistant_reason
 
     screenshots = payload.get("screenshots", {})
+    if not isinstance(screenshots, dict):
+        return False, "walkthrough screenshot manifest is missing"
     if require_files:
-        for path in screenshots.values():
-            if not Path(path).exists():
+        for path_value in screenshots.values():
+            path = Path(str(path_value))
+            if not path.is_file():
                 return False, f"missing screenshot file: {path}"
+            if path.suffix.lower() != ".png":
+                return False, f"required screenshot is not a PNG path: {path}"
+        run = payload.get("artifact_run")
+        if not isinstance(run, dict):
+            return False, "artifact run manifest is missing"
+        recorded_hashes = run.get("screenshot_sha256")
+        if not isinstance(recorded_hashes, dict):
+            return False, "screenshot hash manifest is missing"
+        if set(recorded_hashes) != set(screenshots):
+            return False, "screenshot hash manifest is incomplete"
+        decoded_screenshots: dict[str, dict[str, object]] = {}
+        for key, path in screenshots.items():
+            screenshot_path = Path(path)
+            observed_hash = hashlib.sha256(screenshot_path.read_bytes()).hexdigest()
+            if recorded_hashes.get(key) != observed_hash:
+                return False, f"screenshot hash mismatch: {key}"
+            try:
+                decoded_screenshots[str(key)] = inspect_png_artifact(screenshot_path)
+            except RuntimeError as exc:
+                return False, f"invalid PNG screenshot: {key}: {exc}"
+        evidence_ok, evidence_reason = _revalidate_saved_screenshot_evidence(
+            payload,
+            {str(key): str(path) for key, path in screenshots.items()},
+            decoded_screenshots,
+        )
+        if not evidence_ok:
+            return False, evidence_reason
     if not payload.get("observable_evidence"):
         return False, "observable evidence summary is missing"
     ui_quality_review = payload.get("ui_quality_review")
@@ -3645,24 +4053,93 @@ def validate_walkthrough_payload(
 def resource_snapshot(label: str) -> dict[str, Any]:
     """Return lightweight process/thread notes."""
     pool = QThreadPool.globalInstance()
+    enumerated_threads = list(threading.enumerate())
+    process = psutil.Process(os.getpid()) if psutil is not None else None
+    os_thread_ids = (
+        {int(item.id) for item in process.threads()} if process is not None else set()
+    )
+    thread_records = [
+        {
+            "name": thread.name,
+            "kind": type(thread).__name__,
+            "ident": thread.ident,
+            "native_id": thread.native_id,
+            "backed_by_os_thread": (
+                isinstance(thread.native_id, int) and thread.native_id in os_thread_ids
+            ),
+        }
+        for thread in enumerated_threads
+    ]
+    live_threads = [
+        record
+        for record in thread_records
+        if record["backed_by_os_thread"] or record["name"] == "MainThread"
+    ]
+    stale_foreign_threads = [
+        record
+        for record in thread_records
+        if record["kind"] == "_DummyThread" and not record["backed_by_os_thread"]
+    ]
     max_rss_kb = (
         resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         if resource is not None
         else 0
     )
     current_rss_kb = (
-        int(psutil.Process(os.getpid()).memory_info().rss / 1024)
-        if psutil is not None
-        else max_rss_kb
+        int(process.memory_info().rss / 1024) if process is not None else max_rss_kb
     )
+    os_thread_records = [
+        _linux_thread_record(native_id) for native_id in sorted(os_thread_ids)
+    ]
+    torch_module = sys.modules.get("torch")
+    cuda_module = getattr(torch_module, "cuda", None)
+    is_cuda_initialized = getattr(cuda_module, "is_initialized", None)
+    try:
+        cuda_runtime_initialized = bool(
+            callable(is_cuda_initialized) and is_cuda_initialized()
+        )
+    except Exception:
+        cuda_runtime_initialized = False
     return {
         "label": label,
         "pid": os.getpid(),
-        "python_threads": threading.active_count(),
-        "thread_names": [thread.name for thread in threading.enumerate()[:12]],
+        "python_threads": len(thread_records),
+        "thread_names": [str(record["name"]) for record in thread_records[:12]],
+        "python_thread_records": thread_records[:24],
+        "live_python_threads": len(live_threads),
+        "live_python_thread_native_ids": [
+            int(record["native_id"])
+            for record in live_threads
+            if isinstance(record["native_id"], int)
+        ],
+        "stale_foreign_thread_names": [
+            str(record["name"]) for record in stale_foreign_threads[:12]
+        ],
+        "os_threads": len(os_thread_ids),
+        "os_thread_ids": sorted(os_thread_ids),
+        "os_thread_records": os_thread_records,
         "qt_active_threads": pool.activeThreadCount() if pool is not None else 0,
+        "qt_max_threads": pool.maxThreadCount() if pool is not None else 0,
+        "cuda_runtime_initialized": cuda_runtime_initialized,
         "max_rss_kb": max_rss_kb,
         "current_rss_kb": current_rss_kb,
+    }
+
+
+def _linux_thread_record(native_id: int) -> dict[str, Any]:
+    """Return bounded Linux thread diagnostics without assuming thread ownership."""
+    task_path = Path("/proc") / str(os.getpid()) / "task" / str(native_id)
+
+    def _read(name: str) -> str:
+        try:
+            return (task_path / name).read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+
+    return {
+        "native_id": native_id,
+        "name": _read("comm"),
+        "wait_channel": _read("wchan"),
     }
 
 
@@ -3694,6 +4171,28 @@ def settle_window_geometry_for_capture(
     app.processEvents()
     window.repaint()
     app.processEvents()
+
+
+def settle_window_close_for_capture(
+    app: QApplication,
+    window: QWidget,
+    *,
+    timeout_seconds: float = 12.0,
+    poll_interval_seconds: float = 0.02,
+) -> bool:
+    """Pump deferred shutdown work until the product window is actually closed."""
+    window.close()
+    deadline = time.monotonic() + max(timeout_seconds, 0.0)
+    while time.monotonic() < deadline:
+        app.sendPostedEvents()
+        app.processEvents()
+        try:
+            if not window.isVisible():
+                return True
+        except RuntimeError:
+            return True
+        time.sleep(max(poll_interval_seconds, 0.0))
+    return False
 
 
 def sanitize(value: Any) -> Any:

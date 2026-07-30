@@ -110,6 +110,41 @@ def test_projection_falls_back_to_import_review_for_unclassified_confirmation() 
     assert _projection(state).decision_fields == ("import_review",)
 
 
+def test_blocked_import_projection_preserves_review_decision_fields() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        interpretation=InterpretationStateSnapshot(
+            source_path="/datasets/demo",
+            has_scan_result=True,
+            has_candidate=True,
+            has_validation_decision=True,
+            latest_scan_id="scan-a",
+            latest_candidate_id="candidate-a",
+            validation_decision="blocked",
+            blocked_reasons=["Label placement is unresolved."],
+            action_items=[
+                {
+                    "issue": "Label placement is unresolved.",
+                    "impact": "Labels cannot be applied safely.",
+                    "next_action": "Review label placement.",
+                    "target_step": "Match Labels",
+                    "severity": "blocked",
+                }
+            ],
+        ),
+    )
+
+    projection = _projection(state)
+
+    assert projection.recommended_command is None
+    assert projection.blocked_command == CommandName.APPLY_INTERPRETATION.value
+    assert projection.decision_fields == ("label_matching",)
+    assert projection.blocked_reasons == (
+        "Interpretation is blocked.",
+        "Label placement is unresolved.",
+    )
+
+
 def test_projection_publishes_epoch_decisions_from_preprocessed_state() -> None:
     state = replace(
         ApplicationStateSnapshot.empty(),
@@ -184,6 +219,38 @@ def test_projection_chooses_train_only_after_configuration_is_complete() -> None
     assert incomplete.decision_fields == ("model", "training_options")
     assert configured.recommended_command == "train"
     assert configured.decision_fields == ()
+
+
+def test_running_training_is_not_projected_as_an_implicit_stop_action() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="training",
+        active_dataset=ActiveDatasetSnapshot(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+            has_epoch_data=True,
+            has_datasets=True,
+        ),
+        active_training=ActiveTrainingSnapshot(
+            has_model=True,
+            has_training_option=True,
+            has_trainer=True,
+            is_running=True,
+        ),
+    )
+
+    projection = _projection(state)
+
+    assert projection.recommended_command is None
+    assert projection.blocked_command is None
+    assert projection.blocked_reasons == ()
+    assert projection.evidence == ("Training is currently running.",)
+    assert projection.execution_controls == (CommandName.STOP_TRAINING.value,)
+    stop_capability = build_capability_policy(state).get(CommandName.STOP_TRAINING)
+    assert stop_capability.enabled is True
+    assert stop_capability.can_auto_execute is False
+    assert stop_capability.requires_confirmation is False
+    assert stop_capability.stop_after_success is True
 
 
 def test_ui_agent_manager_does_not_import_llm_workflow_policy() -> None:

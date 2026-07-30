@@ -37,6 +37,7 @@ class AssistantResponseActionKind(str, Enum):
 
     SEND_MESSAGE = "send_message"
     OPEN_PANEL = "open_panel"
+    OPEN_DATA_IMPORT = "open_data_import"
 
 
 class AssistantPanelTarget(str, Enum):
@@ -202,6 +203,7 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
             "new_session": (
                 "Session reset cancelled. Your current workflow is unchanged."
             ),
+            "apply_interpretation": ("Data import was cancelled. No data was added."),
         }
         return cancelled_copy.get(
             outcome.command_name,
@@ -302,6 +304,10 @@ class AssistantResponseAction:
             self.panel is None or self.prompt.strip()
         ):
             raise ValueError("Open-panel actions require only a panel target.")
+        elif self.kind is AssistantResponseActionKind.OPEN_DATA_IMPORT and (
+            self.prompt.strip() or self.panel is not None
+        ):
+            raise ValueError("Open-data-import actions do not accept payload fields.")
 
     @classmethod
     def send_message(cls, label: str, prompt: str) -> AssistantResponseAction:
@@ -323,6 +329,14 @@ class AssistantResponseAction:
             label=label,
             kind=AssistantResponseActionKind.OPEN_PANEL,
             panel=panel,
+        )
+
+    @classmethod
+    def open_data_import(cls, label: str) -> AssistantResponseAction:
+        """Build a typed action that opens the existing Data Import surface."""
+        return cls(
+            label=label,
+            kind=AssistantResponseActionKind.OPEN_DATA_IMPORT,
         )
 
 

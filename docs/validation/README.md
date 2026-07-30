@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-29`
+最後更新：`2026-07-30`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -20,6 +20,47 @@
 | launcher smoke | launcher / startup baseline。 | signed installer、release approval。 |
 
 ## Latest Desktop MVP Handoff Evidence
+
+### 2026-07-30 Assistant Product V1 Candidate Gate
+
+- Candidate branch：`ux/assistant-product-v1`。產品畫面不再要求使用者先選 Single action /
+  Guided workflow；host 由本回合自然語言建立 immutable no-tool、single-step、
+  continue-until-decision 或 explicit-terminal scope。
+- backend view delivery 現在有 revision acknowledgement：若 Qt queued view 尚未確認 matching
+  `ApplicationViewPublication`，terminal training event 會保留；確認同一 revision 後 exactly-once
+  送到 AgentManager。真 `ApplicationService -> QtObserverBridge -> AgentManager` regression
+  覆蓋 deferred delivery、重試與 duplicate suppression。
+- `Stop Training` 加入 explicit terminal endpoint。四個英文 / 中文 multi-stage admission cases
+  都能正確解析；generic continuation 不能自行推論停止訓練，只有明確使用者請求才能執行。
+- Data Import action 在 click time 重新讀 publication / capability truth；可執行 controls 與只供
+  assistant 建議的 commands 分開，避免畫面顯示舊 readiness 或把 recommendation 當 action。
+- 分層 regression：backend publication/application `231 passed`、UI/chat/product `571 passed`、
+  agent/core/integration `2123 passed`、architecture/source guards `274 passed`。Ruff、
+  Ruff format 與 canonical full-repo Basedpyright `0 errors / 0 warnings / 0 notes` PASS。
+- focused UI artifact：
+  `artifacts/ui/assistant-product-v1-focused-final/`，涵蓋 320 / 760 / 1280 寬度、loading、
+  unavailable、working / stopping、confirmation、long content、real dock 與 teardown。
+- human-like artifact：
+  `artifacts/ui/assistant-product-v1-human-like-final/`，結果 `42/42` phases、`45` screenshots；
+  主 agent 檢查 full-window ready、Settings、confirmation card 與 narrow dock，未見 primary action
+  遺失、文字裁切或 control overlap。
+- exact Granite artifact：
+  `artifacts/ui/assistant-product-v1-granite-boundary-final/`。真
+  `ibm-granite/granite-3.3-2b-instruct` 在 GPU 完成 model-owned `scan_source`，host 只續行
+  parameter-free `preview_interpretation` / `validate_interpretation`，停在 typed Data Import
+  decision boundary；取消後 state 不變且 runtime 完整關閉。
+- required multi-dataset gate：IO / public BIDS / cross-source integration
+  `36 passed, 3 skipped`；三個 skip 是未下載的 OpenNeuro、Sleep-EDF、CHB-MIT extended teacher
+  fixtures，不是 required-ci case 失敗。strict runner `4/4`：PhysioNet EDF、BBCI GDF 跑
+  one-epoch training；SCCN EEGLAB、MNE CNT 跑 load / preprocess / epoch boundary。dataset 與
+  format matrix 位於 `artifacts/validation/assistant-product-v1/`。
+- architecture 與 clean-code reviewer 在第一輪發現 deferred terminal delivery 及
+  Stop Training admission blocker；修復後重跑 exact pipeline 與 probes，兩者均無剩餘 release
+  blocker。
+
+這些結果支撐 automated handoff candidate，不支撐 product complete。Windows native
+click-through、DPI / 多螢幕、互動式 3D、長時間 local-model session 與 frozen XBrainLab
+benchmark 仍未完成；Granite artifact 是 host-assisted product evidence，不是 raw-model accuracy。
 
 ### 2026-07-29 Granite 2B Teacher Candidate Gate
 

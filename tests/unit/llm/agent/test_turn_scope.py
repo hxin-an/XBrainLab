@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from XBrainLab.backend.application import CommandName
-from XBrainLab.llm.agent.turn import AssistantTurnScope
+from XBrainLab.llm.agent.turn import (
+    AssistantTurnCorrelation,
+    AssistantTurnRequest,
+    AssistantTurnScope,
+)
 from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 
 
@@ -46,6 +50,111 @@ def test_atomic_or_ambiguous_requests_remain_single_action(text: str) -> None:
 @pytest.mark.parametrize(
     "text",
     (
+        "Load the data but not preprocess it.",
+        "Load the data but avoid preprocessing it.",
+        "Load every stage except preprocessing.",
+        "Load the data and skip preprocessing.",
+        "Load and preprocess this recording without resampling, then create epochs.",
+        "Do not load this recording, preprocess it, and create epochs.",
+        "Load this recording, but do not create epochs.",
+        "Load and preprocess this recording, but do not generate a dataset.",
+        "Load and preprocess this recording, but do not configure training.",
+        "Load and preprocess this recording, but do not start training.",
+        "Load and train this recording, but do not evaluate it.",
+        "Load and evaluate this recording, but do not visualize it.",
+        "載入資料但不前處理",
+        "載入資料但不要前處理",
+        "載入資料並略過前處理",
+        "不要重採樣, 載入資料並完成前處理後建立 epochs",
+        "不要載入這份資料並建立 epochs",
+        "載入資料, 但不要建立 epochs",
+        "載入並前處理資料, 但不要建立資料集",
+        "載入並前處理資料, 但不要設定訓練",
+        "載入並前處理資料, 但不要開始訓練",
+        "載入並訓練資料, 但不要評估",
+        "載入並評估資料, 但不要視覺化",
+    ),
+)
+def test_excluded_workflow_stage_never_expands_guided_scope(text: str) -> None:
+    resolution = resolve_assistant_turn_scope(text)
+
+    assert resolution.scope is AssistantTurnScope.SINGLE_ACTION
+    assert resolution.terminal_command is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Load the data, but don't apply preprocessing.",
+        "Load the data without doing preprocessing.",
+        "Load the data and avoid using preprocessing.",
+    ),
+)
+def test_preprocess_exclusion_is_preserved_as_typed_turn_policy(text: str) -> None:
+    resolution = resolve_assistant_turn_scope(text)
+
+    assert resolution.scope is AssistantTurnScope.SINGLE_ACTION
+    assert resolution.terminal_command is None
+    assert resolution.excluded_commands == (CommandName.PREPROCESS,)
+
+    request = AssistantTurnRequest(
+        correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+        text=text,
+        scope=resolution.scope,
+        terminal_command=resolution.terminal_command,
+        excluded_commands=resolution.excluded_commands,
+    )
+
+    assert request.excluded_commands == (CommandName.PREPROCESS,)
+
+
+def test_hypothetical_request_still_preserves_its_execution_exclusion() -> None:
+    resolution = resolve_assistant_turn_scope(
+        "What would happen if I load this file without doing preprocessing?"
+    )
+
+    assert resolution.scope is AssistantTurnScope.SINGLE_ACTION
+    assert resolution.excluded_commands == (CommandName.PREPROCESS,)
+
+
+@pytest.mark.parametrize(
+    ("text", "command"),
+    (
+        (
+            "Do not preview the interpretation.",
+            CommandName.PREVIEW_INTERPRETATION,
+        ),
+        (
+            "Do not validate the interpretation candidate.",
+            CommandName.VALIDATE_INTERPRETATION,
+        ),
+        (
+            "Do not apply the interpretation.",
+            CommandName.APPLY_INTERPRETATION,
+        ),
+        ("Do not stop training.", CommandName.STOP_TRAINING),
+        ("Do not compute saliency.", CommandName.SALIENCY),
+        ("不要預覽資料解讀", CommandName.PREVIEW_INTERPRETATION),
+        ("不要驗證資料解讀", CommandName.VALIDATE_INTERPRETATION),
+        ("不要套用資料解讀", CommandName.APPLY_INTERPRETATION),
+        ("不要停止訓練", CommandName.STOP_TRAINING),
+        ("不要計算顯著圖", CommandName.SALIENCY),
+    ),
+)
+def test_every_executable_workflow_stage_preserves_explicit_exclusion(
+    text: str,
+    command: CommandName,
+) -> None:
+    resolution = resolve_assistant_turn_scope(text)
+
+    assert resolution.scope is AssistantTurnScope.SINGLE_ACTION
+    assert resolution.terminal_command is None
+    assert resolution.excluded_commands == (command,)
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
         "Continue with the reviewed recording.",
         "Proceed to the next step.",
         "Load this recording and continue until a decision is needed.",
@@ -73,6 +182,10 @@ def test_explicit_continuation_uses_bounded_guided_scope(text: str) -> None:
             CommandName.CREATE_EPOCH.value,
         ),
         (
+            "Not only load this recording but also preprocess it.",
+            CommandName.PREPROCESS.value,
+        ),
+        (
             "Import this dataset and finish the data import workflow.",
             CommandName.APPLY_INTERPRETATION.value,
         ),
@@ -85,12 +198,25 @@ def test_explicit_continuation_uses_bounded_guided_scope(text: str) -> None:
             CommandName.CREATE_EPOCH.value,
         ),
         (
+            "不只載入資料, 也要完成前處理",
+            CommandName.PREPROCESS.value,
+        ),
+        (
             "完成這份資料的匯入流程",
             CommandName.APPLY_INTERPRETATION.value,
         ),
         (
             "幫我把這份 EEG 資料準備到可以訓練",
             CommandName.GENERATE_DATASET.value,
+        ),
+        (
+            "There are no external labels; load this recording, preprocess it, "
+            "and create epochs.",
+            CommandName.CREATE_EPOCH.value,
+        ),
+        (
+            "這份資料沒有外部標籤, 載入資料並完成前處理後建立 epochs",
+            CommandName.CREATE_EPOCH.value,
         ),
     ),
 )
@@ -102,3 +228,21 @@ def test_explicit_multi_stage_goal_has_a_host_enforced_endpoint(
 
     assert resolution.scope is AssistantTurnScope.GUIDED_WORKFLOW
     assert resolution.terminal_command == terminal
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Train the model and then stop training.",
+        "Load the data, train it, then stop training.",
+        "開始訓練, 然後停止訓練",
+        "載入資料、開始訓練, 最後停止訓練",
+    ),
+)
+def test_explicit_stop_training_endpoint_is_resolved_without_crashing(
+    text: str,
+) -> None:
+    resolution = resolve_assistant_turn_scope(text)
+
+    assert resolution.scope is AssistantTurnScope.GUIDED_WORKFLOW
+    assert resolution.terminal_command == CommandName.STOP_TRAINING.value

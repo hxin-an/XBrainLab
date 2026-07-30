@@ -1,0 +1,2540 @@
+{
+  "repo_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1",
+  "tests_data_dir": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data",
+  "rows": [
+    {
+      "layer": "checked-in core GDF + MAT",
+      "representative_data": "A01T, A02T, A03T",
+      "reproducibility_class": "checked-in",
+      "source_families": "1 (Graz / BCI Competition IV 2a)",
+      "import_facade": "scan/preview/validate/apply: 1/1 passed",
+      "label_attach": "applied",
+      "dataset_generation": "separate pipeline integration gate",
+      "training_smoke": "separate one-epoch runner",
+      "notes": "Deepest current baseline, but still concentrated in one source family."
+    },
+    {
+      "layer": "checked-in compact multiformat",
+      "representative_data": "9 derived files from A01T",
+      "reproducibility_class": "checked-in",
+      "source_families": "1 derived source",
+      "import_facade": "scan/preview/validate/apply: 7/7 passed",
+      "label_attach": "no",
+      "dataset_generation": "no",
+      "training_smoke": "no",
+      "notes": "Improves format coverage, not source diversity."
+    },
+    {
+      "layer": "public local-only event-rich fixtures",
+      "representative_data": "EDF, GDF",
+      "reproducibility_class": "local-only",
+      "source_families": "2 (BBCI, PhysioNet)",
+      "import_facade": "scan/preview/validate/apply: 2/2 passed",
+      "label_attach": "reviewed internal events",
+      "dataset_generation": "separate cross-source integration gate",
+      "training_smoke": "separate strict cross-source runner",
+      "notes": "Extends training smoke into non-Graz sources with public protocol class semantics, but remains local-only."
+    },
+    {
+      "layer": "public local-only epoch-only fixtures",
+      "representative_data": "EEGLAB .set, CNT",
+      "reproducibility_class": "local-only",
+      "source_families": "2 (MNE testing-data, SCCN / EEGLAB)",
+      "import_facade": "scan/preview/validate/apply: 2/2 passed",
+      "label_attach": "reviewed events; no supervised class claim",
+      "dataset_generation": "no; epoch creation checked separately",
+      "training_smoke": "epoch-only by contract",
+      "notes": "SCCN rt/square lacks public protocol class ground truth; CNT is too small for class-balanced training. Both prove load, preprocess, reviewed event selection, and epoch creation only."
+    },
+    {
+      "layer": "public local-only import-only fixtures",
+      "representative_data": "EDF, BrainVision .vhdr",
+      "reproducibility_class": "local-only",
+      "source_families": "2 (MNE testing-data, PhysioNet)",
+      "import_facade": "scan/preview/validate/apply: 2/2 passed",
+      "label_attach": "no",
+      "dataset_generation": "no",
+      "training_smoke": "no",
+      "notes": "Still useful for source/format breadth, but these fixtures do not currently provide a training-smoke path."
+    },
+    {
+      "layer": "public local-only BIDS EEG fixture",
+      "representative_data": "BIDS EEG",
+      "reproducibility_class": "local-only downloaded",
+      "source_families": "MNE-BIDS",
+      "import_facade": "scan/preview/validate/apply: 1/1 passed",
+      "label_attach": "applied",
+      "dataset_generation": "epoch handoff; creation checked separately",
+      "training_smoke": "no",
+      "notes": "Protects folder-level BIDS-EEG scan, events.tsv placement, events sidecars, recipe replay, and epoch handoff; not a full BIDS validator claim."
+    }
+  ],
+  "strict_validation": {
+    "ok": true,
+    "requirements": [
+      {
+        "key": "checked_in_gdf_mat",
+        "label": "Checked-in GDF recordings with external MAT labels",
+        "ok": true,
+        "observed": "A01T, A02T, A03T",
+        "required": "A01T, A02T, and A03T GDF files with matching label/*.mat files"
+      },
+      {
+        "key": "compact_multiformat",
+        "label": "Compact multi-format import fixtures",
+        "ok": true,
+        "observed": "9 / 9 files",
+        "required": "FIF, FIF.GZ, epoched FIF, EDF, BDF, BrainVision, and EEGLAB SET"
+      },
+      {
+        "key": "public_event_rich_sources",
+        "label": "Public class-grounded training source diversity",
+        "ok": true,
+        "observed": "2 fixtures from 2 source families",
+        "required": "the fixed PhysioNet EDF and BBCI GDF training fixtures; run scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci when missing"
+      },
+      {
+        "key": "public_epoch_only_sources",
+        "label": "Public IO/epoch-only source diversity",
+        "ok": true,
+        "observed": "sccn-eeglab_data.set, scan41_short.cnt",
+        "required": "the fixed SCCN EEGLAB and MNE CNT load/preprocess/epoch fixtures; neither is supervised training evidence"
+      },
+      {
+        "key": "public_bids_eeg",
+        "label": "Public BIDS EEG folder fixture",
+        "ok": true,
+        "observed": "MNE-BIDS",
+        "required": "downloaded MNE-BIDS tiny EEG root with events.tsv and sidecars"
+      },
+      {
+        "key": "real_data_interpretation_lifecycle",
+        "label": "Real Data Interpretation command lifecycle",
+        "ok": true,
+        "observed": "20 / 20 required cases passed",
+        "required": "every required checked-in, derived-format, and hash-pinned public case must complete scan -> preview -> validate -> apply"
+      },
+      {
+        "key": "real_public_source_diversity",
+        "label": "Real public source diversity through apply",
+        "ok": true,
+        "observed": "5 source families: BBCI, MNE testing-data, MNE-BIDS, PhysioNet, SCCN / EEGLAB",
+        "required": "at least 5 distinct public source families (BBCI, MNE testing-data, MNE-BIDS, PhysioNet, SCCN / EEGLAB) must complete the real lifecycle; converted files from one source do not count"
+      },
+      {
+        "key": "tier_format_apply_coverage",
+        "label": "Tier 1/2 format apply coverage",
+        "ok": true,
+        "observed": "14 / 14 formats passed",
+        "required": "the fixed required set must reach apply: BDF, BIDS EEG / BrainVision, BrainVision, CNT, CSV labels, EDF, EEGLAB SET, Epoched FIF, FIF, FIF.GZ, GDF, GDF + MAT labels, TSV labels, TXT labels; shell/header recognition is insufficient"
+      },
+      {
+        "key": "external_label_placement_contracts",
+        "label": "External label carrier placement contracts",
+        "ok": true,
+        "observed": "7 / 7 contracts passed",
+        "required": "the fixed external-label set must preserve reviewed placement choices and reach its declared evidence tier: bids_interval, csv_event_code, csv_event_order, csv_sample_time, mat_event_order, tsv_interval, txt_event_order"
+      },
+      {
+        "key": "reviewed_internal_event_contracts",
+        "label": "Reviewed public internal-event contracts",
+        "ok": true,
+        "observed": "4 / 4 profiles passed",
+        "required": "the fixed reviewed-event profiles must preserve selections into epoch handoff: bbci_internal, cnt_internal, physionet_r04_internal, sccn_internal"
+      },
+      {
+        "key": "reviewed_label_apply_coverage",
+        "label": "Reviewed label and event choice apply coverage",
+        "ok": true,
+        "observed": "11 / 11 fixed reviewed-label/event cases passed",
+        "required": "all 11 fixed external-label/reviewed-event case IDs, including CNT, must preserve explicit choices at their required evidence tier; missing, downgrade, or choice mismatch is a strict failure"
+      }
+    ]
+  },
+  "data_interpretation_workflows": {
+    "evidence_level": "layered_application_workflow_evidence",
+    "command_path": [
+      "ApplicationService.execute(ScanSourceCommand)",
+      "ApplicationService.execute(PreviewInterpretationCommand)",
+      "ApplicationService.execute(ValidateInterpretationCommand)",
+      "ApplicationService.execute(ApplyInterpretationCommand)"
+    ],
+    "summary": {
+      "workflow_stages": [
+        "scan",
+        "preview",
+        "validate",
+        "apply"
+      ],
+      "required_case_count": 20,
+      "required_case_ids": [
+        "checked_in_graz_gdf_mat",
+        "derived_bdf",
+        "derived_brainvision",
+        "derived_edf",
+        "derived_eeglab",
+        "derived_fif_epochs",
+        "derived_fif_gz_raw",
+        "derived_fif_raw",
+        "generated_csv_event_code",
+        "generated_csv_event_order",
+        "generated_csv_sample_time",
+        "generated_tsv_interval",
+        "generated_txt_event_order",
+        "public_bbci_gdf",
+        "public_mne_bids_eeg",
+        "public_mne_brainvision",
+        "public_mne_cnt",
+        "public_physionet_motor_edf",
+        "public_physionet_rest_edf",
+        "public_sccn_eeglab"
+      ],
+      "passed_required_case_count": 20,
+      "passed_required_case_ids": [
+        "checked_in_graz_gdf_mat",
+        "derived_bdf",
+        "derived_brainvision",
+        "derived_edf",
+        "derived_eeglab",
+        "derived_fif_epochs",
+        "derived_fif_gz_raw",
+        "derived_fif_raw",
+        "generated_csv_event_code",
+        "generated_csv_event_order",
+        "generated_csv_sample_time",
+        "generated_tsv_interval",
+        "generated_txt_event_order",
+        "public_bbci_gdf",
+        "public_mne_bids_eeg",
+        "public_mne_brainvision",
+        "public_mne_cnt",
+        "public_physionet_motor_edf",
+        "public_physionet_rest_edf",
+        "public_sccn_eeglab"
+      ],
+      "missing_required_case_ids": [],
+      "duplicate_case_ids": [],
+      "evidence_scope_mismatch_case_ids": [],
+      "missing_case_count": 0,
+      "failed_case_count": 0,
+      "public_case_count": 7,
+      "passed_public_case_count": 7,
+      "public_source_family_count": 5,
+      "public_source_families": [
+        "BBCI",
+        "MNE testing-data",
+        "MNE-BIDS",
+        "PhysioNet",
+        "SCCN / EEGLAB"
+      ],
+      "missing_public_source_families": [],
+      "observed_format_count": 14,
+      "passed_formats": [
+        "BDF",
+        "BIDS EEG / BrainVision",
+        "BrainVision",
+        "CNT",
+        "CSV labels",
+        "EDF",
+        "EEGLAB SET",
+        "Epoched FIF",
+        "FIF",
+        "FIF.GZ",
+        "GDF",
+        "GDF + MAT labels",
+        "TSV labels",
+        "TXT labels"
+      ],
+      "required_format_count": 14,
+      "passed_required_format_count": 14,
+      "passed_required_formats": [
+        "BDF",
+        "BIDS EEG / BrainVision",
+        "BrainVision",
+        "CNT",
+        "CSV labels",
+        "EDF",
+        "EEGLAB SET",
+        "Epoched FIF",
+        "FIF",
+        "FIF.GZ",
+        "GDF",
+        "GDF + MAT labels",
+        "TSV labels",
+        "TXT labels"
+      ],
+      "missing_required_formats": [],
+      "required_external_label_contract_count": 7,
+      "passed_external_label_contract_count": 7,
+      "passed_external_label_contracts": [
+        "bids_interval",
+        "csv_event_code",
+        "csv_event_order",
+        "csv_sample_time",
+        "mat_event_order",
+        "tsv_interval",
+        "txt_event_order"
+      ],
+      "unexpected_passed_external_label_contracts": [],
+      "missing_external_label_contracts": [],
+      "required_internal_event_profile_count": 4,
+      "passed_internal_event_profile_count": 4,
+      "passed_internal_event_profiles": [
+        "bbci_internal",
+        "cnt_internal",
+        "physionet_r04_internal",
+        "sccn_internal"
+      ],
+      "missing_internal_event_profiles": [],
+      "required_reviewed_label_case_count": 11,
+      "required_reviewed_label_case_ids": [
+        "checked_in_graz_gdf_mat",
+        "generated_csv_event_code",
+        "generated_csv_event_order",
+        "generated_csv_sample_time",
+        "generated_tsv_interval",
+        "generated_txt_event_order",
+        "public_bbci_gdf",
+        "public_mne_bids_eeg",
+        "public_mne_cnt",
+        "public_physionet_motor_edf",
+        "public_sccn_eeglab"
+      ],
+      "passed_required_reviewed_label_case_count": 11,
+      "passed_required_reviewed_label_case_ids": [
+        "checked_in_graz_gdf_mat",
+        "generated_csv_event_code",
+        "generated_csv_event_order",
+        "generated_csv_sample_time",
+        "generated_tsv_interval",
+        "generated_txt_event_order",
+        "public_bbci_gdf",
+        "public_mne_bids_eeg",
+        "public_mne_cnt",
+        "public_physionet_motor_edf",
+        "public_sccn_eeglab"
+      ],
+      "missing_required_reviewed_label_case_ids": [],
+      "downgraded_required_reviewed_label_case_ids": [],
+      "choice_preservation_failure_case_ids": [],
+      "reviewed_label_case_count": 11,
+      "passed_reviewed_label_case_count": 11,
+      "required_public_fixture_fact_count": 7,
+      "passed_public_fixture_fact_count": 7,
+      "passed_public_fixture_fact_case_ids": [
+        "public_bbci_gdf",
+        "public_mne_bids_eeg",
+        "public_mne_brainvision",
+        "public_mne_cnt",
+        "public_physionet_motor_edf",
+        "public_physionet_rest_edf",
+        "public_sccn_eeglab"
+      ],
+      "missing_public_fixture_fact_case_ids": [],
+      "failed_public_fixture_fact_case_ids": [],
+      "evidence_layers": {
+        "checked_in_and_derived_formats": {
+          "required_case_count": 8,
+          "passed_required_case_count": 8,
+          "missing_required_case_ids": [],
+          "failed_required_case_ids": [],
+          "evidence_scopes": [
+            "checked_in_source",
+            "derived_format"
+          ],
+          "counts_toward_public_source_diversity": false
+        },
+        "generated_contracts": {
+          "required_case_count": 5,
+          "passed_required_case_count": 5,
+          "missing_required_case_ids": [],
+          "failed_required_case_ids": [],
+          "evidence_scopes": [
+            "generated_contract"
+          ],
+          "counts_toward_public_source_diversity": false
+        },
+        "public_source_workflows": {
+          "required_case_count": 7,
+          "passed_required_case_count": 7,
+          "missing_required_case_ids": [],
+          "failed_required_case_ids": [],
+          "evidence_scopes": [
+            "public_source"
+          ],
+          "counts_toward_public_source_diversity": true
+        }
+      },
+      "strict_failures": [],
+      "all_required_passed": true
+    },
+    "cases": [
+      {
+        "case_id": "checked_in_graz_gdf_mat",
+        "title": "Checked-in Graz GDF with external MAT labels",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "checked_in_source",
+        "dataset_source_id": "bci-competition-iv-2a",
+        "source_family": "Graz / BCI Competition IV 2a",
+        "format": "GDF + MAT labels",
+        "tier_category": "GDF / BNCI / BCI Competition",
+        "source_entry": "tests/fixtures/data/A01T.gdf",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "a01t_external_labels",
+        "label_contract": "mat_event_order",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 1,
+          "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 603,
+          "source_event_count": 603,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "applied",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "loaded_label_files",
+          "default_epoch_events": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "reviewed_choice_signature": {
+            "selected_label_field": "classlabel",
+            "selected_anchor": "768",
+            "selected_target_event_codes": [
+              "768"
+            ],
+            "selected_duration_field": "",
+            "placement_method": "eeg_event",
+            "time_model": "trial_order",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "1": "1",
+              "2": "2",
+              "3": "3",
+              "4": "4"
+            }
+          },
+          "reviewed_choice_expected": {
+            "selected_label_field": "classlabel",
+            "selected_anchor": "768",
+            "selected_target_event_codes": [
+              "768"
+            ],
+            "selected_duration_field": "",
+            "placement_method": "eeg_event",
+            "time_model": "trial_order",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "1": "1",
+              "2": "2",
+              "3": "3",
+              "4": "4"
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "supervised"
+        },
+        "expectations": {
+          "label_apply_status": "applied",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": "mat_event_order"
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "checked_in_graz_gdf_mat",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "supervised",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "derived_fif_raw",
+        "title": "A01T-derived raw FIF format lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "derived_format",
+        "dataset_source_id": "bci-competition-iv-2a-derived",
+        "source_family": "Graz A01T derived formats",
+        "format": "FIF",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/multiformat/A01T-mini-real_raw.fif",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 2,
+          "source_event_count": 2,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "derived_fif_raw",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "derived_fif_gz_raw",
+        "title": "A01T-derived compressed FIF format lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "derived_format",
+        "dataset_source_id": "bci-competition-iv-2a-derived",
+        "source_family": "Graz A01T derived formats",
+        "format": "FIF.GZ",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/multiformat/A01T-mini-real_raw.fif.gz",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 2,
+          "source_event_count": 2,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "derived_fif_gz_raw",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "derived_fif_epochs",
+        "title": "A01T-derived epoched FIF format lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "derived_format",
+        "dataset_source_id": "bci-competition-iv-2a-derived",
+        "source_family": "Graz A01T derived formats",
+        "format": "Epoched FIF",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/multiformat/A01T-mini-real-epo.fif",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 1,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [
+            "Could not inspect internal EEG events for A01T-mini-real-epo.fif: ValueError: No raw data in /mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/multiformat/A01T-mini-real-epo.fif"
+          ],
+          "internal_event_count": 0,
+          "source_event_count": 0,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "derived_fif_epochs",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "derived_edf",
+        "title": "A01T-derived EDF format lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "derived_format",
+        "dataset_source_id": "bci-competition-iv-2a-derived",
+        "source_family": "Graz A01T derived formats",
+        "format": "EDF",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/multiformat/A01T-mini-real.edf",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 2,
+          "source_event_count": 2,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "derived_edf",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "derived_bdf",
+        "title": "A01T-derived BDF format lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "derived_format",
+        "dataset_source_id": "bci-competition-iv-2a-derived",
+        "source_family": "Graz A01T derived formats",
+        "format": "BDF",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/multiformat/A01T-mini-real.bdf",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 2,
+          "source_event_count": 2,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "derived_bdf",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "derived_brainvision",
+        "title": "A01T-derived BrainVision format lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "derived_format",
+        "dataset_source_id": "bci-competition-iv-2a-derived",
+        "source_family": "Graz A01T derived formats",
+        "format": "BrainVision",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/multiformat/A01T-mini-real.vhdr",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 2,
+          "source_event_count": 2,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "derived_brainvision",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "derived_eeglab",
+        "title": "A01T-derived EEGLAB SET format lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "derived_format",
+        "dataset_source_id": "bci-competition-iv-2a-derived",
+        "source_family": "Graz A01T derived formats",
+        "format": "EEGLAB SET",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/multiformat/A01T-mini-real.set",
+        "source_hint": "file",
+        "fixture_group": "",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 2,
+          "source_event_count": 2,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "not_applicable",
+          "manifest_verified": false,
+          "message": "Checked-in or test-local fixture; no public manifest required."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "derived_eeglab",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "public_physionet_rest_edf",
+        "title": "PhysioNet EEGMMI rest EDF import lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "public_source",
+        "dataset_source_id": "physionet-eegmmidb",
+        "source_family": "PhysioNet",
+        "format": "EDF",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/public/physionet-eegmmidb-S008R01.edf",
+        "source_hint": "file",
+        "fixture_group": "physionet-edf-rest",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 1,
+          "source_event_count": 1,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "verified",
+          "manifest_verified": true,
+          "message": "Pinned public fixture group physionet-edf-rest passed size and hash verification."
+        },
+        "fixture_facts": {
+          "status": "passed",
+          "case_id": "public_physionet_rest_edf",
+          "source_entry": "tests/fixtures/data/public/physionet-eegmmidb-S008R01.edf",
+          "source_path": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/public/physionet-eegmmidb-S008R01.edf",
+          "mismatches": [],
+          "sampling_frequency_hz": 160.0,
+          "channel_count": 64,
+          "channel_type_counts": {
+            "eeg": 64
+          },
+          "channel_unit_counts": {
+            "V": 64
+          },
+          "source_unit_counts": {
+            "uV": 64
+          },
+          "sample_count": 9760,
+          "embedded_event_count": 1,
+          "embedded_event_labels": [
+            "T0"
+          ],
+          "import_warnings": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "public_physionet_motor_edf",
+        "title": "PhysioNet EEGMMI motor EDF reviewed-event lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "public_source",
+        "dataset_source_id": "physionet-eegmmidb",
+        "source_family": "PhysioNet",
+        "format": "EDF",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/public/physionet-eegmmidb-S008R04.edf",
+        "source_hint": "file",
+        "fixture_group": "physionet-edf-motor",
+        "protocol_choice_profile": "physionet_r04_internal",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [
+            "PhysioNet-style T1/T2 event labels can change meaning by run; confirm run/task mapping before supervised training."
+          ],
+          "internal_event_count": 30,
+          "source_event_count": 30,
+          "selected_internal_events": [
+            "T1",
+            "T2"
+          ],
+          "run_event_mapping_count": 1,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "internal_events",
+          "default_epoch_events": [
+            "T1",
+            "T2"
+          ],
+          "reviewed_choice_signature": {
+            "label_event_codes": [
+              "T1",
+              "T2"
+            ],
+            "not_label_event_codes": [
+              "T0"
+            ],
+            "class_map": {
+              "T1": "left fist",
+              "T2": "right fist"
+            },
+            "run_event_mappings": {
+              "physionet-eegmmidb-S008R04.edf": {
+                "T1": "left fist",
+                "T2": "right fist"
+              }
+            }
+          },
+          "reviewed_choice_expected": {
+            "label_event_codes": [
+              "T1",
+              "T2"
+            ],
+            "not_label_event_codes": [
+              "T0"
+            ],
+            "class_map": {
+              "T1": "left fist",
+              "T2": "right fist"
+            },
+            "run_event_mappings": {
+              "physionet-eegmmidb-S008R04.edf": {
+                "T1": "left fist",
+                "T2": "right fist"
+              }
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "supervised"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "verified",
+          "manifest_verified": true,
+          "message": "Pinned public fixture group physionet-edf-motor passed size and hash verification."
+        },
+        "fixture_facts": {
+          "status": "passed",
+          "case_id": "public_physionet_motor_edf",
+          "source_entry": "tests/fixtures/data/public/physionet-eegmmidb-S008R04.edf",
+          "source_path": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/public/physionet-eegmmidb-S008R04.edf",
+          "mismatches": [],
+          "sampling_frequency_hz": 160.0,
+          "channel_count": 64,
+          "channel_type_counts": {
+            "eeg": 64
+          },
+          "channel_unit_counts": {
+            "V": 64
+          },
+          "source_unit_counts": {
+            "uV": 64
+          },
+          "sample_count": 19680,
+          "embedded_event_count": 30,
+          "embedded_event_labels": [
+            "T0",
+            "T1",
+            "T2"
+          ],
+          "import_warnings": []
+        },
+        "reviewed_evidence_tier": "supervised",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "public_bbci_gdf",
+        "title": "BBCI Competition III GDF reviewed-event lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "public_source",
+        "dataset_source_id": "bbci-competition-iii-iii-b",
+        "source_family": "BBCI",
+        "format": "GDF",
+        "tier_category": "GDF / BNCI / BCI Competition",
+        "source_entry": "tests/fixtures/data/public/bbci-competition-iii-O3VR.gdf",
+        "source_hint": "file",
+        "fixture_group": "bbci-gdf",
+        "protocol_choice_profile": "bbci_internal",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 2560,
+          "source_event_count": 2560,
+          "selected_internal_events": [
+            "769",
+            "770"
+          ],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "internal_events",
+          "default_epoch_events": [
+            "769",
+            "770"
+          ],
+          "reviewed_choice_signature": {
+            "label_event_codes": [
+              "769",
+              "770"
+            ],
+            "not_label_event_codes": [
+              "768",
+              "781",
+              "783",
+              "785"
+            ],
+            "class_map": {
+              "769": "769",
+              "770": "770"
+            },
+            "run_event_mappings": {}
+          },
+          "reviewed_choice_expected": {
+            "label_event_codes": [
+              "769",
+              "770"
+            ],
+            "not_label_event_codes": [
+              "768",
+              "781",
+              "783",
+              "785"
+            ],
+            "class_map": {
+              "769": "769",
+              "770": "770"
+            },
+            "run_event_mappings": {}
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "supervised"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "verified",
+          "manifest_verified": true,
+          "message": "Pinned public fixture group bbci-gdf passed size and hash verification."
+        },
+        "fixture_facts": {
+          "status": "passed",
+          "case_id": "public_bbci_gdf",
+          "source_entry": "tests/fixtures/data/public/bbci-competition-iii-O3VR.gdf",
+          "source_path": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/public/bbci-competition-iii-O3VR.gdf",
+          "mismatches": [],
+          "sampling_frequency_hz": 125.0,
+          "channel_count": 2,
+          "channel_type_counts": {
+            "eeg": 2
+          },
+          "channel_unit_counts": {
+            "V": 2
+          },
+          "source_unit_counts": {
+            "unknown": 2
+          },
+          "sample_count": 729558,
+          "embedded_event_count": 2560,
+          "embedded_event_labels": [
+            "768",
+            "769",
+            "770",
+            "781",
+            "783",
+            "785"
+          ],
+          "import_warnings": [
+            {
+              "category": "RuntimeWarning",
+              "message": "Limited 1 annotation(s) that were expanding outside the data range.",
+              "count": 1
+            }
+          ]
+        },
+        "reviewed_evidence_tier": "supervised",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "public_sccn_eeglab",
+        "title": "SCCN EEGLAB IO/epoch-only reviewed-event lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "public_source",
+        "dataset_source_id": "sccn-eeglab-tutorial",
+        "source_family": "SCCN / EEGLAB",
+        "format": "EEGLAB SET",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/public/sccn-eeglab_data.set",
+        "source_hint": "file",
+        "fixture_group": "sccn-eeglab",
+        "protocol_choice_profile": "sccn_internal",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 154,
+          "source_event_count": 154,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "internal_events",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {
+            "label_event_codes": [],
+            "not_label_event_codes": [
+              "rt",
+              "square"
+            ],
+            "class_map": {},
+            "run_event_mappings": {}
+          },
+          "reviewed_choice_expected": {
+            "label_event_codes": [],
+            "not_label_event_codes": [
+              "rt",
+              "square"
+            ],
+            "class_map": {},
+            "run_event_mappings": {}
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "io_epoch_only"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "verified",
+          "manifest_verified": true,
+          "message": "Pinned public fixture group sccn-eeglab passed size and hash verification."
+        },
+        "fixture_facts": {
+          "status": "passed",
+          "case_id": "public_sccn_eeglab",
+          "source_entry": "tests/fixtures/data/public/sccn-eeglab_data.set",
+          "source_path": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/public/sccn-eeglab_data.set",
+          "mismatches": [],
+          "sampling_frequency_hz": 128.0,
+          "channel_count": 32,
+          "channel_type_counts": {
+            "eeg": 32
+          },
+          "channel_unit_counts": {
+            "V": 32
+          },
+          "source_unit_counts": {
+            "unknown": 32
+          },
+          "sample_count": 30504,
+          "embedded_event_count": 154,
+          "embedded_event_labels": [
+            "rt",
+            "square"
+          ],
+          "import_warnings": []
+        },
+        "reviewed_evidence_tier": "io_epoch_only",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "public_mne_cnt",
+        "title": "MNE testing-data CNT reviewed-event lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "public_source",
+        "dataset_source_id": "mne-testing-data",
+        "source_family": "MNE testing-data",
+        "format": "CNT",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/public/scan41_short.cnt",
+        "source_hint": "file",
+        "fixture_group": "mne-testing-cnt",
+        "protocol_choice_profile": "cnt_internal",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 6,
+          "source_event_count": 6,
+          "selected_internal_events": [
+            "7"
+          ],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "internal_events",
+          "default_epoch_events": [
+            "7"
+          ],
+          "reviewed_choice_signature": {
+            "label_event_codes": [
+              "7"
+            ],
+            "not_label_event_codes": [
+              "0",
+              "109"
+            ],
+            "class_map": {
+              "7": "7"
+            },
+            "run_event_mappings": {}
+          },
+          "reviewed_choice_expected": {
+            "label_event_codes": [
+              "7"
+            ],
+            "not_label_event_codes": [
+              "0",
+              "109"
+            ],
+            "class_map": {
+              "7": "7"
+            },
+            "run_event_mappings": {}
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "io_epoch_only"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "verified",
+          "manifest_verified": true,
+          "message": "Pinned public fixture group mne-testing-cnt passed size and hash verification."
+        },
+        "fixture_facts": {
+          "status": "passed",
+          "case_id": "public_mne_cnt",
+          "source_entry": "tests/fixtures/data/public/scan41_short.cnt",
+          "source_path": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/public/scan41_short.cnt",
+          "mismatches": [],
+          "sampling_frequency_hz": 400.0,
+          "channel_count": 128,
+          "channel_type_counts": {
+            "eeg": 128
+          },
+          "channel_unit_counts": {
+            "V": 128
+          },
+          "source_unit_counts": {
+            "unknown": 128
+          },
+          "sample_count": 3070,
+          "embedded_event_count": 6,
+          "embedded_event_labels": [
+            "0",
+            "109",
+            "7"
+          ],
+          "import_warnings": [
+            {
+              "category": "RuntimeWarning",
+              "message": "Could not parse meas date from the header. Setting to None.",
+              "count": 1
+            },
+            {
+              "category": "RuntimeWarning",
+              "message": "Could not define the number of bytes automatically. Defaulting to 2.",
+              "count": 1
+            }
+          ]
+        },
+        "reviewed_evidence_tier": "io_epoch_only",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "public_mne_brainvision",
+        "title": "MNE testing-data BrainVision import lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "public_source",
+        "dataset_source_id": "mne-testing-data",
+        "source_family": "MNE testing-data",
+        "format": "BrainVision",
+        "tier_category": "Generic EEG files with internal events / annotations",
+        "source_entry": "tests/fixtures/data/public/test_NO.vhdr",
+        "source_hint": "file",
+        "fixture_group": "mne-testing-brainvision",
+        "protocol_choice_profile": "raw_only",
+        "label_contract": "",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 0,
+          "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 2,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 0,
+          "source_event_count": 0,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "not_applicable",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "none",
+          "default_epoch_events": [],
+          "reviewed_choice_signature": {},
+          "reviewed_choice_expected": {},
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "not_required"
+        },
+        "expectations": {
+          "label_apply_status": "not_applicable",
+          "supervised_ready": false,
+          "bids": false,
+          "label_contract": ""
+        },
+        "fixture_evidence": {
+          "status": "verified",
+          "manifest_verified": true,
+          "message": "Pinned public fixture group mne-testing-brainvision passed size and hash verification."
+        },
+        "fixture_facts": {
+          "status": "passed",
+          "case_id": "public_mne_brainvision",
+          "source_entry": "tests/fixtures/data/public/test_NO.vhdr",
+          "source_path": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/public/test_NO.vhdr",
+          "mismatches": [],
+          "sampling_frequency_hz": 5000.0,
+          "channel_count": 65,
+          "channel_type_counts": {
+            "eeg": 65
+          },
+          "channel_unit_counts": {
+            "V": 65
+          },
+          "source_unit_counts": {
+            "uV": 65
+          },
+          "sample_count": 2238,
+          "embedded_event_count": 0,
+          "embedded_event_labels": [],
+          "import_warnings": []
+        },
+        "reviewed_evidence_tier": "not_required",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "public_mne_bids_eeg",
+        "title": "MNE-BIDS tiny EEG events lifecycle",
+        "evidence_level": "real_application_workflow",
+        "evidence_scope": "public_source",
+        "dataset_source_id": "mne-bids-tiny-eeg",
+        "source_family": "MNE-BIDS",
+        "format": "BIDS EEG / BrainVision",
+        "tier_category": "BIDS EEG folder",
+        "source_entry": "tests/fixtures/data/public/mne-bids-tiny-eeg",
+        "source_hint": "bids",
+        "fixture_group": "mne-bids-tiny-eeg",
+        "protocol_choice_profile": "bids_events",
+        "label_contract": "bids_interval",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: safe."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 1,
+          "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "validation_decision": "safe",
+          "required_confirmation_count": 0,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 0,
+          "source_event_count": 2,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "applied",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": true,
+          "epoch_handoff_ready": false,
+          "supervised_ready": false,
+          "label_source": "bids_events",
+          "default_epoch_events": [
+            "show stimulus"
+          ],
+          "reviewed_choice_signature": {
+            "selected_label_field": "trial_type",
+            "selected_anchor": "onset",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "duration",
+            "placement_method": "interval",
+            "time_model": "seconds",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "show_stimulus": "show stimulus"
+            },
+            "value_decisions": {
+              "show_stimulus": {
+                "role": "stimulus",
+                "keep_event": true,
+                "use_as_class": true,
+                "class_name": "show stimulus"
+              },
+              "start_experiment": {
+                "role": "system",
+                "keep_event": false,
+                "use_as_class": false,
+                "class_name": null
+              }
+            }
+          },
+          "reviewed_choice_expected": {
+            "selected_label_field": "trial_type",
+            "selected_anchor": "onset",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "duration",
+            "placement_method": "interval",
+            "time_model": "seconds",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "show_stimulus": "show stimulus"
+            },
+            "value_decisions": {
+              "show_stimulus": {
+                "role": "stimulus",
+                "keep_event": true,
+                "use_as_class": true,
+                "class_name": "show stimulus"
+              },
+              "start_experiment": {
+                "role": "system",
+                "keep_event": false,
+                "use_as_class": false,
+                "class_name": null
+              }
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "label_apply_only"
+        },
+        "expectations": {
+          "label_apply_status": "applied",
+          "supervised_ready": false,
+          "bids": true,
+          "label_contract": "bids_interval"
+        },
+        "fixture_evidence": {
+          "status": "verified",
+          "manifest_verified": true,
+          "message": "Pinned public fixture group mne-bids-tiny-eeg passed size and hash verification."
+        },
+        "fixture_facts": {
+          "status": "passed",
+          "case_id": "public_mne_bids_eeg",
+          "source_entry": "tests/fixtures/data/public/mne-bids-tiny-eeg/sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vhdr",
+          "source_path": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1/tests/fixtures/data/public/mne-bids-tiny-eeg/sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vhdr",
+          "mismatches": [],
+          "sampling_frequency_hz": 5000.0,
+          "channel_count": 69,
+          "channel_type_counts": {
+            "eeg": 67,
+            "misc": 2
+          },
+          "channel_unit_counts": {
+            "V": 67,
+            "degC": 1,
+            "none": 1
+          },
+          "source_unit_counts": {
+            "C": 1,
+            "S": 1,
+            "uV": 67
+          },
+          "sample_count": 10000,
+          "embedded_event_count": 1,
+          "embedded_event_labels": [
+            "Comment/ControlBox is not connected via USB"
+          ],
+          "import_warnings": []
+        },
+        "reviewed_evidence_tier": "label_apply_only",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "generated_csv_event_order",
+        "title": "Generated CSV label sequence aligned to EEG event order",
+        "evidence_level": "generated_contract_workflow",
+        "evidence_scope": "generated_contract",
+        "dataset_source_id": "generated-external-label-contracts",
+        "source_family": "Generated contract fixture",
+        "format": "CSV labels",
+        "tier_category": "External label carriers",
+        "source_entry": "generated_csv_event_order",
+        "source_hint": "folder",
+        "fixture_group": "",
+        "protocol_choice_profile": "generated_csv_event_order",
+        "label_contract": "csv_event_order",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 1,
+          "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 1,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 4,
+          "source_event_count": 4,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "applied",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "loaded_label_files",
+          "default_epoch_events": [
+            "Left",
+            "Right"
+          ],
+          "reviewed_choice_signature": {
+            "selected_label_field": "label",
+            "selected_anchor": "768",
+            "selected_target_event_codes": [
+              "768"
+            ],
+            "selected_duration_field": "",
+            "placement_method": "eeg_event",
+            "time_model": "trial_order",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "1": "Left",
+              "2": "Right"
+            }
+          },
+          "reviewed_choice_expected": {
+            "selected_label_field": "label",
+            "selected_anchor": "768",
+            "selected_target_event_codes": [
+              "768"
+            ],
+            "selected_duration_field": "",
+            "placement_method": "eeg_event",
+            "time_model": "trial_order",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "1": "Left",
+              "2": "Right"
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "generated_supervised_contract"
+        },
+        "expectations": {
+          "label_apply_status": "applied",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": "csv_event_order"
+        },
+        "fixture_evidence": {
+          "status": "generated",
+          "manifest_verified": false,
+          "message": "Generated valid EEG and label files exercise a parser/placement contract; they are not public-source evidence."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "generated_csv_event_order",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "generated_supervised_contract",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "generated_csv_sample_time",
+        "title": "Generated CSV sample-index label placement",
+        "evidence_level": "generated_contract_workflow",
+        "evidence_scope": "generated_contract",
+        "dataset_source_id": "generated-external-label-contracts",
+        "source_family": "Generated contract fixture",
+        "format": "CSV labels",
+        "tier_category": "External label carriers",
+        "source_entry": "generated_csv_sample_time",
+        "source_hint": "folder",
+        "fixture_group": "",
+        "protocol_choice_profile": "generated_csv_sample_time",
+        "label_contract": "csv_sample_time",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: safe."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 1,
+          "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "validation_decision": "safe",
+          "required_confirmation_count": 0,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 0,
+          "source_event_count": 0,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "applied",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "loaded_label_files",
+          "default_epoch_events": [
+            "Left",
+            "Right"
+          ],
+          "reviewed_choice_signature": {
+            "selected_label_field": "label",
+            "selected_anchor": "sample",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "",
+            "placement_method": "time_field",
+            "time_model": "sample_index",
+            "sample_index_base": "zero_based",
+            "sample_index_origin": "recording_relative",
+            "class_map": {
+              "left": "Left",
+              "right": "Right"
+            }
+          },
+          "reviewed_choice_expected": {
+            "selected_label_field": "label",
+            "selected_anchor": "sample",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "",
+            "placement_method": "time_field",
+            "time_model": "sample_index",
+            "sample_index_base": "zero_based",
+            "sample_index_origin": "recording_relative",
+            "class_map": {
+              "left": "Left",
+              "right": "Right"
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "generated_supervised_contract"
+        },
+        "expectations": {
+          "label_apply_status": "applied",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": "csv_sample_time"
+        },
+        "fixture_evidence": {
+          "status": "generated",
+          "manifest_verified": false,
+          "message": "Generated valid EEG and label files exercise a parser/placement contract; they are not public-source evidence."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "generated_csv_sample_time",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "generated_supervised_contract",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "generated_tsv_interval",
+        "title": "Generated TSV onset-duration interval placement",
+        "evidence_level": "generated_contract_workflow",
+        "evidence_scope": "generated_contract",
+        "dataset_source_id": "generated-external-label-contracts",
+        "source_family": "Generated contract fixture",
+        "format": "TSV labels",
+        "tier_category": "External label carriers",
+        "source_entry": "generated_tsv_interval",
+        "source_hint": "folder",
+        "fixture_group": "",
+        "protocol_choice_profile": "generated_tsv_interval",
+        "label_contract": "tsv_interval",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: safe."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 1,
+          "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "validation_decision": "safe",
+          "required_confirmation_count": 0,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 0,
+          "source_event_count": 0,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "applied",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "loaded_label_files",
+          "default_epoch_events": [
+            "Left",
+            "Right"
+          ],
+          "reviewed_choice_signature": {
+            "selected_label_field": "label",
+            "selected_anchor": "onset",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "duration",
+            "placement_method": "interval",
+            "time_model": "seconds",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "left": "Left",
+              "right": "Right"
+            }
+          },
+          "reviewed_choice_expected": {
+            "selected_label_field": "label",
+            "selected_anchor": "onset",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "duration",
+            "placement_method": "interval",
+            "time_model": "seconds",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "left": "Left",
+              "right": "Right"
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "generated_supervised_contract"
+        },
+        "expectations": {
+          "label_apply_status": "applied",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": "tsv_interval"
+        },
+        "fixture_evidence": {
+          "status": "generated",
+          "manifest_verified": false,
+          "message": "Generated valid EEG and label files exercise a parser/placement contract; they are not public-source evidence."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "generated_tsv_interval",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "generated_supervised_contract",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "generated_csv_event_code",
+        "title": "Generated CSV event-code label mapping",
+        "evidence_level": "generated_contract_workflow",
+        "evidence_scope": "generated_contract",
+        "dataset_source_id": "generated-external-label-contracts",
+        "source_family": "Generated contract fixture",
+        "format": "CSV labels",
+        "tier_category": "External label carriers",
+        "source_entry": "generated_csv_event_code",
+        "source_hint": "folder",
+        "fixture_group": "",
+        "protocol_choice_profile": "generated_csv_event_code",
+        "label_contract": "csv_event_code",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 1,
+          "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 1,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 3,
+          "source_event_count": 3,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "applied",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "loaded_label_files",
+          "default_epoch_events": [
+            "Left",
+            "Right"
+          ],
+          "reviewed_choice_signature": {
+            "selected_label_field": "label",
+            "selected_anchor": "event_code",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "",
+            "placement_method": "event_code",
+            "time_model": "seconds",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "left": "Left",
+              "right": "Right"
+            }
+          },
+          "reviewed_choice_expected": {
+            "selected_label_field": "label",
+            "selected_anchor": "event_code",
+            "selected_target_event_codes": [],
+            "selected_duration_field": "",
+            "placement_method": "event_code",
+            "time_model": "seconds",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "left": "Left",
+              "right": "Right"
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "generated_supervised_contract"
+        },
+        "expectations": {
+          "label_apply_status": "applied",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": "csv_event_code"
+        },
+        "fixture_evidence": {
+          "status": "generated",
+          "manifest_verified": false,
+          "message": "Generated valid EEG and label files exercise a parser/placement contract; they are not public-source evidence."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "generated_csv_event_code",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "generated_supervised_contract",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      },
+      {
+        "case_id": "generated_txt_event_order",
+        "title": "Generated TXT integer label sequence aligned to EEG event order",
+        "evidence_level": "generated_contract_workflow",
+        "evidence_scope": "generated_contract",
+        "dataset_source_id": "generated-external-label-contracts",
+        "source_family": "Generated contract fixture",
+        "format": "TXT labels",
+        "tier_category": "External label carriers",
+        "source_entry": "generated_txt_event_order",
+        "source_hint": "folder",
+        "fixture_group": "",
+        "protocol_choice_profile": "generated_txt_event_order",
+        "label_contract": "txt_event_order",
+        "status": "passed",
+        "failed_stage": "",
+        "stages": {
+          "scan": {
+            "ok": true,
+            "message": "Scanned source and found 1 EEG file(s)."
+          },
+          "preview": {
+            "ok": true,
+            "message": "Interpretation preview ready."
+          },
+          "validate": {
+            "ok": true,
+            "message": "Interpretation validation: needs_confirmation."
+          },
+          "apply": {
+            "ok": true,
+            "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s)."
+          }
+        },
+        "observations": {
+          "eeg_file_count": 1,
+          "label_carrier_count": 1,
+          "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "validation_decision": "needs_confirmation",
+          "required_confirmation_count": 1,
+          "blocked_reasons": [],
+          "scan_warnings": [],
+          "interpretation_warnings": [],
+          "internal_event_count": 4,
+          "source_event_count": 4,
+          "selected_internal_events": [],
+          "run_event_mapping_count": 0,
+          "label_apply_status": "applied",
+          "raw_file_count": 1,
+          "applied_interpretation": true,
+          "bids": false,
+          "epoch_handoff_ready": true,
+          "supervised_ready": true,
+          "label_source": "loaded_label_files",
+          "default_epoch_events": [
+            "Left",
+            "Right"
+          ],
+          "reviewed_choice_signature": {
+            "selected_label_field": "line label sequence",
+            "selected_anchor": "768",
+            "selected_target_event_codes": [
+              "768"
+            ],
+            "selected_duration_field": "",
+            "placement_method": "eeg_event",
+            "time_model": "trial_order",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "1": "Left",
+              "2": "Right"
+            }
+          },
+          "reviewed_choice_expected": {
+            "selected_label_field": "line label sequence",
+            "selected_anchor": "768",
+            "selected_target_event_codes": [
+              "768"
+            ],
+            "selected_duration_field": "",
+            "placement_method": "eeg_event",
+            "time_model": "trial_order",
+            "sample_index_base": "",
+            "sample_index_origin": "",
+            "class_map": {
+              "1": "Left",
+              "2": "Right"
+            }
+          },
+          "reviewed_choice_preserved": true,
+          "fixture_facts_verified": true,
+          "reviewed_evidence_tier": "generated_supervised_contract"
+        },
+        "expectations": {
+          "label_apply_status": "applied",
+          "supervised_ready": true,
+          "bids": false,
+          "label_contract": "txt_event_order"
+        },
+        "fixture_evidence": {
+          "status": "generated",
+          "manifest_verified": false,
+          "message": "Generated valid EEG and label files exercise a parser/placement contract; they are not public-source evidence."
+        },
+        "fixture_facts": {
+          "status": "not_applicable",
+          "case_id": "generated_txt_event_order",
+          "mismatches": []
+        },
+        "reviewed_evidence_tier": "generated_supervised_contract",
+        "reviewed_choice_preserved": true,
+        "reason": "Real ApplicationService lifecycle passed."
+      }
+    ],
+    "claim_boundary": {
+      "supports": "Seven hash-pinned public fixture workflows across five source families, eight checked-in or derived-format fixtures, and five generated parser/placement contracts completed the scan, preview, validate, and apply command lifecycle in separate evidence layers. Public fixtures also matched pinned sampling, channel/type/unit, sample/event, and import-warning facts. The fixed 11-case reviewed-choice set preserved its explicit choices and required evidence tiers.",
+      "does_not_support": "A passing lifecycle does not prove arbitrary files, scientific class semantics, full BIDS compliance, or source diversity for A01T-derived format conversions. Generated CSV, TSV, and TXT fixtures prove only the declared parser and placement contracts; they do not add public dataset-source diversity or certify arbitrary carrier schemas. SCCN rt/square and CNT marker evidence is IO/epoch only, not protocol-grounded supervised-class or training evidence."
+    }
+  },
+  "current_truth": {
+    "checked_in_depth": "the matrix directly proves checked-in Graz scan, preview, validate, apply, and reviewed MAT label application; dataset generation and training remain separate integration evidence",
+    "cross_source_breadth": "7 public cases from 5 source families completed scan, preview, validate, and apply",
+    "main_limit": "public fixtures remain local-only downloads; generated CSV/TSV/TXT cases prove parser and placement contracts but are deliberately excluded from public dataset-source diversity"
+  }
+}

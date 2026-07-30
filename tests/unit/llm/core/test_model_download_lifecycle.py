@@ -443,6 +443,8 @@ def test_model_status_inspection_runs_outside_gui_thread(
         elapsed = time.monotonic() - started_at
         assert elapsed < 0.05
         qtbot.waitUntil(entered.is_set, timeout=1000)
+        assert lifecycle._inspection_thread is not None
+        inspection_thread_name = lifecycle._inspection_thread.objectName()
 
         QTimer.singleShot(0, lambda: heartbeat.append(True))
         qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
@@ -450,6 +452,7 @@ def test_model_status_inspection_runs_outside_gui_thread(
         qtbot.waitUntil(lambda: bool(outcomes), timeout=2000)
 
     assert outcomes == [result]
+    assert inspection_thread_name == "ModelStatusProbe"
     assert lifecycle.is_idle() is True
 
 

@@ -18,6 +18,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.observer import Observable
 
 from .application_publication_lifecycle import ApplicationPublicationLifecycle
 from .capabilities import (
@@ -106,7 +107,9 @@ from .training_snapshot import (
 from .training_snapshot import (
     training_option_snapshot as build_training_option_snapshot,
 )
+from .view_event_publisher import ApplicationViewEventPublisher
 from .view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     ApplicationViewCoordinator,
     ApplicationViewPublication,
     InterpretationReviewIdentity,
@@ -448,10 +451,11 @@ class _LazyAnalysisCommandService:
         return self._service().handle_saliency(command)
 
 
-class ApplicationService:
+class ApplicationService(Observable):
     """Command-oriented application layer over the existing backend controllers."""
 
     def __init__(self, study: Study | None = None) -> None:
+        super().__init__()
         target_study = study if study is not None else Study()
         command_lock = getattr(target_study, "_application_command_lock", RLock())
         self._initialize_components(target_study, command_lock)
@@ -475,6 +479,7 @@ class ApplicationService:
         self._closing = False
         self._closed = False
         self._mutation_in_progress = False
+        self._publication_delivery_fence_depth = 0
         self.pipeline_transaction = PipelineStateTransaction(
             self.study,
             training_runtime=self.training_runtime,
@@ -549,6 +554,14 @@ class ApplicationService:
             self._view_coordinator.mark_stale(
                 "Training state changed during application initialization."
             )
+        initial_publication = self._view_coordinator.committed()
+        self._view_event_publisher = ApplicationViewEventPublisher(
+            initial_revision=initial_publication.revision,
+            deliver=lambda publication: self.notify_delivery(
+                APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+                publication,
+            ),
+        )
         self.publication_lifecycle = ApplicationPublicationLifecycle(
             training=self.training,
             training_runtime=self.training_runtime,
@@ -557,10 +570,12 @@ class ApplicationService:
             command_lock=self._command_lock,
             command_admission_lock=self._command_admission_lock,
             is_closed=lambda: self._closed,
-            is_mutation_in_progress=lambda: self._mutation_in_progress,
+            is_mutation_in_progress=self._publication_delivery_is_fenced,
             is_shutdown_fenced=lambda: self._shutdown_fenced,
             refresh_training_publication=self._refresh_training_publication_strict,
             committed_view_publication=self._committed_view_publication,
+            publish_view_changed=self._publish_view_changed,
+            view_revision_delivered=(self._view_event_publisher.has_delivered_revision),
         )
         self.training_publications = self.publication_lifecycle.coordinator
         self.saliency_render = SaliencyRenderPublisher(
@@ -681,6 +696,7 @@ class ApplicationService:
             diagnostics={
                 "application_service_closed": True,
                 "publication_generation": publication.generation,
+                "publication_revision": publication.revision,
             },
         )
 
@@ -878,9 +894,15 @@ class ApplicationService:
             publication = self._committed_view_publication()
             if publication.usable or self._mutation_in_progress:
                 return publication
-            return self._refresh_training_publication_opportunistic()
+            self._refresh_training_publication_opportunistic()
         finally:
             self._command_lock.release()
+        # Recovery can change publication health without changing domain
+        # generation. Deliver the latest committed revision after releasing the
+        # mutation lock so Qt and headless observers converge on the same truth.
+        publication = self._committed_view_publication()
+        self._publish_view_changed(publication)
+        return publication
 
     def get_saliency_render(
         self,
@@ -1038,6 +1060,7 @@ class ApplicationService:
             "state": publication.state.to_dict(),
             "capabilities": publication.effective_capabilities.to_dict(),
             "publication_generation": publication.generation,
+            "publication_revision": publication.revision,
             "state_reliable": publication.state.state_reliable,
             "view_verified": publication.verified,
             "view_stale": publication.stale,
@@ -1077,10 +1100,12 @@ class ApplicationService:
         if closed is not None:
             return closed
         if isinstance(command, QueryStateCommand):
-            return self._execute_at_command_boundary(
+            result = self._execute_at_command_boundary(
                 command,
                 expected_publication_generation=expected_publication_generation,
             )
+            self._publish_committed_view()
+            return result
         visualization_notifications = (
             self.visualization.batch_notifications()
             if isinstance(command, SaliencyCommand)
@@ -1101,11 +1126,48 @@ class ApplicationService:
                 command,
                 expected_publication_generation=expected_publication_generation,
             )
-        return self._retry_failed_manual_saliency_delivery(
+        result = self._retry_failed_manual_saliency_delivery(
             command,
             result,
             visualization_batch_generation,
         )
+        self._publish_committed_view()
+        return result
+
+    def _publish_committed_view(self) -> bool:
+        """Deliver unseen committed truth and retry unacknowledged revisions."""
+        if self._publication_delivery_is_fenced():
+            return False
+        return self._publish_view_changed(self._committed_view_publication())
+
+    def _publication_delivery_is_fenced(self) -> bool:
+        """Whether observers must wait for the active command to verify its view."""
+        return self._mutation_in_progress or self._publication_delivery_fence_depth > 0
+
+    def _publish_view_changed(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> bool:
+        """Notify consumers with one immutable committed publication."""
+        if not isinstance(publication, ApplicationViewPublication):
+            raise TypeError(
+                "Application publication events require ApplicationViewPublication."
+            )
+        return self._view_event_publisher.publish(publication)
+
+    def acknowledge_view_publication_delivery(self, revision: int) -> bool:
+        """Acknowledge that a product consumer rendered one publication revision."""
+        acknowledged = self._view_event_publisher.acknowledge(revision)
+        if acknowledged:
+            self.training_publications.retry_training_terminal_delivery()
+        return acknowledged
+
+    def reject_view_publication_delivery(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> bool:
+        """Release one deferred publication after a visible render failure."""
+        return self._view_event_publisher.reject(publication)
 
     def _retry_failed_manual_saliency_delivery(
         self,
@@ -1274,31 +1336,40 @@ class ApplicationService:
     ) -> CommandResult:
         """Serialize command admission and its immediate backend mutation."""
         with self._command_lock:
-            with self._command_admission_lock:
-                closed = self._closed
-                rejected_by_shutdown = self._shutdown_fenced and not isinstance(
-                    command,
-                    (
-                        QueryStateCommand,
-                        StopTrainingCommand,
-                    ),
-                )
-            if closed:
-                result = self._closed_command_result(command)
-            elif rejected_by_shutdown:
-                result = self._shutdown_fence_rejection(command)
-            elif expected_publication_generation is not None:
-                expected_rejection = self._expected_publication_rejection(
-                    command,
-                    expected_publication_generation,
-                )
-                result = (
-                    expected_rejection
-                    if expected_rejection is not None
-                    else self._execute_serialized(command)
-                )
-            else:
-                result = self._execute_serialized(command)
+            self._publication_delivery_fence_depth += 1
+            try:
+                with self._command_admission_lock:
+                    closed = self._closed
+                    rejected_by_shutdown = self._shutdown_fenced and not isinstance(
+                        command,
+                        (
+                            QueryStateCommand,
+                            StopTrainingCommand,
+                        ),
+                    )
+                if closed:
+                    result = self._closed_command_result(command)
+                elif rejected_by_shutdown:
+                    result = self._shutdown_fence_rejection(command)
+                elif expected_publication_generation is not None:
+                    expected_rejection = self._expected_publication_rejection(
+                        command,
+                        expected_publication_generation,
+                    )
+                    result = (
+                        expected_rejection
+                        if expected_rejection is not None
+                        else self._execute_serialized(command)
+                    )
+                else:
+                    result = self._execute_serialized(command)
+            finally:
+                self._publication_delivery_fence_depth -= 1
+                if self._publication_delivery_fence_depth < 0:
+                    self._publication_delivery_fence_depth = 0
+                    raise RuntimeError(
+                        "Application publication delivery fence became unbalanced."
+                    )
         return result
 
     def _complete_deferred_synchronous_training(
@@ -1470,6 +1541,7 @@ class ApplicationService:
                     "application_busy": True,
                     "query": command.query,
                     "publication_generation": publication.generation,
+                    "publication_revision": publication.revision,
                 },
             )
         try:
@@ -1840,6 +1912,7 @@ class ApplicationService:
                     **failure_diagnostics,
                     "read_only_query": True,
                     "publication_generation": before_publication.generation,
+                    "publication_revision": before_publication.revision,
                 },
             )
         schedule = app_error.diagnostics.get("post_training_saliency_schedule")
@@ -1879,6 +1952,7 @@ class ApplicationService:
                         "control_flow_outcome": True,
                         "state_preserved": True,
                         "publication_generation": before_publication.generation,
+                        "publication_revision": before_publication.revision,
                     },
                 )
         self._last_error = ErrorSnapshot(
@@ -2063,6 +2137,7 @@ class ApplicationService:
                 "read_only_query": True,
                 "query": command.query,
                 "publication_generation": publication.generation,
+                "publication_revision": publication.revision,
                 "publication_usable": publication.usable,
                 "exception_type": exc.__class__.__name__,
             },

@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 
+from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.application.state import (
+    ActiveDatasetSnapshot,
+    ApplicationStateSnapshot,
+    InterpretationStateSnapshot,
+)
 from XBrainLab.backend.application.view_publication import (
+    ApplicationViewPublication,
     InterpretationReviewIdentity,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -97,6 +106,21 @@ def _review_identity() -> InterpretationReviewIdentity:
     )
 
 
+def _publication(
+    state: ApplicationStateSnapshot,
+    *,
+    usable: bool = True,
+) -> ApplicationViewPublication:
+    return ApplicationViewPublication(
+        generation=1,
+        revision=1,
+        state=state,
+        capabilities=build_capability_policy(state),
+        verified=usable,
+        stale=not usable,
+    )
+
+
 def _scheduled_acceptance() -> InteractionOutcome:
     completion = current_interaction_completion()
     assert completion is not None
@@ -107,6 +131,199 @@ def _scheduled_acceptance() -> InteractionOutcome:
     )
     callbacks.mark_started(True)
     return InteractionOutcome.accepted("Epoch creation was scheduled.")
+
+
+def test_current_data_import_opens_file_chooser_from_empty_state() -> None:
+    state = ApplicationStateSnapshot.empty()
+    window = _main_window()
+    publication = _publication(state)
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open_current_data_import(publication)
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
+    assert outcome.command_name == CommandName.SCAN_SOURCE.value
+    assert outcome.decision_fields == ("source_path",)
+    window.dataset_panel.action_handler.import_data.assert_called_once_with()
+    window.statusBar.return_value.showMessage.assert_called_with(
+        "Data imported.",
+        6000,
+    )
+
+
+@pytest.mark.parametrize(
+    ("interpretation", "expected_command"),
+    [
+        (
+            InterpretationStateSnapshot(
+                source_path="/datasets/demo",
+                has_scan_result=True,
+                latest_scan_id="scan-a",
+            ),
+            CommandName.PREVIEW_INTERPRETATION,
+        ),
+        (
+            InterpretationStateSnapshot(
+                source_path="/datasets/demo",
+                has_scan_result=True,
+                has_candidate=True,
+                latest_scan_id="scan-a",
+                latest_candidate_id="candidate-a",
+            ),
+            CommandName.VALIDATE_INTERPRETATION,
+        ),
+    ],
+)
+def test_current_data_import_navigates_to_backend_projected_stage(
+    interpretation: InterpretationStateSnapshot,
+    expected_command: CommandName,
+) -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        interpretation=interpretation,
+    )
+    window = _main_window()
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open_current_data_import(_publication(state))
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI
+    assert outcome.command_name == expected_command.value
+    window.switch_page.assert_called_once_with(0)
+    window.dataset_panel.action_handler.import_data.assert_not_called()
+    window.dataset_panel.action_handler.review_current_import.assert_not_called()
+
+
+def test_current_data_import_opens_exact_published_review_for_apply_stage() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        interpretation=InterpretationStateSnapshot(
+            source_path="/datasets/demo",
+            has_scan_result=True,
+            has_candidate=True,
+            has_validation_decision=True,
+            latest_scan_id="scan-a",
+            latest_candidate_id="candidate-a",
+            validation_decision="needs_confirmation",
+            pending_confirmation=True,
+        ),
+    )
+    window = _main_window()
+    publication = _publication(state)
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open_current_data_import(publication)
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
+    assert outcome.command_name == CommandName.APPLY_INTERPRETATION.value
+    window.dataset_panel.action_handler.import_data.assert_not_called()
+    window.dataset_panel.action_handler.review_current_import.assert_called_once_with(
+        initial_step="Review and Import",
+        expected_identity=InterpretationReviewIdentity(
+            publication_generation=publication.generation,
+            scan_id="scan-a",
+            candidate_id="candidate-a",
+        ),
+    )
+
+
+def test_current_data_import_opens_blocked_review_at_resolvable_step() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        interpretation=InterpretationStateSnapshot(
+            source_path="/datasets/demo",
+            has_scan_result=True,
+            has_candidate=True,
+            has_validation_decision=True,
+            latest_scan_id="scan-a",
+            latest_candidate_id="candidate-a",
+            validation_decision="blocked",
+            blocked_reasons=["Label placement is unresolved."],
+            action_items=[
+                {
+                    "issue": "Label placement is unresolved.",
+                    "impact": "Labels cannot be applied safely.",
+                    "next_action": "Review label placement.",
+                    "target_step": "Match Labels",
+                    "severity": "blocked",
+                }
+            ],
+        ),
+    )
+    window = _main_window()
+    publication = _publication(state)
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open_current_data_import(publication)
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
+    assert outcome.command_name == CommandName.APPLY_INTERPRETATION.value
+    window.dataset_panel.action_handler.review_current_import.assert_called_once_with(
+        initial_step="Match Labels",
+        expected_identity=InterpretationReviewIdentity(
+            publication_generation=publication.generation,
+            scan_id="scan-a",
+            candidate_id="candidate-a",
+        ),
+    )
+
+
+def test_current_data_import_fails_closed_for_unusable_publication() -> None:
+    state = ApplicationStateSnapshot.empty()
+    window = _main_window()
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open_current_data_import(_publication(state, usable=False))
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
+    assert outcome.message == "Application state is unavailable. Try again shortly."
+    window.dataset_panel.action_handler.import_data.assert_not_called()
+    window.statusBar.return_value.showMessage.assert_called_with(
+        outcome.message,
+        6000,
+    )
+
+
+def test_stale_open_data_import_action_does_not_route_to_non_import_workflow() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="data_loaded",
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+        interpretation=InterpretationStateSnapshot(
+            has_applied_interpretation=True,
+        ),
+    )
+    window = _main_window()
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open_current_data_import(_publication(state))
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
+    assert outcome.message == "There is no pending Data Import step to open."
+    window.switch_page.assert_not_called()
+    window.dataset_panel.action_handler.import_data.assert_not_called()
+    window.dataset_panel.action_handler.review_current_import.assert_not_called()
+
+
+def test_current_data_import_fails_closed_when_apply_identity_is_incomplete() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        interpretation=InterpretationStateSnapshot(
+            source_path="/datasets/demo",
+            has_scan_result=True,
+            has_candidate=True,
+            has_validation_decision=True,
+            validation_decision="safe",
+        ),
+    )
+    window = _main_window()
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open_current_data_import(_publication(state))
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
+    assert "identity is unavailable" in outcome.message
+    window.dataset_panel.action_handler.review_current_import.assert_not_called()
 
 
 def test_completed_modal_routes_through_concrete_epoch_adapter() -> None:

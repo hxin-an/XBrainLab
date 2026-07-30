@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-07-29`
+最後更新：`2026-07-30`
 
 這頁只放下一輪施工焦點。
 
@@ -36,7 +36,9 @@
 | Done | Teacher data-format gate | lifecycle `20/20`、required formats `14/14`、7 public cases / 5 source families、real five-step wizard / recovery `20 passed`、IO/BIDS/cross-source integration `39 passed`、strict cross-source `4/4`。 |
 | Done | Extended teacher dataset preflight | local-only `teacher-preflight` profile 共 277 MB / 10 hash-pinned groups；OpenNeuro ds003061 三 run BIDS P300 的 `2,245` 個來源 sample/class rows 與匯入結果逐筆一致並成功 epoch，CHB-MIT raw EDF、Sleep-EDF PSG 也完成 ApplicationService raw import，三個較大型 cases `3/3` PASS。OpenNeuro 另通過真 GUI label-field repreview、8 個 value controls、BIDS channel semantics 與三 run apply；臨床 seizure / hypnogram sidecar 仍明確標示為未自動套用。 |
 | Done | Review / preprocess / visualization repair | Step 5 recipe 與 Epoch 解耦且 optional；Smart Parser、preprocess dialogs、三態 preview、固定 History、Explanation Plots 與共用色階 spectrogram 已完成 focused `567`、product `7`、human-like `42/42` 與多資料集 gate。 |
-| Done | Candidate closure | Relevant regression `2700 passed`、Qt assistant integration `17 passed`、Ruff / full Basedpyright / architecture / MkDocs PASS；human-like、Granite 2B workflow、adaptive boundary artifacts 由主 agent 檢視，UI 與 architecture reviewer re-gate PASS。候選提交與 push 後只保留受保護的本機設定差異。 |
+| Done | Assistant product presentation | Header、loading / empty / ready / working / waiting / error、suggestions、responsive composer、typed confirmation、Settings 與 narrow/full-window layout 已形成同一產品語彙；畫面不再要求使用者先選 execution mode。 |
+| Done | Publication delivery / terminal safety | Application view publication 以 revision acknowledgement 連接 backend 與 Qt view；deferred GUI queue 不再丟失 terminal training event，matching revision 可見後 exactly-once 投遞。Stop Training 是 explicit terminal endpoint，generic continuation 不會猜測執行。 |
+| Done | Candidate closure | Backend publication/application `231 passed`、UI/chat/product `571 passed`、agent/core/integration `2123 passed`、architecture/source guards `274 passed`；Ruff / full Basedpyright PASS。focused、human-like `42/42` / `45` screenshots、Granite 2B boundary artifacts 由主 agent檢視，architecture 與 clean-code reviewer re-gate PASS。required multi-dataset integration `36 passed, 3 skipped`，strict cross-source `4/4`。候選提交與 push 後只保留受保護的本機設定差異。 |
 | Next | Windows user acceptance | 從同一個已 push 候選做真人 click-through；通過前不合併 `main`。 |
 | Later | XBrainLab benchmark | working candidate 通過後，另外 freeze case suite、scorer、prompt condition、source fingerprint 與 repeats。產品 host-assisted score和 raw-model score分開。 |
 
@@ -47,9 +49,9 @@
 | 項目 | 結論 |
 | --- | --- |
 | Active repo | `/mnt/d/workspace_v2/projects/lab/xbrainlab` |
-| Registered git worktrees | 只有目前這個 worktree。之前的混亂主要是歷史 branches，不是多個仍掛載的 worktree。 |
+| Registered git worktrees | 正式 repo 仍是上列 root；本輪唯一候選 worktree 是 `build/worktrees/assistant-product-v1`，用於形成可驗證 commit。Windows acceptance 只使用這一個候選，不再分散到多個 UI worktree。 |
 | Current rebaseline checkpoint | `docs/rebaseline-drop-mcp` 的 latest pushed checkpoint。 |
-| Current repair candidate | `ux/gui-review-preprocess-polish`；完成後 fast-forward `stabilize/desktop-mvp`，只保留一個手測入口。 |
+| Current repair candidate | `ux/assistant-product-v1`；完成後 fast-forward `stabilize/desktop-mvp`，只保留一個手測入口。 |
 | Main branch | `main` / `origin/main` 都落後目前 integration line；不要在 Desktop MVP gate 前直接把現在狀態推回 main。 |
 
 目前只有三個 local branches 沒有併入 rebaseline checkpoint：

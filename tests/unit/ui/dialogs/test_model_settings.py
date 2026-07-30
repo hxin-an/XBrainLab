@@ -14,6 +14,7 @@ from XBrainLab.llm.core.downloader import (
     ModelDownloadStatus,
     ModelDownloadTarget,
 )
+from XBrainLab.llm.core.model_catalog import local_model_spec
 from XBrainLab.llm.core.model_download_lifecycle import (
     ModelCacheCleanupReason,
     ModelCacheCleanupRequest,
@@ -204,13 +205,23 @@ class TestModelSettingsInit:
         assert lifecycle.inspection_requests[0].load_persisted_config is True
 
     def test_combo_has_only_approved_local_models(self, dialog):
-        model_ids = [
+        model_labels = [
             dialog.local_model_combo.itemText(i)
+            for i in range(dialog.local_model_combo.count())
+        ]
+        model_ids = [
+            dialog.local_model_combo.itemData(i)
             for i in range(dialog.local_model_combo.count())
         ]
 
         assert model_ids == LLMConfig.allowed_local_model_ids()
-        assert all("Qwen" not in model_id for model_id in model_ids)
+        assert model_labels == [
+            local_model_spec(model_id).label for model_id in model_ids
+        ]
+        assert all("/" not in label for label in model_labels)
+        assert all("Qwen" not in str(model_id) for model_id in model_ids)
+        assert dialog.model_section_label.buddy() is dialog.local_model_combo
+        assert dialog.local_model_combo.accessibleName() == "Assistant model"
 
     def test_no_remote_runtime_widgets_are_exposed(self, dialog):
         assert not hasattr(dialog, "api_key_input")
@@ -236,6 +247,10 @@ class TestModelSettingsInit:
         assert dialog.temperature_spin.value() == pytest.approx(0.2)
         assert dialog.top_p_spin.value() == pytest.approx(0.8)
         assert dialog.max_tokens_spin.value() == 1024
+        assert "Exploratory" not in {
+            button.text()
+            for button in dialog.response_style_control.findChildren(QPushButton)
+        }
 
         dialog.advanced_toggle.setChecked(True)
         assert not dialog.advanced_content.isHidden()
@@ -406,7 +421,7 @@ class TestLocalModelSection:
         )
 
         assert dialog.local_status_label.text() == "Model: Installed"
-        assert dialog.local_runtime_label.text() == "Runtime: Available"
+        assert dialog.local_runtime_label.text() == "Environment check: Ready"
         assert "3.25 GB" in dialog.local_resource_label.text()
         assert "[+]" not in dialog.local_status_label.text()
 
@@ -429,6 +444,40 @@ class TestLocalModelSection:
             )
         )
         assert sensitive_cache not in visible
+
+    def test_environment_readiness_keeps_last_start_failure_visible(
+        self,
+        qtbot,
+        config,
+    ):
+        lifecycle = _FakeDownloadLifecycle()
+        manager = MagicMock()
+        manager.assistant_runtime_settings_notice.return_value = (
+            "The local model could not start. Check the installed model and runtime."
+        )
+        with patch.object(LLMConfig, "load_from_file", return_value=config):
+            from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+            created = ModelSettingsDialog(
+                parent=None,
+                config=config,
+                agent_manager=manager,
+                download_lifecycle=lifecycle,
+            )
+            qtbot.addWidget(created)
+
+        qtbot.waitUntil(lambda: len(lifecycle.inspection_requests) == 1, timeout=1000)
+        lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+
+        assert created.local_runtime_label.text() == "Environment check: Ready"
+        assert created.last_runtime_attempt_label.isHidden() is False
+        assert created.last_runtime_attempt_label.text().startswith(
+            "Last start attempt failed:"
+        )
 
     def test_start_download(self, dialog):
         dialog.is_downloading = False
@@ -514,7 +563,7 @@ class TestLocalModelSection:
         sensitive,
     ):
         target = ModelDownloadTarget.create(
-            dialog.local_model_combo.currentText(),
+            dialog.local_model_combo.currentData(),
             dialog.config.cache_dir,
         )
         outcome = ModelDownloadOutcome(
@@ -546,7 +595,7 @@ class TestLocalModelSection:
         sensitive,
     ):
         target = ModelDownloadTarget.create(
-            dialog.local_model_combo.currentText(),
+            dialog.local_model_combo.currentData(),
             dialog.config.cache_dir,
         )
         result = ModelCacheCleanupResult(
@@ -568,7 +617,7 @@ class TestLocalModelSection:
     def test_on_download_finished(self, dialog):
         dialog.is_downloading = True
         target = ModelDownloadTarget.create(
-            dialog.local_model_combo.currentText(),
+            dialog.local_model_combo.currentData(),
             dialog.config.cache_dir,
         )
         outcome = ModelDownloadOutcome(
@@ -587,8 +636,8 @@ class TestLocalModelSection:
         self,
         dialog,
     ):
-        original_repo = dialog.local_model_combo.itemText(0)
-        other_repo = dialog.local_model_combo.itemText(1)
+        original_repo = dialog.local_model_combo.itemData(0)
+        other_repo = dialog.local_model_combo.itemData(1)
         target = ModelDownloadTarget.create(original_repo, dialog.config.cache_dir)
         outcome = ModelDownloadOutcome(
             target=target,
@@ -597,12 +646,12 @@ class TestLocalModelSection:
         )
         dialog.is_downloading = True
         dialog.download_lifecycle.idle = True
-        dialog.local_model_combo.setCurrentText(other_repo)
+        dialog.local_model_combo.setCurrentIndex(1)
 
         dialog.on_download_failed(outcome)
 
         assert outcome.target.repo_id == original_repo
-        assert dialog.local_model_combo.currentText() == other_repo
+        assert dialog.local_model_combo.currentData() == other_repo
         assert dialog.is_downloading is False
         assert not hasattr(dialog, "_cleanup_partial_files")
 
@@ -629,7 +678,7 @@ class TestLocalModelSection:
     ):
         from PyQt6.QtWidgets import QMessageBox
 
-        repo_id = dialog.local_model_combo.currentText()
+        repo_id = dialog.local_model_combo.currentData()
         dialog.local_downloaded = True
         dialog.agent_manager.prepare_model_deletion.return_value = True
         with (

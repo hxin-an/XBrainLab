@@ -48,19 +48,20 @@ EMPTY_STATE_TEXT_STYLE = """
 """
 
 SUGGESTION_PROMPT_STYLE = """
-    QFrame#AssistantSuggestionPrompt {
-        background-color: #1f252b;
-        border: 1px solid #343f48;
-        border-radius: 6px;
+    QPushButton#AssistantSuggestionPrompt {
+        background-color: transparent;
+        border: 1px solid #303a43;
+        border-radius: 5px;
+        text-align: left;
     }
-    QFrame#AssistantSuggestionPrompt:hover {
+    QPushButton#AssistantSuggestionPrompt:hover {
         background-color: #252d34;
         border-color: #4b5c69;
     }
-    QFrame#AssistantSuggestionPrompt:focus {
+    QPushButton#AssistantSuggestionPrompt:focus {
         border: 1px solid #168be0;
     }
-    QFrame#AssistantSuggestionPrompt:disabled {
+    QPushButton#AssistantSuggestionPrompt:disabled {
         background-color: #1b2025;
         border-color: #2a3239;
     }
@@ -97,18 +98,8 @@ SUGGESTION_CHEVRON_STYLE = """
 
 SUGGESTION_ICON_STYLES = """
     QLabel#AssistantSuggestionIcon {
-        background-color: #173b56;
+        background-color: transparent;
         border: none;
-        border-radius: 7px;
-    }
-    QLabel#AssistantSuggestionIcon[accent="green"] {
-        background-color: #173d31;
-    }
-    QLabel#AssistantSuggestionIcon[accent="violet"] {
-        background-color: #34284d;
-    }
-    QLabel#AssistantSuggestionIcon[accent="amber"] {
-        background-color: #46331e;
     }
 """
 
@@ -330,7 +321,7 @@ SEND_BUTTON_STYLE = """
     QToolButton {
         background-color: #087dcc;
         color: white;
-        border-radius: 19px;
+        border-radius: 5px;
         font-size: 13px;
         font-weight: 700;
         border: 1px solid transparent;
@@ -485,14 +476,55 @@ ACTION_CARD_TEXT_STYLE = """
     }
 """
 
-ACTION_CARD_VALUE_STYLE = """
-    QLabel#AssistantActionCardValues {
-        color: #eef4f8;
-        background-color: #1e2429;
-        border: 1px solid #3f4b54;
+ACTION_CARD_CONTEXT_WARNING_STYLE = """
+    QLabel#AssistantActionContextWarning {
+        color: #dbc88f;
+        background-color: #332f27;
+        border: 1px solid #5b5137;
         border-radius: 5px;
-        padding: 8px 10px;
+        padding: 7px 9px;
+        font-size: 12px;
+    }
+"""
+
+ACTION_CARD_PROPOSAL_ROW_STYLE = """
+    QFrame#AssistantProposalRow {
+        background-color: #1b2126;
+        border: 1px solid #303a43;
+        border-radius: 5px;
+    }
+    QLabel#AssistantProposalLabel {
+        color: #dfe7ee;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    QLabel#AssistantProposalCaption {
+        color: #788792;
+        background: transparent;
+        border: none;
+        font-size: 10px;
+        font-weight: 600;
+    }
+    QLabel#AssistantProposalCurrent {
+        color: #9aa8b4;
+        background: transparent;
+        border: none;
         font-size: 13px;
+    }
+    QLabel#AssistantProposalArrow {
+        color: #6f7d88;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+    }
+    QLabel#AssistantProposalValue {
+        color: #f1f6fa;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+        font-weight: 600;
     }
 """
 
@@ -586,9 +618,9 @@ USER_BUBBLE_TEXT_STYLE = f"""
 
 AGENT_BUBBLE_FRAME_STYLE = """
     QFrame#BubbleFrame {
-        background-color: #2d2d2d;
-        border: 1px solid #3e3e3e;
-        border-radius: 8px;
+        background-color: transparent;
+        border: none;
+        border-radius: 0px;
     }
 """
 

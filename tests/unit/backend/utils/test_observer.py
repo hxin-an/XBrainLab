@@ -2,7 +2,7 @@
 
 import pytest
 
-from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.backend.utils.observer import Observable, ObserverDeliveryStatus
 
 
 @pytest.fixture
@@ -65,6 +65,18 @@ class TestNotify:
         obs.subscribe("evt", lambda: calls.append("b"))
         obs.notify("evt")
         assert calls == ["a", "b"]
+
+    def test_notify_delivery_preserves_deferred_consumer_result(self, obs):
+        obs.subscribe("evt", lambda: ObserverDeliveryStatus.DEFERRED)
+        obs.subscribe("evt", lambda: None)
+
+        assert obs.notify_delivery("evt") is ObserverDeliveryStatus.DEFERRED
+
+    def test_notify_delivery_fails_when_any_consumer_rejects(self, obs):
+        obs.subscribe("evt", lambda: ObserverDeliveryStatus.DEFERRED)
+        obs.subscribe("evt", lambda: False)
+
+        assert obs.notify_delivery("evt") is ObserverDeliveryStatus.FAILED
 
 
 class TestSafeCall:

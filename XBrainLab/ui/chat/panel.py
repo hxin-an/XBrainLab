@@ -301,6 +301,10 @@ class ChatPanel(QWidget):
 
         self.input_field = AssistantComposer()
         self.input_field.setPlaceholderText("Ask about the current EEG workflow...")
+        self.input_field.setAccessibleName("Assistant message")
+        self.input_field.setAccessibleDescription(
+            "Ask about the current EEG workflow or describe the next action you need."
+        )
         self.input_field.setStyleSheet(INPUT_FIELD_STYLE)
         self.input_field.installEventFilter(self)
         self.input_field.submit_requested.connect(self._on_send)
@@ -311,14 +315,8 @@ class ChatPanel(QWidget):
         self.send_btn.setObjectName("AssistantSendButton")
         self.send_btn.setText("Send")
         self.send_btn.setAccessibleName("Send")
-        self.send_btn.setFixedSize(38, 38)
-        self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        style = self.style()
-        if style is not None:
-            self.send_btn.setIcon(
-                style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward)
-            )
-            self.send_btn.setIconSize(QSize(18, 18))
+        self.send_btn.setFixedSize(64, 36)
+        self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.send_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_btn.clicked.connect(self._on_send)
@@ -486,6 +484,11 @@ class ChatPanel(QWidget):
 
     def _build_empty_state(self) -> QFrame:
         """Build the initial guidance panel shown before conversation starts."""
+        initial_presentation = build_assistant_empty_state(
+            "No data loaded",
+            ["Scan data source"],
+            available_command_names=["scan_source"],
+        )
         empty = QFrame()
         empty.setObjectName("AssistantEmptyState")
         empty.setStyleSheet(EMPTY_STATE_STYLE)
@@ -493,8 +496,9 @@ class ChatPanel(QWidget):
         self.empty_state_layout = empty_layout
         empty_layout.setContentsMargins(10, 12, 10, 12)
         empty_layout.setSpacing(10)
+        empty.setAccessibleDescription(initial_presentation.stage_sentence)
 
-        self.empty_state_title = QLabel("How can I help with your EEG workflow?")
+        self.empty_state_title = QLabel(initial_presentation.title)
         self.empty_state_title.setObjectName("AssistantEmptyTitle")
         self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
         self.empty_state_title.setWordWrap(True)
@@ -505,19 +509,11 @@ class ChatPanel(QWidget):
         )
         empty_layout.addWidget(self.empty_state_title)
 
-        self.empty_state_intro = QLabel(
-            "I can review your settings, explain results, and recommend next steps."
-        )
+        self.empty_state_intro = QLabel(initial_presentation.intro)
         self.empty_state_intro.setWordWrap(True)
         self.empty_state_intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_intro.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_state_intro)
-
-        self.empty_state_backend_label = QLabel("No EEG files are open yet.")
-        self.empty_state_backend_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
-        self.empty_state_backend_label.setWordWrap(True)
-        self.empty_state_backend_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_layout.addWidget(self.empty_state_backend_label)
 
         self.empty_state_next_label = QLabel("")
         self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
@@ -535,48 +531,20 @@ class ChatPanel(QWidget):
         self.suggestion_prompt_layout.setContentsMargins(0, 6, 0, 0)
         self.suggestion_prompt_layout.setSpacing(8)
 
-        prompts = (
-            (
-                "Check the current workflow status",
-                "See the progress and results.",
-                "Check the current workflow status",
-                QStyle.StandardPixmap.SP_DialogApplyButton,
-                "blue",
-            ),
-            (
-                "Explain the current settings",
-                "Review key parameters and configurations.",
-                "Explain the current settings",
-                QStyle.StandardPixmap.SP_FileDialogDetailedView,
-                "green",
-            ),
-            (
-                "Suggest the next step",
-                "Get recommendations for what to do next.",
-                "Suggest the next step",
-                QStyle.StandardPixmap.SP_ArrowForward,
-                "violet",
-            ),
-            (
-                "Review the training configuration",
-                "Inspect training setup and hyperparameters.",
-                "Review the training configuration",
-                QStyle.StandardPixmap.SP_ComputerIcon,
-                "amber",
-            ),
-        )
         self.suggestion_prompt_buttons: list[AssistantSuggestionCard] = []
-        for label, subtitle, prompt, icon, accent in prompts:
+        for suggestion in initial_presentation.suggestions:
             button = AssistantSuggestionCard(
-                label,
-                subtitle,
-                icon=icon,
-                accent=accent,
+                suggestion.title,
+                suggestion.subtitle,
+                icon=QStyle.StandardPixmap.SP_ArrowForward,
+                accent="blue",
                 parent=self.suggestion_prompt_widget,
             )
-            button.setProperty("assistantPrompt", prompt)
+            button.setProperty("assistantPrompt", suggestion.prompt)
             button.clicked.connect(
-                lambda selected=button: self._fill_suggestion_prompt(selected)
+                lambda _checked=False, selected=button: (
+                    self._fill_suggestion_prompt(selected)
+                )
             )
             self.suggestion_prompt_buttons.append(button)
         self._layout_suggestion_prompts(1)
@@ -884,6 +852,7 @@ class ChatPanel(QWidget):
         )
         if self.is_processing and waiting_for_user:
             self.send_btn.setText("Waiting")
+            self.send_btn.setAccessibleName("Waiting for your decision")
             self.send_btn.setIcon(QIcon())
             self.send_btn.setFixedSize(92, 38)
             self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -892,6 +861,7 @@ class ChatPanel(QWidget):
             send_enabled = False
         elif self.is_processing and cancelability is ChatTurnCancelability.CANCELLABLE:
             self.send_btn.setText("Stop")
+            self.send_btn.setAccessibleName("Stop current request")
             self.send_btn.setIcon(QIcon())
             self.send_btn.setFixedSize(72, 38)
             self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -901,6 +871,9 @@ class ChatPanel(QWidget):
         elif self.is_processing:
             stopping = cancelability is ChatTurnCancelability.STOPPING
             self.send_btn.setText("Stopping" if stopping else "Working")
+            self.send_btn.setAccessibleName(
+                "Stopping current request" if stopping else "Assistant is working"
+            )
             self.send_btn.setIcon(QIcon())
             self.send_btn.setFixedSize(92, 38)
             self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -916,6 +889,7 @@ class ChatPanel(QWidget):
             send_enabled = False
         else:
             self.send_btn.setText("Send")
+            self.send_btn.setAccessibleName("Send request")
             style = self.style()
             if style is not None:
                 self.send_btn.setIcon(
@@ -1276,22 +1250,39 @@ class ChatPanel(QWidget):
             stage,
             display_commands,
             blocked_reason,
+            available_command_names=visible_command_names,
         )
-        if hasattr(self, "empty_state_backend_label"):
-            self.empty_state_backend_label.setText(presentation.stage_sentence)
+        self.empty_state_title.setText(presentation.title)
+        self.empty_state_intro.setText(presentation.intro)
+        for button, suggestion in zip(
+            self.suggestion_prompt_buttons,
+            presentation.suggestions,
+            strict=True,
+        ):
+            button.setText(suggestion.title)
+            button.set_subtitle(suggestion.subtitle)
+            button.setProperty("assistantPrompt", suggestion.prompt)
+        self.empty_state_widget.setAccessibleDescription(
+            presentation.stage_sentence,
+        )
         if hasattr(self, "empty_state_next_label"):
             self.empty_state_next_label.setText(presentation.next_text)
             self.empty_state_next_label.setVisible(
                 bool(presentation.next_text) and not bool(display_commands)
             )
         if hasattr(self, "empty_state_action_button"):
-            action_text = display_commands[0] if display_commands else ""
-            self._empty_state_action_prompt = action_text or "Suggest the next step"
+            self._empty_state_action_prompt = (
+                presentation.suggestions[-1].prompt
+                if presentation.suggestions
+                else "Suggest the next step"
+            )
             self.empty_state_action_button.setProperty(
                 "assistantPrompt",
                 self._empty_state_action_prompt,
             )
-            self.empty_state_action_button.setAccessibleName("Suggest the next step")
+            self.empty_state_action_button.setAccessibleName(
+                self.empty_state_action_button.text()
+            )
             self.empty_state_action_button.setVisible(True)
             self.empty_state_action_button.setEnabled(
                 not self.is_processing

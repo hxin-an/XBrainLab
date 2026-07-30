@@ -23,6 +23,7 @@ from XBrainLab.llm.agent.request_admission import (
     UserRequestAdmissionPolicy,
 )
 from XBrainLab.llm.agent.turn import AssistantTurnScope
+from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 
 
 def _publication(state: ApplicationStateSnapshot) -> ApplicationViewPublication:
@@ -214,6 +215,32 @@ def test_direct_train_request_does_not_inherit_guided_scope() -> None:
 @pytest.mark.parametrize(
     "text",
     (
+        "Load the data but not preprocess it.",
+        "請載入 EEG 資料但不前處理",
+    ),
+)
+def test_excluded_preprocess_stage_is_not_admitted_from_loaded_state(
+    text: str,
+) -> None:
+    resolution = resolve_assistant_turn_scope(text)
+
+    decision = UserRequestAdmissionPolicy().evaluate(
+        text,
+        _publication(_loaded_state()),
+        scope=resolution.scope,
+        terminal_command=resolution.terminal_command,
+    )
+
+    assert resolution.scope is AssistantTurnScope.SINGLE_ACTION
+    assert resolution.terminal_command is None
+    assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
+    assert decision.command is CommandName.SCAN_SOURCE
+    assert decision.decision_fields == ("source_path",)
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
         "Compare standard preprocessing and training settings.",
         "I am trying to understand loading and preprocessing.",
         "請比較標準前處理和訓練設定",
@@ -266,6 +293,17 @@ def test_missing_scan_path_opens_existing_import_surface() -> None:
     assert decision.decision_fields == ("source_path",)
 
 
+def test_import_response_prompt_uses_backend_owned_source_path_decision() -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        "Help me import EEG data",
+        _publication(ApplicationStateSnapshot.empty()),
+    )
+
+    assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
+    assert decision.command is CommandName.SCAN_SOURCE
+    assert decision.decision_fields == ("source_path",)
+
+
 def test_explicit_scan_path_can_reach_model_tool_selection() -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
         "Load /data/A01T.gdf",
@@ -296,6 +334,17 @@ def test_natural_continue_stops_for_preprocess_settings() -> None:
     assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
     assert decision.command is CommandName.PREPROCESS
     assert decision.decision_fields == ("preprocess_settings",)
+
+
+def test_generic_continue_does_not_authorize_stopping_active_training() -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        "Continue the workflow.",
+        _publication(_training_state()),
+        scope=AssistantTurnScope.GUIDED_WORKFLOW,
+    )
+
+    assert decision.action is UserRequestAdmissionAction.GENERATE
+    assert decision.command is None
 
 
 def test_explicit_standard_preprocess_defaults_are_model_ready() -> None:

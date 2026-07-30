@@ -54,7 +54,7 @@ from scripts.dev.human_like_walkthrough.evidence import (
 )
 from XBrainLab.backend.application import NewSessionCommand, QueryStateCommand
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.model_catalog import model_cache_candidates
+from XBrainLab.llm.core.model_catalog import model_snapshot_path
 from XBrainLab.ui.chat.action_card import AssistantConfirmationCard
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 
@@ -113,12 +113,11 @@ def isolated_assistant_settings():
         settings_path = root / "settings.json"
         cache_root = root / "model-cache"
         selected_model = LLMConfig.default_local_model_id()
-
-        def cache_candidates(_config, model_name: str | None = None) -> list[str]:
-            repo_id = str(model_name or selected_model)
-            return model_cache_candidates(str(cache_root), repo_id)
-
-        selected_cache = Path(cache_candidates(None, selected_model)[0])
+        selected_cache = model_snapshot_path(str(cache_root), selected_model)
+        if selected_cache is None:
+            raise RuntimeError(
+                f"Walkthrough model has no pinned cache layout: {selected_model}."
+            )
         selected_cache.mkdir(parents=True, exist_ok=True)
         for name in ("config.json", "tokenizer_config.json"):
             (selected_cache / name).write_text("{}", encoding="utf-8")
@@ -126,6 +125,17 @@ def isolated_assistant_settings():
         # cache usage consistent with the installed-model state.
         with (selected_cache / "model.safetensors").open("wb") as model_file:
             model_file.truncate(256 * 1024 * 1024)
+
+        load_from_file = LLMConfig.load_from_file.__func__
+
+        def load_isolated_config(
+            cls,
+            filepath: str | None = None,
+        ) -> LLMConfig | None:
+            config = load_from_file(cls, filepath)
+            if config is not None:
+                config.cache_dir = str(cache_root)
+            return config
 
         isolation = AssistantSettingsIsolation(
             settings_path=settings_path,
@@ -152,7 +162,11 @@ def isolated_assistant_settings():
                 "_legacy_settings_path",
                 staticmethod(lambda: str(root / "legacy-settings.json")),
             ),
-            patch.object(LLMConfig, "_local_cache_candidates", cache_candidates),
+            patch.object(
+                LLMConfig,
+                "load_from_file",
+                classmethod(load_isolated_config),
+            ),
         ):
             yield isolation
         isolation.evidence["host_config_unchanged"] = (
@@ -489,8 +503,19 @@ def _drive_settings_recovery(
         dialog = dialogs[0]
         evidence["dialog_opened"] = True
         evidence["dialog_title"] = dialog.windowTitle()
+        initial_deadline = time.monotonic() + 20.0
+        while dialog._persisted_config_pending and time.monotonic() < initial_deadline:
+            app.processEvents()
+            time.sleep(0.005)
+        if dialog._persisted_config_pending:
+            callback_error.append(
+                "Assistant Settings initial model check did not finish."
+            )
+            dialog.reject()
+            return
+
         selected_model = LLMConfig.default_local_model_id()
-        selected_index = dialog.local_model_combo.findText(selected_model)
+        selected_index = dialog.local_model_combo.findData(selected_model)
         if selected_index < 0:
             callback_error.append(
                 f"Primary local model is missing from Assistant Settings: "
@@ -515,7 +540,8 @@ def _drive_settings_recovery(
         dialog.local_enable_chk.setChecked(True)
         dialog.response_style_control.set_selected("precise", emit=True)
         dialog.update_validation_state()
-        evidence["selected_model"] = dialog.local_model_combo.currentText()
+        evidence["selected_model"] = str(dialog.local_model_combo.currentData() or "")
+        evidence["selected_model_label"] = dialog.local_model_combo.currentText()
         evidence["controlled_temperature"] = dialog.temperature_spin.value()
         screenshot = dependencies.capture_named(
             dialog,
@@ -673,7 +699,7 @@ def _capture_request_states(
     _capture_phase(
         "assistant_missing_input_clarification",
         "assistant_clarification",
-        {"clarification": "missing folder path"},
+        {"clarification": "ambiguous workflow request"},
         dock=dock,
         panel=panel,
         service=service,

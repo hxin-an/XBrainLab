@@ -553,7 +553,7 @@ def test_ui_stale_publication_rejection_does_not_execute_handler(qtbot):
     handler.assert_not_called()
 
 
-def test_execute_application_command_suppresses_observer_refresh_until_result_refresh(
+def test_execute_application_command_uses_publication_for_agent_status_refresh(
     qtbot,
     monkeypatch,
 ):
@@ -620,7 +620,9 @@ def test_execute_application_command_suppresses_observer_refresh_until_result_re
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert main_window.update_info_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    # AgentManager subscribes to revisioned ApplicationService publications.
+    # A second pull here would reintroduce ordering-dependent refresh truth.
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):

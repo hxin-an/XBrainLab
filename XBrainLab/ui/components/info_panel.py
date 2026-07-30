@@ -1,6 +1,6 @@
 """Aggregate information panel displaying dataset summary statistics."""
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
     QFrame,
@@ -22,6 +22,7 @@ from XBrainLab.ui.styles.theme import Theme
 INFO_ROW_HEIGHT = 22
 INFO_TABLE_FRAME_BUFFER = 6
 INFO_GROUP_VERTICAL_BUFFER = 42
+INFO_KEY_COLUMN_PADDING = 20
 
 
 class SidebarScrollArea(QScrollArea):
@@ -120,7 +121,7 @@ class AggregateInfoPanel(QGroupBox):
         header = self.table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
 
         keys = [
             "Type",
@@ -157,6 +158,7 @@ class AggregateInfoPanel(QGroupBox):
 
             self.row_map[key] = i
 
+        self._refresh_key_column_width()
         main_layout.addWidget(self.table)
 
         v_header = self.table.verticalHeader()
@@ -184,6 +186,26 @@ class AggregateInfoPanel(QGroupBox):
 
         # Apply GroupBox Style
         self.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        """Keep metric labels readable after font or DPI-related changes."""
+        super().changeEvent(event)
+        if event.type() in {
+            QEvent.Type.FontChange,
+            QEvent.Type.ApplicationFontChange,
+        } and hasattr(self, "table"):
+            self._refresh_key_column_width()
+
+    def _refresh_key_column_width(self) -> None:
+        key_width = max(
+            (
+                self.table.fontMetrics().horizontalAdvance(item.text())
+                for row in range(self.table.rowCount())
+                if (item := self.table.item(row, 0)) is not None
+            ),
+            default=0,
+        )
+        self.table.setColumnWidth(0, key_width + INFO_KEY_COLUMN_PADDING)
 
     def update_info(self, loaded_data_list=None, preprocessed_data_list=None):
         """Update displayed metrics from the provided data lists.

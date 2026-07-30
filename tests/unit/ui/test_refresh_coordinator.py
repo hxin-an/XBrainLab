@@ -94,7 +94,7 @@ def _attach_info_spy(main_window: SimpleNamespace) -> _InfoSpy:
     return info
 
 
-def test_raw_change_refreshes_workflow_panels_and_assistant_status():
+def test_raw_change_refreshes_workflow_panels_without_pulling_assistant_status():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
     context = SimpleNamespace(main_window=main_window)
@@ -112,7 +112,7 @@ def test_raw_change_refreshes_workflow_panels_and_assistant_status():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_serialized_agent_change_uses_the_same_refresh_routes():
@@ -155,7 +155,7 @@ def test_analysis_changes_refresh_only_analysis_panels_and_shared_status():
     assert main_window.evaluation_panel.update_calls == 1
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_training_change_refreshes_downstream_analysis_readiness():
@@ -175,7 +175,7 @@ def test_training_change_refreshes_downstream_analysis_readiness():
     assert main_window.evaluation_panel.update_calls == 1
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_epoch_change_refreshes_visualization_readiness():
@@ -195,7 +195,7 @@ def test_epoch_change_refreshes_visualization_readiness():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_evaluation_change_refreshes_visualization_readiness():
@@ -215,7 +215,7 @@ def test_evaluation_change_refreshes_visualization_readiness():
     assert main_window.evaluation_panel.update_calls == 1
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_no_state_change_does_not_refresh_ui():
@@ -252,7 +252,7 @@ def test_unknown_post_command_state_refreshes_every_workflow_panel():
     assert main_window.evaluation_panel.update_calls == 1
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_refresh_is_not_reentrant_for_same_main_window():
@@ -315,7 +315,7 @@ def test_observer_refresh_resumes_after_command_execution_scope():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_nested_command_execution_scopes_keep_observer_refresh_suppressed():
@@ -371,7 +371,7 @@ def test_terminal_training_publication_replays_once_after_outer_command_scope():
     assert main_window.evaluation_panel.update_calls == 1
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_command_completion_coalesces_terminal_observer_and_changed_state():
@@ -411,7 +411,7 @@ def test_command_completion_coalesces_terminal_observer_and_changed_state():
     assert main_window.evaluation_panel.update_calls == 1
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_standalone_training_panel_uses_terminal_renderer_without_shell_slot():
@@ -475,7 +475,7 @@ def test_navigation_refreshes_selected_panel_and_shared_status():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_navigation_does_not_run_object_queries_during_active_ui_command():
@@ -546,7 +546,7 @@ def test_observer_refreshes_source_panel_and_shared_status():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_data_changed_observer_uses_central_refresh_scope():
@@ -564,7 +564,7 @@ def test_data_changed_observer_uses_central_refresh_scope():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_secondary_data_changed_observer_does_not_duplicate_central_scope():
@@ -600,7 +600,7 @@ def test_preprocess_changed_observer_uses_central_refresh_scope():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_secondary_preprocess_changed_observer_does_not_duplicate_central_scope():
@@ -636,7 +636,7 @@ def test_training_lifecycle_observer_uses_training_owner_scope():
     assert main_window.evaluation_panel.update_calls == 1
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_training_updated_observer_does_not_fan_out_live_tick():
@@ -692,7 +692,7 @@ def test_visualization_observer_uses_visualization_scope_from_helper_context():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 1
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_terminal_analysis_publication_does_not_repeat_workflow_refreshes():
@@ -713,7 +713,7 @@ def test_terminal_analysis_publication_does_not_repeat_workflow_refreshes():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_terminal_analysis_event_pair_refreshes_each_panel_once():
@@ -777,7 +777,7 @@ def test_unknown_observer_event_keeps_source_panel_scope():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
-    assert main_window.agent_manager.refresh_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_refresh_panel_uses_safe_noarg_update_call():

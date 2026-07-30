@@ -1,8 +1,19 @@
+import gc
+from dataclasses import replace
 from inspect import getsource
+from threading import Thread, current_thread
 from unittest.mock import MagicMock
+from weakref import ref
 
 from PyQt6 import sip
+from PyQt6.QtCore import QObject
 
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.view_event_publisher import (
+    ApplicationViewEventPublisher,
+)
+from XBrainLab.backend.application.view_publication import ApplicationViewStore
+from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
@@ -60,6 +71,103 @@ def test_observer_bridge_connect_to(qtbot):
     assert received_args[0][0] == (123,)
 
 
+def test_publication_delivery_retries_same_revision_after_qt_render_failure(qtbot):
+    observable = MockObservable()
+    bridge = QtObserverBridge(
+        observable,
+        "view_publication_changed",
+        require_slot_acknowledgement=True,
+    )
+    state = ApplicationStateSnapshot.empty()
+    store = ApplicationViewStore(state, TrainingReadBoundary.no_trainer())
+    initial = store.read()
+    publication = store.publish(
+        replace(state, pipeline_stage="data_loaded"),
+        TrainingReadBoundary.no_trainer(),
+    )
+    attempts: list[int] = []
+
+    def render(candidate) -> None:
+        attempts.append(candidate.revision)
+        if len(attempts) == 1:
+            raise RuntimeError("transient render failure")
+
+    bridge.connect_to(render)
+    publisher = ApplicationViewEventPublisher(
+        initial_revision=initial.revision,
+        deliver=lambda candidate: observable.notify_delivery(
+            "view_publication_changed",
+            candidate,
+        ),
+    )
+
+    assert publisher.publish(publication) is False
+    assert publisher.publish(publication) is True
+    qtbot.wait(20)
+
+    assert attempts == [publication.revision, publication.revision]
+
+
+def test_background_publication_is_acknowledged_only_after_qt_render(qtbot):
+    observable = MockObservable()
+    bridge = QtObserverBridge(
+        observable,
+        "view_publication_changed",
+        require_slot_acknowledgement=True,
+    )
+    state = ApplicationStateSnapshot.empty()
+    store = ApplicationViewStore(state, TrainingReadBoundary.no_trainer())
+    initial = store.read()
+    publication = store.publish(
+        replace(state, pipeline_stage="data_loaded"),
+        TrainingReadBoundary.no_trainer(),
+    )
+    attempts: list[int] = []
+    publisher: ApplicationViewEventPublisher
+
+    def render(candidate) -> None:
+        attempts.append(candidate.revision)
+        publisher.acknowledge(candidate.revision)
+
+    bridge.connect_to(render)
+    publisher = ApplicationViewEventPublisher(
+        initial_revision=initial.revision,
+        deliver=lambda candidate: observable.notify_delivery(
+            "view_publication_changed",
+            candidate,
+        ),
+    )
+    results: list[bool] = []
+    worker = Thread(target=lambda: results.append(publisher.publish(publication)))
+
+    worker.start()
+    worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    assert results == [False]
+    qtbot.waitUntil(lambda: attempts == [publication.revision], timeout=1_000)
+    assert publisher.publish(publication) is True
+    assert attempts == [publication.revision]
+
+
+def test_observer_bridge_connect_to_dispatches_background_event_on_qt_thread(qtbot):
+    observable = MockObservable()
+    bridge = QtObserverBridge(observable, "test_event")
+    received = []
+    gui_thread = current_thread()
+    bridge.connect_to(
+        lambda value: received.append((value, current_thread())),
+    )
+
+    worker = Thread(target=lambda: observable.notify("test_event", "committed"))
+    worker.start()
+    worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    qtbot.waitUntil(lambda: len(received) == 1, timeout=1_000)
+    assert received == [("committed", gui_thread)]
+
+
 def test_observer_bridge_cleanup():
     """Test that cleanup unsubscribes from the observable."""
     observable = MockObservable()
@@ -86,6 +194,23 @@ def test_observer_bridge_cleanup_ignores_late_backend_events(qtbot):
     slot.assert_not_called()
 
 
+def test_observer_bridge_cleanup_and_qobject_destruction_unsubscribe_once(qtbot):
+    observable = MockObservable()
+    observable.unsubscribe = MagicMock(wraps=observable.unsubscribe)
+    bridge = QtObserverBridge(observable, "test_event")
+
+    bridge.cleanup()
+    bridge.deleteLater()
+    qtbot.waitUntil(
+        lambda target=bridge: sip.isdeleted(target),
+        timeout=1_000,
+    )
+    del bridge
+    gc.collect()
+
+    observable.unsubscribe.assert_called_once()
+
+
 def test_observer_bridge_deleted_object_ignores_late_backend_events(qtbot):
     observable = MockObservable()
     bridge = QtObserverBridge(observable, "test_event")
@@ -98,3 +223,62 @@ def test_observer_bridge_deleted_object_ignores_late_backend_events(qtbot):
     qtbot.wait(50)
 
     slot.assert_not_called()
+
+
+def test_observer_bridge_parent_destruction_unsubscribes_and_releases_bridge(
+    qtbot,
+):
+    observable = MockObservable()
+    parent = QObject()
+    bridge = QtObserverBridge(observable, "test_event", parent)
+    bridge_ref = ref(bridge)
+
+    assert len(observable._observers["test_event"]) == 1
+
+    parent.deleteLater()
+    qtbot.waitUntil(
+        lambda target=parent: sip.isdeleted(target),
+        timeout=1_000,
+    )
+    del bridge
+    del parent
+    gc.collect()
+
+    qtbot.waitUntil(
+        lambda: len(observable._observers["test_event"]) == 0,
+        timeout=1_000,
+    )
+    qtbot.waitUntil(lambda: bridge_ref() is None, timeout=1_000)
+
+
+def test_observer_bridge_parent_destruction_unsubscribes_with_live_wrapper(
+    qtbot,
+):
+    observable = MockObservable()
+    observable.unsubscribe = MagicMock(wraps=observable.unsubscribe)
+    parent = QObject()
+    bridge = QtObserverBridge(observable, "test_event", parent)
+
+    parent.deleteLater()
+    qtbot.waitUntil(lambda: sip.isdeleted(bridge), timeout=1_000)
+
+    observable.unsubscribe.assert_called_once()
+    assert observable._observers["test_event"] == []
+
+
+def test_parent_destruction_does_not_run_weakref_finalizer_inside_qt_teardown(
+    qtbot,
+):
+    observable = MockObservable()
+    parent = QObject()
+    bridge = QtObserverBridge(observable, "test_event", parent)
+    finalizer = bridge._observer_finalizer
+
+    parent.deleteLater()
+    qtbot.waitUntil(lambda: sip.isdeleted(bridge), timeout=1_000)
+
+    assert observable._observers["test_event"] == []
+    assert finalizer.alive is True
+
+    bridge.cleanup()
+    assert finalizer.alive is False

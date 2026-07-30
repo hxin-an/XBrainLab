@@ -9,15 +9,26 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from scripts.dev.report_data_interpretation_format_matrix import (
-    REQUIRED_EXTERNAL_LABEL_CONTRACTS,
-    REQUIRED_INTERNAL_EVENT_PROFILES,
-    REQUIRED_PUBLIC_SOURCE_FAMILIES,
-    REQUIRED_PUBLIC_SOURCE_FAMILY_COUNT,
-    REQUIRED_REVIEWED_LABEL_CASE_IDS,
-    REQUIRED_TIER_FORMATS,
-    build_real_workflow_snapshot,
-)
+if __package__:
+    from scripts.dev.report_data_interpretation_format_matrix import (
+        REQUIRED_EXTERNAL_LABEL_CONTRACTS,
+        REQUIRED_INTERNAL_EVENT_PROFILES,
+        REQUIRED_PUBLIC_SOURCE_FAMILIES,
+        REQUIRED_PUBLIC_SOURCE_FAMILY_COUNT,
+        REQUIRED_REVIEWED_LABEL_CASE_IDS,
+        REQUIRED_TIER_FORMATS,
+        build_real_workflow_snapshot,
+    )
+else:
+    from report_data_interpretation_format_matrix import (
+        REQUIRED_EXTERNAL_LABEL_CONTRACTS,
+        REQUIRED_INTERNAL_EVENT_PROFILES,
+        REQUIRED_PUBLIC_SOURCE_FAMILIES,
+        REQUIRED_PUBLIC_SOURCE_FAMILY_COUNT,
+        REQUIRED_REVIEWED_LABEL_CASE_IDS,
+        REQUIRED_TIER_FORMATS,
+        build_real_workflow_snapshot,
+    )
 
 ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = ROOT / "tests" / "fixtures" / "data"

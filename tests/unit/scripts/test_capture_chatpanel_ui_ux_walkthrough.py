@@ -26,8 +26,9 @@ from XBrainLab.ui.chat.panel import ChatPanel
 
 
 def test_scenario_contract_covers_required_surfaces_once() -> None:
-    assert tuple(spec.filename for spec in SCENARIOS) == EXPECTED_SCREEN_FILES[:-3]
-    assert EXPECTED_SCREEN_FILES[-3:] == (
+    assert tuple(spec.filename for spec in SCENARIOS) == EXPECTED_SCREEN_FILES[:-4]
+    assert EXPECTED_SCREEN_FILES[-4:] == (
+        "main-window-dock-320-action-visible.png",
         "main-window-dock-320-action-click.png",
         "main-window-dock-320-stopping.png",
         "main-window-dock-320-command-running.png",
@@ -52,6 +53,13 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
             "runtime_unavailable",
         )
     }.issubset(responsive_states)
+    multiline = next(
+        spec for spec in SCENARIOS if spec.review_state == "multiline_composer"
+    )
+    assert multiline.logical_width == 320
+    assert multiline.expected_send_enabled is True
+    assert multiline.expected_composer_text.count("\n") == 2
+    assert multiline.minimum_composer_height >= 68
     assert any(
         spec.logical_width == 320
         and spec.logical_height == 520
@@ -79,7 +87,10 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
 def test_source_fingerprint_manifest_covers_every_runtime_capture_owner() -> None:
     assert {
         "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",
+        "scripts/dev/active_checkout.py",
         "scripts/dev/human_like_walkthrough/evidence.py",
+        "pyproject.toml",
+        "poetry.lock",
         "XBrainLab/chat_contract.py",
         "XBrainLab/backend/controller/chat_controller.py",
         "XBrainLab/llm/agent/assistant_activity.py",
@@ -117,6 +128,10 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         "fingerprint_at_completion": current_fingerprint,
         "stable": True,
     }
+    provenance = payload["runtime_import_provenance"]
+    assert provenance["root_matches_capture"] is True
+    assert provenance["all_sources_under_root"] is True
+    assert all(record["under_root"] for record in provenance["modules"])
     assert payload["native_display_scaling_observed"] is False
     assert payload["render_scale_evidence"] == "synthetic_pixmap_device_ratio"
     assert payload["render_readiness"] == {
@@ -168,10 +183,17 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert dock["real_qdockwidget"] is True
     assert dock["assistant_usable_width"] == 320
     assert dock["action_click"]["clicked"] is True
+    assert dock["action_click"]["label"] == "Open Dataset"
     assert dock["action_click"]["history_source"] == "live_correlated_response"
     assert dock["action_click"]["restored_actions_inert"] is True
     assert dock["action_click"]["presentation_identity_from_ui"] is True
     assert dock["action_click"]["workflow_panel_opened"] is True
+    assert dock["action_click"]["before_panel_index"] == 1
+    assert dock["action_click"]["after_panel_index"] == 0
+    assert dock["action_click"]["before_panel_materialized"] is True
+    assert dock["action_click"]["after_panel_materialized"] is True
+    assert dock["action_click"]["before_placeholder_visible"] is False
+    assert dock["action_click"]["after_placeholder_visible"] is False
     assert dock["states"]["cancellable"]["button_text"] == "Stop"
     assert dock["states"]["cancellable"]["button_enabled"] is True
     assert dock["states"]["stopping"]["button_text"] == "Stopping"
@@ -301,6 +323,11 @@ def test_validate_payload_rejects_one_failed_geometry_check(qapp, tmp_path) -> N
     metric_failures = validate_payload(stale_metric_transition)
     assert "metric" in "; ".join(metric_failures).lower()
 
+    screenshot_path = tmp_path / payload["screens"][0]["file"]
+    screenshot_path.write_bytes(b"tampered screenshot")
+    screenshot_failures = validate_payload(payload)
+    assert "screenshot hash does not match" in "; ".join(screenshot_failures).lower()
+
 
 def test_image_content_gate_rejects_blank_canvas_and_required_regions(tmp_path) -> None:
     path = tmp_path / "blank-shell.png"
@@ -374,7 +401,7 @@ def test_icon_only_send_button_uses_icon_evidence_not_hidden_text_width(qapp) ->
     qapp.processEvents()
 
     assert panel.send_btn.text() == "Send"
-    assert panel.send_btn.accessibleName() == "Send"
+    assert panel.send_btn.accessibleName() == "Send request"
     assert panel.send_btn.icon().isNull() is False
     assert human_evidence._button_renders_text(panel.send_btn) is False
     assert "send_btn" not in human_evidence._assistant_text_overflow(panel)

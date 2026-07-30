@@ -13,6 +13,14 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
+if __package__:
+    from scripts.dev.active_checkout import assert_active_checkout_import
+else:
+    from active_checkout import assert_active_checkout_import
+
+ROOT = Path(__file__).resolve().parents[2]
+assert_active_checkout_import(ROOT)
+
 from XBrainLab.backend.application import (
     ConfigureTrainingCommand,
     CreateEpochCommand,
@@ -28,7 +36,6 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.record import RecordKey
 
-ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DATA_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
 
 PUBLIC_TRAINING_FIXTURES = (

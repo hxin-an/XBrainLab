@@ -18,8 +18,10 @@ from scripts.dev.chatpanel_guided_boundary.validation import EXPECTED_AUTO_CHAIN
 SCHEMA_VERSION = 5
 WALKTHROUGH_NAME = "adaptive_workflow_ui_handoff_boundary"
 CLAIM_BOUNDARY = (
-    "This is deterministic offscreen/local-runtime product evidence. Offscreen "
-    "evidence is not human Windows desktop acceptance."
+    "Real Granite proposes the first scan_source action; parameter-free "
+    "preview/validate continuation is deterministic host policy. This is "
+    "host-assisted product evidence, not raw-model or tool-call accuracy. "
+    "Offscreen evidence is not human Windows desktop acceptance."
 )
 
 

@@ -52,6 +52,7 @@ class AssistantStatusProjection:
     blocked_reason: str | None = None
     tooltip: str = ""
     footer_hint: str = ""
+    publication_revision: int = 1
 
 
 _COMMAND_SURFACES: dict[str, AssistantWorkflowSurface] = {
@@ -90,6 +91,7 @@ def build_assistant_status_projection(
         stage = "Workflow status unavailable"
         return AssistantStatusProjection(
             publication_generation=publication.generation,
+            publication_revision=publication.revision,
             usable=False,
             stage=stage,
             blocked_reasons=(reason,),
@@ -98,22 +100,28 @@ def build_assistant_status_projection(
             footer_hint="Workflow status unavailable · Try again",
         )
 
-    workflow = build_workflow_projection(
-        publication.state,
-        publication.effective_capabilities,
-    )
+    capabilities = publication.effective_capabilities
+    workflow = build_workflow_projection(publication.state, capabilities)
     recommended = workflow.recommended_command
-    action_command = recommended or workflow.blocked_command
+    action_command = (
+        recommended
+        or workflow.blocked_command
+        or next(iter(workflow.execution_controls), None)
+    )
     surface = _COMMAND_SURFACES.get(action_command or "")
     blocked_reasons = tuple(workflow.blocked_reasons)
     blocked_reason = "; ".join(blocked_reasons) or None
     stage = workflow_stage_label(publication.state)
-    available_commands = (recommended,) if recommended else ()
+    available_commands = _assistant_available_commands(
+        recommended_command=recommended,
+        execution_controls=workflow.execution_controls,
+    )
     recommended_label = command_label(recommended) if recommended else None
     display_labels = [recommended_label] if recommended_label else []
 
     return AssistantStatusProjection(
         publication_generation=publication.generation,
+        publication_revision=publication.revision,
         usable=True,
         stage=stage,
         recommended_command=recommended,
@@ -139,6 +147,18 @@ def build_assistant_status_projection(
             display_labels,
             blocked_reason,
         ),
+    )
+
+
+def _assistant_available_commands(
+    *,
+    recommended_command: str | None,
+    execution_controls: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    """Expose backend-projected workflow actions and explicit runtime controls."""
+    commands = (recommended_command,) if recommended_command else ()
+    return commands + tuple(
+        command for command in execution_controls if command not in commands
     )
 
 

@@ -62,6 +62,7 @@ class ChatResponseActionKind(str, Enum):
 
     SEND_MESSAGE = "send_message"
     OPEN_PANEL = "open_panel"
+    OPEN_DATA_IMPORT = "open_data_import"
 
 
 class ChatPanelTarget(str, Enum):
@@ -132,8 +133,14 @@ class ChatResponseAction:
         if self.kind is ChatResponseActionKind.SEND_MESSAGE:
             if not self.prompt or self.panel is not None:
                 raise ValueError("Send-message actions require only a prompt.")
-        elif not isinstance(self.panel, ChatPanelTarget) or self.prompt:
+        elif self.kind is ChatResponseActionKind.OPEN_PANEL and (
+            not isinstance(self.panel, ChatPanelTarget) or self.prompt
+        ):
             raise ValueError("Open-panel actions require only a panel target.")
+        elif self.kind is ChatResponseActionKind.OPEN_DATA_IMPORT and (
+            self.prompt or self.panel is not None
+        ):
+            raise ValueError("Open-data-import actions do not accept payload fields.")
 
     def to_history_dict(self) -> dict[str, str | None]:
         """Return a JSON-safe action payload."""

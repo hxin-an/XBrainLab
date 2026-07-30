@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from threading import Thread
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
@@ -16,8 +17,10 @@ from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ApplicationStateSnapshot,
+    InterpretationStateSnapshot,
     TrainingStateSnapshot,
 )
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatMessagePresentationKind,
@@ -82,6 +85,9 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeSetupAction,
     RuntimeSetupOutcome,
 )
+from XBrainLab.ui.components.assistant_status_projection import (
+    AssistantStatusProjection,
+)
 
 
 def _handoff_resolution(
@@ -106,6 +112,76 @@ def _admit_ui_turn(agent_mgr: Any, *, turn_id: int = 1) -> AssistantTurnCorrelat
         correlation,
     )
     return correlation
+
+
+class _ReadyTestRuntime(QObject):
+    """Deterministic lifecycle harness for real-panel product-flow tests."""
+
+    controller_created = pyqtSignal(object)
+    runtime_snapshot_changed = pyqtSignal(object)
+    turn_finished = pyqtSignal(object)
+
+    def __init__(self, controller: object):
+        super().__init__()
+        self.controller = controller
+        self.initialized = True
+        self.current = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id="test-model",
+        )
+        self._started = False
+        self._next_turn_id = 1
+        terminal_signal = getattr(controller, "turn_finished", None)
+        if terminal_signal is not None:
+            terminal_signal.connect(self.turn_finished)
+
+    def replay_runtime_snapshot(self) -> None:
+        self.runtime_snapshot_changed.emit(self.current)
+
+    def start(self) -> bool:
+        if not self._started:
+            self._started = True
+            self.controller_created.emit(self.controller)
+        self.runtime_snapshot_changed.emit(self.current)
+        return True
+
+    def submit(
+        self,
+        text: str,
+        *,
+        generation: int | None = None,
+    ) -> RuntimeCommandAdmissionResult:
+        correlation = AssistantTurnCorrelation(
+            generation=1 if generation is None else generation,
+            turn_id=self._next_turn_id,
+        )
+        self._next_turn_id += 1
+        self.controller.handle_user_turn(
+            AssistantTurnRequest.single_action(
+                correlation=correlation,
+                text=text,
+            )
+        )
+        return RuntimeCommandAdmissionResult(
+            command_name="submit",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            turn_id=correlation.turn_id,
+            generation=correlation.generation,
+        )
+
+    def activate_persisted(self) -> RuntimeActivationResult:
+        return RuntimeActivationResult(RuntimeActivationStatus.ALREADY_READY)
+
+    def active_local_runtime_blocks_model_deletion(self) -> bool:
+        return False
+
+    def close(self) -> bool:
+        close = getattr(self.controller, "close", None)
+        if callable(close):
+            close()
+        return True
 
 
 @pytest.fixture
@@ -208,6 +284,94 @@ class TestAgentManagerMethods:
         agent_mgr._toggle_float()
 
         agent_mgr._place_floating_dock.assert_not_called()
+
+    def test_backend_publication_events_ignore_only_old_or_equal_revisions(
+        self,
+        agent_mgr,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        state = ApplicationStateSnapshot.empty()
+        first = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        stale = ApplicationViewPublication(
+            generation=4,
+            revision=9,
+            state=replace(state, state_reliable=False),
+            capabilities=build_capability_policy(
+                replace(state, state_reliable=False),
+            ),
+            verified=False,
+            stale=True,
+            refresh_error="state refresh failed",
+        )
+
+        agent_mgr._on_application_view_publication_changed(first)
+        agent_mgr.chat_panel.set_product_status.reset_mock()
+        agent_mgr._on_application_view_publication_changed(first)
+        agent_mgr.chat_panel.set_product_status.assert_not_called()
+
+        agent_mgr._on_application_view_publication_changed(stale)
+
+        assert agent_mgr.assistant_status_projection.publication_revision == 9
+        assert agent_mgr.assistant_status_projection.usable is False
+        agent_mgr.chat_panel.set_product_status.assert_called_once()
+
+    def test_pull_and_push_of_one_publication_render_exactly_once(
+        self,
+        agent_mgr,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        state = ApplicationStateSnapshot.empty()
+        first = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        second = replace(first, generation=5, revision=9)
+
+        agent_mgr.application_service.get_view_publication = MagicMock(
+            return_value=first
+        )
+        agent_mgr._on_application_view_publication_changed(first)
+        agent_mgr.refresh_backend_status()
+
+        assert agent_mgr.chat_panel.set_product_status.call_count == 1
+
+        agent_mgr.chat_panel.set_product_status.reset_mock()
+        agent_mgr.application_service.get_view_publication.return_value = second
+        agent_mgr.refresh_backend_status()
+        agent_mgr._on_application_view_publication_changed(second)
+
+        assert agent_mgr.chat_panel.set_product_status.call_count == 1
+
+    def test_failed_publication_render_can_retry_the_same_revision(
+        self,
+        agent_mgr,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        state = ApplicationStateSnapshot.empty()
+        publication = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        agent_mgr._render_assistant_status_projection = MagicMock(
+            side_effect=(RuntimeError("transient render failure"), None),
+        )
+
+        with pytest.raises(RuntimeError, match="transient render failure"):
+            agent_mgr._render_backend_publication(publication)
+
+        assert agent_mgr.assistant_status_projection is None
+        assert agent_mgr._render_backend_publication(publication) is True
+        assert agent_mgr.assistant_status_projection.publication_revision == 8
+        assert agent_mgr._render_assistant_status_projection.call_count == 2
 
     def test_handle_user_input(self, agent_mgr):
         agent_mgr.handle_user_input("hello")
@@ -664,6 +828,91 @@ class TestAgentManagerMethods:
             )
         )
         agent_mgr.main_window.switch_page.assert_not_called()
+
+    def test_open_data_import_action_uses_host_owned_current_workflow(
+        self,
+        agent_mgr,
+    ):
+        action = ChatResponseAction(
+            action_id="open-data-import",
+            label="Open Data Import",
+            kind=ChatResponseActionKind.OPEN_DATA_IMPORT,
+        )
+        presentation_id = "response-open-data-import"
+        agent_mgr._on_active_response_presentation_changed(presentation_id)
+        agent_mgr._workflow_ui_handoff_host.open_current_data_import = MagicMock()
+        publication_when_rendered = agent_mgr.application_service.get_view_publication()
+        publication_when_clicked = replace(
+            publication_when_rendered,
+            generation=publication_when_rendered.generation + 1,
+            revision=publication_when_rendered.revision + 1,
+            state=replace(
+                publication_when_rendered.state,
+                interpretation=InterpretationStateSnapshot(
+                    source_path="/datasets/demo",
+                    has_scan_result=True,
+                    latest_scan_id="scan-new",
+                ),
+            ),
+        )
+        agent_mgr.application_service.get_view_publication = MagicMock(
+            return_value=publication_when_clicked
+        )
+        agent_mgr.chat_controller.resolve_and_consume_response_action.return_value = (
+            action
+        )
+
+        agent_mgr._handle_response_action_selection(
+            ChatResponseActionSelectionView(
+                presentation_id=presentation_id,
+                action=ChatResponseActionView(
+                    action_id=action.action_id,
+                    label=action.label,
+                    kind=ChatResponseActionViewKind.OPEN_DATA_IMPORT,
+                ),
+            )
+        )
+
+        agent_mgr._workflow_ui_handoff_host.open_current_data_import.assert_called_once_with(
+            publication_when_clicked,
+        )
+        agent_mgr._assistant_runtime.resolve_ui_handoff.assert_not_called()
+        assert agent_mgr._active_response_presentation_id is None
+
+    def test_open_data_import_action_fails_closed_when_publication_read_closes(
+        self,
+        agent_mgr,
+    ):
+        action = ChatResponseAction(
+            action_id="open-data-import",
+            label="Open Data Import",
+            kind=ChatResponseActionKind.OPEN_DATA_IMPORT,
+        )
+        presentation_id = "response-open-data-import-closed"
+        agent_mgr._on_active_response_presentation_changed(presentation_id)
+        agent_mgr._workflow_ui_handoff_host.open_current_data_import = MagicMock()
+        agent_mgr.application_service.get_view_publication = MagicMock(
+            side_effect=RuntimeError("application service is closed")
+        )
+        agent_mgr.chat_controller.resolve_and_consume_response_action.return_value = (
+            action
+        )
+
+        agent_mgr._handle_response_action_selection(
+            ChatResponseActionSelectionView(
+                presentation_id=presentation_id,
+                action=ChatResponseActionView(
+                    action_id=action.action_id,
+                    label=action.label,
+                    kind=ChatResponseActionViewKind.OPEN_DATA_IMPORT,
+                ),
+            )
+        )
+
+        agent_mgr._workflow_ui_handoff_host.open_current_data_import.assert_called_once_with(
+            None
+        )
+        assert agent_mgr._active_response_presentation_id is None
 
     def test_panel_navigation_defers_sub_view_until_materialization(self, agent_mgr):
         callbacks = []
@@ -1415,6 +1664,21 @@ class TestAgentManagerMethods:
         assert "secret-token-123" not in visible
         assert "/private/cache" not in visible
 
+    def test_settings_notice_retains_sanitized_runtime_failure(self, agent_mgr):
+        agent_mgr._assistant_runtime.current = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.FAILED,
+            initialized=False,
+            error="ValueError: secret-token-123 at /private/cache/model.bin",
+        )
+
+        notice = agent_mgr.assistant_runtime_settings_notice()
+
+        assert notice
+        assert "could not start" in notice
+        assert "ValueError" not in notice
+        assert "secret-token-123" not in notice
+        assert "/private/cache" not in notice
+
     @pytest.mark.parametrize(
         "raw_status",
         [
@@ -1790,6 +2054,14 @@ class TestAgentManagerMethods:
 
     def test_runtime_publication_controls_the_visible_composer(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
+        agent_mgr._assistant_status_projection = AssistantStatusProjection(
+            publication_generation=3,
+            publication_revision=4,
+            usable=True,
+            stage="Ready to train",
+            available_commands=("train",),
+            tooltip="Workflow stage: Ready to train",
+        )
 
         agent_mgr._render_assistant_runtime(
             AssistantRuntimeSnapshot(
@@ -1798,6 +2070,10 @@ class TestAgentManagerMethods:
             )
         )
         agent_mgr.chat_panel.set_runtime_state.assert_called_with("loading", "")
+        assert (
+            agent_mgr.chat_panel.set_product_status.call_args.kwargs["model_status"]
+            == "Loading"
+        )
 
         agent_mgr._render_assistant_runtime(
             AssistantRuntimeSnapshot(
@@ -1806,6 +2082,10 @@ class TestAgentManagerMethods:
             )
         )
         agent_mgr.chat_panel.set_runtime_state.assert_called_with("ready", "")
+        assert (
+            agent_mgr.chat_panel.set_product_status.call_args.kwargs["model_status"]
+            == "Ready"
+        )
 
     def test_prepare_model_deletion_no_controller(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = None
@@ -2239,6 +2519,7 @@ class TestAgentManagerMethods:
     def test_debug_tool_flow_surfaces_backend_blocked_result(self, qtbot):
         """UI -> agent -> backend command flow reports shared blocked reason."""
         from XBrainLab.backend.study import Study
+        from XBrainLab.llm.agent.controller import LLMController
         from XBrainLab.ui.components.agent_manager import AgentManager
 
         main_window = cast(Any, QMainWindow())
@@ -2254,7 +2535,16 @@ class TestAgentManagerMethods:
             MockWorker.return_value.generation_thread = None
             MockThread.return_value.isRunning.return_value = False
 
-            manager = cast(Any, AgentManager(main_window, study))
+            controller = LLMController(study)
+            runtime = _ReadyTestRuntime(controller)
+            manager = cast(
+                Any,
+                AgentManager(
+                    main_window,
+                    study,
+                    runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
+                ),
+            )
             manager.init_ui()
             assert manager.chat_panel is not None
             try:
@@ -2270,7 +2560,6 @@ class TestAgentManagerMethods:
                 )
                 manager.agent_controller._active_host_turn_generation = None
                 manager.agent_controller._active_host_turn_id = None
-                manager._assistant_runtime._active_turn = correlation
                 manager.agent_controller.execute_debug_tool(
                     AssistantDebugToolRequest.from_params(
                         correlation=correlation,
@@ -2289,7 +2578,7 @@ class TestAgentManagerMethods:
         assert "Generate datasets before training" in visible
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
-        assert manager.chat_panel.empty_state_backend_label.text() == (
+        assert manager.chat_panel.empty_state_widget.accessibleDescription() == (
             "No EEG files are open yet."
         )
 
@@ -2458,16 +2747,84 @@ def _make_real_manager_with_fake_controller(
     qtbot.addWidget(main_window)
     study = Study()
     fake = _FakeAgentController(mode)
-    with patch(
-        "XBrainLab.ui.components.agent_manager.LLMController", return_value=fake
-    ):
-        manager = cast(Any, AgentManager(main_window, study))
-        manager.init_ui()
-        manager.start_system()
+    runtime = _ReadyTestRuntime(fake)
+    manager = cast(
+        Any,
+        AgentManager(
+            main_window,
+            study,
+            runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
+        ),
+    )
+    manager.init_ui()
+    manager.start_system()
     return manager, fake
 
 
 class TestAgentManagerProductChatFlow:
+    def test_background_terminal_event_waits_for_visible_publication_ack(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.backend.training import Trainer
+
+        manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+        service = manager.application_service
+        trainer = Trainer([])
+        service.study.training_manager.trainer = trainer
+        trainer.run(interact=False)
+        terminal_events = []
+        service.training.subscribe(
+            "training_terminal_published",
+            terminal_events.append,
+        )
+        publish_results: list[bool] = []
+        worker = Thread(
+            target=lambda: publish_results.append(
+                service._publish_training_terminal_state()
+            ),
+            name="training-terminal-publication-test",
+        )
+
+        worker.start()
+        worker.join(timeout=2.0)
+
+        assert worker.is_alive() is False
+        assert publish_results == [False]
+        assert terminal_events == []
+
+        qtbot.waitUntil(lambda: len(terminal_events) == 1, timeout=2_000)
+
+        publication = service.get_view_publication()
+        delivery = service.training_publications.training_delivery_state()
+        assert manager.assistant_status_projection.publication_revision == (
+            publication.revision
+        )
+        assert terminal_events[0].publication_revision == publication.revision
+        assert delivery.pending_count == 0
+        assert delivery.delivered_count == 1
+
+    def test_application_publication_event_retries_after_visible_render_failure(
+        self,
+        qtbot,
+    ):
+        manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+        current = manager.application_service.get_view_publication()
+        publication = replace(current, revision=current.revision + 1)
+        manager._render_assistant_status_projection = MagicMock(
+            side_effect=(RuntimeError("transient render failure"), None),
+        )
+
+        first = manager.application_service._view_event_publisher.publish(publication)
+        second = manager.application_service._view_event_publisher.publish(publication)
+
+        assert first is False
+        assert second is True
+        assert manager._render_assistant_status_projection.call_count == 2
+        assert manager.assistant_status_projection.publication_revision == (
+            publication.revision
+        )
+
     def test_product_next_steps_use_data_interpretation_in_empty_state(self):
         from XBrainLab.backend.application import ApplicationService
         from XBrainLab.backend.study import Study

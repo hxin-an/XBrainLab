@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent, QMouseEvent, QTextLayout, QTextOption
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QStyle,
     QVBoxLayout,
@@ -23,10 +23,8 @@ from .styles import (
 )
 
 
-class AssistantSuggestionCard(QFrame):
-    """Keyboard-accessible suggestion with title, context, and direction cue."""
-
-    clicked = pyqtSignal()
+class AssistantSuggestionCard(QPushButton):
+    """Native button presenting one prompt suggestion with supporting context."""
 
     def __init__(
         self,
@@ -37,33 +35,33 @@ class AssistantSuggestionCard(QFrame):
         accent: str,
         parent=None,
     ) -> None:
-        super().__init__(parent)
+        super().__init__("", parent)
         self._title = title
         self._subtitle = subtitle
         self.setObjectName("AssistantSuggestionPrompt")
         self.setProperty("accent", accent)
         self.setStyleSheet(SUGGESTION_PROMPT_STYLE)
-        self.setMinimumHeight(70)
+        self.setMinimumHeight(58)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAutoDefault(False)
+        self.setDefault(False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAccessibleName(title)
         self.setAccessibleDescription(subtitle)
         self.setToolTip(f"{title}\n{subtitle}")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 10, 12, 10)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 8, 10, 8)
+        layout.setSpacing(8)
 
         self.icon_label = QLabel(self)
         self.icon_label.setObjectName("AssistantSuggestionIcon")
         self.icon_label.setProperty("accent", accent)
-        self.icon_label.setFixedSize(38, 38)
+        self.icon_label.setFixedSize(0, 0)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setStyleSheet(SUGGESTION_ICON_STYLES)
-        style = self.style()
-        if style is not None:
-            self.icon_label.setPixmap(style.standardIcon(icon).pixmap(18, 18))
+        self.icon_label.setVisible(False)
         self.icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layout.addWidget(self.icon_label)
 
@@ -108,9 +106,9 @@ class AssistantSuggestionCard(QFrame):
             int(width)
             - margins.left()
             - margins.right()
-            - self.icon_label.width()
+            - (self.icon_label.width() if self.icon_label.isVisible() else 0)
             - self.chevron_label.width()
-            - (spacing * 2),
+            - spacing,
             40,
         )
 
@@ -140,7 +138,7 @@ class AssistantSuggestionCard(QFrame):
             wrapped_height(self.title_label) + wrapped_height(self.subtitle_label) + 3
         )
         target_height = max(
-            70,
+            58,
             margins.top()
             + margins.bottom()
             + max(self.icon_label.height(), copy_height),
@@ -164,25 +162,9 @@ class AssistantSuggestionCard(QFrame):
         """Return the supporting copy shown under the title."""
         return self._subtitle
 
-    def click(self) -> None:
-        """Trigger the suggestion using the same contract as a button click."""
-        if self.isEnabled():
-            self.clicked.emit()
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        if (
-            event.button() == Qt.MouseButton.LeftButton
-            and self.isEnabled()
-            and self.rect().contains(event.position().toPoint())
-        ):
-            self.clicked.emit()
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
-            self.click()
-            event.accept()
-            return
-        super().keyPressEvent(event)
+    def set_subtitle(self, subtitle: str) -> None:
+        """Update the supporting copy without rebuilding the prompt row."""
+        self._subtitle = str(subtitle)
+        self.subtitle_label.setText(self._subtitle)
+        self.setAccessibleDescription(self._subtitle)
+        self.setToolTip(f"{self._title}\n{self._subtitle}")

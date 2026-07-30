@@ -55,6 +55,8 @@ class ApplicationPublicationLifecycle:
         is_shutdown_fenced: Callable[[], bool],
         refresh_training_publication: Callable[[], ApplicationStateSnapshot],
         committed_view_publication: Callable[[], ApplicationViewPublication],
+        publish_view_changed: Callable[[ApplicationViewPublication], bool],
+        view_revision_delivered: Callable[[int], bool],
     ) -> None:
         self._training = training
         self._training_runtime = training_runtime
@@ -67,12 +69,11 @@ class ApplicationPublicationLifecycle:
         self._is_shutdown_fenced = is_shutdown_fenced
         self._refresh_training_publication = refresh_training_publication
         self._committed_view_publication = committed_view_publication
+        self._publish_view_changed = publish_view_changed
+        self._view_revision_delivered = view_revision_delivered
 
         self.coordinator = TrainingPublicationLifecycleCoordinator(
-            publish_training_terminal=lambda event: self._training.notify(
-                "training_terminal_published",
-                event,
-            ),
+            publish_training_terminal=self._publish_acknowledged_training_terminal,
             plan_saliency_delivery=self.plan_saliency_terminal_delivery,
             publish_training_analysis=lambda event: self._training.notify(
                 "training_analysis_published",
@@ -174,6 +175,7 @@ class ApplicationPublicationLifecycle:
         acquired = self._command_lock.acquire(blocking=False)
         if not acquired:
             return
+        publication: ApplicationViewPublication | None = None
         try:
             if self._is_mutation_in_progress():
                 return
@@ -186,6 +188,8 @@ class ApplicationPublicationLifecycle:
                     "Skipped an unstable live training publication; a later "
                     "training event will retry."
                 )
+            else:
+                publication = self._committed_view_publication()
         except Exception:
             logger.debug(
                 "Could not publish live training state; keeping the last verified "
@@ -194,6 +198,8 @@ class ApplicationPublicationLifecycle:
             )
         finally:
             self._command_lock.release()
+        if publication is not None:
+            self._publish_view_changed(publication)
 
     def publish_training_terminal_state(
         self,
@@ -202,16 +208,21 @@ class ApplicationPublicationLifecycle:
     ) -> bool:
         """Commit terminal training truth from the backend monitor thread."""
         lifecycle_event: TrainingLifecycleEvent | None = None
+        publication: ApplicationViewPublication | None = None
         try:
             with self._command_lock:
                 state = self._refresh_training_publication()
                 lifecycle_event = self.terminal_training_publication_event(state)
+                if state.state_reliable:
+                    publication = self._committed_view_publication()
         except Exception:
             logger.exception("Could not publish terminal training state")
             return False
+        view_delivered = publication is None or self._publish_view_changed(publication)
         if lifecycle_event is None:
-            return True
-        return self.deliver_training_terminal_publication(lifecycle_event)
+            return view_delivered
+        terminal_delivered = self.deliver_training_terminal_publication(lifecycle_event)
+        return view_delivered and terminal_delivered
 
     def deliver_training_terminal_publication(
         self,
@@ -242,6 +253,20 @@ class ApplicationPublicationLifecycle:
             token=boundary.token,
             outcome=outcome,
             publication_generation=publication.generation,
+            publication_revision=publication.revision,
+        )
+
+    def _publish_acknowledged_training_terminal(
+        self,
+        event: TrainingLifecycleEvent,
+    ) -> object:
+        """Notify terminal observers only after the matching view was rendered."""
+        revision = event.publication_revision
+        if revision is not None and not self._view_revision_delivered(revision):
+            return False
+        return self._training.notify(
+            "training_terminal_published",
+            event,
         )
 
     def publish_post_training_saliency_terminal_state(
@@ -399,6 +424,10 @@ class ApplicationPublicationLifecycle:
         """Deliver a visualization refresh after publication locks are released."""
         if self._is_closed():
             return True
+        if self._is_mutation_in_progress():
+            return False
+        if not self._publish_view_changed(self._committed_view_publication()):
+            return False
         if notification is not None:
             generation = notification.visualization_batch_generation
             if generation is not None:

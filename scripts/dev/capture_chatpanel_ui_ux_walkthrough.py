@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import os
 import sys
@@ -22,6 +23,14 @@ from pathlib import Path
 from typing import Any, cast
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+ROOT = Path(__file__).resolve().parents[2]
+while str(ROOT) in sys.path:
+    sys.path.remove(str(ROOT))
+sys.path.insert(0, str(ROOT))
+
+from scripts.dev.active_checkout import assert_active_checkout_import
+
+assert_active_checkout_import(ROOT)
 
 from PIL import Image
 from PyQt6.QtCore import (
@@ -45,6 +54,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import XBrainLab
 from scripts.dev.capture_chatpanel_local_walkthrough import (
     collect_visible_messages,
 )
@@ -83,11 +93,10 @@ from XBrainLab.ui.main_window import MainWindow
 from XBrainLab.ui.panels.training.components import MetricTab
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
-ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts/ui/chatpanel-ui-ux-current"
 JSON_ARTIFACT = "walkthrough.json"
 README_ARTIFACT = "README.md"
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 GENERATOR = "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
 CLAIM_BOUNDARY = (
     "Linux/Qt offscreen rendering and geometry evidence, including a real "
@@ -112,6 +121,7 @@ EXPECTED_SCREEN_FILES = (
     "narrow-setting-change-confirmation-max-content.png",
     "pixmap-scaled-narrow.png",
     "responsive-320-idle.png",
+    "responsive-320-multiline-composer.png",
     "responsive-320-long-clarification-action-520.png",
     "responsive-320-long-clarification-action-650.png",
     "responsive-320-processing-stop.png",
@@ -124,6 +134,7 @@ EXPECTED_SCREEN_FILES = (
     "responsive-1280-long-clarification-action.png",
     "responsive-1280-processing-stop.png",
     "responsive-1280-runtime-unavailable.png",
+    "main-window-dock-320-action-visible.png",
     "main-window-dock-320-action-click.png",
     "main-window-dock-320-stopping.png",
     "main-window-dock-320-command-running.png",
@@ -147,7 +158,10 @@ EXPECTED_STATE_LABELS = {
 
 FINGERPRINT_RELATIVE_PATHS = (
     GENERATOR,
+    "scripts/dev/active_checkout.py",
     "scripts/dev/human_like_walkthrough/evidence.py",
+    "pyproject.toml",
+    "poetry.lock",
     "XBrainLab/chat_contract.py",
     "XBrainLab/backend/controller/chat_controller.py",
     "XBrainLab/llm/agent/assistant_activity.py",
@@ -206,6 +220,8 @@ class ScenarioSpec:
     expected_confirmation_title: str = ""
     expected_confirmation_values: tuple[str, ...] = ()
     expected_confirmation_actions: tuple[str, ...] = ()
+    expected_composer_text: str = ""
+    minimum_composer_height: int = 0
     review_state: str = ""
     scroll_to_bottom: bool = False
 
@@ -471,7 +487,7 @@ def _prepare_max_setting_change_confirmation(panel: ChatPanel) -> None:
     request = AgentConfirmationRequest.for_action(
         command_name="configure_training",
         params={
-            f"parameter_{index:02d}": f"{index}-" + ("W" * 160) for index in range(12)
+            f"parameter_{index:02d}": f"{index}-" + ("W" * 190) for index in range(14)
         },
         action_label="Apply reviewed settings",
         description=(
@@ -516,6 +532,18 @@ _RESPONSIVE_ACTION_LABEL = (
 
 def _prepare_responsive_idle(panel: ChatPanel) -> None:
     panel.set_runtime_state("ready")
+
+
+_MULTILINE_COMPOSER_TEXT = (
+    "Review the current EEG workflow.\n"
+    "Explain the unresolved label mapping.\n"
+    "Do not change settings yet."
+)
+
+
+def _prepare_responsive_multiline_composer(panel: ChatPanel) -> None:
+    panel.set_runtime_state("ready")
+    panel.input_field.setText(_MULTILINE_COMPOSER_TEXT)
 
 
 def _prepare_responsive_long_clarification(panel: ChatPanel) -> None:
@@ -715,7 +743,7 @@ SCENARIOS = (
         required_kinds=("user",),
         confirmation_visible=True,
         expected_confirmation_title="Suggested change",
-        expected_confirmation_values=("Parameter 00", "Parameter 11"),
+        expected_confirmation_values=("Parameter 00", "Parameter 13"),
         expected_confirmation_actions=(
             "Keep current value",
             "Apply reviewed settings",
@@ -739,6 +767,18 @@ SCENARIOS = (
         1.0,
         _prepare_responsive_idle,
         review_state="idle",
+    ),
+    ScenarioSpec(
+        "responsive_320_multiline_composer",
+        "responsive-320-multiline-composer.png",
+        320,
+        650,
+        1.0,
+        _prepare_responsive_multiline_composer,
+        expected_send_enabled=True,
+        expected_composer_text=_MULTILINE_COMPOSER_TEXT,
+        minimum_composer_height=68,
+        review_state="multiline_composer",
     ),
     ScenarioSpec(
         "responsive_320_long_clarification_action_520",
@@ -923,6 +963,38 @@ def source_fingerprint(
     return digest.hexdigest()
 
 
+def runtime_import_provenance() -> dict[str, Any]:
+    """Prove the capture imported product code from the artifact source root."""
+    capture_root = ROOT.resolve()
+    package_root = Path(XBrainLab.__file__).resolve().parent.parent
+    symbols = (
+        ("ChatPanel", ChatPanel),
+        ("MainWindow", MainWindow),
+        ("ChatController", ChatController),
+        ("AssistantResponsePresentation", AssistantResponsePresentation),
+    )
+    modules: list[dict[str, Any]] = []
+    for symbol_name, symbol in symbols:
+        source = inspect.getsourcefile(symbol)
+        resolved = Path(source).resolve() if source else None
+        modules.append(
+            {
+                "symbol": symbol_name,
+                "path": str(resolved) if resolved is not None else "",
+                "under_root": bool(
+                    resolved is not None and resolved.is_relative_to(capture_root)
+                ),
+            }
+        )
+    return {
+        "capture_root": str(capture_root),
+        "package_root": str(package_root),
+        "root_matches_capture": package_root == capture_root,
+        "all_sources_under_root": all(record["under_root"] for record in modules),
+        "modules": modules,
+    }
+
+
 def _settle_layout(app: QApplication, widget: QWidget) -> None:
     widget.updateGeometry()
     for _ in range(8):
@@ -1083,11 +1155,27 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "cancelability_text": panel.turn_activity_cancelability.text(),
     }
     confirmation_card = panel.confirmation_card_widget
+    confirmation_values = "\n\n".join(
+        "\n".join(
+            part
+            for part in (
+                row.label.text(),
+                (
+                    f"{row.current_value.accessibleDescription()}  ->  "
+                    f"{row.proposed_value.accessibleDescription()}"
+                    if row.current_value.isVisible()
+                    else row.proposed_value.accessibleDescription()
+                ),
+            )
+            if part
+        )
+        for row in confirmation_card.proposal_rows
+    )
     confirmation = {
         "visible": confirmation_card.isVisibleTo(panel),
         "title": confirmation_card.title_label.text(),
         "description": confirmation_card.description_label.text(),
-        "values": confirmation_card.values_summary.text(),
+        "values": confirmation_values,
         "reason": confirmation_card.reason_label.text(),
         "actions": (
             confirmation_card.secondary_button.text(),
@@ -1119,7 +1207,14 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "expected_actions_present": visible_actions
         == list(spec.expected_action_labels),
         "expected_send_state_present": panel.send_btn.text() == spec.expected_send_text,
-        "send_accessible_name_present": panel.send_btn.accessibleName() == "Send",
+        "send_accessible_name_present": panel.send_btn.accessibleName()
+        in {
+            "Send request",
+            "Stop current request",
+            "Waiting for your decision",
+            "Assistant is working",
+            "Stopping current request",
+        },
         "send_visual_present": (
             panel.send_btn.toolButtonStyle()
             is not Qt.ToolButtonStyle.ToolButtonIconOnly
@@ -1130,6 +1225,14 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         ),
         "expected_input_state_present": (
             panel.input_field.isEnabled() is spec.expected_input_enabled
+        ),
+        "expected_composer_text_present": (
+            not spec.expected_composer_text
+            or panel.input_field.toPlainText() == spec.expected_composer_text
+        ),
+        "expected_composer_height_present": (
+            not spec.minimum_composer_height
+            or panel.input_field.height() >= spec.minimum_composer_height
         ),
         "expected_runtime_visibility_present": (
             panel.runtime_state_widget.isVisibleTo(panel) is spec.runtime_state_visible
@@ -1194,6 +1297,8 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "send_text": panel.send_btn.text(),
         "send_enabled": panel.send_btn.isEnabled(),
         "input_enabled": panel.input_field.isEnabled(),
+        "composer_text": panel.input_field.toPlainText(),
+        "composer_height": panel.input_field.height(),
         "activity": activity,
         "confirmation": confirmation,
         "composer_placeholder": placeholder,
@@ -1672,7 +1777,9 @@ def _main_window_screen_record(
     if not bubbles:
         raise RuntimeError(f"{name}: assistant transcript has no rendered message.")
     required_content_widgets: dict[str, QWidget] = {
-        "main_shell": window.stack,
+        # The stacked page may intentionally be a quiet loading/placeholder surface.
+        # The real product-shell evidence is the rendered navigation bar.
+        "main_shell": window.top_bar,
         "assistant_transcript": bubbles[-1],
         "assistant_primary_action": panel.send_btn,
     }
@@ -1892,8 +1999,8 @@ def _capture_main_window_dock_walkthrough(
     source_history = ChatController()
     source_history.add_user_message("Show me where to review EEG data.")
     source_history.add_agent_message(
-        "Open Dataset to review the imported EEG files.",
-        presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
+        "I can help review EEG files before they are loaded.",
+        presentation_kind=ChatMessagePresentationKind.ASSISTANT,
         presentation_id=restored_presentation_id,
         actions=(
             ChatResponseAction(
@@ -1913,7 +2020,8 @@ def _capture_main_window_dock_walkthrough(
     restored_count = manager.chat_controller.restore_history(
         source_history.get_history()
     )
-    window.stack.setCurrentIndex(1)
+    window._ensure_panel_loaded(1)
+    window._activate_page(1)
     _settle_layout(app, window)
     restored_records = manager.chat_controller.get_typed_history()
     restored_action_buttons = [
@@ -1943,7 +2051,7 @@ def _capture_main_window_dock_walkthrough(
         AssistantResponsePresentation(
             correlation=live_correlation,
             presentation_id=presentation_id,
-            text="Open Dataset to review the imported EEG files.",
+            text="Open Dataset to review the current EEG workspace.",
             kind=AssistantResponseKind.CLARIFICATION,
             actions=(
                 AssistantResponseAction.open_panel(
@@ -1967,21 +2075,25 @@ def _capture_main_window_dock_walkthrough(
     bubbles = _layout_bubbles(panel)
     if not bubbles:
         raise RuntimeError("Restored response did not render in the real dock.")
-    pre_click_path = output_dir / ".main-window-action-render-probe.png"
-    pre_click_render = _capture_widget(
+    pre_click_screen = _main_window_screen_record(
+        app,
+        output_dir,
         window,
-        pre_click_path,
-        render_pixel_ratio=1.0,
-        required_content_widgets={
-            "assistant_transcript": bubbles[-1],
-            "restored_response_action": action,
-        },
+        dock,
+        panel,
+        name="main_window_dock_320_action_visible",
+        filename="main-window-dock-320-action-visible.png",
     )
-    pre_click_path.unlink(missing_ok=True)
     before_index = window.stack.currentIndex()
+    before_widget = window.stack.currentWidget()
+    before_widget_type = (
+        type(before_widget).__name__ if before_widget is not None else ""
+    )
     cast(Any, QTest.mouseClick)(action, Qt.MouseButton.LeftButton)
     _settle_layout(app, window)
     after_index = window.stack.currentIndex()
+    after_widget = window.stack.currentWidget()
+    after_widget_type = type(after_widget).__name__ if after_widget is not None else ""
     action_clicked = before_index != after_index and after_index == 0
     manager._on_assistant_turn_finished(
         AssistantTurnTerminal(
@@ -1990,6 +2102,7 @@ def _capture_main_window_dock_walkthrough(
         )
     )
     screens = [
+        pre_click_screen,
         _main_window_screen_record(
             app,
             output_dir,
@@ -1998,7 +2111,7 @@ def _capture_main_window_dock_walkthrough(
             panel,
             name="main_window_dock_320_action_click",
             filename="main-window-dock-320-action-click.png",
-        )
+        ),
     ]
 
     stopping_turn_id = 701
@@ -2063,7 +2176,7 @@ def _capture_main_window_dock_walkthrough(
             AssistantTurnActivity(
                 phase,
                 command_name=(
-                    "create_epoch"
+                    "scan_source"
                     if phase is AssistantTurnActivityPhase.RUNNING_COMMAND
                     else ""
                 ),
@@ -2094,7 +2207,7 @@ def _capture_main_window_dock_walkthrough(
     manager.on_assistant_activity_changed(
         AssistantTurnActivity(
             AssistantTurnActivityPhase.RUNNING_COMMAND,
-            command_name="create_epoch",
+            command_name="scan_source",
             turn_id=command_correlation.turn_id,
             generation=command_correlation.generation,
         )
@@ -2137,10 +2250,30 @@ def _capture_main_window_dock_walkthrough(
                 presentation_id in active_identity_events
                 and selected_identity_events == [presentation_id]
             ),
-            "pre_click_render_content": pre_click_render["render_content"],
+            "pre_click_render_content": pre_click_screen["render_content"],
             "clicked": action_clicked,
             "before_panel_index": before_index,
             "after_panel_index": after_index,
+            "before_panel_widget_type": before_widget_type,
+            "after_panel_widget_type": after_widget_type,
+            "before_panel_materialized": bool(
+                before_widget is not None
+                and before_widget_type != "_LazyPanelPlaceholder"
+            ),
+            "after_panel_materialized": bool(
+                after_widget is not None
+                and after_widget_type != "_LazyPanelPlaceholder"
+            ),
+            "before_placeholder_visible": bool(
+                before_widget is not None
+                and before_widget_type == "_LazyPanelPlaceholder"
+                and before_widget.isVisibleTo(window)
+            ),
+            "after_placeholder_visible": bool(
+                after_widget is not None
+                and after_widget_type == "_LazyPanelPlaceholder"
+                and after_widget.isVisibleTo(window)
+            ),
             "workflow_panel_opened": after_index == 0,
             "actions_consumed": panel.response_actions_widget.isHidden(),
         },
@@ -2294,6 +2427,9 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
     screens = payload.get("screens")
     if not isinstance(screens, list):
         return ["screens payload is missing"]
+    artifact_directory = Path(str(payload.get("artifact_directory") or ""))
+    if not artifact_directory.is_dir():
+        failures.append("artifact directory is missing")
     if tuple(screen.get("file") for screen in screens) != EXPECTED_SCREEN_FILES:
         failures.append("required screenshot set is incomplete or out of order")
     observed_labels: dict[str, str] = {}
@@ -2331,6 +2467,42 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
         render_content = screen.get("render_content")
         if not isinstance(render_content, dict) or not render_content.get("passed"):
             failures.append(f"{name}: rendered UI content is blank or incomplete")
+        screenshot_path = artifact_directory / str(screen.get("file") or "")
+        if not screenshot_path.is_file():
+            failures.append(f"{name}: screenshot file is missing")
+        else:
+            observed_hash = hashlib.sha256(screenshot_path.read_bytes()).hexdigest()
+            if screen.get("image_sha256") != observed_hash:
+                failures.append(f"{name}: screenshot hash does not match the file")
+    supplemental_records = (
+        (
+            "standalone first-paint",
+            payload.get("first_paint_320_contract", {}).get("standalone", {}),
+        ),
+        (
+            "real dock first-paint",
+            payload.get("first_paint_320_contract", {}).get("real_dock", {}),
+        ),
+        (
+            "metric pre-first-epoch",
+            payload.get("metric_tab_transition", {}).get("pre_first_epoch", {}),
+        ),
+        (
+            "metric first-data",
+            payload.get("metric_tab_transition", {}).get("first_data", {}),
+        ),
+    )
+    for label, record in supplemental_records:
+        if not isinstance(record, dict):
+            failures.append(f"{label}: screenshot record is missing")
+            continue
+        screenshot_path = artifact_directory / str(record.get("file") or "")
+        if not screenshot_path.is_file():
+            failures.append(f"{label}: screenshot file is missing")
+            continue
+        observed_hash = hashlib.sha256(screenshot_path.read_bytes()).hexdigest()
+        if record.get("image_sha256") != observed_hash:
+            failures.append(f"{label}: screenshot hash does not match the file")
     for kind, expected_label in EXPECTED_STATE_LABELS.items():
         if observed_labels.get(kind) != expected_label:
             failures.append(f"state label {kind!r} is missing or changed")
@@ -2372,6 +2544,18 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
             failures.append("live response identity was not authoritative in the UI")
         if not action_click.get("pre_click_render_content", {}).get("passed"):
             failures.append("live response action was not visibly painted before click")
+        if action_click.get("before_panel_index") != 1:
+            failures.append("response action did not start from Preprocess")
+        if action_click.get("after_panel_index") != 0:
+            failures.append("response action did not finish on Dataset")
+        if action_click.get("before_panel_materialized") is not True:
+            failures.append("Preprocess was not materialized before action capture")
+        if action_click.get("after_panel_materialized") is not True:
+            failures.append("Dataset was not materialized after action capture")
+        if action_click.get("before_placeholder_visible") is not False:
+            failures.append("Preprocess placeholder remained visible before action")
+        if action_click.get("after_placeholder_visible") is not False:
+            failures.append("Dataset placeholder remained visible after action")
 
     current_source_files = source_file_manifest()
     current_fingerprint = source_fingerprint(current_source_files)
@@ -2393,6 +2577,14 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
         or capture_source.get("fingerprint_at_completion") != current_fingerprint
     ):
         failures.append("source changed during capture or was not observed")
+    provenance = payload.get("runtime_import_provenance")
+    if not isinstance(provenance, dict):
+        failures.append("runtime import provenance evidence is missing")
+    elif (
+        provenance.get("root_matches_capture") is not True
+        or provenance.get("all_sources_under_root") is not True
+    ):
+        failures.append("runtime modules were imported from a different source root")
     if payload.get("native_display_scaling_observed") is not False:
         failures.append("artifact must not claim native display scaling")
     return failures
@@ -2475,8 +2667,9 @@ def capture_walkthrough(
         "status": "pending",
         "generated_at": datetime.now(UTC).isoformat(),
         "generator": GENERATOR,
+        "artifact_directory": str(output_dir.resolve()),
         "replay_command": (
-            "QT_QPA_PLATFORM=offscreen poetry run python "
+            'PYTHONPATH="$PWD" QT_QPA_PLATFORM=offscreen poetry run python '
             "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
         ),
         "platform": QApplication.platformName(),
@@ -2494,6 +2687,7 @@ def capture_walkthrough(
                 and fingerprint_at_start == fingerprint_at_completion
             ),
         },
+        "runtime_import_provenance": runtime_import_provenance(),
         "render_scale_evidence": "synthetic_pixmap_device_ratio",
         "render_readiness": {
             "required_consecutive_content_frames": 2,
@@ -2544,6 +2738,8 @@ def render_readme(payload: dict[str, Any]) -> str:
         "- source fingerprint at start / completion: "
         f"`{payload['capture_source']['fingerprint_at_start']}` / "
         f"`{payload['capture_source']['fingerprint_at_completion']}`",
+        "- runtime imports under capture root: "
+        f"`{payload['runtime_import_provenance']['all_sources_under_root']}`",
         f"- fingerprinted source files: `{len(payload['source_files'])}`",
         f"- Qt platform: `{payload['platform']}`",
         "- visual reviewer verdict: `not adjudicated by this script`",

@@ -75,6 +75,7 @@ _EXPORT_MODULES: dict[str, str] = {
     "ActiveDatasetSnapshot": ".state",
     "ActiveTrainingSnapshot": ".state",
     "ApplicationStateSnapshot": ".state",
+    "APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT": ".view_publication",
     "ApplicationViewPublication": ".view_publication",
     "WorkflowProjection": ".workflow_projection",
     "DatasetStateSnapshot": ".state",
@@ -109,6 +110,7 @@ _EXPORT_MODULES: dict[str, str] = {
 }
 
 __all__ = [
+    "APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT",
     "ActiveDatasetSnapshot",
     "ActiveTrainingSnapshot",
     "ApplicationError",

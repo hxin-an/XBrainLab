@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import inspect
 from copy import deepcopy
 from pathlib import Path
@@ -29,6 +30,7 @@ from PyQt6.QtWidgets import (
 )
 
 import scripts.dev.capture_human_like_product_walkthrough as walkthrough_module
+import scripts.dev.human_like_walkthrough.contract as walkthrough_contract
 from scripts.dev.capture_data_interpretation_replay import (
     pairing_rows,
     source_event_field_matches,
@@ -83,11 +85,14 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     publish_artifact_run,
     render_eval_dashboard_html,
     render_markdown,
+    resource_snapshot,
     run_chatpanel_walkthrough,
+    settle_window_close_for_capture,
     settle_window_geometry_for_capture,
     validate_walkthrough_payload,
     visible_text_snapshot,
 )
+from scripts.dev.human_like_walkthrough.capture import isolated_assistant_settings
 from scripts.dev.human_like_walkthrough.contract import (
     ASSISTANT_BLOCKED_REQUEST,
     ASSISTANT_CLARIFICATION_REQUEST,
@@ -96,10 +101,10 @@ from scripts.dev.human_like_walkthrough.contract import (
     ASSISTANT_EXISTING_UI_REQUEST,
     ASSISTANT_FINGERPRINT_PATHS,
     ASSISTANT_HANDOFF_REQUEST_ID,
-    ASSISTANT_PATH_CLARIFICATION_MESSAGE,
     ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS,
     ASSISTANT_REQUIRED_SCREENSHOTS,
     ASSISTANT_STOPPED_MESSAGE,
+    ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE,
 )
 from scripts.dev.human_like_walkthrough.driver import (
     WalkthroughAssistantController,
@@ -107,6 +112,7 @@ from scripts.dev.human_like_walkthrough.driver import (
 )
 from scripts.dev.human_like_walkthrough.evidence import (
     _overlapping_x_tick_labels,
+    aggregate_info_readability_evidence,
     assistant_main_window_evidence,
     assistant_runtime_evidence,
 )
@@ -141,6 +147,7 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
 )
+from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
@@ -165,6 +172,15 @@ def _admit_walkthrough_turn(
     )
     controller.handle_user_turn(request)
     return request
+
+
+def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot() -> None:
+    with isolated_assistant_settings() as isolation:
+        config = LLMConfig.load_from_file()
+
+        assert config is not None
+        assert config.cache_dir == str(isolation.cache_root)
+        assert config.has_local_model_cache(PRIMARY_LOCAL_MODEL_ID) is True
 
 
 def test_confirmation_walkthrough_targets_inline_card_actions() -> None:
@@ -395,6 +411,9 @@ def _base_payload() -> dict:
         "clipped_labels": [],
         "overlapping_x_ticks": [],
     }
+    narrow_phase["notes"]["assistant_main_window"].update(
+        {"window_width": 760, "window_height": 520}
+    )
     phases[0]["notes"] = {
         "ui_geometry": {
             "dataset_table": {
@@ -911,6 +930,191 @@ def test_validate_walkthrough_payload_accepts_complete_artifact_without_files() 
     assert reason == ""
 
 
+def test_required_phases_are_the_exact_unique_capture_sequence() -> None:
+    expected = (
+        "app_startup",
+        "main_window_initial_state",
+        "data_source_selection",
+        "data_interpretation_select_source",
+        "data_interpretation_scan_result",
+        "data_interpretation_preview",
+        "data_interpretation_confirm_metadata_labels",
+        "data_interpretation_review_and_import",
+        "data_interpretation_decisions",
+        "data_interpretation_apply",
+        "data_interpretation_save_recipe",
+        "data_interpretation_reload_recipe",
+        "data_interpretation_reapply_recipe",
+        "preprocessing_loaded",
+        "preprocessing",
+        "preprocessing_locked",
+        "epoch_creation",
+        "dataset_generation",
+        "training_readiness",
+        "evaluation_visualization_saliency_readiness",
+        "visualization_readiness",
+        *walkthrough_contract.ASSISTANT_REQUIRED_PHASES,
+        "reset_new_session_boundary",
+        "error_recovery",
+        "eval_dashboard_report",
+    )
+
+    assert len(expected) == 42
+    assert len(dict.fromkeys(expected)) == len(expected)
+    assert expected == REQUIRED_PHASES
+
+
+@pytest.mark.parametrize("mutation", ["reordered", "duplicate"])
+def test_validate_walkthrough_payload_rejects_noncanonical_phase_sequence(
+    mutation: str,
+) -> None:
+    payload = _base_payload()
+    if mutation == "reordered":
+        payload["phases"][6], payload["phases"][7] = (
+            payload["phases"][7],
+            payload["phases"][6],
+        )
+    else:
+        payload["phases"].insert(7, deepcopy(payload["phases"][6]))
+
+    ok, reason = validate_walkthrough_payload(payload, require_files=False)
+
+    assert ok is False
+    assert "phase sequence" in reason
+
+
+def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) -> None:
+    screenshot_hashes: dict[str, str] = {}
+    screenshot_review: list[dict[str, Any]] = []
+    for index, key in enumerate(payload["screenshots"]):
+        path = directory / f"{index:03d}-{key}.png"
+        if key == ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS["assistant_narrow_panel"]:
+            size = (76, 52)
+        elif key in ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS.values():
+            size = (80, 50)
+        else:
+            size = (64, 48)
+        image = Image.new("RGB", size, color=(235, 240, 245))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((4, 4, size[0] - 5, size[1] - 5), outline=(30, 60, 90), width=2)
+        draw.line((8, size[1] // 2, size[0] - 9, size[1] // 2), fill=(20, 40, 60))
+        image.save(path, format="PNG")
+        payload["screenshots"][key] = str(path)
+        screenshot_hashes[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+        screenshot_review.append(
+            {
+                "screenshot": key,
+                "path": str(path),
+                "exists": True,
+                "nonblank": True,
+                "automated_review": "nonblank",
+                "frame_readiness": {
+                    "consecutive_complete_frames": 2,
+                    "stable": True,
+                    "max_changed_pixel_ratio": 0.0,
+                    "required_regions": ["whole_widget"],
+                    "reference_validated": False,
+                    "reference_comparison_count": 0,
+                    "reference_regions": [],
+                },
+            }
+        )
+    payload["artifact_run"] = {"screenshot_sha256": screenshot_hashes}
+    payload["ui_quality_review"]["screenshot_review"] = screenshot_review
+    payload["ui_quality_review"]["frame_readiness_coverage"] = True
+
+
+def test_validate_walkthrough_payload_recomputes_published_screenshot_hashes(
+    tmp_path,
+) -> None:
+    payload = _base_payload()
+    _write_valid_screenshot_artifacts(payload, tmp_path)
+
+    ok, reason = validate_walkthrough_payload(payload, require_files=True)
+
+    assert ok is True, reason
+    first_key = next(iter(payload["screenshots"]))
+    Path(payload["screenshots"][first_key]).write_bytes(b"tampered")
+    ok, reason = validate_walkthrough_payload(payload, require_files=True)
+    assert ok is False
+    assert "screenshot hash mismatch" in reason
+
+
+@pytest.mark.parametrize("corruption", ["text", "truncated"])
+def test_validate_walkthrough_payload_rejects_undecodable_png_with_matching_hash(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    payload = _base_payload()
+    _write_valid_screenshot_artifacts(payload, tmp_path)
+    key = next(iter(payload["screenshots"]))
+    path = Path(payload["screenshots"][key])
+    if corruption == "text":
+        path.write_bytes(b"this is evidence text, not a PNG image")
+    else:
+        valid_bytes = path.read_bytes()
+        path.write_bytes(valid_bytes[: len(valid_bytes) // 2])
+    payload["artifact_run"]["screenshot_sha256"][key] = hashlib.sha256(
+        path.read_bytes()
+    ).hexdigest()
+
+    ok, reason = validate_walkthrough_payload(payload, require_files=True)
+
+    assert ok is False
+    assert "invalid PNG screenshot" in reason
+
+
+def test_validate_walkthrough_payload_rechecks_saved_pixel_evidence(
+    tmp_path: Path,
+) -> None:
+    payload = _base_payload()
+    _write_valid_screenshot_artifacts(payload, tmp_path)
+    key = next(iter(payload["screenshots"]))
+    path = Path(payload["screenshots"][key])
+    Image.new("RGB", (64, 48), color="black").save(path, format="PNG")
+    payload["artifact_run"]["screenshot_sha256"][key] = hashlib.sha256(
+        path.read_bytes()
+    ).hexdigest()
+
+    ok, reason = validate_walkthrough_payload(payload, require_files=True)
+
+    assert ok is False
+    assert "pixel evidence" in reason
+
+
+def test_validate_walkthrough_payload_rechecks_saved_frame_readiness(
+    tmp_path: Path,
+) -> None:
+    payload = _base_payload()
+    _write_valid_screenshot_artifacts(payload, tmp_path)
+    payload["ui_quality_review"]["screenshot_review"][0]["frame_readiness"][
+        "stable"
+    ] = False
+
+    ok, reason = validate_walkthrough_payload(payload, require_files=True)
+
+    assert ok is False
+    assert "frame readiness" in reason
+
+
+def test_validate_walkthrough_payload_rechecks_saved_full_window_geometry(
+    tmp_path: Path,
+) -> None:
+    payload = _base_payload()
+    _write_valid_screenshot_artifacts(payload, tmp_path)
+    phase = next(
+        item
+        for item in payload["phases"]
+        if item["phase"] == "assistant_runtime_loading"
+    )
+    phase["notes"]["assistant_main_window"]["window_width"] = 1000
+
+    ok, reason = validate_walkthrough_payload(payload, require_files=True)
+
+    assert ok is False
+    assert "full-window geometry" in reason
+
+
 def test_assistant_runtime_contract_rejects_send_during_loading() -> None:
     phases = [
         _valid_assistant_runtime_phase(),
@@ -1277,6 +1481,25 @@ def test_assistant_dock_contract_requires_full_standard_and_320px_capture() -> N
     assert "overflow" in findings
 
 
+def test_aggregate_info_readability_gate_rejects_collapsed_key_column(qtbot) -> None:
+    evaluation_panel = QWidget()
+    layout = QVBoxLayout(evaluation_panel)
+    info_panel = AggregateInfoPanel(evaluation_panel)
+    cast(Any, evaluation_panel).info_panel = info_panel
+    layout.addWidget(info_panel)
+    qtbot.addWidget(evaluation_panel)
+    evaluation_panel.resize(260, 380)
+    evaluation_panel.show()
+    qtbot.wait(0)
+
+    info_panel.table.setColumnWidth(0, 24)
+    evidence = aggregate_info_readability_evidence(evaluation_panel)
+
+    assert evidence["visible"] is True
+    assert evidence["fully_readable"] is False
+    assert "duration (sec)" in evidence["clipped_labels"]
+
+
 def test_assistant_dock_contract_rejects_overflow_in_any_assistant_phase() -> None:
     payload = _base_payload()
     phase = next(
@@ -1551,6 +1774,9 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
     }
 
     assert "XBrainLab/ui/chat/composer.py" in relative_paths
+    assert "scripts/dev/active_checkout.py" in relative_paths
+    assert "pyproject.toml" in relative_paths
+    assert "poetry.lock" in relative_paths
     assert "XBrainLab/ui/chat/action_card.py" in relative_paths
     assert "XBrainLab/ui/chat/segmented_control.py" in relative_paths
     assert "XBrainLab/ui/chat/status_presenter.py" in relative_paths
@@ -1584,6 +1810,34 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
     assert "XBrainLab/llm/agent/response_presentation.py" in relative_paths
     assert "XBrainLab/llm/agent/confirmation.py" in relative_paths
     assert "XBrainLab/llm/agent/tool_feedback.py" in relative_paths
+
+
+def test_assistant_source_fingerprint_covers_capture_evidence_lifecycle_sources(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[3]
+    relative_paths = {
+        str(path.relative_to(root)) for path in ASSISTANT_FINGERPRINT_PATHS
+    }
+    required_sources = {
+        "scripts/dev/human_like_walkthrough/readiness.py",
+        "XBrainLab/backend/application/service.py",
+        "XBrainLab/backend/application/view_publication.py",
+        "XBrainLab/backend/application/application_publication_lifecycle.py",
+        "XBrainLab/backend/application/view_event_publisher.py",
+        "XBrainLab/ui/core/observer_bridge.py",
+        "XBrainLab/llm/core/model_download_lifecycle.py",
+    }
+
+    assert required_sources <= relative_paths
+
+    publisher = (
+        tmp_path / "XBrainLab" / "backend" / "application" / "view_event_publisher.py"
+    )
+    publisher.parent.mkdir(parents=True)
+    publisher.write_text("# future publication publisher\n", encoding="utf-8")
+
+    assert publisher in walkthrough_contract.assistant_fingerprint_paths(tmp_path)
 
 
 def test_assistant_source_fingerprint_covers_turn_history_and_action_contracts() -> (
@@ -1715,10 +1969,7 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
             "phase": "waiting",
             "cancelability": "not_cancellable",
             "cancelability_text": {
-                "text": (
-                    "Use the open confirmation or XBrainLab dialog to continue "
-                    "or cancel."
-                ),
+                "text": "Use the confirmation card to continue or cancel.",
             },
         },
     }
@@ -2364,8 +2615,15 @@ def test_walkthrough_clarification_copy_matches_its_available_actions() -> None:
 
     assert len(presentations) == 1
     presentation = cast(AssistantResponsePresentation, presentations[0])
-    assert presentation.text == ASSISTANT_PATH_CLARIFICATION_MESSAGE
-    assert tuple(action.label for action in presentation.actions) == ("Open Dataset",)
+    assert presentation.text == ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE
+    assert tuple(action.label for action in presentation.actions) == (
+        "Check workflow",
+        "Open Data Import",
+    )
+    assert presentation.actions[0].kind is AssistantResponseActionKind.SEND_MESSAGE
+    assert presentation.actions[1].kind is AssistantResponseActionKind.OPEN_DATA_IMPORT
+    assert presentation.actions[1].prompt == ""
+    assert presentation.actions[1].panel is None
 
 
 def test_walkthrough_blocked_action_resolves_the_stated_session_blocker() -> None:
@@ -2574,7 +2832,8 @@ def test_assistant_reviewers_are_owned_by_walkthrough_helper(reviewer: Any) -> N
 
 def test_data_import_visual_evidence_requires_distinct_expected_steps(tmp_path) -> None:
     expected = {
-        "data_interpretation_scan_result": "Choose EEG Data",
+        "data_source_selection": "Choose EEG Data",
+        "data_interpretation_scan_result": "Load Labels",
         "data_interpretation_preview": "Review Metadata",
         "data_interpretation_confirm_metadata_labels": "Match Labels",
         "data_interpretation_review_and_import": "Review and Import",
@@ -2601,7 +2860,7 @@ def test_data_import_visual_evidence_rejects_duplicate_or_wrong_step(tmp_path) -
     review.write_bytes(b"same-image")
     phases = [
         {
-            "phase": "data_interpretation_scan_result",
+            "phase": "data_source_selection",
             "screenshot": str(preview),
             "notes": {"active_step": "Choose EEG Data"},
         },
@@ -3525,6 +3784,31 @@ def test_workflow_contract_requires_observed_training_completion() -> None:
     assert "training_readiness did not observe training completion" in failures
 
 
+def test_workflow_contract_requires_recovery_preview_after_source_scan() -> None:
+    phases = [
+        {
+            "phase": "error_recovery",
+            "workflow_state": {},
+            "notes": {
+                "blocked_preview": {
+                    "command": "preview_interpretation",
+                    "ok": False,
+                    "error_type": "precondition",
+                },
+                "recovery_scan": {"command": "scan_source", "ok": True},
+                "recovery_preview": {
+                    "command": "preview_interpretation",
+                    "ok": False,
+                },
+            },
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert "error_recovery command preview_interpretation did not succeed" in failures
+
+
 def test_walkthrough_claim_marks_deterministic_manager_signal_boundary() -> None:
     boundary = claim_boundary()
 
@@ -3662,7 +3946,7 @@ def test_region_content_gate_rejects_ninety_nine_percent_blank_two_line_frame(
         )
 
 
-def test_assistant_stage_copy_review_rejects_results_with_stale_status() -> None:
+def test_assistant_stage_copy_review_rejects_stale_results_copy() -> None:
     review = build_assistant_stage_copy_review(
         [
             {
@@ -3681,19 +3965,23 @@ def test_assistant_stage_copy_review_rejects_results_with_stale_status() -> None
     )
 
     assert review["passed"] is False
-    assert review["findings"][0]["expected_status"] == (
-        "Current workflow stage: Results available."
+    assert review["findings"][0]["expected_intro"] == (
+        "Ask me to explain metrics, review available analyses, or recommend "
+        "what to inspect next."
     )
 
 
-def test_assistant_stage_copy_review_accepts_fixed_heading_and_stage_status() -> None:
+def test_assistant_stage_copy_review_accepts_stage_heading_and_intro() -> None:
     review = build_assistant_stage_copy_review(
         [
             {
                 "phase": "assistant_empty_state",
                 "visible_text": [
-                    "How can I help with your EEG workflow?",
-                    "Current workflow stage: Results available.",
+                    "Explore your results",
+                    (
+                        "Ask me to explain metrics, review available analyses, "
+                        "or recommend what to inspect next."
+                    ),
                 ],
                 "workflow_state": {
                     "raw": {"loaded": True},
@@ -3705,6 +3993,29 @@ def test_assistant_stage_copy_review_accepts_fixed_heading_and_stage_status() ->
     )
 
     assert review == {"passed": True, "checked_states": 1, "findings": []}
+
+
+def test_resource_snapshot_distinguishes_stale_dummy_wrapper_from_live_thread() -> None:
+    class ManagedThread:
+        name = "MainThread"
+        ident = 1
+        native_id = 1
+
+    class _DummyThread:
+        name = "Dummy-7"
+        ident = 999_999
+        native_id = 999_999
+
+    with patch(
+        "scripts.dev.capture_human_like_product_walkthrough.threading.enumerate",
+        return_value=[ManagedThread(), _DummyThread()],
+    ):
+        snapshot = resource_snapshot("after_close")
+
+    assert snapshot["python_threads"] == 2
+    assert snapshot["thread_names"] == ["MainThread", "Dummy-7"]
+    assert snapshot["live_python_threads"] == 1
+    assert snapshot["stale_foreign_thread_names"] == ["Dummy-7"]
 
 
 @pytest.mark.parametrize(
@@ -3759,6 +4070,10 @@ def test_build_pass_fail_summary_flags_unsettled_threads() -> None:
             {
                 "label": "start",
                 "python_threads": 1,
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 11],
                 "qt_active_threads": 0,
                 "max_rss_kb": 100,
                 "current_rss_kb": 100,
@@ -3766,6 +4081,10 @@ def test_build_pass_fail_summary_flags_unsettled_threads() -> None:
             {
                 "label": "after_close",
                 "python_threads": 4,
+                "live_python_threads": 4,
+                "live_python_thread_native_ids": [10, 12, 13, 14],
+                "os_threads": 5,
+                "os_thread_ids": [10, 11, 12, 13, 14],
                 "qt_active_threads": 2,
                 "max_rss_kb": 900000,
                 "current_rss_kb": 1_300_100,
@@ -3786,6 +4105,10 @@ def test_resource_smoke_records_max_rss_without_failing_high_water_only() -> Non
             {
                 "label": "start",
                 "python_threads": 1,
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 11],
                 "qt_active_threads": 0,
                 "max_rss_kb": 100,
                 "current_rss_kb": 100,
@@ -3793,6 +4116,10 @@ def test_resource_smoke_records_max_rss_without_failing_high_water_only() -> Non
             {
                 "label": "after_close",
                 "python_threads": 1,
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 11],
                 "qt_active_threads": 0,
                 "max_rss_kb": 900000,
                 "current_rss_kb": 200,
@@ -3805,12 +4132,374 @@ def test_resource_smoke_records_max_rss_without_failing_high_water_only() -> Non
     assert summary["max_rss_growth_kb"] == 899900
 
 
+def test_resource_smoke_fails_closed_without_snapshots() -> None:
+    summary = build_resource_smoke_summary(None)
+
+    assert summary["checked"] is False
+    assert summary["passed"] is False
+    assert summary["failed_checks"] == ["resource evidence was not collected"]
+
+
+def test_resource_smoke_rejects_live_foreign_thread_growth() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 11],
+                "qt_active_threads": 0,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "live_python_threads": 3,
+                "live_python_thread_native_ids": [10, 21, 22],
+                "os_threads": 4,
+                "os_thread_ids": [10, 11, 21, 22],
+                "qt_active_threads": 0,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["extra_live_python_thread_native_ids"] == [21, 22]
+    assert summary["extra_os_thread_ids"] == [21, 22]
+
+
+def test_resource_smoke_accepts_idle_qt_and_explicit_cuda_runtime_threads() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 11],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    {
+                        "native_id": 11,
+                        "name": "python",
+                        "wait_channel": "futex_wait_queue",
+                    },
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "live_python_threads": 2,
+                "live_python_thread_native_ids": [10, 21],
+                "os_threads": 6,
+                "os_thread_ids": [10, 11, 21, 22, 23, 24],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    {
+                        "native_id": 11,
+                        "name": "python",
+                        "wait_channel": "futex_wait_queue",
+                    },
+                    {
+                        "native_id": 21,
+                        "name": "Thread (pooled)",
+                        "wait_channel": "futex_wait_queue",
+                    },
+                    {
+                        "native_id": 22,
+                        "name": "cuda00004800013",
+                        "wait_channel": "do_sys_poll",
+                    },
+                    {
+                        "native_id": 23,
+                        "name": "pt_autograd_0",
+                        "wait_channel": "futex_wait_queue",
+                    },
+                    {
+                        "native_id": 24,
+                        "name": "cuda-EvtHandlr",
+                        "wait_channel": "do_sys_poll",
+                    },
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": True,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["unexpected_extra_os_thread_ids"] == []
+    assert summary["persistent_runtime_os_thread_ids"] == [21, 22, 23, 24]
+    assert summary["extra_live_python_thread_native_ids"] == [21]
+
+
+def test_resource_smoke_rejects_unattributed_qthread() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 21],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    {
+                        "native_id": 21,
+                        "name": "QThread",
+                        "wait_channel": "do_sys_poll",
+                    },
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": True,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["unexpected_extra_os_thread_ids"] == [21]
+
+
+def test_resource_smoke_rejects_qthread_even_when_cuda_markers_exist() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 3,
+                "os_thread_ids": [10, 21, 22],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    {
+                        "native_id": 21,
+                        "name": "cuda-EvtHandlr",
+                        "wait_channel": "do_sys_poll",
+                    },
+                    {
+                        "native_id": 22,
+                        "name": "QThread",
+                        "wait_channel": "do_sys_poll",
+                    },
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": True,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["persistent_runtime_os_thread_ids"] == [21]
+    assert summary["unexpected_extra_os_thread_ids"] == [22]
+
+
+def test_resource_smoke_accepts_explicit_model_probe_cuda_descendant() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 21],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    {
+                        "native_id": 21,
+                        "name": "ModelStatusProb",
+                        "wait_channel": "do_sys_poll",
+                    },
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": True,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [21]
+    assert summary["unexpected_extra_os_thread_ids"] == []
+
+
+def test_resource_smoke_rejects_ambiguous_python_poll_thread() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 3,
+                "os_thread_ids": [10, 21, 22],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    {
+                        "native_id": 21,
+                        "name": "python",
+                        "wait_channel": "do_sys_poll",
+                    },
+                    {
+                        "native_id": 22,
+                        "name": "cuda-EvtHandlr",
+                        "wait_channel": "do_sys_poll",
+                    },
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": True,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["unexpected_extra_os_thread_ids"] == [21]
+    assert summary["persistent_runtime_os_thread_ids"] == [22]
+
+
+def test_resource_smoke_rejects_unbounded_cuda_runtime_thread_pool() -> None:
+    extra_ids = list(range(21, 54))
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1 + len(extra_ids),
+                "os_thread_ids": [10, *extra_ids],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    *[
+                        {
+                            "native_id": native_id,
+                            "name": (
+                                "cuda-EvtHandlr"
+                                if native_id == extra_ids[0]
+                                else f"pt_autograd_{native_id}"
+                            ),
+                            "wait_channel": "do_sys_poll",
+                        }
+                        for native_id in extra_ids
+                    ],
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "cuda_runtime_initialized": True,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["unexpected_extra_os_thread_ids"] == extra_ids
+    assert summary["persistent_runtime_os_thread_ids"] == []
+
+
 def test_walkthrough_resource_finalization_samples_after_qt_cleanup(qapp) -> None:
     payload = _base_payload()
     payload["resource_notes"] = [
         {
             "label": "start",
             "python_threads": 1,
+            "live_python_threads": 1,
+            "live_python_thread_native_ids": [10],
+            "os_threads": 2,
+            "os_thread_ids": [10, 11],
             "qt_active_threads": 0,
             "max_rss_kb": 100,
             "current_rss_kb": 100,
@@ -3818,6 +4507,10 @@ def test_walkthrough_resource_finalization_samples_after_qt_cleanup(qapp) -> Non
         {
             "label": "before_close",
             "python_threads": 1,
+            "live_python_threads": 1,
+            "live_python_thread_native_ids": [10],
+            "os_threads": 2,
+            "os_thread_ids": [10, 11],
             "qt_active_threads": 0,
             "max_rss_kb": 150,
             "current_rss_kb": 150,
@@ -3826,6 +4519,10 @@ def test_walkthrough_resource_finalization_samples_after_qt_cleanup(qapp) -> Non
     sampled = {
         "label": "after_close",
         "python_threads": 1,
+        "live_python_threads": 1,
+        "live_python_thread_native_ids": [10],
+        "os_threads": 2,
+        "os_thread_ids": [10, 11],
         "qt_active_threads": 0,
         "max_rss_kb": 160,
         "current_rss_kb": 120,
@@ -3857,6 +4554,41 @@ def test_walkthrough_resource_finalization_samples_after_qt_cleanup(qapp) -> Non
         "after_walkthrough_return_and_qt_cleanup"
     )
     assert finalized["pass_fail_summary"]["resource_smoke"]["rss_growth_kb"] == 20
+
+
+def test_settle_window_close_pumps_events_until_deferred_close_finishes() -> None:
+    class _DeferredWindow:
+        visible = True
+
+        def close(self) -> bool:
+            return False
+
+        def isVisible(self) -> bool:
+            return self.visible
+
+    window = _DeferredWindow()
+    app = SimpleNamespace()
+    process_calls = 0
+
+    def _process_events() -> None:
+        nonlocal process_calls
+        process_calls += 1
+        if process_calls == 2:
+            window.visible = False
+
+    app.sendPostedEvents = lambda: None
+    app.processEvents = _process_events
+
+    assert (
+        settle_window_close_for_capture(
+            cast(Any, app),
+            cast(Any, window),
+            timeout_seconds=0.25,
+            poll_interval_seconds=0.001,
+        )
+        is True
+    )
+    assert process_calls == 2
 
 
 def test_walkthrough_finalization_preserves_the_root_capture_failure(qapp) -> None:

@@ -83,6 +83,20 @@ def test_typed_history_round_trip_preserves_actions_as_inert_audit_data() -> Non
     assert restored.resolve_and_consume_response_action(selection) is None
 
 
+def test_typed_data_import_action_round_trips_without_prompt_or_panel() -> None:
+    action = ChatResponseAction(
+        action_id="open-data-import",
+        label="Open Data Import",
+        kind=ChatResponseActionKind.OPEN_DATA_IMPORT,
+    )
+
+    restored = ChatResponseAction.from_history_value(action.to_history_dict())
+
+    assert restored == action
+    assert restored.prompt == ""
+    assert restored.panel is None
+
+
 def test_consumed_actions_remain_auditable_but_do_not_restore_as_active() -> None:
     controller = ChatController()
     controller.add_agent_message(

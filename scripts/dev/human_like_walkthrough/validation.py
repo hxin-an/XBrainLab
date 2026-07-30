@@ -125,10 +125,13 @@ def validate_assistant_payload(
         return False, "walkthrough assistant evidence bypasses the product contract"
 
     phase_rows = payload.get("phases", [])
-    phases = {phase.get("phase") for phase in phase_rows}
-    missing = [phase for phase in ASSISTANT_REQUIRED_PHASES if phase not in phases]
-    if missing:
-        return False, f"missing phases: {', '.join(missing)}"
+    assistant_phases = tuple(
+        str(phase.get("phase") or "")
+        for phase in phase_rows
+        if str(phase.get("phase") or "").startswith("assistant_")
+    )
+    if assistant_phases != ASSISTANT_REQUIRED_PHASES:
+        return False, "assistant phase sequence does not match the canonical order"
     screenshot_failures = required_assistant_screenshot_failures(
         payload.get("screenshots", {})
     )
@@ -1017,10 +1020,7 @@ def build_assistant_interaction_contract_review(
                 or bool(waiting_button.get("enabled"))
                 or bool(waiting.get("composer_input_enabled", True))
                 or cancelability.get("text")
-                != (
-                    "Use the open confirmation or XBrainLab dialog to continue "
-                    "or cancel."
-                )
+                != "Use the confirmation card to continue or cancel."
             ):
                 findings.append(
                     f"{phase_name} presents a pending decision as active work"
@@ -1192,7 +1192,7 @@ def build_assistant_settings_recovery_review(
 def build_assistant_stage_copy_review(
     phases: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Require a stable assistant heading plus workflow-grounded status copy."""
+    """Require stage-aware headings plus workflow-grounded status copy."""
     rows: list[dict[str, Any]] = []
     for phase in phases:
         if phase.get("phase") != "assistant_empty_state":
@@ -1203,27 +1203,36 @@ def build_assistant_stage_copy_review(
         evaluation = workflow_state.get("evaluation", {})
         training = workflow_state.get("training", {})
         raw = workflow_state.get("raw", {})
-        expected_status = None
+        expected_heading = None
+        expected_intro = None
         if isinstance(evaluation, dict) and (
             int(evaluation.get("finished_runs", 0) or 0) > 0
             or bool(evaluation.get("metrics_available", False))
         ):
-            expected_status = "Current workflow stage: Results available."
+            expected_heading = "Explore your results"
+            expected_intro = (
+                "Ask me to explain metrics, review available analyses, or recommend "
+                "what to inspect next."
+            )
         elif isinstance(training, dict) and bool(training.get("is_running", False)):
-            expected_status = "Current workflow stage: Training running."
+            expected_heading = "Training is running"
+            expected_intro = "Ask for progress or stop the current training run."
         elif isinstance(raw, dict) and not bool(raw.get("loaded", False)):
-            expected_status = "No EEG files are open yet."
-        if expected_status is None:
+            expected_heading = "Start with your EEG data"
+            expected_intro = (
+                "Ask me to find EEG files, explain supported formats, or begin an "
+                "import."
+            )
+        if expected_heading is None or expected_intro is None:
             continue
         visible_text = [str(item) for item in phase.get("visible_text", [])]
-        fixed_heading = "How can I help with your EEG workflow?"
         rows.append(
             {
                 "phase": phase.get("phase"),
-                "expected_heading": fixed_heading,
-                "expected_status": expected_status,
+                "expected_heading": expected_heading,
+                "expected_intro": expected_intro,
                 "matched": (
-                    fixed_heading in visible_text and expected_status in visible_text
+                    expected_heading in visible_text and expected_intro in visible_text
                 ),
             }
         )

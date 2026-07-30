@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-07-29`
+最後更新：`2026-07-30`
 
 ## 範圍
 
@@ -88,6 +88,8 @@ Study / cached controllers
 - 將 assistant 回覆、streaming chunk、錯誤狀態送回 UI。
 - 處理需要 UI 介入的 request，例如 switch panel、confirm montage、confirm action。
 - 透過 `LLMConfig.normalize_backend_mode()` 把 UI label 對齊 runtime key。
+- 以 `ApplicationViewPublication.revision` 確認 GUI 已套用哪一份 backend state；只有 matching
+  revision acknowledgement 後，才接收該 publication 保留的 terminal lifecycle event。
 
 UI side effect 仍由 structured tool result 的 UI request 交給 `AgentManager`，但會沿用既有 dialog；
 request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測使用者選擇。
@@ -131,6 +133,8 @@ command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 
   dialog。Evaluate 是 read-only terminal step，成功後停止，不會因 state 未改變而重複執行。
 - descriptive `decision_boundary` metadata 本身不是停止條件；真正的 backend policy 和當前 state
   才決定能否繼續，避免每個 tool 都被靜態描述過早截斷。
+- UI execution controls 與 agent recommendation surface 分開。`Stop Training` 是使用者明確要求
+  才能進入的 terminal endpoint；它可以被 backend 執行，但不會由 generic continuation 自動推論。
 - `recommended_next_step` 只由 `WorkflowDecisionContext` 產生；AgentManager 不再維護另一份推測。
 
 ### Workflow Decision Context
@@ -289,6 +293,9 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
   垂直捲動，尾端不放 expanding spacer，確保 Cancel / Apply 在 320 px dock 可到達。
 - current value 只讀同 generation、`state_reliable` 的 `ApplicationViewPublication`；publication
   generation 不同時會提示重新驗證，不從 panel widget 或 `Study` internals 建第二份狀態。
+- `ApplicationViewEventPublisher` 將 terminal training lifecycle 綁定 publication revision。若
+  Qt queued delivery 尚未確認該 revision，event 會保留；`QtObserverBridge` 回報 matching revision
+  後才重試，避免 UI state 與 assistant terminal message 倒序或遺失。
 - action 完成後，GUI 同步仍由 `application_command_completed -> changed_state -> shared refresh`
   處理；card 不直接寫 Training / Dataset widget。
 - transcript 只有接近尾端時自動跟隨；使用者向上閱讀後，新訊息不可強制拉到底部。

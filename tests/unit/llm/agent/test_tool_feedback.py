@@ -200,7 +200,7 @@ def test_summary_names_concrete_import_decisions_and_target_surface() -> None:
         "Import review needs your input:\n"
         "- Task metadata is missing for 3 files.\n"
         "- Event roles need review.\n"
-        "Open Import Review to resolve these choices."
+        "Use the open Import EEG Data window to review these choices."
     )
     assert "No external labels" not in summary
 

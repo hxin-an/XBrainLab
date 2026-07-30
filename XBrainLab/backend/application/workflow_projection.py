@@ -28,6 +28,7 @@ class WorkflowProjection:
     decision_fields: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
     blocked_reasons: tuple[str, ...] = ()
+    execution_controls: tuple[str, ...] = ()
 
 
 def build_workflow_projection(
@@ -35,6 +36,13 @@ def build_workflow_projection(
     capabilities: CapabilityPolicy,
 ) -> WorkflowProjection:
     """Project one atomic state/capability generation into its next action."""
+    if state.active_training.is_running:
+        return WorkflowProjection(
+            recommended_command=None,
+            evidence=("Training is currently running.",),
+            execution_controls=(CommandName.STOP_TRAINING.value,),
+        )
+
     recommended, blocked = _command_selection(state, capabilities)
     if recommended is None:
         blocked_reasons = _top_blocked_reasons(capabilities)
@@ -43,6 +51,7 @@ def build_workflow_projection(
         return WorkflowProjection(
             recommended_command=None,
             blocked_command=blocked,
+            decision_fields=_blocked_decision_fields(blocked, state),
             blocked_reasons=blocked_reasons,
         )
 
@@ -157,7 +166,10 @@ def _interpretation_apply_decision_fields(
     state: ApplicationStateSnapshot,
 ) -> tuple[str, ...]:
     interpretation = state.interpretation
-    if not interpretation.pending_confirmation:
+    if (
+        not interpretation.pending_confirmation
+        and interpretation.validation_decision != "blocked"
+    ):
         return ()
 
     fields: list[str] = []
@@ -173,6 +185,16 @@ def _interpretation_apply_decision_fields(
         if field not in fields:
             fields.append(field)
     return tuple(fields or ["import_review"])
+
+
+def _blocked_decision_fields(
+    command_name: str | None,
+    state: ApplicationStateSnapshot,
+) -> tuple[str, ...]:
+    """Expose only decisions that can resolve the projected blocker."""
+    if command_name == CommandName.APPLY_INTERPRETATION.value:
+        return _interpretation_apply_decision_fields(state)
+    return ()
 
 
 def _evidence(

@@ -1109,6 +1109,7 @@ class AssistantRuntimeLifecycle(QObject):
             text=normalized,
             scope=scope.scope,
             terminal_command=scope.terminal_command,
+            excluded_commands=scope.excluded_commands,
         )
         self._active_turn = correlation
         self._arm_turn_delivery_watchdog(correlation)

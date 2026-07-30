@@ -21,6 +21,8 @@ from XBrainLab.llm.core.downloader import (
 )
 from XBrainLab.llm.core.model_catalog import plan_model_download
 
+MODEL_STATUS_PROBE_THREAD_NAME = "ModelStatusProbe"
+
 
 class _Downloader(Protocol):
     @property
@@ -611,6 +613,7 @@ class ModelDownloadLifecycle(QObject):
         self._pending_inspection_request = request
         self._pending_inspection_result = None
         thread = QThread(self)
+        thread.setObjectName(MODEL_STATUS_PROBE_THREAD_NAME)
         worker = _ModelStatusInspectionWorker(request)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)

@@ -21,12 +21,12 @@ from scripts.dev.human_like_walkthrough.contract import (
     ASSISTANT_EXISTING_UI_REQUEST,
     ASSISTANT_HANDOFF_REQUEST_ID,
     ASSISTANT_NORMAL_REQUEST,
-    ASSISTANT_PATH_CLARIFICATION_MESSAGE,
     ASSISTANT_PROCESSING_REQUEST,
     ASSISTANT_RAW_TRACEBACK,
     ASSISTANT_RECOVERY_REQUEST,
     ASSISTANT_STOPPED_MESSAGE,
     ASSISTANT_SUCCESS_REQUEST,
+    ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE,
 )
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.llm.agent.assistant_activity import (
@@ -43,7 +43,6 @@ from XBrainLab.llm.agent.controller import (
     AgentInteractionStatus,
 )
 from XBrainLab.llm.agent.response_presentation import (
-    AssistantPanelTarget,
     AssistantResponseAction,
     AssistantResponseKind,
     AssistantResponsePresentation,
@@ -66,6 +65,14 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
+)
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
+from XBrainLab.llm.core.runtime_selection import (
+    AssistantRuntimeBackend,
+    AssistantRuntimeLaunchSpec,
+    AssistantRuntimeSelectionOutcome,
+    AssistantRuntimeSettingsSnapshot,
 )
 
 
@@ -174,7 +181,7 @@ class WalkthroughAssistantController(QObject):
                 "ready",
             ),
             ASSISTANT_CLARIFICATION_REQUEST: (
-                ASSISTANT_PATH_CLARIFICATION_MESSAGE,
+                ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE,
                 "clarification",
             ),
             ASSISTANT_BLOCKED_REQUEST: (
@@ -183,8 +190,7 @@ class WalkthroughAssistantController(QObject):
                 "blocked",
             ),
             ASSISTANT_RECOVERY_REQUEST: (
-                "I need a source scan before previewing. I scanned the selected "
-                "source again.",
+                "I scanned the selected source and prepared the import preview.",
                 "success",
             ),
         }
@@ -450,9 +456,12 @@ class WalkthroughAssistantController(QObject):
                     text=message,
                     kind=AssistantResponseKind.CLARIFICATION,
                     actions=(
-                        AssistantResponseAction.open_panel(
-                            "Open Dataset",
-                            AssistantPanelTarget.DATASET,
+                        AssistantResponseAction.send_message(
+                            "Check workflow",
+                            "What is ready now?",
+                        ),
+                        AssistantResponseAction.open_data_import(
+                            "Open Data Import",
                         ),
                     ),
                 )
@@ -623,13 +632,23 @@ class WalkthroughAssistantController(QObject):
 
 
 def install_walkthrough_assistant(manager: Any) -> WalkthroughAssistantController:
-    """Install a deterministic controller through AgentManager.start_system."""
+    """Install a deterministic controller through the product runtime owner."""
     controller = WalkthroughAssistantController()
+    config = LLMConfig(model_name=PRIMARY_LOCAL_MODEL_ID)
+    launch_spec = AssistantRuntimeLaunchSpec(
+        backend=AssistantRuntimeBackend.LOCAL,
+        requested_backend_id=AssistantRuntimeBackend.LOCAL.value,
+        requested_model_id=PRIMARY_LOCAL_MODEL_ID,
+        model_id=PRIMARY_LOCAL_MODEL_ID,
+        outcome=AssistantRuntimeSelectionOutcome.EXACT,
+        selection_detail=f"Selected {PRIMARY_LOCAL_MODEL_ID}.",
+        settings=AssistantRuntimeSettingsSnapshot.from_config(config),
+    )
     with patch(
         "XBrainLab.ui.components.agent_manager.LLMController",
         return_value=controller,
     ):
-        manager.start_system()
+        manager.assistant_runtime.start(launch_spec=launch_spec)
     if manager.agent_controller is not controller or not manager.agent_initialized:
         raise RuntimeError("Walkthrough assistant did not start through AgentManager.")
     return controller

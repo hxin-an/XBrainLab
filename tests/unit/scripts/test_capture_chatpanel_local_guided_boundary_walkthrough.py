@@ -163,6 +163,10 @@ def _valid_payload(tmp_path: Path) -> dict:
         if path:
             Image.new("RGBA", (12 + index, 8), (20 * index, 40, 80, 255)).save(path)
     first_calls = canonical_turn_calls(str(source), turn="first")
+    assert first_calls[0]["parameters"] == {
+        "source_path": str(source),
+        "source_hint": "file",
+    }
     observations = [
         {
             "command_name": command,
@@ -185,7 +189,7 @@ def _valid_payload(tmp_path: Path) -> dict:
         "- Confirm task metadata for recording.fif.\n"
         "- Confirm which events are trial anchors, class cues, responses, "
         "artifacts, or boundaries.\n"
-        "Open Import Review to resolve these choices."
+        "Use the open Import EEG Data window to review these choices."
     )
     return {
         "schema_version": 5,
@@ -277,10 +281,7 @@ def _valid_payload(tmp_path: Path) -> dict:
                 "send_button_text": "Waiting",
                 "send_button_enabled": False,
                 "input_enabled": False,
-                "cancelability_text": (
-                    "Use the open confirmation or XBrainLab dialog to continue "
-                    "or cancel."
-                ),
+                "cancelability_text": ("Continue in the open Import EEG Data window."),
             },
         },
         "workflow_handoff": {
@@ -757,6 +758,19 @@ def test_validator_rejects_tampered_screenshot_hash(tmp_path):
 
     assert ok is False
     assert "hash" in reason.lower()
+
+
+def test_validator_rejects_semantically_duplicated_screenshots(tmp_path):
+    payload = _valid_payload(tmp_path)
+    payload["screenshots"]["post_cancel"] = payload["screenshots"]["ready"]
+    payload["screenshot_artifacts"]["post_cancel"] = copy.deepcopy(
+        payload["screenshot_artifacts"]["ready"]
+    )
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is False
+    assert "duplicated" in reason.lower()
 
 
 def test_validator_rejects_unreadable_workflow_dialog_screenshot(tmp_path):
@@ -1346,6 +1360,12 @@ def test_evidence_assembler_preserves_stable_schema():
         "failure",
     }
     assert "Windows desktop acceptance" in payload["claim_boundary"]
+    assert (
+        "Real Granite proposes the first scan_source action"
+        in payload["claim_boundary"]
+    )
+    assert "host-assisted product evidence" in payload["claim_boundary"]
+    assert "not raw-model or tool-call accuracy" in payload["claim_boundary"]
     assert payload["source_identity"]["source_digest"]
     assert "screenshot_artifacts" in payload
 

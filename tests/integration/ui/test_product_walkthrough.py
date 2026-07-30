@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -15,13 +16,22 @@ import numpy as np
 import pytest
 import torch
 from matplotlib.figure import Figure
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QAbstractButton, QLabel, QMessageBox, QWidget
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractButton,
+    QLabel,
+    QMessageBox,
+    QToolButton,
+    QWidget,
+)
 
 import XBrainLab.backend.application.service as application_service_module
 from scripts.dev.capture_human_like_product_walkthrough import REQUIRED_PHASES
+from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.application import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     CommandName,
+    LoadDataCommand,
     PreviewInterpretationCommand,
     QueryStateCommand,
     ScanSourceCommand,
@@ -49,16 +59,31 @@ from XBrainLab.backend.training import (
     TrainingPlanHolder,
 )
 from XBrainLab.backend.training.record import RecordKey, TrainRecordKey
+from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
-from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
+from XBrainLab.llm.agent.turn import (
+    AssistantTurnCorrelation,
+    AssistantTurnDeliveryPhase,
+    AssistantTurnRequest,
+)
+from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
+from XBrainLab.ui.chat.status_presenter import build_assistant_empty_state
+from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
     RuntimeActivationStatus,
+    RuntimeCommandAdmissionResult,
+    RuntimeCommandAdmissionStatus,
     RuntimeSetupAction,
     RuntimeSetupOutcome,
 )
 from XBrainLab.ui.components.assistant_status_projection import (
     AssistantWorkflowSurface,
+    build_assistant_status_projection,
 )
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
@@ -71,6 +96,88 @@ EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY = {
     "test_count": 3,
     "audit": {"ok": True, "dataset_count": 1, "issues": []},
 }
+
+
+class _ReadyAssistantIntegrationRuntime(QObject):
+    """Admit real controller turns without loading an external model."""
+
+    controller_created = pyqtSignal(object)
+    runtime_snapshot_changed = pyqtSignal(object)
+    turn_finished = pyqtSignal(object)
+
+    def __init__(self, controller: LLMController) -> None:
+        super().__init__()
+        self.controller = controller
+        self.initialized = True
+        self.current = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id="integration-test-model",
+        )
+        self.submissions: list[str] = []
+        self.delivery_phases: list[AssistantTurnDeliveryPhase] = []
+        self._started = False
+        self._next_turn_id = 1
+        controller.turn_finished.connect(self.turn_finished.emit)
+
+    def replay_runtime_snapshot(self) -> None:
+        self.runtime_snapshot_changed.emit(self.current)
+
+    def start(self) -> bool:
+        if not self._started:
+            self._started = True
+            self.controller_created.emit(self.controller)
+        self.runtime_snapshot_changed.emit(self.current)
+        return True
+
+    def submit(
+        self,
+        text: str,
+        *,
+        generation: int | None = None,
+    ) -> RuntimeCommandAdmissionResult:
+        correlation = AssistantTurnCorrelation(
+            generation=1 if generation is None else generation,
+            turn_id=self._next_turn_id,
+        )
+        self._next_turn_id += 1
+        self.submissions.append(text)
+        delivery = self.controller.handle_user_turn(
+            AssistantTurnRequest.single_action(
+                correlation=correlation,
+                text=text,
+            )
+        )
+        self.delivery_phases.append(delivery.phase)
+        accepted = delivery.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        return RuntimeCommandAdmissionResult(
+            command_name="submit",
+            status=(
+                RuntimeCommandAdmissionStatus.ACCEPTED
+                if accepted
+                else RuntimeCommandAdmissionStatus.REJECTED
+            ),
+            message=delivery.message,
+            turn_id=correlation.turn_id if accepted else None,
+            generation=correlation.generation if accepted else None,
+        )
+
+    def resolve_ui_handoff(self, resolution) -> RuntimeCommandAdmissionResult:
+        self.controller.on_workflow_ui_handoff_resolved(resolution)
+        return RuntimeCommandAdmissionResult(
+            command_name="resolve_ui_handoff",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
+
+    def activate_persisted(self) -> RuntimeActivationResult:
+        return RuntimeActivationResult(RuntimeActivationStatus.ALREADY_READY)
+
+    def active_local_runtime_blocks_model_deletion(self) -> bool:
+        return False
+
+    def close(self) -> bool:
+        return bool(self.controller.close())
 
 
 def test_human_like_capture_script_is_a_real_exit_code_gate(tmp_path) -> None:
@@ -215,12 +322,17 @@ def _assert_assistant_status_matches_publication(
     assert ui_projection.decision_fields == decision_fields
     assert ui_projection.decision_fields == backend_projection.decision_fields
     assert ui_projection.existing_ui_surface is surface
-    assert (
-        manager.chat_panel.empty_state_action_button.text() == "Suggest the next step"
+    presentation = build_assistant_empty_state(
+        ui_projection.stage,
+        None,
+        ui_projection.blocked_reason,
+        available_command_names=list(ui_projection.available_commands),
     )
+    expected_action = presentation.suggestions[-1]
+    assert manager.chat_panel.empty_state_action_button.text() == expected_action.title
     assert (
         manager.chat_panel.empty_state_action_button.property("assistantPrompt")
-        == ui_projection.recommended_label
+        == expected_action.prompt
     )
     tooltip = manager.chat_panel.empty_state_widget.toolTip()
     assert surface.value in tooltip
@@ -265,10 +377,15 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         if label.text()
     )
     assert "XBrainLab Assistant" in dock_title_text
-    assert panel.empty_state_title.text() == "How can I help with your EEG workflow?"
-    assert panel.empty_state_action_button.text() == "Suggest the next step"
+    assert panel.empty_state_title.text() == "Start with your EEG data"
+    assert [button.text() for button in panel.suggestion_prompt_buttons] == [
+        "Import EEG data",
+        "Check supported formats",
+        "Explain the import workflow",
+    ]
+    assert panel.empty_state_action_button.text() == "Explain the import workflow"
     assert panel.empty_state_action_button.property("assistantPrompt") == (
-        "Scan data source"
+        "Explain the EEG data import workflow"
     )
     assert panel.runtime_state_widget.isVisible()
     assert panel.runtime_state_title.text() == "Assistant setup required"
@@ -359,7 +476,7 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
     assert panel.send_btn.toolButtonStyle() is (Qt.ToolButtonStyle.ToolButtonIconOnly)
     assert panel.send_btn.icon().isNull() is False
-    assert panel.send_btn.accessibleName() == "Send"
+    assert panel.send_btn.accessibleName() == "Send request"
 
     panel.append_message("user", "hello from a product user")
     user_bubble = panel._latest_layout_message_bubble()
@@ -504,6 +621,148 @@ def test_assistant_status_uses_real_interpretation_confirmation_publication(
         surface=AssistantWorkflowSurface.DATA_IMPORT,
         decision_fields=("metadata_review", "label_matching"),
     )
+
+
+def test_visible_open_data_import_action_opens_typed_product_surface_directly(
+    test_app,
+    qtbot,
+    monkeypatch,
+) -> None:
+    """Click the rendered response action through normal Assistant admission."""
+    controller = LLMController(test_app.study)
+    runtime = _ReadyAssistantIntegrationRuntime(controller)
+    manager = AgentManager(
+        test_app,
+        test_app.study,
+        runtime_lifecycle=runtime,
+    )
+    test_app.agent_manager = manager
+    handoff_requests: list[WorkflowUiHandoffRequest] = []
+    chooser_calls: list[tuple[object, str, str, str]] = []
+
+    def _cancel_data_import_chooser(
+        parent,
+        title: str,
+        directory: str,
+        file_filter: str,
+    ):
+        chooser_calls.append((parent, title, directory, file_filter))
+        return ([], "")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
+        _cancel_data_import_chooser,
+    )
+
+    try:
+        manager.init_ui()
+        assert manager.start_system() is None
+        controller.workflow_ui_handoff_requested.connect(handoff_requests.append)
+        manager.chat_dock.show()
+        qtbot.waitUntil(manager.chat_dock.isVisible, timeout=2_000)
+
+        panel = manager.chat_panel
+        panel.input_field.setText("幫我處理資料")
+        qtbot.waitUntil(panel.send_btn.isEnabled, timeout=2_000)
+        _click(qtbot, panel.send_btn)
+        qtbot.waitUntil(panel.response_actions_widget.isVisible, timeout=2_000)
+
+        response_actions = panel.response_actions_widget.findChildren(QToolButton)
+        open_import = next(
+            button for button in response_actions if button.text() == "Open Data Import"
+        )
+        assert open_import.isVisibleTo(panel)
+        _click(qtbot, open_import)
+
+        qtbot.waitUntil(lambda: bool(chooser_calls), timeout=2_000)
+        assert runtime.submissions == ["幫我處理資料"]
+        assert runtime.delivery_phases == [AssistantTurnDeliveryPhase.ACCEPTED]
+        assert handoff_requests == []
+        assert chooser_calls
+        chooser_parent, chooser_title, chooser_directory, chooser_filter = (
+            chooser_calls[0]
+        )
+        assert chooser_parent is test_app.dataset_panel
+        assert chooser_title == "Choose EEG Source for Interpretation"
+        assert chooser_directory == ""
+        assert "EEG files" in chooser_filter
+        assert test_app.stack.currentWidget() is test_app.dataset_panel
+        assert controller.pending_interactions.workflow_handoff is None
+        assert all(
+            message["content"] != "Help me import EEG data"
+            for message in manager.chat_controller.messages
+        )
+    finally:
+        close_controller_and_wait(controller, qtbot)
+
+
+def test_backend_observer_publication_refreshes_visible_assistant_status(
+    test_app,
+    qtbot,
+    tmp_path,
+) -> None:
+    """A queued backend observer must refresh visible Assistant publication state."""
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    panel = manager.chat_panel
+    service = get_application_service(test_app.study)
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+
+    initial_projection = manager.assistant_status_projection
+    assert initial_projection is not None
+    initial_generation = initial_projection.publication_generation
+    assert initial_projection.stage == "No data loaded"
+    assert panel.empty_state_title.text() == "Start with your EEG data"
+    terminal_publications = []
+    service.subscribe(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        terminal_publications.append,
+    )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        load_future = executor.submit(
+            service.execute,
+            LoadDataCommand(paths=[str(fif_path)]),
+        )
+        qtbot.waitUntil(load_future.done, timeout=10_000)
+        load_result = load_future.result()
+
+    assert load_result.ok, load_result.message
+    publication = service.get_view_publication()
+    assert publication.generation > initial_generation
+    assert terminal_publications == [publication], [
+        (
+            item.generation,
+            item.revision,
+            item.usable,
+            item.state.pipeline_stage,
+            item.refresh_error,
+        )
+        for item in terminal_publications
+    ]
+    expected_projection = build_assistant_status_projection(publication)
+    assert expected_projection.stage == "Ready for epoching"
+    qtbot.waitUntil(
+        lambda: (
+            manager.assistant_status_projection is not None
+            and manager.assistant_status_projection.publication_generation
+            == publication.generation
+            and panel.empty_state_title.text() == "Define the analysis windows"
+        ),
+        timeout=5_000,
+    )
+
+    refreshed_projection = manager.assistant_status_projection
+    assert refreshed_projection is not None
+    assert refreshed_projection.publication_generation == publication.generation
+    assert refreshed_projection == expected_projection
+    assert refreshed_projection.recommended_command == CommandName.CREATE_EPOCH.value
+    assert panel.empty_state_title.text() == "Define the analysis windows"
+    assert [button.text() for button in panel.suggestion_prompt_buttons] == [
+        "Explain epoch anchors",
+        "Review epoch settings",
+        "Open epoch setup",
+    ]
 
 
 def test_import_command_success_refreshes_dataset_table_without_stale_controller(

@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
+from XBrainLab.backend.application import CommandName
 from XBrainLab.chat_contract import (
     MAX_CHAT_MESSAGE_CONTENT_LENGTH,
     bounded_chat_string,
@@ -247,6 +248,7 @@ class AssistantTurnRequest:
     text: str
     scope: AssistantTurnScope
     terminal_command: str | None
+    excluded_commands: tuple[CommandName, ...] = ()
 
     @classmethod
     def single_action(
@@ -254,6 +256,7 @@ class AssistantTurnRequest:
         *,
         correlation: AssistantTurnCorrelation,
         text: str,
+        excluded_commands: tuple[CommandName, ...] = (),
     ) -> AssistantTurnRequest:
         """Build an explicitly atomic request for tests and non-product hosts."""
         return cls(
@@ -261,6 +264,7 @@ class AssistantTurnRequest:
             text=text,
             scope=AssistantTurnScope.SINGLE_ACTION,
             terminal_command=None,
+            excluded_commands=excluded_commands,
         )
 
     @classmethod
@@ -270,6 +274,7 @@ class AssistantTurnRequest:
         correlation: AssistantTurnCorrelation,
         text: str,
         terminal_command: str | None = None,
+        excluded_commands: tuple[CommandName, ...] = (),
     ) -> AssistantTurnRequest:
         """Build an explicitly bounded workflow request."""
         return cls(
@@ -277,6 +282,7 @@ class AssistantTurnRequest:
             text=text,
             scope=AssistantTurnScope.GUIDED_WORKFLOW,
             terminal_command=terminal_command,
+            excluded_commands=excluded_commands,
         )
 
     def __post_init__(self) -> None:
@@ -311,6 +317,13 @@ class AssistantTurnRequest:
                     "Assistant turn terminal commands are limited to 128 characters."
                 )
             object.__setattr__(self, "terminal_command", terminal)
+        excluded = self.excluded_commands
+        if not isinstance(excluded, tuple):
+            raise TypeError("Assistant turn excluded commands must be a tuple.")
+        if any(not isinstance(command, CommandName) for command in excluded):
+            raise TypeError("Assistant turn excluded commands must be typed.")
+        if len(set(excluded)) != len(excluded):
+            raise ValueError("Assistant turn excluded commands must be unique.")
 
     @property
     def turn_id(self) -> int:

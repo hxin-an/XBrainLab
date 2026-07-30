@@ -127,7 +127,7 @@ class TestLocalBootstrapValidation:
             assert config.local_backend_status_message() == "Local runtime ready."
             assert dialog.local_downloaded is True
             assert dialog.local_status_label.text() == "Model: Installed"
-            assert dialog.local_runtime_label.text() == "Runtime: Available"
+            assert dialog.local_runtime_label.text() == "Environment check: Ready"
             assert dialog.btn_activate.isEnabled() is True
 
     def test_saved_local_config_without_cache_fails_closed_before_engine_load(
@@ -190,13 +190,16 @@ class TestLocalBootstrapValidation:
                 agent_manager=MagicMock(),
             )
             qtbot.addWidget(dialog)
-            dialog.local_model_combo.setCurrentText("microsoft/Phi-3.5-mini-instruct")
+            selected_model = "microsoft/Phi-3.5-mini-instruct"
+            selected_index = dialog.local_model_combo.findData(selected_model)
+            assert selected_index >= 0
+            dialog.local_model_combo.setCurrentIndex(selected_index)
             qtbot.waitUntil(
                 lambda: (
                     dialog._pending_inspection_request_id is None
                     and dialog._current_local_model_state is not None
                     and dialog._current_local_model_state.request.model_name
-                    == "microsoft/Phi-3.5-mini-instruct"
+                    == selected_model
                 ),
                 timeout=3000,
             )

@@ -2,11 +2,52 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from PIL import Image, ImageChops, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat
+
+
+def _require_png_format(image_format: str | None) -> None:
+    if image_format != "PNG":
+        raise ValueError(f"expected PNG content, received {image_format or 'unknown'}")
+
+
+def inspect_png_artifact(screenshot: Path) -> dict[str, object]:
+    """Decode one PNG twice so verify and full pixel loading both run."""
+    try:
+        with Image.open(screenshot) as source:
+            image_format = str(source.format or "")
+            source.verify()
+        _require_png_format(image_format)
+        with Image.open(screenshot) as source:
+            _require_png_format(source.format)
+            source.load()
+            width, height = source.size
+            mode = source.mode
+            grayscale = source.convert("L")
+            histogram = grayscale.histogram()
+            pixel_count = width * height
+            contrast = float(ImageStat.Stat(grayscale).stddev[0])
+    except Exception as exc:
+        raise RuntimeError(
+            f"{screenshot} could not be verified and fully decoded: {exc}"
+        ) from exc
+
+    if width <= 0 or height <= 0 or pixel_count <= 0:
+        raise RuntimeError(f"{screenshot} decoded to an empty PNG image")
+    visible_ratio = sum(histogram[90:]) / pixel_count
+    return {
+        "format": "PNG",
+        "mode": mode,
+        "width": width,
+        "height": height,
+        "pixel_count": pixel_count,
+        "visible_pixel_ratio": float(visible_ratio),
+        "contrast": contrast,
+        "nonblank": visible_ratio >= 0.001 and contrast >= 2.0,
+    }
 
 
 def assert_region_has_no_unpainted_block(
@@ -27,7 +68,7 @@ def assert_region_has_no_unpainted_block(
             f"{surface_name} required region is outside {screenshot.name}."
         )
 
-    pixels = list(region.get_flattened_data())
+    pixels = list(_pixels(region))
     black_pixels = sum(max(pixel) <= black_threshold for pixel in pixels)
     black_ratio = black_pixels / max(len(pixels), 1)
     if black_ratio > max_black_ratio or _contains_black_tile(
@@ -57,8 +98,7 @@ def assert_consecutive_complete_frames(
             )
         difference = ImageChops.difference(first_image, second_image)
         changed = sum(
-            max(pixel) > difference_threshold
-            for pixel in difference.get_flattened_data()
+            max(pixel) > difference_threshold for pixel in _pixels(difference)
         )
         pixel_count = max(first_image.width * first_image.height, 1)
     changed_ratio = changed / pixel_count
@@ -81,7 +121,7 @@ def assert_region_matches_reference(
     minimum_edge_recall: float = 0.42,
     maximum_changed_pixel_ratio: float = 0.55,
     content_inset: int = 3,
-) -> dict[str, float | int | str]:
+) -> dict[str, object]:
     """Require a screenshot crop to retain a settled live reference render.
 
     The comparison is intentionally image-based. It checks spatial edge recall,
@@ -197,7 +237,7 @@ def _contains_black_tile(
             tile = region.crop(
                 (left, top, left + tile_size, top + tile_size),
             )
-            pixels = list(tile.get_flattened_data())
+            pixels = list(_pixels(tile))
             black = sum(max(pixel) <= black_threshold for pixel in pixels)
             if black >= len(pixels) * 0.98:
                 return True
@@ -219,10 +259,10 @@ def _clamped_bounds(
 
 
 def _reference_image(reference: Path | Image.Image) -> Image.Image:
-    if isinstance(reference, Image.Image):
-        return reference.convert("RGB").copy()
-    with Image.open(reference) as source:
-        return source.convert("RGB")
+    if isinstance(reference, Path):
+        with Image.open(reference) as source:
+            return source.convert("RGB")
+    return reference.convert("RGB").copy()
 
 
 def _reference_match_metrics(
@@ -244,7 +284,7 @@ def _reference_match_metrics(
     edge_recall = matching_edges / max(reference_edge_pixels, 1)
 
     difference = ImageChops.difference(expected, observed).convert("L")
-    changed_pixels = sum(pixel > 24 for pixel in difference.get_flattened_data())
+    changed_pixels = sum(pixel > 24 for pixel in _pixels(difference))
     pixel_count = max(expected.width * expected.height, 1)
     changed_ratio = changed_pixels / pixel_count
 
@@ -279,10 +319,8 @@ def _reference_match_metrics(
 
 def _edge_mask(image: Image.Image, *, threshold: int) -> Image.Image:
     edges = image.filter(ImageFilter.FIND_EDGES)
-    mask = edges.point(
-        lambda value: 255 if value >= threshold else 0,
-        mode="1",
-    ).convert("L")
+    threshold_table = [255 if value >= threshold else 0 for value in range(256)]
+    mask = edges.point(threshold_table, mode="1").convert("L")
     if mask.width > 4 and mask.height > 4:
         inner = mask.crop((2, 2, mask.width - 2, mask.height - 2))
         mask = Image.new("L", mask.size)
@@ -293,3 +331,8 @@ def _edge_mask(image: Image.Image, *, threshold: int) -> Image.Image:
 def _white_pixel_count(image: Image.Image) -> int:
     histogram = image.histogram()
     return int(histogram[255]) if len(histogram) > 255 else 0
+
+
+def _pixels(image: Image.Image) -> Iterable[Any]:
+    """Expose Pillow pixel data through a stable, typed iterable boundary."""
+    return cast(Iterable[Any], image.getdata())

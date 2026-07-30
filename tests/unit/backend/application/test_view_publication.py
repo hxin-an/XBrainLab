@@ -12,7 +12,10 @@ import pytest
 from XBrainLab.backend.application.commands import QueryStateCommand
 from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
-from XBrainLab.backend.application.view_publication import ApplicationViewCoordinator
+from XBrainLab.backend.application.view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationViewCoordinator,
+)
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
@@ -69,6 +72,11 @@ def test_strict_failure_self_heals_on_the_next_safe_publication_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = ApplicationService(Study())
+    delivered = []
+    service.subscribe(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        delivered.append,
+    )
     initial = service._committed_view_publication()
     recovered_state = replace(initial.state, pipeline_stage="data_loaded")
     build_state = MagicMock(
@@ -89,6 +97,7 @@ def test_strict_failure_self_heals_on_the_next_safe_publication_read(
     assert recovered.state == recovered_state
     assert recovered.generation > failed.generation
     assert build_state.call_count == 2
+    assert delivered == [recovered]
 
 
 def test_safe_read_does_not_recover_publication_during_a_mutation(

@@ -21,6 +21,14 @@ import mne
 import numpy as np
 from scipy.io import savemat
 
+if __package__:
+    from scripts.dev.active_checkout import assert_active_checkout_import
+else:
+    from active_checkout import assert_active_checkout_import
+
+ROOT = Path(__file__).resolve().parents[2]
+assert_active_checkout_import(ROOT)
+
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     PreviewInterpretationCommand,
@@ -32,7 +40,6 @@ from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger as xbrainlab_logger
 
-ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_DIR = ROOT / "artifacts" / "data_interpretation"
 ARTIFACT_JSON = "format-capability-matrix.json"
 ARTIFACT_MARKDOWN = "format-capability-matrix.md"

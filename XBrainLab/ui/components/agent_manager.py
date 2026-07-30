@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationViewPublication,
     get_application_service,
 )
 from XBrainLab.backend.controller.chat_controller import (
@@ -99,6 +101,7 @@ from XBrainLab.ui.components.assistant_status_projection import (
 )
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
+from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
@@ -262,7 +265,15 @@ class AgentManager(QObject):
         self.main_window = main_window
         self.study = study
         self.application_service = get_application_service(study)
-        self.main_window.destroyed.connect(self._on_main_window_destroyed)
+        self._application_publication_bridge = QtObserverBridge(
+            self.application_service,
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+            self,
+            require_slot_acknowledgement=True,
+        )
+        self._application_publication_bridge.connect_to(
+            self._on_application_view_publication_changed
+        )
 
         self.chat_panel = None
         self.chat_dock = None
@@ -298,10 +309,7 @@ class AgentManager(QObject):
             model_download_lifecycle or ModelDownloadLifecycle(parent=self)
         )
         self._presentation = AgentPresentationService()
-        self._workflow_ui_handoff_host = WorkflowUiHandoffHost(
-            self.main_window,
-            application_service=self.application_service,
-        )
+        self._workflow_ui_handoff_host = WorkflowUiHandoffHost(self.main_window)
         # M3.4 VRAM Monitoring — delegated to VRAMConflictChecker
         self.vram_checker = VRAMConflictChecker(
             self.main_window,
@@ -320,6 +328,13 @@ class AgentManager(QObject):
         """Expose the focused runtime contract for diagnostics and integration."""
         return self._assistant_runtime
 
+    def assistant_runtime_settings_notice(self) -> str:
+        """Return a safe last-start failure for Assistant Settings."""
+        snapshot = self._assistant_runtime.current
+        if snapshot.phase is not AssistantRuntimePhase.FAILED:
+            return ""
+        return self._presentation.runtime_settings_notice(snapshot.error)
+
     @property
     def model_download_lifecycle(self) -> ModelDownloadLifecycle:
         """Expose app-owned model download state without transferring ownership."""
@@ -334,10 +349,6 @@ class AgentManager(QObject):
     def agent_initialized(self) -> bool:
         """Return whether the runtime owner initialized its controller."""
         return self._assistant_runtime.initialized
-
-    def _on_main_window_destroyed(self, _object=None) -> None:
-        """Stop assistant threads before Qt destroys QObject children."""
-        self.close()
 
     def connect_visualization_monitor(self) -> None:
         """Connect visualization-tab VRAM checks when the panel has been loaded."""
@@ -1037,6 +1048,12 @@ class AgentManager(QObject):
                 kind=ChatResponseActionKind.SEND_MESSAGE,
                 prompt=action.prompt,
             )
+        if action.kind is AssistantResponseActionKind.OPEN_DATA_IMPORT:
+            return ChatResponseAction(
+                action_id=action.action_id,
+                label=action.label,
+                kind=ChatResponseActionKind.OPEN_DATA_IMPORT,
+            )
         if action.panel is None:
             raise ValueError("Open-panel assistant action is missing its target.")
         return ChatResponseAction(
@@ -1129,6 +1146,21 @@ class AgentManager(QObject):
         self._on_active_response_presentation_changed(None)
         if action.kind is ChatResponseActionKind.SEND_MESSAGE:
             self.handle_user_input(action.prompt)
+            return
+        if action.kind is ChatResponseActionKind.OPEN_DATA_IMPORT:
+            try:
+                publication = self.application_service.get_view_publication()
+            except Exception as exc:
+                safe_unexpected_failure(
+                    logger,
+                    exc,
+                    boundary="agent_manager",
+                    operation="open_current_data_import",
+                )
+                publication = None
+            self._workflow_ui_handoff_host.open_current_data_import(
+                publication,
+            )
             return
         if action.panel is not None:
             self._open_assistant_panel_target(AssistantPanelTarget(action.panel.value))
@@ -1541,6 +1573,12 @@ class AgentManager(QObject):
                 else ""
             )
             self.chat_panel.set_runtime_state(snapshot.phase.value, safe_error)
+            projection = self._assistant_status_projection
+            if projection is not None:
+                self._render_assistant_status_projection(
+                    projection,
+                    runtime_snapshot=snapshot,
+                )
 
     def refresh_backend_status(self):
         """Refresh the compact backend/model status shown in the chat panel."""
@@ -1549,37 +1587,7 @@ class AgentManager(QObject):
 
         try:
             publication = self.application_service.get_view_publication()
-            projection = build_assistant_status_projection(publication)
-            self._assistant_status_projection = projection
-            runtime = self._assistant_runtime.current
-            model_status = (
-                "Unknown"
-                if not projection.usable
-                else {
-                    AssistantRuntimePhase.READY: "Ready",
-                    AssistantRuntimePhase.LOADING: "Loading",
-                    AssistantRuntimePhase.IDLE: "Setup needed",
-                    AssistantRuntimePhase.FAILED: "Setup needed",
-                }[runtime.phase]
-            )
-
-            if hasattr(self.chat_panel, "set_product_status"):
-                self.chat_panel.set_product_status(
-                    stage=projection.stage,
-                    model_status=model_status,
-                    available_commands=list(projection.available_commands),
-                    tooltip=projection.tooltip,
-                    blocked_reason=projection.blocked_reason,
-                )
-            else:
-                self.chat_panel.set_status_summary(
-                    projection.stage,
-                    projection.tooltip,
-                )
-
-            self.status_message_received.emit(
-                projection.footer_hint,
-            )
+            self._render_backend_publication(publication)
         except Exception as exc:
             safe_unexpected_failure(
                 logger,
@@ -1596,8 +1604,111 @@ class AgentManager(QObject):
                 "Workflow status unavailable · Try again",
             )
 
+    def _on_application_view_publication_changed(
+        self,
+        publication: object,
+    ) -> None:
+        """Render only current committed backend truth delivered across Qt."""
+        if not isinstance(publication, ApplicationViewPublication):
+            logger.error("Ignored malformed application publication event")
+            return
+        self._render_backend_publication(
+            cast(ApplicationViewPublication, publication),
+        )
+
+    def _render_backend_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> bool:
+        """Render one newer publication; pulls and pushes share this revision gate."""
+        if not self.chat_panel or not hasattr(self.chat_panel, "set_status_summary"):
+            return False
+        current = self._assistant_status_projection
+        if current is not None and publication.revision <= current.publication_revision:
+            self._acknowledge_application_view_publication(publication.revision)
+            return False
+        try:
+            projection = build_assistant_status_projection(publication)
+            self._render_assistant_status_projection(projection)
+        except Exception:
+            self._reject_application_view_publication(publication)
+            raise
+        self._assistant_status_projection = projection
+        self._acknowledge_application_view_publication(publication.revision)
+        return True
+
+    def _acknowledge_application_view_publication(self, revision: int) -> None:
+        """Acknowledge only publication revisions that reached the visible UI."""
+        try:
+            self.application_service.acknowledge_view_publication_delivery(revision)
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="agent_manager",
+                operation="acknowledge_view_publication_delivery",
+            )
+
+    def _reject_application_view_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        """Keep a deferred revision retryable after visible rendering failed."""
+        try:
+            self.application_service.reject_view_publication_delivery(publication)
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="agent_manager",
+                operation="reject_view_publication_delivery",
+            )
+
+    def _render_assistant_status_projection(
+        self,
+        projection: AssistantStatusProjection,
+        *,
+        runtime_snapshot: AssistantRuntimeSnapshot | None = None,
+    ) -> None:
+        """Render workflow truth with the latest local-runtime phase."""
+        if not self.chat_panel or not hasattr(self.chat_panel, "set_status_summary"):
+            return
+        runtime = runtime_snapshot or self._assistant_runtime.current
+        model_status = (
+            "Unknown"
+            if not projection.usable
+            else {
+                AssistantRuntimePhase.READY: "Ready",
+                AssistantRuntimePhase.LOADING: "Loading",
+                AssistantRuntimePhase.IDLE: "Setup needed",
+                AssistantRuntimePhase.FAILED: "Setup needed",
+            }[runtime.phase]
+        )
+
+        if hasattr(self.chat_panel, "set_product_status"):
+            self.chat_panel.set_product_status(
+                stage=projection.stage,
+                model_status=model_status,
+                available_commands=list(projection.available_commands),
+                tooltip=projection.tooltip,
+                blocked_reason=projection.blocked_reason,
+            )
+        else:
+            self.chat_panel.set_status_summary(
+                projection.stage,
+                projection.tooltip,
+            )
+        self.status_message_received.emit(projection.footer_hint)
+
     def close(self) -> bool:
         """Clean up the agent controller resources."""
+        publication_bridge = getattr(
+            self,
+            "_application_publication_bridge",
+            None,
+        )
+        if publication_bridge is not None:
+            publication_bridge.cleanup()
         chat_panel = getattr(self, "chat_panel", None)
         if chat_panel:
             chat_panel.clear_confirmation_request()

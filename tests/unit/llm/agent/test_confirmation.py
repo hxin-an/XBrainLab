@@ -33,6 +33,27 @@ def test_confirmation_request_binds_exact_action_without_exposing_receipt() -> N
     assert "backend-secret-receipt" not in repr(request)
 
 
+def test_confirmation_request_never_hides_reviewable_parameter_values() -> None:
+    long_value = "/reviewed/output/" + ("segment/" * 32)
+    params = {
+        **{f"parameter_{index:02d}": f"value-{index}" for index in range(13)},
+        "output_path": long_value,
+    }
+
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params=params,
+        action_label="Apply reviewed settings",
+        description="Apply the settings shown in this confirmation.",
+        destructive=False,
+        publication_generation=13,
+    )
+
+    assert len(request.parameter_rows) == len(params)
+    assert ("Output path", long_value) in request.parameter_rows
+    assert request.parameter_rows[-1] == ("Parameter 12", "value-12")
+
+
 def test_confirmation_resolution_preserves_request_correlation() -> None:
     request = AgentConfirmationRequest.for_action(
         command_name="clear_dataset",
