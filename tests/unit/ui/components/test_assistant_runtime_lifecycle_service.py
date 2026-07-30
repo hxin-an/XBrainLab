@@ -27,8 +27,14 @@ from XBrainLab.llm.agent.ui_handoff import (
 )
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_selection import (
+    AssistantRuntimeBackend,
+    AssistantRuntimeLaunchResolution,
+    AssistantRuntimeLaunchResolver,
     AssistantRuntimeLaunchSpec,
+    AssistantRuntimeSelectionFailure,
     AssistantRuntimeSelectionFailureCode,
+    AssistantRuntimeSelectionOutcome,
+    AssistantRuntimeSettingsSnapshot,
 )
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeActivationRequest,
@@ -39,6 +45,9 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeCommandAdmissionStatus,
     RuntimeSetupAction,
 )
+
+TEST_ACTIVE_MODEL_ID = "test/runtime-active"
+TEST_TARGET_MODEL_ID = "test/runtime-target"
 
 
 def _terminal(
@@ -247,6 +256,73 @@ class _RejectingSubmitDispatcher(_Dispatcher):
 @dataclass(frozen=True)
 class _ActivationTransition(AssistantRuntimeSnapshot):
     activation_id: int = 0
+
+
+class _TestLaunchResolver(AssistantRuntimeLaunchResolver):
+    """Resolve explicit fake model IDs without changing the product catalog."""
+
+    def __init__(self, *supported_model_ids: str) -> None:
+        self._supported_model_ids = frozenset(supported_model_ids)
+
+    def resolve(
+        self,
+        config: LLMConfig,
+        *,
+        requested_backend_id: str | None = None,
+        requested_model_id: str | None = None,
+    ) -> AssistantRuntimeLaunchResolution:
+        backend_id = str(
+            config.inference_mode
+            if requested_backend_id is None
+            else requested_backend_id
+        ).strip()
+        model_id = str(
+            config.model_name if requested_model_id is None else requested_model_id
+        ).strip()
+        if backend_id.lower() != AssistantRuntimeBackend.LOCAL.value:
+            return self._failure(
+                AssistantRuntimeSelectionFailureCode.UNKNOWN_BACKEND,
+                backend_id,
+                model_id,
+            )
+        if model_id not in self._supported_model_ids:
+            return self._failure(
+                AssistantRuntimeSelectionFailureCode.UNKNOWN_MODEL,
+                backend_id,
+                model_id,
+            )
+        if not config.local_backend_ready(model_id):
+            return self._failure(
+                AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE,
+                backend_id,
+                model_id,
+            )
+        return AssistantRuntimeLaunchResolution(
+            launch_spec=AssistantRuntimeLaunchSpec(
+                backend=AssistantRuntimeBackend.LOCAL,
+                requested_backend_id=backend_id,
+                requested_model_id=model_id,
+                model_id=model_id,
+                outcome=AssistantRuntimeSelectionOutcome.EXACT,
+                selection_detail=config.local_backend_status_message(model_id),
+                settings=AssistantRuntimeSettingsSnapshot.from_config(config),
+            )
+        )
+
+    @staticmethod
+    def _failure(
+        code: AssistantRuntimeSelectionFailureCode,
+        backend_id: str,
+        model_id: str,
+    ) -> AssistantRuntimeLaunchResolution:
+        return AssistantRuntimeLaunchResolution(
+            failure=AssistantRuntimeSelectionFailure(
+                code=code,
+                message=f"Test runtime cannot resolve {model_id}.",
+                requested_backend_id=backend_id,
+                requested_model_id=model_id,
+            )
+        )
 
 
 def _ready_config(model_id: str | None = None) -> LLMConfig:
@@ -516,7 +592,7 @@ def test_model_switch_is_rejected_while_a_turn_is_active() -> None:
     turn = lifecycle.submit("active")
     assert turn.turn_id is not None
 
-    blocked = lifecycle.switch_model(LLMConfig.fallback_local_model_id())
+    blocked = lifecycle.switch_model(TEST_TARGET_MODEL_ID)
 
     assert blocked.status is RuntimeActivationStatus.BUSY
     assert blocked.available is False
@@ -894,8 +970,9 @@ def test_controller_terminal_signal_resumes_pending_dispatcher_cleanup() -> None
 
 
 def test_lifecycle_activation_owns_readiness_start_and_model_switch() -> None:
-    primary_model = LLMConfig.default_local_model_id()
-    fallback_model = LLMConfig.fallback_local_model_id()
+    primary_model = TEST_ACTIVE_MODEL_ID
+    target_model = TEST_TARGET_MODEL_ID
+    assert primary_model != target_model
     controller = _Controller()
     dispatcher = _Dispatcher()
     lifecycle = AssistantRuntimeLifecycle(
@@ -903,6 +980,7 @@ def test_lifecycle_activation_owns_readiness_start_and_model_switch() -> None:
         controller_factory=lambda _study: controller,
         dispatcher=dispatcher,
         config_loader=_ready_config,
+        resolver=_TestLaunchResolver(primary_model, target_model),
     )
 
     started = lifecycle.activate(
@@ -928,28 +1006,33 @@ def test_lifecycle_activation_owns_readiness_start_and_model_switch() -> None:
     assert dispatcher.models == []
 
     switched = lifecycle.activate(
-        _ready_config(fallback_model),
+        _ready_config(target_model),
     )
     assert switched.status is RuntimeActivationStatus.SWITCHING
     assert switched.launch_spec is dispatcher.models[0]
-    assert dispatcher.models[0].model_id == fallback_model
+    assert dispatcher.models[0].model_id == target_model
     assert lifecycle.current.phase is AssistantRuntimePhase.LOADING
-    assert lifecycle.current.model_id == fallback_model
+    assert lifecycle.current.model_id == target_model
 
 
 def test_activation_does_not_fallback_to_a_ready_legacy_model() -> None:
     primary_model = LLMConfig.default_local_model_id()
-    fallback_model = LLMConfig.fallback_local_model_id()
+    legacy_model = "microsoft/Phi-4-mini-instruct"
+    readiness_calls: list[str | None] = []
+    status_calls: list[str | None] = []
     config = LLMConfig(model_name=primary_model)
     config.local_runtime_notice_acknowledged = True
     config.local_backend_ready = lambda candidate=None: (  # type: ignore[method-assign]
-        candidate == fallback_model
+        readiness_calls.append(candidate) or candidate == legacy_model
     )
     config.local_backend_status_message = (  # type: ignore[method-assign]
         lambda candidate=None: (
-            "Local runtime ready."
-            if candidate == fallback_model
-            else f"Model cache not found for {candidate}."
+            status_calls.append(candidate)
+            or (
+                "Local runtime ready."
+                if candidate == legacy_model
+                else f"Model cache not found for {candidate}."
+            )
         )
     )
     dispatcher = _Dispatcher()
@@ -969,7 +1052,9 @@ def test_activation_does_not_fallback_to_a_ready_legacy_model() -> None:
         AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE
     )
     assert primary_model in activation.message
-    assert fallback_model not in activation.message
+    assert legacy_model not in activation.message
+    assert readiness_calls == [primary_model]
+    assert status_calls == [primary_model]
     assert dispatcher.launch_specs == []
     assert lifecycle.current.model_id == ""
     assert lifecycle.current.requested_model_id == primary_model
@@ -1008,13 +1093,14 @@ def test_activation_typed_fails_unknown_ids_without_starting_or_switching() -> N
     assert model_result.failure.code is (
         AssistantRuntimeSelectionFailureCode.UNKNOWN_MODEL
     )
+    assert LLMConfig.default_local_model_id() in model_result.failure.message
     assert lifecycle.controller is None
     assert dispatcher.launch_specs == []
 
 
 def test_model_switch_resolves_once_and_dispatches_the_exact_spec() -> None:
-    primary_model = LLMConfig.default_local_model_id()
-    fallback_model = LLMConfig.fallback_local_model_id()
+    primary_model = TEST_ACTIVE_MODEL_ID
+    target_model = TEST_TARGET_MODEL_ID
     dispatcher = _Dispatcher()
     config = _ready_config(primary_model)
     lifecycle = AssistantRuntimeLifecycle(
@@ -1022,34 +1108,36 @@ def test_model_switch_resolves_once_and_dispatches_the_exact_spec() -> None:
         controller_factory=lambda _study: _Controller(),
         dispatcher=dispatcher,
         config_loader=lambda: config,
+        resolver=_TestLaunchResolver(primary_model, target_model),
     )
     started = lifecycle.activate(config)
     assert started.launch_spec is not None
     lifecycle.accept_runtime_snapshot(
-        AssistantRuntimeSnapshot(
+        _ActivationTransition(
             phase=AssistantRuntimePhase.READY,
             initialized=True,
             backend_mode="local",
             model_id=primary_model,
+            activation_id=started.activation_id or 0,
         )
     )
     config.local_backend_ready = lambda candidate=None: (  # type: ignore[method-assign]
-        candidate == fallback_model
+        candidate == target_model
     )
     config.local_backend_status_message = (  # type: ignore[method-assign]
         lambda candidate=None: (
             "Local runtime ready."
-            if candidate == fallback_model
+            if candidate == target_model
             else f"Model cache not found for {candidate}."
         )
     )
 
-    switched = lifecycle.switch_model(fallback_model)
+    switched = lifecycle.switch_model(target_model)
 
     assert switched.status is RuntimeActivationStatus.SWITCHING
     assert switched.launch_spec is dispatcher.models[0]
     assert switched.launch_spec is not None
-    assert switched.launch_spec.model_id == fallback_model
+    assert switched.launch_spec.model_id == target_model
     assert lifecycle.current.model_id == switched.launch_spec.model_id
 
     rejected = lifecycle.switch_model("unknown/model")
@@ -1071,14 +1159,15 @@ def test_model_switch_registers_expected_activation_before_dispatch() -> None:
             assert lifecycle.expected_activation_id == launch_spec.activation_id
             return super().set_model(launch_spec)
 
-    primary_model = LLMConfig.default_local_model_id()
-    fallback_model = LLMConfig.fallback_local_model_id()
+    primary_model = TEST_ACTIVE_MODEL_ID
+    target_model = TEST_TARGET_MODEL_ID
     dispatcher = _OrderingDispatcher()
     lifecycle = AssistantRuntimeLifecycle(
         study=object(),
         controller_factory=lambda _study: _Controller(),
         dispatcher=dispatcher,
-        config_loader=lambda: _ready_config(fallback_model),
+        config_loader=lambda: _ready_config(target_model),
+        resolver=_TestLaunchResolver(primary_model, target_model),
     )
     started = lifecycle.activate(_ready_config(primary_model))
     assert started.launch_spec is not None
@@ -1092,15 +1181,15 @@ def test_model_switch_registers_expected_activation_before_dispatch() -> None:
         )
     )
 
-    switched = lifecycle.switch_model(fallback_model)
+    switched = lifecycle.switch_model(target_model)
 
     assert switched.status is RuntimeActivationStatus.SWITCHING
     assert dispatcher.models == [switched.launch_spec]
 
 
 def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
-    primary_model = LLMConfig.default_local_model_id()
-    fallback_model = LLMConfig.fallback_local_model_id()
+    primary_model = TEST_ACTIVE_MODEL_ID
+    target_model = TEST_TARGET_MODEL_ID
     dispatcher = _Dispatcher()
     controllers: list[_Controller] = []
 
@@ -1113,7 +1202,8 @@ def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
         study=object(),
         controller_factory=factory,
         dispatcher=dispatcher,
-        config_loader=lambda: _ready_config(fallback_model),
+        config_loader=lambda: _ready_config(target_model),
+        resolver=_TestLaunchResolver(primary_model, target_model),
     )
     started = lifecycle.activate(_ready_config(primary_model))
     assert started.launch_spec is not None
@@ -1127,7 +1217,7 @@ def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
         )
     )
 
-    failed = lifecycle.switch_model(fallback_model)
+    failed = lifecycle.switch_model(target_model)
     assert failed.launch_spec is not None
     lifecycle.accept_runtime_snapshot(
         _ActivationTransition(
@@ -1144,7 +1234,7 @@ def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
     assert lifecycle.current.model_id == primary_model
     assert lifecycle.active_local_runtime_blocks_model_deletion() is True
 
-    retried = lifecycle.switch_model(fallback_model)
+    retried = lifecycle.switch_model(target_model)
     assert retried.launch_spec is not None
     assert lifecycle.current.phase is AssistantRuntimePhase.LOADING
     assert retried.activation_id != failed.activation_id
@@ -1153,13 +1243,13 @@ def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
             phase=AssistantRuntimePhase.READY,
             initialized=True,
             backend_mode="local",
-            model_id=fallback_model,
+            model_id=target_model,
             activation_id=retried.activation_id or 0,
         )
     )
 
     assert lifecycle.current.phase is AssistantRuntimePhase.READY
-    assert lifecycle.current.model_id == fallback_model
+    assert lifecycle.current.model_id == target_model
     assert len(controllers) == 1
     assert dispatcher.bind_calls == 1
     assert len(dispatcher.launch_specs) == 1
@@ -1294,13 +1384,14 @@ def test_timed_out_activation_recovers_when_its_late_ready_arrives(qtbot) -> Non
 
 
 def test_stale_same_model_completion_does_not_finish_new_activation() -> None:
-    primary_model = LLMConfig.default_local_model_id()
-    fallback_model = LLMConfig.fallback_local_model_id()
+    primary_model = TEST_ACTIVE_MODEL_ID
+    target_model = TEST_TARGET_MODEL_ID
     lifecycle = AssistantRuntimeLifecycle(
         study=object(),
         controller_factory=lambda _study: _Controller(),
         dispatcher=_Dispatcher(),
-        config_loader=lambda: _ready_config(fallback_model),
+        config_loader=lambda: _ready_config(target_model),
+        resolver=_TestLaunchResolver(primary_model, target_model),
     )
     started = lifecycle.activate(_ready_config(primary_model))
     assert started.launch_spec is not None
@@ -1313,8 +1404,8 @@ def test_stale_same_model_completion_does_not_finish_new_activation() -> None:
             activation_id=started.activation_id or 0,
         )
     )
-    first = lifecycle.switch_model(fallback_model)
-    second = lifecycle.switch_model(fallback_model)
+    first = lifecycle.switch_model(target_model)
+    second = lifecycle.switch_model(target_model)
     assert first.launch_spec is not None
     assert second.launch_spec is not None
 
@@ -1323,7 +1414,7 @@ def test_stale_same_model_completion_does_not_finish_new_activation() -> None:
             phase=AssistantRuntimePhase.READY,
             initialized=True,
             backend_mode="local",
-            model_id=fallback_model,
+            model_id=target_model,
             activation_id=first.activation_id or 0,
         )
     )
@@ -1335,7 +1426,7 @@ def test_stale_same_model_completion_does_not_finish_new_activation() -> None:
             phase=AssistantRuntimePhase.READY,
             initialized=True,
             backend_mode="local",
-            model_id=fallback_model,
+            model_id=target_model,
             activation_id=second.activation_id or 0,
         )
     )

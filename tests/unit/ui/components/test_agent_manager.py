@@ -62,6 +62,7 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
 )
+from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_selection import (
     AssistantRuntimeSelectionFailure,
     AssistantRuntimeSelectionFailureCode,
@@ -386,7 +387,7 @@ class TestAgentManagerMethods:
             capabilities=build_capability_policy(state),
         )
         agent_mgr._render_assistant_status_projection = MagicMock(
-            side_effect=(RuntimeError("transient render failure"), None),
+            side_effect=(RuntimeError("transient render failure"), True),
         )
 
         with pytest.raises(RuntimeError, match="transient render failure"):
@@ -394,8 +395,149 @@ class TestAgentManagerMethods:
 
         assert agent_mgr.assistant_status_projection is None
         assert agent_mgr._render_backend_publication(publication) is True
-        assert agent_mgr.assistant_status_projection.publication_revision == 8
+        projection = agent_mgr.assistant_status_projection
+        assert projection is not None
+        assert projection.publication_revision == 8
         assert agent_mgr._render_assistant_status_projection.call_count == 2
+
+    def test_false_publication_render_retries_are_bounded_without_acknowledgement(
+        self,
+        agent_mgr,
+        qtbot,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        state = ApplicationStateSnapshot.empty()
+        publication = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        agent_mgr._render_assistant_status_projection = MagicMock(return_value=False)
+        agent_mgr.application_service.acknowledge_view_publication_delivery = (
+            MagicMock()
+        )
+        agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
+
+        assert agent_mgr._render_backend_publication(publication) is False
+        assert agent_mgr.assistant_status_projection is None
+        qtbot.waitUntil(
+            lambda: agent_mgr._render_assistant_status_projection.call_count == 4,
+            timeout=1_000,
+        )
+        qtbot.wait(100)
+
+        assert agent_mgr._render_assistant_status_projection.call_count == 4
+        (
+            agent_mgr.application_service.acknowledge_view_publication_delivery
+        ).assert_not_called()
+        assert (
+            agent_mgr.application_service.reject_view_publication_delivery.call_count
+            == 4
+        )
+
+    def test_publication_recovers_after_fast_retry_window_is_exhausted(
+        self,
+        agent_mgr,
+        qtbot,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        state = ApplicationStateSnapshot.empty()
+        publication = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        agent_mgr._render_assistant_status_projection = MagicMock(
+            side_effect=(False, False, False, False, True),
+        )
+        agent_mgr.application_service.acknowledge_view_publication_delivery = (
+            MagicMock()
+        )
+        agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
+
+        assert agent_mgr._render_backend_publication(publication) is False
+        qtbot.waitUntil(
+            lambda: agent_mgr.assistant_status_projection is not None,
+            timeout=2_000,
+        )
+
+        projection = agent_mgr.assistant_status_projection
+        assert projection is not None
+        assert projection.publication_revision == publication.revision
+        assert agent_mgr._render_assistant_status_projection.call_count == 5
+        agent_mgr.application_service.acknowledge_view_publication_delivery.assert_called_once_with(
+            publication.revision
+        )
+        assert agent_mgr._pending_application_view_publication is None
+
+    def test_publication_retry_coalesces_to_latest_pending_revision(
+        self,
+        agent_mgr,
+        qtbot,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        state = ApplicationStateSnapshot.empty()
+        first = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        second = replace(first, generation=5, revision=9)
+        rendered_revisions: list[int] = []
+
+        def render_latest(projection):
+            rendered_revisions.append(projection.publication_revision)
+            return len(rendered_revisions) == 3
+
+        agent_mgr._render_assistant_status_projection = render_latest
+        agent_mgr.application_service.acknowledge_view_publication_delivery = (
+            MagicMock()
+        )
+        agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
+
+        assert agent_mgr._render_backend_publication(first) is False
+        assert agent_mgr._render_backend_publication(second) is False
+        qtbot.waitUntil(
+            lambda: agent_mgr.assistant_status_projection is not None,
+            timeout=1_000,
+        )
+
+        assert rendered_revisions == [8, 9, 9]
+        assert agent_mgr.assistant_status_projection.publication_revision == 9
+        agent_mgr.application_service.acknowledge_view_publication_delivery.assert_called_once_with(
+            9
+        )
+
+    def test_close_cancels_pending_publication_retry(self, agent_mgr, qtbot):
+        agent_mgr.chat_panel = MagicMock()
+        state = ApplicationStateSnapshot.empty()
+        publication = ApplicationViewPublication(
+            generation=4,
+            revision=8,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        agent_mgr._render_assistant_status_projection = MagicMock(return_value=False)
+        agent_mgr.application_service.acknowledge_view_publication_delivery = (
+            MagicMock()
+        )
+        agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
+
+        assert agent_mgr._render_backend_publication(publication) is False
+        agent_mgr.close()
+        qtbot.wait(100)
+
+        agent_mgr._render_assistant_status_projection.assert_called_once()
+        rendered_projection = (
+            agent_mgr._render_assistant_status_projection.call_args.args[0]
+        )
+        assert rendered_projection.publication_revision == publication.revision
+        (
+            agent_mgr.application_service.acknowledge_view_publication_delivery
+        ).assert_not_called()
 
     def test_handle_user_input(self, agent_mgr):
         agent_mgr.handle_user_input("hello")
@@ -1554,17 +1696,20 @@ class TestAgentManagerMethods:
         agent_mgr._assistant_runtime.stop_generation.assert_called_once()
 
     def test_set_model(self, agent_mgr):
-        agent_mgr.set_model("Gemini")
-        agent_mgr._assistant_runtime.switch_model.assert_called_once_with("Gemini")
+        model_id = LLMConfig.default_local_model_id()
+
+        agent_mgr.set_model(model_id)
+
+        agent_mgr._assistant_runtime.switch_model.assert_called_once_with(model_id)
 
     def test_set_model_preserves_approved_local_model_identifier(self, agent_mgr):
-        with patch(
-            "XBrainLab.ui.components.agent_manager.LLMConfig.allowed_local_model_ids",
-            return_value=["model-a", "model-b"],
-        ):
-            agent_mgr.set_model("model-b")
+        model_id = LLMConfig.default_local_model_id()
 
-        agent_mgr._assistant_runtime.switch_model.assert_called_once_with("model-b")
+        with patch.object(agent_mgr.vram_checker, "check") as check_vram:
+            agent_mgr.set_model(model_id)
+
+        agent_mgr._assistant_runtime.switch_model.assert_called_once_with(model_id)
+        check_vram.assert_called_once_with(switching_to_local=True)
 
     def test_new_chat_resets_only_conversation_state(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -2786,7 +2931,7 @@ def _make_real_manager_with_fake_controller(
 
 
 class TestAgentManagerProductChatFlow:
-    def test_background_terminal_event_waits_for_visible_publication_ack(
+    def test_background_queued_render_failure_retries_and_delivers_terminal_once(
         self,
         qtbot,
     ):
@@ -2794,6 +2939,17 @@ class TestAgentManagerProductChatFlow:
 
         manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
         service = manager.application_service
+        render_projection = manager._render_assistant_status_projection
+        render_results: list[bool] = []
+
+        def render_after_one_failure(projection):
+            rendered = bool(render_results)
+            render_results.append(rendered)
+            if not rendered:
+                return False
+            return render_projection(projection)
+
+        manager._render_assistant_status_projection = render_after_one_failure
         trainer = Trainer([])
         service.study.training_manager.trainer = trainer
         trainer.run(interact=False)
@@ -2821,32 +2977,22 @@ class TestAgentManagerProductChatFlow:
 
         publication = service.get_view_publication()
         delivery = service.training_publications.training_delivery_state()
+        assert render_results == [False, True]
         assert manager.assistant_status_projection.publication_revision == (
+            publication.revision
+        )
+        assert service._view_event_publisher.has_delivered_revision(
             publication.revision
         )
         assert terminal_events[0].publication_revision == publication.revision
         assert delivery.pending_count == 0
         assert delivery.delivered_count == 1
 
-    def test_application_publication_event_retries_after_visible_render_failure(
-        self,
-        qtbot,
-    ):
-        manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
-        current = manager.application_service.get_view_publication()
-        publication = replace(current, revision=current.revision + 1)
-        manager._render_assistant_status_projection = MagicMock(
-            side_effect=(RuntimeError("transient render failure"), None),
-        )
+        qtbot.wait(100)
 
-        first = manager.application_service._view_event_publisher.publish(publication)
-        second = manager.application_service._view_event_publisher.publish(publication)
-
-        assert first is False
-        assert second is True
-        assert manager._render_assistant_status_projection.call_count == 2
-        assert manager.assistant_status_projection.publication_revision == (
-            publication.revision
+        assert len(terminal_events) == 1
+        assert (
+            service.training_publications.training_delivery_state().delivered_count == 1
         )
 
     def test_product_next_steps_use_data_interpretation_in_empty_state(self):

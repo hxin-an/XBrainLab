@@ -8,12 +8,17 @@ from XBrainLab.llm.agent.runtime_state import (
 )
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_selection import (
-    AssistantRuntimeLaunchResolver,
+    AssistantRuntimeBackend,
     AssistantRuntimeLaunchSpec,
+    AssistantRuntimeSelectionOutcome,
+    AssistantRuntimeSettingsSnapshot,
 )
 from XBrainLab.ui.components.assistant_runtime_coordinator import (
     AssistantRuntimeCoordinator,
 )
+
+TEST_ACTIVE_MODEL_ID = "test/runtime-active"
+TEST_TARGET_MODEL_ID = "test/runtime-target"
 
 
 @dataclass(frozen=True)
@@ -23,21 +28,21 @@ class _ActivationTransition(AssistantRuntimeSnapshot):
 
 def _launch_spec(model_id: str) -> AssistantRuntimeLaunchSpec:
     config = LLMConfig(model_name=model_id)
-    config.local_backend_ready = lambda candidate=None: (  # type: ignore[method-assign]
-        candidate == model_id
+    return AssistantRuntimeLaunchSpec(
+        backend=AssistantRuntimeBackend.LOCAL,
+        requested_backend_id=AssistantRuntimeBackend.LOCAL.value,
+        requested_model_id=model_id,
+        model_id=model_id,
+        outcome=AssistantRuntimeSelectionOutcome.EXACT,
+        selection_detail="Test runtime ready.",
+        settings=AssistantRuntimeSettingsSnapshot.from_config(config),
     )
-    config.local_backend_status_message = (  # type: ignore[method-assign]
-        lambda candidate=None: "Local runtime ready."
-    )
-    resolution = AssistantRuntimeLaunchResolver().resolve(config)
-    assert resolution.launch_spec is not None
-    return resolution.launch_spec
 
 
 def test_runtime_coordinator_serializes_preflight_and_worker_transitions():
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
-    spec = _launch_spec(LLMConfig.default_local_model_id())
+    spec = _launch_spec(TEST_ACTIVE_MODEL_ID)
 
     coordinator.begin_loading(spec)
     coordinator.accept_worker_snapshot(
@@ -105,8 +110,9 @@ def test_runtime_coordinator_rejects_inconsistent_typed_snapshot():
 def test_runtime_coordinator_rejects_ready_snapshot_from_previous_model_request():
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
-    stale_model = LLMConfig.default_local_model_id()
-    target_model = LLMConfig.fallback_local_model_id()
+    stale_model = TEST_ACTIVE_MODEL_ID
+    target_model = TEST_TARGET_MODEL_ID
+    assert stale_model != target_model
     target_spec = _launch_spec(target_model)
 
     coordinator.begin_loading(target_spec)
@@ -141,7 +147,7 @@ def test_runtime_coordinator_rejects_ready_snapshot_from_previous_model_request(
 def test_runtime_coordinator_rejects_stale_same_model_activation_outcome() -> None:
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
-    spec = _launch_spec(LLMConfig.default_local_model_id())
+    spec = _launch_spec(TEST_ACTIVE_MODEL_ID)
 
     coordinator.begin_loading(spec, activation_id=41)
     coordinator.begin_loading(spec, activation_id=42)
@@ -177,8 +183,8 @@ def test_runtime_coordinator_rejects_stale_same_model_activation_outcome() -> No
 def test_failed_switch_retains_the_last_ready_runtime_identity() -> None:
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
-    active = _launch_spec(LLMConfig.default_local_model_id())
-    target = _launch_spec(LLMConfig.fallback_local_model_id())
+    active = _launch_spec(TEST_ACTIVE_MODEL_ID)
+    target = _launch_spec(TEST_TARGET_MODEL_ID)
     coordinator.accept_worker_snapshot(
         AssistantRuntimeSnapshot(
             phase=AssistantRuntimePhase.READY,
@@ -218,7 +224,7 @@ def test_runtime_coordinator_rejects_untagged_terminal_during_tagged_activation(
 ):
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
-    spec = _launch_spec(LLMConfig.default_local_model_id())
+    spec = _launch_spec(TEST_ACTIVE_MODEL_ID)
 
     coordinator.begin_loading(spec, activation_id=42)
     accepted = coordinator.accept_worker_snapshot(
@@ -238,8 +244,8 @@ def test_runtime_coordinator_rejects_untagged_terminal_during_tagged_activation(
 def test_runtime_coordinator_timeout_cannot_fail_a_newer_activation() -> None:
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
-    first = _launch_spec(LLMConfig.default_local_model_id())
-    second = _launch_spec(LLMConfig.fallback_local_model_id())
+    first = _launch_spec(TEST_ACTIVE_MODEL_ID)
+    second = _launch_spec(TEST_TARGET_MODEL_ID)
 
     coordinator.begin_loading(first, activation_id=7)
     coordinator.begin_loading(second, activation_id=8)

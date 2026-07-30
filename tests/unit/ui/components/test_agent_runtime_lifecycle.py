@@ -49,6 +49,14 @@ from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
 from XBrainLab.llm.agent.worker import ACTIVE_GENERATION_THREADS
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import GenerationProfile
+from XBrainLab.llm.core.runtime_selection import (
+    AssistantRuntimeBackend,
+    AssistantRuntimeLaunchResolution,
+    AssistantRuntimeLaunchResolver,
+    AssistantRuntimeLaunchSpec,
+    AssistantRuntimeSelectionOutcome,
+    AssistantRuntimeSettingsSnapshot,
+)
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeLifecycle,
@@ -63,6 +71,38 @@ from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 
 WATCHDOG_MS = 5_000
 WATCHDOG_SECONDS = WATCHDOG_MS / 1_000
+TEST_TARGET_MODEL_ID = "test/runtime-target"
+
+
+class _TestLaunchResolver(AssistantRuntimeLaunchResolver):
+    """Resolve fake model IDs for lifecycle races without changing product policy."""
+
+    def resolve(
+        self,
+        config: LLMConfig,
+        *,
+        requested_backend_id: str | None = None,
+        requested_model_id: str | None = None,
+    ) -> AssistantRuntimeLaunchResolution:
+        backend_id = str(
+            config.inference_mode
+            if requested_backend_id is None
+            else requested_backend_id
+        ).strip()
+        model_id = str(
+            config.model_name if requested_model_id is None else requested_model_id
+        ).strip()
+        return AssistantRuntimeLaunchResolution(
+            launch_spec=AssistantRuntimeLaunchSpec(
+                backend=AssistantRuntimeBackend.LOCAL,
+                requested_backend_id=backend_id,
+                requested_model_id=model_id,
+                model_id=model_id,
+                outcome=AssistantRuntimeSelectionOutcome.EXACT,
+                selection_detail=config.local_backend_status_message(model_id),
+                settings=AssistantRuntimeSettingsSnapshot.from_config(config),
+            )
+        )
 
 
 class _ControlledEngine:
@@ -329,6 +369,7 @@ def _runtime_harness(
     monkeypatch: Any,
     *,
     use_real_workflow_router: bool = False,
+    resolver: AssistantRuntimeLaunchResolver | None = None,
 ) -> Iterator[_RuntimeHarness]:
     """Build the real Qt runtime while replacing only external model work."""
     from XBrainLab.llm.agent import controller as controller_module
@@ -384,6 +425,8 @@ def _runtime_harness(
     study = Study()
     main_window.study = study
     manager = AgentManager(main_window, study)
+    if resolver is not None:
+        cast(Any, manager.assistant_runtime)._resolver = resolver
     manager.init_ui()
     main_window.show()
     assert manager.chat_dock is not None
@@ -1110,12 +1153,17 @@ def test_model_switch_ignores_stale_ready_until_target_is_ready(
     qtbot: Any,
     monkeypatch: Any,
 ) -> None:
-    with _runtime_harness(qtbot, monkeypatch) as harness:
+    with _runtime_harness(
+        qtbot,
+        monkeypatch,
+        resolver=_TestLaunchResolver(),
+    ) as harness:
         _release_initial_load(qtbot, harness)
         controller = harness.controller
         runtime_spy = QSignalSpy(controller.runtime_state_changed)
         old_model = LLMConfig.default_local_model_id()
-        target_model = LLMConfig.fallback_local_model_id()
+        target_model = TEST_TARGET_MODEL_ID
+        assert old_model != target_model
 
         with _stale_snapshot_publisher(controller) as (publisher, stale_thread):
             model_request_spy = QSignalSpy(harness.runtime.dispatcher.model_requested)
@@ -1155,7 +1203,11 @@ def test_retry_loading_replaces_only_stale_runtime_failure_presentation(
     monkeypatch: Any,
 ) -> None:
     """FAILED -> LOADING must replace only runtime-owned presentation."""
-    with _runtime_harness(qtbot, monkeypatch) as harness:
+    with _runtime_harness(
+        qtbot,
+        monkeypatch,
+        resolver=_TestLaunchResolver(),
+    ) as harness:
         _release_initial_load(qtbot, harness)
         original_controller = harness.controller
         original_worker_thread = original_controller.worker_thread
@@ -1183,7 +1235,7 @@ def test_retry_loading_replaces_only_stale_runtime_failure_presentation(
             message["content"] for message in harness.manager.chat_controller.messages
         ] == ["Keep this question", "Keep this answer"]
 
-        target_model = LLMConfig.fallback_local_model_id()
+        target_model = TEST_TARGET_MODEL_ID
         harness.manager.set_model(target_model)
         _wait_for_event(qtbot, harness.engine.switch_started)
         _wait_for_phase(qtbot, harness, AssistantRuntimePhase.LOADING)
@@ -1205,12 +1257,16 @@ def test_model_switch_is_rejected_without_disturbing_active_generation(
     qtbot: Any,
     monkeypatch: Any,
 ) -> None:
-    with _runtime_harness(qtbot, monkeypatch) as harness:
+    with _runtime_harness(
+        qtbot,
+        monkeypatch,
+        resolver=_TestLaunchResolver(),
+    ) as harness:
         _release_initial_load(qtbot, harness)
         _send_request(harness, "Explain how EEG artifacts are reviewed")
         _wait_for_event(qtbot, harness.engine.generation_started)
 
-        target_model = LLMConfig.fallback_local_model_id()
+        target_model = TEST_TARGET_MODEL_ID
         harness.manager.set_model(target_model)
 
         assert harness.engine.switch_started.is_set() is False

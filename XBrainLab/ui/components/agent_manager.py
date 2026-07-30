@@ -7,6 +7,7 @@ from PyQt6.QtCore import (
     QRect,
     QSize,
     Qt,
+    QTimer,
     pyqtSignal,
 )
 from PyQt6.QtGui import QAction
@@ -157,6 +158,10 @@ _DELIVERY_TERMINAL_MESSAGES = {
     ),
 }
 
+_APPLICATION_PUBLICATION_RETRY_INTERVAL_MS = 25
+_APPLICATION_PUBLICATION_MAX_RETRIES = 3
+_APPLICATION_PUBLICATION_RECOVERY_INTERVAL_MS = 500
+
 
 class AssistantDockTitleBar(QWidget):
     """Product header for the assistant dock with native drag behavior."""
@@ -265,6 +270,19 @@ class AgentManager(QObject):
         self.main_window = main_window
         self.study = study
         self.application_service = get_application_service(study)
+        self._closing = False
+        self._pending_application_view_publication: (
+            ApplicationViewPublication | None
+        ) = None
+        self._application_publication_retry_attempts = 0
+        self._application_publication_retry_timer = QTimer(self)
+        self._application_publication_retry_timer.setSingleShot(True)
+        self._application_publication_retry_timer.setInterval(
+            _APPLICATION_PUBLICATION_RETRY_INTERVAL_MS
+        )
+        self._application_publication_retry_timer.timeout.connect(
+            self._retry_latest_application_view_publication
+        )
         self._application_publication_bridge = QtObserverBridge(
             self.application_service,
             APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -1621,7 +1639,10 @@ class AgentManager(QObject):
         publication: ApplicationViewPublication,
     ) -> bool:
         """Render one newer publication; pulls and pushes share this revision gate."""
+        if self._closing:
+            return False
         if not self.chat_panel or not hasattr(self.chat_panel, "set_status_summary"):
+            self._reject_application_view_publication(publication)
             return False
         current = self._assistant_status_projection
         if current is not None and publication.revision <= current.publication_revision:
@@ -1629,11 +1650,15 @@ class AgentManager(QObject):
             return True
         try:
             projection = build_assistant_status_projection(publication)
-            self._render_assistant_status_projection(projection)
+            rendered = self._render_assistant_status_projection(projection)
         except Exception:
             self._reject_application_view_publication(publication)
             raise
+        if rendered is not True:
+            self._reject_application_view_publication(publication)
+            return False
         self._assistant_status_projection = projection
+        self._complete_application_view_publication_retry(publication.revision)
         self._acknowledge_application_view_publication(publication.revision)
         return True
 
@@ -1663,16 +1688,73 @@ class AgentManager(QObject):
                 boundary="agent_manager",
                 operation="reject_view_publication_delivery",
             )
+        self._schedule_application_view_publication_retry(publication)
+
+    def _schedule_application_view_publication_retry(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        """Coalesce failed renders into fast retries plus low-frequency recovery."""
+        if self._closing:
+            return
+        pending = self._pending_application_view_publication
+        if pending is None or publication.revision > pending.revision:
+            self._application_publication_retry_timer.stop()
+            self._pending_application_view_publication = publication
+            self._application_publication_retry_attempts = 0
+        elif publication.revision < pending.revision:
+            return
+        if self._application_publication_retry_timer.isActive():
+            return
+        retry_interval = (
+            _APPLICATION_PUBLICATION_RECOVERY_INTERVAL_MS
+            if self._application_publication_retry_attempts
+            >= _APPLICATION_PUBLICATION_MAX_RETRIES
+            else _APPLICATION_PUBLICATION_RETRY_INTERVAL_MS
+        )
+        self._application_publication_retry_timer.start(retry_interval)
+
+    def _retry_latest_application_view_publication(self) -> None:
+        """Retry the latest revision without abandoning its delivery obligation."""
+        if self._closing:
+            return
+        publication = self._pending_application_view_publication
+        if publication is None:
+            return
+        if (
+            self._application_publication_retry_attempts
+            >= _APPLICATION_PUBLICATION_MAX_RETRIES
+        ):
+            self._application_publication_retry_attempts = 0
+        self._application_publication_retry_attempts += 1
+        try:
+            self._render_backend_publication(publication)
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="agent_manager",
+                operation="retry_view_publication_render",
+            )
+
+    def _complete_application_view_publication_retry(self, revision: int) -> None:
+        """Clear retry state only after this or a newer revision rendered."""
+        pending = self._pending_application_view_publication
+        if pending is None or pending.revision > revision:
+            return
+        self._application_publication_retry_timer.stop()
+        self._pending_application_view_publication = None
+        self._application_publication_retry_attempts = 0
 
     def _render_assistant_status_projection(
         self,
         projection: AssistantStatusProjection,
         *,
         runtime_snapshot: AssistantRuntimeSnapshot | None = None,
-    ) -> None:
+    ) -> bool:
         """Render workflow truth with the latest local-runtime phase."""
         if not self.chat_panel or not hasattr(self.chat_panel, "set_status_summary"):
-            return
+            return False
         runtime = runtime_snapshot or self._assistant_runtime.current
         model_status = (
             "Unknown"
@@ -1699,9 +1781,19 @@ class AgentManager(QObject):
                 projection.tooltip,
             )
         self.status_message_received.emit(projection.footer_hint)
+        return True
 
     def close(self) -> bool:
         """Clean up the agent controller resources."""
+        self._closing = True
+        publication_retry_timer = getattr(
+            self,
+            "_application_publication_retry_timer",
+            None,
+        )
+        if publication_retry_timer is not None:
+            publication_retry_timer.stop()
+        self._pending_application_view_publication = None
         publication_bridge = getattr(
             self,
             "_application_publication_bridge",

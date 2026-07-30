@@ -152,6 +152,41 @@ def test_background_publication_is_acknowledged_only_after_qt_render(qtbot):
     assert attempts == [publication.revision]
 
 
+def test_background_publication_without_render_consumer_stays_unacknowledged(qtbot):
+    observable = MockObservable()
+    bridge = QtObserverBridge(
+        observable,
+        "view_publication_changed",
+        require_slot_acknowledgement=True,
+    )
+    state = ApplicationStateSnapshot.empty()
+    store = ApplicationViewStore(state, TrainingReadBoundary.no_trainer())
+    initial = store.read()
+    publication = store.publish(
+        replace(state, pipeline_stage="data_loaded"),
+        TrainingReadBoundary.no_trainer(),
+    )
+    publisher = ApplicationViewEventPublisher(
+        initial_revision=initial.revision,
+        deliver=lambda candidate: observable.notify_delivery(
+            "view_publication_changed",
+            candidate,
+        ),
+    )
+    results: list[bool] = []
+    worker = Thread(target=lambda: results.append(publisher.publish(publication)))
+
+    worker.start()
+    worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    assert results == [False]
+    qtbot.wait(20)
+    assert publisher.has_delivered_revision(publication.revision) is False
+    assert publisher.publish(publication) is False
+    bridge.cleanup()
+
+
 def test_acknowledgement_bridge_rejects_missing_or_false_slot_result() -> None:
     observable = MockObservable()
     bridge = QtObserverBridge(
