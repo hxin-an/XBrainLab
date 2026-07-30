@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -76,18 +79,60 @@ def _record(
     )
 
 
-def _saved_payload(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
-    _record().export(str(tmp_path))
+@dataclass
+class _SavedArtifact:
+    path: Path
+    manifest: dict[str, Any]
+    arrays: dict[str, np.ndarray]
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        return cast(dict[str, Any], self.manifest["payload"])
+
+    def write(self) -> None:
+        descriptor = cast(dict[str, Any], self.manifest["arrays"])
+        arrays_path = self.path.with_name(descriptor["file"])
+        with arrays_path.open("wb") as stream:
+            np.savez_compressed(stream, **self.arrays)
+        descriptor["keys"] = sorted(self.arrays)
+        descriptor["sha256"] = hashlib.sha256(arrays_path.read_bytes()).hexdigest()
+        self.path.write_text(
+            json.dumps(self.manifest, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+
+    def saliency_array_name(self, store: str, class_index: int) -> str:
+        stores = cast(dict[str, list[dict[str, Any]]], self.payload["saliency_stores"])
+        for entry in stores[store]:
+            if entry["class_index"] == class_index:
+                return cast(str, entry["array"])
+        raise AssertionError(f"Missing {store} class {class_index}")
+
+
+def _read_artifact(tmp_path: Path) -> _SavedArtifact:
     path = tmp_path / "eval"
-    return path, cast(dict[str, Any], torch.load(path, weights_only=False))
+    manifest = cast(
+        dict[str, Any],
+        json.loads(path.read_text(encoding="utf-8")),
+    )
+    descriptor = cast(dict[str, Any], manifest["arrays"])
+    with np.load(path.with_name(descriptor["file"]), allow_pickle=False) as archive:
+        arrays = {name: archive[name].copy() for name in archive.files}
+    return _SavedArtifact(path=path, manifest=manifest, arrays=arrays)
+
+
+def _saved_artifact(tmp_path: Path) -> _SavedArtifact:
+    _record().export(str(tmp_path))
+    return _read_artifact(tmp_path)
 
 
 def test_load_rejects_attribution_mutation_outside_old_sentinels(
     tmp_path: Path,
 ) -> None:
-    path, payload = _saved_payload(tmp_path)
-    payload["gradient"][0].flat[1] += 1.0
-    torch.save(payload, path)
+    artifact = _saved_artifact(tmp_path)
+    array_name = artifact.saliency_array_name("gradient", 0)
+    artifact.arrays[array_name].flat[1] += 1.0
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -101,12 +146,18 @@ def test_load_rejects_attribution_mutation_outside_old_sentinels(
 
 
 def test_load_rejects_method_store_swap(tmp_path: Path) -> None:
-    path, payload = _saved_payload(tmp_path)
-    payload["gradient"], payload["gradient_input"] = (
-        payload["gradient_input"],
-        payload["gradient"],
-    )
-    torch.save(payload, path)
+    artifact = _saved_artifact(tmp_path)
+    for class_index in (0, 1):
+        gradient_name = artifact.saliency_array_name("gradient", class_index)
+        gradient_input_name = artifact.saliency_array_name(
+            "gradient_input",
+            class_index,
+        )
+        artifact.arrays[gradient_name], artifact.arrays[gradient_input_name] = (
+            artifact.arrays[gradient_input_name],
+            artifact.arrays[gradient_name],
+        )
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -174,9 +225,9 @@ def test_load_reports_typed_manifest_mismatch(
     mutation: Callable[[dict[str, Any]], None],
     reason: SaliencyIntegrityReason,
 ) -> None:
-    path, payload = _saved_payload(tmp_path)
-    mutation(payload)
-    torch.save(payload, path)
+    artifact = _saved_artifact(tmp_path)
+    mutation(artifact.payload)
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -188,9 +239,9 @@ def test_load_reports_typed_manifest_mismatch(
 def test_load_rejects_missing_manifest_as_legacy_but_keeps_metrics(
     tmp_path: Path,
 ) -> None:
-    path, payload = _saved_payload(tmp_path)
-    payload.pop("saliency_integrity_manifest")
-    torch.save(payload, path)
+    artifact = _saved_artifact(tmp_path)
+    artifact.payload.pop("saliency_integrity_manifest")
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -200,9 +251,9 @@ def test_load_rejects_missing_manifest_as_legacy_but_keeps_metrics(
 
 
 def test_load_rejects_unsupported_manifest_schema(tmp_path: Path) -> None:
-    path, payload = _saved_payload(tmp_path)
-    payload["saliency_integrity_manifest"]["schema_version"] = 0
-    torch.save(payload, path)
+    artifact = _saved_artifact(tmp_path)
+    artifact.payload["saliency_integrity_manifest"]["schema_version"] = 0
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -213,9 +264,14 @@ def test_load_rejects_unsupported_manifest_schema(tmp_path: Path) -> None:
 
 
 def test_load_rejects_partial_class_store(tmp_path: Path) -> None:
-    path, payload = _saved_payload(tmp_path)
-    payload["gradient"].pop(1)
-    torch.save(payload, path)
+    artifact = _saved_artifact(tmp_path)
+    stores = cast(
+        dict[str, list[dict[str, Any]]],
+        artifact.payload["saliency_stores"],
+    )
+    removed = stores["gradient"].pop()
+    artifact.arrays.pop(removed["array"])
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -386,10 +442,9 @@ def test_load_rejects_noise_seed_mismatch(tmp_path: Path) -> None:
         saliency_noise_seeds={"SmoothGrad": 1234},
     )
     record.export(str(tmp_path))
-    path = tmp_path / "eval"
-    payload = cast(dict[str, Any], torch.load(path, weights_only=False))
-    payload["saliency_noise_seeds"]["SmoothGrad"] = 5678
-    torch.save(payload, path)
+    artifact = _read_artifact(tmp_path)
+    artifact.payload["saliency_noise_seeds"]["SmoothGrad"] = 5678
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -416,12 +471,14 @@ def test_noise_payload_without_seed_fails_closed_before_publication() -> None:
     assert error.value.reason is SaliencyIntegrityReason.NOISE_SEED_MISMATCH
 
 
-def test_untrusted_parameter_object_keeps_metrics_but_closes_saliency(
+def test_json_parameter_tampering_keeps_metrics_but_closes_saliency(
     tmp_path: Path,
 ) -> None:
-    path, payload = _saved_payload(tmp_path)
-    payload["saliency_method_parameters"]["Gradient"] = {"value": object()}
-    torch.save(payload, path)
+    artifact = _saved_artifact(tmp_path)
+    artifact.payload["saliency_method_parameters"]["Gradient"] = {
+        "value": "not-supported"
+    }
+    artifact.write()
 
     loaded = EvalRecord.load(str(tmp_path))
 

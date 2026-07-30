@@ -12,16 +12,25 @@ import torch
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 
-from XBrainLab.backend.utils.logger import logger
-
 from ...dataset import Dataset
 from ...training import TrainingOption
 from ...utils import get_random_state, set_random_state
+from ...utils.logger import logger
+from .artifact_store import (
+    TRAINING_RECORD_ARTIFACT_TYPE,
+    ArtifactStoreError,
+    UnsupportedArtifactError,
+    read_json_npz_artifact,
+    save_model_state_dict,
+    write_json_npz_artifact,
+)
 from .eval import EvalRecord, calculate_confusion
 from .key import RecordKey, TrainRecordKey
 
 if TYPE_CHECKING:
     from ..state_tracker import TrainingStateTracker
+
+TRAIN_RECORD_SCHEMA_VERSION = 1
 
 
 def _prepare_figure(
@@ -43,6 +52,170 @@ def _numeric_series(values: list[float | None]) -> np.ndarray:
         [np.nan if value is None else float(value) for value in values],
         dtype=float,
     )
+
+
+def _serialize_history(
+    history: dict[str, list[float | None]],
+    *,
+    prefix: str,
+    arrays: dict[str, object],
+) -> list[dict[str, str]]:
+    serialized: list[dict[str, str]] = []
+    for index, (metric, series) in enumerate(history.items()):
+        if not isinstance(metric, str):
+            raise ArtifactStoreError(f"{prefix} metric names must be strings.")
+        values = np.empty(len(series), dtype=np.float64)
+        present = np.zeros(len(series), dtype=np.bool_)
+        for value_index, value in enumerate(series):
+            if value is None:
+                values[value_index] = 0.0
+                continue
+            try:
+                values[value_index] = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ArtifactStoreError(
+                    f"{prefix}.{metric}[{value_index}] must be numeric or null."
+                ) from exc
+            present[value_index] = True
+        values_name = f"{prefix}.{index}.values"
+        present_name = f"{prefix}.{index}.present"
+        arrays[values_name] = values
+        arrays[present_name] = present
+        serialized.append(
+            {
+                "metric": metric,
+                "values_array": values_name,
+                "present_array": present_name,
+            }
+        )
+    return serialized
+
+
+def _deserialize_history(
+    payload: object,
+    *,
+    prefix: str,
+    arrays: dict[str, np.ndarray],
+    consumed_arrays: set[str],
+) -> dict[str, list[float | None]]:
+    if not isinstance(payload, list):
+        raise ArtifactStoreError(f"{prefix} history index is malformed.")
+    history: dict[str, list[float | None]] = {}
+    for entry in payload:
+        if type(entry) is not dict or set(entry) != {
+            "metric",
+            "values_array",
+            "present_array",
+        }:
+            raise ArtifactStoreError(f"{prefix} history index is malformed.")
+        metric = entry["metric"]
+        values_name = entry["values_array"]
+        present_name = entry["present_array"]
+        if (
+            not isinstance(metric, str)
+            or metric in history
+            or not isinstance(values_name, str)
+            or not isinstance(present_name, str)
+            or values_name not in arrays
+            or present_name not in arrays
+            or values_name in consumed_arrays
+            or present_name in consumed_arrays
+        ):
+            raise ArtifactStoreError(f"{prefix} history index is malformed.")
+        values = arrays[values_name]
+        present = arrays[present_name]
+        if (
+            values.ndim != 1
+            or present.ndim != 1
+            or values.shape != present.shape
+            or present.dtype != np.bool_
+        ):
+            raise ArtifactStoreError(f"{prefix}.{metric} arrays are malformed.")
+        history[metric] = [
+            float(value) if is_present else None
+            for value, is_present in zip(values, present, strict=True)
+        ]
+        consumed_arrays.update({values_name, present_name})
+    return history
+
+
+def _decode_training_artifact(
+    data: dict[str, object],
+    arrays: dict[str, np.ndarray],
+    *,
+    best_record_keys: set[str],
+) -> tuple[
+    dict[str, list[float | None]],
+    dict[str, list[float | None]],
+    dict[str, list[float | None]],
+    dict[str, Any],
+    int,
+    int,
+]:
+    record_schema_version = data.get("record_schema_version")
+    if (
+        type(record_schema_version) is not int
+        or record_schema_version != TRAIN_RECORD_SCHEMA_VERSION
+    ):
+        raise UnsupportedArtifactError(
+            "Unsupported training record schema version "
+            f"{record_schema_version!r}. Start a new training run; unsafe "
+            "migration is not supported."
+        )
+    consumed_arrays: set[str] = set()
+    train = _deserialize_history(
+        data.get("train"),
+        prefix="train",
+        arrays=arrays,
+        consumed_arrays=consumed_arrays,
+    )
+    val = _deserialize_history(
+        data.get("val"),
+        prefix="val",
+        arrays=arrays,
+        consumed_arrays=consumed_arrays,
+    )
+    test = _deserialize_history(
+        data.get("test"),
+        prefix="test",
+        arrays=arrays,
+        consumed_arrays=consumed_arrays,
+    )
+    if consumed_arrays != set(arrays):
+        raise ArtifactStoreError(
+            "Training record contains unreferenced numeric arrays."
+        )
+    if set(train) != set(TrainRecordKey()):
+        raise ArtifactStoreError("Training record metric coverage is incomplete.")
+    if set(val) != set(RecordKey()) or set(test) != set(RecordKey()):
+        raise ArtifactStoreError("Validation record metric coverage is incomplete.")
+    loaded_best = data.get("best_record")
+    if type(loaded_best) is not dict or set(loaded_best) != best_record_keys:
+        raise ArtifactStoreError("Training best-record metadata is malformed.")
+    seed = data.get("seed")
+    epoch = data.get("epoch")
+    if (
+        isinstance(seed, bool)
+        or not isinstance(seed, int)
+        or isinstance(epoch, bool)
+        or not isinstance(epoch, int)
+        or epoch < 0
+        or epoch != len(train[RecordKey.LOSS])
+    ):
+        raise ArtifactStoreError("Training record scalar metadata is malformed.")
+    normalized_best: dict[str, Any] = {}
+    for key, loaded_value in loaded_best.items():
+        normalized_value = (
+            None
+            if (
+                not key.endswith("_epoch")
+                and isinstance(loaded_value, (int, float))
+                and loaded_value in {-1, torch.inf}
+            )
+            else loaded_value
+        )
+        normalized_best[key] = normalized_value
+    return train, val, test, normalized_best, seed, epoch
 
 
 class TrainRecord:
@@ -354,18 +527,45 @@ class TrainRecord:
             full_key = f"best_val_{key}_model"
             model = getattr(self, full_key)
             if model:
-                torch.save(model, os.path.join(self.target_path, full_key))
+                save_model_state_dict(
+                    model,
+                    os.path.join(self.target_path, full_key),
+                )
 
         fname = f"Epoch-{epoch}-model"
-        torch.save(self.model.state_dict(), os.path.join(self.target_path, fname))
-        record = {
-            "train": self.train,
-            "val": self.val,
-            "test": self._legacy_test_history,
+        save_model_state_dict(
+            self.model.state_dict(),
+            os.path.join(self.target_path, fname),
+        )
+        arrays: dict[str, object] = {}
+        payload = {
+            "record_schema_version": TRAIN_RECORD_SCHEMA_VERSION,
+            "epoch": epoch,
+            "train": _serialize_history(
+                self.train,
+                prefix="train",
+                arrays=arrays,
+            ),
+            "val": _serialize_history(
+                self.val,
+                prefix="val",
+                arrays=arrays,
+            ),
+            "test": _serialize_history(
+                self._legacy_test_history,
+                prefix="test",
+                arrays=arrays,
+            ),
             "best_record": self.best_record,
             "seed": self.seed,
         }
-        torch.save(record, os.path.join(self.target_path, "record"))
+        write_json_npz_artifact(
+            os.path.join(self.target_path, "record"),
+            artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
+            payload=payload,
+            arrays=arrays,
+            arrays_filename="record.npz",
+        )
 
     def load(self) -> None:
         """Load a previously saved training record from disk.
@@ -381,29 +581,30 @@ class TrainRecord:
             record_path = os.path.join(self.target_path, "record")
             if os.path.exists(record_path):
                 try:
-                    # SECURITY: weights_only=False required because record
-                    # contains non-tensor objects (dicts, lists).  Only load
-                    # files from trusted sources.
-                    data = torch.load(record_path, weights_only=False)
-                    self.train = data["train"]
-                    self.val = data["val"]
-                    self._legacy_test_history = data.get(
-                        "test",
-                        self._legacy_test_history,
+                    data, arrays = read_json_npz_artifact(
+                        record_path,
+                        expected_artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
                     )
-                    loaded_best = data.get("best_record", {})
-                    for key in self.best_record:
-                        if key in loaded_best:
-                            value = loaded_best[key]
-                            if not key.endswith("_epoch") and value in {
-                                -1,
-                                torch.inf,
-                            }:
-                                value = None
-                            self.best_record[key] = value
-                    self.seed = data["seed"]
-                    # Restore epoch from train loss length
-                    self.epoch = len(self.train[RecordKey.LOSS])
+                    (
+                        train,
+                        val,
+                        test,
+                        loaded_best,
+                        seed,
+                        epoch,
+                    ) = _decode_training_artifact(
+                        data,
+                        arrays,
+                        best_record_keys=set(self.best_record),
+                    )
+                    self.best_record.update(loaded_best)
+                    self.train = train
+                    self.val = val
+                    self._legacy_test_history = test
+                    self.seed = seed
+                    self.epoch = epoch
+                except UnsupportedArtifactError:
+                    raise
                 except Exception as e:
                     logger.error(
                         "Failed to load TrainRecord stats: %s",

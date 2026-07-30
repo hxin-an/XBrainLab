@@ -124,33 +124,35 @@ def test_auc(label, output, expected):
         assert np.isclose(result, expected)
 
 
-def test_export():
-    with patch("torch.save") as torch_mock:
-        gradient = {0: np.array([1.0], dtype=np.float32)}
-        label = [1, 2]
-        output = [1]
-        eval_record = EvalRecord(
-            label,
-            output,
-            gradient,
-            {},
-            {},
-            {},
-            {},
-            evaluation_split="test",
-            saliency_context=_saliency_context(),
-        )
-        eval_record.export("target_path")
-        torch_mock.assert_called_once()
-        payload, path = torch_mock.call_args.args
-        assert path == os.path.join("target_path", "eval")
-        assert payload["artifact_schema_version"] == 4
-        assert payload["label"] == label
-        assert payload["output"] == output
-        assert payload["gradient"] == gradient
-        assert payload["evaluation_split"] == "test"
-        assert payload["saliency_context"] == _saliency_context().to_payload()
-        assert payload["saliency_integrity_manifest"]["manifest_sha256"]
+def test_export(tmp_path):
+    gradient = {0: np.array([1.0], dtype=np.float32)}
+    label = np.array([1, 2])
+    output = np.array([1])
+    eval_record = EvalRecord(
+        label,
+        output,
+        gradient,
+        {},
+        {},
+        {},
+        {},
+        evaluation_split="test",
+        saliency_context=_saliency_context(),
+    )
+
+    eval_record.export(str(tmp_path))
+
+    assert os.path.exists(tmp_path / "eval")
+    assert os.path.exists(tmp_path / "eval.npz")
+    loaded = EvalRecord.load(str(tmp_path))
+    assert loaded is not None
+    np.testing.assert_array_equal(loaded.label, label)
+    np.testing.assert_array_equal(loaded.output, output)
+    np.testing.assert_array_equal(loaded.gradient[0], gradient[0])
+    assert loaded.evaluation_split == "test"
+    assert loaded.saliency_context == _saliency_context()
+    assert loaded.saliency_integrity_manifest is not None
+    assert loaded.saliency_integrity_manifest["manifest_sha256"]
 
 
 def test_export_csv(tmp_path):

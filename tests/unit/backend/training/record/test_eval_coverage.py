@@ -181,12 +181,15 @@ class TestLoadExport:
         result = EvalRecord.load(str(tmp_path / "nonexistent"))
         assert result is None
 
-    def test_load_corrupted(self, tmp_path):
-        # Write garbage
+    def test_load_unrecognized_legacy_artifact(self, tmp_path):
         eval_path = tmp_path / "eval"
         eval_path.write_bytes(b"not a valid torch file")
-        result = EvalRecord.load(str(tmp_path))
-        assert result is None
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"(?i)unsupported legacy evaluation record.*start a new evaluation",
+        ):
+            EvalRecord.load(str(tmp_path))
 
 
 # ---------------------------------------------------------------------------

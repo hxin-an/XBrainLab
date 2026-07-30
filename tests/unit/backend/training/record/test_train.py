@@ -97,11 +97,13 @@ def test_train_record_init_dir(
 
 
 @pytest.fixture()
-def train_record(export_mocker, dataset, training_option, model_holder):  # noqa: F811
+def train_record(tmp_path, dataset, training_option, model_holder):  # noqa: F811
     repeat = 0
     seed = set_seed(0)
     model = model_holder.get_model({})
-    record = TrainRecord(repeat, dataset, model, training_option, seed)
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(repeat, dataset, model, training_option, seed)
+    record.target_path = str(tmp_path)
     return record
 
 
@@ -327,18 +329,22 @@ def test_train_record_eval_record_getter(train_record, eval_record, func_name):
 def test_export_writes_only_validation_checkpoints(train_record, key):
     train_record.export_checkpoint()
 
-    args_list = torch.save.call_args_list
-    files = [os.path.basename(args[0][1]) for args in args_list]
+    files = os.listdir(train_record.target_path)
     assert "Epoch-0-model" in files
     assert "record" in files
+    assert "record.npz" in files
 
-    key = "best_val_" + key + "_model"
-    setattr(train_record, key, "test")
+    checkpoint_name = "best_val_" + key + "_model"
+    expected_state = {"weight": torch.tensor([1.0])}
+    setattr(train_record, checkpoint_name, expected_state)
     train_record.export_checkpoint()
 
-    args_list = torch.save.call_args_list
-    arg = [args[0][0] for args in args_list]
-    assert "test" in arg
+    restored = torch.load(
+        os.path.join(train_record.target_path, checkpoint_name),
+        map_location="cpu",
+        weights_only=True,
+    )
+    torch.testing.assert_close(restored["weight"], expected_state["weight"])
 
 
 def test_export_ignores_legacy_test_selected_checkpoint(train_record):
@@ -346,7 +352,6 @@ def test_export_ignores_legacy_test_selected_checkpoint(train_record):
 
     train_record.export_checkpoint()
 
-    saved_values = [args[0][0] for args in torch.save.call_args_list]
-    saved_files = [os.path.basename(args[0][1]) for args in torch.save.call_args_list]
-    assert "must-not-be-exported" not in saved_values
-    assert "best_test_accuracy_model" not in saved_files
+    assert not os.path.exists(
+        os.path.join(train_record.target_path, "best_test_accuracy_model")
+    )

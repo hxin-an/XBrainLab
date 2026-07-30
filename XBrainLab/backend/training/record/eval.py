@@ -8,7 +8,6 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 import numpy as np
-import torch
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
 from ...utils.logger import logger
@@ -33,6 +32,14 @@ from ..saliency_provenance import (
     fingerprint_saliency_model_state,  # noqa: F401 - compatibility re-export
     fingerprint_saliency_split_mask,  # noqa: F401 - compatibility re-export
 )
+from .artifact_store import (
+    EVALUATION_RECORD_ARTIFACT_TYPE,
+    SALIENCY_EXPORT_ARTIFACT_TYPE,
+    ArtifactStoreError,
+    UnsupportedArtifactError,
+    read_json_npz_artifact,
+    write_json_npz_artifact,
+)
 
 EVAL_ARTIFACT_SCHEMA_VERSION = 4
 SALIENCY_EXPORT_ARTIFACT_SCHEMA_VERSION = 3
@@ -45,10 +52,70 @@ def _has_items(value: Any) -> bool:
         return False
 
 
-def _require_plain_eval_artifact(value: object) -> dict[str, object]:
-    if type(value) is not dict:
-        raise TypeError("Eval artifact root must be a plain mapping.")
-    return value
+def _decode_eval_artifact(
+    payload: dict[str, object],
+    arrays: dict[str, np.ndarray],
+) -> dict[str, object]:
+    label_array = payload.get("label_array")
+    output_array = payload.get("output_array")
+    raw_stores = payload.get("saliency_stores")
+    if not isinstance(label_array, str) or label_array not in arrays:
+        raise ArtifactStoreError(
+            "Evaluation artifact label array reference is invalid."
+        )
+    if not isinstance(output_array, str) or output_array not in arrays:
+        raise ArtifactStoreError(
+            "Evaluation artifact output array reference is invalid."
+        )
+    if type(raw_stores) is not dict or set(raw_stores) != set(
+        SALIENCY_METHOD_STORE_NAMES.values()
+    ):
+        raise ArtifactStoreError(
+            "Evaluation artifact saliency store index is malformed."
+        )
+    consumed_arrays = {label_array, output_array}
+    reconstructed_stores: dict[str, dict[int, np.ndarray]] = {}
+    for attribute in SALIENCY_METHOD_STORE_NAMES.values():
+        raw_entries = raw_stores[attribute]
+        if not isinstance(raw_entries, list):
+            raise ArtifactStoreError(
+                f"Evaluation saliency store {attribute!r} is malformed."
+            )
+        reconstructed: dict[int, np.ndarray] = {}
+        for entry in raw_entries:
+            if type(entry) is not dict or set(entry) != {
+                "class_index",
+                "array",
+            }:
+                raise ArtifactStoreError(
+                    f"Evaluation saliency store {attribute!r} is malformed."
+                )
+            class_index = entry["class_index"]
+            array_name = entry["array"]
+            if (
+                isinstance(class_index, bool)
+                or not isinstance(class_index, int)
+                or class_index in reconstructed
+                or not isinstance(array_name, str)
+                or array_name not in arrays
+                or array_name in consumed_arrays
+            ):
+                raise ArtifactStoreError(
+                    f"Evaluation saliency store {attribute!r} is malformed."
+                )
+            reconstructed[class_index] = arrays[array_name]
+            consumed_arrays.add(array_name)
+        reconstructed_stores[attribute] = reconstructed
+    if consumed_arrays != set(arrays):
+        raise ArtifactStoreError(
+            "Evaluation artifact contains unreferenced numeric arrays."
+        )
+    return {
+        **payload,
+        "label": arrays[label_array],
+        "output": arrays[output_array],
+        **reconstructed_stores,
+    }
 
 
 def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
@@ -416,22 +483,40 @@ class EvalRecord:
                 self._verify_saliency_integrity()
 
     def export(self, target_path: str) -> None:
-        """Export the evaluation record as a torch file.
+        """Export the evaluation record as JSON metadata and numeric NPZ arrays.
 
         Args:
-            target_path: Directory path where the ``'eval'`` file will be saved.
+            target_path: Directory where ``eval`` and ``eval.npz`` are saved.
 
         """
         self._require_persistable_saliency_context()
-        record = {
-            "artifact_schema_version": EVAL_ARTIFACT_SCHEMA_VERSION,
+        arrays: dict[str, object] = {
             "label": self.label,
             "output": self.output,
-            "gradient": self.gradient,
-            "gradient_input": self.gradient_input,
-            "smoothgrad": self.smoothgrad,
-            "smoothgrad_sq": self.smoothgrad_sq,
-            "vargrad": self.vargrad,
+        }
+        saliency_stores: dict[str, list[dict[str, object]]] = {}
+        for attribute in SALIENCY_METHOD_STORE_NAMES.values():
+            store = getattr(self, attribute)
+            if type(store) is not dict:
+                raise ArtifactStoreError(
+                    f"Evaluation saliency store {attribute!r} must be a plain mapping."
+                )
+            entries: list[dict[str, object]] = []
+            for index, (class_index, values) in enumerate(store.items()):
+                array_name = f"saliency.{attribute}.{index}"
+                arrays[array_name] = values
+                entries.append(
+                    {
+                        "class_index": class_index,
+                        "array": array_name,
+                    }
+                )
+            saliency_stores[attribute] = entries
+        payload = {
+            "artifact_schema_version": EVAL_ARTIFACT_SCHEMA_VERSION,
+            "label_array": "label",
+            "output_array": "output",
+            "saliency_stores": saliency_stores,
             "evaluation_split": self.evaluation_split,
             "saliency_context": (
                 self.saliency_context.to_payload()
@@ -446,7 +531,13 @@ class EvalRecord:
                 self.saliency_integrity_manifest
             ),
         }
-        torch.save(record, os.path.join(target_path, "eval"))
+        write_json_npz_artifact(
+            os.path.join(target_path, "eval"),
+            artifact_type=EVALUATION_RECORD_ARTIFACT_TYPE,
+            payload=payload,
+            arrays=arrays,
+            arrays_filename="eval.npz",
+        )
 
     @classmethod
     def load(
@@ -455,7 +546,7 @@ class EvalRecord:
         *,
         expected_producer_identity: SaliencyProducerIdentity | None = None,
     ) -> EvalRecord | None:
-        """Load an evaluation record from a torch file.
+        """Load an evaluation record from the safe JSON/NPZ artifact store.
 
         Args:
             target_path: Directory path containing the ``'eval'`` file.
@@ -470,7 +561,11 @@ class EvalRecord:
             return None
 
         try:
-            data = _require_plain_eval_artifact(torch.load(path, weights_only=False))
+            payload, arrays = read_json_npz_artifact(
+                path,
+                expected_artifact_type=EVALUATION_RECORD_ARTIFACT_TYPE,
+            )
+            data = _decode_eval_artifact(payload, arrays)
             saliency_stores = {
                 attribute: (value if type(value) is dict else {})
                 for attribute in SALIENCY_METHOD_STORE_NAMES.values()
@@ -572,6 +667,8 @@ class EvalRecord:
                 ),
                 _from_artifact=True,
             )
+        except UnsupportedArtifactError:
+            raise
         except Exception as e:
             logger.error("Failed to load EvalRecord: %s", e, exc_info=True)
             return None
@@ -631,8 +728,8 @@ class EvalRecord:
             method: Saliency method name. One of ``'Gradient'``,
                 ``'Gradient * Input'``, ``'SmoothGrad'``,
                 ``'SmoothGrad_Squared'``, or ``'VarGrad'``.
-            target_path: Optional file path. If provided, the saliency
-                data is also saved via ``torch.save``.
+            target_path: Optional JSON manifest path. Its numeric arrays are
+                saved in a sibling path ending in ``.npz``.
 
         Returns:
             A versioned artifact envelope containing the requested saliency and
@@ -678,7 +775,26 @@ class EvalRecord:
             "saliency_integrity_manifest": copy.deepcopy(manifest),
         }
         if target_path:
-            torch.save(artifact, target_path)
+            arrays: dict[str, object] = {}
+            saliency_entries: list[dict[str, object]] = []
+            for index, (class_index, values) in enumerate(saliency.items()):
+                array_name = f"saliency.{index}"
+                arrays[array_name] = values
+                saliency_entries.append(
+                    {
+                        "class_index": class_index,
+                        "array": array_name,
+                    }
+                )
+            write_json_npz_artifact(
+                target_path,
+                artifact_type=SALIENCY_EXPORT_ARTIFACT_TYPE,
+                payload={
+                    key: value for key, value in artifact.items() if key != "saliency"
+                }
+                | {"saliency_arrays": saliency_entries},
+                arrays=arrays,
+            )
         return artifact
 
     def get_acc(self) -> float:

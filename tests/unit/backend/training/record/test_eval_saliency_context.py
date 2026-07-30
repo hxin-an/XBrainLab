@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.training.record.artifact_store import (
+    SALIENCY_EXPORT_ARTIFACT_TYPE,
+    read_json_npz_artifact,
+)
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.saliency_provenance import (
     SaliencyArtifactContext,
@@ -83,6 +89,17 @@ def _record(*, context: SaliencyArtifactContext | None) -> EvalRecord:
     )
 
 
+def _read_eval_manifest(path: Path) -> dict[str, Any]:
+    return json.loads((path / "eval").read_text(encoding="utf-8"))
+
+
+def _write_eval_manifest(path: Path, manifest: dict[str, Any]) -> None:
+    (path / "eval").write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_eval_record_round_trip_preserves_saliency_identity_context(tmp_path) -> None:
     epoch_data = _EpochContext()
     context = _context(epoch_data)
@@ -108,7 +125,7 @@ def test_eval_record_round_trip_preserves_saliency_identity_context(tmp_path) ->
     assert loaded_context.context_fingerprint
 
 
-def test_legacy_saliency_artifact_records_explicit_missing_context_boundary(
+def test_legacy_saliency_artifact_is_rejected_as_unsafe(
     tmp_path,
 ) -> None:
     legacy_payload: dict[str, Any] = {
@@ -122,14 +139,11 @@ def test_legacy_saliency_artifact_records_explicit_missing_context_boundary(
     }
     torch.save(legacy_payload, tmp_path / "eval")
 
-    loaded = EvalRecord.load(str(tmp_path))
-
-    assert loaded is not None
-    assert loaded.saliency_context is None
-    assert loaded.saliency_context_status == "legacy_missing"
-    assert "Recompute saliency" in (loaded.saliency_recompute_reason or "")
-    with pytest.raises(SaliencyContextError, match=r"legacy.*Recompute saliency"):
-        loaded.get_gradient(0)
+    with pytest.raises(
+        RuntimeError,
+        match=r"(?i)unsupported legacy evaluation record.*start a new evaluation",
+    ):
+        EvalRecord.load(str(tmp_path))
 
 
 def test_runtime_context_binds_once_and_rejects_later_channel_reordering() -> None:
@@ -164,13 +178,23 @@ def test_standalone_saliency_export_contains_identity_envelope(tmp_path) -> None
     target = tmp_path / "gradient.pt"
 
     record.export_saliency("Gradient", target_path=str(target))
-    artifact = torch.load(target, weights_only=False)
+    artifact, arrays = read_json_npz_artifact(
+        target,
+        expected_artifact_type=SALIENCY_EXPORT_ARTIFACT_TYPE,
+    )
 
     assert artifact["artifact_schema_version"] == 3
     assert artifact["method"] == "Gradient"
-    assert set(artifact["saliency"]) == {0, 1}
     assert SaliencyArtifactContext.from_payload(artifact["saliency_context"]) == context
     assert artifact["saliency_integrity_manifest"]["manifest_sha256"]
+    entries = artifact["saliency_arrays"]
+    assert isinstance(entries, list)
+    assert {entry["class_index"] for entry in entries} == {0, 1}
+    for entry in entries:
+        np.testing.assert_array_equal(
+            arrays[entry["array"]],
+            record.gradient[entry["class_index"]],
+        )
 
 
 def test_standalone_saliency_export_fails_closed_without_identity() -> None:
@@ -267,7 +291,7 @@ def test_load_rejects_expected_producer_mismatch_without_losing_metrics(
         loaded.get_gradient(0)
 
 
-def test_legacy_context_schema_is_loaded_for_metrics_but_saliency_fails_closed(
+def test_legacy_context_schema_artifact_is_rejected_as_unsafe(
     tmp_path,
 ) -> None:
     epoch_data = _EpochContext()
@@ -289,13 +313,11 @@ def test_legacy_context_schema_is_loaded_for_metrics_but_saliency_fails_closed(
     }
     torch.save(payload, tmp_path / "eval")
 
-    loaded = EvalRecord.load(str(tmp_path))
-
-    assert loaded is not None
-    assert loaded.saliency_context_status == "incompatible"
-    assert "legacy" in (loaded.saliency_recompute_reason or "").lower()
-    with pytest.raises(SaliencyContextError, match=r"legacy.*Recompute saliency"):
-        loaded.validate_saliency_context(epoch_data)
+    with pytest.raises(
+        RuntimeError,
+        match=r"(?i)unsupported legacy evaluation record.*start a new evaluation",
+    ):
+        EvalRecord.load(str(tmp_path))
 
 
 def test_previous_bounded_hash_artifact_keeps_metrics_but_saliency_fails_closed(
@@ -303,10 +325,11 @@ def test_previous_bounded_hash_artifact_keeps_metrics_but_saliency_fails_closed(
 ) -> None:
     epoch_data = _EpochContext()
     _record(context=_context(epoch_data)).export(str(tmp_path))
-    payload = torch.load(tmp_path / "eval", weights_only=False)
+    manifest = _read_eval_manifest(tmp_path)
+    payload = manifest["payload"]
     payload["saliency_context"]["schema_version"] = 2
     payload["saliency_context"]["producer_identity"]["schema_version"] = 1
-    torch.save(payload, tmp_path / "eval")
+    _write_eval_manifest(tmp_path, manifest)
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -320,20 +343,10 @@ def test_previous_bounded_hash_artifact_keeps_metrics_but_saliency_fails_closed(
 
 def test_current_schema_missing_producer_field_fails_closed(tmp_path) -> None:
     epoch_data = _EpochContext()
-    context_payload = _context(epoch_data).to_payload()
-    context_payload.pop("producer_identity")
-    payload = {
-        "artifact_schema_version": 3,
-        "label": np.array([0, 1]),
-        "output": np.array([[0.9, 0.1], [0.1, 0.9]]),
-        "gradient": {0: np.ones((1, 2, 51), dtype=np.float32)},
-        "gradient_input": {},
-        "smoothgrad": {},
-        "smoothgrad_sq": {},
-        "vargrad": {},
-        "saliency_context": context_payload,
-    }
-    torch.save(payload, tmp_path / "eval")
+    _record(context=_context(epoch_data)).export(str(tmp_path))
+    manifest = _read_eval_manifest(tmp_path)
+    manifest["payload"]["saliency_context"].pop("producer_identity")
+    _write_eval_manifest(tmp_path, manifest)
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -344,20 +357,10 @@ def test_current_schema_missing_producer_field_fails_closed(tmp_path) -> None:
 
 def test_tampered_context_fingerprint_fails_closed(tmp_path) -> None:
     epoch_data = _EpochContext()
-    context_payload = _context(epoch_data).to_payload()
-    context_payload["epoch_data_fingerprint"] = "f" * 64
-    payload = {
-        "artifact_schema_version": 3,
-        "label": np.array([0, 1]),
-        "output": np.array([[0.9, 0.1], [0.1, 0.9]]),
-        "gradient": {0: np.ones((1, 2, 51), dtype=np.float32)},
-        "gradient_input": {},
-        "smoothgrad": {},
-        "smoothgrad_sq": {},
-        "vargrad": {},
-        "saliency_context": context_payload,
-    }
-    torch.save(payload, tmp_path / "eval")
+    _record(context=_context(epoch_data)).export(str(tmp_path))
+    manifest = _read_eval_manifest(tmp_path)
+    manifest["payload"]["saliency_context"]["epoch_data_fingerprint"] = "f" * 64
+    _write_eval_manifest(tmp_path, manifest)
 
     loaded = EvalRecord.load(str(tmp_path))
 
@@ -368,20 +371,12 @@ def test_tampered_context_fingerprint_fails_closed(tmp_path) -> None:
 
 def test_tampered_producer_fingerprint_fails_closed(tmp_path) -> None:
     epoch_data = _EpochContext()
-    context_payload = _context(epoch_data).to_payload()
-    context_payload["producer_identity"]["model_fingerprint"] = "f" * 64
-    payload = {
-        "artifact_schema_version": 3,
-        "label": np.array([0, 1]),
-        "output": np.array([[0.9, 0.1], [0.1, 0.9]]),
-        "gradient": {0: np.ones((1, 2, 51), dtype=np.float32)},
-        "gradient_input": {},
-        "smoothgrad": {},
-        "smoothgrad_sq": {},
-        "vargrad": {},
-        "saliency_context": context_payload,
-    }
-    torch.save(payload, tmp_path / "eval")
+    _record(context=_context(epoch_data)).export(str(tmp_path))
+    manifest = _read_eval_manifest(tmp_path)
+    manifest["payload"]["saliency_context"]["producer_identity"][
+        "model_fingerprint"
+    ] = "f" * 64
+    _write_eval_manifest(tmp_path, manifest)
 
     loaded = EvalRecord.load(str(tmp_path))
 
