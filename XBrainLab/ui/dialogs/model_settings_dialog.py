@@ -364,6 +364,12 @@ class ModelSettingsDialog(BaseDialog):
         )
         layout.addWidget(self.local_model_combo)
 
+        self.model_migration_label = QLabel("")
+        self.model_migration_label.setObjectName("AssistantSettingsMuted")
+        self.model_migration_label.setWordWrap(True)
+        self.model_migration_label.setVisible(False)
+        layout.addWidget(self.model_migration_label)
+
         # Status & Actions
         status_layout = QHBoxLayout()
         status_layout.setContentsMargins(2, 0, 0, 0)
@@ -701,6 +707,7 @@ class ModelSettingsDialog(BaseDialog):
             index = self.local_model_combo.findData(self.config.model_name)
             if index >= 0:
                 self.local_model_combo.setCurrentIndex(index)
+        self._update_model_migration_notice()
 
         with QSignalBlocker(self.local_enable_chk):
             self.local_enable_chk.setChecked(self.config.local_model_enabled)
@@ -863,12 +870,19 @@ class ModelSettingsDialog(BaseDialog):
             index = self.local_model_combo.findData(self.config.model_name)
             if index >= 0:
                 self.local_model_combo.setCurrentIndex(index)
+        self._update_model_migration_notice()
         with QSignalBlocker(self.local_enable_chk):
             self.local_enable_chk.setChecked(self.config.local_model_enabled)
         self.temperature_spin.setValue(self.config.temperature)
         self.top_p_spin.setValue(self.config.top_p)
         self.max_tokens_spin.setValue(self.config.max_new_tokens)
         self._sync_response_presets_from_exact_values()
+
+    def _update_model_migration_notice(self) -> None:
+        """Present unsupported persisted choices without mutating settings."""
+        message = self.config.configured_model_unavailable_message()
+        self.model_migration_label.setText(message or "")
+        self.model_migration_label.setVisible(bool(message))
 
     def on_local_action_clicked(self):
         """Handle local model install/delete/cancel button click."""

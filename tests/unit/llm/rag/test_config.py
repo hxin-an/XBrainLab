@@ -7,7 +7,7 @@ from XBrainLab.llm.rag.config import RAGConfig
 
 class TestRAGConfig:
     def test_collection_name(self):
-        assert RAGConfig.COLLECTION_NAME == "gold_set_examples"
+        assert RAGConfig.COLLECTION_NAME == "gold_set_examples_1110a243fdf4"
 
     def test_embedding_model(self):
         assert isinstance(RAGConfig.EMBEDDING_MODEL, str)
@@ -30,4 +30,4 @@ class TestRAGConfig:
     def test_get_storage_path_is_inside_rag_dir(self):
         path = RAGConfig.get_storage_path()
         assert "rag" in path.replace("\\", "/").lower()
-        assert path.endswith("storage")
+        assert path.endswith("vectors")

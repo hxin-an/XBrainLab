@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +9,7 @@ import pytest
 
 from XBrainLab.llm.core.model_catalog import (
     MAX_TOTAL_MODEL_CACHE_GB,
+    LocalModelSpec,
     allowed_local_model_ids,
     default_local_model_id,
     disallowed_cache_candidates,
@@ -21,7 +23,7 @@ PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 PRIMARY_MODEL_REVISION = (
     "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
-LEGACY_MODEL_IDS = (
+RETIRED_MODEL_IDS = (
     "microsoft/Phi-4-mini-instruct",
     "microsoft/Phi-3.5-mini-instruct",
 )
@@ -96,7 +98,7 @@ def test_primary_granite_catalog_metadata_is_truthful() -> None:
     assert primary.estimated_download_gb == pytest.approx(5.08)
     assert primary.estimated_download_gb < 10.0
     assert primary.quantization.startswith("BF16 safetensors")
-    assert primary.trust_remote_code is False
+    assert "trust_remote_code" not in {field.name for field in fields(LocalModelSpec)}
     assert primary.supports_system_role is True
     assert primary.preferred_cuda_dtype == "bfloat16"
     assert primary.source_url == (
@@ -104,15 +106,16 @@ def test_primary_granite_catalog_metadata_is_truthful() -> None:
     )
 
 
-def test_phi_models_remain_explicit_legacy_catalog_entries() -> None:
-    assert allowed_local_model_ids() == [PRIMARY_MODEL_ID, *LEGACY_MODEL_IDS]
+def test_product_catalog_contains_exact_granite_only() -> None:
+    assert allowed_local_model_ids() == [PRIMARY_MODEL_ID]
 
-    for model_id in LEGACY_MODEL_IDS:
-        spec = local_model_spec(model_id)
-        assert spec is not None
-        assert spec.provider == "Microsoft"
-        assert spec.role == "legacy"
-        assert spec.license == "MIT"
+    for model_id in RETIRED_MODEL_IDS:
+        assert local_model_spec(model_id) is None
+        message = local_model_policy_error(model_id)
+        assert message is not None
+        assert "no longer available" in message
+        assert PRIMARY_MODEL_ID in message
+        assert "not changed" in message
 
 
 def test_download_preflight_allows_primary_under_limits(tmp_path: Path):

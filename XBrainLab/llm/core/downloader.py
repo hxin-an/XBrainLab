@@ -118,7 +118,7 @@ def run_download_task(repo_id, cache_dir, result_queue):
 
     Args:
         repo_id: HuggingFace repository identifier (e.g.
-            ``'microsoft/Phi-4-mini-instruct'``).
+            ``'ibm-granite/granite-3.3-2b-instruct'``).
         cache_dir: Local directory for storing downloaded model files.
         result_queue: A ``multiprocessing.Queue`` for sending status
             messages back to the parent process.  Messages are tuples

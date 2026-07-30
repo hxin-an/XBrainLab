@@ -8,7 +8,7 @@ import gc
 import logging
 from dataclasses import dataclass
 from threading import Event, Lock, Thread
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
@@ -92,59 +92,6 @@ class LocalBackend(BaseBackend):
             )
             self.config.load_in_4bit = False
 
-    def _patch_remote_code_compat(self) -> None:
-        """Patch narrow Transformers compatibility gaps in trusted model code.
-
-        Phi-4-mini's remote modeling file imports ``LossKwargs`` from
-        ``transformers.utils``. Some supported Transformers builds no longer
-        export that TypedDict there. It is only used for runtime annotations, so
-        providing the missing TypedDict avoids a startup failure without
-        changing generation behavior.
-        """
-        if "Phi-" not in str(self.config.model_name):
-            return
-
-        try:
-            import transformers.utils as transformers_utils
-        except ModuleNotFoundError:
-            return
-
-        if not hasattr(transformers_utils, "LossKwargs"):
-
-            class LossKwargs(TypedDict, total=False):
-                labels: Any
-
-            cast(Any, transformers_utils).LossKwargs = LossKwargs
-
-        try:
-            from transformers.cache_utils import DynamicCache
-        except ModuleNotFoundError:
-            return
-
-        if not hasattr(DynamicCache, "seen_tokens"):
-            DynamicCache.seen_tokens = property(  # type: ignore[attr-defined]
-                lambda cache: cache.get_seq_length()
-            )
-        if not hasattr(DynamicCache, "get_max_length"):
-            DynamicCache.get_max_length = lambda cache: None  # type: ignore[attr-defined]
-        if not hasattr(DynamicCache, "get_usable_length"):
-
-            def get_usable_length(  # type: ignore[no-untyped-def]
-                cache,
-                new_seq_length,
-                layer_idx=0,
-            ):
-                previous_seq_length = cache.get_seq_length(layer_idx)
-                max_length = cache.get_max_length()
-                if (
-                    max_length is not None
-                    and previous_seq_length + new_seq_length > max_length
-                ):
-                    return max_length - new_seq_length
-                return previous_seq_length
-
-            DynamicCache.get_usable_length = get_usable_length  # type: ignore[attr-defined]
-
     def load(self):
         """Downloads (if necessary) and loads the model and tokenizer.
 
@@ -183,15 +130,11 @@ class LocalBackend(BaseBackend):
             self.config.device,
         )
         try:
-            self._patch_remote_code_compat()
-            # Remote-code policy belongs to the immutable model catalog. A
-            # mutable local settings file must not broaden this trust boundary.
-            trust_remote_code = spec.trust_remote_code
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.config.model_name,
                 cache_dir=self.config.cache_dir,
                 revision=spec.revision,
-                trust_remote_code=trust_remote_code,
+                trust_remote_code=False,
                 local_files_only=True,
             )
 
@@ -199,7 +142,7 @@ class LocalBackend(BaseBackend):
             model_kwargs = {
                 "cache_dir": self.config.cache_dir,
                 "revision": spec.revision,
-                "trust_remote_code": trust_remote_code,
+                "trust_remote_code": False,
                 "local_files_only": True,
             }
             if spec.attn_implementation:

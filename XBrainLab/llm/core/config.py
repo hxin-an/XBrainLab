@@ -313,6 +313,14 @@ class LLMConfig:
             f"{packages}. Install the Poetry llm group to enable local startup."
         )
 
+    def configured_model_unavailable_message(self) -> str | None:
+        """Return migration guidance for an unsupported persisted model.
+
+        Loading settings is intentionally read-only. Callers may present this
+        message and let the user explicitly save the exact product model.
+        """
+        return local_model_policy_error(self.model_name)
+
     @staticmethod
     def allowed_local_model_ids() -> list[str]:
         """Return supported local model IDs for product UI surfaces."""

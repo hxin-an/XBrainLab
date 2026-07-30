@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from threading import Event, Thread
-from typing import Any, cast
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,9 +22,7 @@ GRANITE_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 GRANITE_MODEL_REVISION = (
     "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
-PRIMARY_MODEL_REVISION = (
-    "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
-)
+PRIMARY_MODEL_REVISION = GRANITE_MODEL_REVISION
 
 
 class _EmptyStreamer:
@@ -79,7 +77,7 @@ def _configure_blocking_generation(
 
 def _make_config(**overrides):
     defaults = {
-        "model_name": "microsoft/Phi-4-mini-instruct",
+        "model_name": GRANITE_MODEL_ID,
         "device": "cpu",
         "load_in_4bit": False,
         "cache_dir": "/tmp/cache",
@@ -448,71 +446,10 @@ class TestLocalBackendLoad:
         assert "device_map" not in call_kwargs
         assert "quantization_config" not in call_kwargs
 
-    def test_phi_remote_code_compat_adds_loss_kwargs(self):
-        import transformers.utils as transformers_utils
-
+    def test_product_backend_has_no_remote_code_compatibility_hook(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
-        cfg = _make_config(model_name="microsoft/Phi-4-mini-instruct")
-        backend = LocalBackend(cfg)
-        previous = getattr(transformers_utils, "LossKwargs", None)
-        had_previous = hasattr(transformers_utils, "LossKwargs")
-
-        if had_previous:
-            delattr(transformers_utils, "LossKwargs")
-        try:
-            backend._patch_remote_code_compat()
-            assert hasattr(transformers_utils, "LossKwargs")
-        finally:
-            utils = cast(Any, transformers_utils)
-            if had_previous:
-                utils.LossKwargs = previous
-            elif hasattr(transformers_utils, "LossKwargs"):
-                delattr(transformers_utils, "LossKwargs")
-
-    def test_phi_remote_code_compat_adds_dynamic_cache_seen_tokens(self):
-        from transformers.cache_utils import DynamicCache
-
-        from XBrainLab.llm.core.backends.local import LocalBackend
-
-        cfg = _make_config(model_name="microsoft/Phi-3.5-mini-instruct")
-        backend = LocalBackend(cfg)
-        previous_seen = getattr(DynamicCache, "seen_tokens", None)
-        previous_max = getattr(DynamicCache, "get_max_length", None)
-        previous_usable = getattr(DynamicCache, "get_usable_length", None)
-        had_seen = hasattr(DynamicCache, "seen_tokens")
-        had_max = hasattr(DynamicCache, "get_max_length")
-        had_usable = hasattr(DynamicCache, "get_usable_length")
-
-        if had_seen:
-            delattr(DynamicCache, "seen_tokens")
-        if had_max:
-            delattr(DynamicCache, "get_max_length")
-        if had_usable:
-            delattr(DynamicCache, "get_usable_length")
-        try:
-            backend._patch_remote_code_compat()
-            assert hasattr(DynamicCache, "seen_tokens")
-            assert hasattr(DynamicCache, "get_max_length")
-            assert hasattr(DynamicCache, "get_usable_length")
-            dynamic_cache = cast(Any, DynamicCache())
-            assert dynamic_cache.seen_tokens == 0
-            assert dynamic_cache.get_max_length() is None
-            assert dynamic_cache.get_usable_length(1) == 0
-        finally:
-            dynamic_cache_cls = cast(Any, DynamicCache)
-            if had_seen:
-                dynamic_cache_cls.seen_tokens = previous_seen
-            elif hasattr(DynamicCache, "seen_tokens"):
-                delattr(DynamicCache, "seen_tokens")
-            if had_max:
-                dynamic_cache_cls.get_max_length = previous_max
-            elif hasattr(DynamicCache, "get_max_length"):
-                delattr(DynamicCache, "get_max_length")
-            if had_usable:
-                dynamic_cache_cls.get_usable_length = previous_usable
-            elif hasattr(DynamicCache, "get_usable_length"):
-                delattr(DynamicCache, "get_usable_length")
+        assert not hasattr(LocalBackend, "_patch_remote_code_compat")
 
     def test_unload_releases_model_and_cuda_cache(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
@@ -552,18 +489,6 @@ class TestProcessMessages:
         assert len(result) == 1
         assert result[0]["role"] == "user"
 
-    def test_system_merged_into_user(self):
-        backend = self._get_backend()
-        msgs = [
-            {"role": "system", "content": "You are helpful"},
-            {"role": "user", "content": "hello"},
-        ]
-        result = backend._process_messages_for_template(msgs)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert "You are helpful" in result[0]["content"]
-        assert "hello" in result[0]["content"]
-
     def test_granite_preserves_native_system_role(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
@@ -577,13 +502,11 @@ class TestProcessMessages:
 
         assert result == messages
 
-    def test_system_only_no_user(self):
+    def test_granite_preserves_system_only_message(self):
         backend = self._get_backend()
         msgs = [{"role": "system", "content": "instructions"}]
         result = backend._process_messages_for_template(msgs)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert "instructions" in result[0]["content"]
+        assert result == msgs
 
     def test_consecutive_same_role_merged(self):
         backend = self._get_backend()

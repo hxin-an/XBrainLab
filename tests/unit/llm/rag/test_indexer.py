@@ -12,6 +12,10 @@ def mock_indexer():
     with (
         patch("XBrainLab.llm.rag.indexer.HuggingFaceEmbeddings"),
         patch("XBrainLab.llm.rag.indexer.QdrantClient"),
+        patch(
+            "XBrainLab.llm.rag.indexer.RAGConfig.embedding_cache_ready",
+            return_value=True,
+        ),
     ):
         indexer = RAGIndexer()
         return indexer

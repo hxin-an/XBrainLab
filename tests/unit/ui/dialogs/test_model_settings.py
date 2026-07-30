@@ -215,6 +215,7 @@ class TestModelSettingsInit:
         ]
 
         assert model_ids == LLMConfig.allowed_local_model_ids()
+        assert model_ids == ["ibm-granite/granite-3.3-2b-instruct"]
         assert model_labels == [
             local_model_spec(model_id).label for model_id in model_ids
         ]
@@ -222,6 +223,29 @@ class TestModelSettingsInit:
         assert all("Qwen" not in str(model_id) for model_id in model_ids)
         assert dialog.model_section_label.buddy() is dialog.local_model_combo
         assert dialog.local_model_combo.accessibleName() == "Assistant model"
+
+    def test_retired_phi_config_shows_migration_notice_without_mutating_config(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+        legacy_model = "microsoft/Phi-4-mini-instruct"
+        config = LLMConfig(model_name=legacy_model, device="cpu")
+        created = ModelSettingsDialog(
+            parent=None,
+            config=config,
+            download_lifecycle=_FakeDownloadLifecycle(),
+        )
+        qtbot.addWidget(created)
+
+        assert config.model_name == legacy_model
+        assert created.local_model_combo.currentData() == (
+            "ibm-granite/granite-3.3-2b-instruct"
+        )
+        assert created.model_migration_label.isHidden() is False
+        assert "no longer available" in created.model_migration_label.text()
+        assert "not changed" in created.model_migration_label.text()
 
     def test_no_remote_runtime_widgets_are_exposed(self, dialog):
         assert not hasattr(dialog, "api_key_input")
@@ -632,12 +656,11 @@ class TestLocalModelSection:
 
         assert dialog.is_downloading is False
 
-    def test_cancel_outcome_uses_original_target_after_selection_change(
+    def test_cancel_outcome_uses_original_target_with_exact_model_choice(
         self,
         dialog,
     ):
         original_repo = dialog.local_model_combo.itemData(0)
-        other_repo = dialog.local_model_combo.itemData(1)
         target = ModelDownloadTarget.create(original_repo, dialog.config.cache_dir)
         outcome = ModelDownloadOutcome(
             target=target,
@@ -646,12 +669,11 @@ class TestLocalModelSection:
         )
         dialog.is_downloading = True
         dialog.download_lifecycle.idle = True
-        dialog.local_model_combo.setCurrentIndex(1)
 
         dialog.on_download_failed(outcome)
 
         assert outcome.target.repo_id == original_repo
-        assert dialog.local_model_combo.currentData() == other_repo
+        assert dialog.local_model_combo.currentData() == original_repo
         assert dialog.is_downloading is False
         assert not hasattr(dialog, "_cleanup_partial_files")
 

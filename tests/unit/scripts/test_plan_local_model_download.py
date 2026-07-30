@@ -11,18 +11,15 @@ from XBrainLab.llm.core.config import LLMConfig
 def test_build_plan_reports_primary_model(tmp_path: Path):
     config = LLMConfig()
     config.cache_dir = str(tmp_path / "models")
-    config.model_name = "microsoft/Phi-4-mini-instruct"
+    config.model_name = LLMConfig.default_local_model_id()
 
     with patch.object(LLMConfig, "load_from_file", return_value=config):
         plan = build_plan()
 
     assert plan["ok"] is True
-    assert plan["model_id"] == "microsoft/Phi-4-mini-instruct"
+    assert plan["model_id"] == "ibm-granite/granite-3.3-2b-instruct"
     assert plan["primary_model"] == "ibm-granite/granite-3.3-2b-instruct"
-    assert plan["legacy_compatibility_models"] == [
-        "microsoft/Phi-4-mini-instruct",
-        "microsoft/Phi-3.5-mini-instruct",
-    ]
+    assert plan["legacy_compatibility_models"] == []
     assert "Qwen" not in "\n".join(cast(list[str], plan["allowed_models"]))
 
 
@@ -42,11 +39,11 @@ def test_render_markdown_includes_cache_and_source(tmp_path: Path):
     config.cache_dir = str(tmp_path / "models")
 
     with patch.object(LLMConfig, "load_from_file", return_value=config):
-        plan = build_plan("microsoft/Phi-3.5-mini-instruct")
+        plan = build_plan()
 
     rendered = render_markdown(plan)
 
     assert "Local Model Download Preflight" in rendered
     assert "cache directory" in rendered
     assert "automatic fallback: `disabled`" in rendered
-    assert "huggingface.co/microsoft/Phi-3.5-mini-instruct" in rendered
+    assert "huggingface.co/ibm-granite/granite-3.3-2b-instruct" in rendered

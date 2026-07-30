@@ -20,9 +20,9 @@ from XBrainLab.llm.core.downloader import (
     run_download_task,
 )
 
-PRIMARY_MODEL_ID = "microsoft/Phi-4-mini-instruct"
+PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 PRIMARY_MODEL_REVISION = (
-    "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
+    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
 VALID_TEST_WEIGHT_BYTES = 300_000_000
 
@@ -582,7 +582,7 @@ class TestRunDownloadTask:
         original = _dl_mod.snapshot_download
         try:
             _dl_mod.snapshot_download = None  # type: ignore[assignment]
-            run_download_task("microsoft/Phi-4-mini-instruct", "/cache", q)
+            run_download_task(PRIMARY_MODEL_ID, "/cache", q)
         finally:
             _dl_mod.snapshot_download = original
 
@@ -597,7 +597,7 @@ class TestRunDownloadTask:
             "XBrainLab.llm.core.downloader.snapshot_download",
             side_effect=OSError("disk full"),
         ):
-            run_download_task("microsoft/Phi-4-mini-instruct", "/cache", q)
+            run_download_task(PRIMARY_MODEL_ID, "/cache", q)
 
         messages = _drain_queue(q)
         # Should have progress then error

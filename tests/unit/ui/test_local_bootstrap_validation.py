@@ -83,7 +83,7 @@ class TestLocalBootstrapValidation:
         qtbot,
         tmp_path,
     ):
-        repo_id = "microsoft/Phi-4-mini-instruct"
+        repo_id = LLMConfig.default_local_model_id()
         settings_path = tmp_path / "settings.json"
         cache_dir = tmp_path / "models"
         _write_settings(settings_path, repo_id)
@@ -135,7 +135,7 @@ class TestLocalBootstrapValidation:
         tmp_path,
     ):
         settings_path = tmp_path / "settings.json"
-        repo_id = "microsoft/Phi-4-mini-instruct"
+        repo_id = LLMConfig.default_local_model_id()
         _write_settings(settings_path, repo_id)
 
         config = LLMConfig.load_from_file(str(settings_path))
@@ -162,10 +162,12 @@ class TestLocalBootstrapValidation:
 
     def test_dialog_uses_selected_model_for_local_runtime_truth(self, qtbot, tmp_path):
         saved_repo = "microsoft/Phi-4-mini-instruct"
+        product_repo = LLMConfig.default_local_model_id()
         settings_path = tmp_path / "settings.json"
         cache_dir = tmp_path / "models"
         _write_settings(settings_path, saved_repo)
-        _create_hf_cache(cache_dir, saved_repo)
+        _create_hf_cache(cache_dir, product_repo)
+        original_settings = settings_path.read_bytes()
 
         config = LLMConfig.load_from_file(str(settings_path))
         assert config is not None
@@ -190,30 +192,29 @@ class TestLocalBootstrapValidation:
                 agent_manager=MagicMock(),
             )
             qtbot.addWidget(dialog)
-            selected_model = "microsoft/Phi-3.5-mini-instruct"
-            selected_index = dialog.local_model_combo.findData(selected_model)
-            assert selected_index >= 0
-            dialog.local_model_combo.setCurrentIndex(selected_index)
             qtbot.waitUntil(
                 lambda: (
                     dialog._pending_inspection_request_id is None
                     and dialog._current_local_model_state is not None
                     and dialog._current_local_model_state.request.model_name
-                    == selected_model
+                    == product_repo
                 ),
                 timeout=3000,
             )
 
-            assert dialog.local_downloaded is False
-            assert "model cache not found" in dialog.local_runtime_label.text().lower()
-            assert dialog.btn_activate.isEnabled() is False
+            assert config.model_name == saved_repo
+            assert settings_path.read_bytes() == original_settings
+            assert dialog.local_model_combo.currentData() == product_repo
+            assert dialog.local_downloaded is True
+            assert dialog.model_migration_label.isHidden() is False
+            assert "no longer available" in dialog.model_migration_label.text()
 
     def test_cpu_fallback_note_stays_consistent_across_ui_and_worker(
         self,
         qtbot,
         tmp_path,
     ):
-        repo_id = "microsoft/Phi-4-mini-instruct"
+        repo_id = LLMConfig.default_local_model_id()
         settings_path = tmp_path / "settings.json"
         cache_dir = tmp_path / "models"
         _write_settings(settings_path, repo_id)

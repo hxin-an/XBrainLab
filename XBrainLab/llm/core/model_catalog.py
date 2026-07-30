@@ -23,19 +23,17 @@ PRIMARY_LOCAL_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 PRIMARY_LOCAL_MODEL_REVISION = (
     "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
-LEGACY_PHI4_MODEL_ID = "microsoft/Phi-4-mini-instruct"
-LEGACY_PHI4_MODEL_REVISION = (
-    "cfbefacb99257ffa30c83adab238a50856ac3083"  # pragma: allowlist secret
-)
-LEGACY_PHI35_MODEL_ID = "microsoft/Phi-3.5-mini-instruct"
-LEGACY_PHI35_MODEL_REVISION = (
-    "2fe192450127e6a83f7441aef6e3ca586c338b77"  # pragma: allowlist secret
+RETIRED_LOCAL_MODEL_IDS = frozenset(
+    {
+        "microsoft/Phi-4-mini-instruct",
+        "microsoft/Phi-3.5-mini-instruct",
+    }
 )
 
-# Compatibility aliases for callers that still expose the former secondary
-# model as an explicit choice. Runtime selection does not use these as fallback.
-FALLBACK_LOCAL_MODEL_ID = LEGACY_PHI35_MODEL_ID
-FALLBACK_LOCAL_MODEL_REVISION = LEGACY_PHI35_MODEL_REVISION
+# Compatibility aliases remain exact Granite so old non-product callers cannot
+# reintroduce a second product model through the former fallback API.
+FALLBACK_LOCAL_MODEL_ID = PRIMARY_LOCAL_MODEL_ID
+FALLBACK_LOCAL_MODEL_REVISION = PRIMARY_LOCAL_MODEL_REVISION
 
 DISALLOWED_LOCAL_MODEL_PREFIXES = (
     "Qwen/",
@@ -72,7 +70,6 @@ class LocalModelSpec:
     runtime_context_tokens: int = 8_192
     supports_system_role: bool = False
     preferred_cuda_dtype: str = "float16"
-    trust_remote_code: bool = False
     attn_implementation: str | None = None
     source_url: str = ""
     notes: str = ""
@@ -137,50 +134,6 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
             "and 128K-context support; pinned BF16 weights remain under 10GB."
         ),
     ),
-    LocalModelSpec(
-        repo_id=LEGACY_PHI4_MODEL_ID,
-        revision=LEGACY_PHI4_MODEL_REVISION,
-        label="Phi-4 Mini Instruct (Legacy)",
-        provider="Microsoft",
-        role="legacy",
-        license="MIT",
-        parameters="3.8B",
-        context_tokens=128_000,
-        estimated_download_gb=7.69,
-        estimated_vram_gb=9.0,
-        quantization=(
-            "BF16 safetensors; optional runtime 4-bit if bitsandbytes is installed"
-        ),
-        trust_remote_code=True,
-        attn_implementation="eager",
-        source_url="https://huggingface.co/microsoft/Phi-4-mini-instruct",
-        notes=(
-            "Legacy explicit-selection model retained for existing installations; "
-            "it is never selected as an automatic runtime fallback."
-        ),
-    ),
-    LocalModelSpec(
-        repo_id=LEGACY_PHI35_MODEL_ID,
-        revision=LEGACY_PHI35_MODEL_REVISION,
-        label="Phi-3.5 Mini Instruct (Legacy)",
-        provider="Microsoft",
-        role="legacy",
-        license="MIT",
-        parameters="3.8B",
-        context_tokens=128_000,
-        estimated_download_gb=7.64,
-        estimated_vram_gb=8.5,
-        quantization=(
-            "BF16 safetensors; optional runtime 4-bit if bitsandbytes is installed"
-        ),
-        trust_remote_code=True,
-        attn_implementation="eager",
-        source_url="https://huggingface.co/microsoft/Phi-3.5-mini-instruct",
-        notes=(
-            "Legacy explicit-selection model retained for compatibility; it is "
-            "never selected as an automatic runtime fallback."
-        ),
-    ),
 )
 
 _SPECS_BY_ID = {spec.repo_id: spec for spec in LOCAL_MODEL_SPECS}
@@ -192,8 +145,12 @@ def allowed_local_model_ids() -> list[str]:
 
 
 def legacy_local_model_ids() -> list[str]:
-    """Return models retained only as explicit compatibility choices."""
-    return [spec.repo_id for spec in LOCAL_MODEL_SPECS if spec.role == "legacy"]
+    """Return legacy product choices.
+
+    Retired model IDs are recognized only to provide migration guidance and
+    are not product choices.
+    """
+    return []
 
 
 def default_local_model_id() -> str:
@@ -202,7 +159,7 @@ def default_local_model_id() -> str:
 
 
 def fallback_local_model_id() -> str:
-    """Return the legacy fallback identifier retained for API compatibility."""
+    """Return exact Granite through the former fallback compatibility API."""
     return FALLBACK_LOCAL_MODEL_ID
 
 
@@ -228,6 +185,12 @@ def local_model_policy_error(repo_id: str | None) -> str | None:
         return (
             f"Local model {model_id} is blocked by policy. XBrainLab local "
             "runtime must not use Chinese model providers."
+        )
+    if model_id in RETIRED_LOCAL_MODEL_IDS:
+        return (
+            f"Local model {model_id} is no longer available in XBrainLab. "
+            f"Open Assistant Settings and select {PRIMARY_LOCAL_MODEL_ID}. "
+            "The existing settings file was not changed."
         )
     if local_model_spec(model_id) is None:
         supported = ", ".join(allowed_local_model_ids())

@@ -84,6 +84,29 @@ class TestToDict:
 
 
 class TestSaveAndLoad:
+    def test_retired_phi_config_is_preserved_and_reported_without_rewrite(
+        self,
+        tmp_path,
+    ):
+        filepath = tmp_path / "settings.json"
+        legacy_model = "microsoft/Phi-4-mini-instruct"
+        filepath.write_text(
+            json.dumps(_settings_payload(legacy_model)),
+            encoding="utf-8",
+        )
+        original = filepath.read_bytes()
+
+        loaded = LLMConfig.load_from_file(str(filepath))
+
+        assert loaded is not None
+        assert loaded.model_name == legacy_model
+        assert filepath.read_bytes() == original
+        message = loaded.configured_model_unavailable_message()
+        assert message is not None
+        assert "no longer available" in message
+        assert LLMConfig.default_local_model_id() in message
+        assert "not changed" in message
+
     def test_save_and_load_roundtrip(self, tmp_path):
         filepath = str(tmp_path / "settings.json")
         cfg = LLMConfig()

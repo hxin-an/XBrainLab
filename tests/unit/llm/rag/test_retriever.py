@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.rag.retriever import RAGRetriever
 
 
@@ -15,6 +16,7 @@ def mock_retriever():
         patch("langchain_community.embeddings.HuggingFaceEmbeddings"),
         patch("qdrant_client.QdrantClient") as mock_client_cls,
         patch("langchain_community.vectorstores.Qdrant"),
+        patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):
         # Setup mock client to pass info check
         # self.client.get_collections().collections
@@ -46,6 +48,8 @@ def test_get_similar_examples_success(mock_retriever):
     result = mock_retriever.get_similar_examples("query")
 
     assert "Example 1:" in result
+    assert result.startswith("[UNTRUSTED_RAG_DATA]")
+    assert "[Source: XBrainLab bundled gold set;" in result
     assert 'User: "User input"' in result
     assert 'Assistant:\n{"tool_name": "get_dataset_info", "parameters": {}}' in result
     assert "Assistant action:" not in result
@@ -155,6 +159,7 @@ def test_close_fences_in_flight_initialize_and_prevents_resource_republish():
         patch("langchain_community.vectorstores.Qdrant", return_value=object()),
         patch.object(RAGRetriever, "_collection_exists", return_value=True),
         patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
+        patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):
         init_thread = threading.Thread(target=retriever.initialize)
         init_thread.start()
@@ -198,6 +203,7 @@ def test_concurrent_initialize_has_single_initializer():
         patch("langchain_community.vectorstores.Qdrant", return_value=object()),
         patch.object(RAGRetriever, "_collection_exists", return_value=True),
         patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
+        patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):
         mock_client_cls.return_value.get_collections.return_value.collections = []
         for thread in threads:

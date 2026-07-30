@@ -76,11 +76,11 @@ def test_resolver_fails_visibly_without_checking_catalog_fallbacks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     primary = LLMConfig.default_local_model_id()
-    ready_legacy_model = LLMConfig.fallback_local_model_id()
+    unsupported_cached_model = "unsupported/cache-only-model"
     config = _runtime_config(
         monkeypatch,
         model_id=primary,
-        ready_models={ready_legacy_model},
+        ready_models={unsupported_cached_model},
     )
     readiness_calls: list[str | None] = []
     status_calls: list[str | None] = []
@@ -88,7 +88,7 @@ def test_resolver_fails_visibly_without_checking_catalog_fallbacks(
         config,
         "local_backend_ready",
         lambda candidate=None: (
-            readiness_calls.append(candidate) or candidate == ready_legacy_model
+            readiness_calls.append(candidate) or candidate == unsupported_cached_model
         ),
     )
     monkeypatch.setattr(
@@ -110,7 +110,7 @@ def test_resolver_fails_visibly_without_checking_catalog_fallbacks(
     )
     assert resolution.failure.requested_model_id == primary
     assert primary in resolution.failure.message
-    assert ready_legacy_model not in resolution.failure.message
+    assert unsupported_cached_model not in resolution.failure.message
     assert readiness_calls == [primary]
     assert status_calls == [primary]
 
@@ -122,7 +122,7 @@ def test_resolver_fails_visibly_without_checking_catalog_fallbacks(
         "microsoft/Phi-3.5-mini-instruct",
     ],
 )
-def test_resolver_supports_explicit_legacy_models_as_exact_selections(
+def test_resolver_rejects_retired_phi_models_with_migration_message(
     monkeypatch: pytest.MonkeyPatch,
     legacy_model: str,
 ) -> None:
@@ -134,13 +134,13 @@ def test_resolver_supports_explicit_legacy_models_as_exact_selections(
 
     resolution = AssistantRuntimeLaunchResolver().resolve(config)
 
-    assert resolution.available is True
-    spec = resolution.launch_spec
-    assert spec is not None
-    assert spec.requested_model_id == legacy_model
-    assert spec.model_id == legacy_model
-    assert spec.outcome is AssistantRuntimeSelectionOutcome.EXACT
-    assert spec.fallback_used is False
+    assert resolution.available is False
+    assert resolution.launch_spec is None
+    assert resolution.failure is not None
+    assert resolution.failure.code is AssistantRuntimeSelectionFailureCode.UNKNOWN_MODEL
+    assert resolution.failure.requested_model_id == legacy_model
+    assert "no longer available" in resolution.failure.message
+    assert LLMConfig.default_local_model_id() in resolution.failure.message
 
 
 @pytest.mark.parametrize("backend_id", ["", "gemini", "unknown-runtime"])

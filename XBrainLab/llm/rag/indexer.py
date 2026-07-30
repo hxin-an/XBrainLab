@@ -47,15 +47,24 @@ class RAGIndexer:
                 ``None``, a new one is created from ``RAGConfig``.
 
         """
-        if HuggingFaceEmbeddings is None or QdrantClient is None:
+        if (embeddings is None and HuggingFaceEmbeddings is None) or (
+            client is None and QdrantClient is None
+        ):
             raise ImportError(
                 "RAG dependencies not installed. "
                 "Install with: pip install langchain-community qdrant-client"
             )
         self._owns_client = client is None
-        self.embeddings = embeddings or HuggingFaceEmbeddings(
-            model_name=RAGConfig.EMBEDDING_MODEL,
-        )
+        if embeddings is None:
+            if not RAGConfig.embedding_cache_ready():
+                raise RuntimeError(
+                    "Pinned RAG embedding cache is unavailable; RAG remains disabled."
+                )
+            self.embeddings = HuggingFaceEmbeddings(
+                **RAGConfig.embedding_constructor_kwargs(),
+            )
+        else:
+            self.embeddings = embeddings
         self.storage_path = RAGConfig.get_storage_path()
 
         # Initialize Client

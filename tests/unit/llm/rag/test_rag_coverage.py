@@ -158,7 +158,7 @@ class TestRAGIndexer:
     def test_close_own_client(self, mock_qd, mock_emb):
         from XBrainLab.llm.rag.indexer import RAGIndexer
 
-        indexer = RAGIndexer()
+        indexer = RAGIndexer(client=MagicMock(), embeddings=MagicMock())
         indexer._owns_client = True
         mock_client = MagicMock()
         indexer.client = mock_client
@@ -170,6 +170,6 @@ class TestRAGIndexer:
     def test_load_gold_set_failure(self, mock_qd, mock_emb):
         from XBrainLab.llm.rag.indexer import RAGIndexer
 
-        indexer = RAGIndexer()
+        indexer = RAGIndexer(client=MagicMock(), embeddings=MagicMock())
         with pytest.raises(Exception, match=r".*"):
             indexer.load_gold_set("/nonexistent/path.json")
