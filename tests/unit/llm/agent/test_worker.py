@@ -831,7 +831,11 @@ class TestReinitializeAgent:
         config = LLMConfig()
         old_model_id = config.model_name
         old_spec = _launch_spec(old_model_id)
-        target_spec = _launch_spec(LLMConfig.fallback_local_model_id())
+        target_spec = replace(
+            old_spec,
+            requested_model_id="test/local-replacement",
+            model_id="test/local-replacement",
+        )
         engine = LLMEngine(config)
         old_backend = MagicMock()
         old_backend.config = config

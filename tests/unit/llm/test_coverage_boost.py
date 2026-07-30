@@ -700,10 +700,11 @@ class TestLocalBackendExtra:
     def test_quantization_kwarg(self):
         """L88: load_in_4bit set when quantization enabled."""
         from XBrainLab.llm.core.backends.local import LocalBackend
+        from XBrainLab.llm.core.config import LLMConfig
 
         b = LocalBackend.__new__(LocalBackend)
         b.config = MagicMock()
-        b.config.model_name = "microsoft/Phi-4-mini-instruct"
+        b.config.model_name = LLMConfig.default_local_model_id()
         b.config.cache_dir = "/tmp/models"
         b.config.load_in_4bit = True
         b.config.device = "cuda"

@@ -11,7 +11,7 @@ from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.runtime_process import LocalRuntimeProcessOwner as LLMEngine
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
 from XBrainLab.llm.tools.result_contract import (
     SAFE_UNEXPECTED_FAILURE_MESSAGE,
@@ -28,7 +28,14 @@ from .turn import (
     AssistantGenerationStopRequest,
 )
 
-GENERATION_THREAD_SHUTDOWN_WAIT_MS = 1500
+# Cooperative model cancellation gets this short grace before the owned process
+# is terminated and the runtime becomes restart-required.
+GENERATION_THREAD_SHUTDOWN_WAIT_MS = 750
+GENERATION_THREAD_EXIT_WAIT_MS = 250
+RUNTIME_RESTART_REQUIRED_MESSAGE = (
+    "The local model process stopped responding and was terminated. "
+    "Retry the local assistant to restart it."
+)
 LIVE_GENERATION_SETTING_FIELDS = (
     "temperature",
     "top_p",
@@ -90,7 +97,27 @@ class GenerationThread(QThread):
             self.error_occurred.emit(failure.message)
 
 
+class RuntimeLoadThread(QThread):
+    """Load one process-owned runtime without blocking worker control slots."""
+
+    load_succeeded = pyqtSignal(object)
+    load_failed = pyqtSignal(object, object)
+
+    def __init__(self, engine: LLMEngine):
+        super().__init__()
+        self.engine = engine
+
+    def run(self) -> None:
+        try:
+            self.engine.load_model()
+        except Exception as exc:
+            self.load_failed.emit(self, exc)
+            return
+        self.load_succeeded.emit(self)
+
+
 ACTIVE_GENERATION_THREADS: set[GenerationThread] = set()
+ACTIVE_RUNTIME_LOAD_THREADS: set[RuntimeLoadThread] = set()
 
 
 class AgentWorker(QObject):
@@ -122,6 +149,7 @@ class AgentWorker(QObject):
         super().__init__()
         self.engine: LLMEngine | None = None
         self.generation_thread: GenerationThread | None = None
+        self.runtime_load_thread: RuntimeLoadThread | None = None
         self.timeout_timer: QTimer | None = None
         self._is_timed_out = False
         self._timed_out_generation: GenerationThread | None = None
@@ -133,6 +161,7 @@ class AgentWorker(QObject):
         self._runtime_error = ""
         self._runtime_launch_spec: AssistantRuntimeLaunchSpec | None = None
         self._runtime_activation_id = 0
+        self._shutdown_requested = False
 
     def _reload_generation_settings(self) -> None:
         """Refresh live generation knobs without changing runtime selection."""
@@ -211,6 +240,10 @@ class AgentWorker(QObject):
             self.log.emit("Loading AI Model...")
 
             candidate_engine = LLMEngine(config)
+            if getattr(candidate_engine, "uses_owned_process", False) is True:
+                self.engine = candidate_engine
+                self._start_runtime_load(candidate_engine)
+                return
             candidate_engine.load_model()
             self.engine = candidate_engine
             self._publish_runtime(
@@ -240,6 +273,103 @@ class AgentWorker(QObject):
                 activation_id=activation_id,
             )
             self.error.emit(f"Model Load Error: {failure.message}")
+
+    def _start_runtime_load(self, engine: LLMEngine) -> None:
+        """Track one asynchronous process load while retaining close ownership."""
+        thread = RuntimeLoadThread(engine)
+        self.runtime_load_thread = thread
+        ACTIVE_RUNTIME_LOAD_THREADS.add(thread)
+        thread.load_succeeded.connect(self._on_runtime_load_succeeded)
+        thread.load_failed.connect(self._on_runtime_load_failed)
+        thread.finished.connect(lambda: self._release_runtime_load_thread(thread))
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+    def _on_runtime_load_succeeded(self, payload: object) -> None:
+        if not isinstance(payload, RuntimeLoadThread):
+            return
+        if payload is not self.runtime_load_thread or payload.engine is not self.engine:
+            return
+        if self._shutdown_requested:
+            self._close_engine(payload.engine)
+            self.engine = None
+            return
+        self._publish_runtime(
+            AssistantRuntimePhase.READY,
+            activation_id=self._runtime_activation_id,
+        )
+        launch_spec = self._runtime_launch_spec
+        if launch_spec is not None:
+            self.log.emit(
+                f"AI Model Loaded: {redact_public_text(launch_spec.model_id)}"
+            )
+        logger.info("Local Agent initialized successfully")
+
+    def _on_runtime_load_failed(
+        self,
+        thread_payload: object,
+        error_payload: object,
+    ) -> None:
+        if not isinstance(thread_payload, RuntimeLoadThread):
+            return
+        if (
+            thread_payload is not self.runtime_load_thread
+            or thread_payload.engine is not self.engine
+        ):
+            return
+        if self._shutdown_requested:
+            self.engine = None
+            return
+        error = (
+            error_payload
+            if isinstance(error_payload, Exception)
+            else RuntimeError("Local model process failed to load.")
+        )
+        failure = safe_unexpected_failure(
+            logger,
+            error,
+            boundary="assistant_worker",
+            operation="initialize_agent",
+        )
+        self._close_engine(thread_payload.engine)
+        self.engine = None
+        self._publish_runtime(
+            AssistantRuntimePhase.FAILED,
+            error=failure.message,
+            activation_id=self._runtime_activation_id,
+        )
+        self.error.emit(f"Model Load Error: {failure.message}")
+
+    def _release_runtime_load_thread(self, thread: RuntimeLoadThread) -> None:
+        ACTIVE_RUNTIME_LOAD_THREADS.discard(thread)
+        if self.runtime_load_thread is thread:
+            self.runtime_load_thread = None
+
+    @staticmethod
+    def _close_engine(engine: object, *, wait_ms: int = 0) -> bool:
+        close = getattr(engine, "close", None)
+        if not callable(close):
+            return True
+        if getattr(engine, "uses_owned_process", False) is True:
+            return close(wait_timeout=max(0, int(wait_ms)) / 1000.0) is not False
+        return close() is not False
+
+    def _cleanup_runtime_load(self, *, wait_ms: int) -> bool:
+        """Stop an in-flight process load through the exact owned process."""
+        thread = self.runtime_load_thread
+        if thread is None:
+            return True
+        engine = self.engine
+        closed = True if engine is None else self._close_engine(engine, wait_ms=wait_ms)
+        thread.requestInterruption()
+        try:
+            running = thread.isRunning()
+        except RuntimeError:
+            self._release_runtime_load_thread(thread)
+            return closed
+        if not running:
+            self._release_runtime_load_thread(thread)
+        return closed and not running
 
     def _track_generation_thread(self, thread: GenerationThread) -> None:
         """Keep running generation threads alive until Qt reports finished."""
@@ -319,6 +449,28 @@ class AgentWorker(QObject):
             )
             return False
 
+    def _engine_requires_restart(self) -> bool:
+        return (
+            self.engine is not None
+            and getattr(self.engine, "restart_required", False) is True
+        )
+
+    def _retire_restart_required_engine(self) -> None:
+        """Fence a terminated model process and publish retry-only readiness."""
+        engine = self.engine
+        if engine is None:
+            return
+        close = getattr(engine, "close", None)
+        if callable(close):
+            with contextlib.suppress(Exception):
+                self._close_engine(engine)
+        self.engine = None
+        self._publish_runtime(
+            AssistantRuntimePhase.FAILED,
+            error=RUNTIME_RESTART_REQUIRED_MESSAGE,
+            activation_id=0,
+        )
+
     def _cleanup_generation_thread(self, wait_ms: int = 0) -> bool:
         """Disconnect and request interruption of any running generation thread.
 
@@ -345,12 +497,21 @@ class AgentWorker(QObject):
         if running:
             backend_stopped = self._cancel_backend_generation(wait_ms=wait_ms)
             thread.requestInterruption()
-            if wait_ms > 0 and not isinstance(thread, QThread):
-                # Lightweight non-Qt doubles have no event-driven ``finished``
-                # contract, so preserve their bounded synchronous fallback.
-                wait_for_double = getattr(thread, "wait", None)
-                if callable(wait_for_double):
-                    wait_completed = bool(wait_for_double(max(0, int(wait_ms))))
+            wait_for_thread = getattr(thread, "wait", None)
+            if (
+                backend_stopped
+                and getattr(self.engine, "uses_owned_process", False) is True
+                and callable(wait_for_thread)
+            ):
+                wait_completed = bool(wait_for_thread(GENERATION_THREAD_EXIT_WAIT_MS))
+            elif (
+                wait_ms > 0
+                and not isinstance(thread, QThread)
+                and callable(wait_for_thread)
+            ):
+                wait_completed = bool(wait_for_thread(max(0, int(wait_ms))))
+        if self._engine_requires_restart():
+            self._retire_restart_required_engine()
         stopped = backend_stopped and (not running or wait_completed)
         if running and not wait_completed:
             try:
@@ -426,6 +587,17 @@ class AgentWorker(QObject):
         if engine is None:
             raise AssistantGenerationAdmissionError(
                 "Failed to initialize LLM engine.",
+            )
+        if (
+            getattr(engine, "uses_owned_process", False) is True
+            and engine.active_backend is None
+        ):
+            if engine.restart_required:
+                raise AssistantGenerationAdmissionError(
+                    RUNTIME_RESTART_REQUIRED_MESSAGE,
+                )
+            raise AssistantGenerationAdmissionError(
+                "The local assistant is still loading. Please wait until it is ready.",
             )
         return engine
 
@@ -600,10 +772,15 @@ class AgentWorker(QObject):
                 self.timeout_timer.stop()
             logger.error("Agent generation timed out.")
 
-            # We can't safely kill the thread in Python, but we can ignore its
-            # future output. The timeout terminal is published only after Qt
-            # confirms that this exact native generation thread has exited.
-            self._cleanup_generation_thread()
+            # Product runtimes get a cooperative grace followed by owned-process
+            # termination. The parent generation thread is still fenced until
+            # Qt confirms that this exact correlated request has exited.
+            wait_ms = (
+                GENERATION_THREAD_SHUTDOWN_WAIT_MS
+                if getattr(self.engine, "uses_owned_process", False) is True
+                else 0
+            )
+            self._cleanup_generation_thread(wait_ms=wait_ms)
 
     def _on_generation_chunk(self, generation_id: int, chunk: str) -> None:
         """Forward output only for the worker's still-active generation."""
@@ -642,6 +819,8 @@ class AgentWorker(QObject):
             self.timeout_timer.stop()
         self.generation_error.emit(generation_id, err_msg)
         self._active_generation_id = None
+        if self._engine_requires_restart():
+            self._retire_restart_required_engine()
 
     def reinitialize_agent(self, launch_spec: AssistantRuntimeLaunchSpec):
         """Hot-swap to one exact selection resolved by the lifecycle."""
@@ -757,20 +936,21 @@ class AgentWorker(QObject):
 
     def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> bool:
         """Stop generation work and release the loaded local model backend."""
+        self._shutdown_requested = True
         if self.timeout_timer is not None:
             self.timeout_timer.stop()
         self._timed_out_generation = None
+        if not self._cleanup_runtime_load(wait_ms=wait_ms):
+            self.shutdown_finished.emit(False)
+            return False
         stopped = self._cleanup_generation_thread(wait_ms=wait_ms)
         if not stopped:
             self.shutdown_finished.emit(False)
             return False
         if self.engine is not None:
-            close = getattr(self.engine, "close", None)
-            if callable(close):
-                closed = close()
-                if closed is False:
-                    self.shutdown_finished.emit(False)
-                    return False
+            if not self._close_engine(self.engine, wait_ms=wait_ms):
+                self.shutdown_finished.emit(False)
+                return False
             self.engine = None
         self._runtime_launch_spec = None
         self._runtime_activation_id = 0
