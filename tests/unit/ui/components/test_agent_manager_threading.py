@@ -732,6 +732,7 @@ def test_terminal_controller_close_rejects_commands_while_thread_cleanup_retries
     assert dispatcher.command_thread is None
     assert dispatcher.state is AssistantCommandDispatcherState.CLOSED
     controller.worker_thread.quit()
+    assert controller.worker_thread.wait(1_000)
 
 
 def test_close_treats_an_already_deleted_command_thread_as_released(qtbot):

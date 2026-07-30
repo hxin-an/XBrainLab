@@ -6744,9 +6744,10 @@ call sites into explicit legacy/fallback helpers.
   terminal delivery and bilingual Stop Training admission with no remaining blocker.
 - The clean dashboard then exposed a machine-dependent AgentManager threading test: it read the
   user's model-cache readiness and did not complete asynchronous Qt cleanup after failure. The
-  fixture now injects deterministic local-runtime readiness; the threading file passed `15`
-  tests, `ui/components` passed `392` tests in three independent processes, and the complete
-  isolated UI gate passed all ten shards.
+  fixture now injects deterministic local-runtime readiness. A same-class sweep also fixed an
+  auxiliary worker that was told to quit without a terminal wait. The threading file passed `15`
+  tests, the threading/real-runtime sequence passed `32` tests, `ui/components` passed `392` tests
+  in three independent processes, and the complete isolated UI gate passed all ten shards.
 
 ### 邊界
 

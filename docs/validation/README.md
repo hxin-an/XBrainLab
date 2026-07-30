@@ -1436,11 +1436,15 @@ real Data Splitting preview is stopping, or long-running native-library teardown
 The clean dashboard exposed that the AgentManager threading tests still read the user's local
 assistant settings and model-cache availability. A missing Granite cache correctly prevented
 runtime startup, but the tests misreported the absent command thread as a threading regression and
-left asynchronous Qt cleanup incomplete after failure.
+left asynchronous Qt cleanup incomplete after failure. A same-class sweep also found one terminal
+cleanup retry fixture that called `quit()` on an auxiliary worker without waiting for the thread to
+stop, allowing a timing-dependent leak into the following real-runtime tests.
 
-The threading fixture now supplies explicit local-runtime readiness and every manager case waits
-for terminal cleanup. The focused threading file passed `15` tests, the `ui/components` shard
-passed `392` tests in three independent processes, and the complete isolated UI gate passed:
+The threading fixture now supplies explicit local-runtime readiness, every manager case waits for
+terminal cleanup, and the auxiliary worker has an explicit terminal wait. The focused threading
+file passed `15` tests, the threading-plus-real-runtime sequence passed `32` tests, the
+`ui/components` shard passed `392` tests in three independent processes, and the complete isolated
+UI gate passed:
 
 ```text
 899 + 122 + 392 + 40 + 135 + 294 + 66 + 22 + 126 + 77 tests
