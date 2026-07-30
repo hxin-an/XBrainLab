@@ -1431,6 +1431,24 @@ poetry run python tests/architecture_compliance.py
 This does not replace Windows human acceptance for closing during real training, Alt+F4 while a
 real Data Splitting preview is stopping, or long-running native-library teardown.
 
+## 2026-07-30 Assistant UI Gate Determinism Follow-up
+
+The clean dashboard exposed that the AgentManager threading tests still read the user's local
+assistant settings and model-cache availability. A missing Granite cache correctly prevented
+runtime startup, but the tests misreported the absent command thread as a threading regression and
+left asynchronous Qt cleanup incomplete after failure.
+
+The threading fixture now supplies explicit local-runtime readiness and every manager case waits
+for terminal cleanup. The focused threading file passed `15` tests, the `ui/components` shard
+passed `392` tests in three independent processes, and the complete isolated UI gate passed:
+
+```text
+899 + 122 + 392 + 40 + 135 + 294 + 66 + 22 + 126 + 77 tests
+```
+
+These tests no longer depend on root `settings.json` or a machine-specific model cache. Native
+Windows click-through remains a separate acceptance boundary.
+
 ## 常用 docs gate
 
 ```bash

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 import inspect
+from collections.abc import Iterator
+from contextlib import contextmanager
 from threading import Event
 from time import monotonic
 from typing import Any, cast
@@ -215,6 +217,44 @@ class _BlockingApplicationCommandController(_ThreadedAgentController):
         super().stop_generation()
 
 
+def _ready_local_config():
+    """Return deterministic local-runtime readiness without reading user settings."""
+    from XBrainLab.llm.core.config import LLMConfig
+
+    model_id = LLMConfig.default_local_model_id()
+    config = LLMConfig(model_name=model_id)
+    config.local_model_enabled = True
+    config.local_runtime_notice_acknowledged = True
+    config.local_backend_ready = (  # type: ignore[method-assign]
+        lambda candidate=None: (candidate or model_id) == model_id
+    )
+    config.local_backend_status_message = (  # type: ignore[method-assign]
+        lambda candidate=None: (
+            "Local runtime ready."
+            if (candidate or model_id) == model_id
+            else f"Model cache not found for {candidate}."
+        )
+    )
+    return config
+
+
+@contextmanager
+def _ready_manager_runtime(controller: QObject) -> Iterator[None]:
+    """Isolate manager threading tests from the machine's model-cache state."""
+    with (
+        patch(
+            "XBrainLab.ui.components.agent_manager.LLMController",
+            return_value=controller,
+        ),
+        patch(
+            "XBrainLab.ui.components.assistant_runtime_lifecycle."
+            "LLMConfig.load_from_file",
+            return_value=_ready_local_config(),
+        ),
+    ):
+        yield
+
+
 def _finish_dispatcher_close(qtbot, dispatcher, *, timeout: int = 5_000) -> None:
     """Drive one asynchronous dispatcher cleanup to its terminal contract."""
     from XBrainLab.ui.components.assistant_command_dispatcher import (
@@ -255,10 +295,7 @@ def test_controller_commands_run_off_gui_thread(qtbot):
     qtbot.addWidget(main_window)
     controller = _ThreadedAgentController()
 
-    with patch(
-        "XBrainLab.ui.components.agent_manager.LLMController",
-        return_value=controller,
-    ):
+    with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
         manager.start_system()
@@ -291,10 +328,7 @@ def test_stop_is_not_queued_behind_an_uncancellable_application_command(qtbot):
     controller = _BlockingApplicationCommandController()
 
     with (
-        patch(
-            "XBrainLab.ui.components.agent_manager.LLMController",
-            return_value=controller,
-        ),
+        _ready_manager_runtime(controller),
         patch(
             "XBrainLab.ui.components.agent_manager.begin_command_refresh_suppression"
         ),
@@ -353,10 +387,7 @@ def test_typed_response_signal_reaches_chat_without_raw_text_classification(qtbo
         text='Request: {"status": "ready"}',
     )
 
-    with patch(
-        "XBrainLab.ui.components.agent_manager.LLMController",
-        return_value=controller,
-    ):
+    with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
         manager.start_system()
@@ -380,7 +411,7 @@ def test_typed_response_signal_reaches_chat_without_raw_text_classification(qtbo
         for message in manager.chat_controller.messages
         if message["role"] == "assistant"
     ] == [presentation.text]
-    manager.close()
+    _finish_manager_close(qtbot, manager)
 
 
 def test_typed_panel_navigation_signal_reaches_existing_main_window(qtbot):
@@ -393,10 +424,7 @@ def test_typed_panel_navigation_signal_reaches_existing_main_window(qtbot):
     qtbot.addWidget(main_window)
     controller = _ThreadedAgentController()
 
-    with patch(
-        "XBrainLab.ui.components.agent_manager.LLMController",
-        return_value=controller,
-    ):
+    with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
         manager.start_system()
@@ -406,7 +434,7 @@ def test_typed_panel_navigation_signal_reaches_existing_main_window(qtbot):
 
     qtbot.waitUntil(lambda: main_window.switch_page.call_count == 1, timeout=2000)
     main_window.switch_page.assert_called_once_with(2)
-    manager.close()
+    _finish_manager_close(qtbot, manager)
 
 
 def test_typed_ui_handoff_resolution_runs_on_controller_command_thread(qtbot):
@@ -484,10 +512,7 @@ def test_close_is_idempotent_after_queued_shutdown(qtbot):
     main_window.ai_btn = MagicMock()
     qtbot.addWidget(main_window)
     controller = _ThreadedAgentController()
-    with patch(
-        "XBrainLab.ui.components.agent_manager.LLMController",
-        return_value=controller,
-    ):
+    with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
         manager.start_system()

@@ -6742,6 +6742,11 @@ call sites into explicit legacy/fallback helpers.
   PASS and manually reviewed.
 - Architecture and clean-code reviewers found two release blockers, then re-gated the repaired
   terminal delivery and bilingual Stop Training admission with no remaining blocker.
+- The clean dashboard then exposed a machine-dependent AgentManager threading test: it read the
+  user's model-cache readiness and did not complete asynchronous Qt cleanup after failure. The
+  fixture now injects deterministic local-runtime readiness; the threading file passed `15`
+  tests, `ui/components` passed `392` tests in three independent processes, and the complete
+  isolated UI gate passed all ten shards.
 
 ### 邊界
 
