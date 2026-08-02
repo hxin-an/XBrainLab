@@ -71,6 +71,7 @@ from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.panel_navigation import PanelPreparationFailure
 from XBrainLab.ui.product_language import workflow_stage_hint
 from XBrainLab.ui.refresh_coordinator import refresh_after_navigation
+from XBrainLab.ui.status import transient_status_remaining_ms
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.window_geometry_lifecycle import WindowGeometryLifecycle
 
@@ -453,6 +454,11 @@ class MainWindow(QMainWindow):
         self._last_rendered_application_publication: (
             ApplicationViewPublication | None
         ) = None
+        self._application_status_restore_timer = QTimer(self)
+        self._application_status_restore_timer.setSingleShot(True)
+        self._application_status_restore_timer.timeout.connect(
+            self._restore_application_publication_status
+        )
 
         # Initialize Panels
         self.init_panels()
@@ -955,6 +961,12 @@ class MainWindow(QMainWindow):
         status_bar = self.statusBar()
         if status_bar is None or sip.isdeleted(status_bar):
             return False
+        transient_remaining_ms = transient_status_remaining_ms(status_bar)
+        if transient_remaining_ms > 0:
+            self._application_status_restore_timer.start(transient_remaining_ms + 1)
+            status_bar.repaint()
+            return True
+        self._application_status_restore_timer.stop()
         message = self._application_publication_status_message(publication)
         status_bar.showMessage(message)
         status_bar.repaint()

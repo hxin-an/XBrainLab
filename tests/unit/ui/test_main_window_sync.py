@@ -17,6 +17,7 @@ from XBrainLab.ui.application_publication_renderer import (
 )
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.main_window import MainWindow
+from XBrainLab.ui.status import show_status_message
 
 
 @pytest.fixture
@@ -220,6 +221,40 @@ def test_page_activation_restores_cached_publication_after_opening_status(
 
         assert main_window.statusBar().currentMessage() == (
             main_window._application_publication_status_message(publication)
+        )
+    finally:
+        service.close()
+
+
+def test_publication_status_waits_for_transient_action_feedback(
+    main_window,
+    qtbot,
+):
+    """Committed state must not immediately erase visible command feedback."""
+    from XBrainLab.backend.application.service import ApplicationService
+    from XBrainLab.backend.study import Study
+
+    service = ApplicationService(Study())
+    publication = service.get_view_publication()
+    main_window._last_rendered_application_publication = publication
+    transient_message = "EEG epochs created. Preprocessing is now locked."
+    publication_message = main_window._application_publication_status_message(
+        publication
+    )
+
+    try:
+        assert show_status_message(
+            main_window,
+            transient_message,
+            timeout_ms=120,
+        )
+
+        assert main_window._show_application_publication_status(publication)
+        assert main_window.statusBar().currentMessage() == transient_message
+
+        qtbot.waitUntil(
+            lambda: main_window.statusBar().currentMessage() == publication_message,
+            timeout=2_000,
         )
     finally:
         service.close()

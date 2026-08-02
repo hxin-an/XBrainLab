@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-08-02`
+最後更新：`2026-08-03`
 
 ## 這份文件的用途
 
@@ -34,6 +34,22 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-08-03
+
+### 06:50 Epoch completion status/publication race
+
+- 做了什麼：canonical handoff manifest 在 `11,457` 項完整 regression 中抓到一個真實
+  GDF Epoch UI failure；backend epoch state 已完成，但稍後到達的 application publication
+  會覆蓋狀態列上的 command completion feedback。
+- 結果：新增 transient action-status ownership，publication refresh 會等操作訊息顯示完畢，
+  再恢復最新 workflow status；不是放寬 timeout。新增 deterministic precedence regression，
+  原失敗的三檔 GDF workflow 重複通過；完整 UI integration shard `112 passed`，相鄰
+  MainWindow/Preprocess 測試組分別為 `74 passed` 與 `209 passed`。
+- 證據：`tests/unit/ui/test_main_window_sync.py`、
+  `tests/integration/ui/test_epoch_runtime.py`。
+- 接續 / 本輪剩餘：需提交並 push 新 checkpoint，再對新 SHA 重跑完整 manifest、可見
+  UI artifact review 與 final reviewer；目前仍不是 handoff candidate。
 
 ## 2026-08-02
 

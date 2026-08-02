@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import math
+from time import monotonic
 from typing import Any
 
 DEFAULT_STATUS_TIMEOUT_MS = 7000
+_TRANSIENT_MESSAGE_ATTRIBUTE = "_xbrainlab_transient_status_message"
+_TRANSIENT_DEADLINE_ATTRIBUTE = "_xbrainlab_transient_status_deadline"
 
 
 def show_status_message(
@@ -26,8 +30,52 @@ def show_status_message(
             show_message(message, timeout_ms)
         except TypeError:
             show_message(message)
+        _record_transient_status(status_bar, message, timeout_ms)
         return True
     return False
+
+
+def transient_status_remaining_ms(status_bar: Any) -> int:
+    """Return how long the current action feedback must remain visible."""
+    current_message = getattr(status_bar, "currentMessage", None)
+    if not callable(current_message):
+        return 0
+    expected_message = getattr(status_bar, _TRANSIENT_MESSAGE_ATTRIBUTE, "")
+    deadline = getattr(status_bar, _TRANSIENT_DEADLINE_ATTRIBUTE, 0.0)
+    if not expected_message or current_message() != expected_message:
+        _clear_transient_status(status_bar)
+        return 0
+    try:
+        remaining_seconds = float(deadline) - monotonic()
+    except (TypeError, ValueError, OverflowError):
+        _clear_transient_status(status_bar)
+        return 0
+    if remaining_seconds <= 0:
+        _clear_transient_status(status_bar)
+        return 0
+    return max(1, math.ceil(remaining_seconds * 1000))
+
+
+def _record_transient_status(
+    status_bar: Any,
+    message: str,
+    timeout_ms: int,
+) -> None:
+    """Mark product feedback so routine state refresh cannot erase it early."""
+    if timeout_ms <= 0:
+        _clear_transient_status(status_bar)
+        return
+    setattr(status_bar, _TRANSIENT_MESSAGE_ATTRIBUTE, message)
+    setattr(
+        status_bar,
+        _TRANSIENT_DEADLINE_ATTRIBUTE,
+        monotonic() + (timeout_ms / 1000),
+    )
+
+
+def _clear_transient_status(status_bar: Any) -> None:
+    setattr(status_bar, _TRANSIENT_MESSAGE_ATTRIBUTE, "")
+    setattr(status_bar, _TRANSIENT_DEADLINE_ATTRIBUTE, 0.0)
 
 
 def _status_owner_candidates(owner: Any):
