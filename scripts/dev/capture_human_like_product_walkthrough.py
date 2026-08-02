@@ -23,7 +23,6 @@ import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from html import escape
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
@@ -62,6 +61,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from scripts.dev.app_polish_capture_contract import (
+    build_source_bound_capture_session,
+    validate_source_bound_capture_session,
+)
 from scripts.dev.capture_data_interpretation_replay import (
     LABEL_PATH,
     SOURCE_DIR,
@@ -74,6 +77,11 @@ from scripts.dev.capture_data_interpretation_replay import (
     tree_rows,
     tree_state,
     write_synthetic_raw_fif,
+)
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    collect_source_identity,
+    inspect_screenshot_artifact,
+    validate_source_identity,
 )
 from scripts.dev.human_like_walkthrough import capture as assistant_capture
 from scripts.dev.human_like_walkthrough.capture import AssistantCaptureDependencies
@@ -165,7 +173,6 @@ from XBrainLab.backend.study import Study
 from XBrainLab.llm.core.model_download_lifecycle import (
     MODEL_STATUS_PROBE_THREAD_NAME,
 )
-from XBrainLab.ui.application_capabilities import local_result_payload
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
     ChatTurnCancelability,
@@ -215,9 +222,8 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - psutil is optional in script envs
     psutil = None
 
-DEFAULT_OUTPUT_DIR = (
-    ROOT / "artifacts" / "ui" / "human-like-walkthrough-runs" / "current"
-)
+GENERATOR = "scripts/dev/capture_human_like_product_walkthrough.py"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "human-like-product"
 WINDOW_SIZE = QSize(1280, 800)
 # Match MainWindow.MINIMUM_SIZE so responsive evidence exercises the narrowest
 # product surface we claim to support, not a comfortable surrogate.
@@ -247,7 +253,6 @@ SCREENSHOT_NAMES: dict[str, str] = {
     **ASSISTANT_SCREENSHOT_NAMES,
     "reset_boundary": "18-reset-boundary.png",
     "error_recovery": "19-error-recovery.png",
-    "eval_dashboard": "20-eval-dashboard.png",
 }
 
 REQUIRED_PHASES = (
@@ -275,7 +280,23 @@ REQUIRED_PHASES = (
     *ASSISTANT_REQUIRED_PHASES,
     "reset_new_session_boundary",
     "error_recovery",
-    "eval_dashboard_report",
+)
+
+PHASE_ALIASES = {
+    "data_interpretation_select_source": "data_source_selection",
+    "data_interpretation_apply": "data_interpretation_decisions",
+    "data_interpretation_save_recipe": "data_interpretation_decisions",
+    "dataset_generation": "epoch_creation",
+    "assistant_repeated_open_close": "assistant_empty_state",
+}
+
+ARTIFACT_CLAIMS = (
+    "Automated Qt evidence covers the declared product workflow phases and visible state contracts.",
+    "Every retained screenshot is content-hashed and bound to one source identity.",
+)
+ARTIFACT_LIMITATIONS = (
+    "This automated replay is not human Windows desktop acceptance.",
+    "It does not establish native Windows DPI, multi-monitor, long-session, local-model, or scientific-quality claims.",
 )
 
 VISIBLE_FORBIDDEN = (
@@ -356,14 +377,20 @@ def main() -> int:
     run_id = _new_artifact_run_id()
     staging_dir = _artifact_staging_dir(output_dir, run_id)
     staging_dir.mkdir(parents=True, exist_ok=False)
+    capture_started_at = datetime.now(UTC)
+    source_identity_at_start = collect_source_identity(ROOT, refresh=True)
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     payload = capture_walkthrough(app, staging_dir)
+    source_identity_at_completion = collect_source_identity(ROOT, refresh=True)
     published_dir = publish_artifact_run(
         staging_dir=staging_dir,
         output_dir=output_dir,
         payload=payload,
         run_id=run_id,
+        source_identity_at_start=source_identity_at_start,
+        source_identity_at_completion=source_identity_at_completion,
+        capture_started_at=capture_started_at,
     )
     integrity_ok, integrity_reason = validate_walkthrough_payload(
         payload,
@@ -405,6 +432,9 @@ def publish_artifact_run(
     output_dir: Path,
     payload: dict[str, Any],
     run_id: str,
+    source_identity_at_start: Mapping[str, Any] | None = None,
+    source_identity_at_completion: Mapping[str, Any] | None = None,
+    capture_started_at: datetime | None = None,
 ) -> Path:
     """Publish one internally consistent walkthrough run.
 
@@ -420,16 +450,20 @@ def publish_artifact_run(
         relocated,
         staging_dir=staging_dir,
         run_id=run_id,
+        source_identity_at_start=source_identity_at_start,
+        source_identity_at_completion=source_identity_at_completion,
+        capture_started_at=capture_started_at,
     )
     payload.clear()
     payload.update(relocated)
     write_artifacts(staging_dir, payload)
-    if passed:
-        _replace_artifact_directory(staging_dir, destination, run_id=run_id)
-    else:
-        if destination.exists():
-            shutil.rmtree(destination)
-        staging_dir.replace(destination)
+    publication_dir = _copy_artifact_publication(
+        staging_dir,
+        destination,
+        run_id=run_id,
+    )
+    _replace_artifact_directory(publication_dir, destination, run_id=run_id)
+    shutil.rmtree(staging_dir, ignore_errors=True)
     return destination
 
 
@@ -467,21 +501,86 @@ def _build_artifact_run_manifest(
     *,
     staging_dir: Path,
     run_id: str,
+    source_identity_at_start: Mapping[str, Any] | None = None,
+    source_identity_at_completion: Mapping[str, Any] | None = None,
+    capture_started_at: datetime | None = None,
+    generated_at: datetime | None = None,
 ) -> dict[str, Any]:
-    hashes: dict[str, str] = {}
+    screenshots: dict[str, dict[str, Any]] = {}
     for key, path_value in payload.get("screenshots", {}).items():
         candidate = staging_dir / Path(str(path_value)).name
-        if candidate.is_file():
-            hashes[str(key)] = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        metadata = inspect_screenshot_artifact(candidate)
+        metadata["path"] = candidate.name
+        screenshots[str(key)] = metadata
+    hashes = {
+        key: str(metadata.get("sha256") or "") for key, metadata in screenshots.items()
+    }
+    completion_identity = dict(
+        source_identity_at_completion
+        if source_identity_at_completion is not None
+        else collect_source_identity(ROOT, refresh=True)
+    )
+    starting_identity = dict(source_identity_at_start or completion_identity)
+    completed_at = (generated_at or datetime.now(UTC)).astimezone(UTC)
+    started_at = (capture_started_at or completed_at).astimezone(UTC)
     return {
+        "schema_version": 2,
         "run_id": run_id,
-        "generated_at_utc": datetime.now(UTC).isoformat(),
+        "generated_at_utc": completed_at.isoformat(),
         "status": payload.get("status"),
+        "generator": GENERATOR,
+        "source_identity": completion_identity,
+        "capture_session": build_source_bound_capture_session(
+            source_identity=completion_identity,
+            source_identity_at_start=starting_identity,
+            capture_started_at=started_at,
+            completed_at=completed_at,
+            session_id=run_id,
+        ),
+        "capture_environment": {
+            "platform": sys.platform,
+            "qt_platform": (
+                QApplication.platformName()
+                or os.environ.get("QT_QPA_PLATFORM")
+                or "unavailable"
+            ),
+            "qt_style": "Fusion",
+            "scale_factor": os.environ.get("QT_SCALE_FACTOR", "1"),
+            "standard_viewport": [WINDOW_SIZE.width(), WINDOW_SIZE.height()],
+            "narrow_viewport": [
+                NARROW_WINDOW_SIZE.width(),
+                NARROW_WINDOW_SIZE.height(),
+            ],
+        },
+        "screenshots": screenshots,
+        "phase_aliases": dict(PHASE_ALIASES),
+        "claims": list(ARTIFACT_CLAIMS),
+        "limitations": list(ARTIFACT_LIMITATIONS),
         "source_fingerprint": walkthrough_source_fingerprint(),
-        "git_revision": _git_revision(),
-        "working_tree_dirty": _git_worktree_dirty(),
+        "git_revision": completion_identity.get("commit_sha") or _git_revision(),
+        "working_tree_dirty": completion_identity.get("dirty"),
         "screenshot_sha256": hashes,
     }
+
+
+def _copy_artifact_publication(
+    staging_dir: Path,
+    destination: Path,
+    *,
+    run_id: str,
+) -> Path:
+    """Copy live capture output before atomic publication.
+
+    Qt and native plotting libraries can retain read handles briefly after the
+    visible window closes. Windows-mounted filesystems reject renaming a
+    directory while any child handle remains open, so the live staging tree is
+    never the directory moved into the canonical artifact location.
+    """
+    publication_dir = destination.parent / f".{destination.name}-publish-{run_id}"
+    if publication_dir.exists():
+        shutil.rmtree(publication_dir)
+    shutil.copytree(staging_dir, publication_dir)
+    return publication_dir
 
 
 def _replace_artifact_directory(
@@ -954,10 +1053,13 @@ def _run_walkthrough_steps(
             "ui_geometry": dataset_page_geometry(window),
         },
     )
-    capture_step(
+    append_phase_alias(
+        phases,
         "data_interpretation_apply",
-        "applied",
-        notes={
+        screenshots["applied"],
+        window,
+        service,
+        {
             "applied": command_summary(apply_confirmed),
             "recipe": command_summary(save_recipe),
             "ui_geometry": dataset_page_geometry(window),
@@ -1106,7 +1208,11 @@ def _run_walkthrough_steps(
     )
     train = execute_recorded(
         service,
-        TrainCommand(confirmed=True, interactive=False),
+        # This is a GUI-observable walkthrough. Keep the command non-blocking and
+        # let ``wait_for_training_completion`` pump Qt events until publication is
+        # visible. A synchronous command here can wait on a terminal acknowledgement
+        # that itself requires the GUI event loop.
+        TrainCommand(confirmed=True, interactive=True),
         command_results,
     )
     training_wait = (
@@ -1231,22 +1337,6 @@ def _run_walkthrough_steps(
             "recovery_scan": command_summary(recovery_scan),
             "recovery_preview": command_summary(recovery_preview),
         },
-    )
-
-    dashboard_shot = capture_eval_dashboard(output_dir)
-    screenshots["eval_dashboard"] = str(dashboard_shot)
-    phases.append(
-        {
-            "phase": "eval_dashboard_report",
-            "screenshot": str(dashboard_shot),
-            "visible_text": ["XBrainLab Evaluation Dashboard Report"],
-            "button_state": [],
-            "workflow_state": compact_state(service.get_state()),
-            "notes": {
-                "dashboard": "artifacts/agent_evals/dashboard.md",
-                "claim_boundary": "Tool-call benchmark evidence only.",
-            },
-        }
     )
 
     resource_notes.append(resource_snapshot("before_close"))
@@ -1468,8 +1558,9 @@ def _required_command_payload(
     expected_payload_type: str,
     required_fields: tuple[str, ...],
 ) -> dict[str, Any]:
-    """Read and validate one command's serializable/local result payload."""
-    payload = local_result_payload(result)
+    """Read and validate one command's detached serializable diagnostics."""
+    diagnostics = getattr(result, "diagnostics", {})
+    payload = dict(diagnostics) if isinstance(diagnostics, Mapping) else {}
     command_name = str(getattr(result, "command_name", "command") or "command")
     if not bool(getattr(result, "success", False)):
         error_type = getattr(getattr(result, "error_type", None), "value", "unknown")
@@ -1560,267 +1651,28 @@ def append_phase_alias(
     notes: dict[str, Any],
 ) -> None:
     """Append an additional acceptance phase backed by an existing screenshot."""
+    alias_of = PHASE_ALIASES.get(phase)
+    if alias_of is None:
+        raise RuntimeError(f"Undeclared walkthrough phase alias: {phase}")
+    source_phase = next(
+        (item for item in phases if item.get("phase") == alias_of),
+        None,
+    )
+    if source_phase is None or source_phase.get("screenshot") != screenshot:
+        raise RuntimeError(
+            f"Walkthrough phase alias {phase} is not backed by {alias_of}."
+        )
     phases.append(
         {
             "phase": phase,
+            "alias_of": alias_of,
             "screenshot": screenshot,
-            "visible_text": visible_text_snapshot(widget),
-            "button_state": button_state_snapshot(widget),
-            "workflow_state": compact_state(service.get_state()),
+            "visible_text": list(source_phase.get("visible_text", [])),
+            "button_state": list(source_phase.get("button_state", [])),
+            "workflow_state": dict(source_phase.get("workflow_state", {})),
             "notes": notes,
         }
     )
-
-
-def capture_eval_dashboard(output_dir: Path) -> Path:
-    """Render the eval dashboard into a product-style screenshot artifact."""
-    dashboard_path = ROOT / "artifacts" / "agent_evals" / "dashboard.md"
-    text = (
-        dashboard_path.read_text(encoding="utf-8")
-        if dashboard_path.exists()
-        else "# XBrainLab Tool-Call Eval Dashboard\n\nDashboard artifact missing.\n"
-    )
-    widget = QTextBrowser()
-    widget.setWindowTitle("XBrainLab Tool-Call Eval Dashboard")
-    widget.setHtml(render_eval_dashboard_html(text[:12000]))
-    widget.resize(1000, 760)
-    widget.show()
-    QApplication.processEvents()
-    screenshot_path = output_dir / SCREENSHOT_NAMES["eval_dashboard"]
-    capture_widget(widget, screenshot_path)
-    widget.close()
-    return screenshot_path
-
-
-def render_eval_dashboard_html(markdown_text: str) -> str:
-    """Convert the saved eval dashboard Markdown into compact review HTML."""
-    lines = markdown_text.splitlines()
-    claim_boundary = _extract_markdown_list_section(lines, "Thesis Claim Boundary")
-    body: list[str] = []
-    index = 0
-    in_list = False
-    claim_boundary_inserted = False
-    while index < len(lines):
-        raw_line = lines[index]
-        line = raw_line.strip()
-        if not line:
-            if in_list:
-                body.append("</ul>")
-                in_list = False
-            index += 1
-            continue
-        if (
-            line.startswith("|")
-            and index + 1 < len(lines)
-            and _is_markdown_table_separator(lines[index + 1])
-        ):
-            if in_list:
-                body.append("</ul>")
-                in_list = False
-            table_html, index = _render_markdown_table(lines, index)
-            body.append(table_html)
-            continue
-        if line.startswith("#"):
-            if in_list:
-                body.append("</ul>")
-                in_list = False
-            level = min(max(len(line) - len(line.lstrip("#")), 1), 3)
-            heading = line[level:].strip()
-            if heading == "Thesis Claim Boundary" and claim_boundary:
-                index = _skip_markdown_section(lines, index)
-                continue
-            body.append(f"<h{level}>{_format_inline_markdown(heading)}</h{level}>")
-            if level == 1 and claim_boundary and not claim_boundary_inserted:
-                body.append(_render_claim_boundary(claim_boundary))
-                claim_boundary_inserted = True
-            index += 1
-            continue
-        if line.startswith("- "):
-            if not in_list:
-                body.append("<ul>")
-                in_list = True
-            body.append(f"<li>{_format_inline_markdown(line[2:].strip())}</li>")
-            index += 1
-            continue
-        if in_list:
-            body.append("</ul>")
-            in_list = False
-        body.append(f"<p>{_format_inline_markdown(line)}</p>")
-        index += 1
-    if in_list:
-        body.append("</ul>")
-    if claim_boundary and not claim_boundary_inserted:
-        body.insert(0, _render_claim_boundary(claim_boundary))
-    return f"""
-    <html>
-    <head>
-      <style>
-        body {{
-          background: #181818;
-          color: #d8dee9;
-          font-family: "Segoe UI", "Inter", sans-serif;
-          font-size: 13px;
-          margin: 18px;
-        }}
-        h1 {{
-          color: #f2f6fb;
-          font-size: 22px;
-          margin: 0 0 14px;
-        }}
-        h2 {{
-          color: #f2f6fb;
-          font-size: 16px;
-          margin: 22px 0 8px;
-          border-top: 1px solid #31363d;
-          padding-top: 14px;
-        }}
-        h3 {{
-          color: #d8dee9;
-          font-size: 14px;
-          margin: 16px 0 8px;
-        }}
-        p, li {{
-          color: #c7d0da;
-          line-height: 1.35;
-        }}
-        table {{
-          border-collapse: collapse;
-          width: 100%;
-          margin: 8px 0 14px;
-          background: #202020;
-          border: 1px solid #353b43;
-        }}
-        th {{
-          background: #2c3036;
-          color: #b9c5d2;
-          font-weight: 600;
-          text-align: left;
-          padding: 7px 8px;
-          border-bottom: 1px solid #3d444e;
-        }}
-        td {{
-          color: #e1e7ef;
-          padding: 6px 8px;
-          border-top: 1px solid #2a2f35;
-        }}
-        tr:nth-child(even) td {{
-          background: #232323;
-        }}
-        code {{
-          color: #d7e8ff;
-          background: #26313a;
-          padding: 1px 4px;
-          border-radius: 3px;
-        }}
-        .claim-boundary {{
-          background: #202020;
-          border: 1px solid #44413a;
-          border-left: 4px solid #c7a75a;
-          margin: 10px 0 18px;
-          padding: 10px 12px;
-        }}
-        .claim-boundary h2 {{
-          border-top: 0;
-          color: #f2f6fb;
-          font-size: 15px;
-          margin: 0 0 6px;
-          padding-top: 0;
-        }}
-        .claim-boundary ul {{
-          margin: 0;
-          padding-left: 18px;
-        }}
-      </style>
-    </head>
-    <body>
-      {"".join(body)}
-    </body>
-    </html>
-    """
-
-
-def _render_claim_boundary(items: list[str]) -> str:
-    item_html = "".join(f"<li>{_format_inline_markdown(item)}</li>" for item in items)
-    return f'<section class="claim-boundary"><h2>Claim Boundary</h2><ul>{item_html}</ul></section>'
-
-
-def _extract_markdown_list_section(lines: list[str], heading: str) -> list[str]:
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith("#"):
-            continue
-        level = len(stripped) - len(stripped.lstrip("#"))
-        if stripped[level:].strip() != heading:
-            continue
-        items: list[str] = []
-        section_index = index + 1
-        while section_index < len(lines):
-            section_line = lines[section_index].strip()
-            if section_line.startswith("#"):
-                break
-            if section_line.startswith("- "):
-                items.append(section_line[2:].strip())
-            section_index += 1
-        return items
-    return []
-
-
-def _skip_markdown_section(lines: list[str], start_index: int) -> int:
-    index = start_index + 1
-    while index < len(lines):
-        line = lines[index].strip()
-        if line.startswith("#"):
-            return index
-        index += 1
-    return index
-
-
-def _render_markdown_table(lines: list[str], start_index: int) -> tuple[str, int]:
-    headers = _split_markdown_table_row(lines[start_index])
-    index = start_index + 2
-    rows: list[list[str]] = []
-    while index < len(lines) and lines[index].strip().startswith("|"):
-        rows.append(_split_markdown_table_row(lines[index]))
-        index += 1
-    header_html = "".join(
-        f"<th>{_format_inline_markdown(cell)}</th>" for cell in headers
-    )
-    row_html = "".join(
-        "<tr>"
-        + "".join(f"<td>{_format_inline_markdown(cell)}</td>" for cell in row)
-        + "</tr>"
-        for row in rows
-    )
-    return (
-        f"<table><thead><tr>{header_html}</tr></thead>"
-        f"<tbody>{row_html}</tbody></table>",
-        index,
-    )
-
-
-def _split_markdown_table_row(line: str) -> list[str]:
-    return [cell.strip() for cell in line.strip().strip("|").split("|")]
-
-
-def _is_markdown_table_separator(line: str) -> bool:
-    cells = _split_markdown_table_row(line)
-    return bool(cells) and all(
-        set(cell.replace(" ", "")) <= {"-", ":"} for cell in cells
-    )
-
-
-def _format_inline_markdown(text: str) -> str:
-    escaped = escape(text)
-    parts = escaped.split("`")
-    if len(parts) == 1:
-        return escaped
-    formatted: list[str] = []
-    for index, part in enumerate(parts):
-        if index % 2 == 1:
-            formatted.append(f"<code>{part}</code>")
-        else:
-            formatted.append(part)
-    return "".join(formatted)
 
 
 def capture_named(window: QWidget, output_dir: Path, key: str) -> str:
@@ -3120,6 +2972,7 @@ def build_pass_fail_summary(
             failed.append(f"missing phase: {required}")
     if phase_names != REQUIRED_PHASES:
         failed.append("phase sequence does not match the canonical ordered tuple")
+    failed.extend(_phase_alias_failures(phases))
     for key, path in screenshots.items():
         if not Path(path).exists():
             failed.append(f"missing screenshot: {key}")
@@ -3151,6 +3004,39 @@ def build_pass_fail_summary(
         "resource_smoke": resource_smoke,
         **{key: assistant_reviews[key] for key in ASSISTANT_REVIEW_KEYS},
     }
+
+
+def _phase_alias_failures(phases: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Require shared screenshots to be represented as declared logical aliases."""
+    by_name = {str(item.get("phase") or ""): item for item in phases}
+    failures: list[str] = []
+    for alias, source in PHASE_ALIASES.items():
+        alias_phase = by_name.get(alias)
+        source_phase = by_name.get(source)
+        if alias_phase is None or source_phase is None:
+            continue
+        if alias_phase.get("alias_of") != source:
+            failures.append(f"{alias} is missing its declared phase alias: {source}")
+        if alias_phase.get("screenshot") != source_phase.get("screenshot"):
+            failures.append(f"{alias} does not reuse the {source} screenshot")
+        for field in ("visible_text", "button_state", "workflow_state"):
+            if alias_phase.get(field) != source_phase.get(field):
+                failures.append(f"{alias} does not reuse {source} {field}")
+
+    screenshot_owners: dict[str, str] = {}
+    for phase in phases:
+        phase_name = str(phase.get("phase") or "")
+        screenshot = str(phase.get("screenshot") or "")
+        if not screenshot:
+            continue
+        owner = screenshot_owners.setdefault(screenshot, phase_name)
+        if owner == phase_name:
+            continue
+        if PHASE_ALIASES.get(phase_name) != owner:
+            failures.append(
+                f"{phase_name} reuses {owner} screenshot without a declared alias"
+            )
+    return failures
 
 
 def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
@@ -3984,6 +3870,9 @@ def validate_walkthrough_payload(
     )
     if phase_sequence != REQUIRED_PHASES:
         return False, "walkthrough phase sequence does not match the canonical order"
+    alias_failures = _phase_alias_failures(payload.get("phases", []))
+    if alias_failures:
+        return False, alias_failures[0]
 
     assistant_ok, assistant_reason = validate_assistant_payload(
         payload,
@@ -4027,6 +3916,12 @@ def validate_walkthrough_payload(
         )
         if not evidence_ok:
             return False, evidence_reason
+        manifest_ok, manifest_reason = _validate_artifact_run_manifest(
+            payload,
+            screenshots={str(key): str(path) for key, path in screenshots.items()},
+        )
+        if not manifest_ok:
+            return False, manifest_reason
     if not payload.get("observable_evidence"):
         return False, "observable evidence summary is missing"
     ui_quality_review = payload.get("ui_quality_review")
@@ -4047,6 +3942,66 @@ def validate_walkthrough_payload(
         "",
     ):
         return False, "claim boundary does not distinguish human acceptance"
+    return True, ""
+
+
+def _validate_artifact_run_manifest(
+    payload: Mapping[str, Any],
+    *,
+    screenshots: Mapping[str, str],
+) -> tuple[bool, str]:
+    run_value = payload.get("artifact_run")
+    run = run_value if isinstance(run_value, Mapping) else {}
+    if run.get("schema_version") != 2 or run.get("generator") != GENERATOR:
+        return False, "artifact run generator/schema binding is missing"
+    source_ok, source_reason = validate_source_identity(
+        run.get("source_identity"),
+        expected_repo_root=ROOT,
+        refresh=True,
+        current_identity=None,
+        artifact_name="Human-like walkthrough",
+    )
+    if not source_ok:
+        return source_ok, source_reason
+    session_ok, session_reason = validate_source_bound_capture_session(
+        run.get("capture_session"),
+        generated_at=run.get("generated_at_utc"),
+        source_identity=run.get("source_identity"),
+        artifact_name="Human-like walkthrough",
+    )
+    if not session_ok:
+        return session_ok, session_reason
+
+    environment_value = run.get("capture_environment")
+    environment = environment_value if isinstance(environment_value, Mapping) else {}
+    if (
+        environment.get("qt_style") != "Fusion"
+        or environment.get("standard_viewport")
+        != [WINDOW_SIZE.width(), WINDOW_SIZE.height()]
+        or environment.get("narrow_viewport")
+        != [NARROW_WINDOW_SIZE.width(), NARROW_WINDOW_SIZE.height()]
+        or not str(environment.get("qt_platform") or "")
+        or not str(environment.get("scale_factor") or "")
+    ):
+        return False, "artifact run environment/viewport binding is incomplete"
+    if run.get("phase_aliases") != PHASE_ALIASES:
+        return False, "artifact run phase aliases do not match the walkthrough contract"
+    if run.get("claims") != list(ARTIFACT_CLAIMS):
+        return False, "artifact run claims are missing or unsupported"
+    if run.get("limitations") != list(ARTIFACT_LIMITATIONS):
+        return False, "artifact run limitations are missing or unsupported"
+
+    metadata_value = run.get("screenshots")
+    metadata = metadata_value if isinstance(metadata_value, Mapping) else {}
+    if set(metadata) != set(screenshots):
+        return False, "artifact run screenshot metadata manifest is incomplete"
+    for key, path_text in screenshots.items():
+        recorded_value = metadata.get(key)
+        recorded = recorded_value if isinstance(recorded_value, Mapping) else {}
+        observed = inspect_screenshot_artifact(path_text)
+        observed["path"] = Path(path_text).name
+        if dict(recorded) != observed:
+            return False, f"artifact run screenshot metadata/hash mismatch: {key}"
     return True, ""
 
 

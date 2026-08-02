@@ -44,6 +44,9 @@ class MockSaliencyTool(BaseSaliencyTool):
         study: Any,
         method: str | None = None,
         params: dict[str, Any] | None = None,
+        nt_samples: int | None = None,
+        nt_samples_batch_size: int | None = None,
+        stdevs: float | None = None,
         **kwargs,
     ) -> ToolResult:
         if method:
@@ -51,7 +54,12 @@ class MockSaliencyTool(BaseSaliencyTool):
                 ok=True,
                 message=f"Saliency readiness checked with {method}.",
             )
-        if params:
+        if (
+            params
+            or nt_samples is not None
+            or nt_samples_batch_size is not None
+            or stdevs is not None
+        ):
             return ToolResult(
                 ok=True,
                 message="Saliency readiness checked with custom parameters.",

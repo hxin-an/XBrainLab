@@ -3,104 +3,36 @@
 from __future__ import annotations
 
 import weakref
-from typing import Any, Protocol
+from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject
 
-from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.application import ApplicationViewPublication
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.application_capabilities import (
-    execute_application_command,
-    get_controller_for_compatibility_context,
-    local_result_payload,
-)
-from XBrainLab.ui.core.observer_bridge import QtObserverBridge
-
-
-class _InfoPanelStudyPort(Protocol):
-    """Compatibility context that can provide observable data controllers."""
-
-    def get_controller(self, controller_type: str) -> Any: ...
 
 
 class InfoPanelService(QObject):
-    """Service to manage AggregateInfoPanel updates across the application.
+    """Render publication-owned Aggregate Information rows across the desktop."""
 
-    Centralizes data fetching from dataset and preprocess controllers,
-    and ensures all registered panels show consistent state via
-    ``QtObserverBridge`` subscriptions.
-
-    Attributes:
-        study: The application ``Study`` instance.
-
-    """
-
-    def __init__(
-        self,
-        study: _InfoPanelStudyPort,
-        *,
-        observe_controller_events: bool = True,
-    ):
-        """Initialize the service and connect to backend controllers.
-
-        Args:
-            study: The application ``Study`` instance.
-            observe_controller_events: Whether this service should subscribe
-                directly to controller observer events. MainWindow product
-                runtime delegates aggregate refresh to the UI refresh
-                coordinator; standalone / compatibility contexts can keep direct
-                observation enabled.
-
-        """
+    def __init__(self, study: Any):
         super().__init__()
         self.study = study
         self._listeners: weakref.WeakSet = weakref.WeakSet()
-        self._observes_controller_events = observe_controller_events
-        if observe_controller_events:
-            self._setup_bridges()
-
-    def _setup_bridges(self):
-        """Connect observer bridges to dataset and preprocess controllers."""
-        dataset_controller = get_controller_for_compatibility_context(
-            self,
-            self.study,
-            "dataset",
-        )
-        if dataset_controller is not None:
-            self.dataset_bridge = QtObserverBridge(
-                dataset_controller,
-                "data_changed",
-                self,
-            )
-            self.dataset_bridge.connect_to(self.notify_all)
-
-        preprocess_controller = get_controller_for_compatibility_context(
-            self,
-            self.study,
-            "preprocess",
-        )
-        if preprocess_controller is not None:
-            self.preprocess_bridge = QtObserverBridge(
-                preprocess_controller,
-                "preprocess_changed",
-                self,
-            )
-            self.preprocess_bridge.connect_to(self.notify_all)
+        self._latest_publication: ApplicationViewPublication | None = None
+        self._observes_controller_events = False
 
     def register(self, panel):
         """Register an info panel to receive automatic updates.
 
-        Adds the panel to the weak listener set and triggers an
-        immediate update with current data.
+        Adds the panel to the weak listener set and replays the latest
+        publication, or an empty fail-closed state before the first publication.
 
         Args:
             panel: An ``AggregateInfoPanel`` instance.
 
         """
         self._listeners.add(panel)
-        # Robustness: Remove if explicitly destroyed (though WeakSet handles GC)
-        if hasattr(panel, "destroyed"):
-            panel.destroyed.connect(lambda: self.unregister(panel))
         self.update_single(panel)  # Initial update
 
     def unregister(self, panel):
@@ -113,14 +45,28 @@ class InfoPanelService(QObject):
         self._listeners.discard(panel)
 
     def notify_all(self, *args, **kwargs):
-        """Fetch current data and update all registered panels."""
-        loaded, preprocessed = self._query_data_lists()
+        """Replay the latest publication, failing closed when none exists."""
+        publication = self._latest_publication
+        if publication is not None:
+            loaded, preprocessed = self._rows_from_publication(publication)
+        else:
+            loaded, preprocessed = [], []
 
-        # Notify listeners
-        for panel in self._listeners:
+        for panel in list(self._listeners):
             self._safe_update_panel(panel, loaded, preprocessed)
 
-    def _safe_update_panel(self, panel, loaded, preprocessed):
+    def render_publication(self, publication: ApplicationViewPublication) -> bool:
+        """Render one committed revision into every aggregate summary panel."""
+        if not isinstance(publication, ApplicationViewPublication):
+            return False
+        self._latest_publication = publication
+        loaded, preprocessed = self._rows_from_publication(publication)
+        rendered = True
+        for panel in list(self._listeners):
+            rendered = self._safe_update_panel(panel, loaded, preprocessed) and rendered
+        return rendered
+
+    def _safe_update_panel(self, panel, loaded, preprocessed) -> bool:
         """Update a single panel, catching runtime errors gracefully.
 
         Args:
@@ -129,17 +75,33 @@ class InfoPanelService(QObject):
             preprocessed: List of preprocessed data objects.
 
         """
+        if self._is_deleted_qobject(panel):
+            self.unregister(panel)
+            return True
         try:
             panel.update_info(
                 loaded_data_list=loaded,
                 preprocessed_data_list=preprocessed,
             )
         except RuntimeError:
-            # Handle deleted C++ objects in weak set if any
-            pass
-        except Exception as e:
-            # Log other unexpected errors
-            logger.error("Error updating info panel: %s", e)
+            if self._is_deleted_qobject(panel):
+                self.unregister(panel)
+                return True
+            logger.exception("Aggregate Information render failed")
+            return False
+        except Exception:
+            logger.exception("Aggregate Information render failed")
+            return False
+        return True
+
+    @staticmethod
+    def _is_deleted_qobject(panel: Any) -> bool:
+        if not isinstance(panel, QObject):
+            return False
+        try:
+            return bool(sip.isdeleted(panel))
+        except (RuntimeError, TypeError):
+            return False
 
     def update_single(self, panel):
         """Manually update a single panel with current data.
@@ -148,49 +110,22 @@ class InfoPanelService(QObject):
             panel: The info panel to update.
 
         """
-        loaded, preprocessed = self._query_data_lists()
+        publication = self._latest_publication
+        if publication is not None:
+            loaded, preprocessed = self._rows_from_publication(publication)
+        else:
+            loaded, preprocessed = [], []
 
-        panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
+        self._safe_update_panel(panel, loaded, preprocessed)
 
-    def _query_data_lists(self):
-        """Return command-backed lists or explicit compatibility controller data."""
-        try:
-            result = execute_application_command(
-                self,
-                QueryStateCommand(query="data_lists", include_objects=True),
-                refresh=False,
-            )
-        except Exception as exc:
-            logger.error("Info panel state query failed: %s", exc)
+    def _rows_from_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> tuple[list[Any], list[Any]]:
+        """Return the exact detached rows committed with one view revision."""
+        if not publication.usable:
             return [], []
-        if result is not None:
-            if result.ok:
-                payload = local_result_payload(result)
-                return (
-                    list(payload.get("loaded_data_list", [])),
-                    list(payload.get("preprocessed_data_list", [])),
-                )
-            logger.debug("Info panel state query failed: %s", result.message)
+        rows = publication.data_summary_rows
+        if rows is None:
             return [], []
-
-        # Standalone compatibility contexts expose an explicit controller port.
-        # The shared compatibility boundary rejects real Study controller reads.
-        loaded = []
-        dataset_controller = get_controller_for_compatibility_context(
-            self,
-            self.study,
-            "dataset",
-        )
-        if dataset_controller is not None:
-            loaded = dataset_controller.get_loaded_data_list()
-
-        preprocessed = []
-        preprocess_controller = get_controller_for_compatibility_context(
-            self,
-            self.study,
-            "preprocess",
-        )
-        if preprocess_controller is not None:
-            preprocessed = preprocess_controller.get_preprocessed_data_list()
-
-        return loaded, preprocessed
+        return list(rows), []

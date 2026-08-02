@@ -376,11 +376,11 @@ class MockEpochDataTool(BaseEpochDataTool):
         if not self._state.data_loaded:
             return ToolResult(
                 ok=False,
-                message="Load EEG data before creating epochs.",
+                message="Load EEG data before creating EEG epochs.",
                 error_type="precondition",
             )
         self._state.mark_epochs_ready()
         return ToolResult(
             ok=True,
-            message=f"Epoched data from {t_min}s to {t_max}s.",
+            message=f"Created EEG epochs from {t_min}s to {t_max}s.",
         )

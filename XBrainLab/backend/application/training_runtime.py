@@ -79,6 +79,8 @@ class TrainingProjectionReadPort(Protocol):
 
     def current_training_plan_index(self) -> int | None: ...
 
+    def progress_text(self) -> str: ...
+
 
 class TrainingCommandRuntimePort(Protocol):
     """Runtime reads and control required by training command handlers."""
@@ -87,7 +89,12 @@ class TrainingCommandRuntimePort(Protocol):
 
     def stop_training(self, *, wait_timeout: float | None = None) -> bool: ...
 
-    def wait_for_training_completion(self, *, timeout: float | None = None) -> bool: ...
+    def wait_for_training_completion(
+        self,
+        *,
+        expected_trainer_identity: str | None = None,
+        timeout: float | None = None,
+    ) -> bool: ...
 
     def terminal_outcome(self) -> TrainingTerminalOutcome: ...
 
@@ -184,6 +191,8 @@ class _TrainingManagerRuntimePort(Protocol):
 
     def get_current_training_plan_index(self) -> int | None: ...
 
+    def get_training_progress_text(self) -> str: ...
+
     def capture_training_read_boundary(self) -> TrainingReadBoundary: ...
 
     def stop_training_if_present(
@@ -191,7 +200,12 @@ class _TrainingManagerRuntimePort(Protocol):
         wait_timeout: float | None = None,
     ) -> bool: ...
 
-    def wait_for_training_completion(self, timeout: float | None = None) -> bool: ...
+    def wait_for_training_completion(
+        self,
+        timeout: float | None = None,
+        *,
+        expected_trainer_identity: str | None = None,
+    ) -> bool: ...
 
     def get_training_terminal_outcome(self) -> TrainingTerminalOutcome: ...
 
@@ -302,6 +316,9 @@ class StudyTrainingRuntime:
     def current_training_plan_index(self) -> int | None:
         return self._manager.get_current_training_plan_index()
 
+    def progress_text(self) -> str:
+        return self._manager.get_training_progress_text()
+
     def capture_read_boundary(self) -> TrainingReadBoundary:
         return self._manager.capture_training_read_boundary()
 
@@ -311,9 +328,19 @@ class StudyTrainingRuntime:
             self._manager.stop_training_if_present(wait_timeout=wait_timeout),
         )
 
-    def wait_for_training_completion(self, *, timeout: float | None = None) -> bool:
+    def wait_for_training_completion(
+        self,
+        *,
+        expected_trainer_identity: str | None = None,
+        timeout: float | None = None,
+    ) -> bool:
         """Wait for one admitted run without retaining mutable trainer access."""
-        return bool(self._manager.wait_for_training_completion(timeout=timeout))
+        return bool(
+            self._manager.wait_for_training_completion(
+                timeout=timeout,
+                expected_trainer_identity=expected_trainer_identity,
+            )
+        )
 
     def terminal_outcome(self) -> TrainingTerminalOutcome:
         """Return typed terminal truth from the current trainer."""

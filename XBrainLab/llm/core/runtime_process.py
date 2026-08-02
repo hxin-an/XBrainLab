@@ -14,7 +14,6 @@ from XBrainLab.backend.application.errors import ApplicationError
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.generation import GenerationProfile
-from XBrainLab.llm.tools.result_contract import redact_public_text
 
 DEFAULT_PROCESS_STARTUP_TIMEOUT_SECONDS = 180.0
 DEFAULT_PROCESS_TERMINATION_TIMEOUT_SECONDS = 0.25
@@ -97,7 +96,7 @@ def _runtime_load_failure_event(exc: BaseException) -> _RuntimeEvent:
     if isinstance(exc, ApplicationError) and exc.recoverable:
         return _RuntimeEvent(
             "load_error",
-            payload=redact_public_text(exc.message),
+            payload=str(exc),
             error_code=exc.error_type.value,
             recoverable=True,
         )
@@ -457,6 +456,7 @@ class LocalRuntimeProcessOwner:
                 self._terminate_owned_process(restart_required=False)
             self._initialized = False
             self._closed = True
+            self._dispose_connections()
             return not self.is_alive
         deadline = time.monotonic() + grace
         event = self._wait_for_runtime_event(deadline=deadline)

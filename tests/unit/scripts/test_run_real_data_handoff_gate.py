@@ -41,6 +41,16 @@ def test_gate_contains_continuous_interpretation_and_bids_handoffs() -> None:
         "dataset-generation-readiness",
     )
 
+    physionet = slices["physionet-internal-event-continuous-handoff"]
+    assert physionet.stages == (
+        "data-interpretation",
+        "internal-event-review",
+        "epoch-materialization",
+        "dataset-generation",
+        "training-readiness",
+        "tiny-training",
+    )
+
 
 def test_gate_keeps_outer_label_source_lifecycle_as_a_blocking_slice() -> None:
     lifecycle = next(

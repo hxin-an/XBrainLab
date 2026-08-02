@@ -8,6 +8,7 @@ from PIL import Image
 from scripts.dev.capture_ui_baseline import (
     AI_DOCK_STEP,
     _prepare_capture_step,
+    _validate_consecutive_frames,
     is_nearly_black,
 )
 
@@ -24,6 +25,24 @@ def test_is_nearly_black_detects_visible_content(tmp_path):
     Image.new("RGB", (20, 20), (255, 255, 255)).save(image_path)
 
     assert is_nearly_black(image_path) is False
+
+
+def test_consecutive_frame_gate_accepts_settled_frames(tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    Image.new("RGB", (100, 100), (32, 32, 32)).save(first)
+    Image.new("RGB", (100, 100), (32, 32, 32)).save(second)
+
+    assert _validate_consecutive_frames(first, second) == 0
+
+
+def test_consecutive_frame_gate_rejects_partial_repaint(tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    Image.new("RGB", (100, 100), (0, 0, 0)).save(first)
+    Image.new("RGB", (100, 100), (220, 220, 220)).save(second)
+
+    assert _validate_consecutive_frames(first, second) == 5
 
 
 def _ready_switch_page(index, *, on_ready):

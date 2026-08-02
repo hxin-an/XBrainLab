@@ -151,13 +151,13 @@ def test_controller_explains_blocked_steps_from_real_atomic_publications(
             _raw_loaded_state(),
             "Why can't I create epochs?",
             CommandName.CREATE_EPOCH,
-            "Preprocess data before creating epochs.",
+            "Preprocess data before creating EEG epochs.",
         ),
         (
             _preprocessed_state(),
             "Why can't I build the training dataset?",
             CommandName.GENERATE_DATASET,
-            "Create epochs before generating datasets.",
+            "Create EEG epochs before building the training dataset.",
         ),
         (
             _epoch_state_without_split_or_training_config(),
@@ -175,14 +175,14 @@ def test_controller_explains_blocked_steps_from_real_atomic_publications(
             ApplicationStateSnapshot.empty(),
             "為什麼不能查看顯著性?",
             CommandName.SALIENCY,
-            "Create epochs, generate datasets, or select a model and training "
-            "settings before querying saliency readiness.",
+            "Create EEG epochs, build the training dataset, or select a model "
+            "and training settings before querying saliency readiness.",
         ),
         (
             ApplicationStateSnapshot.empty(),
             "Why is visualization blocked?",
             CommandName.VISUALIZE,
-            "Create epochs, complete training, or configure saliency before "
+            "Create EEG epochs, complete training, or configure saliency before "
             "opening visualization views.",
         ),
     )
@@ -213,6 +213,6 @@ def test_controller_explains_blocked_steps_from_real_atomic_publications(
             assert controller.is_processing is False
             assert generation_requests == []
             assert worker.generation_requests == []
-            assert controller._tool_execution_count == 0
+            assert controller._tool_attempt_session.execution_count == 0
     finally:
         close_controller_and_wait(controller, qtbot)

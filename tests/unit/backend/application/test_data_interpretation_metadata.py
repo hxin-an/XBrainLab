@@ -103,6 +103,38 @@ def test_bids_summary_bounds_dataset_description_materialization(
     assert summary["dataset"] == {}
 
 
+def test_bids_summary_rejects_metadata_symlinks_outside_scan_root(
+    tmp_path: Path,
+) -> None:
+    selected_root = tmp_path / "selected"
+    eeg_file = selected_root / "sub-01" / "eeg" / "sub-01_task-mi_eeg.fif"
+    eeg_file.parent.mkdir(parents=True)
+    eeg_file.write_bytes(b"header only")
+    outside_root = tmp_path / "outside"
+    outside_root.mkdir()
+    outside_description = outside_root / "dataset_description.json"
+    outside_participants = outside_root / "participants.tsv"
+    outside_channels = outside_root / "sub-01_task-mi_channels.tsv"
+    outside_description.write_text(
+        '{"Name": "outside", "BIDSVersion": "1.11.1"}',
+        encoding="utf-8",
+    )
+    outside_participants.write_text("participant_id\nsub-99\n", encoding="utf-8")
+    outside_channels.write_text("name\tstatus\nC3\tbad\n", encoding="utf-8")
+    (selected_root / "dataset_description.json").symlink_to(outside_description)
+    (selected_root / "participants.tsv").symlink_to(outside_participants)
+    (eeg_file.parent / "sub-01_task-mi_channels.tsv").symlink_to(outside_channels)
+
+    summary = bids_summary(selected_root, "bids", [str(eeg_file)], [])
+
+    assert summary["dataset_description"] is None
+    assert summary["dataset"] == {}
+    assert summary["participants_file"] is None
+    assert summary["participants"] == []
+    assert summary["channels_files"] == []
+    assert summary["channel_status_summary"]["total"] == 0
+
+
 def test_file_metadata_from_dict_round_trips_minimal_payload():
     payload = {
         "file": "sample.fif",

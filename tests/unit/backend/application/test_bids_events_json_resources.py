@@ -157,6 +157,120 @@ def test_review_does_not_admit_or_read_events_json_outside_dataset_root(
     )
 
 
+def test_events_carrier_symlink_outside_bids_root_is_rejected_without_loading(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    root.mkdir()
+    (root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    carrier = root / "sub-01" / "eeg" / "sub-01_task-mi_events.tsv"
+    carrier.parent.mkdir(parents=True)
+    outside_carrier = tmp_path / "outside_events.tsv"
+    outside_carrier.write_text(
+        "onset\tduration\ttrial_type\n0\t1\tOUTSIDE\n",
+        encoding="utf-8",
+    )
+    try:
+        carrier.symlink_to(outside_carrier)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symbolic links are unavailable: {exc}")
+    opened: list[Path] = []
+    real_path_open = Path.open
+
+    def _observe_outside_open(path: Path, *args, **kwargs):
+        if path.resolve(strict=False) == outside_carrier.resolve():
+            opened.append(path)
+        return real_path_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _observe_outside_open)
+
+    with pytest.raises(PreconditionError) as raised:
+        bids_resources.bids_events_json_resource_paths([str(carrier)])
+
+    diagnostics = raised.value.diagnostics["bids_events_json"]
+    assert diagnostics["code"] == "bids_resource_outside_dataset_root"
+    assert diagnostics["resource_kind"] == "events_carrier"
+    assert diagnostics["content_loading_started"] is False
+    assert opened == []
+
+
+def test_events_json_symlink_outside_bids_root_is_rejected_without_loading(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    _eeg_path, events_path = _write_bids_run(root)
+    sidecar = events_path.with_suffix(".json")
+    outside_sidecar = tmp_path / "outside_events.json"
+    outside_sidecar.write_text(
+        json.dumps({"trial_type": {"Levels": {"left": "OUTSIDE"}}}),
+        encoding="utf-8",
+    )
+    try:
+        sidecar.symlink_to(outside_sidecar)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symbolic links are unavailable: {exc}")
+    opened: list[Path] = []
+    real_path_open = Path.open
+
+    def _observe_outside_open(path: Path, *args, **kwargs):
+        if path.resolve(strict=False) == outside_sidecar.resolve():
+            opened.append(path)
+        return real_path_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _observe_outside_open)
+
+    with pytest.raises(PreconditionError) as raised:
+        paths = bids_resources.bids_events_json_resource_paths([str(events_path)])
+        bids_resources.BidsEventsJsonReader.from_paths(paths)
+
+    diagnostics = raised.value.diagnostics["bids_events_json"]
+    assert diagnostics["code"] == "bids_resource_outside_dataset_root"
+    assert diagnostics["resource_kind"] == "events_json_sidecar"
+    assert diagnostics["content_loading_started"] is False
+    assert opened == []
+
+
+def test_events_json_reparse_like_alias_outside_root_is_rejected_without_loading(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    _eeg_path, events_path = _write_bids_run(root)
+    sidecar = events_path.with_suffix(".json")
+    sidecar.write_text("{}", encoding="utf-8")
+    outside_sidecar = tmp_path / "outside_events.json"
+    outside_sidecar.write_text('{"outside": true}', encoding="utf-8")
+    real_resolve = Path.resolve
+
+    def _resolve_reparse_alias(path: Path, strict: bool = False) -> Path:
+        if path == sidecar:
+            return real_resolve(outside_sidecar, strict=strict)
+        return real_resolve(path, strict=strict)
+
+    opened: list[Path] = []
+    real_path_open = Path.open
+
+    def _observe_outside_open(path: Path, *args, **kwargs):
+        if real_resolve(path, strict=False) == real_resolve(outside_sidecar):
+            opened.append(path)
+        return real_path_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", _resolve_reparse_alias)
+    monkeypatch.setattr(Path, "open", _observe_outside_open)
+
+    with pytest.raises(PreconditionError) as raised:
+        paths = bids_resources.bids_events_json_resource_paths([str(events_path)])
+        bids_resources.BidsEventsJsonReader.from_paths(paths)
+
+    diagnostics = raised.value.diagnostics["bids_events_json"]
+    assert diagnostics["code"] == "bids_resource_outside_dataset_root"
+    assert diagnostics["resource_kind"] == "events_json_sidecar"
+    assert diagnostics["content_loading_started"] is False
+    assert opened == []
+
+
 def test_events_json_candidates_find_dataset_root_beyond_eight_ancestors(
     tmp_path: Path,
 ) -> None:

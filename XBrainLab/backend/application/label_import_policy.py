@@ -81,6 +81,7 @@ class _LabelMaterializationReviewer:
         """Review one payload before its caller proceeds to the next file."""
         timestamp = _is_timestamp_payload(payload)
         mode = "timestamp" if timestamp else "sequence"
+        values: Iterable[Any]
         if timestamp:
             count = len(payload)
             values = (row.get("label") for row in payload)

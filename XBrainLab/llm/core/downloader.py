@@ -7,27 +7,35 @@ with Qt signal integration for progress reporting and cancellation.
 from __future__ import annotations
 
 import contextlib
+import math
 import multiprocessing
 import os
 import queue  # Standard library queue for Empty exception
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import Enum
+from typing import Any, Protocol, cast
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.model_catalog import (
+    inspect_model_download_consumption,
     local_model_spec,
     model_cache_candidates,
+    model_cache_complete,
     plan_model_download,
     validate_downloaded_model_cache,
 )
 
+snapshot_download: Callable[..., Any] | None
 try:
-    from huggingface_hub import snapshot_download
+    from huggingface_hub import snapshot_download as _snapshot_download
 except ImportError:
-    snapshot_download = None  # type: ignore[assignment]
+    snapshot_download = None
+else:
+    snapshot_download = _snapshot_download
 
 
 PROCESS_JOIN_TIMEOUT_SEC = 2.0
@@ -36,6 +44,58 @@ PROCESS_KILL_JOIN_TIMEOUT_SEC = 1.0
 PROCESS_CLEANUP_MAX_ATTEMPTS = 3
 PROCESS_CLEANUP_RETRY_DELAY_SEC = 0.05
 DOWNLOAD_PROCESS_START_METHOD = "spawn"
+DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC = 0.5
+MODEL_DOWNLOAD_DEADLINE_SEC = 2 * 60 * 60
+MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE = (
+    "Model download reached the two-hour time limit and was stopped safely. "
+    "Check your internet connection, then try again."
+)
+MODEL_DOWNLOAD_FAILURE_PUBLIC_MESSAGE = (
+    "Model download failed. Check the application log and try again."
+)
+MODEL_DOWNLOAD_TIMEOUT_DIAGNOSTIC = "model_download_deadline_exceeded"
+
+
+class _DownloadQueue(Protocol):
+    def put(self, item: tuple[str, Any]) -> None: ...
+
+    def get_nowait(self) -> tuple[str, Any]: ...
+
+    def close(self) -> None: ...
+
+    def join_thread(self) -> None: ...
+
+
+class _DownloadProcess(Protocol):
+    exitcode: int | None
+    pid: int | None
+
+    def start(self) -> None: ...
+
+    def is_alive(self) -> bool: ...
+
+    def join(self, timeout: float | None = None) -> None: ...
+
+    def terminate(self) -> None: ...
+
+    def kill(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+class _DownloadProcessContext(Protocol):
+    def Queue(self) -> _DownloadQueue: ...  # noqa: N802
+
+    def Process(  # noqa: N802
+        self,
+        group: None = None,
+        target: Callable[..., Any] | None = None,
+        name: str | None = None,
+        args: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
+        *,
+        daemon: bool | None = None,
+    ) -> _DownloadProcess: ...
 
 
 class ModelDownloadStatus(str, Enum):
@@ -46,6 +106,14 @@ class ModelDownloadStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ModelDownloadFailureCode(str, Enum):
+    """Stable failure categories safe for UI presentation decisions."""
+
+    CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class ModelDownloadTarget:
     """Immutable repository and cache identity captured at admission."""
@@ -53,6 +121,7 @@ class ModelDownloadTarget:
     repo_id: str
     cache_dir: str
     cache_candidates: tuple[str, ...]
+    complete_cache_at_start: bool = False
 
     @classmethod
     def create(cls, repo_id: str, cache_dir: str) -> ModelDownloadTarget:
@@ -62,6 +131,10 @@ class ModelDownloadTarget:
             cache_dir=normalized_cache,
             cache_candidates=tuple(
                 model_cache_candidates(normalized_cache, str(repo_id))
+            ),
+            complete_cache_at_start=model_cache_complete(
+                normalized_cache,
+                str(repo_id),
             ),
         )
 
@@ -94,6 +167,7 @@ class ModelDownloadOutcome:
     status: ModelDownloadStatus
     message: str
     model_path: str | None = None
+    failure_code: ModelDownloadFailureCode | None = None
     process_cleanup: ProcessCleanupSnapshot | None = None
     diagnostic_message: str = ""
 
@@ -106,10 +180,17 @@ class ModelDownloadOutcome:
         return self.status is ModelDownloadStatus.CANCELLED
 
 
+def model_download_public_failure_message(outcome: ModelDownloadOutcome) -> str:
+    """Return only reviewed product copy for a typed download failure."""
+    if outcome.failure_code is ModelDownloadFailureCode.TIMEOUT:
+        return MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE
+    return MODEL_DOWNLOAD_FAILURE_PUBLIC_MESSAGE
+
+
 # -----------------------------------------------------------------------------
 # Standalone Process Function (Must be picklable)
 # -----------------------------------------------------------------------------
-def run_download_task(repo_id, cache_dir, result_queue):
+def run_download_task(repo_id, cache_dir, result_queue: _DownloadQueue):
     """Runs a HuggingFace model download in a separate process.
 
     This function must be picklable for ``multiprocessing.Process``.
@@ -186,10 +267,16 @@ class DownloadWorker(QObject):
 
     progress_update = pyqtSignal(int, str)  # progress (%), status message
     download_finished = pyqtSignal(str)  # path to model
-    download_failed = pyqtSignal(str)  # error message
+    download_failed = pyqtSignal(str)
     cleanup_state_changed = pyqtSignal(object)
 
-    def __init__(self, repo_id, cache_dir):
+    def __init__(
+        self,
+        repo_id,
+        cache_dir,
+        *,
+        deadline_seconds: float = MODEL_DOWNLOAD_DEADLINE_SEC,
+    ):
         """Initializes the DownloadWorker.
 
         Args:
@@ -200,15 +287,21 @@ class DownloadWorker(QObject):
         super().__init__()
         self.repo_id = repo_id
         self.cache_dir = cache_dir
+        deadline = float(deadline_seconds)
+        if not math.isfinite(deadline) or deadline <= 0:
+            raise ValueError("Model download deadline must be a positive number.")
+        self._deadline_seconds = deadline
+        self._started_at = 0.0
         self._is_cancelled = False
-        self._process = None
-        self._queue = None
+        self._process: _DownloadProcess | None = None
+        self._queue: _DownloadQueue | None = None
         self._cleanup_attempts = 0
         self._cleanup_snapshot = ProcessCleanupSnapshot(ProcessCleanupPhase.IDLE)
         self._child_start_confirmed = False
         self._pending_terminal_kind: str | None = None
         self._pending_terminal_payload = ""
         self._terminal_emitted = False
+        self._next_consumption_check_at = 0.0
 
     def run(self):
         """Starts the download subprocess and polls its status queue.
@@ -218,7 +311,10 @@ class DownloadWorker(QObject):
         fails.
         """
         try:
-            process_context = multiprocessing.get_context(DOWNLOAD_PROCESS_START_METHOD)
+            process_context = cast(
+                _DownloadProcessContext,
+                multiprocessing.get_context(DOWNLOAD_PROCESS_START_METHOD),
+            )
             self._queue = process_context.Queue()
             process = process_context.Process(
                 target=run_download_task,
@@ -231,6 +327,10 @@ class DownloadWorker(QObject):
             try:
                 process.start()
                 self._child_start_confirmed = True
+                self._started_at = time.monotonic()
+                self._next_consumption_check_at = (
+                    self._started_at + DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC
+                )
             except Exception as exc:
                 self._child_start_confirmed = self._started_child_may_exist(process)
                 self._record_pending_failure(f"Model download could not start: {exc}")
@@ -240,6 +340,9 @@ class DownloadWorker(QObject):
             while self._pending_terminal_kind is None:
                 if self._is_cancelled:
                     self._record_pending_failure("Cancelled by user")
+                    break
+                if self._download_deadline_exceeded():
+                    self._record_pending_failure(MODEL_DOWNLOAD_TIMEOUT_DIAGNOSTIC)
                     break
 
                 alive = self._query_process_alive(
@@ -259,6 +362,8 @@ class DownloadWorker(QObject):
                         )
                     break
                 if self._check_queue():
+                    break
+                if not self._check_consumption_if_due():
                     break
                 time.sleep(0.1)
         except Exception as exc:
@@ -298,6 +403,33 @@ class DownloadWorker(QObject):
 
         return False
 
+    def _check_consumption_if_due(self, *, now: float | None = None) -> bool:
+        """Enforce actual cache and disk limits at a bounded polling cadence."""
+        observed_at = time.monotonic() if now is None else now
+        if observed_at < self._next_consumption_check_at:
+            return True
+        consumption = inspect_model_download_consumption(
+            self.repo_id,
+            self.cache_dir,
+        )
+        completed_at = observed_at if now is not None else time.monotonic()
+        self._next_consumption_check_at = (
+            completed_at + DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC
+        )
+        if consumption.ok:
+            return True
+        if consumption.public_message:
+            self.progress_update.emit(0, consumption.public_message)
+        self._record_pending_failure(
+            consumption.diagnostic_message or consumption.public_message
+        )
+        return False
+
+    def _download_deadline_exceeded(self, *, now: float | None = None) -> bool:
+        """Return whether this owned download exceeded its wall-clock budget."""
+        observed_at = time.monotonic() if now is None else float(now)
+        return observed_at - self._started_at >= self._deadline_seconds
+
     def _record_pending_success(self, path: str) -> None:
         if self._pending_terminal_kind is None:
             self._pending_terminal_kind = "finished"
@@ -306,17 +438,17 @@ class DownloadWorker(QObject):
     def _record_pending_failure(self, error: str) -> None:
         if self._pending_terminal_kind is None:
             self._pending_terminal_kind = "failed"
-            self._pending_terminal_payload = error
+            self._pending_terminal_payload = str(error)
 
     @staticmethod
-    def _safe_exit_code(process) -> object:
+    def _safe_exit_code(process: _DownloadProcess) -> object:
         try:
             return process.exitcode
         except Exception:
             return "unknown"
 
     @staticmethod
-    def _started_child_may_exist(process) -> bool:
+    def _started_child_may_exist(process: _DownloadProcess) -> bool:
         """Conservatively detect whether a failed start may own a child."""
         try:
             if bool(process.is_alive()):
@@ -440,7 +572,12 @@ class DownloadWorker(QObject):
             "Stopping model download subprocess.",
         )
 
-    def _query_process_alive(self, process, *, operation: str) -> bool | None:
+    def _query_process_alive(
+        self,
+        process: _DownloadProcess,
+        *,
+        operation: str,
+    ) -> bool | None:
         try:
             return bool(process.is_alive())
         except Exception as exc:
@@ -449,7 +586,7 @@ class DownloadWorker(QObject):
 
     def _join_process(
         self,
-        process,
+        process: _DownloadProcess,
         timeout_sec: float,
         *,
         operation: str,
@@ -461,7 +598,7 @@ class DownloadWorker(QObject):
             return False
         return True
 
-    def _release_reaped_process(self, process) -> bool:
+    def _release_reaped_process(self, process: _DownloadProcess) -> bool:
         """Release ownership only after join and a reliable dead observation."""
         if self._process is not process:
             return self._process is None
@@ -477,7 +614,7 @@ class DownloadWorker(QObject):
         )
         return True
 
-    def _release_unstarted_process(self, process) -> bool:
+    def _release_unstarted_process(self, process: _DownloadProcess) -> bool:
         """Release a Process object only when no child was ever observed."""
         if self._process is not process:
             return self._process is None
@@ -614,9 +751,18 @@ class ModelDownloader(QObject):
     cleanup_state_changed = pyqtSignal(object)
     cleanup_retry_requested = pyqtSignal()
 
-    def __init__(self, parent: QObject | None = None):
+    def __init__(
+        self,
+        parent: QObject | None = None,
+        *,
+        download_deadline_seconds: float = MODEL_DOWNLOAD_DEADLINE_SEC,
+    ):
         """Initializes the ModelDownloader."""
         super().__init__(parent)
+        deadline = float(download_deadline_seconds)
+        if not math.isfinite(deadline) or deadline <= 0:
+            raise ValueError("Model download deadline must be a positive number.")
+        self._download_deadline_seconds = deadline
         self.worker: DownloadWorker | None = None
         self._thread: QThread | None = None
         self._active_target: ModelDownloadTarget | None = None
@@ -646,6 +792,7 @@ class ModelDownloader(QObject):
         self.worker = DownloadWorker(
             self._active_target.repo_id,
             self._active_target.cache_dir,
+            deadline_seconds=self._download_deadline_seconds,
         )
         self.worker.moveToThread(self._thread)
 
@@ -792,19 +939,34 @@ class ModelDownloader(QObject):
 
     def _record_failure(self, error: str) -> None:
         """Store a worker failure until QThread terminal cleanup finishes."""
+        failure_code = (
+            ModelDownloadFailureCode.CANCELLED
+            if error == "Cancelled by user"
+            else (
+                ModelDownloadFailureCode.TIMEOUT
+                if error == MODEL_DOWNLOAD_TIMEOUT_DIAGNOSTIC
+                else ModelDownloadFailureCode.FAILED
+            )
+        )
         status = (
             ModelDownloadStatus.CANCELLED
-            if error == "Cancelled by user"
+            if failure_code is ModelDownloadFailureCode.CANCELLED
             else ModelDownloadStatus.FAILED
+        )
+        public_message = (
+            "Model download cancelled."
+            if status is ModelDownloadStatus.CANCELLED
+            else (
+                MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE
+                if failure_code is ModelDownloadFailureCode.TIMEOUT
+                else MODEL_DOWNLOAD_FAILURE_PUBLIC_MESSAGE
+            )
         )
         self._pending_outcome = ModelDownloadOutcome(
             target=self._require_active_target(),
             status=status,
-            message=(
-                "Model download cancelled."
-                if status is ModelDownloadStatus.CANCELLED
-                else ("Model download failed. Check the application log and try again.")
-            ),
+            message=public_message,
+            failure_code=failure_code,
             diagnostic_message=error,
         )
         if status is not ModelDownloadStatus.CANCELLED:

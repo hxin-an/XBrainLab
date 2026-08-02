@@ -298,6 +298,58 @@ def test_product_tab_stress_uses_public_panel_publication_path():
     assert '"product_3d_tab_updates": 1' not in source
 
 
+def test_visualization_stress_constructs_panel_with_narrow_runtime_ports():
+    function = _named_function("_replace_visualization_panel_with_publication_fixture")
+    panel_call = next(
+        (
+            node
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "VisualizationPanel"
+        ),
+        None,
+    )
+    assert panel_call is not None
+    keyword_names = {keyword.arg for keyword in panel_call.keywords}
+    assert {"query_port", "publication_port", "action_port"} <= keyword_names
+    assert "controller" not in keyword_names
+    assert "application_runtime" not in keyword_names
+
+    runtime_class = next(
+        (
+            node
+            for node in _script_tree().body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "_NativeStressApplicationRuntime"
+        ),
+        None,
+    )
+    assert runtime_class is not None
+    assert any(
+        isinstance(base, ast.Name) and base.id == "Observable"
+        for base in runtime_class.bases
+    )
+    initializer = next(
+        (
+            node
+            for node in runtime_class.body
+            if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+        ),
+        None,
+    )
+    assert initializer is not None
+    assert any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Call)
+        and isinstance(node.func.value.func, ast.Name)
+        and node.func.value.func.id == "super"
+        and node.func.attr == "__init__"
+        for node in ast.walk(initializer)
+    )
+
+
 def test_product_tab_stress_repeats_3d_inside_every_cycle():
     function = _named_function("_exercise_product_saliency_tabs")
     cycle_loop = next(

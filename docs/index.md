@@ -1,30 +1,42 @@
 # XBrainLab 專案控制室
 
-XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前 roadmap 已定型為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。這個私有入口用來快速判斷現況、缺口和證據。
+最後更新：`2026-08-02`
+
+XBrainLab 是本地優先的 EEG / BCI 桌面分析工具。Product-quality closure 正在
+`build/worktrees/assistant-product-v1` 的 `stabilize/product-quality-closure` 進行；
+`ux/assistant-product-v1@3869aaef` 只是 baseline。這個入口用來快速判斷現況、缺口和證據。
 
 !!! warning "目前邊界"
-    Not product complete；automated evidence 不能取代 human Windows acceptance。
+    Closure in progress；not handoff-ready；not product complete。Automated evidence 不能取代
+    human Windows acceptance。
+
+!!! danger "Architecture closure 尚未完成"
+    Active audit 的 `ARCH-02`、`ARCH-04`、`ARCH-05` 已有 working-checkpoint implementation、
+    source guard 和 focused re-gate：product composition 不再依賴 controller adapter，revisioned
+    application publication 是 state-changing refresh truth，MainWindow product panels 使用 narrow
+    ports。它們仍要由 `FUNC-06` 的 clean exact-commit handoff evidence 收口；這不代表 target
+    architecture 或 product closure 已完成。
 
 <div class="xlb-signal-list" markdown>
 
 <div markdown>
 <span class="xlb-kicker">Product Status</span>
-MVP stabilization；not product complete.
+Product-quality closure in progress; not handoff-ready.
 </div>
 
 <div markdown>
 <span class="xlb-kicker">主要缺口</span>
-重新稽核已找到 scientific、UI concurrency、agent control-loop 與 validation-truth blockers；Windows acceptance 尚未開始。
+Audit findings、same-commit hard gates 和 exact-source artifacts 尚未全部關閉。
 </div>
 
 <div markdown>
 <span class="xlb-kicker">Data Import</span>
-Wizard + 4 placement modes; not final UX.
+Tracked dirty artifact checkpoint; read its manifest identity before use.
 </div>
 
 <div markdown>
 <span class="xlb-kicker">證據邊界</span>
-artifact 和 product-success tests 是 evidence，不是第二套 truth；claim 要回到 Current / Validation 判讀。
+Final totals 只讀 clean exact-commit handoff evidence，不從舊 notes 手動加總。
 </div>
 
 <div markdown>
@@ -34,7 +46,7 @@ local quality dashboard；screenshot index；private docs portal visual review.
 
 <div markdown>
 <span class="xlb-kicker">Next Work</span>
-Correctness blocker repair; current-HEAD handoff gate; then user manual test.
+Close audit findings; generate exact-commit evidence; then decide Windows handoff eligibility.
 </div>
 
 </div>
@@ -43,10 +55,10 @@ Correctness blocker repair; current-HEAD handoff gate; then user manual test.
 
 | Area | Current Read | Best Evidence | Next Work |
 | --- | --- | --- | --- |
-| Product readiness | Re-audit open; not handoff-ready or product complete. | [Current](current.md), [Now](planning/now.md) | Repair correctness/reliability blockers, rebuild evidence, then human Windows acceptance. |
-| Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` is physically removed. | [Architecture](architecture/README.md), [Validation](validation/README.md) | Keep guards green while UX continues. |
-| Data Import | `scan -> preview -> validate -> apply -> recipe` works as baseline; placement evidence covers four mainstream modes. | [Data Interpretation target](target/data_interpretation_system.md), `artifacts/ui/data-import-wizard-steps/README.md` | Record UX debt; do not redesign tonight. |
-| Validation | Handoff candidate gate is the required standard before user manual testing. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Run focused regression, same-class sweep, happy path, edge/multi-dataset, screenshot artifact, and claim boundary per branch. |
+| Product readiness | Product-quality closure in progress; not handoff-ready or product complete. | [Current](current.md), [Now](planning/now.md), [Audit](records/product_quality_audit_2026-07-30.md) | Close code-controllable findings and rebuild all hard gates from one clean pushed commit. |
+| Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` and product live-object result payloads are physically removed. `ARCH-02/04/05` have verified working-checkpoint repairs and guards, with exact-commit closure still pending under `FUNC-06`. | [Architecture](architecture/README.md), [Active Audit](records/product_quality_audit_2026-07-30.md) | Regenerate the registered architecture/runtime gates through the canonical exact-commit runner; keep target/P2 cleanup separate. |
+| Data Import | `scan -> preview -> validate -> apply -> recipe` is a bounded implementation baseline. Tracked screenshots are dirty checkpoint evidence. | [Data Interpretation target](target/data_interpretation_system.md), [Validation](validation/README.md) | Read the artifact manifest and rebuild the wizard set from the final exact source. |
+| Validation | No current final total exists until the handoff profile is regenerated on the clean closure commit. | [Validation](validation/README.md); generated `artifacts/quality/latest.md` header | Verify profile, branch, reported SHA against the full pushed SHA, and dirty state before reading any PASS or total as current. |
 
 ## Evidence Shortcuts
 
@@ -54,15 +66,16 @@ Correctness blocker repair; current-HEAD handoff gate; then user manual test.
 
 - **Quality dashboard**
 
-    Local generated fast health gate: lint, type, architecture, startup, UI baseline, UI unit suite, real-data IO.
+    Mutable local report. The `ux/assistant-product-v1@3869aaef` copy is baseline-only; closure
+    evidence requires a clean exact-commit `handoff` profile.
 
-    <span class="xlb-artifact-path">`artifacts/quality/latest.md` (git-ignored, generate locally)</span>
+    <span class="xlb-artifact-path">`artifacts/quality/latest.md` (inspect identity before use)</span>
 
 - **Data Import screenshots**
 
-    Current wizard steps and Match Labels placement mode review images.
+    Dirty-tree checkpoint; useful for review only after reading its manifest identity.
 
-    <span class="xlb-artifact-path">`artifacts/ui/data-import-wizard-steps/README.md`</span>
+    <span class="xlb-artifact-path">`artifacts/ui/data-import-wizard-steps/` (checkpoint only)</span>
 
 - **Internal event evidence**
 
@@ -84,7 +97,7 @@ Correctness blocker repair; current-HEAD handoff gate; then user manual test.
 
 - **Next work**
 
-    看下一輪施工焦點：Desktop MVP audit、blocker board、唯一工程基底、handoff gate。
+    看 product-quality closure、active integration context、exact-commit gate 和 handoff boundary。
 
     [打開 Now](planning/now.md)
 
@@ -128,11 +141,10 @@ Correctness blocker repair; current-HEAD handoff gate; then user manual test.
 
 | 證據入口 | 能支撐 | 不能支撐 |
 | --- | --- | --- |
-| `artifacts/quality/latest.md` | Local generated fast engineering health：lint、type、architecture guard、startup smoke、UI baseline、real-data IO。 | Canonical current truth、product completion、thesis claim、local LLM readiness。 |
-| `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline。 | EEG training accuracy、UI usability、product completion。 |
+| `artifacts/quality/latest.md` | 只有當 header 顯示 current branch、能唯一對應 full pushed SHA 的 commit、handoff profile 和允許的 clean/protected-local state 時，才支撐該 commit 的工程 gate。 | Canonical current truth、其他 branch、product completion、human Windows acceptance、thesis claim。 |
+| `artifacts/agent_evals/dashboard.md` | Historical / exploratory tool-call benchmark slice；只有產品 closure 後 freeze 的 exact-source suite 才能成為 thesis evidence。 | Current product readiness、EEG training accuracy、UI usability、product completion。 |
 | `artifacts/data_interpretation/format-capability-matrix.md` | Representative Data Interpretation scan/preview/validation format boundaries。 | Full manual certification for every real dataset or XDF / LSL parser support。 |
-| `artifacts/ui/data-import-wizard-steps/README.md` | Current Data Import wizard screenshots, including the four loaded-label placement mode panels。 | Final Match Labels / Review and Import UX approval。 |
-| `artifacts/ui/app-polish/README.md` | Current model-selection, data-splitting, and evaluation table polish screenshots。 | End-to-end training quality or human desktop acceptance。 |
+| `artifacts/ui/data-import-wizard-steps/` | Dirty tracked checkpoint；supports review of captured states only after reading its evidence JSON。 | Current candidate evidence、final Match Labels / Review and Import UX approval、clean exact-commit handoff。 |
 | `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher command/startup smoke。 | Human click-through release approval。 |
 
 Artifact governance lives in `artifacts/README.md`; artifacts are evidence outputs, not canonical
@@ -140,7 +152,7 @@ truth. Current tree is intentionally pruned: short historical slices and duplica
 belong in git history unless they are still needed for current evidence. Current truth belongs in
 [current.md](current.md), architecture docs, and validation docs.
 
-## 目前工作主線
+## 長期產品主線
 
 1. Rebaseline。
 2. Desktop MVP。
@@ -158,3 +170,5 @@ belong in git history unless they are still needed for current evidence. Current
 | [目標](target/README.md) | 需求、目標架構、agent / Data Interpretation 終局設計。 |
 | [目前架構](architecture/README.md) | 目前 implementation、backend command spine、active risks。 |
 | [驗證](validation/README.md) | evidence tiers、artifact interpretation、validation gates。 |
+| [Active Audit](records/product_quality_audit_2026-07-30.md) | product-quality finding ledger 和 closure status。 |
+| [決策](decisions/README.md) | active product/architecture decisions；不是 worklog。 |

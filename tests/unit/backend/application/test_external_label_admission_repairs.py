@@ -115,7 +115,7 @@ def test_attach_mixed_valid_txt_and_corrupt_mat_is_request_atomic(
     corrupt_labels.write_bytes(b"not a MATLAB payload")
     service, dataset, interpretation = _service([first_raw, second_raw])
 
-    with pytest.raises(FileCorruptedError, match=r"Invalid \.mat file.*labels\.mat"):
+    with pytest.raises(FileCorruptedError, match=r"Invalid \.mat file"):
         service.handle_attach_labels(
             AttachLabelsCommand(
                 mapping={

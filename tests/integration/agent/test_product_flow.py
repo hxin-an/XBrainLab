@@ -94,8 +94,8 @@ class _NoopRag:
 class _ImmediateRagLifecycle:
     """Deterministic lifecycle seam without bypassing controller RAG behavior."""
 
-    def __init__(self, retriever: _NoopRag) -> None:
-        self.retriever = retriever
+    def __init__(self, retriever: _NoopRag | None = None) -> None:
+        self.retriever = retriever or _NoopRag()
 
     def start(self) -> bool:
         self.retriever.initialize()
@@ -163,7 +163,7 @@ class ProductHarness:
         )
         if model_text is not None:
             self.wait_for_generation_start()
-            generation_id = self.controller._active_generation_id
+            generation_id = self.controller._turn_orchestrator.active_generation_id
             assert isinstance(generation_id, int)
             assert not isinstance(generation_id, bool)
             assert generation_id > 0
@@ -177,9 +177,8 @@ def product_harness(qtbot) -> Iterator[ProductHarness]:
     generation_events: list[AssistantGenerationEvent] = []
     with (
         patch("XBrainLab.llm.agent.controller.AgentWorker", _NoopWorker),
-        patch("XBrainLab.llm.agent.controller.RAGRetriever", _NoopRag),
         patch(
-            "XBrainLab.llm.agent.controller.RAGRetrieverLifecycle",
+            "XBrainLab.llm.agent.controller.ProcessRAGRetrieverLifecycle",
             _ImmediateRagLifecycle,
         ),
     ):
@@ -206,7 +205,7 @@ def product_harness(qtbot) -> Iterator[ProductHarness]:
             generation_events=generation_events,
             wait_for_generation_start=lambda: qtbot.waitUntil(
                 lambda: (
-                    controller._active_generation_dispatch_phase
+                    controller._turn_orchestrator.dispatch_phase
                     is AssistantGenerationDispatchPhase.STARTED
                 ),
                 timeout=2_000,
@@ -319,9 +318,8 @@ def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
 
     with (
         patch("XBrainLab.llm.agent.controller.AgentWorker", _NoopWorker),
-        patch("XBrainLab.llm.agent.controller.RAGRetriever", _NoopRag),
         patch(
-            "XBrainLab.llm.agent.controller.RAGRetrieverLifecycle",
+            "XBrainLab.llm.agent.controller.ProcessRAGRetrieverLifecycle",
             _ImmediateRagLifecycle,
         ),
     ):
@@ -345,14 +343,14 @@ def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
         )
         qtbot.waitUntil(
             lambda: (
-                controller._active_generation_dispatch_phase
+                controller._turn_orchestrator.dispatch_phase
                 is AssistantGenerationDispatchPhase.STARTED
             ),
             timeout=2_000,
         )
         controller._generate_response = MagicMock()
         controller._process_tool_calls = MagicMock()
-        generation_id = controller._active_generation_id
+        generation_id = controller._turn_orchestrator.active_generation_id
         assert isinstance(generation_id, int)
         assert not isinstance(generation_id, bool)
         assert generation_id > 0
@@ -450,7 +448,11 @@ def test_workflow_scan_continuation_reaches_typed_import_review_boundary(
     interpretation = publication.state.interpretation
     assert interpretation.has_preview is True
     assert interpretation.has_validation_decision is True
-    assert interpretation.validation_decision == "needs_confirmation"
+    assert interpretation.validation_decision == "blocked"
+    assert any(
+        "explicit target EEG event set" in reason
+        for reason in interpretation.blocked_reasons
+    )
     assert interpretation.has_applied_interpretation is False
     assert publication.state.raw.loaded is False
 
@@ -458,7 +460,7 @@ def test_workflow_scan_continuation_reaches_typed_import_review_boundary(
     assert handoff is not None
     assert handoff.command is CommandName.APPLY_INTERPRETATION
     assert set(handoff.decision_fields) == {"metadata_review", "label_matching"}
-    assert "Import review needs your input:" in product_harness.visible_assistant_text
+    assert "Import review is blocked:" in product_harness.visible_assistant_text
 
 
 def test_local_runtime_disabled_flow_is_user_visible(qtbot):
@@ -485,6 +487,7 @@ def test_local_runtime_disabled_flow_is_user_visible(qtbot):
         manager.toggle()
 
     try:
+        assert manager.chat_panel is not None
         assert manager.chat_controller.messages == []
         title = manager.chat_panel.runtime_state_title.text()
         detail = manager.chat_panel.runtime_state_detail.text()

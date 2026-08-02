@@ -328,13 +328,13 @@ scripts/dev/validate_split_artifact.py
 審計命令：
 
 ```bash
-poetry run python scripts/dev/validate_split_artifact.py artifacts/thesis/splits.json
+poetry run -- python scripts/dev/validate_split_artifact.py artifacts/thesis/splits.json
 ```
 
 目前相關 tests：
 
 ```bash
-poetry run pytest --capture=sys \
+poetry run -- pytest --capture=sys \
   tests/unit/backend/dataset/test_split_audit.py \
   tests/unit/scripts/test_validate_split_artifact.py -q
 ```

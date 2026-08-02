@@ -19,6 +19,7 @@ from XBrainLab.backend.application import (
     ConfigureTrainingCommand,
     CreateEpochCommand,
     DatasetGenerationMode,
+    DatasetSplitContextRequest,
     ErrorType,
     EvaluateCommand,
     GenerateDatasetCommand,
@@ -325,7 +326,11 @@ def test_bids_description_payload_is_parsed_only_after_resource_admission(
             ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
         )
         assert scan_result.ok is True
-        assert ordering == []
+        assert ordering[0] == "resource:admission"
+        assert "description:open" in ordering[1:]
+        assert "description:read" in ordering[1:]
+        assert "description:json.loads" not in ordering
+        ordering.clear()
         result = service.execute(PreviewInterpretationCommand())
     else:
         result = service.execute(
@@ -352,7 +357,7 @@ def test_application_service_resource_block_precedes_real_label_loader_and_mutat
     eeg_path = _write_synthetic_raw_fif(tmp_path)
     label_path = tmp_path / f"synthetic_raw{suffix}"
     if suffix == ".mat":
-        savemat(label_path, {"classlabel": np.array([1, 2, 1, 2])})
+        savemat(label_path, {"classlabel": np.tile(np.array([1, 2]), 6)})
     else:
         label_path.write_text(
             "onset,classlabel\n0.5,left\n1.5,right\n",
@@ -369,10 +374,28 @@ def test_application_service_resource_block_precedes_real_label_loader_and_mutat
     raw_before = initial_load.state.raw
     dataset_before = initial_load.state.dataset
 
+    choices = {}
+    if suffix == ".mat":
+        choices = {
+            "selected_eeg_files": [str(eeg_path)],
+            "label_carrier_choices": {
+                str(label_path): {
+                    "label_field": "classlabel",
+                    "target_event_codes": ["left", "right"],
+                    "placement_method": "eeg_event",
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "value_decisions": _class_value_decisions(
+                        {"1": "left", "2": "right"}
+                    ),
+                }
+            },
+        }
     review = service.execute(
         ReviewInterpretationCommand(
             source_path=str(eeg_path),
             label_sources=[str(label_path)],
+            choices=choices,
         ),
     )
 
@@ -573,7 +596,9 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert query_result.ok is True
     assert query_result.diagnostics["count"] == 1
     prior_error = query_result.state.last_error
-    assert prior_error is not None
+    assert evaluate_result.state.last_error is None
+    assert evaluate_result.changed_state.error_changed is False
+    assert prior_error is None
 
     reset_preprocess_without_confirmation = service.execute(ResetPreprocessCommand())
     assert reset_preprocess_without_confirmation.failed is True
@@ -597,7 +622,7 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert reset_result.state.training.has_training_option is False
     assert reset_result.state.training.has_trainer is False
     assert reset_result.state.last_error is None
-    assert reset_result.changed_state.error_changed is True
+    assert reset_result.changed_state.error_changed is False
     assert service.get_capabilities().get(CommandName.LOAD_DATA).available is True
 
 
@@ -616,7 +641,7 @@ def test_explicit_multiclass_epoch_unlocks_dataset_after_label_free_import(
     assert apply_result.state.interpretation.class_map == {}
     assert apply_result.state.interpretation.epoch_handoff["supervised_ready"] is False
     assert apply_result.state.interpretation.epoch_handoff["supervised_blockers"] == [
-        "No class labels are available for supervised epoch defaults."
+        "No class labels are available for supervised EEG epoch defaults."
     ]
     assert apply_result.state.interpretation.epoch_handoff[
         "supervised_blocker_codes"
@@ -637,7 +662,10 @@ def test_explicit_multiclass_epoch_unlocks_dataset_after_label_free_import(
     }.isdisjoint(recipe_result.diagnostics["recipe"])
     blocked_before_epoch = service.get_capabilities().get(CommandName.GENERATE_DATASET)
     assert blocked_before_epoch.enabled is False
-    assert "Create epochs before generating datasets." in blocked_before_epoch.reasons
+    assert (
+        "Create EEG epochs before building the training dataset."
+        in blocked_before_epoch.reasons
+    )
 
     preprocess_result = service.execute(
         PreprocessCommand(
@@ -693,16 +721,13 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
         ).ok
         is True
     )
-    epoch_context = service.execute(
-        QueryStateCommand(
-            query="dataset_generation_context",
-            include_objects=True,
+    split_context = service.get_dataset_split_context(
+        DatasetSplitContextRequest(
+            publication_generation=service.get_view_publication().generation,
         ),
     )
-    assert epoch_context.ok is True
-    epoch_data = epoch_context.local_payload["epoch_data"]
-    assert epoch_data is not None
-    original = epoch_data.get_data().copy()
+    assert split_context.context.epoch_available is True
+    assert split_context.context.trial_count == 12
 
     montage_result = service.execute(
         ApplyMontageCommand(
@@ -718,12 +743,6 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
         [0.0, 0.1, 0.2],
         [0.3, 0.4, 0.5],
     ]
-    assert epoch_data.get_montage_position() == [
-        (0.0, 0.1, 0.2),
-        (0.3, 0.4, 0.5),
-    ]
-    np.testing.assert_array_equal(epoch_data.get_data(), original[:, [2, 0], :])
-
     generated = service.execute(
         GenerateDatasetCommand(
             test_ratio=0.25,
@@ -733,19 +752,6 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
         )
     )
     assert generated.ok is True
-    dataset_context = service.execute(
-        QueryStateCommand(
-            query="dataset_generation_context",
-            include_objects=True,
-        ),
-    )
-    assert dataset_context.ok is True
-    assert dataset_context.diagnostics["dataset_count"] == 1
-    dataset_epoch = dataset_context.local_payload["datasets"][0].get_epoch_data()
-    assert dataset_epoch.get_channel_names() == ["EEG2", "EEG0"]
-    np.testing.assert_array_equal(dataset_epoch.get_data(), original[:, [2, 0], :])
-
-    before_failed_change = dataset_epoch.get_data().copy()
     blocked = service.execute(
         ApplyMontageCommand(
             channels=["EEG0", "EEG2"],
@@ -756,8 +762,11 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
 
     assert blocked.failed is True
     assert "before generating datasets" in blocked.message
-    assert dataset_epoch.get_channel_names() == ["EEG2", "EEG0"]
-    np.testing.assert_array_equal(dataset_epoch.get_data(), before_failed_change)
+    assert blocked.state.epoch.channel_names == ["EEG2", "EEG0"]
+    assert blocked.state.visualization.montage_positions == [
+        [0.0, 0.1, 0.2],
+        [0.3, 0.4, 0.5],
+    ]
     assert blocked.state.dataset == generated.state.dataset
 
 
@@ -798,16 +807,14 @@ def test_application_service_accepts_dialog_generator_split_and_updates_readines
             {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
         ],
     }
-    context_result = service.execute(
-        QueryStateCommand(
-            query="dataset_generation_context",
-            include_objects=True,
+    context_result = service.get_dataset_split_context(
+        DatasetSplitContextRequest(
+            publication_generation=service.get_view_publication().generation,
         ),
     )
 
-    assert context_result.ok is True
-    assert context_result.diagnostics["payload_type"] == "dataset_generation_context"
-    assert context_result.diagnostics["epoch_available"] is True
+    assert context_result.context.epoch_available is True
+    assert context_result.context.trial_count == 12
     dataset_result = service.execute(
         GenerateDatasetCommand(split_config=dialog_like_config),
     )

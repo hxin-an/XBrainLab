@@ -108,7 +108,7 @@ def build_interpretation_preview(
         blocked_reasons=list(candidate.blocked_reasons),
         downstream_impacts=[
             "Applying this interpretation will replace active raw data and "
-            "invalidate downstream preprocessing, epochs, datasets, training, "
+            "invalidate downstream preprocessing, EEG epochs, datasets, training, "
             "and saliency for the current session.",
         ],
         bids=dict(getattr(candidate, "bids", {}) or {}),
@@ -183,7 +183,8 @@ def validate_interpretation_candidate(
             warnings=list(candidate.warnings),
             blocked_reasons=list(dict.fromkeys(blocked_reasons)),
             downstream_impacts=[
-                "Preprocess, epoch, dataset, and training remain blocked.",
+                "Preprocessing, EEG epoch creation, dataset generation, and training "
+                "remain blocked.",
             ],
             action_items=_dedupe_action_items(action_items),
         )
@@ -207,7 +208,7 @@ def validate_interpretation_candidate(
         warnings=list(candidate.warnings),
         downstream_impacts=[
             "Applied interpretation becomes the source truth for preprocessing, "
-            "epoching, dataset generation, training, and saliency.",
+            "EEG epoching, dataset generation, training, and saliency.",
         ],
         action_items=_build_action_items(candidate),
     )
@@ -380,7 +381,7 @@ def _confirmation_guidance(
         )
     if target_step == "Load Labels":
         return (
-            "A missing or ambiguous label source limits supervised epoching and "
+            "A missing or ambiguous label source limits supervised EEG epoching and "
             "training.",
             "Choose the label files used by this import in Load Labels.",
         )

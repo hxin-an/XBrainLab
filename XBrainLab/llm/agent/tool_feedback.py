@@ -38,14 +38,15 @@ class ToolRecoveryFeedback:
     guidance: str
 
     def to_prompt_payload(self) -> dict[str, Any]:
+        command_name = _safe_optional_feedback_text(
+            self.command_name,
+            field_name="Tool recovery command name",
+            limit=100,
+        )
         payload: dict[str, Any] = {
             "schema": "xbrainlab.tool_recovery.v1",
             "tool_name": _safe_feedback_text(self.tool_name, limit=100),
-            "command_name": (
-                _safe_feedback_text(self.command_name, limit=100)
-                if self.command_name
-                else None
-            ),
+            "command_name": command_name,
             "error_type": (
                 _safe_feedback_text(self.error_type, limit=80)
                 if self.error_type
@@ -68,8 +69,20 @@ def build_recovery_feedback(
     result: ToolCommandResult | UiRequest,
 ) -> ToolRecoveryFeedback | None:
     """Build retry context only for typed, recoverable command failures."""
+    command_name = _require_exact_feedback_text(
+        command_name,
+        field_name="Tool feedback command name",
+    )
     if not isinstance(result, ToolCommandResult) or result.ok or not result.recoverable:
         return None
+    result_tool_name = _require_exact_feedback_text(
+        result.tool_name,
+        field_name="Tool result name",
+    )
+    result_command_name = _require_exact_optional_feedback_text(
+        result.command_name,
+        field_name="Tool result command name",
+    )
     projection = public_safe_result_projection(
         message=result.message,
         blocked_reason=result.blocked_reason,
@@ -92,8 +105,8 @@ def build_recovery_feedback(
         ),
     }
     return ToolRecoveryFeedback(
-        tool_name=result.tool_name or command_name,
-        command_name=result.command_name,
+        tool_name=result_tool_name or command_name,
+        command_name=result_command_name,
         error_type=result.error_type,
         message=projection.message,
         blocked_reason=projection.blocked_reason,
@@ -106,6 +119,7 @@ def build_recovery_feedback(
 
 def _safe_feedback_text(value: str, *, limit: int) -> str:
     """Flatten control characters and bound untrusted runtime text."""
+    value = _require_exact_feedback_text(value, field_name="Tool feedback text")
     flattened = "".join(
         " " if unicodedata.category(char).startswith("C") else char
         for char in redact_public_text(value)
@@ -116,12 +130,47 @@ def _safe_feedback_text(value: str, *, limit: int) -> str:
     return flattened[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _require_exact_feedback_text(value: object, *, field_name: str) -> str:
+    if type(value) is not str:
+        raise TypeError(f"{field_name} must be an exact string.")
+    return value
+
+
+def _require_exact_optional_feedback_text(
+    value: object,
+    *,
+    field_name: str,
+) -> str | None:
+    if value is None:
+        return None
+    return _require_exact_feedback_text(value, field_name=field_name)
+
+
+def _safe_optional_feedback_text(
+    value: object,
+    *,
+    field_name: str,
+    limit: int,
+) -> str | None:
+    exact_value = _require_exact_optional_feedback_text(
+        value,
+        field_name=field_name,
+    )
+    if exact_value is None:
+        return None
+    return _safe_feedback_text(exact_value, limit=limit)
+
+
 def summarize_tool_result(
     command_name: str,
     success: bool,
     result: ToolCommandResult | UiRequest,
 ) -> str:
     """Build a short visible tool summary for the chat transcript."""
+    command_name = _require_exact_feedback_text(
+        command_name,
+        field_name="Tool summary command name",
+    )
     if isinstance(result, UiRequest):
         if result.kind is UiRequestKind.CONFIRM_MONTAGE:
             return "Montage setup needs confirmation in the app."
@@ -138,7 +187,11 @@ def summarize_tool_result(
         diagnostics=result.diagnostics,
     )
     message = projection.message
-    tool_name = result.tool_name or command_name
+    result_tool_name = _require_exact_feedback_text(
+        result.tool_name,
+        field_name="Tool result name",
+    )
+    tool_name = result_tool_name or command_name
     label = tool_action_label(tool_name)
     text = message.strip()
     lower_text = text.lower()
@@ -200,9 +253,16 @@ def summarize_tool_result(
         lower_text
     ):
         return f"{label} needs confirmation in the app before it can continue."
+    # Project the typed diagnostics independently. Large state/raw-result payloads
+    # must not consume the shared public-projection budget before the user-facing
+    # decision payload is reached.
+    structured_diagnostics = public_safe_result_projection(
+        message="",
+        diagnostics=result.diagnostics,
+    ).diagnostics
     structured_summary = _structured_success_summary(
         result,
-        diagnostics=projection.diagnostics,
+        diagnostics=structured_diagnostics or projection.diagnostics,
     )
     if structured_summary is not None:
         return structured_summary
@@ -309,6 +369,10 @@ def format_tool_output(
     result: ToolCommandResult | UiRequest,
 ) -> str:
     """Serialize compact tool output for the next local-model turn."""
+    command_name = _require_exact_feedback_text(
+        command_name,
+        field_name="Tool output command name",
+    )
     if isinstance(result, ToolCommandResult):
         payload = compact_tool_payload(result)
     elif isinstance(result, UiRequest):
@@ -329,6 +393,14 @@ def format_tool_output(
 
 def compact_tool_payload(result: ToolCommandResult) -> dict[str, Any]:
     """Return tool feedback compact enough for the next local-model turn."""
+    tool_name = _require_exact_feedback_text(
+        result.tool_name,
+        field_name="Tool result name",
+    )
+    command_name = _require_exact_optional_feedback_text(
+        result.command_name,
+        field_name="Tool result command name",
+    )
     projection = public_safe_result_projection(
         message=result.message,
         blocked_reason=result.blocked_reason,
@@ -339,8 +411,8 @@ def compact_tool_payload(result: ToolCommandResult) -> dict[str, Any]:
     )
     payload: dict[str, Any] = {
         "ok": result.ok,
-        "tool_name": result.tool_name,
-        "command_name": result.command_name,
+        "tool_name": tool_name,
+        "command_name": command_name,
         "message": projection.message,
         "error_type": result.error_type,
         "recoverable": result.recoverable,

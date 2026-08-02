@@ -1,6 +1,6 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-30`
 
 這份文件是給任何進入本 repo 的 coding agent 的最短入口。
 
@@ -44,6 +44,21 @@ MCP 已從 active roadmap 移除。不要把 MCP hardening、MCP client certific
 當作預設工作；只有使用者明確要求 MCP 時才讀 MCP 相關文件或測試。
 
 不要把舊的 `Prep Gate`、`Repair Loop`、`AQ-*` queue 當成現在的任務系統。
+
+## 目前整合線
+
+- active integration worktree：
+  `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1`
+- active integration branch：`stabilize/product-quality-closure`
+- `ux/assistant-product-v1@3869aaef` 只是真實存在的 baseline，不是目前 candidate。
+- product-quality closure 仍在進行中；目前不是 handoff-ready，也不能排 Windows acceptance。
+- 本輪完成條件以
+  `docs/agent_goals/product_quality_closure_goal.md` 和
+  `docs/records/product_quality_audit_2026-07-30.md` 為準。
+
+不要把 branch 名稱、registered worktree 數量或測試總數從舊文件複製成 current truth。
+worktree inventory 要從 `git worktree list --porcelain` 取得；最終測試總數只能來自同一個
+clean exact commit 產生的 handoff evidence。
 
 ## 先讀這些
 
@@ -133,11 +148,14 @@ required multi-dataset gate，除非本輪明確只是 docs-only 或純內部文
 
 這些 milestone 是最低標準。你可以、也應該在不破壞邊界的前提下做得更完整。
 
-1. Backend product core：`ApplicationService / Command API` contract、state lifecycle、capability policy、`BackendFacade` parity 和 low-mock workflow tests。
+1. Backend product core：`ApplicationService / Command API` contract、state lifecycle、capability
+   policy、`BackendFacade` physical-removal guard 和 low-mock workflow tests。
 2. UI chat / agent panel：修到可啟動、可對話、可顯示 loading/error/tool result、local LLM missing 不閃退。
 3. UI / agent command surface unification：UI 和 agent 對 load / preprocess / epoch / dataset / train / reset 的 readiness、blocked reason 和 command result 使用同一套 backend contract。
 4. Agent tool system：agent tools 使用 state snapshot、capability policy、verification layer 和 structured result。
-5. Local LLM runtime：選擇適合 RTX 5070 Ti 16GB 的本地模型，控制單模型與總 cache 大小，提供 health check、prompt smoke、fallback 和文件化清理方式。
+5. Local LLM runtime：產品使用 active goal 指定的 exact IBM Granite 3.3 2B revision，控制
+   VRAM、RAM 與總 cache 大小，提供 health check、prompt smoke、recoverable unavailable state
+   和文件化清理方式；不得 silent model fallback。
 6. Desktop launch / packaging：提供可點擊啟動方式，至少 reliable Windows launcher / shortcut，並驗證 MainWindow 可啟動。
 7. Product stabilization：確認 backend -> UI -> agent -> local LLM 主線至少有一條可展示流程。
 8. Tool-call eval / thesis evidence：產品主線穩定後，重構 tool surface、建立 Verification Layer /
@@ -153,7 +171,8 @@ required multi-dataset gate，除非本輪明確只是 docs-only 或純內部文
 - 下載前要估算模型大小、quantization、VRAM 需求、cache 位置和清理方式。
 - 不使用中國公司或中國來源模型。
 - 不使用 Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 或其他中國模型。
-- 優先考慮非中國來源、授權清楚、可本地部署的模型，例如 Gemma、Llama、Mistral、Phi。
+- 目前產品模型由 active goal 固定為 exact IBM Granite 3.3 2B revision。其他模型只在使用者
+  明確改變 product decision 後評估，不得成為 silent fallback。
 - 若模型來源或授權不確定，先查清楚，不要直接下載。
 - 單一模型原則上不要超過 10GB；總模型 cache 原則上不要超過 20GB。
 - 不要下載 27B / 31B / 32B 以上模型，除非使用者明確同意。
@@ -164,15 +183,15 @@ required multi-dataset gate，除非本輪明確只是 docs-only 或純內部文
 從 repo root 執行：
 
 ```bash
-poetry run python scripts/dev/update_quality_dashboard.py
-poetry run mkdocs build --strict
-poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
+poetry run -- python scripts/dev/update_quality_dashboard.py
+poetry run -- mkdocs build --strict
+poetry run -- pytest --capture=sys tests/integration/io/test_io_integration.py -q
 ```
 
 pipeline smoke 目前用代表性抽樣：
 
 ```bash
-poetry run pytest --capture=sys \
+poetry run -- pytest --capture=sys \
   tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
   tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
   -q
@@ -182,19 +201,24 @@ poetry run pytest --capture=sys \
 不同資料集；同一資料集轉檔只能算 format coverage，不能取代 dataset source diversity。
 
 ```bash
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py
-poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
-  --strict --format json --write-artifacts
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
+poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py \
+  --profile required-ci --verify-only
+poetry run -- python scripts/dev/report_dataset_validation_matrix.py --strict --format json
+poetry run -- python scripts/dev/report_data_interpretation_format_matrix.py \
+  --strict --format json --write-artifacts \
+  --output-dir build/dev-artifacts/data-interpretation
+QT_QPA_PLATFORM=offscreen poetry run -- pytest --capture=sys \
   tests/integration/io/test_io_integration.py \
   tests/integration/io/test_public_bids_fixture.py \
   tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
-poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
+poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py \
   --format json --strict
 ```
 
-最新已知 fast dashboard clean PASS 的事實，請以 `artifacts/quality/latest.md` 和 `docs/validation/README.md` 為準。
+`artifacts/quality/latest.md` 是可覆寫的 local generated evidence。任何 final total 或 PASS
+claim 都必須先確認它由 `--handoff` profile 在目前 branch 的同一個 clean exact commit 產生；
+baseline、dirty-worktree 或不同 SHA 的 dashboard 不能作為目前 closure 結論。
 
 ## 禁用舊入口
 
@@ -208,6 +232,6 @@ poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
 - `.agents/legacy/*`
 - `/mnt/d/repos/XBrainLab`
 
-目前 active repo 是：
+目前 active integration worktree 是：
 
-- `/mnt/d/workspace_v2/projects/lab/XBrainLab`
+- `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1`

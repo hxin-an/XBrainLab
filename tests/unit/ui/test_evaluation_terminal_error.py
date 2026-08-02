@@ -4,10 +4,18 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 from PyQt6.QtWidgets import QLabel
 
+from XBrainLab.backend.application import (
+    EvaluationPlanIdentity,
+    EvaluationRenderData,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
+)
 from XBrainLab.backend.application.results import (
     ChangedState,
     CommandResult,
@@ -15,40 +23,6 @@ from XBrainLab.backend.application.results import (
 )
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
-
-
-class _FinishedRecord:
-    eval_record = None
-
-    @staticmethod
-    def is_finished() -> bool:
-        return True
-
-
-class _Plan:
-    def __init__(self) -> None:
-        self.record = _FinishedRecord()
-
-    @staticmethod
-    def get_name() -> str:
-        return "EEGNet"
-
-    def get_plans(self) -> list[_FinishedRecord]:
-        return [self.record]
-
-
-def _base_evaluation_result(plan: _Plan) -> CommandResult:
-    return CommandResult.success_result(
-        command_name="evaluate",
-        message="Evaluation summary ready.",
-        state={},
-        changed_state=ChangedState(),
-        diagnostics={
-            "payload_type": "evaluation_summary",
-            "available": True,
-            "plan_objects": [plan],
-        },
-    )
 
 
 @pytest.mark.parametrize(
@@ -59,13 +33,14 @@ def test_model_summary_async_failure_replaces_loading_with_actionable_terminal_s
     qtbot,
     monkeypatch,
     caplog,
+    capture_product_logs,
     terminal_kind: str,
 ) -> None:
-    plan = _Plan()
-    baseline = _base_evaluation_result(plan)
     callbacks: dict[str, Callable[..., Any]] = {}
+    requested_commands = []
 
-    def capture_async(_panel, _command, *, on_result, on_error, **_kwargs):
+    def capture_async(_panel, command, *, on_result, on_error, **_kwargs):
+        requested_commands.append(command)
         callbacks["result"] = on_result
         callbacks["error"] = on_error
         return True
@@ -74,20 +49,26 @@ def test_model_summary_async_failure_replaces_loading_with_actionable_terminal_s
         "XBrainLab.ui.panels.evaluation.panel.execute_application_command_async",
         capture_async,
     )
-    panel = EvaluationPanel(controller=None)
+    panel = EvaluationPanel()
     qtbot.addWidget(panel)
-    panel.last_application_query = baseline
-    panel.model_combo.blockSignals(True)
-    panel.model_combo.addItem("Fold 1: EEGNet", plan)
-    panel.model_combo.blockSignals(False)
+    panel._application_generation = 4
+    run_identity = EvaluationRunIdentity(
+        plan=EvaluationPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    summary_identity = EvaluationSummaryIdentity(
+        plan=run_identity.plan,
+        run=run_identity,
+    )
 
-    panel.update_model_summary(plan, record=plan.record)
+    panel.update_model_summary(summary_identity)
 
     assert panel.summary_text.toPlainText() == "Loading model details..."
+    assert requested_commands[0].summary_identity == summary_identity
 
-    with caplog.at_level(
+    with capture_product_logs(
         logging.ERROR,
-        logger="XBrainLab.ui.panels.evaluation.panel",
+        logger_name="XBrainLab.ui.panels.evaluation.panel",
     ):
         if terminal_kind == "failed_result":
             failed = CommandResult.failure_result(
@@ -115,7 +96,7 @@ def test_model_summary_async_failure_replaces_loading_with_actionable_terminal_s
     assert "Loading model details" not in visible
     assert "KeyError" not in visible
     assert "private worker" not in visible
-    assert panel.last_application_query is baseline
+    assert panel._model_summary_identity is None
     assert (
         "KeyError: 0 from raw backend result" in caplog.text
         or "private worker traceback detail" in caplog.text
@@ -125,19 +106,29 @@ def test_model_summary_async_failure_replaces_loading_with_actionable_terminal_s
 
 def test_confusion_matrix_exception_uses_product_copy_and_logs_diagnostic(
     qtbot,
+    monkeypatch,
     caplog,
+    capture_product_logs,
 ) -> None:
-    class _BrokenRecord:
-        @staticmethod
-        def get_confusion_figure(*, show_percentage: bool = False):
-            del show_percentage
-            raise RuntimeError("private confusion matrix tuple")
-
     widget = ConfusionMatrixWidget()
     qtbot.addWidget(widget)
+    identity = EvaluationPlanIdentity(plan_index=0)
+    data = EvaluationRenderData(
+        labels=np.array([0]),
+        outputs=np.array([[1.0, 0.0]]),
+        metrics={},
+        class_labels={0: "Left", 1: "Right"},
+        summary_identity=EvaluationSummaryIdentity(plan=identity),
+        evaluation_split="test",
+    )
+    monkeypatch.setattr(
+        widget,
+        "_build_figure",
+        MagicMock(side_effect=RuntimeError("private confusion matrix tuple")),
+    )
 
-    with caplog.at_level(logging.ERROR, logger="XBrainLab"):
-        widget.update_plot(_BrokenRecord())
+    with capture_product_logs(logging.ERROR):
+        widget.update_plot(data)
 
     visible = [label.text() for label in widget.findChildren(QLabel) if label.text()]
     assert visible == [

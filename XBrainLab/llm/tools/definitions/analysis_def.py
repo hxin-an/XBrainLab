@@ -2,6 +2,13 @@
 
 from typing import Any
 
+from XBrainLab.backend.application.saliency_policy import (
+    MAX_SALIENCY_NT_SAMPLES,
+    MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+    MIN_SALIENCY_NT_SAMPLES,
+    MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+)
+
 from ..base import BaseTool
 from ..result_contract import ToolExecutionResult
 
@@ -71,7 +78,11 @@ class BaseSaliencyTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Query or configure saliency readiness for trained EEG models."
+        return (
+            "Query saliency readiness with no arguments, or configure one explicit "
+            "saliency method for trained EEG models. Noise parameters apply only "
+            "to SmoothGrad, SmoothGrad_Squared, or VarGrad."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -80,14 +91,44 @@ class BaseSaliencyTool(BaseTool):
             "properties": {
                 "method": {
                     "type": "string",
-                    "description": "Optional saliency method, such as Gradient.",
+                    "enum": [
+                        "Gradient",
+                        "Gradient * Input",
+                        "SmoothGrad",
+                        "SmoothGrad_Squared",
+                        "VarGrad",
+                    ],
+                    "description": (
+                        "Saliency method to configure. Omit only for a readiness query."
+                    ),
                 },
-                "params": {
-                    "type": "object",
-                    "description": "Optional saliency configuration parameters.",
-                    "additionalProperties": True,
+                "nt_samples": {
+                    "type": "integer",
+                    "minimum": MIN_SALIENCY_NT_SAMPLES,
+                    "maximum": MAX_SALIENCY_NT_SAMPLES,
+                    "description": (
+                        "Optional positive noise-sample count for SmoothGrad, "
+                        "SmoothGrad_Squared, or VarGrad."
+                    ),
+                },
+                "nt_samples_batch_size": {
+                    "type": ["integer", "null"],
+                    "minimum": MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+                    "maximum": MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+                    "description": (
+                        "Optional positive noise-sample batch size, or null."
+                    ),
+                },
+                "stdevs": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": (
+                        "Optional non-negative noise standard deviation for "
+                        "SmoothGrad, SmoothGrad_Squared, or VarGrad."
+                    ),
                 },
             },
+            "additionalProperties": False,
         }
 
     def execute(self, study: Any, **kwargs) -> ToolExecutionResult:

@@ -39,6 +39,8 @@ from .saliency_provenance import (
     fingerprint_saliency_split_mask,
 )
 
+TrainingMetricValue = float | str | None
+
 if TYPE_CHECKING:
     from .state_tracker import TrainingStateTracker
 
@@ -261,6 +263,10 @@ class Status(Enum):
     EVAL = "Evaluating {}"
     TRAIN = "Training {}"
     CANCELLED = "Cancelled"
+
+
+class FinalEvaluationUnavailableError(RuntimeError):
+    """Raised when final metrics cannot be produced without substitution."""
 
 
 class TrainingPlanHolder:
@@ -544,7 +550,7 @@ class TrainingPlanHolder:
         train_record: TrainRecord,
         val_loader: torch_data.DataLoader | None,
         test_loader: torch_data.DataLoader | None,
-    ) -> tuple[torch.nn.Module | None, torch_data.DataLoader | None]:
+    ) -> tuple[torch.nn.Module, torch_data.DataLoader]:
         """Select the best model and data loader for final evaluation.
 
         The model selection depends on the configured
@@ -556,16 +562,27 @@ class TrainingPlanHolder:
             test_loader: Test data loader, or ``None``.
 
         Returns:
-            A tuple of ``(model, data_loader)`` for evaluation. Either may be
-            ``None`` if no suitable model or data is available.
+            A tuple of ``(model, data_loader)`` for held-out evaluation.
 
         Raises:
+            FinalEvaluationUnavailableError: If the selected checkpoint or a
+                validation/test loader is unavailable.
             NotImplementedError: If the evaluation option is not recognized.
 
         """
-        target_loader = test_loader or val_loader
+        target_loader = test_loader if test_loader is not None else val_loader
 
         state = self._selected_evaluation_state(train_record)
+        if state is None:
+            raise FinalEvaluationUnavailableError(
+                "Final evaluation unavailable: the selected validation "
+                "checkpoint was not produced."
+            )
+        if target_loader is None:
+            raise FinalEvaluationUnavailableError(
+                "Final evaluation unavailable: no validation or test split "
+                "is configured."
+            )
 
         # Only create the model on GPU once we know we have a valid state_dict
         target_model = self.model_holder.get_model(
@@ -575,8 +592,8 @@ class TrainingPlanHolder:
         target_model = target_model.eval()
         return target_model, target_loader
 
-    def _selected_evaluation_state(self, train_record: TrainRecord) -> dict:
-        """Return the same validation-selected model state used for evaluation."""
+    def _selected_evaluation_state(self, train_record: TrainRecord) -> dict | None:
+        """Return the configured model state without substituting another epoch."""
         if self.option.evaluation_option == TrainingEvaluation.VAL_LOSS:
             state = getattr(train_record, f"best_val_{RecordKey.LOSS}_model")
         elif self.option.evaluation_option == TrainingEvaluation.VAL_ACC:
@@ -588,12 +605,6 @@ class TrainingPlanHolder:
         else:
             raise NotImplementedError
 
-        if state is None:
-            logger.warning(
-                "Selected validation metric is unavailable; using the last epoch "
-                "for final evaluation"
-            )
-            state = train_record.model.state_dict()
         return state
 
     def train_one_repeat(self, train_record: TrainRecord) -> None:
@@ -635,33 +646,34 @@ class TrainingPlanHolder:
         if train_record.epoch == self.option.epoch:
             with self._state_mutation():
                 self.status = Status.EVAL.value.format(train_record.get_name())
-            target, target_loader = self.get_eval_pair(
-                train_record,
-                val_loader,
-                test_loader,
+            try:
+                target, target_loader = self.get_eval_pair(
+                    train_record,
+                    val_loader,
+                    test_loader,
+                )
+            except FinalEvaluationUnavailableError:
+                train_record.export_checkpoint()
+                raise
+
+            evaluation_split = self._evaluation_split_name(
+                target_loader,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                test_loader=test_loader,
             )
-
-            # Fallback: If no validation/test data, use training data for
-            # evaluation/visualization
-            if not target_loader and train_loader:
-                target_loader = train_loader
-                if not target:
-                    target = train_record.model
-                    target.eval()
-
-            if target and target_loader:
-                evaluation_split = self._evaluation_split_name(
-                    target_loader,
-                    train_loader=train_loader,
-                    val_loader=val_loader,
-                    test_loader=test_loader,
+            if evaluation_split not in {"test", "validation"}:
+                train_record.export_checkpoint()
+                raise FinalEvaluationUnavailableError(
+                    "Final evaluation unavailable: the evaluation loader is not "
+                    "a validation or test split."
                 )
-                eval_record = Evaluator.evaluate(
-                    target,
-                    target_loader,
-                    evaluation_split=evaluation_split,
-                )
-                train_record.set_eval_record(eval_record)
+            eval_record = Evaluator.evaluate(
+                target,
+                target_loader,
+                evaluation_split=evaluation_split,
+            )
+            train_record.set_eval_record(eval_record)
 
         train_record.export_checkpoint()
 
@@ -911,20 +923,28 @@ class TrainingPlanHolder:
                 test_loader,
             )
             try:
-                if target_loader is None and train_loader is not None:
-                    target_loader = train_loader
+                # Target selection may call backend code that observes mutable
+                # training records. Revalidate the captured identity before
+                # interpreting or using the returned target.
+                self._raise_if_saliency_plan_stale(
+                    plan,
+                    should_cancel=should_cancel,
+                )
                 evaluation_split = self._evaluation_split_name(
                     target_loader,
                     train_loader=train_loader,
                     val_loader=val_loader,
                     test_loader=test_loader,
                 )
+                if evaluation_split not in {"test", "validation"}:
+                    raise FinalEvaluationUnavailableError(
+                        "Evaluation recomputation unavailable: the evaluation "
+                        "loader is not a validation or test split."
+                    )
                 self._raise_if_saliency_plan_stale(
                     plan,
                     should_cancel=should_cancel,
                 )
-                if target is None or target_loader is None:
-                    continue
                 if plan.saliency_params:
                     producer_identity = self.build_saliency_producer_identity(
                         train_record,
@@ -1070,23 +1090,34 @@ class TrainingPlanHolder:
         """
         return self.train_record_list[self.get_training_repeat()].get_epoch()
 
-    def get_training_evaluation(self) -> tuple:
+    def get_training_evaluation(
+        self,
+    ) -> tuple[
+        TrainingMetricValue,
+        TrainingMetricValue,
+        TrainingMetricValue,
+        TrainingMetricValue,
+        TrainingMetricValue,
+        TrainingMetricValue,
+        TrainingMetricValue,
+    ]:
         """Return current evaluation metrics for the active training repetition.
 
         Returns:
             A tuple of ``(lr, train_loss, train_acc, train_auc, val_loss,
-            val_acc, val_auc)``. Values default to ``'-'`` if unavailable.
+            val_acc, val_auc)``. Empty histories default to ``'-'``; a stored
+            unavailable metric remains ``None``.
 
         """
         record = self.train_record_list[self.get_training_repeat()]
 
-        lr: float | str = "-"
-        train_loss: float | str = "-"
-        train_acc: float | str = "-"
-        train_auc: float | str = "-"
-        val_loss: float | str = "-"
-        val_acc: float | str = "-"
-        val_auc: float | str = "-"
+        lr: TrainingMetricValue = "-"
+        train_loss: TrainingMetricValue = "-"
+        train_acc: TrainingMetricValue = "-"
+        train_auc: TrainingMetricValue = "-"
+        val_loss: TrainingMetricValue = "-"
+        val_acc: TrainingMetricValue = "-"
+        val_auc: TrainingMetricValue = "-"
         if len(record.train[TrainRecordKey.LR]) > 0:
             lr = record.train[TrainRecordKey.LR][-1]
         if len(record.train[TrainRecordKey.LOSS]) > 0:

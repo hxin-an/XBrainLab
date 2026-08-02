@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 
@@ -16,10 +16,53 @@ from .commands import (
     VisualizeCommand,
 )
 from .errors import PreconditionError
+from .evaluation_render import (
+    EvaluationPlanIdentity,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
+    build_evaluation_model_summary,
+)
+from .resource_guard import ResourcePreflightResult
 from .saliency_policy import normalize_saliency_params
+from .saliency_resource import (
+    SaliencyResourceAdmission,
+    check_saliency_resource_preflight,
+)
 from .state import ApplicationStateSnapshot
+from .training_runtime import TrainingProjectionReadPort
 
 HandlerResult = str | tuple[str, dict[str, Any]]
+
+
+class _EvaluationRunSummary(TypedDict):
+    identity: dict[str, int]
+    name: str
+    finished: bool
+    evaluation_split: str
+
+
+class _EvaluationPlanSummary(TypedDict):
+    identity: dict[str, int]
+    name: str
+    run_count: int
+    finished_run_count: int
+    evaluation_splits: list[str]
+    runs: list[_EvaluationRunSummary]
+
+
+def _strict_saliency_params_equal(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            _strict_saliency_params_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _strict_saliency_params_equal(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    return bool(left == right)
 
 
 class AnalysisCommandService:
@@ -28,54 +71,55 @@ class AnalysisCommandService:
     def __init__(
         self,
         *,
-        evaluation: Any,
+        training_runtime: TrainingProjectionReadPort,
         visualization: Any,
         get_state: Callable[[], ApplicationStateSnapshot],
     ) -> None:
-        self.evaluation = evaluation
+        self.training_runtime = training_runtime
         self.visualization = visualization
         self._get_state = get_state
+        self._saliency_resource_admission = SaliencyResourceAdmission()
 
     def handle_evaluate(self, command: Command) -> HandlerResult:
         if not isinstance(command, EvaluateCommand):
             raise TypeError("Invalid command for evaluate")
-        plans = self._call_list(self.evaluation.get_plans)
-        summaries = []
-        pooled_eval_results: list[Any] = []
-        model_summaries: list[dict[str, Any]] = []
+        plans = list(self.training_runtime.training_plan_holders())
+        summaries: list[_EvaluationPlanSummary] = []
         evaluation_splits: set[str] = set()
         for plan_idx, plan in enumerate(plans):
             runs = self._safe_plan_runs(plan)
             finished = [run for run in runs if self._run_finished(run)]
             plan_evaluation_splits = self._evaluation_splits(finished)
             evaluation_splits.update(plan_evaluation_splits)
-            metrics: dict[str, Any] = {}
-            pooled_result: Any = None
-            if finished and (command.include_metrics or command.include_pooled_results):
-                labels, outputs, metrics = self.evaluation.get_pooled_eval_result(plan)
-                pooled_result = (labels, outputs, metrics)
+            plan_identity = EvaluationPlanIdentity(plan_index=plan_idx)
             summaries.append(
                 {
-                    "index": plan_idx,
+                    "identity": plan_identity.to_dict(),
                     "name": self._safe_plan_name(plan, plan_idx),
                     "run_count": len(runs),
                     "finished_run_count": len(finished),
                     "evaluation_splits": plan_evaluation_splits,
-                    "metrics": self._json_safe(metrics),
+                    "runs": [
+                        {
+                            "identity": EvaluationRunIdentity(
+                                plan=plan_identity,
+                                run_index=run_index,
+                            ).to_dict(),
+                            "name": self._safe_run_name(run, run_index),
+                            "finished": self._run_finished(run),
+                            "evaluation_split": str(
+                                getattr(
+                                    getattr(run, "eval_record", None),
+                                    "evaluation_split",
+                                    None,
+                                )
+                                or "unknown"
+                            ),
+                        }
+                        for run_index, run in enumerate(runs)
+                    ],
                 }
             )
-            if command.include_pooled_results:
-                pooled_eval_results.append(pooled_result)
-            if command.include_model_summaries:
-                model_summaries.append(
-                    self._model_summary_payload(
-                        plan,
-                        runs,
-                        plan_index=plan_idx,
-                        requested_plan_index=command.model_summary_plan_index,
-                        requested_run_index=command.model_summary_run_index,
-                    ),
-                )
         finished_total = sum(item["finished_run_count"] for item in summaries)
         message = (
             "Evaluation summary ready."
@@ -92,15 +136,18 @@ class AnalysisCommandService:
             "training_active": self._get_state().training.is_running,
             "plans": summaries,
         }
-        if command.include_objects:
-            diagnostics["plan_objects"] = plans
-        if command.include_pooled_results:
-            diagnostics["pooled_eval_results"] = pooled_eval_results
-        if command.include_model_summaries:
-            diagnostics["model_summaries"] = model_summaries
-            diagnostics["model_summary_request"] = {
-                "plan_index": command.model_summary_plan_index,
-                "run_index": command.model_summary_run_index,
+        if command.summary_identity is not None:
+            if not isinstance(command.summary_identity, EvaluationSummaryIdentity):
+                raise TypeError(
+                    "EvaluateCommand.summary_identity must be an "
+                    "EvaluationSummaryIdentity"
+                )
+            diagnostics["model_summary"] = {
+                "identity": command.summary_identity.to_dict(),
+                "text": build_evaluation_model_summary(
+                    self.training_runtime,
+                    command.summary_identity,
+                ),
             }
         return (
             message,
@@ -147,12 +194,6 @@ class AnalysisCommandService:
             "saliency_configured": state.visualization.saliency_configured,
             "saliency_available": state.visualization.saliency_available,
         }
-        if command.include_objects:
-            diagnostics["trainer_objects"] = trainers
-        if command.include_averaged_records:
-            diagnostics["averaged_records"] = [
-                self._averaged_record(trainer) for trainer in trainers
-            ]
         return (
             message,
             diagnostics,
@@ -171,6 +212,11 @@ class AnalysisCommandService:
             configure_reasons = self._saliency_configuration_reasons(state)
             if configure_reasons:
                 raise PreconditionError("; ".join(configure_reasons))
+            resource_preflight = self._saliency_resource_preflight(
+                command,
+                params,
+                evaluator_required=state.active_training.has_trainer,
+            )
             automatic_target = current_post_training_saliency_target()
             self.visualization.set_saliency_params(params)
             if automatic_target is not None:
@@ -204,8 +250,19 @@ class AnalysisCommandService:
                         ),
                         "requested_method": requested_method,
                         "params": self._json_safe(params),
+                        "resource_preflight": resource_preflight,
                         "post_training_saliency_schedule": schedule_diagnostics,
                     },
+                )
+            applied_params = self.visualization.get_saliency_params()
+            readback_matches = isinstance(
+                applied_params,
+                dict,
+            ) and _strict_saliency_params_equal(applied_params, params)
+            if not readback_matches:
+                raise ValueError(
+                    "Saliency configuration could not be verified in "
+                    "authoritative state."
                 )
             return (
                 "Saliency parameters configured.",
@@ -217,7 +274,8 @@ class AnalysisCommandService:
                         self._get_state().visualization.saliency_available
                     ),
                     "requested_method": requested_method,
-                    "params": self._json_safe(params),
+                    "params": self._json_safe(applied_params),
+                    "resource_preflight": resource_preflight,
                 },
             )
 
@@ -259,6 +317,76 @@ class AnalysisCommandService:
         )
         return reasons
 
+    def _saliency_resource_preflight(
+        self,
+        command: SaliencyCommand,
+        params: dict[str, Any],
+        *,
+        evaluator_required: bool,
+    ) -> dict[str, Any]:
+        if not evaluator_required:
+            preflight = ResourcePreflightResult(
+                issues=(),
+                diagnostics={
+                    "operation": "saliency_recomputation",
+                    "admission_required": False,
+                    "reason": "no_trained_evaluator",
+                    "message": (
+                        "Saliency parameters are being saved without evaluator "
+                        "allocation."
+                    ),
+                },
+            )
+            return self._saliency_resource_admission.authorize(
+                command,
+                params,
+                preflight,
+            ).to_diagnostics()
+        try:
+            context = self.training_runtime.resource_context()
+            holders = tuple(self.training_runtime.training_plan_holders())
+            holder_datasets = self._saliency_holder_datasets(holders)
+        except Exception as exc:
+            raise PreconditionError(
+                "Saliency resource admission could not read the current dataset, "
+                "model, and training settings.",
+                diagnostics={
+                    "resource_preflight": {
+                        "operation": "saliency_recomputation",
+                        "risk_level": "blocking",
+                        "reason": "resource_context_read_failed",
+                        "error_type": type(exc).__name__,
+                    }
+                },
+            ) from exc
+        preflight = check_saliency_resource_preflight(
+            holder_datasets or context.datasets,
+            context.training_option,
+            context.model_holder,
+            params,
+            training_plan_holders=holders,
+        )
+        return self._saliency_resource_admission.authorize(
+            command,
+            params,
+            preflight,
+        ).to_diagnostics()
+
+    @staticmethod
+    def _saliency_holder_datasets(holders: tuple[Any, ...]) -> tuple[Any, ...]:
+        datasets: list[Any] = []
+        identities: set[int] = set()
+        for holder in holders:
+            getter = getattr(holder, "get_dataset", None)
+            if not callable(getter):
+                continue
+            dataset = getter()
+            if dataset is None or id(dataset) in identities:
+                continue
+            identities.add(id(dataset))
+            datasets.append(dataset)
+        return tuple(datasets)
+
     @staticmethod
     def _call_list(call: Callable[[], Any]) -> list[Any]:
         value = call()
@@ -275,44 +403,12 @@ class AnalysisCommandService:
         except Exception:
             return f"Plan {idx + 1}"
 
-    def _model_summary(self, plan: Any, record: Any | None = None) -> str:
-        return str(self.evaluation.get_model_summary_str(plan, record))
-
-    def _model_summary_payload(
-        self,
-        plan: Any,
-        runs: list[Any],
-        *,
-        plan_index: int,
-        requested_plan_index: int | None,
-        requested_run_index: int | None,
-    ) -> dict[str, Any]:
-        """Build only the requested model summary to avoid UI-triggered stalls."""
-        if requested_plan_index is None and requested_run_index is None:
-            return {
-                "plan": self._model_summary(plan),
-                "runs": [self._model_summary(plan, run) for run in runs],
-            }
-
-        if requested_plan_index is not None and plan_index != requested_plan_index:
-            return {"plan": "", "runs": [""] * len(runs)}
-
-        run_summaries = [""] * len(runs)
-        if requested_run_index is None:
-            return {
-                "plan": self._model_summary(plan),
-                "runs": run_summaries,
-            }
-
-        if 0 <= requested_run_index < len(runs):
-            run_summaries[requested_run_index] = self._model_summary(
-                plan,
-                runs[requested_run_index],
-            )
-        return {"plan": "", "runs": run_summaries}
-
-    def _averaged_record(self, trainer: Any) -> Any:
-        return self.visualization.get_averaged_record(trainer)
+    @staticmethod
+    def _safe_run_name(run: Any, idx: int) -> str:
+        try:
+            return str(run.get_name())
+        except Exception:
+            return f"Repeat-{idx}"
 
     @staticmethod
     def _run_finished(run: Any) -> bool:

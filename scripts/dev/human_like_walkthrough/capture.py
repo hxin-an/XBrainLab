@@ -456,18 +456,18 @@ def _capture_runtime_states(
         output_dir=output_dir,
         dependencies=dependencies,
     )
-    phases.append(
-        _chat_phase(
-            "assistant_repeated_open_close",
-            empty_screenshot,
-            panel,
-            service,
-            {"open_close": open_close_states},
-            dock=dock,
-            controller=controller,
-            dependencies=dependencies,
-        )
+    repeated_open_close_phase = _chat_phase(
+        "assistant_repeated_open_close",
+        empty_screenshot,
+        panel,
+        service,
+        {"open_close": open_close_states},
+        dock=dock,
+        controller=controller,
+        dependencies=dependencies,
     )
+    repeated_open_close_phase["alias_of"] = "assistant_empty_state"
+    phases.append(repeated_open_close_phase)
 
 
 def _drive_settings_recovery(

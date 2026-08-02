@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import inspect
 from copy import deepcopy
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from PIL import Image, ImageDraw
@@ -42,6 +43,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     ASSISTANT_PROCESSING_REQUEST,
     DEFAULT_OUTPUT_DIR,
     NARROW_WINDOW_SIZE,
+    PHASE_ALIASES,
     REQUIRED_PHASES,
     SCREENSHOT_NAMES,
     WALKTHROUGH_EVENT_ROWS,
@@ -83,7 +85,6 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     is_nearly_black,
     merge_ui_quality_into_pass_fail_summary,
     publish_artifact_run,
-    render_eval_dashboard_html,
     render_markdown,
     resource_snapshot,
     run_chatpanel_walkthrough,
@@ -91,6 +92,9 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     settle_window_geometry_for_capture,
     validate_walkthrough_payload,
     visible_text_snapshot,
+)
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    collect_source_identity,
 )
 from scripts.dev.human_like_walkthrough.capture import isolated_assistant_settings
 from scripts.dev.human_like_walkthrough.contract import (
@@ -311,6 +315,7 @@ def _base_payload() -> dict:
     )
     recovery_loading_phase.update(_valid_assistant_runtime_phase())
     recovery_loading_phase["phase"] = "assistant_runtime_recovery_loading"
+    recovery_loading_phase["screenshot"] = "assistant-recovery-loading.png"
     recovery_loading_phase["visible_text"] = [
         "Retrying local assistant",
         "Send",
@@ -425,6 +430,10 @@ def _base_payload() -> dict:
             }
         }
     }
+    by_name = {phase["phase"]: phase for phase in phases}
+    for phase_name, source_phase in PHASE_ALIASES.items():
+        by_name[phase_name]["alias_of"] = source_phase
+        by_name[phase_name]["screenshot"] = by_name[source_phase]["screenshot"]
     return {
         "status": "passed",
         "failure_reason": "",
@@ -926,7 +935,7 @@ def _valid_assistant_main_window_evidence(
 def test_validate_walkthrough_payload_accepts_complete_artifact_without_files() -> None:
     ok, reason = validate_walkthrough_payload(_base_payload(), require_files=False)
 
-    assert ok is True
+    assert ok is True, reason
     assert reason == ""
 
 
@@ -956,12 +965,32 @@ def test_required_phases_are_the_exact_unique_capture_sequence() -> None:
         *walkthrough_contract.ASSISTANT_REQUIRED_PHASES,
         "reset_new_session_boundary",
         "error_recovery",
-        "eval_dashboard_report",
     )
 
-    assert len(expected) == 42
+    assert len(expected) == 41
     assert len(dict.fromkeys(expected)) == len(expected)
     assert expected == REQUIRED_PHASES
+
+
+def test_byte_identical_logical_states_use_declared_phase_aliases() -> None:
+    assert PHASE_ALIASES == {
+        "data_interpretation_select_source": "data_source_selection",
+        "data_interpretation_apply": "data_interpretation_decisions",
+        "data_interpretation_save_recipe": "data_interpretation_decisions",
+        "dataset_generation": "epoch_creation",
+        "assistant_repeated_open_close": "assistant_empty_state",
+    }
+    payload = _base_payload()
+    by_name = {phase["phase"]: phase for phase in payload["phases"]}
+
+    for phase_name, source_phase in PHASE_ALIASES.items():
+        assert by_name[phase_name]["alias_of"] == source_phase
+        assert by_name[phase_name]["screenshot"] == by_name[source_phase]["screenshot"]
+
+
+def test_product_walkthrough_screenshot_manifest_excludes_eval_dashboard() -> None:
+    assert "eval_dashboard" not in SCREENSHOT_NAMES
+    assert "20-eval-dashboard.png" not in SCREENSHOT_NAMES.values()
 
 
 @pytest.mark.parametrize("mutation", ["reordered", "duplicate"])
@@ -1019,7 +1048,18 @@ def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) 
                 },
             }
         )
-    payload["artifact_run"] = {"screenshot_sha256": screenshot_hashes}
+    identity = collect_source_identity(walkthrough_module.ROOT)
+    generated_at = datetime(2026, 8, 2, 4, 0, tzinfo=UTC)
+    payload["artifact_run"] = walkthrough_module._build_artifact_run_manifest(
+        payload,
+        staging_dir=directory,
+        run_id="unit-test-run",
+        source_identity_at_start=identity,
+        source_identity_at_completion=identity,
+        capture_started_at=generated_at,
+        generated_at=generated_at,
+    )
+    assert payload["artifact_run"]["screenshot_sha256"] == screenshot_hashes
     payload["ui_quality_review"]["screenshot_review"] = screenshot_review
     payload["ui_quality_review"]["frame_readiness_coverage"] = True
 
@@ -1038,6 +1078,27 @@ def test_validate_walkthrough_payload_recomputes_published_screenshot_hashes(
     ok, reason = validate_walkthrough_payload(payload, require_files=True)
     assert ok is False
     assert "screenshot hash mismatch" in reason
+
+
+def test_walkthrough_artifact_manifest_binds_source_environment_and_claims(
+    tmp_path: Path,
+) -> None:
+    payload = _base_payload()
+    _write_valid_screenshot_artifacts(payload, tmp_path)
+
+    run = payload["artifact_run"]
+    assert run["generator"] == ("scripts/dev/capture_human_like_product_walkthrough.py")
+    assert run["source_identity"]["commit_sha"]
+    assert run["source_identity"]["head_tree_sha"]
+    assert run["source_identity"]["source_digest"]
+    assert isinstance(run["source_identity"]["dirty"], bool)
+    assert run["capture_environment"]["standard_viewport"] == [1280, 800]
+    assert run["capture_environment"]["narrow_viewport"] == [760, 520]
+    assert run["capture_environment"]["scale_factor"]
+    assert run["claims"]
+    assert run["limitations"]
+    assert run["phase_aliases"] == PHASE_ALIASES
+    assert all(item["sha256"] for item in run["screenshots"].values())
 
 
 @pytest.mark.parametrize("corruption", ["text", "truncated"])
@@ -1488,20 +1549,18 @@ def test_aggregate_info_readability_gate_rejects_collapsed_key_column(qtbot) -> 
     cast(Any, evaluation_panel).info_panel = info_panel
     layout.addWidget(info_panel)
     qtbot.addWidget(evaluation_panel)
-    data = MagicMock()
-    data.get_subject_name.return_value = "S01"
-    data.get_session_name.return_value = "session-01"
-    data.get_epochs_length.return_value = 120
-    data.is_raw.return_value = False
-    data.get_tmin.return_value = -0.2
-    data.get_epoch_duration.return_value = 250
-    data.get_nchan.return_value = 64
-    data.get_sfreq.return_value = 250
-    data.get_filter_range.return_value = (0.5, 40)
-    data.get_event_summary.return_value = {
-        "available": True,
-        "count": 120,
-        "labels": ["left", "right"],
+    data = {
+        "subject": "S01",
+        "session": "session-01",
+        "epochs_length": 120,
+        "is_raw": False,
+        "event": {"labels": ["left", "right"], "count": 120},
+        "n_channels": 64,
+        "sampling_frequency": 250.0,
+        "epoch_duration_samples": 250,
+        "tmin": -0.2,
+        "highpass": 0.5,
+        "lowpass": 40.0,
     }
     info_panel.update_info(preprocessed_data_list=[data])
     evaluation_panel.resize(260, 380)
@@ -1513,7 +1572,7 @@ def test_aggregate_info_readability_gate_rejects_collapsed_key_column(qtbot) -> 
 
     assert evidence["visible"] is True
     assert evidence["fully_readable"] is False
-    assert "EEG epoch duration" in evidence["clipped_labels"]
+    assert "Epoch length" in evidence["clipped_labels"]
 
 
 def test_assistant_dock_contract_rejects_overflow_in_any_assistant_phase() -> None:
@@ -2001,7 +2060,7 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
                     "decision": "cancelled",
                     "destructive": True,
                     "card_opened": True,
-                    "card_title": "Confirmation required",
+                    "card_title": "High-risk confirmation",
                     "card_request_id": "cancel-request",
                     "request_correlated": True,
                     "primary_action": "Start a new session",
@@ -2027,7 +2086,7 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
                     "decision": "confirmed",
                     "destructive": True,
                     "card_opened": True,
-                    "card_title": "Confirmation required",
+                    "card_title": "High-risk confirmation",
                     "card_request_id": "confirm-request",
                     "request_correlated": True,
                     "primary_action": "Start a new session",
@@ -2826,6 +2885,8 @@ def test_single_recording_walkthrough_uses_individual_trial_split() -> None:
     assert 'split_strategy="trial"' in source
     assert 'training_mode="individual"' in source
     assert 'training_mode="group"' not in source
+    assert "TrainCommand(confirmed=True, interactive=True)" in source
+    assert "TrainCommand(confirmed=True, interactive=False)" not in source
 
 
 @pytest.mark.parametrize(
@@ -3480,14 +3541,16 @@ def test_failed_artifact_run_does_not_mix_with_latest_success(tmp_path) -> None:
     assert payload["artifact_run"]["screenshot_sha256"]["new"]
 
 
-def test_required_command_payload_reads_process_local_result_payload() -> None:
+def test_required_command_payload_reads_serializable_diagnostics() -> None:
     result = SimpleNamespace(
         success=True,
         command_name="scan_source",
         message="Scan ready.",
         error_type=SimpleNamespace(value="none"),
-        diagnostics={"payload_type": "scan_result"},
-        runtime={"scan_result": {"scan_id": "scan:1", "eeg_files": ["a.fif"]}},
+        diagnostics={
+            "payload_type": "scan_result",
+            "scan_result": {"scan_id": "scan:1", "eeg_files": ["a.fif"]},
+        },
     )
 
     payload = _required_command_payload(
@@ -3497,6 +3560,27 @@ def test_required_command_payload_reads_process_local_result_payload() -> None:
     )
 
     assert payload["scan_result"]["scan_id"] == "scan:1"
+
+
+def test_required_command_payload_rejects_runtime_only_legacy_payload() -> None:
+    result = SimpleNamespace(
+        success=True,
+        command_name="scan_source",
+        message="Scan ready.",
+        error_type=SimpleNamespace(value="none"),
+        diagnostics={"payload_type": "scan_result"},
+        runtime={"scan_result": {"scan_id": "scan:1", "eeg_files": ["a.fif"]}},
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"missing required field\(s\): scan_result",
+    ):
+        _required_command_payload(
+            result,
+            expected_payload_type="scan_result",
+            required_fields=("scan_result",),
+        )
 
 
 def test_required_command_payload_reports_contract_mismatch_without_key_error() -> None:
@@ -3591,9 +3675,10 @@ def test_failed_markdown_surfaces_manifest_fingerprint_and_dirty_evidence() -> N
     assert "source fingerprint: `source-sha256`" in rendered
 
 
-def test_default_artifact_entry_is_the_versioned_current_run() -> None:
-    assert DEFAULT_OUTPUT_DIR.name == "current"
-    assert DEFAULT_OUTPUT_DIR.parent.name == "human-like-walkthrough-runs"
+def test_default_artifact_entry_uses_dev_artifact_namespace() -> None:
+    assert (
+        walkthrough_module.ROOT / "build" / "dev-artifacts" / "human-like-product"
+    ) == DEFAULT_OUTPUT_DIR
 
 
 def test_failed_current_artifact_run_is_saved_beside_current(tmp_path) -> None:
@@ -3650,6 +3735,44 @@ def test_successful_artifact_run_replaces_latest_as_one_directory(tmp_path) -> N
     assert not (latest / "stale.png").exists()
     assert payload["screenshots"]["current"] == str(latest / "current.png")
     assert payload["artifact_run"]["status"] == "passed"
+
+
+@pytest.mark.parametrize("status", ["passed", "failed"])
+def test_artifact_publication_does_not_rename_live_staging_directory(
+    monkeypatch,
+    tmp_path,
+    status,
+) -> None:
+    output_dir = tmp_path / "walkthrough"
+    staging = tmp_path / f".walkthrough-staging-{status}"
+    staging.mkdir()
+    screenshot = staging / "screen.png"
+    screenshot.write_bytes(b"screen")
+    payload = {
+        "status": status,
+        "screenshots": {"screen": str(screenshot)},
+        "phases": [],
+        "pass_fail_summary": {"passed": status == "passed"},
+    }
+    original_replace = Path.replace
+
+    def reject_live_staging_rename(path: Path, target: Path) -> Path:
+        if path == staging:
+            raise PermissionError("live staging directory is still open")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", reject_live_staging_rename)
+
+    published = publish_artifact_run(
+        staging_dir=staging,
+        output_dir=output_dir,
+        payload=payload,
+        run_id=f"run-{status}",
+    )
+
+    assert published.is_dir()
+    assert (published / "screen.png").read_bytes() == b"screen"
+    assert not staging.exists()
 
 
 def test_settle_window_geometry_reapplies_target_after_startup_timer(qtbot) -> None:
@@ -4928,53 +5051,6 @@ def test_render_markdown_keeps_claim_boundary_and_transcripts() -> None:
     assert "Remaining Human Verification" in rendered
 
 
-def test_render_eval_dashboard_html_converts_markdown_tables() -> None:
-    markdown = """# XBrainLab Tool-Call Eval Dashboard
-
-## Model Comparison
-
-| Runner | Model | Cases | Pass Rate |
-| --- | --- | --- | --- |
-| deterministic | deterministic | 121 | 100.00% |
-
-## Metric Pass Rates
-
-| Metric | deterministic |
-| --- | --- |
-| intent | 100.00% |
-"""
-
-    html = render_eval_dashboard_html(markdown)
-
-    assert "<table>" in html
-    assert "<th>Runner</th>" in html
-    assert "<td>deterministic</td>" in html
-    assert "| Runner |" not in html
-    assert "background: #181818" in html
-
-
-def test_render_eval_dashboard_html_surfaces_claim_boundary_first() -> None:
-    markdown = """# XBrainLab Tool-Call Eval Dashboard
-
-## Model Comparison
-
-| Runner | Cases |
-| --- | ---: |
-| deterministic | 121 |
-
-## Thesis Claim Boundary
-
-- Supports this benchmark slice.
-- Does not claim product completion.
-"""
-
-    html = render_eval_dashboard_html(markdown)
-
-    assert 'class="claim-boundary"' in html
-    assert "Does not claim product completion." in html
-    assert html.index("Claim Boundary") < html.index("Model Comparison")
-
-
 def test_apply_review_choices_uses_visible_file_pairing_controls(qtbot) -> None:
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -5071,8 +5147,9 @@ def test_apply_review_choices_resolves_walkthrough_event_values(qtbot) -> None:
     choices = dialog.get_result()["choices"]["label_carrier_choices"][label_path]
     decisions = choices["value_decisions"]
     assert set(decisions) == {"left", "right"}
-    for raw_value in ("left", "right"):
-        assert decisions[raw_value]["class_name"] == raw_value
+    expected_class_names = {"left": "Left hand", "right": "Right hand"}
+    for raw_value, class_name in expected_class_names.items():
+        assert decisions[raw_value]["class_name"] == class_name
         assert decisions[raw_value]["role"] == "stimulus"
         assert decisions[raw_value]["keep_event"] is True
         assert decisions[raw_value]["use_as_class"] is True

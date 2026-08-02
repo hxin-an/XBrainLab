@@ -2,16 +2,19 @@ import mne
 import numpy as np
 import pytest
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import (
     CommandResult,
     ErrorType,
     QueryStateCommand,
     get_application_service,
 )
+from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
 from XBrainLab.llm.tools.real.dataset_real import (
     RealGetDatasetInfoTool,
     RealListFilesTool,
-    RealLoadDataTool,
 )
 from XBrainLab.llm.tools.real.preprocess_real import (
     RealStandardPreprocessTool,
@@ -24,9 +27,9 @@ from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
 
 
-def _query_result(study, query: str, *, include_objects: bool = False):
+def _query_result(study, query: str):
     result = get_application_service(study).execute(
-        QueryStateCommand(query=query, include_objects=include_objects),
+        QueryStateCommand(query=query),
     )
     assert isinstance(result, CommandResult)
     assert result.ok, result.message
@@ -34,11 +37,14 @@ def _query_result(study, query: str, *, include_objects: bool = False):
 
 
 def _state(study):
-    return _query_result(study, "state").diagnostics["state"]
+    result = get_application_service(study).query_published_state()
+    assert isinstance(result, CommandResult)
+    assert result.ok, result.message
+    return result.state.to_dict()
 
 
 def _data_lists(study):
-    return _query_result(study, "data_lists", include_objects=True)
+    return _query_result(study, "data_lists")
 
 
 def create_dummy_eeg_file(tmp_path):
@@ -82,18 +88,21 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     # 1. Dataset Tools
     # List Files
     tool_list = RealListFilesTool()
-    res_list = tool_list.execute(study, directory=dummy_dir, pattern="*.fif")
+    res_list = tool_list.execute(
+        study,
+        directory=authorize_existing_path(
+            dummy_dir,
+            authorized_root=dummy_dir,
+            expected_kind="directory",
+        ),
+        pattern="*.fif",
+    )
     res_list = _assert_tool_result(res_list)
     assert res_list.message == "Found 1 file(s)."
     assert res_list.payload == ["test_data_raw.fif"]
 
-    # Load Data
-    tool_load = RealLoadDataTool()
-    res_load = tool_load.execute(study, paths=[dummy_file])
-    res_load = _assert_tool_result(res_load)
-    assert res_load.message == "Loaded 1 file(s)."
-    assert res_load.payload["diagnostics"]["success_count"] == 1
-    assert res_load.payload["diagnostics"]["errors"] == []
+    # Import through the supported Data Interpretation lifecycle.
+    import_recording_through_interpretation(study, dummy_file)
     raw_state = _state(study)["raw"]
     assert raw_state == {
         "loaded": True,
@@ -148,24 +157,23 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     res_prep = _assert_tool_result(res_prep)
     assert res_prep.message == (
         "Standard preprocessing applied. Normalization using z-score is queued "
-        "for per-epoch application during epoch creation."
+        "for per-EEG-epoch application during EEG epoch creation."
     )
 
     data_lists_result = _data_lists(study)
-    assert data_lists_result.diagnostics == {
-        "raw_count": 1,
-        "preprocessed_count": 1,
-        "raw_files": ["test_data_raw.fif"],
-        "preprocessed_files": ["test_data_raw.fif"],
-    }
-    raw_wrapper = data_lists_result.runtime["preprocessed_data_list"][0]
-
-    raw = raw_wrapper.get_mne() if hasattr(raw_wrapper, "get_mne") else raw_wrapper
+    diagnostics = data_lists_result.diagnostics
+    assert diagnostics["raw_count"] == 1
+    assert diagnostics["preprocessed_count"] == 1
+    assert diagnostics["raw_rows"][0]["filepath"] == dummy_file
+    preprocessed_row = diagnostics["preprocessed_rows"][0]
+    assert preprocessed_row["filepath"] == dummy_file
+    assert preprocessed_row["filename"] == "test_data_raw.fif"
+    assert preprocessed_row["channels"] == ["C3", "C4", "Cz"]
 
     # Note: 1Hz filter might result in something close to 1.0 depending on method (IIR/FIR)
     # Using approx just in case
-    assert raw.info["highpass"] == pytest.approx(1.0, 0.1)
-    assert raw.info["lowpass"] == pytest.approx(40.0, 0.1)
+    assert preprocessed_row["highpass"] == pytest.approx(1.0, 0.1)
+    assert preprocessed_row["lowpass"] == pytest.approx(40.0, 0.1)
 
     # 3. Training Setup
     # Set Model

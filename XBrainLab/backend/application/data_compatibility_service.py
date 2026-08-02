@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
 
 from .commands import (
     AttachLabelsCommand,
@@ -41,7 +41,7 @@ class DataCompatibilityCommandService:
     def __init__(
         self,
         *,
-        dataset: Any,
+        dataset: DatasetInterpretationPort,
         interpretation: Any,
         pipeline_transaction: Any,
     ) -> None:
@@ -98,7 +98,6 @@ class DataCompatibilityCommandService:
             )
         except Exception:
             self._pipeline_transaction.restore(snapshot)
-            self._notify_restored_dataset()
             raise
         return (
             f"Loaded {count} file(s).",
@@ -164,16 +163,6 @@ class DataCompatibilityCommandService:
             },
         )
 
-    def _notify_restored_dataset(self) -> None:
-        """Publish the restored state after a loader emitted partial notifications."""
-        notify = getattr(self.dataset, "notify", None)
-        if not callable(notify):
-            return
-        try:
-            notify("data_changed")
-        except Exception:
-            logger.debug("Restored dataset notification failed", exc_info=True)
-
     def handle_attach_labels(self, command: Command) -> HandlerResult:
         if not isinstance(command, AttachLabelsCommand):
             raise TypeError("Invalid command for attach_labels")
@@ -196,6 +185,9 @@ class DataCompatibilityCommandService:
                     for key, value in command.mapping.items()
                 },
                 "label_format": str(command.label_format or "").strip().lower(),
+                "selected_event_names": sorted(
+                    self._selected_event_names(command.selected_event_names) or []
+                ),
             },
         )
         # Review each parser result before loading the next declared resource.
@@ -206,12 +198,13 @@ class DataCompatibilityCommandService:
             normalize_value=self._normalize_label_value,
         )
         event_name_map = {label: str(label) for label in review.unique_labels}
+        selected_event_names = self._selected_event_names(command.selected_event_names)
         count = self.dataset.apply_labels_batch(
             target_files,
             label_map,
             file_mapping,
             event_name_map,
-            None,
+            selected_event_names,
         )
         self._ensure_complete_label_batch(
             count=count,
@@ -331,6 +324,7 @@ class DataCompatibilityCommandService:
             diagnostics.update(
                 {
                     "success_count": 0,
+                    "expected_count": len(target_files),
                     "mode": mode,
                     "rolled_back": not rollback_errors,
                     "rollback_errors": rollback_errors,
@@ -406,8 +400,6 @@ class DataCompatibilityCommandService:
             self._pipeline_transaction.restore(pipeline_snapshot)
         except Exception as exc:  # pragma: no cover - defensive corruption path
             errors.append(f"pipeline: {type(exc).__name__}: {exc}")
-        if not errors:
-            self._notify_restored_dataset()
         return errors
 
     def _restore_raw_label_state_error(
@@ -655,7 +647,15 @@ class DataCompatibilityCommandService:
     ) -> list[str] | None:
         if values is None:
             return None
-        return [str(value) for value in values if str(value)]
+        normalized = sorted(
+            {
+                " ".join(str(value).strip().split())
+                for value in values
+                if str(value).strip()
+            },
+            key=lambda value: (value.casefold(), value),
+        )
+        return normalized or None
 
     @staticmethod
     def _normalize_label_value(value: Any) -> Any:

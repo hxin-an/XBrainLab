@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from XBrainLab.ui.components.agent_manager import AgentManager
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-tool-chain"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-local-tool-chain"
 SOURCE_DIR = Path(tempfile.gettempdir()) / "xbrainlab_chatpanel_tool_chain"
 SOURCE_PATH = SOURCE_DIR / "chatpanel_chain_raw.fif"
 READY_SCREENSHOT = "chatpanel-tool-chain-ready.png"
@@ -111,7 +111,7 @@ def write_synthetic_raw_fif() -> Path:
     sfreq = 128
     ch_names = ["C3", "C4", "Cz", "Pz"]
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    data = np.random.default_rng(41).normal(size=(len(ch_names), sfreq * 6))
+    data = np.random.default_rng(41).normal(size=(len(ch_names), sfreq * 8))
     raw = mne.io.RawArray(data, info)
     events = np.array(
         [

@@ -117,7 +117,12 @@ def rag_readmission_harness(
     worker = controller.worker
     assert worker is not None
     controller._sig_dispatch_generation.disconnect(worker.generate_from_messages)
-    controller.sig_generate.connect(generation_requests.append)
+
+    def record_generation_request(payload: object) -> None:
+        assert isinstance(payload, AssistantGenerationRequest)
+        generation_requests.append(payload)
+
+    controller.sig_generate.connect(record_generation_request)
     controller.response_presentation_ready.connect(presentations.append)
     controller.workflow_ui_handoff_requested.connect(handoffs.append)
 
@@ -166,9 +171,9 @@ def _loaded_state() -> ApplicationStateSnapshot:
 def _wait_for_delayed_retrieval(harness: _RAGReadmissionHarness) -> None:
     assert harness.retriever.started.wait(timeout=2.0)
     assert harness.controller.is_processing
-    assert harness.controller._waiting_for_rag
+    assert harness.controller._turn_orchestrator.waiting_for_rag
     assert harness.generation_requests == []
-    assert harness.controller._tool_execution_count == 0
+    assert harness.controller._tool_attempt_session.execution_count == 0
 
 
 def _release_retrieval(harness: _RAGReadmissionHarness) -> None:
@@ -198,8 +203,14 @@ def test_delayed_rag_generate_becomes_typed_ui_handoff(
 
     _submit_user_turn(harness, "Load the selected EEG files.")
     _wait_for_delayed_retrieval(harness)
-    assert harness.controller._admitted_command_name == CommandName.SCAN_SOURCE.value
-    assert harness.controller._admitted_publication_generation == admitted.generation
+    assert (
+        harness.controller._turn_orchestrator.admitted_command_name
+        == CommandName.SCAN_SOURCE.value
+    )
+    assert (
+        harness.controller._turn_orchestrator.admitted_publication_generation
+        == admitted.generation
+    )
 
     current = harness.publish(ApplicationStateSnapshot.empty())
     assert current.generation > admitted.generation
@@ -213,7 +224,7 @@ def test_delayed_rag_generate_becomes_typed_ui_handoff(
     assert harness.controller.pending_interactions.workflow_handoff == request
     assert harness.controller.is_processing
     assert harness.generation_requests == []
-    assert harness.controller._tool_execution_count == 0
+    assert harness.controller._tool_attempt_session.execution_count == 0
     assert _STALE_RAG_CONTEXT not in harness.controller.assembler.context_notes
 
 
@@ -230,8 +241,14 @@ def test_delayed_rag_generate_becomes_recoverable_blocked_result(
         "Apply the standard preprocessing defaults.",
     )
     _wait_for_delayed_retrieval(harness)
-    assert harness.controller._admitted_command_name == CommandName.PREPROCESS.value
-    assert harness.controller._admitted_publication_generation == admitted.generation
+    assert (
+        harness.controller._turn_orchestrator.admitted_command_name
+        == CommandName.PREPROCESS.value
+    )
+    assert (
+        harness.controller._turn_orchestrator.admitted_publication_generation
+        == admitted.generation
+    )
 
     current = harness.publish(ApplicationStateSnapshot.empty())
     assert current.generation > admitted.generation
@@ -248,7 +265,7 @@ def test_delayed_rag_generate_becomes_recoverable_blocked_result(
     assert presentation.actions[0].panel is AssistantPanelTarget.PREPROCESS
     assert harness.generation_requests == []
     assert harness.handoffs == []
-    assert harness.controller._tool_execution_count == 0
+    assert harness.controller._tool_attempt_session.execution_count == 0
     assert _STALE_RAG_CONTEXT not in harness.controller.assembler.context_notes
 
 
@@ -262,8 +279,14 @@ def test_delayed_rag_same_command_uses_current_publication_without_stale_context
 
     _submit_user_turn(harness, "Load /data/A01T.gdf")
     _wait_for_delayed_retrieval(harness)
-    assert harness.controller._admitted_command_name == CommandName.SCAN_SOURCE.value
-    assert harness.controller._admitted_publication_generation == admitted.generation
+    assert (
+        harness.controller._turn_orchestrator.admitted_command_name
+        == CommandName.SCAN_SOURCE.value
+    )
+    assert (
+        harness.controller._turn_orchestrator.admitted_publication_generation
+        == admitted.generation
+    )
 
     current = harness.publish(_selected_source_state("/data/other.edf"))
     assert current.generation > admitted.generation
@@ -278,11 +301,21 @@ def test_delayed_rag_same_command_uses_current_publication_without_stale_context
         str(message["content"]) for message in generation.to_model_messages()
     )
     assert generation.generation_id > 0
-    assert harness.controller._active_generation_id == generation.generation_id
-    assert harness.controller._admitted_command_name == CommandName.SCAN_SOURCE.value
-    assert harness.controller._admitted_publication_generation == current.generation
-    assert harness.controller._active_tool_publication.backend_generation == (
-        current.generation
+    assert (
+        harness.controller._turn_orchestrator.active_generation_id
+        == generation.generation_id
+    )
+    assert (
+        harness.controller._turn_orchestrator.admitted_command_name
+        == CommandName.SCAN_SOURCE.value
+    )
+    assert (
+        harness.controller._turn_orchestrator.admitted_publication_generation
+        == current.generation
+    )
+    assert (
+        harness.controller._turn_orchestrator.active_publication.backend_generation
+        == (current.generation)
     )
     assert harness.controller.assembler.latest_tool_publication.backend_generation == (
         current.generation
@@ -291,4 +324,4 @@ def test_delayed_rag_same_command_uses_current_publication_without_stale_context
     assert _STALE_RAG_CONTEXT not in harness.controller.assembler.context_notes
     assert harness.handoffs == []
     assert harness.presentations == []
-    assert harness.controller._tool_execution_count == 0
+    assert harness.controller._tool_attempt_session.execution_count == 0

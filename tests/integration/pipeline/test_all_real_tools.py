@@ -3,14 +3,18 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration.data_interpretation_support import (
+    GRAZ_2A_CLASS_MAP,
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import QueryStateCommand, get_application_service
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
 from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
     RealClearDatasetTool,
     RealGetDatasetInfoTool,
     RealListFilesTool,
-    RealLoadDataTool,
 )
 from XBrainLab.llm.tools.real.preprocess_real import (
     RealChannelSelectionTool,
@@ -30,26 +34,24 @@ def _successful_tool_result(result) -> ToolResult:
     return result
 
 
-def _query_result(study, query: str, *, include_objects: bool = False):
+def _query_result(study, query: str):
     result = get_application_service(study).execute(
-        QueryStateCommand(query=query, include_objects=include_objects),
+        QueryStateCommand(query=query),
     )
     assert result.ok, result.message
     return result
 
 
-def _query_diagnostics(study, query: str):
-    return _query_result(study, query).diagnostics
-
-
 def _state(study):
-    return _query_diagnostics(study, "state")["state"]
+    result = get_application_service(study).query_published_state()
+    assert result.ok, result.message
+    return result.state.to_dict()
 
 
-def _first_preprocessed_data(study):
-    result = _query_result(study, "data_lists", include_objects=True)
+def _first_preprocessed_row(study):
+    result = _query_result(study, "data_lists")
     assert result.diagnostics["preprocessed_count"] == 1
-    return result.runtime["preprocessed_data_list"][0]
+    return result.diagnostics["preprocessed_rows"][0]
 
 
 # Locate test data
@@ -79,8 +81,11 @@ class TestAllRealTools:
         if not os.path.exists(GDF_FILE):
             pytest.skip("Test data A01T.gdf not found")
 
-        load_tool = RealLoadDataTool()
-        _successful_tool_result(load_tool.execute(study, paths=[GDF_FILE]))
+        import_recording_through_interpretation(
+            study,
+            GDF_FILE,
+            class_map=GRAZ_2A_CLASS_MAP,
+        )
         assert _state(study)["raw"]["count"] == 1
         return study
 
@@ -91,7 +96,15 @@ class TestAllRealTools:
         tool = RealListFilesTool()
         # List the data directory itself
         result = _successful_tool_result(
-            tool.execute(study, directory=TEST_DATA_DIR, pattern="*.gdf")
+            tool.execute(
+                study,
+                directory=authorize_existing_path(
+                    TEST_DATA_DIR,
+                    authorized_root=TEST_DATA_DIR,
+                    expected_kind="directory",
+                ),
+                pattern="*.gdf",
+            )
         )
         expected_files = sorted(path.name for path in Path(TEST_DATA_DIR).glob("*.gdf"))
         assert result.message == f"Found {len(expected_files)} file(s)."
@@ -113,33 +126,34 @@ class TestAllRealTools:
         """Attach the real A01T class labels to its 769-772 trial markers."""
         if not os.path.exists(LABEL_FILE):
             pytest.skip("Test label data A01T.mat not found")
-        before = _query_result(loaded_study, "data_lists", include_objects=True)
-        source_data = before.runtime["loaded_data_list"][0]
-        source_events, source_event_id = source_data.get_event_list()
-        target_event_ids = {
-            source_event_id[code] for code in ("769", "770", "771", "772")
-        }
-        assert (
-            sum(event_id in target_event_ids for event_id in source_events[:, -1])
-            == 288
-        )
+        before = _query_result(loaded_study, "data_lists")
+        source_event = before.diagnostics["raw_rows"][0]["event"]
+        assert source_event["available"] is True
+        assert source_event["count"] == 603
+        assert {"769", "770", "771", "772"} <= set(source_event["labels"])
 
         tool = RealAttachLabelsTool()
         mapping = {"A01T.gdf": LABEL_FILE}
 
-        result = _successful_tool_result(tool.execute(loaded_study, mapping=mapping))
-        assert result.message == "Attached labels to 1 file(s)."
-        result = _query_result(
-            loaded_study,
-            "data_lists",
-            include_objects=True,
+        result = _successful_tool_result(
+            tool.execute(
+                loaded_study,
+                mapping=mapping,
+                selected_event_names=["769", "770", "771", "772"],
+            )
         )
-        data = result.runtime["loaded_data_list"][0]
-        assert data.is_labels_imported()
-        events, event_id = data.get_event_list()
-        assert len(events) == 288
-        assert set(events[:, -1]) == {1, 2, 3, 4}
-        assert event_id == {"1": 1, "2": 2, "3": 3, "4": 4}
+        assert result.message == "Attached labels to 1 file(s)."
+        assert result.payload["diagnostics"]["success_count"] == 1
+        query_result = _query_result(loaded_study, "data_lists")
+        data_row = query_result.diagnostics["raw_rows"][0]
+        assert data_row["labels_imported"] is True
+        assert data_row["event"] == {
+            "available": True,
+            "count": 288,
+            "labels": ["1", "2", "3", "4"],
+            "source": "attached_labels",
+            "scanned": True,
+        }
 
     def test_clear_dataset_tool(self, loaded_study):
         """Test RealClearDatasetTool."""
@@ -157,7 +171,7 @@ class TestAllRealTools:
         result = _successful_tool_result(tool.execute(loaded_study, freq=50))
         assert result.message == "Applied notch filter (50.0 Hz)."
 
-        hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
+        hist = _state(loaded_study)["preprocessed"]["operations"]
         assert any("Notch" in h for h in hist)
 
     def test_resample_tool(self, loaded_study):
@@ -166,8 +180,8 @@ class TestAllRealTools:
         result = _successful_tool_result(tool.execute(loaded_study, rate=100))
         assert result.message == "Resampled data to 100 Hz."
 
-        data = _first_preprocessed_data(loaded_study)
-        assert data.get_mne().info["sfreq"] == 100
+        data_row = _first_preprocessed_row(loaded_study)
+        assert data_row["sampling_frequency"] == 100
 
     def test_channel_selection_tool(self, loaded_study):
         """Test RealChannelSelectionTool."""
@@ -177,8 +191,8 @@ class TestAllRealTools:
         result = _successful_tool_result(tool.execute(loaded_study, channels=channels))
         assert result.message == "Selected 2 channel(s)."
 
-        data = _first_preprocessed_data(loaded_study)
-        assert len(data.get_mne().ch_names) == 2
+        data_row = _first_preprocessed_row(loaded_study)
+        assert len(data_row["channels"]) == 2
 
     def test_rereference_tool(self, loaded_study):
         """Test RealRereferenceTool (CAR)."""
@@ -186,7 +200,7 @@ class TestAllRealTools:
         result = _successful_tool_result(tool.execute(loaded_study, method="average"))
         assert result.message == "Applied reference: average."
 
-        hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
+        hist = _state(loaded_study)["preprocessed"]["operations"]
         assert any("reference" in h.lower() or "average" in h.lower() for h in hist)
 
     def test_normalize_tool(self, loaded_study):
@@ -194,11 +208,11 @@ class TestAllRealTools:
         tool = RealNormalizeTool()
         result = _successful_tool_result(tool.execute(loaded_study, method="z-score"))
         assert result.message == (
-            "Normalization using z-score is queued for per-epoch application "
-            "during epoch creation."
+            "Normalization using z-score is queued for per-EEG-epoch application "
+            "during EEG epoch creation."
         )
 
-        hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
+        hist = _state(loaded_study)["preprocessed"]["operations"]
         assert any("normalization requested" in h for h in hist)
 
     def test_set_montage_tool(self, loaded_study):

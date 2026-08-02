@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "launcher"
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "build" / "dev-artifacts" / "launcher"
 DESKTOP_CMD = r"C:\Users\Administrator\Desktop\XBrainLab.cmd"
 ACTIVE_WSL_REPO = str(REPO_ROOT)
 

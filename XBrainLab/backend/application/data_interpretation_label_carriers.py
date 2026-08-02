@@ -1159,7 +1159,7 @@ def _label_carrier_warnings(
         )
     if "duration" not in normalized_columns and not duration_candidates:
         warnings.append(
-            f"{path.name} duration column is missing; epoch windows will need "
+            f"{path.name} duration column is missing; EEG epoch windows will need "
             "manual review after import."
         )
     return warnings

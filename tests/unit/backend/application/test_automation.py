@@ -146,15 +146,16 @@ def test_mcp_tool_specs_use_same_command_schema():
     assert "eeg_file_remap" in preview_choices["properties"]
     assert "label_carrier_remap" in preview_choices["properties"]
     evaluate_schema = tools[CommandName.EVALUATE.value]["inputSchema"]
-    assert "include_objects" not in evaluate_schema["properties"]
     assert "include_metrics" not in evaluate_schema["properties"]
     assert "include_pooled_results" not in evaluate_schema["properties"]
     assert "include_model_summaries" not in evaluate_schema["properties"]
     assert "model_summary_plan_index" not in evaluate_schema["properties"]
     assert "model_summary_run_index" not in evaluate_schema["properties"]
+    assert "summary_identity" not in evaluate_schema["properties"]
     visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
-    assert "include_objects" not in visualize_schema["properties"]
-    assert "include_averaged_records" not in visualize_schema["properties"]
+    assert set(visualize_schema["properties"]) == {"view"}
+    query_state_schema = tools[CommandName.QUERY_STATE.value]["inputSchema"]
+    assert set(query_state_schema["properties"]) == {"query", "params"}
     generate_schema = tools[CommandName.GENERATE_DATASET.value]["inputSchema"]
     assert "generator" not in generate_schema["properties"]
 
@@ -185,14 +186,12 @@ def test_mcp_tool_specs_expose_execution_boundary_metadata():
 @pytest.mark.parametrize(
     ("command_name", "field_name"),
     [
-        (CommandName.EVALUATE, "include_objects"),
         (CommandName.EVALUATE, "include_metrics"),
         (CommandName.EVALUATE, "include_pooled_results"),
         (CommandName.EVALUATE, "include_model_summaries"),
         (CommandName.EVALUATE, "model_summary_plan_index"),
         (CommandName.EVALUATE, "model_summary_run_index"),
-        (CommandName.VISUALIZE, "include_objects"),
-        (CommandName.VISUALIZE, "include_averaged_records"),
+        (CommandName.EVALUATE, "summary_identity"),
         (CommandName.GENERATE_DATASET, "generator"),
     ],
 )
@@ -418,6 +417,30 @@ def test_execute_automation_payload_routes_through_service_and_policy(tmp_path: 
     assert apply_without_confirmation.result["error_type"] == "confirmation_required"
 
 
+def test_automation_public_serializer_redacts_internal_result_and_state(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "Clinical Records" / "Mary Example" / "recording.gdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"placeholder")
+    service = ApplicationService(Study())
+
+    execution = execute_automation_payload(
+        service,
+        {"command": "scan_source", "arguments": {"source_path": str(source)}},
+    )
+
+    internal = execution.to_internal_dict()
+    public = execution.to_public_dict()
+
+    assert str(source) in json.dumps(internal)
+    assert str(source) not in json.dumps(public)
+    assert "Clinical Records" not in json.dumps(public)
+    assert "Mary Example" not in json.dumps(public)
+    assert "[REDACTED_PATH]" in json.dumps(public)
+    assert execution.to_dict() == public
+
+
 def test_execute_automation_payload_state_contains_interpretation_review_truth(
     tmp_path: Path,
 ):
@@ -593,3 +616,25 @@ def test_headless_cli_legacy_compatibility_requires_explicit_opt_in():
 
     tools = json.loads(completed.stdout)
     assert any(tool["name"] == "load_data" for tool in tools)
+
+
+def test_headless_cli_redacts_hostile_command_text() -> None:
+    private_command = "/home/alice/Clinical Records/Mary Example"
+    completed = subprocess.run(  # noqa: S603
+        [
+            sys.executable,
+            "scripts/dev/run_application_command.py",
+            "--payload",
+            json.dumps({"command": private_command, "arguments": {}}),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    assert private_command not in completed.stdout
+    assert "Clinical Records" not in completed.stdout
+    assert "Mary Example" not in completed.stdout
+    assert "[REDACTED_PATH]" in completed.stdout
+    json.loads(completed.stdout)

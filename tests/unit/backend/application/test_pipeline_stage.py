@@ -15,7 +15,9 @@ from XBrainLab.backend.application.pipeline_stage import (
     derive_pipeline_stage,
     pipeline_stage_contract,
     pipeline_stage_from_snapshot,
+    pipeline_stage_readiness_message,
     pipeline_stage_readiness_summary,
+    workflow_command_label,
 )
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
@@ -42,7 +44,7 @@ STAGE_CASES = [
         "preprocessed",
         {"has_raw_data": True, "has_preprocessed_data": True},
         PipelineStage.PREPROCESSED,
-        "Ready for epoching",
+        "Ready for EEG epoching",
         "create_epoch",
     ),
     (
@@ -168,6 +170,16 @@ def test_pipeline_readiness_summary_is_user_facing_and_actionable() -> None:
     )
     assert pipeline_stage_readiness_summary(loaded) == (
         "Ready for preprocessing: 3 EEG files loaded. Next: Preprocess data."
+    )
+
+
+def test_eeg_epoch_stage_and_command_labels_are_domain_explicit() -> None:
+    contract = pipeline_stage_contract(PipelineStage.EPOCH_READY)
+
+    assert contract.prompt_label == "EEG epochs ready"
+    assert workflow_command_label("create_epoch") == "Create EEG epochs"
+    assert pipeline_stage_readiness_message(PipelineStage.PREPROCESSED) == (
+        "Ready for EEG epoching. Next: Create EEG epochs."
     )
 
 

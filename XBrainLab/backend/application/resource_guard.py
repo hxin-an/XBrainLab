@@ -81,14 +81,14 @@ MODEL_ACTIVATION_FACTORS = {
 
 DATASET_RAM_SUGGESTIONS = (
     "select fewer subjects, sessions, or files",
-    "reduce epoch length if applicable",
+    "reduce EEG epoch length if applicable",
     "downsample before import if supported",
     "close other applications",
     "use a smaller dataset split",
 )
 TRAINING_VRAM_SUGGESTIONS = (
     "reduce batch size",
-    "reduce input length or epoch window",
+    "reduce input length or EEG epoch window",
     "use mixed precision if supported",
     "close other GPU applications",
     "choose a smaller model",
@@ -100,8 +100,8 @@ MODEL_LOAD_MEMORY_SUGGESTIONS = (
 )
 EPOCH_RAM_SUGGESTIONS = (
     "select fewer event classes",
-    "shorten the epoch window",
-    "select fewer channels before epoching",
+    "shorten the EEG epoch window",
+    "select fewer channels before EEG epoching",
     "resample to a lower sampling frequency",
     "close other applications",
 )
@@ -434,9 +434,7 @@ class ResourceChecker:
                 total_memory_bytes=ram.get("total_bytes"),
                 used_memory_bytes=ram.get("used_bytes"),
                 risk_level=RISK_UNKNOWN,
-                message=(
-                    "Unable to bound epoch materialization RAM before creating epochs."
-                ),
+                message=("Unable to bound EEG epoch RAM before creating EEG epochs."),
                 suggestions=EPOCH_RAM_SUGGESTIONS,
                 details={
                     "estimate_status": RISK_UNKNOWN,
@@ -452,10 +450,10 @@ class ResourceChecker:
             warning_ratio=RAM_WARNING_RATIO,
             blocking_ratio=RAM_BLOCKING_RATIO,
             resource_name="RAM",
-            blocking_title="Epoch materialization is too large for available RAM.",
-            warning_title="Epoch materialization is close to available RAM.",
+            blocking_title="EEG epoch data is too large for available RAM.",
+            warning_title="EEG epoch data is close to available RAM.",
             operation_risk=(
-                "Creating these epochs may freeze or crash the application."
+                "Creating these EEG epochs may freeze or crash the application."
             ),
             suggestions=EPOCH_RAM_SUGGESTIONS,
             details=estimate,

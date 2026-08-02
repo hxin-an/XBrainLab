@@ -29,6 +29,7 @@ from XBrainLab.backend.training.record import TrainRecord
 from XBrainLab.backend.training.record.key import RecordKey
 from XBrainLab.backend.utils import filesystem_identity, set_seed
 from XBrainLab.backend.utils.filesystem_identity import (
+    FilesystemIdentityError,
     create_contained_output_directory,
     filesystem_safe_identity,
 )
@@ -267,6 +268,23 @@ def test_training_plan_target_is_created_exclusively(tmp_path: Path) -> None:
 
     with pytest.raises(FileExistsError, match="implicit resume"):
         duplicate.init_dir()
+
+
+def test_fallback_output_identity_rejects_same_path_replacement(
+    tmp_path: Path,
+) -> None:
+    output = filesystem_identity._create_fallback_output_directory(
+        tmp_path / "authorized",
+        ("dataset", "Model_plan", "Repeat-0"),
+        exclusive=True,
+        legacy_components=(),
+    )
+    target = output.path
+    target.rename(target.with_name("displaced-repeat"))
+    target.mkdir()
+
+    with pytest.raises(FilesystemIdentityError, match="identity changed"):
+        output.retain_identity()
 
 
 def test_pre_sec02_output_namespace_is_rejected_explicitly(tmp_path: Path) -> None:

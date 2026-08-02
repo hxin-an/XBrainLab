@@ -51,7 +51,7 @@ from XBrainLab.llm.agent.runtime_state import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-pipeline-chain"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-local-pipeline-chain"
 READY_SCREENSHOT = "chatpanel-pipeline-chain-ready.png"
 TERMINAL_SCREENSHOT = "chatpanel-pipeline-chain-terminal.png"
 FAILURE_SCREENSHOT = "chatpanel-pipeline-chain-failure.png"

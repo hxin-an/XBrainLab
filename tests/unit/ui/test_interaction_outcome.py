@@ -13,6 +13,7 @@ from XBrainLab.backend.application.results import (
     ErrorType,
 )
 from XBrainLab.ui.interaction_outcome import (
+    InteractionCompletionEvent,
     InteractionCompletionSession,
     InteractionCompletionStatus,
     InteractionOutcome,
@@ -70,6 +71,38 @@ def test_only_completed_outcome_reports_completed():
 
     assert outcome.status is InteractionStatus.COMPLETED
     assert outcome.is_completed is True
+
+
+def test_interaction_outcome_redacts_private_exception_context() -> None:
+    private_path = "/srv/clinical/subject-17/events.tsv"
+
+    outcome = InteractionOutcome.failed(
+        f"Could not import {private_path}\r\nsubject_id=Alice-Smith."
+    )
+
+    assert private_path not in outcome.message
+    assert "subject-17" not in outcome.message
+    assert "Alice-Smith" not in outcome.message
+    assert "events.tsv" in outcome.message
+    assert "[REDACTED_PATH]" in outcome.message
+    assert "[SUBJECT_REF:" in outcome.message
+    assert "\n" not in outcome.message
+
+
+def test_interaction_completion_event_redacts_private_exception_context() -> None:
+    private_path = r"C:\Users\Alice\EEG\sub-P001\recording.edf"
+
+    event = InteractionCompletionEvent(
+        request_id="request-private",
+        command_name="scan_source",
+        status=InteractionCompletionStatus.FAILED,
+        message=f"Could not inspect {private_path}; patient_id=Clinical-42.",
+    )
+
+    assert private_path not in event.message
+    assert "sub-P001" not in event.message
+    assert "Clinical-42" not in event.message
+    assert ".edf" in event.message
 
 
 def test_async_command_callback_emits_one_correlated_terminal_completion() -> None:

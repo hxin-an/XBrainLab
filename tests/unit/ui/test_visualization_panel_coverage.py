@@ -152,7 +152,13 @@ def _make_panel(
     parent=None,
 ):
     """Create a panel whose controller exposes no live training objects."""
+    del training_controller, preprocess_controller
     controller = Observable()
+    application_port = Observable()
+    runtime_port = cast(Any, application_port)
+    runtime_port.get_view_publication = MagicMock(return_value=None)
+    runtime_port.execute = MagicMock(return_value=None)
+    runtime_port.get_saliency_render = MagicMock(return_value=None)
 
     def _widget_factory(parent=None):
         widget = cast(Any, QWidget(parent))
@@ -200,10 +206,10 @@ def _make_panel(
         from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
         panel = VisualizationPanel(
-            controller=controller,
-            training_controller=training_controller,
-            preprocess_controller=preprocess_controller,
             parent=parent,
+            query_port=runtime_port,
+            publication_port=runtime_port,
+            action_port=runtime_port,
         )
         qtbot.addWidget(panel)
     return panel, controller
@@ -221,10 +227,18 @@ def _make_real_saliency_panel(qtbot, *, application_runtime=None, parent=None):
     ):
         from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
+        runtime = application_runtime
+        if runtime is None:
+            runtime = cast(Any, Observable())
+            runtime.get_view_publication = MagicMock(return_value=None)
+            runtime.execute = MagicMock(return_value=None)
+            runtime.get_saliency_render = MagicMock(return_value=None)
+        publication_port = runtime if isinstance(runtime, Observable) else Observable()
         panel = VisualizationPanel(
-            controller=Observable(),
-            application_runtime=application_runtime,
             parent=parent,
+            query_port=runtime,
+            publication_port=publication_port,
+            action_port=runtime,
         )
         qtbot.addWidget(panel)
     return panel
@@ -253,7 +267,8 @@ def test_publication_runtime_composes_through_active_real_map_view(qtbot):
     render_requests: list[SaliencyRenderRequest] = []
 
     class _PublicationRuntime:
-        def execute(self, command):
+        def execute(self, command, *, expected_publication_generation=None):
+            assert expected_publication_generation in {None, publication.generation}
             return CommandResult.success_result(
                 command_name=command.name.value,
                 message="Native saliency stress fixture ready.",
@@ -334,7 +349,8 @@ def test_real_panel_close_ignores_global_pool_saturation_before_submission(
     render_requests: list[SaliencyRenderRequest] = []
 
     class _PublicationRuntime:
-        def execute(self, command):
+        def execute(self, command, *, expected_publication_generation=None):
+            assert expected_publication_generation in {None, publication.generation}
             return CommandResult.success_result(
                 command_name=command.name.value,
                 message="Native saliency saturation fixture ready.",
@@ -1286,143 +1302,3 @@ class TestUpdatePanel:
 
         panel.sidebar.update_info.assert_called_once_with()
         refresh_combos.assert_called_once_with()
-
-
-class _MainWindowStub(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.study = object()
-
-
-@pytest.mark.parametrize(
-    ("event_name", "source_kind"),
-    [
-        ("preprocess_changed", "preprocess"),
-        ("history_cleared", "training"),
-        ("config_changed", "training"),
-    ],
-)
-def test_refresh_event_discards_publication_before_empty_republication(
-    qtbot,
-    event_name,
-    source_kind,
-):
-    parent = _MainWindowStub()
-    qtbot.addWidget(parent)
-    source = Observable()
-    panel, _controller = _make_panel(
-        qtbot,
-        training_controller=source if source_kind == "training" else None,
-        preprocess_controller=source if source_kind == "preprocess" else None,
-        parent=parent,
-    )
-    _publish_panel_state(
-        panel,
-        _visualization_result(
-            _run_coverage(
-                plan_index=0,
-                run_index=0,
-                model_name="EEGNet",
-            ),
-        ),
-    )
-    assert panel.plan_combo.count() == 2
-    assert panel.run_combo.count() == 1
-
-    with patch.object(panel, "update_panel") as update_panel:
-        source.notify(event_name)
-        qtbot.waitUntil(lambda: update_panel.call_count == 1, timeout=1000)
-
-    assert panel._application_view_publication is None
-    assert panel._application_summary_dirty is True
-    assert panel._saliency_summary_dirty is True
-
-    _publish_panel_state(panel, _visualization_result())
-
-    assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a plan"
-    assert panel.run_combo.count() == 0
-
-
-def test_training_stopped_preserves_typed_selection_in_new_publication(qtbot):
-    parent = _MainWindowStub()
-    qtbot.addWidget(parent)
-    training_controller = Observable()
-    panel, _controller = _make_panel(
-        qtbot,
-        training_controller=training_controller,
-        parent=parent,
-    )
-    initial_result = _visualization_result(
-        _run_coverage(
-            plan_index=0,
-            run_index=0,
-            model_name="EEGNet",
-        ),
-        _run_coverage(
-            plan_index=1,
-            run_index=0,
-            model_name="SCCNet",
-        ),
-        _run_coverage(
-            plan_index=1,
-            run_index=1,
-            model_name="SCCNet",
-        ),
-    )
-    assert isinstance(initial_result.state, ApplicationStateSnapshot)
-    store = ApplicationViewStore(
-        initial_result.state,
-        TrainingReadBoundary.no_trainer(),
-    )
-    first_publication = store.read()
-    _publish_panel_state(
-        panel,
-        initial_result,
-        publication=first_publication,
-    )
-    selected_run = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=1),
-        run_index=1,
-    )
-    _select_run(panel, selected_run)
-
-    with patch.object(panel, "update_panel") as update_panel:
-        training_controller.notify("training_stopped")
-        qtbot.waitUntil(lambda: update_panel.call_count == 1, timeout=1000)
-
-    assert panel._application_view_publication is None
-    updated_result = _visualization_result(
-        _run_coverage(
-            plan_index=0,
-            run_index=0,
-            model_name="EEGNet",
-        ),
-        _run_coverage(
-            plan_index=1,
-            run_index=0,
-            model_name="SCCNet",
-            run_name="Repeat 1",
-        ),
-        _run_coverage(
-            plan_index=1,
-            run_index=1,
-            model_name="SCCNet",
-            run_name="Repeat 2",
-        ),
-    )
-    assert isinstance(updated_result.state, ApplicationStateSnapshot)
-    second_publication = store.publish(
-        updated_result.state,
-        TrainingReadBoundary.no_trainer(),
-    )
-    _publish_panel_state(
-        panel,
-        updated_result,
-        publication=second_publication,
-    )
-
-    assert second_publication.generation == first_publication.generation + 1
-    assert panel.plan_combo.currentData() == selected_run.plan
-    assert panel.run_combo.currentData() == selected_run
-    assert panel.run_combo.currentText() == "Repeat 2"

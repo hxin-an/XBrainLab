@@ -3,10 +3,11 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QDockWidget,
     QHeaderView,
     QMainWindow,
@@ -18,8 +19,17 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.study import Study
+from XBrainLab.ui.application_capabilities import application_ui_runtime
+from XBrainLab.ui.panels.dataset.actions import (
+    DatasetActionHandler,
+    DatasetTableRowIdentity,
+)
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
+
+FIXED_SUMMARY_SIDEBAR_WIDTH = 260
+NARROW_FIXED_SIDEBAR_SHELL_WIDTH = 840
 
 
 @pytest.fixture
@@ -75,6 +85,24 @@ def loaded_data_stub(filename: str, *, labels_imported: bool = False) -> MagicMo
     return data
 
 
+def detached_summary_row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "subject": "S01",
+        "session": "session-01",
+        "epochs_length": 120,
+        "is_raw": False,
+        "event": {"labels": ["left", "right"], "count": 120},
+        "n_channels": 64,
+        "sampling_frequency": 250.0,
+        "epoch_duration_samples": 250,
+        "tmin": -0.2,
+        "highpass": 0.5,
+        "lowpass": 40.0,
+    }
+    row.update(overrides)
+    return row
+
+
 def dataset_publication(
     *,
     generation: int,
@@ -101,8 +129,9 @@ def dataset_publication(
 def dataset_shell_with_assistant(
     qtbot,
     *,
-    shell_width: int = 760,
+    shell_width: int = NARROW_FIXED_SIDEBAR_SHELL_WIDTH,
     shell_height: int = 800,
+    assistant_width: int = 320,
 ) -> tuple[QMainWindow, DatasetPanel, QDockWidget]:
     window = QMainWindow()
     cast(Any, window).study = MagicMock()
@@ -127,7 +156,7 @@ def dataset_shell_with_assistant(
     status_bar.showMessage("Dataset")
     assistant_dock = QDockWidget("XBrainLab Assistant", window)
     assistant_dock.setWidget(QWidget(assistant_dock))
-    assistant_dock.setFixedWidth(320)
+    assistant_dock.setFixedWidth(assistant_width)
     window.addDockWidget(
         Qt.DockWidgetArea.RightDockWidgetArea,
         assistant_dock,
@@ -135,7 +164,7 @@ def dataset_shell_with_assistant(
     window.setFixedSize(shell_width, shell_height)
     qtbot.addWidget(window)
     window.show()
-    window.resizeDocks([assistant_dock], [320], Qt.Orientation.Horizontal)
+    window.resizeDocks([assistant_dock], [assistant_width], Qt.Orientation.Horizontal)
     qtbot.wait(10)
     return window, panel, assistant_dock
 
@@ -151,15 +180,14 @@ def assert_widget_fits_panel(widget: QWidget, panel: DatasetPanel) -> None:
 
 def assert_dataset_horizontal_scroll_is_absent(panel: DatasetPanel) -> None:
     scroll_areas = (
-        panel.table,
-        panel.sidebar.scroll_area,
-        panel.sidebar.info_panel.table,
-        panel.summary_info_panel.table,
+        ("dataset table", panel.table),
+        ("dataset sidebar", panel.sidebar.scroll_area),
+        ("data summary", panel.sidebar.info_panel.table),
     )
-    for area in scroll_areas:
+    for name, area in scroll_areas:
         scrollbar = area.horizontalScrollBar()
         assert scrollbar is not None
-        assert scrollbar.maximum() == 0
+        assert scrollbar.maximum() == 0, name
 
 
 def assert_widget_fits_scroll_viewport(widget: QWidget, scroll_area) -> None:
@@ -172,7 +200,20 @@ def assert_widget_fits_scroll_viewport(widget: QWidget, scroll_area) -> None:
     assert bottom_right.y() <= viewport.contentsRect().bottom()
 
 
+def assert_widget_fits_scroll_width(widget: QWidget, scroll_area) -> None:
+    viewport = scroll_area.viewport()
+    top_left = widget.mapTo(viewport, widget.rect().topLeft())
+    bottom_right = widget.mapTo(viewport, widget.rect().bottomRight())
+    assert top_left.x() >= viewport.contentsRect().left()
+    assert bottom_right.x() <= viewport.contentsRect().right()
+
+
 def assert_info_cells_fit(info_panel) -> None:
+    wrap_flags = (
+        int(Qt.AlignmentFlag.AlignLeft)
+        | int(Qt.AlignmentFlag.AlignTop)
+        | int(Qt.TextFlag.TextWordWrap)
+    )
     for row in range(info_panel.table.rowCount()):
         if info_panel.table.isRowHidden(row):
             continue
@@ -180,15 +221,50 @@ def assert_info_cells_fit(info_panel) -> None:
             item = info_panel.table.item(row, column)
             assert item is not None
             item_rect = info_panel.table.visualItemRect(item)
-            text_width = info_panel.table.fontMetrics().horizontalAdvance(item.text())
-            assert text_width + 16 <= item_rect.width(), (
+            text_rect = info_panel.table.fontMetrics().boundingRect(
+                QRect(0, 0, max(1, item_rect.width() - 8), 10_000),
+                wrap_flags,
                 item.text(),
-                text_width,
-                item_rect.width(),
+            )
+            available_width = max(1, item_rect.width() - 8)
+            column_widths = tuple(
+                info_panel.table.columnWidth(index)
+                for index in range(info_panel.table.columnCount())
+            )
+            assert text_rect.width() <= available_width, (
+                f"row={row} column={column} text={item.text()!r} "
+                f"text_width={text_rect.width()} available={available_width} "
+                f"panel={info_panel.width()} table={info_panel.table.width()} "
+                f"viewport={info_panel.table.viewport().width()} "
+                f"columns={column_widths}"
+            )
+            assert text_rect.height() + 2 <= item_rect.height(), (
+                row,
+                column,
+                item.text(),
+                text_rect.height(),
+                item_rect.height(),
             )
 
 
-def test_dataset_panel_empty_state_fits_760_shell_with_320_assistant_dock(
+def assert_wrapped_label_fits(label) -> None:
+    text_rect = label.fontMetrics().boundingRect(
+        QRect(0, 0, max(1, label.contentsRect().width()), 10_000),
+        int(Qt.AlignmentFlag.AlignCenter) | int(Qt.TextFlag.TextWordWrap),
+        label.text(),
+    )
+    assert text_rect.height() <= label.contentsRect().height() + 1
+
+
+def assert_fixed_summary_sidebar(panel: DatasetPanel) -> None:
+    assert panel.sidebar.width() == FIXED_SUMMARY_SIDEBAR_WIDTH
+    assert panel.sidebar.info_panel.isVisibleTo(panel)
+    assert (
+        panel.sidebar.scroll_area.content_layout.indexOf(panel.sidebar.info_panel) == 0
+    )
+
+
+def test_dataset_panel_empty_state_fits_840_shell_with_320_assistant_dock(
     qtbot,
 ):
     _window, panel, assistant_dock = dataset_shell_with_assistant(qtbot)
@@ -196,20 +272,11 @@ def test_dataset_panel_empty_state_fits_760_shell_with_320_assistant_dock(
     assert assistant_dock.isVisible()
     assert assistant_dock.width() == 320
     assert panel.data_surface.currentWidget() is panel.empty_state
-    tab_bar = panel.content_tabs.tabBar()
-    assert tab_bar is not None
-    assert not tab_bar.isVisibleTo(panel)
-    assert not panel.content_tabs.isTabVisible(1)
-    assert not panel.sidebar.info_panel.isVisibleTo(panel)
+    assert_fixed_summary_sidebar(panel)
     assert_widget_fits_panel(panel.content_column, panel)
     assert_widget_fits_panel(panel.sidebar, panel)
     assert_widget_fits_panel(panel.empty_state_title, panel)
-    assert (
-        panel.empty_state_title.fontMetrics().horizontalAdvance(
-            panel.empty_state_title.text()
-        )
-        <= panel.empty_state_title.contentsRect().width()
-    )
+    assert_wrapped_label_fits(panel.empty_state_title)
     for button in (
         panel.sidebar.import_btn,
         panel.sidebar.import_folder_btn,
@@ -223,7 +290,7 @@ def test_dataset_panel_empty_state_fits_760_shell_with_320_assistant_dock(
     assert_dataset_horizontal_scroll_is_absent(panel)
 
 
-def test_dataset_panel_loaded_summary_fits_760_shell_with_320_assistant_dock(
+def test_dataset_panel_loaded_summary_fits_840_shell_with_320_assistant_dock(
     qtbot,
 ):
     _window, panel, assistant_dock = dataset_shell_with_assistant(qtbot)
@@ -237,26 +304,38 @@ def test_dataset_panel_loaded_summary_fits_760_shell_with_320_assistant_dock(
         "count": 120,
         "labels": ["left", "right"],
     }
-    panel.sidebar.info_panel.update_info(preprocessed_data_list=[data])
-    panel.summary_info_panel.update_info(preprocessed_data_list=[data])
-    panel.content_tabs.setCurrentIndex(1)
+    panel.sidebar.info_panel.update_info(
+        preprocessed_data_list=[detached_summary_row()]
+    )
     qtbot.wait(10)
 
     assert assistant_dock.isVisible()
     assert assistant_dock.width() == 320
-    assert panel.summary_info_panel.isVisibleTo(panel)
+    assert_fixed_summary_sidebar(panel)
     assert_widget_fits_panel(panel.content_column, panel)
     assert_widget_fits_panel(panel.sidebar, panel)
-    assert_widget_fits_panel(panel.summary_info_panel, panel)
-    assert_info_cells_fit(panel.summary_info_panel)
+    assert_widget_fits_panel(panel.sidebar.info_panel, panel)
+    assert_info_cells_fit(panel.sidebar.info_panel)
     assert_dataset_horizontal_scroll_is_absent(panel)
 
 
-@pytest.mark.parametrize("shell_width", [760, 820, 1280])
+@pytest.mark.parametrize(
+    ("shell_width", "assistant_width"),
+    [
+        pytest.param(
+            NARROW_FIXED_SIDEBAR_SHELL_WIDTH,
+            320,
+            id="narrow-fixed-sidebar",
+        ),
+        pytest.param(1024, 420, id="standard-assistant-compact-workflow"),
+        pytest.param(1280, 420, id="standard-assistant-full-workflow"),
+    ],
+)
 @pytest.mark.parametrize("logical_scale", [1.0, 1.25, 1.5])
 def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
     qtbot,
     shell_width,
+    assistant_width,
     logical_scale,
 ):
     app = QApplication.instance()
@@ -270,17 +349,13 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
         window, panel, assistant_dock = dataset_shell_with_assistant(
             qtbot,
             shell_width=shell_width,
+            assistant_width=assistant_width,
         )
-        assert assistant_dock.width() == 320
+        assert assistant_dock.width() == assistant_width
         assert_widget_fits_panel(panel.content_column, panel)
         assert_widget_fits_panel(panel.sidebar, panel)
         assert_widget_fits_panel(panel.empty_state_title, panel)
-        assert (
-            panel.empty_state_title.fontMetrics().horizontalAdvance(
-                panel.empty_state_title.text()
-            )
-            <= panel.empty_state_title.contentsRect().width()
-        )
+        assert_wrapped_label_fits(panel.empty_state_title)
 
         data = loaded_data_stub("sub-01_task-mi_run-01_eeg.fif")
         data.is_raw.return_value = False
@@ -292,8 +367,9 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
             "count": 120,
             "labels": ["left", "right"],
         }
-        panel.sidebar.info_panel.update_info(preprocessed_data_list=[data])
-        panel.summary_info_panel.update_info(preprocessed_data_list=[data])
+        panel.sidebar.info_panel.update_info(
+            preprocessed_data_list=[detached_summary_row()]
+        )
         panel.table.setRowCount(1)
         for column, text in enumerate(
             (
@@ -318,16 +394,10 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
         ):
             panel.show_post_import_next_action()
         qtbot.wait(10)
-        tab_bar = panel.content_tabs.tabBar()
-        assert tab_bar is not None
-        if tab_bar.isVisibleTo(panel):
-            panel.content_tabs.setCurrentIndex(1)
-            active_info_panel = panel.summary_info_panel
-        else:
-            panel.content_tabs.setCurrentIndex(0)
-            active_info_panel = panel.sidebar.info_panel
+        active_info_panel = panel.sidebar.info_panel
         qtbot.wait(10)
 
+        assert_fixed_summary_sidebar(panel)
         assert active_info_panel.isVisibleTo(panel)
         assert_widget_fits_panel(active_info_panel, panel)
         assert_info_cells_fit(active_info_panel)
@@ -349,11 +419,19 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
             panel.sidebar.clear_btn,
         ):
             assert button.isVisibleTo(panel)
-            assert_widget_fits_panel(button, panel)
-            assert_widget_fits_scroll_viewport(button, panel.sidebar.scroll_area)
+            assert_widget_fits_scroll_width(button, panel.sidebar.scroll_area)
             assert (
                 button.fontMetrics().horizontalAdvance(button.text()) + 30
                 <= button.contentsRect().width()
+            )
+        vertical_scrollbar = panel.sidebar.scroll_area.verticalScrollBar()
+        assert vertical_scrollbar is not None
+        if vertical_scrollbar.maximum() > 0:
+            vertical_scrollbar.setValue(vertical_scrollbar.maximum())
+            qtbot.wait(0)
+            assert_widget_fits_scroll_viewport(
+                panel.sidebar.clear_btn,
+                panel.sidebar.scroll_area,
             )
         assert_dataset_horizontal_scroll_is_absent(panel)
     finally:
@@ -391,6 +469,29 @@ def test_update_panel_uses_query_data_list_before_stale_controller(qtbot):
     real_window.close()
 
 
+def test_update_panel_uses_typed_runtime_rows_without_compatibility_controller(qtbot):
+    study = Study()
+    study.loaded_data_list = [loaded_data_stub("sub-01_task-mi_raw.fif")]
+
+    real_window = QMainWindow()
+    cast(Any, real_window).study = study
+    runtime = application_ui_runtime(real_window)
+    assert runtime is not None
+    panel = DatasetPanel(parent=real_window, publication_port=runtime)
+    qtbot.addWidget(real_window)
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+
+    assert panel.controller is None
+    assert panel.table.rowCount() == 1
+    assert panel.data_surface.currentWidget() is panel.table
+    file_item = panel.table.item(0, 0)
+    assert file_item is not None
+    assert file_item.text() == "sub-01_task-mi_raw.fif"
+    real_window.close()
+
+
 def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
     study = Study()
     study.loaded_data_list = [loaded_data_stub("sub-01_task-mi_raw.fif")]
@@ -412,10 +513,14 @@ def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
         "XBrainLab.ui.panels.dataset.panel.execute_application_command",
         return_value=None,
     ):
-        panel.update_panel()
+        rendered = panel.update_panel()
 
     controller.get_loaded_data_list.assert_not_called()
     assert panel.table.rowCount() == 0
+    assert rendered is False
+    assert panel.data_surface.currentWidget() is panel.empty_state
+    assert panel.empty_state_title.text() == "Dataset view unavailable"
+    assert panel.empty_state_import_btn.isHidden()
     real_window.close()
 
 
@@ -445,6 +550,7 @@ def test_deferred_runtime_uses_actionable_empty_state(qtbot):
         panel.empty_state_detail.text()
         == "Import a file, folder, or BIDS folder to begin."
     )
+    assert not panel.empty_state_import_btn.isHidden()
     real_window.close()
 
 
@@ -576,6 +682,29 @@ def test_dataset_panel_uses_product_empty_state_instead_of_blank_table(
     assert not panel.table.isVisibleTo(panel)
     assert panel.empty_state_title.text() == "No EEG data loaded"
     assert "Import a file, folder, or BIDS folder" in panel.empty_state_detail.text()
+    assert panel.empty_state_import_btn.isVisibleTo(panel)
+    assert panel.empty_state_import_btn.text() == "Import EEG Data"
+    assert panel.empty_state_import_btn.styleSheet() == Stylesheets.BTN_PRIMARY
+
+
+def test_dataset_empty_state_primary_action_opens_import_flow(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    with patch.object(DatasetActionHandler, "import_data") as import_data:
+        panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+        qtbot.addWidget(panel)
+        panel.resize(980, 520)
+        panel.show()
+        panel.update_panel()
+
+        qtbot.mouseClick(
+            panel.empty_state_import_btn,
+            Qt.MouseButton.LeftButton,
+        )
+
+    import_data.assert_called_once()
 
 
 def test_dataset_panel_restores_table_when_rows_are_available(
@@ -704,7 +833,7 @@ def test_dataset_panel_refits_table_after_loaded_rows_settle(
     assert scrollbar.maximum() == 0
 
 
-def test_dataset_panel_uses_compact_columns_when_assistant_reduces_width(
+def test_dataset_panel_keeps_file_column_when_assistant_reduces_width(
     mock_main_window,
     mock_controller,
     qtbot,
@@ -727,25 +856,22 @@ def test_dataset_panel_uses_compact_columns_when_assistant_reduces_width(
                 for column in range(panel.table.columnCount())
                 if not panel.table.isColumnHidden(column)
             )
-            == DatasetPanel._COMPACT_COLUMNS
+            == (0,)
             and abs(header.length() - viewport.width()) <= 2
         ),
         timeout=1_000,
     )
     assert not panel.table.isColumnHidden(0)
-    assert (
-        tuple(
-            column
-            for column in range(panel.table.columnCount())
-            if not panel.table.isColumnHidden(column)
-        )
-        == DatasetPanel._COMPACT_COLUMNS
-    )
+    assert tuple(
+        column
+        for column in range(panel.table.columnCount())
+        if not panel.table.isColumnHidden(column)
+    ) == (0,)
     assert abs(header.length() - viewport.width()) <= 2
     assert scrollbar.maximum() == 0
 
 
-def test_dataset_panel_moves_data_summary_into_tab_at_narrow_width(
+def test_dataset_panel_keeps_data_summary_at_sidebar_top_across_widths(
     mock_main_window,
     mock_controller,
     qtbot,
@@ -762,30 +888,32 @@ def test_dataset_panel_moves_data_summary_into_tab_at_narrow_width(
         "count": 4,
         "labels": ["left"],
     }
-    panel.sidebar.info_panel.update_info(loaded_data_list=[data])
-    panel.summary_info_panel.update_info(loaded_data_list=[data])
+    panel.sidebar.info_panel.update_info(
+        loaded_data_list=[
+            detached_summary_row(
+                epochs_length=0,
+                is_raw=True,
+                epoch_duration_samples=None,
+                tmin=None,
+            )
+        ]
+    )
     qtbot.wait(10)
 
-    tab_bar = panel.content_tabs.tabBar()
-    assert tab_bar is not None
-    typed_tab_bar = tab_bar
-    assert tab_bar.isVisibleTo(panel)
-    assert panel.content_tabs.isTabVisible(1)
-    assert panel.content_tabs.tabText(0) == "EEG Files"
-    assert panel.content_tabs.tabText(1) == "Data Summary"
-    assert not panel.sidebar.info_panel.isVisibleTo(panel)
-
-    panel.content_tabs.setCurrentIndex(1)
-    assert panel.summary_info_panel.isVisibleTo(panel)
+    assert panel.main_layout.direction() == QBoxLayout.Direction.LeftToRight
+    assert panel.sidebar.info_panel.isVisibleTo(panel)
+    assert (
+        panel.sidebar.scroll_area.content_layout.indexOf(panel.sidebar.info_panel) == 0
+    )
 
     mock_main_window.resize(1100, 520)
-    qtbot.waitUntil(lambda: not typed_tab_bar.isVisibleTo(panel), timeout=1000)
+    qtbot.wait(20)
 
-    tab_bar = panel.content_tabs.tabBar()
-    assert tab_bar is not None
-    assert not tab_bar.isVisibleTo(panel)
-    assert panel.content_tabs.currentIndex() == 0
+    assert panel.main_layout.direction() == QBoxLayout.Direction.LeftToRight
     assert panel.sidebar.info_panel.isVisibleTo(panel)
+    assert (
+        panel.sidebar.scroll_area.content_layout.indexOf(panel.sidebar.info_panel) == 0
+    )
 
 
 def test_dataset_summary_uses_one_vertical_scroll_owner_at_short_high_dpi_shell(
@@ -801,7 +929,7 @@ def test_dataset_summary_uses_one_vertical_scroll_owner_at_short_high_dpi_shell(
     try:
         window, panel, _assistant_dock = dataset_shell_with_assistant(
             qtbot,
-            shell_width=760,
+            shell_width=NARROW_FIXED_SIDEBAR_SHELL_WIDTH,
             shell_height=520,
         )
         data = loaded_data_stub("sub-01_task-mi_run-01_eeg.fif")
@@ -815,16 +943,15 @@ def test_dataset_summary_uses_one_vertical_scroll_owner_at_short_high_dpi_shell(
             "labels": ["left", "right"],
         }
 
-        panel.sidebar.info_panel.update_info(preprocessed_data_list=[data])
-        panel.summary_info_panel.update_info(preprocessed_data_list=[data])
-        qtbot.wait(10)
-        panel.content_tabs.setCurrentIndex(1)
+        panel.sidebar.info_panel.update_info(
+            preprocessed_data_list=[detached_summary_row()]
+        )
         qtbot.wait(10)
 
-        summary_vertical = panel.summary_page.verticalScrollBar()
-        summary_horizontal = panel.summary_page.horizontalScrollBar()
-        table_vertical = panel.summary_info_panel.table.verticalScrollBar()
-        table_horizontal = panel.summary_info_panel.table.horizontalScrollBar()
+        summary_vertical = panel.sidebar.scroll_area.verticalScrollBar()
+        summary_horizontal = panel.sidebar.scroll_area.horizontalScrollBar()
+        table_vertical = panel.sidebar.info_panel.table.verticalScrollBar()
+        table_horizontal = panel.sidebar.info_panel.table.horizontalScrollBar()
         assert summary_vertical is not None
         assert summary_horizontal is not None
         assert table_vertical is not None
@@ -833,8 +960,8 @@ def test_dataset_summary_uses_one_vertical_scroll_owner_at_short_high_dpi_shell(
         assert summary_horizontal.maximum() == 0
         assert table_vertical.maximum() == 0
         assert table_horizontal.maximum() == 0
-        assert panel.summary_info_panel.isVisibleTo(panel)
-        assert_info_cells_fit(panel.summary_info_panel)
+        assert panel.sidebar.info_panel.isVisibleTo(panel)
+        assert_info_cells_fit(panel.sidebar.info_panel)
     finally:
         if window is not None:
             window.close()
@@ -937,7 +1064,7 @@ def test_dataset_panel_post_import_action_tracks_refresh_and_reset_publication(
         assert panel.post_import_action_button.text() == "Continue to Preprocess"
 
         panel.update_panel()
-        assert panel.post_import_action_button.text() == "Create EEG epochs"
+        assert panel.post_import_action_button.text() == "Create EEG Epochs"
         assert not panel.post_import_action_bar.isHidden()
 
         panel.update_panel()
@@ -991,7 +1118,13 @@ def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
             "has_event.return_value": True,
             "is_raw.return_value": True,
             "is_labels_imported.return_value": False,
-            "get_event_list.return_value": ([1, 2, 3], {}),
+            "get_event_summary.return_value": {
+                "available": True,
+                "count": 3,
+                "labels": [],
+                "source": "detected_events",
+                "scanned": True,
+            },
         }
     )
     imported_labels = MagicMock()
@@ -1006,7 +1139,13 @@ def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
             "has_event.return_value": True,
             "is_raw.return_value": True,
             "is_labels_imported.return_value": True,
-            "get_event_list.return_value": ([1, 2], {}),
+            "get_event_summary.return_value": {
+                "available": True,
+                "count": 2,
+                "labels": [],
+                "source": "attached_labels",
+                "scanned": True,
+            },
         }
     )
     mock_controller.get_loaded_data_list.return_value = [
@@ -1126,7 +1265,13 @@ def test_dataset_panel_metadata_service_success_uses_coordinator_refresh(
     panel.table.setRowCount(1)
     panel.table.setColumnCount(7)
     name_item = QTableWidgetItem("file.set")
-    name_item.setData(Qt.ItemDataRole.UserRole, True)
+    name_item.setData(
+        panel._ROW_IDENTITY_ROLE,
+        DatasetTableRowIdentity(
+            canonical_filepath="/data/file.set",
+            rendered_row=0,
+        ),
+    )
     panel.table.setItem(0, 0, name_item)
     subject_item = QTableWidgetItem("S02")
     panel.table.setItem(0, 1, subject_item)
@@ -1163,7 +1308,13 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
     panel.table.setRowCount(1)
     panel.table.setColumnCount(7)
     name_item = QTableWidgetItem("file.set")
-    name_item.setData(Qt.ItemDataRole.UserRole, True)
+    name_item.setData(
+        panel._ROW_IDENTITY_ROLE,
+        DatasetTableRowIdentity(
+            canonical_filepath="/data/file.set",
+            rendered_row=0,
+        ),
+    )
     panel.table.setItem(0, 0, name_item)
     subject_item = QTableWidgetItem("S02")
     panel.table.setItem(0, 1, subject_item)
@@ -1185,8 +1336,10 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
 
     controller.update_metadata.assert_not_called()
     mock_warning.assert_called_once()
-    assert mock_warning.call_args.args[1] == "Refresh Dataset and Edit Again"
-    assert "Refresh the Dataset table" in mock_warning.call_args.args[2]
+    assert mock_warning.call_args.args[1] == "Metadata blocked"
+    assert mock_warning.call_args.args[2] == (
+        "Metadata editing availability is unavailable right now."
+    )
     mock_update.assert_called_once()
 
 
@@ -1232,6 +1385,137 @@ def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
     assert not session_item.flags() & Qt.ItemFlag.ItemIsEditable
     assert "Reset the session before changing raw files" in subject_item.toolTip()
     assert subject_item.toolTip() == session_item.toolTip()
+
+
+def test_dataset_panel_clears_state_when_product_publication_is_missing(qtbot):
+    """Real Study state is not reconstructed from a controller fallback."""
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    cast(Any, window).study = Study()
+    controller = MagicMock()
+    panel = DatasetPanel(controller=controller, parent=window)
+    qtbot.addWidget(panel)
+
+    with (
+        patch.object(panel.sidebar, "update_sidebar"),
+        patch.object(panel, "_read_application_publication", return_value=None),
+        patch.object(panel, "_query_loaded_data_list_for_render") as query_rows,
+    ):
+        panel.update_panel()
+
+    query_rows.assert_not_called()
+    assert panel.table.rowCount() == 0
+    assert panel.data_surface.currentWidget() is panel.empty_state
+
+
+def test_dataset_panel_metadata_cells_fail_closed_without_product_capability(
+    qtbot,
+):
+    """Real Study metadata cells stay read-only when capability truth is absent."""
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    cast(Any, window).study = Study()
+    controller = MagicMock()
+    data = loaded_data_stub("sub-01_task-mi_raw.fif")
+    publication = SimpleNamespace(
+        usable=True,
+        generation=41,
+        effective_capabilities={},
+        state=SimpleNamespace(active_dataset=None),
+    )
+    panel = DatasetPanel(controller=controller, parent=window)
+    qtbot.addWidget(panel)
+
+    with (
+        patch.object(panel.sidebar, "update_sidebar"),
+        patch.object(
+            panel,
+            "_query_loaded_data_list_for_render",
+            return_value=[data],
+        ),
+        patch.object(
+            panel,
+            "_read_application_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.panel.get_command_capability",
+            return_value=None,
+        ),
+    ):
+        panel.update_panel()
+
+    subject_item = panel.table.item(0, 1)
+    session_item = panel.table.item(0, 2)
+    assert subject_item is not None
+    assert session_item is not None
+    assert not subject_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert not session_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert subject_item.toolTip() == (
+        "Metadata editing availability is unavailable right now."
+    )
+    assert session_item.toolTip() == subject_item.toolTip()
+
+
+def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtbot):
+    """A direct edit signal cannot bypass missing product capability truth."""
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    cast(Any, window).study = Study()
+    controller = MagicMock()
+    data = loaded_data_stub("sub-01_task-mi_raw.fif")
+    publication = SimpleNamespace(
+        usable=True,
+        generation=42,
+        effective_capabilities={},
+        state=SimpleNamespace(active_dataset=None),
+    )
+    panel = DatasetPanel(controller=controller, parent=window)
+    qtbot.addWidget(panel)
+
+    with (
+        patch.object(panel.sidebar, "update_sidebar"),
+        patch.object(
+            panel,
+            "_query_loaded_data_list_for_render",
+            return_value=[data],
+        ),
+        patch.object(
+            panel,
+            "_read_application_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.panel.get_command_capability",
+            return_value=None,
+        ),
+    ):
+        panel.update_panel()
+
+    subject_item = panel.table.item(0, 1)
+    assert subject_item is not None
+    panel._capture_metadata_edit(0, 1)
+    panel.table.blockSignals(True)
+    subject_item.setText("S02")
+    panel.table.blockSignals(False)
+
+    with (
+        patch.object(panel, "resolve_table_selection") as resolve_selection,
+        patch(
+            "XBrainLab.ui.panels.dataset.panel.execute_application_command",
+        ) as execute,
+        patch.object(panel, "update_panel"),
+        patch.object(QMessageBox, "warning") as warning,
+    ):
+        panel.on_item_changed(subject_item)
+
+    resolve_selection.assert_not_called()
+    execute.assert_not_called()
+    warning.assert_called_once_with(
+        panel,
+        "Metadata blocked",
+        "Metadata editing availability is unavailable right now.",
+    )
 
 
 def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):

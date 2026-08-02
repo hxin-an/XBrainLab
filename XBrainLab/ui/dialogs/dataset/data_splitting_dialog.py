@@ -5,9 +5,9 @@ EEG datasets into training, validation, and testing sets using various
 strategies such as subject-wise, session-wise, or trial-wise splits.
 """
 
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol
 
 import numpy as np
 from PyQt6.QtCore import QRect, Qt
@@ -28,6 +28,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitContext,
+    DatasetSplitPreviewPublication,
+    DatasetSplitPreviewRequest,
+)
 from XBrainLab.backend.dataset import (
     DataSplitter,
     DataSplittingConfig,
@@ -35,38 +40,19 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
-from XBrainLab.backend.study import Study
-from XBrainLab.ui.application_capabilities import find_study
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
+from XBrainLab.ui.styles.theme import Theme
 
 from .data_splitting_preview_dialog import (
     DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
 
-_UNSET = object()
 _NARROW_FLOW_BREAKPOINT = 800
 _CHEVRON_DOWN_ICON = (
     Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
 ).as_posix()
-
-
-class _DataSplittingControllerPort(Protocol):
-    """Compatibility controller contract for standalone dialog contexts."""
-
-    def get_epoch_data(self) -> Any: ...
-
-    def get_dataset_generator(self) -> Any: ...
-
-
-def _is_real_study_context(parent: Any, controller: Any) -> bool:
-    """Return whether the dialog is running in a real Study-backed UI context."""
-    return any(
-        isinstance(find_study(context), Study)
-        for context in (parent, controller)
-        if context is not None
-    )
 
 
 class DrawColor(Enum):
@@ -380,9 +366,7 @@ class DataSplittingDialog(BaseDialog):
     strategy, and cross-validation options.
 
     Attributes:
-        controller: Application controller for accessing epoch data.
-        epoch_data: The loaded epoch data from the controller.
-        dataset_generator: Generator for creating split datasets.
+        split_context: Detached counts and choices published by ApplicationService.
         subject_num: Number of subjects for preview grid.
         session_num: Number of sessions for preview grid.
         train_region: DrawRegion for training data visualization.
@@ -396,39 +380,36 @@ class DataSplittingDialog(BaseDialog):
     def __init__(
         self,
         parent,
-        controller: _DataSplittingControllerPort | None,
-        dataset_generator: Any = _UNSET,
-        epoch_data: Any = _UNSET,
         *,
+        split_context: DatasetSplitContext | None = None,
+        publication_generation: int | None = None,
+        preview_provider: (
+            Callable[[DatasetSplitPreviewRequest], DatasetSplitPreviewPublication]
+            | None
+        ) = None,
+        preview_canceller: Callable[[str], bool] | None = None,
         initial_values: dict[str, str] | None = None,
     ):
-        self.controller = controller
         self.initial_values = {
             str(key): str(value)
             for key, value in (initial_values or {}).items()
             if str(key).strip() and str(value).strip()
         }
-        allow_controller_fallback = not _is_real_study_context(parent, controller)
-
-        if epoch_data is _UNSET:
-            self.epoch_data = (
-                self.controller.get_epoch_data()
-                if self.controller and allow_controller_fallback
-                else None
-            )
-        else:
-            self.epoch_data = epoch_data
-
-        if (
-            dataset_generator is _UNSET
-            and self.controller
-            and allow_controller_fallback
+        if split_context is not None and not isinstance(
+            split_context,
+            DatasetSplitContext,
         ):
-            self.dataset_generator = self.controller.get_dataset_generator()
-        else:
-            self.dataset_generator = (
-                None if dataset_generator is _UNSET else dataset_generator
-            )
+            raise TypeError("split_context must be a DatasetSplitContext")
+        if publication_generation is not None and (
+            isinstance(publication_generation, bool)
+            or not isinstance(publication_generation, int)
+            or publication_generation < 1
+        ):
+            raise ValueError("publication_generation must be a positive integer")
+        self.split_context = split_context
+        self.publication_generation = publication_generation
+        self.preview_provider = preview_provider
+        self.preview_canceller = preview_canceller
 
         self.subject_num = 5
         self.session_num = 5
@@ -436,21 +417,21 @@ class DataSplittingDialog(BaseDialog):
         self.val_region = DrawRegion(self.session_num, self.subject_num)
         self.test_region = DrawRegion(self.session_num, self.subject_num)
 
-        self.step2_window = None
-        self.split_result = None
+        self.step2_window: DataSplittingPreviewDialog | None = None
+        self.split_result: dict[str, object] | None = None
 
         # UI Elements
-        self.canvas = None
-        self.train_type_combo = None
-        self.test_combo = None
-        self.val_combo = None
-        self.cv_check = None
-        self.btn_confirm = None
-        self.blocked_label = None
-        self.content_layout = None
-        self.content_scroll = None
-        self.preview_group = None
-        self.options_group = None
+        self.canvas: PreviewCanvas | None = None
+        self.train_type_combo: QComboBox | None = None
+        self.test_combo: QComboBox | None = None
+        self.val_combo: QComboBox | None = None
+        self.cv_check: QCheckBox | None = None
+        self.btn_confirm: QPushButton | None = None
+        self.blocked_label: QLabel | None = None
+        self.content_layout: QBoxLayout | None = None
+        self.content_scroll: QScrollArea | None = None
+        self.preview_group: QFrame | None = None
+        self.options_group: QFrame | None = None
 
         super().__init__(parent, title="Data Splitting Setting")
         self.setObjectName("DataSplittingDialog")
@@ -776,7 +757,7 @@ class DataSplittingDialog(BaseDialog):
             or not self.cv_check
         ):
             return
-        if self.epoch_data is None:
+        if not self._preview_available():
             self._sync_availability()
             return
 
@@ -823,8 +804,11 @@ class DataSplittingDialog(BaseDialog):
         self.step2_window = DataSplittingPreviewDialog(
             self.parent(),
             "Data Splitting Step 2",
-            self.epoch_data,
-            config,
+            split_context=self.split_context,
+            publication_generation=self.publication_generation,
+            config=config,
+            preview_provider=self.preview_provider,
+            preview_canceller=self.preview_canceller,
             initial_values=self.initial_values,
         )
         if self.step2_window.exec():
@@ -843,9 +827,18 @@ class DataSplittingDialog(BaseDialog):
         return self.split_result
 
     def _sync_availability(self) -> None:
-        """Reflect whether this dialog has epoch data required for splitting."""
-        blocked = self.epoch_data is None
-        message = "Create epochs before splitting data." if blocked else ""
+        """Reflect whether detached context and preview service are available."""
+        blocked = not self._preview_available()
+        if self.split_context is None:
+            message = "Dataset splitting context is unavailable."
+        elif not self.split_context.epoch_available:
+            message = "Create EEG epochs before splitting data."
+        elif self.publication_generation is None:
+            message = "Refresh the workflow before splitting data."
+        elif self.preview_provider is None or self.preview_canceller is None:
+            message = "Dataset split preview is unavailable."
+        else:
+            message = ""
         if self.btn_confirm is not None:
             self.btn_confirm.setEnabled(not blocked)
             self.btn_confirm.setToolTip(message)
@@ -853,9 +846,19 @@ class DataSplittingDialog(BaseDialog):
             self.blocked_label.setText(message)
             self.blocked_label.setVisible(blocked)
 
+    def _preview_available(self) -> bool:
+        context = self.split_context
+        return bool(
+            context is not None
+            and context.epoch_available
+            and self.publication_generation is not None
+            and self.preview_provider is not None
+            and self.preview_canceller is not None
+        )
+
     @staticmethod
     def _dialog_style() -> str:
-        return (
+        style = (
             """
         QDialog#DataSplittingDialog {
             background: #1b1b1d;
@@ -920,7 +923,7 @@ class DataSplittingDialog(BaseDialog):
         QComboBox QAbstractItemView {
             background: #25272a;
             color: #f2f5f8;
-            selection-background-color: #2f4f66;
+            selection-background-color: __TABLE_SELECTION__;
             selection-color: #ffffff;
         }
         QCheckBox#DataSplitCrossValidationCheck {
@@ -947,5 +950,9 @@ class DataSplittingDialog(BaseDialog):
             background: #2a2c30;
             color: #87909b;
         }
-        """.replace("__CHEVRON_DOWN_ICON__", _CHEVRON_DOWN_ICON)
+        """
+        )
+        return style.replace("__CHEVRON_DOWN_ICON__", _CHEVRON_DOWN_ICON).replace(
+            "__TABLE_SELECTION__",
+            Theme.TABLE_SELECTION,
         )

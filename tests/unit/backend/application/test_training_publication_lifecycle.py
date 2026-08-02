@@ -16,11 +16,11 @@ from XBrainLab.backend.application.training_publication_lifecycle import (
     SaliencyTerminalDeliveryPlan,
     TrainingPublicationLifecycleCoordinator,
 )
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingRunIdentity,
     TrainingStateToken,

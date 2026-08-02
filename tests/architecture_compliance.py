@@ -31,6 +31,15 @@ FORBIDDEN_PRODUCT_LLM_TOKENS = (
     "GEMINI_API_KEY",
     "XBRAINLAB_SHOW_LEGACY_REMOTE_LLM",
 )
+LOCAL_ONLY_LLM_TOKEN_ALLOWLIST = {
+    Path("XBrainLab/backend/utils/public_diagnostics.py"): frozenset(
+        {
+            # The privacy boundary must recognize this credential name so it can
+            # redact it. It does not read or configure a remote runtime.
+            "OPENAI_API_KEY",
+        }
+    ),
+}
 REMOTE_SDK_DEFAULT_DEPS = ("openai", "google-genai")
 UI_CONTROLLER_FALLBACK_METHODS = (
     "_run_legacy_label_import",
@@ -67,6 +76,69 @@ UI_CONTROLLER_FALLBACK_WRAPPERS = (
     "_run_preprocess_compatibility_call",
 )
 
+LEGACY_AGENT_CONTROLLER_LIFECYCLE_ATTRIBUTES = frozenset(
+    {
+        "_active_generation_dispatch_phase",
+        "_active_generation_id",
+        "_active_host_turn_generation",
+        "_active_host_turn_id",
+        "_active_rag_turn_id",
+        "_active_tool_publication",
+        "_active_turn_excluded_commands",
+        "_active_turn_scope",
+        "_active_turn_terminal_command",
+        "_admitted_command_name",
+        "_admitted_publication_generation",
+        "_cancellation_response_sent",
+        "_generation_dispatch_in_progress",
+        "_generation_id",
+        "_last_tool_summary",
+        "_last_tool_summary_kind",
+        "_loop_break_count",
+        "_rag_turn_id",
+        "_retry_count",
+        "_stopping_generation_id",
+        "_successful_tool_count",
+        "_tool_execution_count",
+        "_tool_failure_count",
+        "_turn_cancelled",
+        "_visible_response_sent",
+        "_waiting_for_rag",
+    }
+)
+
+APPLICATION_SERVICE_SHUTDOWN_LIFECYCLE_ATTRIBUTES = frozenset(
+    {
+        "_closed",
+        "_closing",
+        "_shutdown_fenced",
+        "_shutdown_fence_generation",
+    }
+)
+APPLICATION_SERVICE_SHUTDOWN_LIFECYCLE_METHODS = frozenset(
+    {
+        "_begin_close",
+        "_complete_shutdown_fence_release",
+        "_runtime_saliency_terminal_delivery_committed",
+        "_terminal_saliency_release_obligation",
+    }
+)
+LEGACY_AGENT_MANAGER_PUBLICATION_ALIASES = frozenset(
+    {
+        "_assistant_training_watch",
+        "_pending_application_view_publication",
+        "_pending_assistant_training_terminal",
+    }
+)
+PUBLIC_ASSISTANT_PUBLICATION_STATE_FIELDS = frozenset(
+    {
+        "pending_publication",
+        "pending_training_terminal",
+        "publication_retry_attempts",
+        "training_watch",
+    }
+)
+
 
 @dataclass(frozen=True)
 class ControllerDirectCallAllowance:
@@ -79,11 +151,6 @@ class ControllerDirectCallAllowance:
 
 UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
     Path("XBrainLab/ui/chat/panel.py"): (
-        ControllerDirectCallAllowance(
-            "_select_response_action",
-            "self._chat_controller",
-            frozenset({"consume_response_actions"}),
-        ),
         ControllerDirectCallAllowance(
             "_restore_controller_state",
             "controller",
@@ -99,7 +166,12 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
         ControllerDirectCallAllowance(
             "handle_user_input",
             "self.chat_controller",
-            frozenset({"add_user_message", "can_accept_turn"}),
+            frozenset({"add_user_message"}),
+        ),
+        ControllerDirectCallAllowance(
+            "_prepare_admitted_transcript_turn",
+            "self.chat_controller",
+            frozenset({"prepare_for_turn"}),
         ),
         ControllerDirectCallAllowance(
             "_render_visible_assistant_response",
@@ -115,6 +187,11 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             "_handle_response_action_selection",
             "self.chat_controller",
             frozenset({"resolve_and_consume_response_action"}),
+        ),
+        ControllerDirectCallAllowance(
+            "_restore_rejected_response_action",
+            "self.chat_controller",
+            frozenset({"active_response_record"}),
         ),
         ControllerDirectCallAllowance(
             "start_new_conversation",
@@ -198,11 +275,11 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             frozenset({"get_preprocessed_data_list"}),
         ),
     ),
-    Path("XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py"): (
+    Path("XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py"): (
         ControllerDirectCallAllowance(
-            "__init__",
+            "_compatibility_locked_preflight_blocked",
             "controller",
-            frozenset({"get_dataset_generator", "get_epoch_data"}),
+            frozenset({"is_locked"}),
         ),
     ),
     Path("XBrainLab/ui/panels/dataset/sidebar.py"): (
@@ -223,6 +300,31 @@ UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
     "update_info",
     "update_info_panel",
     "update_panel",
+)
+UI_POST_COMMAND_PUBLICATION_RENDER_METHODS = (
+    "_render_training_publication",
+    "_render_training_started",
+    "on_training_started",
+    "on_training_stopped",
+    "reconcile_training_terminal_outcome",
+    "training_finished",
+)
+UI_POST_COMMAND_PUBLICATION_CONTROL_NAMES = ("btn_start", "btn_stop")
+UI_POST_COMMAND_PUBLICATION_CONTROL_MUTATORS = (
+    "setChecked",
+    "setDisabled",
+    "setEnabled",
+    "setHidden",
+    "setText",
+    "setVisible",
+)
+UI_SERVICE_COMMAND_METHODS = (
+    "_execute_action",
+    "execute_application_command",
+)
+UI_SERVICE_COMMAND_ASYNC_METHODS = (
+    "_execute_action_async",
+    "execute_application_command_async",
 )
 UI_OBSERVER_HANDLER_LOCAL_RENDER_METHODS = (
     *UI_POST_COMMAND_LOCAL_REFRESH_METHODS,
@@ -645,6 +747,7 @@ DOC_CLAIM_BOUNDARY_TOKENS = (
     "距離",
     "尚未",
     "未",
+    "仍需",
     "還不能",
     "gap",
     "missing",
@@ -682,278 +785,6 @@ class MutableObjectBoundaryDebt:
 
 
 MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/analysis_service.py",
-        "AnalysisCommandService.handle_evaluate",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "attribute",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/analysis_service.py",
-        "AnalysisCommandService.handle_visualize",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "attribute",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/automation.py",
-        "_ui_only_command_fields",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "literal",
-        2,
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/commands.py",
-        "EvaluateCommand",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "field",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/commands.py",
-        "VisualizeCommand",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "field",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/commands.py",
-        "QueryStateCommand",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "field",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/results.py",
-        "CommandResult.__post_init__",
-        MUTABLE_BOUNDARY_COMMAND_RESULT_RUNTIME,
-        "attribute",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/results.py",
-        "CommandResult.local_payload",
-        MUTABLE_BOUNDARY_LOCAL_PAYLOAD,
-        "definition",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/results.py",
-        "CommandResult.local_payload",
-        MUTABLE_BOUNDARY_COMMAND_RESULT_RUNTIME,
-        "attribute",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/state_service.py",
-        "StateSnapshotService.training_history",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "parameter",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/state_service.py",
-        "StateSnapshotService.training_history",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "name",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/query_state_service.py",
-        "QueryStateCommandService.handle_query_state",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "attribute",
-        3,
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/backend/application/query_state_service.py",
-        "QueryStateCommandService.handle_query_state",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/llm/tools/application_surface.py",
-        "_command_for_tool",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/llm/tools/application_surface.py",
-        "_command_for_tool",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "literal",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/application_capabilities.py",
-        "local_result_payload",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "definition",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/application_capabilities.py",
-        "local_result_payload",
-        MUTABLE_BOUNDARY_COMMAND_RESULT_RUNTIME,
-        "getattr",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/info_panel_service.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/info_panel_service.py",
-        "InfoPanelService._query_data_lists",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/info_panel_service.py",
-        "InfoPanelService._query_data_lists",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/main_window.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/main_window.py",
-        "_StartupInfoPanelService._query_data_lists",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/main_window.py",
-        "_StartupInfoPanelService._query_data_lists",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/dataset/panel.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/dataset/panel.py",
-        "DatasetPanel._query_loaded_data_list_for_render",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/dataset/panel.py",
-        "DatasetPanel._query_loaded_data_list_for_render",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/dataset/sidebar.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/dataset/sidebar.py",
-        "DatasetSidebar._loaded_data_list_for_channel_selection",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/dataset/sidebar.py",
-        "DatasetSidebar._loaded_data_list_for_channel_selection",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "EvaluationPanel._evaluation_query_payload",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "EvaluationPanel._refresh_application_query",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "EvaluationPanel._refresh_application_query_async",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/preprocess/data_query.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/preprocess/data_query.py",
-        "query_preprocess_render_lists",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/preprocess/data_query.py",
-        "query_preprocess_render_lists",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/preprocess/sidebar.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/preprocess/sidebar.py",
-        "PreprocessSidebar._preprocessed_data_list_for_dialog",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/preprocess/sidebar.py",
-        "PreprocessSidebar._preprocessed_data_list_for_dialog",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/panel.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/panel.py",
-        "TrainingPanel._history_for_render",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/panel.py",
-        "TrainingPanel._history_for_render",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/sidebar.py",
-        "<module>",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "import",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/sidebar.py",
-        "TrainingSidebar._data_splitting_dialog_context",
-        MUTABLE_BOUNDARY_INCLUDE_OBJECTS,
-        "keyword",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/sidebar.py",
-        "TrainingSidebar._data_splitting_dialog_context",
-        MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD,
-        "call",
-    ),
     MutableObjectBoundaryDebt(
         "XBrainLab/ui/components/agent_manager.py",
         "AgentManager.__init__",
@@ -999,99 +830,8 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
         "assignment",
     ),
     MutableObjectBoundaryDebt(
-        "XBrainLab/ui/dialogs/dataset/channel_selection_dialog.py",
-        "ChannelSelectionDialog.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py",
-        "DataSplittingDialog.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-        4,
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py",
-        "DataSplittingPreviewDialog.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py",
-        "DataSplittingPreviewDialog.preview",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/dialogs/preprocess/epoching_dialog.py",
-        "EpochingDialog.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/dialogs/preprocess/rereference_dialog.py",
-        "RereferenceDialog.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/main_window.py",
-        "_StartupInfoPanelService.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
         "XBrainLab/ui/main_window.py",
         "MainWindow.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/dataset/panel.py",
-        "DatasetPanel.update_panel",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "widget_or_container",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "EvaluationPanel.update_panel",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "widget_or_container",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "EvaluationPanel._refresh_application_query",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "EvaluationPanel._refresh_application_query_async._handle_result",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/evaluation/panel.py",
-        "EvaluationPanel.on_model_changed",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "widget_or_container",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/history_table.py",
-        "TrainingHistoryTable.update_history",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/panel.py",
-        "TrainingPanel.on_history_selection_changed",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/panel.py",
-        "TrainingPanel.update_loop",
         MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
         "assignment",
     ),
@@ -1271,6 +1011,60 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    application_shutdown_violations = check_application_shutdown_lifecycle_ownership(
+        Path(root_dir)
+    )
+    if application_shutdown_violations:
+        print("\nApplication Shutdown Lifecycle Ownership Violations Found:")
+        for violation in application_shutdown_violations:
+            print(f" - {violation}")
+        return 1
+
+    application_controller_violations = check_application_controller_boundary(
+        Path(root_dir)
+    )
+    if application_controller_violations:
+        print("\nApplication Controller Boundary Violations Found:")
+        for violation in application_controller_violations:
+            print(f" - {violation}")
+        return 1
+
+    dataset_product_port_violations = check_dataset_product_port_boundary(
+        Path(root_dir)
+    )
+    if dataset_product_port_violations:
+        print("\nDataset Product Port Boundary Violations Found:")
+        for violation in dataset_product_port_violations:
+            print(f" - {violation}")
+        return 1
+
+    preprocess_product_port_violations = check_preprocess_product_port_boundary(
+        Path(root_dir)
+    )
+    if preprocess_product_port_violations:
+        print("\nPreprocess Product Port Boundary Violations Found:")
+        for violation in preprocess_product_port_violations:
+            print(f" - {violation}")
+        return 1
+
+    visualization_product_port_violations = check_visualization_product_port_boundary(
+        Path(root_dir)
+    )
+    if visualization_product_port_violations:
+        print("\nVisualization Product Port Boundary Violations Found:")
+        for violation in visualization_product_port_violations:
+            print(f" - {violation}")
+        return 1
+
+    publication_lifecycle_port_violations = (
+        check_application_publication_lifecycle_port_boundary(Path(root_dir))
+    )
+    if publication_lifecycle_port_violations:
+        print("\nApplication Publication Lifecycle Port Violations Found:")
+        for violation in publication_lifecycle_port_violations:
+            print(f" - {violation}")
+        return 1
+
     training_runtime_violations = check_training_runtime_port_boundary(Path(root_dir))
     if training_runtime_violations:
         print("\nTraining Runtime Port Boundary Violations Found:")
@@ -1291,6 +1085,36 @@ def check_architecture(root_dir: str) -> int:
     if label_resource_violations:
         print("\nLabel Resource Admission Boundary Violations Found:")
         for violation in label_resource_violations:
+            print(f" - {violation}")
+        return 1
+
+    training_history_violations = check_training_history_projection_boundary(
+        Path(root_dir),
+    )
+    if training_history_violations:
+        print("\nTraining History Projection Boundary Violations Found:")
+        for violation in training_history_violations:
+            print(f" - {violation}")
+        return 1
+
+    dataset_read_violations = check_dataset_detached_read_boundary(Path(root_dir))
+    if dataset_read_violations:
+        print("\nDataset Detached Read Boundary Violations Found:")
+        for violation in dataset_read_violations:
+            print(f" - {violation}")
+        return 1
+
+    dataset_split_violations = check_dataset_split_publication_boundary(Path(root_dir))
+    if dataset_split_violations:
+        print("\nDataset Split Publication Boundary Violations Found:")
+        for violation in dataset_split_violations:
+            print(f" - {violation}")
+        return 1
+
+    epoch_dialog_violations = check_epoch_dialog_publication_boundary(Path(root_dir))
+    if epoch_dialog_violations:
+        print("\nEpoch Dialog Publication Boundary Violations Found:")
+        for violation in epoch_dialog_violations:
             print(f" - {violation}")
         return 1
 
@@ -1362,6 +1186,24 @@ def check_architecture(root_dir: str) -> int:
     if pending_interaction_compatibility_violations:
         print("\nPending Interaction Compatibility API Violations Found:")
         for violation in pending_interaction_compatibility_violations:
+            print(f" - {violation}")
+        return 1
+
+    controller_lifecycle_alias_violations = check_agent_controller_lifecycle_aliases(
+        Path(root_dir)
+    )
+    if controller_lifecycle_alias_violations:
+        print("\nAgent Controller Lifecycle Alias Violations Found:")
+        for violation in controller_lifecycle_alias_violations:
+            print(f" - {violation}")
+        return 1
+
+    manager_publication_state_violations = (
+        check_agent_manager_publication_state_ownership(Path(root_dir))
+    )
+    if manager_publication_state_violations:
+        print("\nAgent Manager Publication State Ownership Violations Found:")
+        for violation in manager_publication_state_violations:
             print(f" - {violation}")
         return 1
 
@@ -1533,6 +1375,15 @@ def check_architecture(root_dir: str) -> int:
     if tool_envelope_boundary_violations:
         print("\nProduct Tool Envelope Boundary Violations Found:")
         for violation in tool_envelope_boundary_violations:
+            print(f" - {violation}")
+        return 1
+
+    interpretation_action_ownership_violations = (
+        check_dataset_data_interpretation_action_ownership(Path(root_dir))
+    )
+    if interpretation_action_ownership_violations:
+        print("\nDataset Data Interpretation Action Ownership Violations Found:")
+        for violation in interpretation_action_ownership_violations:
             print(f" - {violation}")
         return 1
 
@@ -1743,6 +1594,42 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    primary_bootstrap_violations = check_primary_panel_product_bootstrap_boundary(
+        Path(root_dir)
+    )
+    if primary_bootstrap_violations:
+        print("\nPrimary Panel Product Bootstrap Boundary Violations Found:")
+        for violation in primary_bootstrap_violations:
+            print(f" - {violation}")
+        return 1
+
+    primary_publication_violations = check_primary_ui_publication_refresh_boundary(
+        Path(root_dir)
+    )
+    if primary_publication_violations:
+        print("\nPrimary UI Publication Refresh Boundary Violations Found:")
+        for violation in primary_publication_violations:
+            print(f" - {violation}")
+        return 1
+
+    evaluation_refresh_violations = check_evaluation_publication_refresh_boundary(
+        Path(root_dir)
+    )
+    if evaluation_refresh_violations:
+        print("\nEvaluation Publication Refresh Boundary Violations Found:")
+        for violation in evaluation_refresh_violations:
+            print(f" - {violation}")
+        return 1
+
+    visualization_refresh_violations = check_visualization_publication_refresh_boundary(
+        Path(root_dir)
+    )
+    if visualization_refresh_violations:
+        print("\nVisualization Publication Refresh Boundary Violations Found:")
+        for violation in visualization_refresh_violations:
+            print(f" - {violation}")
+        return 1
+
     print("\nArchitecture compliant!")
     return 0
 
@@ -1756,11 +1643,15 @@ def check_local_only_llm_runtime(root_dir: Path) -> list[str]:
             if "llm/core/models" in py_file.as_posix():
                 continue
             content = py_file.read_text(encoding="utf-8")
+            relative_path = py_file.relative_to(root_dir)
+            allowed_tokens = LOCAL_ONLY_LLM_TOKEN_ALLOWLIST.get(
+                relative_path,
+                frozenset(),
+            )
             violations.extend(
-                f"{py_file.relative_to(root_dir)} contains forbidden "
-                f"local-only runtime token {token!r}"
+                f"{relative_path} contains forbidden local-only runtime token {token!r}"
                 for token in FORBIDDEN_PRODUCT_LLM_TOKENS
-                if token in content
+                if token in content and token not in allowed_tokens
             )
 
     pyproject = root_dir / "pyproject.toml"
@@ -2164,6 +2055,20 @@ def check_visualization_saliency_publication_boundary(
                         "saliency compute may start only from the explicit button "
                         "handler"
                     )
+                if call_name == "_dispatch_saliency_compute_command" and not any(
+                    function
+                    in {
+                        "_start_saliency_compute",
+                        "_handle_saliency_resource_confirmation",
+                    }
+                    for function in self.functions
+                ):
+                    violations.append(
+                        f"{self.relative_path}:{node.lineno} "
+                        f"[{self.current_function}] "
+                        "saliency dispatch helper may be called only by the explicit "
+                        "Compute/Recompute path or its confirmed resource replay"
+                    )
                 if configures_saliency and any(
                     function in implicit_render_functions for function in self.functions
                 ):
@@ -2172,8 +2077,13 @@ def check_visualization_saliency_publication_boundary(
                         f"[{self.current_function}] "
                         "render, tab switching, and polling cannot configure saliency"
                     )
-                elif configures_saliency and (
-                    "_start_saliency_compute" not in self.functions
+                elif configures_saliency and not any(
+                    function
+                    in {
+                        "_start_saliency_compute",
+                        "_dispatch_saliency_compute_command",
+                    }
+                    for function in self.functions
                 ):
                     violations.append(
                         f"{self.relative_path}:{node.lineno} "
@@ -2335,7 +2245,40 @@ def check_raw_mutation_atomicity_boundaries(root_dir: Path) -> list[str]:
                 )
 
     label_tree = _parse_python_file(label_service_path)
-    for method_name in ("apply_labels_batch", "apply_labels_sequence"):
+    batch_wrapper = _class_method_node(
+        label_tree,
+        "LabelImportService",
+        "apply_labels_batch",
+    )
+    batch_wrapper_calls = _resolved_function_call_names(batch_wrapper, label_tree)
+    if (
+        not {
+            "apply_labels_batch_checked",
+            "_apply_label_operations_atomically",
+        }
+        & batch_wrapper_calls
+    ):
+        violations.append(
+            "XBrainLab/backend/services/label_import_service.py "
+            "apply_labels_batch() must delegate to the checked atomic batch path."
+        )
+    forbidden_wrapper_calls = {
+        "apply_labels_to_single_file",
+        "_force_apply_single",
+    } & batch_wrapper_calls
+    if forbidden_wrapper_calls:
+        violations.append(
+            "XBrainLab/backend/services/label_import_service.py "
+            "apply_labels_batch() directly mutates label targets via "
+            f"{', '.join(sorted(forbidden_wrapper_calls))}."
+        )
+    if _UNRESOLVED_CALLABLE_ORIGIN in batch_wrapper_calls:
+        violations.append(
+            "XBrainLab/backend/services/label_import_service.py "
+            "apply_labels_batch() cannot prove callable construction is atomic."
+        )
+
+    for method_name in ("apply_labels_batch_checked", "apply_labels_sequence"):
         method = _class_method_node(
             label_tree,
             "LabelImportService",
@@ -4133,6 +4076,507 @@ def check_application_service_ownership_boundaries(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_application_shutdown_lifecycle_ownership(root_dir: Path) -> list[str]:
+    """Keep shutdown state and reconciliation out of ``ApplicationService``."""
+    service_path = root_dir / "XBrainLab" / "backend" / "application" / "service.py"
+    service_tree = _parse_python_file(service_path)
+    violations: list[str] = []
+    if service_tree is not None:
+        relative_path = service_path.relative_to(root_dir)
+        for class_node in service_tree.body:
+            if not (
+                isinstance(class_node, ast.ClassDef)
+                and class_node.name == "ApplicationService"
+            ):
+                continue
+            violations.extend(
+                f"{relative_path}:{node.lineno} stores shutdown lifecycle state "
+                f"'{node.attr}' on ApplicationService; use "
+                "ApplicationShutdownLifecycleCoordinator."
+                for node in ast.walk(class_node)
+                if (
+                    isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "self"
+                    and node.attr in APPLICATION_SERVICE_SHUTDOWN_LIFECYCLE_ATTRIBUTES
+                )
+            )
+            violations.extend(
+                f"{relative_path}:{method.lineno} keeps shutdown reconciliation "
+                f"method '{method.name}' on ApplicationService; delegate to "
+                "ApplicationShutdownLifecycleCoordinator."
+                for method in class_node.body
+                if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and method.name in APPLICATION_SERVICE_SHUTDOWN_LIFECYCLE_METHODS
+            )
+
+    runtime_path = root_dir / "XBrainLab" / "backend" / "application" / "runtime.py"
+    runtime_tree = _parse_python_file(runtime_path)
+    if runtime_tree is not None:
+        relative_path = runtime_path.relative_to(root_dir)
+        for node in ast.walk(runtime_tree):
+            private_attribute: str | None = None
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr in APPLICATION_SERVICE_SHUTDOWN_LIFECYCLE_ATTRIBUTES
+            ):
+                private_attribute = node.attr
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+                and node.args[1].value
+                in APPLICATION_SERVICE_SHUTDOWN_LIFECYCLE_ATTRIBUTES
+            ):
+                private_attribute = node.args[1].value
+            if private_attribute is not None:
+                violations.append(
+                    f"{relative_path}:{getattr(node, 'lineno', 0)} reads private "
+                    "shutdown lifecycle "
+                    f"state '{private_attribute}'; use ApplicationService.is_closed."
+                )
+    return violations
+
+
+def check_application_controller_boundary(root_dir: Path) -> list[str]:
+    """Keep the application package independent of UI controller families."""
+    application_dir = root_dir / "XBrainLab" / "backend" / "application"
+    if not application_dir.exists():
+        return []
+
+    violations: list[str] = []
+    adapter_references: set[tuple[Path, int, str]] = set()
+    for path in sorted(application_dir.rglob("*.py")):
+        tree = _parse_python_file(path)
+        if tree is None:
+            continue
+        relative = path.relative_to(root_dir)
+        for node in ast.walk(tree):
+            imported_modules = _imported_module_names(node)
+            if any(
+                "controller" in module_name.split(".")
+                or "controller_adapters" in module_name.split(".")
+                for module_name in imported_modules
+            ):
+                violations.append(
+                    f"{relative}:{getattr(node, 'lineno', 0)} imports a controller "
+                    "module; application composition must use Study-owned ports."
+                )
+
+            symbol_name: str | None = None
+            if isinstance(node, ast.ClassDef):
+                symbol_name = node.name
+            elif isinstance(node, ast.Name):
+                symbol_name = node.id
+            elif isinstance(node, ast.Attribute):
+                symbol_name = node.attr
+            if symbol_name is not None and symbol_name.endswith("ControllerAdapter"):
+                adapter_references.add(
+                    (relative, getattr(node, "lineno", 0), symbol_name)
+                )
+
+            if (
+                isinstance(node, ast.Call)
+                and _called_symbol_name(node.func) == "get_controller"
+            ):
+                violations.append(
+                    f"{relative}:{node.lineno} calls get_controller; application "
+                    "composition must use an explicit Study-owned port."
+                )
+
+    violations.extend(
+        f"{relative}:{line} references {name}; controller adapters are forbidden "
+        "in the application layer."
+        for relative, line, name in sorted(
+            adapter_references,
+            key=lambda item: (str(item[0]), item[1], item[2]),
+        )
+    )
+    return violations
+
+
+def check_dataset_product_port_boundary(root_dir: Path) -> list[str]:
+    """Keep Dataset product commands on the Study-owned dataset service port."""
+    application_dir = root_dir / "XBrainLab" / "backend" / "application"
+    if not application_dir.exists():
+        return []
+
+    violations: list[str] = []
+    for py_file in application_dir.rglob("*.py"):
+        relative = py_file.relative_to(root_dir)
+        tree = _parse_python_file(py_file)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                imported_names = {alias.name for alias in node.names}
+                forbidden = imported_names & {
+                    "DatasetController",
+                    "DatasetControllerAdapter",
+                }
+                if forbidden:
+                    violations.append(
+                        f"{relative}:{node.lineno} imports "
+                        f"{', '.join(sorted(forbidden))}; Dataset product commands "
+                        "must depend on DatasetProductPort."
+                    )
+            elif isinstance(node, (ast.ClassDef, ast.Name, ast.Attribute)):
+                symbol = (
+                    node.name
+                    if isinstance(node, ast.ClassDef)
+                    else node.id
+                    if isinstance(node, ast.Name)
+                    else node.attr
+                )
+                if symbol == "DatasetControllerAdapter":
+                    violations.append(
+                        f"{relative}:{getattr(node, 'lineno', 0)} references "
+                        "DatasetControllerAdapter; the application Dataset family "
+                        "must use DatasetProductPort."
+                    )
+            if not isinstance(node, ast.Call):
+                continue
+            if (
+                _called_symbol_name(node.func) == "get_controller"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == "dataset"
+            ):
+                violations.append(
+                    f"{relative}:{node.lineno} resolves Study.get_controller"
+                    "('dataset'); Dataset product commands must use the "
+                    "Study-owned dataset service port."
+                )
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "notify"
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr == "dataset"
+            ) or (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Attribute)
+                and node.args[0].attr == "dataset"
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "notify"
+            ):
+                violations.append(
+                    f"{relative}:{node.lineno} reaches Dataset observer semantics; "
+                    "application business logic must publish CommandResult and "
+                    "application view truth instead."
+                )
+    return violations
+
+
+def check_preprocess_product_port_boundary(root_dir: Path) -> list[str]:
+    """Keep Preprocess product commands on the Study-owned domain service port."""
+    application_dir = root_dir / "XBrainLab" / "backend" / "application"
+    if not application_dir.exists():
+        return []
+
+    forbidden_symbols = {
+        "PreprocessController",
+        "PreprocessControllerAdapter",
+        "_PreprocessControllerPort",
+    }
+    violations: list[str] = []
+    for py_file in application_dir.rglob("*.py"):
+        relative = py_file.relative_to(root_dir)
+        tree = _parse_python_file(py_file)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            imported_modules = _imported_module_names(node)
+            if any(
+                module_name.endswith("controller.preprocess_controller")
+                for module_name in imported_modules
+            ):
+                violations.append(
+                    f"{relative}:{getattr(node, 'lineno', 0)} imports the "
+                    "preprocess controller module; Preprocess product commands "
+                    "must depend on the Study-owned preprocess service port."
+                )
+            if isinstance(node, ast.ImportFrom):
+                imported_names = {alias.name for alias in node.names}
+                forbidden = imported_names & forbidden_symbols
+                if forbidden:
+                    violations.append(
+                        f"{relative}:{node.lineno} imports "
+                        f"{', '.join(sorted(forbidden))}; Preprocess product "
+                        "commands must depend on the Study-owned preprocess service "
+                        "port."
+                    )
+            elif isinstance(node, (ast.ClassDef, ast.Name, ast.Attribute)):
+                symbol = (
+                    node.name
+                    if isinstance(node, ast.ClassDef)
+                    else node.id
+                    if isinstance(node, ast.Name)
+                    else node.attr
+                )
+                if symbol in forbidden_symbols:
+                    violations.append(
+                        f"{relative}:{getattr(node, 'lineno', 0)} references "
+                        f"{symbol}; the application Preprocess family must use the "
+                        "Study-owned preprocess service port."
+                    )
+            if not isinstance(node, ast.Call):
+                continue
+            if (
+                _called_symbol_name(node.func) == "get_controller"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == "preprocess"
+            ):
+                violations.append(
+                    f"{relative}:{node.lineno} resolves "
+                    "Study.get_controller('preprocess'); Preprocess product commands "
+                    "must use the Study-owned preprocess service port."
+                )
+
+    service_path = application_dir / "service.py"
+    service_tree = _parse_python_file(service_path)
+    if service_tree is None:
+        return violations
+
+    preprocess_assignments: list[tuple[int, ast.AST | None]] = []
+    for node in ast.walk(service_tree):
+        if isinstance(node, ast.Assign):
+            value = node.value
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            value = node.value
+            targets = [node.target]
+        else:
+            continue
+        if any(
+            isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "self"
+            and target.attr == "preprocess"
+            for target in targets
+        ):
+            preprocess_assignments.append((node.lineno, value))
+
+    if not preprocess_assignments:
+        violations.append(
+            "XBrainLab/backend/application/service.py does not compose the "
+            "Study-owned preprocess service port."
+        )
+    for line, value in preprocess_assignments:
+        if not (
+            isinstance(value, ast.Attribute)
+            and value.attr == "preprocess_state_service"
+            and isinstance(value.value, ast.Attribute)
+            and value.value.attr == "study"
+            and isinstance(value.value.value, ast.Name)
+            and value.value.value.id == "self"
+        ):
+            violations.append(
+                "XBrainLab/backend/application/service.py:"
+                f"{line} must compose self.preprocess from the Study-owned "
+                "preprocess service port."
+            )
+    return violations
+
+
+def check_visualization_product_port_boundary(root_dir: Path) -> list[str]:
+    """Keep Visualization commands on a manager-owned domain service port."""
+    application_dir = root_dir / "XBrainLab" / "backend" / "application"
+    if not application_dir.exists():
+        return []
+
+    forbidden_symbols = {
+        "VisualizationController",
+        "VisualizationControllerAdapter",
+        "_VisualizationControllerPort",
+    }
+    violations: list[str] = []
+    for py_file in application_dir.rglob("*.py"):
+        relative = py_file.relative_to(root_dir)
+        tree = _parse_python_file(py_file)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            imported_modules = _imported_module_names(node)
+            if any(
+                module_name.endswith("controller.visualization_controller")
+                for module_name in imported_modules
+            ):
+                violations.append(
+                    f"{relative}:{getattr(node, 'lineno', 0)} imports the "
+                    "visualization controller module; Visualization product "
+                    "commands must depend on a manager-owned domain port."
+                )
+            if isinstance(node, ast.ImportFrom):
+                imported_names = {alias.name for alias in node.names}
+                forbidden = imported_names & forbidden_symbols
+                if forbidden:
+                    violations.append(
+                        f"{relative}:{node.lineno} imports "
+                        f"{', '.join(sorted(forbidden))}; Visualization product "
+                        "commands must depend on a manager-owned domain port."
+                    )
+            elif isinstance(node, (ast.ClassDef, ast.Name, ast.Attribute)):
+                symbol = (
+                    node.name
+                    if isinstance(node, ast.ClassDef)
+                    else node.id
+                    if isinstance(node, ast.Name)
+                    else node.attr
+                )
+                if symbol in forbidden_symbols:
+                    violations.append(
+                        f"{relative}:{getattr(node, 'lineno', 0)} references "
+                        f"{symbol}; the application Visualization family must "
+                        "use a manager-owned domain port."
+                    )
+            if not isinstance(node, ast.Call):
+                continue
+            if (
+                _called_symbol_name(node.func) == "get_controller"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == "visualization"
+            ):
+                violations.append(
+                    f"{relative}:{node.lineno} resolves Study.get_controller"
+                    "('visualization'); Visualization product commands must use "
+                    "the manager-owned domain port."
+                )
+    return violations
+
+
+def check_application_publication_lifecycle_port_boundary(
+    root_dir: Path,
+) -> list[str]:
+    """Keep publication orchestration behind application-owned event ports."""
+    relative = Path(
+        "XBrainLab/backend/application/application_publication_lifecycle.py"
+    )
+    lifecycle_path = root_dir / relative
+    tree = _parse_python_file(lifecycle_path)
+    if tree is None:
+        return [f"{relative} is missing or invalid."]
+
+    violations: list[str] = []
+    adapter_references: set[tuple[int, str]] = set()
+    for node in ast.walk(tree):
+        imported_modules = _imported_module_names(node)
+        if any(
+            "controller_adapters" in module_name.split(".")
+            for module_name in imported_modules
+        ):
+            violations.append(
+                f"{relative}:{getattr(node, 'lineno', 0)} imports "
+                "controller_adapters; ApplicationPublicationLifecycle must depend "
+                "on application-owned event ports."
+            )
+
+        symbol_name: str | None = None
+        if isinstance(node, ast.Name):
+            symbol_name = node.id
+        elif isinstance(node, ast.Attribute):
+            symbol_name = node.attr
+        if symbol_name is not None and symbol_name.endswith("ControllerAdapter"):
+            adapter_references.add((getattr(node, "lineno", 0), symbol_name))
+
+        if isinstance(node, ast.Call) and _call_name(node.func) == "get_controller":
+            violations.append(
+                f"{relative}:{node.lineno} calls get_controller; publication "
+                "orchestration must receive an injected lifecycle event port."
+            )
+
+    violations.extend(
+        f"{relative}:{line} references {name}; controller adapters belong outside "
+        "ApplicationPublicationLifecycle."
+        for line, name in sorted(adapter_references)
+    )
+
+    lifecycle_class = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "ApplicationPublicationLifecycle"
+        ),
+        None,
+    )
+    initializer = (
+        next(
+            (
+                node
+                for node in lifecycle_class.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "__init__"
+            ),
+            None,
+        )
+        if lifecycle_class is not None
+        else None
+    )
+    training_events_parameter = (
+        next(
+            (
+                argument
+                for argument in (
+                    *initializer.args.posonlyargs,
+                    *initializer.args.args,
+                    *initializer.args.kwonlyargs,
+                )
+                if argument.arg == "training_events"
+            ),
+            None,
+        )
+        if initializer is not None
+        else None
+    )
+    if training_events_parameter is None or not _annotation_mentions_symbol(
+        training_events_parameter.annotation,
+        "TrainingLifecycleEventPort",
+    ):
+        violations.append(
+            f"{relative} must inject training_events as TrainingLifecycleEventPort."
+        )
+
+    service_relative = Path("XBrainLab/backend/application/service.py")
+    service_tree = _parse_python_file(root_dir / service_relative)
+    if service_tree is not None:
+        lifecycle_constructions = [
+            node
+            for node in ast.walk(service_tree)
+            if isinstance(node, ast.Call)
+            and _called_symbol_name(node.func) == "ApplicationPublicationLifecycle"
+        ]
+        if not lifecycle_constructions or any(
+            not any(
+                keyword.arg == "training_events" for keyword in construction.keywords
+            )
+            for construction in lifecycle_constructions
+        ):
+            violations.append(
+                f"{service_relative} must inject training_events at the existing "
+                "ApplicationPublicationLifecycle composition root."
+            )
+
+    return violations
+
+
+def _annotation_mentions_symbol(annotation: ast.AST | None, symbol: str) -> bool:
+    if annotation is None:
+        return False
+    return any(
+        (isinstance(node, ast.Name) and node.id == symbol)
+        or (isinstance(node, ast.Attribute) and node.attr == symbol)
+        or (isinstance(node, ast.Constant) and node.value == symbol)
+        for node in ast.walk(annotation)
+    )
+
+
 def check_training_runtime_port_boundary(root_dir: Path) -> list[str]:
     """Keep Study.training_manager behind its typed application runtime port."""
     application_dir = root_dir / "XBrainLab" / "backend" / "application"
@@ -4645,6 +5089,842 @@ _BACKEND_DOMAIN_RETURNING_CALLS = frozenset(
         "get_training_plan_holders",
     }
 )
+
+
+def check_training_history_projection_boundary(root_dir: Path) -> list[str]:
+    """Keep product training history detached from mutable plan/record objects."""
+    violations: list[str] = []
+
+    query_path = root_dir / "XBrainLab/backend/application/query_state_service.py"
+    query_tree = _parse_python_file(query_path) if query_path.exists() else None
+    if query_tree is not None:
+        query_method = _find_class_method(
+            query_tree,
+            "QueryStateCommandService",
+            "handle_query_state",
+        )
+        if query_method is not None:
+            for call in (
+                node for node in ast.walk(query_method) if isinstance(node, ast.Call)
+            ):
+                if _mutable_boundary_call_name(call.func) != "training_history":
+                    continue
+                include_objects = any(
+                    keyword.arg == "include_objects" for keyword in call.keywords
+                )
+                if call.args or include_objects:
+                    violations.append(
+                        f"{query_path.relative_to(root_dir)}:{call.lineno} "
+                        "training_history product query must not pass "
+                        "include_objects or other object-selection arguments"
+                    )
+
+    state_path = root_dir / "XBrainLab/backend/application/state_service.py"
+    state_tree = _parse_python_file(state_path) if state_path.exists() else None
+    if state_tree is not None:
+        state_method = _find_class_method(
+            state_tree,
+            "StateSnapshotService",
+            "training_history",
+        )
+        if state_method is not None:
+            parameter_names = {
+                argument.arg
+                for argument in (
+                    *state_method.args.posonlyargs,
+                    *state_method.args.args,
+                    *state_method.args.kwonlyargs,
+                )
+            }
+            if parameter_names - {"self"}:
+                violations.append(
+                    f"{state_path.relative_to(root_dir)}:{state_method.lineno} "
+                    "StateSnapshotService.training_history must expose one "
+                    "detached projection with no object opt-in"
+                )
+            if not any(
+                isinstance(node, ast.Call)
+                and _mutable_boundary_call_name(node.func)
+                == "project_training_history_rows"
+                for node in ast.walk(state_method)
+            ):
+                violations.append(
+                    f"{state_path.relative_to(root_dir)}:{state_method.lineno} "
+                    "StateSnapshotService.training_history must return the "
+                    "detached training-history projection"
+                )
+
+    projection_path = root_dir / "XBrainLab/backend/application/training_history.py"
+    projection_tree = (
+        _parse_python_file(projection_path) if projection_path.exists() else None
+    )
+    if projection_tree is not None:
+        to_dict_method = _find_class_method(
+            projection_tree,
+            "TrainingHistoryRow",
+            "to_dict",
+        )
+        if to_dict_method is not None:
+            projected_keys = {
+                key.value
+                for node in ast.walk(to_dict_method)
+                if isinstance(node, ast.Dict)
+                for key in node.keys
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            }
+            violations.extend(
+                (
+                    f"{projection_path.relative_to(root_dir)}:"
+                    f"{to_dict_method.lineno} detached training history must "
+                    f"not serialize live key {live_key!r}"
+                )
+                for live_key in ("plan", "record")
+                if live_key in projected_keys
+            )
+            missing_keys = {"identity", "metrics"} - projected_keys
+            if missing_keys:
+                violations.append(
+                    f"{projection_path.relative_to(root_dir)}:"
+                    f"{to_dict_method.lineno} detached training history is missing "
+                    f"required key(s): {', '.join(sorted(missing_keys))}"
+                )
+
+    for relative_path in (
+        Path("XBrainLab/ui/panels/training/panel.py"),
+        Path("XBrainLab/ui/panels/training/history_table.py"),
+    ):
+        ui_path = root_dir / relative_path
+        ui_tree = _parse_python_file(ui_path) if ui_path.exists() else None
+        if ui_tree is None:
+            continue
+        for node in ast.walk(ui_tree):
+            if (
+                isinstance(node, ast.Call)
+                and _mutable_boundary_call_name(node.func) == "QueryStateCommand"
+                and _query_state_call_name(node) == "training_history"
+                and any(keyword.arg == "include_objects" for keyword in node.keywords)
+            ):
+                violations.append(
+                    f"{relative_path}:{node.lineno} training history UI must not "
+                    "pass include_objects"
+                )
+            if isinstance(node, (ast.Name, ast.Attribute)) and _ast_identifier(
+                node
+            ) in {
+                "current_plotting_record",
+                "selection_changed_record",
+                "row_map",
+            }:
+                violations.append(
+                    f"{relative_path}:{node.lineno} record-based training history "
+                    f"UI state is forbidden: {_ast_identifier(node)}"
+                )
+            if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value in {"plan", "record"}
+            ):
+                violations.append(
+                    f"{relative_path}:{node.lineno} training history UI must not "
+                    f"read live row key {node.slice.value!r}"
+                )
+
+    detached_consumer_paths = [
+        Path("scripts/dev/run_public_cross_source_training_smoke.py"),
+        *sorted((root_dir / "tests" / "integration").rglob("*.py")),
+    ]
+    for candidate in detached_consumer_paths:
+        consumer_path = candidate if candidate.is_absolute() else root_dir / candidate
+        consumer_tree = (
+            _parse_python_file(consumer_path) if consumer_path.exists() else None
+        )
+        if consumer_tree is None:
+            continue
+        relative_path = consumer_path.relative_to(root_dir)
+        violations.extend(
+            f"{relative_path}:{node.lineno} product validation must read "
+            "detached training-history diagnostics, not include_objects"
+            for node in ast.walk(consumer_tree)
+            if (
+                isinstance(node, ast.Call)
+                and _mutable_boundary_call_name(node.func) == "QueryStateCommand"
+                and _query_state_call_name(node) == "training_history"
+                and any(keyword.arg == "include_objects" for keyword in node.keywords)
+            )
+        )
+
+    return violations
+
+
+def check_dataset_detached_read_boundary(root_dir: Path) -> list[str]:
+    """Keep product Dataset readers on detached row and channel projections."""
+    violations: list[str] = []
+    query_path = root_dir / "XBrainLab/backend/application/query_state_service.py"
+    query_tree = _parse_python_file(query_path) if query_path.exists() else None
+    if query_tree is not None:
+        query_method = _find_class_method(
+            query_tree,
+            "QueryStateCommandService",
+            "handle_query_state",
+        )
+        data_branch = (
+            _find_query_branch(query_method, "data_lists")
+            if query_method is not None
+            else None
+        )
+        label_target_branch = (
+            _find_query_branch(query_method, "label_import_targets")
+            if query_method is not None
+            else None
+        )
+        if data_branch is None:
+            violations.append(
+                "QueryStateCommandService.handle_query_state is missing the "
+                "data_lists detached projection."
+            )
+        else:
+            branch_calls = {
+                _mutable_boundary_call_name(node.func)
+                for node in ast.walk(data_branch)
+                if isinstance(node, ast.Call)
+            }
+            violations.extend(
+                f"data_lists must use DatasetStateService.{required_call}()."
+                for required_call in (
+                    "get_loaded_data_rows",
+                    "get_preprocessed_data_rows",
+                )
+                if required_call not in branch_calls
+            )
+            if any(
+                isinstance(node, ast.Attribute) and node.attr == "include_objects"
+                for node in ast.walk(data_branch)
+            ):
+                violations.append(
+                    "data_lists must not expose an include_objects opt-in."
+                )
+            forbidden_keys = {
+                node.value
+                for node in ast.walk(data_branch)
+                if isinstance(node, ast.Constant)
+                and node.value in {"loaded_data_list", "preprocessed_data_list"}
+            }
+            if forbidden_keys:
+                violations.append(
+                    "data_lists must not publish mutable object key(s): "
+                    f"{', '.join(sorted(forbidden_keys))}."
+                )
+        if label_target_branch is None:
+            violations.append(
+                "QueryStateCommandService.handle_query_state is missing the "
+                "label_import_targets detached projection."
+            )
+        elif not any(
+            isinstance(node, ast.Call)
+            and _mutable_boundary_call_name(node.func) == "get_label_import_target_rows"
+            for node in ast.walk(label_target_branch)
+        ):
+            violations.append(
+                "label_import_targets must use DatasetStateService."
+                "get_label_import_target_rows()."
+            )
+
+    for relative_path in (
+        Path("XBrainLab/ui/components/info_panel_service.py"),
+        Path("XBrainLab/ui/main_window.py"),
+        Path("XBrainLab/ui/panels/dataset/panel.py"),
+        Path("XBrainLab/ui/panels/dataset/sidebar.py"),
+    ):
+        ui_path = root_dir / relative_path
+        ui_tree = _parse_python_file(ui_path) if ui_path.exists() else None
+        if ui_tree is None:
+            continue
+        for node in ast.walk(ui_tree):
+            if not (
+                isinstance(node, ast.Call)
+                and _mutable_boundary_call_name(node.func) == "QueryStateCommand"
+                and _query_state_call_name(node) == "data_lists"
+            ):
+                continue
+            if any(keyword.arg == "include_objects" for keyword in node.keywords):
+                violations.append(
+                    f"{relative_path}:{node.lineno} data_lists UI query must not "
+                    "request mutable objects."
+                )
+
+    panel_path = root_dir / "XBrainLab/ui/panels/dataset/panel.py"
+    panel_tree = _parse_python_file(panel_path) if panel_path.exists() else None
+    if panel_tree is not None:
+        panel_class = next(
+            (
+                node
+                for node in panel_tree.body
+                if isinstance(node, ast.ClassDef) and node.name == "DatasetPanel"
+            ),
+            None,
+        )
+        if panel_class is not None:
+            for node in ast.walk(panel_class):
+                if not (
+                    isinstance(node, ast.Call)
+                    and _mutable_boundary_call_name(node.func) == "setData"
+                    and node.args
+                    and isinstance(node.args[0], (ast.Name, ast.Attribute))
+                    and _ast_identifier(node.args[0]) == "UserRole"
+                ):
+                    continue
+                violations.append(
+                    f"{panel_path.relative_to(root_dir)}:{node.lineno} Dataset "
+                    "table must store detached row identity, not UserRole objects."
+                )
+
+    label_coordinator_path = (
+        root_dir / "XBrainLab/ui/panels/dataset/external_label_import_coordinator.py"
+    )
+    label_coordinator_tree = (
+        _parse_python_file(label_coordinator_path)
+        if label_coordinator_path.exists()
+        else None
+    )
+    if label_coordinator_tree is not None:
+        circular_host_methods = {
+            "_build_label_import_plan",
+            "_execute_label_import_async",
+            "_filter_events_for_import",
+            "_get_target_files_for_import",
+            "_offer_label_recipe_save",
+            "_smart_filter_suggestions_for_import",
+            "_target_files_from_table_rows",
+            "_target_index_for_filter_suggestion",
+        }
+        for node in ast.walk(label_coordinator_tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Attribute)
+                and isinstance(node.func.value.value, ast.Name)
+                and node.func.value.value.id == "self"
+                and node.func.value.attr == "_host"
+                and node.func.attr in circular_host_methods
+            ):
+                violations.append(
+                    f"{label_coordinator_path.relative_to(root_dir)}:{node.lineno} "
+                    f"round-trips '{node.func.attr}' through its host; call the "
+                    "coordinator-owned workflow method directly."
+                )
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "self"
+                and node.value.attr == "_host"
+                and node.attr == "_last_target_file_indices"
+            ) or (
+                isinstance(node, ast.Call)
+                and _mutable_boundary_call_name(node.func) == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "_last_target_file_indices"
+            ):
+                violations.append(
+                    f"{label_coordinator_path.relative_to(root_dir)}:"
+                    f"{getattr(node, 'lineno', 0)} stores label target selection on "
+                    "the host; ExternalLabelImportCoordinator must own it."
+                )
+        target_method = _find_class_method(
+            label_coordinator_tree,
+            "ExternalLabelImportCoordinator",
+            "target_files_from_table_rows",
+        )
+        if target_method is None:
+            violations.append(
+                "ExternalLabelImportCoordinator is missing detached target resolution."
+            )
+        else:
+            for node in ast.walk(target_method):
+                if not isinstance(node, ast.Call):
+                    continue
+                if _mutable_boundary_call_name(node.func) == "item":
+                    violations.append(
+                        "ExternalLabelImportCoordinator must not recover live EEG "
+                        "objects from Dataset table items."
+                    )
+                if _mutable_boundary_call_name(node.func) == "data" and any(
+                    isinstance(child, ast.Attribute) and child.attr == "UserRole"
+                    for child in ast.walk(node)
+                ):
+                    violations.append(
+                        "ExternalLabelImportCoordinator must not read UserRole "
+                        "payloads as label targets."
+                    )
+        query_method = _find_class_method(
+            label_coordinator_tree,
+            "ExternalLabelImportCoordinator",
+            "_query_label_import_targets",
+        )
+        if query_method is None or not any(
+            isinstance(node, ast.Call)
+            and _mutable_boundary_call_name(node.func) == "QueryStateCommand"
+            and _query_state_call_name(node) == "label_import_targets"
+            for node in ast.walk(query_method or ast.Pass())
+        ):
+            violations.append(
+                "ExternalLabelImportCoordinator must resolve label targets through "
+                "the label_import_targets command query."
+            )
+
+    dataset_actions_path = root_dir / "XBrainLab/ui/panels/dataset/actions.py"
+    dataset_actions_tree = (
+        _parse_python_file(dataset_actions_path)
+        if dataset_actions_path.exists()
+        else None
+    )
+    if dataset_actions_tree is not None:
+        handler_class = next(
+            (
+                node
+                for node in dataset_actions_tree.body
+                if isinstance(node, ast.ClassDef)
+                and node.name == "DatasetActionHandler"
+            ),
+            None,
+        )
+        if handler_class is not None:
+            violations.extend(
+                f"{dataset_actions_path.relative_to(root_dir)}:{node.lineno} "
+                "stores external-label target selection on DatasetActionHandler; "
+                "ExternalLabelImportCoordinator must be the single owner."
+                for node in ast.walk(handler_class)
+                if (
+                    isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "self"
+                    and node.attr == "_last_target_file_indices"
+                )
+            )
+
+    channel_path = root_dir / "XBrainLab/ui/dialogs/dataset/channel_selection_dialog.py"
+    channel_tree = _parse_python_file(channel_path) if channel_path.exists() else None
+    if channel_tree is not None:
+        constructor = _find_class_method(
+            channel_tree,
+            "ChannelSelectionDialog",
+            "__init__",
+        )
+        if constructor is not None:
+            argument_names = {
+                argument.arg
+                for argument in (
+                    *constructor.args.posonlyargs,
+                    *constructor.args.args,
+                    *constructor.args.kwonlyargs,
+                )
+            }
+            if argument_names & {"data", "data_list", "loaded_data_list", "raw_data"}:
+                violations.append(
+                    "ChannelSelectionDialog must accept detached channel names, "
+                    "not loaded EEG objects."
+                )
+
+    rereference_path = (
+        root_dir / "XBrainLab/ui/dialogs/preprocess/rereference_dialog.py"
+    )
+    rereference_tree = (
+        _parse_python_file(rereference_path) if rereference_path.exists() else None
+    )
+    if rereference_tree is not None:
+        constructor = _find_class_method(
+            rereference_tree,
+            "RereferenceDialog",
+            "__init__",
+        )
+        if constructor is not None:
+            argument_names = {
+                argument.arg
+                for argument in (
+                    *constructor.args.posonlyargs,
+                    *constructor.args.args,
+                    *constructor.args.kwonlyargs,
+                )
+            }
+            if argument_names & {
+                "data",
+                "data_list",
+                "preprocessed_data",
+                "raw_data",
+            }:
+                violations.append(
+                    "RereferenceDialog must accept detached channel names, "
+                    "not loaded EEG objects."
+                )
+
+    preprocess_render_paths = (
+        Path("XBrainLab/ui/panels/preprocess/data_query.py"),
+        Path("XBrainLab/ui/panels/preprocess/panel.py"),
+        Path("XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py"),
+    )
+    forbidden_render_calls = {
+        "get_loaded_data_list",
+        "get_mne",
+        "get_preprocessed_data_list",
+        "get_sfreq",
+        "is_raw",
+        "local_result_payload",
+        "query_preprocess_render_lists",
+    }
+    for relative_path in preprocess_render_paths:
+        render_path = root_dir / relative_path
+        render_tree = _parse_python_file(render_path) if render_path.exists() else None
+        if render_tree is None:
+            continue
+        for node in ast.walk(render_tree):
+            if not isinstance(node, ast.Call):
+                continue
+            call_name = _mutable_boundary_call_name(node.func)
+            if call_name in forbidden_render_calls:
+                violations.append(
+                    f"{relative_path}:{node.lineno} Preprocess rendering must not "
+                    f"call mutable EEG accessor {call_name}(); use the immutable "
+                    "PreprocessRenderPublication."
+                )
+            if (
+                call_name == "QueryStateCommand"
+                and _query_state_call_name(node) == "data_lists"
+                and any(keyword.arg == "include_objects" for keyword in node.keywords)
+            ):
+                violations.append(
+                    f"{relative_path}:{node.lineno} Preprocess rendering must not "
+                    "request mutable data-list objects."
+                )
+    return violations
+
+
+def _find_query_branch(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    query_name: str,
+) -> ast.If | None:
+    for node in ast.walk(method):
+        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
+            continue
+        values = {
+            child.value
+            for child in ast.walk(node.test)
+            if isinstance(child, ast.Constant) and isinstance(child.value, str)
+        }
+        if query_name in values:
+            return node
+    return None
+
+
+def _find_class_method(
+    tree: ast.AST,
+    class_name: str,
+    method_name: str,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    for node in getattr(tree, "body", []):
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        return next(
+            (
+                child
+                for child in node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and child.name == method_name
+            ),
+            None,
+        )
+    return None
+
+
+def _query_state_call_name(call: ast.Call) -> str | None:
+    if call.args:
+        value = _string_constant(call.args[0])
+        if value is not None:
+            return value
+    return next(
+        (
+            _string_constant(keyword.value)
+            for keyword in call.keywords
+            if keyword.arg == "query"
+        ),
+        None,
+    )
+
+
+def _ast_identifier(node: ast.Name | ast.Attribute) -> str:
+    return node.id if isinstance(node, ast.Name) else node.attr
+
+
+def check_dataset_split_publication_boundary(root_dir: Path) -> list[str]:
+    """Keep dataset-splitting UI on detached, generation-bound publications."""
+    product_dir = root_dir / "XBrainLab"
+    if not product_dir.exists():
+        return []
+
+    violations: list[str] = []
+    reported: set[tuple[str, int, str]] = set()
+    split_ui_paths = {
+        Path("XBrainLab/ui/panels/training/sidebar.py"),
+        Path("XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py"),
+        Path("XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py"),
+    }
+    inspected_paths = [*sorted(product_dir.rglob("*.py"))]
+    capture_path = root_dir / "scripts/dev/capture_ui_polish_surfaces.py"
+    if capture_path.exists():
+        inspected_paths.append(capture_path)
+
+    def record(relative: str, line: int, kind: str, message: str) -> None:
+        key = (relative, line, kind)
+        if key in reported:
+            return
+        reported.add(key)
+        violations.append(f"{relative}:{line} {message}")
+
+    for path in inspected_paths:
+        tree = _parse_python_file(path)
+        if tree is None:
+            continue
+        relative_path = path.relative_to(root_dir)
+        relative = relative_path.as_posix()
+
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Constant)
+                and node.value == "dataset_generation_context"
+            ):
+                record(
+                    relative,
+                    node.lineno,
+                    "retired_query",
+                    "dataset_generation_context is retired; use the typed "
+                    "DatasetSplitContext publication.",
+                )
+
+            if isinstance(node, ast.Call):
+                called_name = _call_name(node.func)
+                if called_name == "DataSplittingDialog" and len(node.args) > 1:
+                    record(
+                        relative,
+                        node.lineno,
+                        "dialog_controller",
+                        "DataSplittingDialog must receive detached keyword context, "
+                        "not a controller positional argument.",
+                    )
+                if called_name == "DataSplittingPreviewDialog" and len(node.args) > 2:
+                    record(
+                        relative,
+                        node.lineno,
+                        "preview_live_context",
+                        "DataSplittingPreviewDialog must receive detached keyword "
+                        "context and preview callbacks.",
+                    )
+
+        if relative_path not in split_ui_paths:
+            continue
+
+        init_method = (
+            _find_class_method(tree, "DataSplittingDialog", "__init__")
+            if relative_path
+            == Path("XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py")
+            else None
+        )
+        if init_method is not None and any(
+            argument.arg == "controller"
+            for argument in _function_arguments(init_method)
+        ):
+            record(
+                relative,
+                init_method.lineno,
+                "controller_parameter",
+                "DataSplittingDialog must not accept a controller parameter.",
+            )
+
+        boundary_roots: tuple[ast.AST, ...]
+        if relative_path == Path("XBrainLab/ui/panels/training/sidebar.py"):
+            boundary_roots = tuple(
+                method
+                for method_name in ("split_data", "_data_splitting_dialog_context")
+                if (
+                    method := _find_class_method(
+                        tree,
+                        "TrainingSidebar",
+                        method_name,
+                    )
+                )
+                is not None
+            )
+        else:
+            boundary_roots = (tree,)
+
+        for node in (
+            candidate
+            for boundary_root in boundary_roots
+            for candidate in ast.walk(boundary_root)
+        ):
+            live_name: str | None = None
+            if isinstance(node, (ast.Name, ast.Attribute)):
+                candidate = _ast_identifier(node)
+                if candidate in {"epoch_data", "dataset_generator", "datasets"}:
+                    live_name = candidate
+                elif candidate == "local_result_payload":
+                    record(
+                        relative,
+                        node.lineno,
+                        "local_result_payload",
+                        "dataset-splitting UI must not use local_result_payload.",
+                    )
+            elif isinstance(node, ast.Constant) and node.value in {
+                "epoch_data",
+                "dataset_generator",
+                "datasets",
+            }:
+                live_name = str(node.value)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    if alias.name.rsplit(".", 1)[-1] == "local_result_payload":
+                        record(
+                            relative,
+                            node.lineno,
+                            "local_result_payload",
+                            "dataset-splitting UI must not use local_result_payload.",
+                        )
+            if live_name is not None:
+                record(
+                    relative,
+                    getattr(node, "lineno", 0),
+                    f"live_{live_name}",
+                    f"dataset-splitting UI must not access live {live_name}; use "
+                    "detached split publications.",
+                )
+
+    return sorted(violations)
+
+
+def check_epoch_dialog_publication_boundary(root_dir: Path) -> list[str]:
+    """Keep Time Epoching UI on one detached ApplicationService context."""
+    product_dir = root_dir / "XBrainLab"
+    if not product_dir.exists():
+        return []
+
+    violations: list[str] = []
+    reported: set[tuple[str, int, str]] = set()
+    sidebar_path = Path("XBrainLab/ui/panels/preprocess/sidebar.py")
+    dialog_path = Path("XBrainLab/ui/dialogs/preprocess/epoching_dialog.py")
+    inspected_paths = [*sorted(product_dir.rglob("*.py"))]
+    capture_paths = (
+        root_dir / "scripts/dev/capture_epoching_dialog.py",
+        root_dir / "scripts/dev/capture_ui_polish_surfaces.py",
+    )
+    inspected_paths.extend(path for path in capture_paths if path.exists())
+
+    def record(relative: str, line: int, kind: str, message: str) -> None:
+        key = (relative, line, kind)
+        if key in reported:
+            return
+        reported.add(key)
+        violations.append(f"{relative}:{line} {message}")
+
+    for path in inspected_paths:
+        tree = _parse_python_file(path)
+        if tree is None:
+            continue
+        relative_path = path.relative_to(root_dir)
+        relative = relative_path.as_posix()
+
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "_preprocessed_data_list_for_epoching"
+            ):
+                record(
+                    relative,
+                    node.lineno,
+                    "retired_live_query",
+                    "_preprocessed_data_list_for_epoching is retired; use the "
+                    "typed EpochDialogContext publication.",
+                )
+            if isinstance(node, ast.Call):
+                called_name = _call_name(node.func)
+                if called_name == "EpochingDialog" and len(node.args) > 1:
+                    record(
+                        relative,
+                        node.lineno,
+                        "positional_live_data",
+                        "EpochingDialog must receive detached epoch_context by "
+                        "keyword, not a live data positional argument.",
+                    )
+
+        if relative_path == dialog_path:
+            init_method = _find_class_method(tree, "EpochingDialog", "__init__")
+            if init_method is not None and any(
+                argument.arg in {"data", "data_list", "preprocessed_data_list"}
+                for argument in _function_arguments(init_method)
+            ):
+                record(
+                    relative,
+                    init_method.lineno,
+                    "live_data_parameter",
+                    "EpochingDialog must not accept live EEG data parameters.",
+                )
+            for node in ast.walk(tree):
+                identifier = (
+                    _ast_identifier(node)
+                    if isinstance(node, (ast.Name, ast.Attribute))
+                    else None
+                )
+                if identifier in {
+                    "data_list",
+                    "preprocessed_data_list",
+                    "build_epoching_context",
+                }:
+                    record(
+                        relative,
+                        getattr(node, "lineno", 0),
+                        f"live_{identifier}",
+                        "EpochingDialog must render the detached epoch_context "
+                        "without reading or deriving from live EEG objects.",
+                    )
+
+        if relative_path == sidebar_path:
+            open_epoching = _find_class_method(
+                tree,
+                "PreprocessSidebar",
+                "open_epoching",
+            )
+            if open_epoching is None:
+                continue
+            for node in ast.walk(open_epoching):
+                identifier = (
+                    _ast_identifier(node)
+                    if isinstance(node, (ast.Name, ast.Attribute))
+                    else None
+                )
+                if identifier in {
+                    "data_list",
+                    "preprocessed_data_list",
+                    "local_result_payload",
+                }:
+                    record(
+                        relative,
+                        getattr(node, "lineno", 0),
+                        f"live_{identifier}",
+                        "PreprocessSidebar.open_epoching must use only the typed "
+                        "detached EpochDialogContext.",
+                    )
+                if isinstance(node, ast.keyword) and (
+                    node.arg == "include_objects"
+                    and isinstance(node.value, ast.Constant)
+                    and node.value.value is True
+                ):
+                    record(
+                        relative,
+                        node.lineno,
+                        "include_objects",
+                        "PreprocessSidebar.open_epoching must not request live "
+                        "application objects.",
+                    )
+
+    return sorted(violations)
 
 
 def check_mutable_object_boundaries(
@@ -5509,6 +6789,124 @@ def check_pending_interaction_compatibility_api(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_agent_controller_lifecycle_aliases(root_dir: Path) -> list[str]:
+    """Reject lifecycle state stored on ``LLMController`` compatibility aliases."""
+    violations: list[str] = []
+    controller_path = root_dir / "XBrainLab" / "llm" / "agent" / "controller.py"
+    paths = [controller_path]
+    tests_dir = root_dir / "tests"
+    if tests_dir.exists():
+        paths.extend(sorted(tests_dir.rglob("*.py")))
+
+    for path in paths:
+        if not path.exists():
+            continue
+        tree, syntax_violation = _parse_product_guard_tree(
+            path,
+            root_dir,
+            guard_name="agent controller lifecycle ownership",
+        )
+        if syntax_violation is not None:
+            violations.append(syntax_violation)
+            continue
+        assert tree is not None
+        visitor = _LegacyAgentControllerLifecycleVisitor(
+            inspect_all_self_accesses=path == controller_path
+        )
+        visitor.visit(tree)
+        relative_path = path.relative_to(root_dir)
+        violations.extend(
+            f"{relative_path}:{line}: legacy LLMController lifecycle alias "
+            f"'{attribute}' bypasses its explicit owner"
+            for line, attribute in visitor.violations
+        )
+    return violations
+
+
+def check_agent_manager_publication_state_ownership(root_dir: Path) -> list[str]:
+    """Keep Assistant publication state writable only inside its coordinator."""
+    violations: list[str] = []
+    manager_path = root_dir / "XBrainLab" / "ui" / "components" / "agent_manager.py"
+    paths = [manager_path]
+    tests_dir = root_dir / "tests"
+    if tests_dir.exists():
+        paths.extend(sorted(tests_dir.rglob("*.py")))
+
+    for path in paths:
+        if not path.exists():
+            continue
+        tree = _parse_python_file(path)
+        if tree is None:
+            continue
+        relative_path = path.relative_to(root_dir)
+        violations.extend(
+            f"{relative_path}:{node.lineno} accesses legacy AgentManager publication "
+            f"alias '{node.attr}'; use the publication coordinator contract."
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute)
+            and node.attr in LEGACY_AGENT_MANAGER_PUBLICATION_ALIASES
+        )
+
+    coordinator_path = (
+        root_dir
+        / "XBrainLab"
+        / "ui"
+        / "components"
+        / "assistant_application_publication_coordinator.py"
+    )
+    coordinator_tree = _parse_python_file(coordinator_path)
+    if coordinator_tree is not None:
+        relative_path = coordinator_path.relative_to(root_dir)
+        violations.extend(
+            f"{relative_path}:{node.lineno} exposes writable publication state "
+            f"'{node.attr}'; keep storage private and expose a read-only snapshot."
+            for node in ast.walk(coordinator_tree)
+            if isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "self"
+            and node.attr in PUBLIC_ASSISTANT_PUBLICATION_STATE_FIELDS
+        )
+    return violations
+
+
+class _LegacyAgentControllerLifecycleVisitor(ast.NodeVisitor):
+    """Find old controller fields without flagging AgentWorker internals."""
+
+    def __init__(self, *, inspect_all_self_accesses: bool) -> None:
+        self._inspect_all_self_accesses = inspect_all_self_accesses
+        self._controller_class_depth = 0
+        self.violations: list[tuple[int, str]] = []
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        is_controller = node.name.endswith("Controller")
+        if is_controller:
+            self._controller_class_depth += 1
+        self.generic_visit(node)
+        if is_controller:
+            self._controller_class_depth -= 1
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if (
+            node.attr in LEGACY_AGENT_CONTROLLER_LIFECYCLE_ATTRIBUTES
+            and self._is_controller_receiver(node.value)
+        ):
+            self.violations.append((node.lineno, node.attr))
+        self.generic_visit(node)
+
+    def _is_controller_receiver(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            if node.id == "self":
+                return (
+                    self._inspect_all_self_accesses or self._controller_class_depth > 0
+                )
+            normalized = node.id.lstrip("_").lower()
+            return normalized == "ctrl" or normalized.endswith("controller")
+        return isinstance(node, ast.Attribute) and node.attr in {
+            "controller",
+            "agent_controller",
+        }
+
+
 def check_agent_confirmation_contract_evidence(root_dir: Path) -> list[str]:
     """Require tests to prove typed request/resolution correlation semantics."""
     violations: list[str] = []
@@ -6259,6 +7657,355 @@ def check_product_tool_envelope_boundary(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_dataset_data_interpretation_action_ownership(
+    root_dir: Path,
+) -> list[str]:
+    """Keep Data Interpretation UI orchestration in focused workflow owners."""
+
+    owner_relative = Path(
+        "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py"
+    )
+    recipe_owner_relative = Path(
+        "XBrainLab/ui/panels/dataset/data_interpretation_recipe_reload_coordinator.py"
+    )
+    actions_relative = Path("XBrainLab/ui/panels/dataset/actions.py")
+    owner_path = root_dir / owner_relative
+    recipe_owner_path = root_dir / recipe_owner_relative
+    actions_path = root_dir / actions_relative
+    dataset_root = root_dir / "XBrainLab" / "ui" / "panels" / "dataset"
+    command_names = frozenset(
+        {
+            "ApplyInterpretationCommand",
+            "LoadDataCommand",
+            "PreviewInterpretationCommand",
+            "ReloadInterpretationRecipeCommand",
+            "ReviewInterpretationCommand",
+            "SaveInterpretationRecipeCommand",
+            "ValidateInterpretationCommand",
+        }
+    )
+    facade_methods = (
+        "import_data",
+        "review_current_import",
+        "import_folder_source",
+        "import_bids_source",
+        "reload_interpretation_recipe",
+        "_execute_interpretation_command_async",
+        "_interaction_failure_outcome",
+        "_save_interpretation_recipe",
+        "_recipe_save_block_reason",
+    )
+    implementation_methods = frozenset(
+        {
+            "_compatibility_locked_preflight_blocked",
+            "_read_interpretation_review",
+            "_identity_from_publication",
+            "_require_interpretation_identity",
+            "_require_review_payload_identity",
+            "_continue_reloaded_interpretation_recipe",
+            "_continue_reloaded_recipe_preview",
+            "_continue_reloaded_recipe_validation",
+            "_can_start_interpretation",
+            "_run_data_interpretation_import",
+            "_continue_data_interpretation_import",
+            "_start_interpretation_review_async",
+            "_preview_and_validate_interpretation_async",
+            "_repreview_interpretation_async",
+            "_review_interpretation_for_apply_async",
+            "_apply_interpretation_async",
+            "_resource_preflight_view",
+            "_preview_resource_preflight_outcome",
+            "_review_state_from_review_result",
+            "_review_state_from_parts",
+            "_result_failed",
+            "_dialog_label_sources",
+            "_interpretation_source_and_choices",
+            "_merge_interpretation_choices",
+            "_choices_after_label_source_change",
+            "_diagnostic_payload",
+            "_optional_payload_id",
+            "_decision_reason",
+        }
+    )
+    review_state_names = frozenset(
+        {"_InterpretationReviewState", "_PublishedInterpretationReview"}
+    )
+    recipe_reload_methods = frozenset(
+        {
+            "_continue_reloaded_interpretation_recipe",
+            "_continue_reloaded_recipe_preview",
+            "_continue_reloaded_recipe_validation",
+        }
+    )
+    violations: list[str] = []
+
+    if not owner_path.exists():
+        violations.append(f"{owner_relative} is missing as the sole workflow owner.")
+    else:
+        owner_tree = _parse_python_file(owner_path)
+        if owner_tree is not None:
+            owner_classes = {
+                node.name for node in owner_tree.body if isinstance(node, ast.ClassDef)
+            }
+            required_classes = (
+                "DataInterpretationActionBindings",
+                "DataInterpretationActionCoordinator",
+                "DataInterpretationActionHost",
+                *sorted(review_state_names),
+            )
+            violations.extend(
+                f"{owner_relative} does not define {required_class}."
+                for required_class in required_classes
+                if required_class not in owner_classes
+            )
+            coordinator = next(
+                (
+                    node
+                    for node in owner_tree.body
+                    if isinstance(node, ast.ClassDef)
+                    and node.name == "DataInterpretationActionCoordinator"
+                ),
+                None,
+            )
+            lock_preflight = (
+                next(
+                    (
+                        node
+                        for node in coordinator.body
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and node.name == "_compatibility_locked_preflight_blocked"
+                    ),
+                    None,
+                )
+                if coordinator is not None
+                else None
+            )
+            uses_host_compatibility_gate = lock_preflight is not None and any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "_compatibility_controller_value"
+                for node in ast.walk(lock_preflight)
+            )
+            if not uses_host_compatibility_gate:
+                violations.append(
+                    f"{owner_relative} compatibility lock preflight must call the "
+                    "host _compatibility_controller_value() gate."
+                )
+
+            coordinator_methods = (
+                {
+                    node.name: node
+                    for node in coordinator.body
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                if coordinator is not None
+                else {}
+            )
+            violations.extend(
+                f"{owner_relative}:{coordinator_methods[name].lineno} keeps recipe "
+                f"reload workflow method {name}; move it to {recipe_owner_relative}."
+                for name in sorted(recipe_reload_methods & coordinator_methods.keys())
+            )
+            constructor = coordinator_methods.get("__init__")
+            composes_recipe_owner = constructor is not None and any(
+                isinstance(node, ast.Call)
+                and _mutable_boundary_call_name(node.func)
+                == "DataInterpretationRecipeReloadCoordinator"
+                for node in ast.walk(constructor)
+            )
+            if not composes_recipe_owner:
+                violations.append(
+                    f"{owner_relative} must compose "
+                    "DataInterpretationRecipeReloadCoordinator."
+                )
+
+    if not recipe_owner_path.exists():
+        violations.append(f"{recipe_owner_relative} is missing as recipe reload owner.")
+    else:
+        recipe_owner_tree = _parse_python_file(recipe_owner_path)
+        recipe_owner_classes = (
+            {
+                node.name
+                for node in recipe_owner_tree.body
+                if isinstance(node, ast.ClassDef)
+            }
+            if recipe_owner_tree is not None
+            else set()
+        )
+        if "DataInterpretationRecipeReloadCoordinator" not in recipe_owner_classes:
+            violations.append(
+                f"{recipe_owner_relative} does not define "
+                "DataInterpretationRecipeReloadCoordinator."
+            )
+
+    if dataset_root.exists():
+        allowed_command_owners = {
+            owner_path: command_names - {"ReloadInterpretationRecipeCommand"},
+            recipe_owner_path: frozenset(
+                {
+                    "PreviewInterpretationCommand",
+                    "ReloadInterpretationRecipeCommand",
+                    "ValidateInterpretationCommand",
+                }
+            ),
+        }
+        for path in dataset_root.rglob("*.py"):
+            tree = _parse_python_file(path)
+            if tree is None:
+                continue
+            relative = path.relative_to(root_dir)
+            allowed_commands = allowed_command_owners.get(path, frozenset())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == (
+                    "XBrainLab.backend.application.commands"
+                ):
+                    violations.extend(
+                        f"{relative}:{node.lineno} imports {alias.name} outside its "
+                        "focused Data Interpretation workflow owner."
+                        for alias in node.names
+                        if alias.name in command_names
+                        and alias.name not in allowed_commands
+                    )
+                if not isinstance(node, ast.Call):
+                    continue
+                called_name = None
+                if isinstance(node.func, ast.Name):
+                    called_name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    called_name = node.func.attr
+                if called_name in command_names and called_name not in allowed_commands:
+                    violations.append(
+                        f"{relative}:{node.lineno} constructs {called_name} outside "
+                        "its focused Data Interpretation workflow owner."
+                    )
+
+    if not actions_path.exists():
+        violations.append(f"{actions_relative} is missing the compatibility facade.")
+        return violations
+    actions_tree = _parse_python_file(actions_path)
+    if actions_tree is None:
+        return violations
+    violations.extend(
+        f"{actions_relative}:{node.lineno} defines {node.name}; review state "
+        f"belongs to {owner_relative}."
+        for node in actions_tree.body
+        if isinstance(node, ast.ClassDef) and node.name in review_state_names
+    )
+
+    handler = next(
+        (
+            node
+            for node in actions_tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "DatasetActionHandler"
+        ),
+        None,
+    )
+    if handler is None:
+        violations.append(f"{actions_relative} does not define DatasetActionHandler.")
+        return violations
+    methods = {
+        node.name: node
+        for node in handler.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    constructor = methods.get("__init__")
+    composes_owner = False
+    if constructor is not None:
+        for node in ast.walk(constructor):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            value = node.value
+            if not isinstance(value, ast.Call):
+                continue
+            constructor_name = (
+                value.func.id
+                if isinstance(value.func, ast.Name)
+                else value.func.attr
+                if isinstance(value.func, ast.Attribute)
+                else None
+            )
+            if constructor_name != "DataInterpretationActionCoordinator":
+                continue
+            composes_owner = any(
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+                and target.attr == "_data_interpretation"
+                for target in targets
+            )
+            if composes_owner:
+                break
+    if not composes_owner:
+        violations.append(
+            f"{actions_relative} must compose DataInterpretationActionCoordinator "
+            "as self._data_interpretation."
+        )
+
+    for method_name in implementation_methods:
+        method = methods.get(method_name)
+        if method is not None:
+            violations.append(
+                f"{actions_relative}:{method.lineno} regrows interpretation workflow "
+                f"method {method_name}."
+            )
+
+    facade_method_names = frozenset(facade_methods)
+    for method_name, method in methods.items():
+        if method_name in facade_method_names:
+            continue
+        owns_extra_delegate = any(
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Attribute)
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "self"
+            and node.value.attr == "_data_interpretation"
+            for node in ast.walk(method)
+        )
+        if owns_extra_delegate:
+            violations.append(
+                f"{actions_relative}:{method.lineno} exposes extra interpretation "
+                f"delegate {method_name}; only the nine compatibility facades are allowed."
+            )
+
+    for method_name in facade_methods:
+        method = methods.get(method_name)
+        if method is None:
+            violations.append(
+                f"{actions_relative} is missing required interpretation facade "
+                f"{method_name}."
+            )
+            continue
+        body = list(method.body)
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            body = body[1:]
+        call = (
+            body[0].value
+            if len(body) == 1 and isinstance(body[0], ast.Return)
+            else None
+        )
+        is_thin_delegate = (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == method_name
+            and isinstance(call.func.value, ast.Attribute)
+            and call.func.value.attr == "_data_interpretation"
+            and isinstance(call.func.value.value, ast.Name)
+            and call.func.value.value.id == "self"
+        )
+        if not is_thin_delegate:
+            violations.append(
+                f"{actions_relative}:{method.lineno} facade {method_name} must be a "
+                "single-call thin delegate to self._data_interpretation."
+            )
+    return violations
+
+
 def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
     """Keep resource consent typed, host-owned, and receipt-bound end to end."""
 
@@ -6291,7 +8038,7 @@ def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
         "XBrainLab/ui/panels/training/sidebar.py": (
             "ResourcePreflightView.from_diagnostics",
         ),
-        "XBrainLab/ui/panels/dataset/actions.py": (
+        "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py": (
             "ResourcePreflightView.from_diagnostics",
         ),
     }
@@ -6325,7 +8072,7 @@ def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
         )
     client_paths = (
         "XBrainLab/ui/panels/training/sidebar.py",
-        "XBrainLab/ui/panels/dataset/actions.py",
+        "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py",
         "XBrainLab/llm/agent/tool_attempt_coordinator.py",
     )
     forbidden_key_reads = (
@@ -9082,7 +10829,8 @@ def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 violations.extend(
                     f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
-                    f"{_call_name(call.func)} after execute_application_command(); "
+                    f"{_post_command_refresh_call_name(call)} after "
+                    "execute_application_command(); "
                     "service-backed success refresh must go through "
                     "refresh_after_command(), with local refresh limited to "
                     "explicit legacy-result helpers."
@@ -9386,12 +11134,17 @@ def _post_command_local_refresh_calls(
     statements: list[ast.stmt],
     source: str,
     function_name: str = "",
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] | None = None,
 ) -> list[ast.Call]:
     violations: list[ast.Call] = []
     command_seen = False
     for statement in statements:
         if command_seen:
-            visitor = _PostCommandLocalRefreshVisitor(source, function_name)
+            visitor = _PostCommandLocalRefreshVisitor(
+                source,
+                function_name,
+                functions=functions,
+            )
             visitor.visit(statement)
             violations.extend(visitor.violations)
         violations.extend(
@@ -9399,6 +11152,7 @@ def _post_command_local_refresh_calls(
                 _nested_statement_bodies(statement),
                 source,
                 function_name,
+                functions,
             ),
         )
         if _contains_service_backed_command(statement):
@@ -9434,36 +11188,92 @@ def _format_async_command_callback_refresh_violations(
     tree: ast.AST,
     source: str,
 ) -> list[str]:
-    functions = {
-        node.name: node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
     }
     violations: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if _call_name(node.func) != "execute_application_command_async":
+        if _call_name(node.func) not in UI_SERVICE_COMMAND_ASYNC_METHODS:
             continue
         if _call_has_refresh_false(node):
             continue
         callback_name = _command_async_result_callback_name(node)
         if not callback_name:
             continue
+        functions = _command_callback_function_scope(node, parents)
         callback = functions.get(callback_name)
         if callback is None:
             continue
-        visitor = _PostCommandLocalRefreshVisitor(source, callback.name)
+        visitor = _PostCommandLocalRefreshVisitor(
+            source,
+            callback.name,
+            functions=functions,
+        )
         for statement in callback.body:
             visitor.visit(statement)
         violations.extend(
             f"{py_file.relative_to(root_dir)}:{call.lineno} async on_result "
-            f"{callback_name}() calls {_call_name(call.func)}; service-backed "
+            f"{callback_name}() calls {_post_command_refresh_call_name(call)}; "
+            "service-backed "
             "async success refresh must go through refresh_after_command(), not "
             "callback-local render refresh."
             for call in visitor.violations
         )
     return violations
+
+
+def _command_callback_function_scope(
+    call: ast.Call,
+    parents: dict[ast.AST, ast.AST],
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+    enclosing_class: ast.ClassDef | None = None
+    enclosing_module: ast.Module | None = None
+    current: ast.AST | None = call
+    while current is not None:
+        current = parents.get(current)
+        if enclosing_function is None and isinstance(
+            current,
+            (ast.FunctionDef, ast.AsyncFunctionDef),
+        ):
+            enclosing_function = current
+        if isinstance(current, ast.ClassDef):
+            enclosing_class = current
+            break
+        if isinstance(current, ast.Module):
+            enclosing_module = current
+            break
+
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    if enclosing_class is not None:
+        functions.update(
+            {
+                node.name: node
+                for node in enclosing_class.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+        )
+    elif enclosing_module is not None:
+        functions.update(
+            {
+                node.name: node
+                for node in enclosing_module.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+        )
+    if enclosing_function is not None:
+        functions.update(
+            {
+                node.name: node
+                for node in ast.walk(enclosing_function)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+        )
+    return functions
 
 
 def _command_async_result_callback_name(call: ast.Call) -> str | None:
@@ -9497,7 +11307,7 @@ def _contains_service_backed_command(node: ast.AST) -> bool:
     for child in ast.walk(node):
         if not isinstance(child, ast.Call):
             continue
-        if _call_name(child.func) != "execute_application_command":
+        if _call_name(child.func) not in UI_SERVICE_COMMAND_METHODS:
             continue
         if _call_has_refresh_false(child):
             continue
@@ -9549,9 +11359,17 @@ def _call_has_refresh_false(call: ast.Call) -> bool:
 
 
 class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
-    def __init__(self, source: str, function_name: str = "") -> None:
+    def __init__(
+        self,
+        source: str,
+        function_name: str = "",
+        *,
+        functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] | None = None,
+    ) -> None:
         self.source = source
         self.function_name = function_name
+        self.functions = functions or {}
+        self._visited_functions: set[str] = {function_name} if function_name else set()
         self.violations: list[ast.Call] = []
 
     def visit_If(self, node: ast.If) -> None:
@@ -9569,10 +11387,70 @@ class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        if _call_name(node.func) in UI_POST_COMMAND_LOCAL_REFRESH_METHODS:
+        call_name = _call_name(node.func)
+        if (
+            call_name in UI_POST_COMMAND_LOCAL_REFRESH_METHODS
+            or call_name in UI_POST_COMMAND_PUBLICATION_RENDER_METHODS
+            or _publication_control_mutation_name(node) is not None
+            or _publication_render_getattr_name(node) is not None
+        ):
             self.violations.append(node)
             return
+        method_name = _self_method_call_name(node)
+        if method_name is not None and method_name not in self._visited_functions:
+            target = self.functions.get(method_name)
+            if target is not None:
+                self._visited_functions.add(method_name)
+                for statement in target.body:
+                    self.visit(statement)
         self.generic_visit(node)
+
+
+def _self_method_call_name(node: ast.Call) -> str | None:
+    func = node.func
+    if not isinstance(func, ast.Attribute):
+        return None
+    if not isinstance(func.value, ast.Name) or func.value.id != "self":
+        return None
+    return func.attr
+
+
+def _publication_control_mutation_name(node: ast.Call) -> str | None:
+    func = node.func
+    if not isinstance(func, ast.Attribute):
+        return None
+    if func.attr not in UI_POST_COMMAND_PUBLICATION_CONTROL_MUTATORS:
+        return None
+    receiver = func.value
+    if not isinstance(receiver, ast.Attribute):
+        return None
+    if not isinstance(receiver.value, ast.Name) or receiver.value.id != "self":
+        return None
+    if receiver.attr not in UI_POST_COMMAND_PUBLICATION_CONTROL_NAMES:
+        return None
+    return f"{receiver.attr}.{func.attr}"
+
+
+def _publication_render_getattr_name(node: ast.Call) -> str | None:
+    if _call_name(node.func) != "getattr" or len(node.args) < 2:
+        return None
+    method_name = node.args[1]
+    if not isinstance(method_name, ast.Constant) or not isinstance(
+        method_name.value,
+        str,
+    ):
+        return None
+    if method_name.value not in UI_POST_COMMAND_PUBLICATION_RENDER_METHODS:
+        return None
+    return method_name.value
+
+
+def _post_command_refresh_call_name(node: ast.Call) -> str:
+    return (
+        _publication_control_mutation_name(node)
+        or _publication_render_getattr_name(node)
+        or _call_name(node.func)
+    )
 
 
 class _PostCommandControllerEchoVisitor(ast.NodeVisitor):
@@ -9689,6 +11567,1555 @@ def _is_capability_reference(node: ast.AST) -> bool:
     if isinstance(node, ast.Name):
         return "capability" in node.id
     return isinstance(node, ast.Attribute) and "capability" in node.attr
+
+
+def check_primary_panel_product_bootstrap_boundary(root_dir: Path) -> list[str]:
+    """Keep primary product-panel construction off controller bundles."""
+    violations: list[str] = []
+    main_window_path = root_dir / "XBrainLab/ui/main_window.py"
+    main_window_tree = _parse_python_file(main_window_path)
+    if main_window_tree is None:
+        return ["XBrainLab/ui/main_window.py is missing or invalid"]
+
+    panel_specs = {
+        panel_name: [
+            node
+            for node in ast.walk(main_window_tree)
+            if isinstance(node, ast.Call)
+            and _call_name(node.func) == "_PanelSpec"
+            and _panel_spec_attr(node) == panel_name
+        ]
+        for panel_name in (
+            "dataset_panel",
+            "preprocess_panel",
+            "training_panel",
+        )
+    }
+    for panel_name, label in (
+        ("dataset_panel", "Dataset"),
+        ("preprocess_panel", "Preprocess"),
+        ("training_panel", "Training"),
+    ):
+        specs = panel_specs[panel_name]
+        if len(specs) != 1:
+            violations.append(f"MainWindow must define exactly one {label} panel spec")
+            continue
+        controller_names = _panel_spec_controller_names(specs[0])
+        if not isinstance(controller_names, ast.Tuple) or controller_names.elts:
+            violations.append(
+                f"{label} panel spec must have no controller requirements"
+            )
+
+    if (
+        any(
+            isinstance(node, ast.Attribute) and node.attr == "_workflow_controllers"
+            for node in ast.walk(main_window_tree)
+        )
+        or any(
+            isinstance(node, (ast.Import, ast.ImportFrom))
+            and "controller_compatibility_bootstrap" in (ast.unparse(node) or "")
+            for node in ast.walk(main_window_tree)
+        )
+        or any(
+            isinstance(node, ast.Call)
+            and (
+                _call_name(node.func) == "get_controller"
+                or "compatibility" in _call_name(node.func)
+                or "bootstrap" in _call_name(node.func)
+            )
+            for node in ast.walk(main_window_tree)
+        )
+    ):
+        violations.append(
+            "MainWindow must not retain or resolve a workflow controller bundle"
+        )
+
+    init_panels = _find_class_method(main_window_tree, "MainWindow", "init_panels")
+    if init_panels is None:
+        violations.append("MainWindow has no init_panels method")
+    elif any(
+        isinstance(node, ast.Call)
+        and (
+            "compatibility" in _call_name(node.func)
+            or "bootstrap" in _call_name(node.func)
+        )
+        for node in ast.walk(init_panels)
+    ):
+        violations.append(
+            "MainWindow init_panels must defer compatibility bootstrap to Training"
+        )
+
+    materialize = _find_class_method(
+        main_window_tree,
+        "MainWindow",
+        "_materialize_panel",
+    )
+    if materialize is None:
+        violations.append("MainWindow has no _materialize_panel method")
+    else:
+        for panel_name, label in (
+            ("dataset_panel", "Dataset"),
+            ("preprocess_panel", "Preprocess"),
+        ):
+            branch = _find_panel_materialization_branch(materialize, panel_name)
+            branch_nodes = (
+                [child for statement in branch.body for child in ast.walk(statement)]
+                if branch is not None
+                else []
+            )
+            runtime_names = {
+                target.id
+                for node in branch_nodes
+                if isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Call)
+                and _call_name(node.value.func) == "application_ui_runtime"
+                for target in node.targets
+                if isinstance(target, ast.Name)
+            }
+            panel_call = next(
+                (
+                    node
+                    for node in branch_nodes
+                    if isinstance(node, ast.Call)
+                    and _call_name(node.func)
+                    in {"DatasetPanel", "PreprocessPanel", "resolved_panel_class"}
+                ),
+                None,
+            )
+            panel_keywords = (
+                {
+                    keyword.arg: keyword.value
+                    for keyword in panel_call.keywords
+                    if keyword.arg is not None
+                }
+                if panel_call is not None
+                else {}
+            )
+            publication_value = panel_keywords.get("publication_port")
+            if not (
+                isinstance(publication_value, ast.Name)
+                and publication_value.id in runtime_names
+            ):
+                violations.append(
+                    f"MainWindow {label} product construction must inject "
+                    "publication_port"
+                )
+            parent_value = panel_keywords.get("parent")
+            if not (isinstance(parent_value, ast.Name) and parent_value.id == "self"):
+                violations.append(
+                    f"MainWindow {label} product construction must inject parent"
+                )
+            if panel_call is not None and panel_call.args:
+                violations.append(
+                    f"MainWindow {label} product construction passes positional "
+                    "controller arguments"
+                )
+            if any(
+                isinstance(node, ast.Attribute) and node.attr == "_workflow_controllers"
+                for node in branch_nodes
+            ) or any(
+                isinstance(node, ast.Call)
+                and (
+                    _call_name(node.func) == "get_controller"
+                    or "compatibility" in _call_name(node.func)
+                    or "bootstrap" in _call_name(node.func)
+                )
+                for node in branch_nodes
+            ):
+                violations.append(
+                    f"MainWindow {label} product construction accesses the "
+                    "compatibility controller bundle"
+                )
+            broad_keywords = sorted(
+                name
+                for name in panel_keywords
+                if name == "controller" or name.endswith("_controller")
+            )
+            if broad_keywords:
+                violations.append(
+                    f"MainWindow {label} product construction injects broad "
+                    "controller ports: " + ", ".join(broad_keywords)
+                )
+
+        training_branch = _find_panel_materialization_branch(
+            materialize,
+            "training_panel",
+        )
+        training_nodes = (
+            [
+                child
+                for statement in training_branch.body
+                for child in ast.walk(statement)
+            ]
+            if training_branch is not None
+            else []
+        )
+        runtime_names = {
+            target.id
+            for node in training_nodes
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and _call_name(node.value.func) == "application_ui_runtime"
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        panel_call = next(
+            (
+                node
+                for node in training_nodes
+                if isinstance(node, ast.Call)
+                and _call_name(node.func) in {"TrainingPanel", "resolved_panel_class"}
+            ),
+            None,
+        )
+        panel_keywords = (
+            {
+                keyword.arg: keyword.value
+                for keyword in panel_call.keywords
+                if keyword.arg is not None
+            }
+            if panel_call is not None
+            else {}
+        )
+        for port_name in ("query_port", "publication_port", "action_port"):
+            value = panel_keywords.get(port_name)
+            if not (isinstance(value, ast.Name) and value.id in runtime_names):
+                violations.append(
+                    f"MainWindow Training product construction must inject {port_name}"
+                )
+        transient_value = panel_keywords.get("transient_port")
+        if not (
+            isinstance(transient_value, ast.Call)
+            and _call_name(transient_value.func) == "training_transient_ui_port"
+        ):
+            violations.append(
+                "MainWindow Training product construction must inject transient_port"
+            )
+        if panel_call is not None and panel_call.args:
+            violations.append(
+                "MainWindow Training product construction passes positional "
+                "controller arguments"
+            )
+        broad_keywords = sorted(
+            name
+            for name in panel_keywords
+            if name == "controller" or name.endswith("_controller")
+        )
+        if broad_keywords:
+            violations.append(
+                "MainWindow Training product construction injects broad controller "
+                "ports: " + ", ".join(broad_keywords)
+            )
+
+    for panel_name, class_name, label in (
+        ("dataset", "DatasetPanel", "DatasetPanel"),
+        ("preprocess", "PreprocessPanel", "PreprocessPanel"),
+        ("training", "TrainingPanel", "TrainingPanel"),
+    ):
+        panel_path = root_dir / f"XBrainLab/ui/panels/{panel_name}/panel.py"
+        panel_tree = _parse_python_file(panel_path)
+        initializer = (
+            _find_class_method(panel_tree, class_name, "__init__")
+            if panel_tree is not None
+            else None
+        )
+        if initializer is None:
+            violations.append(f"{label} has no explicit constructor")
+            continue
+        compatibility_calls = [
+            node
+            for node in ast.walk(initializer)
+            if isinstance(node, ast.Call)
+            and _call_name(node.func) == "get_controller_for_compatibility_context"
+        ]
+        for call in compatibility_calls:
+            compatibility_gated = any(
+                isinstance(candidate, ast.If)
+                and call in ast.walk(candidate)
+                and (
+                    _test_compares_name_to_none(
+                        candidate.test,
+                        "publication_port",
+                    )
+                    or (
+                        label == "TrainingPanel"
+                        and any(
+                            isinstance(test_node, ast.Attribute)
+                            and test_node.attr == "_typed_port_mode"
+                            for test_node in ast.walk(candidate.test)
+                        )
+                    )
+                )
+                for candidate in ast.walk(initializer)
+            )
+            if not compatibility_gated:
+                violations.append(
+                    f"{label} compatibility lookup must be gated by "
+                    "publication_port is None"
+                )
+                break
+
+    return violations
+
+
+def _test_compares_name_to_none(node: ast.AST, name: str) -> bool:
+    return any(
+        isinstance(candidate, ast.Compare)
+        and len(candidate.ops) == 1
+        and isinstance(candidate.ops[0], (ast.Is, ast.Eq))
+        and len(candidate.comparators) == 1
+        and (
+            (
+                isinstance(candidate.left, ast.Name)
+                and candidate.left.id == name
+                and isinstance(candidate.comparators[0], ast.Constant)
+                and candidate.comparators[0].value is None
+            )
+            or (
+                isinstance(candidate.left, ast.Constant)
+                and candidate.left.value is None
+                and isinstance(candidate.comparators[0], ast.Name)
+                and candidate.comparators[0].id == name
+            )
+        )
+        for candidate in ast.walk(node)
+    )
+
+
+def check_primary_ui_publication_refresh_boundary(root_dir: Path) -> list[str]:
+    """Protect primary workflow panels from split product refresh truth."""
+    violations = _check_application_publication_render_ledger(root_dir)
+    panels_root = root_dir / "XBrainLab/ui/panels"
+    for candidate in sorted(panels_root.rglob("*.py")):
+        tree = _parse_python_file(candidate)
+        if tree is None:
+            continue
+        violations.extend(
+            f"{candidate.relative_to(root_dir)}:{node.lineno} retains "
+            f"command-result refresh helper {node.name}"
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and "after_command_result" in node.name
+        )
+
+    panel_specs = {
+        "dataset": "DatasetPanel",
+        "preprocess": "PreprocessPanel",
+        "training": "TrainingPanel",
+    }
+    for panel_name, class_name in panel_specs.items():
+        panel_path = root_dir / f"XBrainLab/ui/panels/{panel_name}/panel.py"
+        tree = _parse_python_file(panel_path)
+        if tree is None:
+            violations.append(
+                f"{panel_path.relative_to(root_dir)} is missing or invalid"
+            )
+            continue
+        panel_class = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == class_name
+            ),
+            None,
+        )
+        if panel_class is None:
+            violations.append(f"{panel_path.relative_to(root_dir)} has no {class_name}")
+            continue
+
+        initializer = _find_class_method(tree, class_name, "__init__")
+        parameters = (
+            {
+                argument.arg: argument
+                for argument in (
+                    *initializer.args.posonlyargs,
+                    *initializer.args.args,
+                    *initializer.args.kwonlyargs,
+                )
+            }
+            if initializer is not None
+            else {}
+        )
+        publication_parameter = parameters.get("publication_port")
+        expected_publication_port = (
+            "TrainingPublicationPort"
+            if class_name == "TrainingPanel"
+            else "ApplicationViewPublicationPort"
+        )
+        if publication_parameter is None or (
+            expected_publication_port
+            not in _annotation_class_names(publication_parameter.annotation)
+        ):
+            violations.append(
+                f"{class_name} must declare publication_port: "
+                f"{expected_publication_port}"
+            )
+
+        setup = _find_class_method(tree, class_name, "_setup_bridges")
+        publication_branch = (
+            next(
+                (
+                    statement
+                    for statement in setup.body
+                    if isinstance(statement, ast.If)
+                    and any(
+                        isinstance(candidate, ast.Attribute)
+                        and candidate.attr
+                        == (
+                            "_typed_port_mode"
+                            if class_name == "TrainingPanel"
+                            else "_publication_port"
+                        )
+                        for candidate in ast.walk(statement.test)
+                    )
+                ),
+                None,
+            )
+            if setup is not None
+            else None
+        )
+        if publication_branch is None:
+            violations.append(
+                f"{class_name} has no publication-first compatibility boundary"
+            )
+        else:
+            bridge_events = {
+                _annotation_terminal_name(call.args[1])
+                or _string_constant(call.args[1])
+                or ""
+                for call in ast.walk(publication_branch)
+                if isinstance(call, ast.Call)
+                and _call_name(call.func) == "_create_bridge"
+                and len(call.args) > 1
+            }
+            allowed_events = {"APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT"}
+            if class_name == "TrainingPanel":
+                allowed_events.update(
+                    {"training_updated", "TRAINING_PROGRESS_UPDATED_EVENT"}
+                )
+            if "APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT" not in bridge_events:
+                violations.append(
+                    f"{class_name} does not subscribe to application publication"
+                )
+            unexpected_events = sorted(bridge_events - allowed_events)
+            if unexpected_events:
+                violations.append(
+                    f"{class_name} product branch subscribes to state observer(s): "
+                    + ", ".join(unexpected_events)
+                )
+            if not any(
+                isinstance(node, ast.Return) for node in publication_branch.body
+            ):
+                violations.append(
+                    f"{class_name} publication branch does not exclude compatibility "
+                    "controller observers"
+                )
+
+        handler = _find_class_method(
+            tree,
+            class_name,
+            "_on_application_view_publication_changed",
+        )
+        if not _method_calls_application_render_ledger(handler, "queue"):
+            violations.append(
+                f"{class_name} has no monotonic publication revision gate"
+            )
+            violations.append(f"{class_name} has no queued publication refresh")
+        cleanup = _find_class_method(tree, class_name, "cleanup")
+        if not _method_calls_application_render_ledger(cleanup, "cleanup"):
+            violations.append(
+                f"{class_name} cleanup does not cancel publication retries"
+            )
+
+    capabilities_path = root_dir / "XBrainLab/ui/application_capabilities.py"
+    capabilities_tree = _parse_python_file(capabilities_path)
+    if capabilities_tree is None:
+        violations.append(
+            "XBrainLab/ui/application_capabilities.py is missing or invalid"
+        )
+    else:
+        forbidden_refresh_calls = {
+            "begin_command_refresh_suppression",
+            "complete_command_refresh_suppression",
+            "end_command_refresh_suppression",
+            "refresh_after_command",
+            "refresh_after_serialized_command",
+            "suppress_observer_refresh_during_command",
+        }
+        used_forbidden = sorted(
+            {
+                _call_name(node.func)
+                for node in ast.walk(capabilities_tree)
+                if isinstance(node, ast.Call)
+                and _call_name(node.func) in forbidden_refresh_calls
+            }
+        )
+        imported_forbidden = sorted(
+            {
+                alias.name
+                for node in ast.walk(capabilities_tree)
+                if isinstance(node, ast.ImportFrom)
+                for alias in node.names
+                if alias.name in forbidden_refresh_calls
+            }
+        )
+        if used_forbidden or imported_forbidden:
+            violations.append(
+                "application_capabilities reintroduces command-result refresh: "
+                + ", ".join(sorted({*used_forbidden, *imported_forbidden}))
+            )
+        async_helper = next(
+            (
+                node
+                for node in capabilities_tree.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "execute_application_command_async"
+            ),
+            None,
+        )
+        runner_calls = (
+            [
+                node
+                for node in ast.walk(async_helper)
+                if isinstance(node, ast.Call)
+                and _call_name(node.func) == "QtApplicationCommandRunner"
+            ]
+            if async_helper is not None
+            else []
+        )
+        if not runner_calls or any(
+            not any(
+                keyword.arg == "refresh"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is False
+                for keyword in call.keywords
+            )
+            for call in runner_calls
+        ):
+            violations.append(
+                "async application commands must disable command-result refresh"
+            )
+
+    refresh_path = root_dir / "XBrainLab/ui/refresh_coordinator.py"
+    refresh_tree = _parse_python_file(refresh_path)
+    guarded_functions = {
+        "refresh_after_command",
+        "refresh_after_observer",
+        "complete_command_refresh_suppression",
+        "suppress_observer_refresh_during_command",
+        "begin_command_refresh_suppression",
+        "end_command_refresh_suppression",
+    }
+    if refresh_tree is None:
+        violations.append("XBrainLab/ui/refresh_coordinator.py is missing or invalid")
+    else:
+        functions = {
+            node.name: node
+            for node in refresh_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        for function_name in sorted(guarded_functions):
+            function = functions.get(function_name)
+            if function is None or not any(
+                isinstance(node, ast.Call)
+                and _call_name(node.func) == "_has_revisioned_application_context"
+                for node in ast.walk(function)
+            ):
+                violations.append(
+                    f"refresh_coordinator.{function_name} has no real Study guard"
+                )
+
+    agent_manager_path = root_dir / "XBrainLab/ui/components/agent_manager.py"
+    agent_manager_tree = _parse_python_file(agent_manager_path)
+    if agent_manager_tree is not None:
+        forbidden_agent_refresh = {
+            "begin_command_refresh_suppression",
+            "complete_command_refresh_suppression",
+            "end_command_refresh_suppression",
+            "refresh_after_command",
+            "refresh_after_serialized_command",
+            "suppress_observer_refresh_during_command",
+        }
+        used_forbidden = {
+            _call_name(node.func)
+            for node in ast.walk(agent_manager_tree)
+            if isinstance(node, ast.Call)
+            and _call_name(node.func) in forbidden_agent_refresh
+        }
+        imported_forbidden = {
+            alias.name
+            for node in ast.walk(agent_manager_tree)
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+            if alias.name in forbidden_agent_refresh
+        }
+        if used_forbidden or imported_forbidden:
+            violations.append(
+                "AgentManager must not own application refresh suppression or "
+                "command-result refresh; revisioned application publication is "
+                "the product refresh truth: "
+                + ", ".join(sorted({*used_forbidden, *imported_forbidden}))
+            )
+        forbidden_delivery_calls = {
+            "acknowledge_view_publication_delivery",
+            "reject_view_publication_delivery",
+        }
+        used_delivery_calls = {
+            _call_name(node.func)
+            for node in ast.walk(agent_manager_tree)
+            if isinstance(node, ast.Call)
+            and _call_name(node.func) in forbidden_delivery_calls
+        }
+        application_bridge_owns_acknowledgement = any(
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(target, ast.Attribute)
+                and target.attr == "_application_publication_bridge"
+                for target in (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+            )
+            and isinstance(node.value, ast.Call)
+            and any(
+                keyword.arg == "require_slot_acknowledgement"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True
+                for keyword in node.value.keywords
+            )
+            for node in ast.walk(agent_manager_tree)
+        )
+        if used_delivery_calls or application_bridge_owns_acknowledgement:
+            details = sorted(used_delivery_calls)
+            if application_bridge_owns_acknowledgement:
+                details.append("require_slot_acknowledgement=True")
+            violations.append(
+                "AgentManager must not acknowledge or reject global application "
+                "publication delivery; DesktopApplicationPublicationRenderer is "
+                "the sole desktop acknowledgement owner: " + ", ".join(details)
+            )
+    return violations
+
+
+def _method_calls_application_render_ledger(
+    method: ast.FunctionDef | ast.AsyncFunctionDef | None,
+    method_name: str,
+) -> bool:
+    return bool(
+        method is not None
+        and any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == method_name
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "_application_render_ledger"
+            for node in ast.walk(method)
+        )
+    )
+
+
+def _check_application_publication_render_ledger(root_dir: Path) -> list[str]:
+    """Require one bounded queued-render implementation for panel consumers."""
+    helper_path = root_dir / "XBrainLab/ui/application_publication_renderer.py"
+    tree = _parse_python_file(helper_path)
+    if tree is None:
+        return [
+            "XBrainLab/ui/application_publication_renderer.py is missing or invalid"
+        ]
+    ledger_class = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "ApplicationPublicationRenderLedger"
+        ),
+        None,
+    )
+    if ledger_class is None:
+        return ["ApplicationPublicationRenderLedger is missing"]
+
+    violations: list[str] = []
+    queue = _find_class_method(
+        tree,
+        "ApplicationPublicationRenderLedger",
+        "queue",
+    )
+    if queue is None or not any(
+        isinstance(node, ast.Compare)
+        and any(isinstance(operator, ast.LtE) for operator in node.ops)
+        and any(
+            isinstance(candidate, ast.Attribute)
+            and candidate.attr == "_last_rendered_revision"
+            for candidate in ast.walk(node)
+        )
+        for node in ast.walk(queue or ast.Pass())
+    ):
+        violations.append("ApplicationPublicationRenderLedger has no revision gate")
+
+    failed_attempt = _find_class_method(
+        tree,
+        "ApplicationPublicationRenderLedger",
+        "_record_failed_attempt",
+    )
+    retry_interval = _find_class_method(
+        tree,
+        "ApplicationPublicationRenderLedger",
+        "_retry_interval",
+    )
+    bounded_retry = bool(
+        failed_attempt is not None
+        and any(
+            isinstance(node, ast.AugAssign)
+            and isinstance(node.target, ast.Attribute)
+            and node.target.attr == "_attempts"
+            and isinstance(node.op, ast.Add)
+            for node in ast.walk(failed_attempt)
+        )
+        and any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "start"
+            and any(
+                isinstance(candidate, ast.Call)
+                and isinstance(candidate.func, ast.Attribute)
+                and candidate.func.attr == "_retry_interval"
+                for candidate in ast.walk(node)
+            )
+            for node in ast.walk(failed_attempt)
+        )
+        and retry_interval is not None
+        and any(
+            isinstance(node, ast.Compare)
+            and any(isinstance(operator, ast.GtE) for operator in node.ops)
+            and any(
+                isinstance(candidate, ast.Name)
+                and candidate.id == "PANEL_PUBLICATION_RENDER_MAX_ATTEMPTS"
+                for candidate in ast.walk(node)
+            )
+            for node in ast.walk(retry_interval)
+        )
+        and all(
+            any(
+                isinstance(node, ast.Name) and node.id == interval_name
+                for node in ast.walk(retry_interval)
+            )
+            for interval_name in (
+                "PANEL_PUBLICATION_RENDER_RETRY_INTERVAL_MS",
+                "PANEL_PUBLICATION_RENDER_RECOVERY_INTERVAL_MS",
+            )
+        )
+    )
+    if not bounded_retry:
+        violations.append(
+            "ApplicationPublicationRenderLedger has no bounded delayed retry"
+        )
+
+    cleanup = _find_class_method(
+        tree,
+        "ApplicationPublicationRenderLedger",
+        "cleanup",
+    )
+    if cleanup is None or not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "stop"
+        for node in ast.walk(cleanup or ast.Pass())
+    ):
+        violations.append(
+            "ApplicationPublicationRenderLedger cleanup does not stop its timer"
+        )
+    return violations
+
+
+def _is_application_refresh_timer_call(node: ast.Call, method_name: str) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == method_name
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "_application_refresh_timer"
+    )
+
+
+def check_evaluation_publication_refresh_boundary(root_dir: Path) -> list[str]:
+    """Protect Evaluation's narrow publication-owned UI boundary."""
+    violations: list[str] = []
+    panel_path = root_dir / "XBrainLab/ui/panels/evaluation/panel.py"
+    main_window_path = root_dir / "XBrainLab/ui/main_window.py"
+    bootstrap_path = root_dir / "XBrainLab/ui/controller_compatibility_bootstrap.py"
+    refresh_path = root_dir / "XBrainLab/ui/refresh_coordinator.py"
+
+    panel_source = panel_path.read_text(encoding="utf-8")
+    panel_tree = ast.parse(panel_source)
+    evaluation_class = next(
+        (
+            node
+            for node in panel_tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "EvaluationPanel"
+        ),
+        None,
+    )
+    if evaluation_class is None:
+        return ["XBrainLab/ui/panels/evaluation/panel.py has no EvaluationPanel"]
+
+    initializer = next(
+        (
+            node
+            for node in evaluation_class.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "__init__"
+        ),
+        None,
+    )
+    expected_ports = {
+        "query_port": "EvaluationQueryPort",
+        "publication_port": "ApplicationPublicationSubscriptionPort",
+        "action_port": "EvaluationActionPort",
+    }
+    if initializer is None:
+        violations.append("EvaluationPanel has no explicit typed constructor")
+    else:
+        parameters = {
+            parameter.arg: parameter
+            for parameter in (
+                *initializer.args.posonlyargs,
+                *initializer.args.args,
+                *initializer.args.kwonlyargs,
+            )
+        }
+        broad_parameters = sorted(
+            name
+            for name in parameters
+            if "controller" in name or name == "application_runtime"
+        )
+        if initializer.args.vararg is not None:
+            broad_parameters.append(f"*{initializer.args.vararg.arg}")
+        if initializer.args.kwarg is not None:
+            broad_parameters.append(f"**{initializer.args.kwarg.arg}")
+        if broad_parameters:
+            violations.append(
+                "EvaluationPanel constructor accepts broad parameters: "
+                + ", ".join(broad_parameters)
+            )
+        for parameter_name, annotation_name in expected_ports.items():
+            parameter = parameters.get(parameter_name)
+            annotation_names = (
+                _annotation_class_names(parameter.annotation)
+                if parameter is not None
+                else set()
+            )
+            if annotation_name not in annotation_names:
+                violations.append(
+                    "EvaluationPanel must declare narrow port "
+                    f"{parameter_name}: {annotation_name}"
+                )
+
+    for node in ast.walk(evaluation_class):
+        if isinstance(node, ast.Attribute) and node.attr.endswith("_controller"):
+            violations.append(
+                f"EvaluationPanel stores broad controller attribute {node.attr}"
+            )
+        if not isinstance(node, ast.Call):
+            continue
+        call_name = _call_name(node.func)
+        if call_name in {"get_controller", "_create_refresh_bridge"}:
+            violations.append(
+                f"EvaluationPanel uses forbidden controller refresh path {call_name}()"
+            )
+        if call_name == "_create_bridge":
+            event_arg = node.args[1] if len(node.args) > 1 else None
+            if not (
+                isinstance(event_arg, ast.Name)
+                and event_arg.id == "APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT"
+            ):
+                violations.append(
+                    "EvaluationPanel subscribes to a non-application publication event"
+                )
+
+    revision_gate = any(
+        isinstance(node, ast.Compare)
+        and any(isinstance(operator, ast.LtE) for operator in node.ops)
+        and isinstance(node.left, ast.Attribute)
+        and node.left.attr == "revision"
+        and any(
+            isinstance(comparator, ast.Attribute)
+            and comparator.attr == "_last_application_revision"
+            for comparator in node.comparators
+        )
+        for node in ast.walk(evaluation_class)
+    )
+    if not revision_gate:
+        violations.append("EvaluationPanel has no monotonic application revision gate")
+    publication_handler = _find_class_method(
+        panel_tree,
+        "EvaluationPanel",
+        "_on_application_view_publication_changed",
+    )
+    if not _method_calls_application_render_ledger(publication_handler, "queue"):
+        violations.append(
+            "EvaluationPanel has no queued application publication ledger"
+        )
+    evaluation_cleanup = _find_class_method(
+        panel_tree,
+        "EvaluationPanel",
+        "cleanup",
+    )
+    if not _method_calls_application_render_ledger(evaluation_cleanup, "cleanup"):
+        violations.append("EvaluationPanel cleanup does not cancel publication retries")
+
+    main_window_tree = ast.parse(main_window_path.read_text(encoding="utf-8"))
+    evaluation_specs = [
+        node
+        for node in ast.walk(main_window_tree)
+        if isinstance(node, ast.Call)
+        and _call_name(node.func) == "_PanelSpec"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "evaluation_panel"
+    ]
+    if len(evaluation_specs) != 1:
+        violations.append("MainWindow must define exactly one Evaluation panel spec")
+    else:
+        spec = evaluation_specs[0]
+        controller_names = spec.args[4] if len(spec.args) > 4 else None
+        if not isinstance(controller_names, ast.Tuple) or controller_names.elts:
+            violations.append(
+                "MainWindow Evaluation panel spec must have no controller requirements"
+            )
+
+    materialize_method = _find_class_method(
+        main_window_tree,
+        "MainWindow",
+        "_materialize_panel",
+    )
+    evaluation_branch = (
+        _find_panel_materialization_branch(
+            materialize_method,
+            "evaluation_panel",
+        )
+        if materialize_method is not None
+        else None
+    )
+    branch_nodes = (
+        [child for statement in evaluation_branch.body for child in ast.walk(statement)]
+        if evaluation_branch is not None
+        else []
+    )
+    runtime_names = {
+        target.id
+        for node in branch_nodes
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and _call_name(node.value.func) == "application_ui_runtime"
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    panel_call = next(
+        (
+            node
+            for node in branch_nodes
+            if isinstance(node, ast.Call)
+            and _call_name(node.func) in {"EvaluationPanel", "resolved_panel_class"}
+        ),
+        None,
+    )
+    panel_keywords = (
+        {
+            keyword.arg: keyword.value
+            for keyword in panel_call.keywords
+            if keyword.arg is not None
+        }
+        if panel_call is not None
+        else {}
+    )
+    for port_name in expected_ports:
+        port_value = panel_keywords.get(port_name)
+        if not (isinstance(port_value, ast.Name) and port_value.id in runtime_names):
+            violations.append(
+                f"MainWindow Evaluation construction must inject {port_name}"
+            )
+    parent_value = panel_keywords.get("parent")
+    if not (isinstance(parent_value, ast.Name) and parent_value.id == "self"):
+        violations.append("MainWindow Evaluation construction must inject parent")
+    if panel_call is not None and panel_call.args:
+        violations.append(
+            "MainWindow Evaluation construction must not pass positional ports"
+        )
+    violations.extend(
+        (f"MainWindow Evaluation construction injects broad {broad_name}")
+        for broad_name in ("controller", "controllers", "application_runtime")
+        if broad_name in panel_keywords
+    )
+
+    if bootstrap_path.exists():
+        violations.append(
+            "controller_compatibility_bootstrap.py must remain physically removed"
+        )
+
+    refresh_tree = ast.parse(refresh_path.read_text(encoding="utf-8"))
+    panel_names_function = next(
+        (
+            node
+            for node in refresh_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_panel_names_for"
+        ),
+        None,
+    )
+    if panel_names_function is None:
+        violations.append("refresh_coordinator has no command-result panel router")
+    else:
+        appends_evaluation = any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "append"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "evaluation_panel"
+            for node in ast.walk(panel_names_function)
+        )
+        excludes_unknown_evaluation = any(
+            isinstance(node, ast.Compare)
+            and isinstance(node.left, ast.Name)
+            and node.left.id == "panel_name"
+            and len(node.ops) == 1
+            and len(node.comparators) == 1
+            and (
+                (
+                    isinstance(node.ops[0], ast.NotEq)
+                    and isinstance(node.comparators[0], ast.Constant)
+                    and node.comparators[0].value == "evaluation_panel"
+                )
+                or (
+                    isinstance(node.ops[0], ast.NotIn)
+                    and isinstance(
+                        node.comparators[0],
+                        (ast.Set, ast.Tuple, ast.List),
+                    )
+                    and any(
+                        isinstance(element, ast.Constant)
+                        and element.value == "evaluation_panel"
+                        for element in node.comparators[0].elts
+                    )
+                )
+            )
+            for node in ast.walk(panel_names_function)
+        )
+        if appends_evaluation or not excludes_unknown_evaluation:
+            violations.append("Generic command-result refresh must exclude Evaluation")
+
+    return violations
+
+
+def check_visualization_publication_refresh_boundary(root_dir: Path) -> list[str]:
+    """Protect Visualization's narrow publication-owned UI boundary."""
+    violations: list[str] = []
+    panel_path = root_dir / "XBrainLab/ui/panels/visualization/panel.py"
+    main_window_path = root_dir / "XBrainLab/ui/main_window.py"
+    bootstrap_path = root_dir / "XBrainLab/ui/controller_compatibility_bootstrap.py"
+    refresh_path = root_dir / "XBrainLab/ui/refresh_coordinator.py"
+
+    panel_tree = _parse_python_file(panel_path)
+    if panel_tree is None:
+        return ["XBrainLab/ui/panels/visualization/panel.py is missing or invalid"]
+    visualization_class = next(
+        (
+            node
+            for node in panel_tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "VisualizationPanel"
+        ),
+        None,
+    )
+    if visualization_class is None:
+        return ["XBrainLab/ui/panels/visualization/panel.py has no VisualizationPanel"]
+
+    initializer = next(
+        (
+            node
+            for node in visualization_class.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "__init__"
+        ),
+        None,
+    )
+    expected_ports = {
+        "query_port": "VisualizationQueryPort",
+        "publication_port": "VisualizationPublicationPort",
+        "action_port": "VisualizationActionPort",
+    }
+    if initializer is None:
+        violations.append("VisualizationPanel has no explicit typed constructor")
+    else:
+        parameters = {
+            parameter.arg: parameter
+            for parameter in (
+                *initializer.args.posonlyargs,
+                *initializer.args.args,
+                *initializer.args.kwonlyargs,
+            )
+        }
+        broad_parameters = sorted(
+            name
+            for name in parameters
+            if "controller" in name or name == "application_runtime"
+        )
+        if initializer.args.vararg is not None:
+            broad_parameters.append(f"*{initializer.args.vararg.arg}")
+        if initializer.args.kwarg is not None:
+            broad_parameters.append(f"**{initializer.args.kwarg.arg}")
+        if broad_parameters:
+            violations.append(
+                "VisualizationPanel accepts broad constructor parameter(s): "
+                + ", ".join(broad_parameters)
+            )
+        for parameter_name, annotation_name in expected_ports.items():
+            parameter = parameters.get(parameter_name)
+            annotation_names = (
+                _annotation_class_names(parameter.annotation)
+                if parameter is not None
+                else set()
+            )
+            if annotation_name not in annotation_names:
+                violations.append(
+                    "VisualizationPanel must declare narrow port "
+                    f"{parameter_name}: {annotation_name}"
+                )
+
+    for node in ast.walk(visualization_class):
+        if isinstance(node, ast.Attribute) and (
+            node.attr == "controller" or node.attr.endswith("_controller")
+        ):
+            violations.append(
+                f"VisualizationPanel stores broad controller attribute {node.attr}"
+            )
+        if not isinstance(node, ast.Call):
+            continue
+        call_name = _call_name(node.func)
+        if call_name in {
+            "get_controller",
+            "_create_refresh_bridge",
+            "refresh_after_observer",
+        }:
+            violations.append(
+                f"VisualizationPanel uses forbidden refresh path {call_name}()"
+            )
+        if call_name != "_create_bridge":
+            continue
+        event_arg = (
+            node.args[1]
+            if len(node.args) > 1
+            else next(
+                (
+                    keyword.value
+                    for keyword in node.keywords
+                    if keyword.arg in {"event", "event_name"}
+                ),
+                None,
+            )
+        )
+        event_name = (
+            _annotation_terminal_name(event_arg) if event_arg is not None else ""
+        )
+        if event_name != "APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT":
+            violations.append(
+                "VisualizationPanel subscribes to a non-application publication event"
+            )
+
+    publication_handler = next(
+        (
+            node
+            for node in visualization_class.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_on_application_view_publication_changed"
+        ),
+        None,
+    )
+    revision_gate = bool(
+        publication_handler is not None
+        and any(
+            isinstance(node, ast.Compare)
+            and any(isinstance(operator, ast.LtE) for operator in node.ops)
+            and isinstance(node.left, ast.Attribute)
+            and node.left.attr == "revision"
+            and any(
+                isinstance(comparator, ast.Attribute)
+                and comparator.attr == "_last_application_revision"
+                for comparator in node.comparators
+            )
+            for node in ast.walk(publication_handler)
+        )
+    )
+    if not revision_gate:
+        violations.append(
+            "VisualizationPanel has no monotonic application revision gate"
+        )
+
+    if not _method_calls_application_render_ledger(publication_handler, "queue"):
+        violations.append(
+            "VisualizationPanel has no queued application publication refresh"
+        )
+    visualization_cleanup = _find_class_method(
+        panel_tree,
+        "VisualizationPanel",
+        "cleanup",
+    )
+    if not _method_calls_application_render_ledger(
+        visualization_cleanup,
+        "cleanup",
+    ):
+        violations.append(
+            "VisualizationPanel cleanup does not cancel publication retries"
+        )
+    if publication_handler is not None and any(
+        isinstance(node, ast.Call) and _call_name(node.func) == "update_panel"
+        for node in ast.walk(publication_handler)
+    ):
+        violations.append(
+            "VisualizationPanel publication handler must not refresh inline"
+        )
+
+    main_window_tree = _parse_python_file(main_window_path)
+    if main_window_tree is None:
+        violations.append("XBrainLab/ui/main_window.py is missing or invalid")
+    else:
+        visualization_specs = [
+            node
+            for node in ast.walk(main_window_tree)
+            if isinstance(node, ast.Call)
+            and _call_name(node.func) == "_PanelSpec"
+            and _panel_spec_attr(node) == "visualization_panel"
+        ]
+        if len(visualization_specs) != 1:
+            violations.append(
+                "MainWindow must define exactly one Visualization panel spec"
+            )
+        else:
+            controller_names = _panel_spec_controller_names(visualization_specs[0])
+            if not isinstance(controller_names, ast.Tuple) or controller_names.elts:
+                violations.append(
+                    "MainWindow Visualization panel spec must have no "
+                    "controller requirements"
+                )
+
+        materialize_method = _find_class_method(
+            main_window_tree,
+            "MainWindow",
+            "_materialize_panel",
+        )
+        visualization_branch = (
+            _find_panel_materialization_branch(
+                materialize_method,
+                "visualization_panel",
+            )
+            if materialize_method is not None
+            else None
+        )
+        branch_nodes = (
+            [
+                child
+                for statement in visualization_branch.body
+                for child in ast.walk(statement)
+            ]
+            if visualization_branch is not None
+            else []
+        )
+        runtime_names = {
+            target.id
+            for node in branch_nodes
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and _call_name(node.value.func) == "application_ui_runtime"
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        panel_call = next(
+            (
+                node
+                for node in branch_nodes
+                if isinstance(node, ast.Call)
+                and _call_name(node.func)
+                in {
+                    "VisualizationPanel",
+                    "resolved_panel_class",
+                }
+            ),
+            None,
+        )
+        panel_keywords = (
+            {
+                keyword.arg: keyword.value
+                for keyword in panel_call.keywords
+                if keyword.arg is not None
+            }
+            if panel_call is not None
+            else {}
+        )
+        for port_name in expected_ports:
+            port_value = panel_keywords.get(port_name)
+            if not (
+                isinstance(port_value, ast.Name) and port_value.id in runtime_names
+            ):
+                violations.append(
+                    f"MainWindow Visualization construction must inject {port_name}"
+                )
+        violations.extend(
+            (f"MainWindow Visualization construction injects broad {broad_name}")
+            for broad_name in ("controller", "controllers", "application_runtime")
+            if broad_name in panel_keywords
+        )
+
+    if bootstrap_path.exists():
+        violations.append(
+            "controller_compatibility_bootstrap.py must remain physically removed"
+        )
+
+    refresh_tree = _parse_python_file(refresh_path)
+    if refresh_tree is None:
+        violations.append("XBrainLab/ui/refresh_coordinator.py is missing or invalid")
+    else:
+        panel_names_function = next(
+            (
+                node
+                for node in refresh_tree.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "_panel_names_for"
+            ),
+            None,
+        )
+        changed_state_routes_visualization = (
+            panel_names_function is None
+            or _function_routes_to_panel(
+                panel_names_function,
+                "visualization_panel",
+            )
+            or not _function_excludes_panel_for_unknown_state(
+                panel_names_function,
+                "visualization_panel",
+            )
+        )
+        if changed_state_routes_visualization:
+            violations.append(
+                "refresh_coordinator changed-state refresh must exclude Visualization"
+            )
+
+        observer_function = next(
+            (
+                node
+                for node in refresh_tree.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "_panel_names_for_observer_event"
+            ),
+            None,
+        )
+        observer_routes_visualization = (
+            observer_function is None
+            or _function_routes_to_panel(
+                observer_function,
+                "visualization_panel",
+            )
+            or _observer_router_has_unowned_return(observer_function)
+            or _named_mapping_contains_panel(
+                refresh_tree,
+                "_OBSERVER_EVENT_REFRESH_ROUTES",
+                "visualization_panel",
+            )
+            or _named_mapping_contains_panel(
+                refresh_tree,
+                "_OBSERVER_EVENT_PANEL_OVERRIDES",
+                "visualization_panel",
+            )
+        )
+        if observer_routes_visualization:
+            violations.append(
+                "refresh_coordinator observer refresh must exclude Visualization"
+            )
+
+    return violations
+
+
+def _is_visualization_refresh_timer_call(node: ast.Call, method_name: str) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == method_name
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "_application_refresh_timer"
+    )
+
+
+def _is_visualization_refresh_timer_timeout_connect(node: ast.Call) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "connect"
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "timeout"
+        and isinstance(node.func.value.value, ast.Attribute)
+        and node.func.value.value.attr == "_application_refresh_timer"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Attribute)
+        and node.args[0].attr == "_refresh_from_application_publication"
+    )
+
+
+def _panel_spec_attr(call: ast.Call) -> str | None:
+    if call.args:
+        return _string_constant(call.args[0])
+    return next(
+        (
+            _string_constant(keyword.value)
+            for keyword in call.keywords
+            if keyword.arg == "attr"
+        ),
+        None,
+    )
+
+
+def _panel_spec_controller_names(call: ast.Call) -> ast.AST | None:
+    if len(call.args) > 4:
+        return call.args[4]
+    return next(
+        (
+            keyword.value
+            for keyword in call.keywords
+            if keyword.arg == "controller_names"
+        ),
+        None,
+    )
+
+
+def _find_panel_materialization_branch(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    panel_name: str,
+) -> ast.If | None:
+    candidates = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.If)
+        and any(
+            isinstance(candidate, ast.Constant) and candidate.value == panel_name
+            for candidate in ast.walk(node.test)
+        )
+        and any(
+            isinstance(candidate, ast.Attribute) and candidate.attr == "attr"
+            for candidate in ast.walk(node.test)
+        )
+    ]
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if any(
+                isinstance(node, ast.Call)
+                and (
+                    _call_name(node.func) == "resolved_panel_class"
+                    or _call_name(node.func).endswith("Panel")
+                )
+                for statement in candidate.body
+                for node in ast.walk(statement)
+            )
+        ),
+        candidates[0] if candidates else None,
+    )
+
+
+def _function_routes_to_panel(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    panel_name: str,
+) -> bool:
+    for node in ast.walk(function):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"append", "extend", "insert"}
+            and any(
+                _positive_panel_literal(argument, panel_name) for argument in node.args
+            )
+        ):
+            return True
+        if (
+            isinstance(node, ast.Return)
+            and node.value is not None
+            and _positive_panel_literal(node.value, panel_name)
+        ):
+            return True
+    return False
+
+
+def _positive_panel_literal(node: ast.AST, panel_name: str) -> bool:
+    if isinstance(node, ast.Constant):
+        return node.value == panel_name
+    if isinstance(node, ast.Compare):
+        return False
+    if isinstance(node, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+        return _positive_panel_literal(node.elt, panel_name)
+    if isinstance(node, ast.DictComp):
+        return _positive_panel_literal(
+            node.key,
+            panel_name,
+        ) or _positive_panel_literal(node.value, panel_name)
+    return any(
+        _positive_panel_literal(child, panel_name)
+        for child in ast.iter_child_nodes(node)
+    )
+
+
+def _function_excludes_panel_for_unknown_state(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    panel_name: str,
+) -> bool:
+    return any(
+        isinstance(node, ast.Compare)
+        and any(isinstance(operator, (ast.NotEq, ast.NotIn)) for operator in node.ops)
+        and any(
+            isinstance(candidate, ast.Constant) and candidate.value == panel_name
+            for comparator in node.comparators
+            for candidate in ast.walk(comparator)
+        )
+        for node in ast.walk(function)
+    )
+
+
+def _observer_router_has_unowned_return(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Return) or node.value is None:
+            continue
+        value = node.value
+        if isinstance(value, ast.Call) and _call_name(value.func) == "_panel_names_for":
+            continue
+        if (
+            isinstance(value, ast.Subscript)
+            and isinstance(value.value, ast.Name)
+            and value.value.id == "_OBSERVER_EVENT_PANEL_OVERRIDES"
+        ):
+            continue
+        return True
+    return False
+
+
+def _named_mapping_contains_panel(
+    tree: ast.Module,
+    mapping_name: str,
+    panel_name: str,
+) -> bool:
+    for node in tree.body:
+        value: ast.AST | None = None
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == mapping_name
+                for target in node.targets
+            )
+        ) or (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == mapping_name
+        ):
+            value = node.value
+        if value is not None and any(
+            isinstance(candidate, ast.Constant) and candidate.value == panel_name
+            for candidate in ast.walk(value)
+        ):
+            return True
+    return False
 
 
 def test_repository_architecture_compliance():

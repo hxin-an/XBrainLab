@@ -13,16 +13,17 @@ import time
 from pathlib import Path
 from typing import Any
 
-import mne
-import numpy as np
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication
 
+from scripts.dev.bounded_qt_shutdown import BoundedQtShutdown
+from scripts.dev.capture_chatpanel_local_pipeline_chain_walkthrough import (
+    assistant_surface_ready,
+)
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _capture_current_window,
     _clear_saved_main_window_geometry,
     _force_offline_hf_runtime,
-    _load_capture_config,
     _runtime_summary,
     _set_baseline_window_geometry,
 )
@@ -34,9 +35,22 @@ from scripts.dev.capture_chatpanel_local_walkthrough import (
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     _has_runtime_error_text,
 )
+from scripts.dev.chatpanel_confirmation_driver import (
+    describe_visible_confirmation_card,
+    resolve_visible_confirmation_card,
+)
+from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
+from scripts.dev.local_assistant_capture_runtime import (
+    collect_capture_source_identity,
+    collect_runtime_input_evidence,
+    finalize_strict_capture_evidence,
+    isolated_assistant_runtime_config,
+    validate_strict_capture_evidence,
+)
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
+    ConfigureTrainingCommand,
     CreateEpochCommand,
     GenerateDatasetCommand,
     PreprocessCommand,
@@ -49,14 +63,26 @@ from XBrainLab.backend.application import (
 from XBrainLab.llm.core.config import LLMConfig
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-training-completion"
+DEFAULT_OUTPUT_DIR = (
+    ROOT / "build" / "dev-artifacts" / "chatpanel-local-training-completion"
+)
 TEMP_ROOT = Path(tempfile.gettempdir())
 TRAINING_OUTPUT_DIR = TEMP_ROOT / "xbrainlab-chatpanel-training-completion-output"
 SOURCE_DIR = TEMP_ROOT / "xbrainlab_chatpanel_training_completion"
 SOURCE_PATH = SOURCE_DIR / "training_completion_raw.fif"
 READY_SCREENSHOT = "chatpanel-training-completion-ready.png"
+TRAINED_SCREENSHOT = "chatpanel-training-completion-trained.png"
 JSON_ARTIFACT = "chatpanel-local-training-completion-walkthrough.json"
 MD_ARTIFACT = "chatpanel-local-training-completion-walkthrough.md"
+TRAINING_TERMINAL_TEXT = "Training completed. Results are ready in Evaluation."
+EXPECTED_SALIENCY_METHOD = "SmoothGrad"
+EXPECTED_SALIENCY_PARAMS = {
+    "nt_samples": 2,
+    "nt_samples_batch_size": 1,
+    "stdevs": 1.0,
+}
+_RUNTIME_INPUT_NAME = "training_eeg_fixture"
+_RUNTIME_INPUT_KIND = "deterministic-eeg-fixture"
 
 TURN_SPECS: list[dict[str, str]] = [
     {
@@ -71,8 +97,7 @@ TURN_SPECS: list[dict[str, str]] = [
         "expected_tool": "configure_training",
         "prompt_template": (
             "Configure training for 1 epoch, batch size 2, learning rate 0.001, "
-            "device cpu, and output_dir {training_output_dir}. Reply with one "
-            "short result sentence."
+            "and device cpu. Reply with one short result sentence."
         ),
     },
     {
@@ -95,9 +120,9 @@ TURN_SPECS: list[dict[str, str]] = [
         "kind": "tool",
         "expected_tool": "saliency",
         "prompt_template": (
-            "Configure saliency with method Gradient and params nt_samples 2, "
-            "nt_samples_batch_size 1, stdevs 1.0. Reply with one short result "
-            "sentence."
+            "Configure SmoothGrad saliency with nt_samples 2, "
+            "nt_samples_batch_size 1, and stdevs 1.0. Reply with one short "
+            "result sentence."
         ),
     },
     {
@@ -152,27 +177,71 @@ def main() -> int:
     training_output_dir.mkdir(parents=True, exist_ok=True)
 
     _force_offline_hf_runtime()
-    config = _load_capture_config(args.model)
-    runtime = classify_runtime(config)
-    source_path = write_synthetic_training_raw_fif()
-    if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
-        payload = _blocked_payload(args, runtime, source_path, training_output_dir)
-        _write_artifacts(output_dir, payload)
-        print(payload["status"])
-        return 2
+    model_id = args.model or LLMConfig.default_local_model_id()
+    source_identity_at_start = collect_capture_source_identity(refresh=True)
+    with isolated_assistant_runtime_config(
+        model_id,
+        parent_dir=output_dir,
+    ) as config:
+        runtime = classify_runtime(config)
+        source_path = write_synthetic_training_raw_fif()
+        runtime_input_paths = {_RUNTIME_INPUT_NAME: source_path}
+        runtime_input_kinds = {_RUNTIME_INPUT_NAME: _RUNTIME_INPUT_KIND}
+        runtime_input_evidence_at_start = collect_runtime_input_evidence(
+            runtime_input_paths,
+            kinds=runtime_input_kinds,
+            retained=False,
+        )
+        if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
+            payload = _blocked_payload(args, runtime, source_path, training_output_dir)
+            finalize_strict_capture_evidence(
+                payload,
+                requested_model_id=model_id,
+                runtime_snapshot=None,
+                cache_dir=config.cache_dir,
+                artifact_root=output_dir,
+                source_identity_at_start=source_identity_at_start,
+                host_actions=("prepared deterministic training dataset state",),
+                runtime_input_paths=runtime_input_paths,
+                runtime_input_kinds=runtime_input_kinds,
+                runtime_input_evidence_at_start=runtime_input_evidence_at_start,
+            )
+            _write_artifacts(output_dir, payload)
+            print(payload["status"])
+            return 2
 
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    if args.model:
-        app.setProperty("model_override", args.model)
-
-    payload = run_training_completion_walkthrough(
-        app,
-        output_dir,
-        source_path,
-        training_output_dir,
-        args.timeout_seconds,
-    )
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")
+        app.setProperty("model_override", model_id)
+        payload = run_training_completion_walkthrough(
+            app,
+            output_dir,
+            source_path,
+            training_output_dir,
+            args.timeout_seconds,
+        )
+        runtime_snapshot = payload.pop("_runtime_snapshot", None)
+        strict_ok, strict_reason = finalize_strict_capture_evidence(
+            payload,
+            requested_model_id=model_id,
+            runtime_snapshot=(
+                runtime_snapshot if isinstance(runtime_snapshot, dict) else None
+            ),
+            cache_dir=config.cache_dir,
+            artifact_root=output_dir,
+            source_identity_at_start=source_identity_at_start,
+            host_actions=(
+                "prepared deterministic training dataset state",
+                "approved the visible training confirmation card",
+                "waited for terminal training completion",
+            ),
+            runtime_input_paths=runtime_input_paths,
+            runtime_input_kinds=runtime_input_kinds,
+            runtime_input_evidence_at_start=runtime_input_evidence_at_start,
+        )
+        if payload.get("status") == "passed" and not strict_ok:
+            payload["status"] = "failed"
+            payload["failure_reason"] = strict_reason
     _write_artifacts(output_dir, payload)
     print(f"Wrote {output_dir / JSON_ARTIFACT}")
     print(f"Wrote {output_dir / MD_ARTIFACT}")
@@ -183,42 +252,18 @@ def write_synthetic_training_raw_fif() -> Path:
     """Write a deterministic EEG fixture with epoch duration suitable for EEGNet."""
     if SOURCE_DIR.exists():
         shutil.rmtree(SOURCE_DIR)
-    SOURCE_DIR.mkdir(parents=True, exist_ok=True)
-
-    sfreq = 128
-    ch_names = ["C3", "C4", "Cz", "Pz"]
-    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    data = np.random.default_rng(43).normal(size=(len(ch_names), sfreq * 25))
-    raw = mne.io.RawArray(data, info)
-    events = np.asarray(
-        [
-            [sfreq * second, 0, 1 if index % 2 == 0 else 2]
-            for index, second in enumerate(range(1, 24, 2))
-        ],
-        dtype=int,
-    )
-    raw.set_annotations(
-        mne.annotations_from_events(
-            events,
-            sfreq=sfreq,
-            event_desc={1: "left", 2: "right"},
-        ),
-    )
-    raw.save(SOURCE_PATH, overwrite=True)
-    return SOURCE_PATH
+    return write_training_ready_raw_fif(SOURCE_PATH)
 
 
-def build_prompts(training_output_dir: Path) -> list[str]:
+def build_prompts() -> list[str]:
     """Return visible user prompts for the training-completion walkthrough."""
-    return [
-        turn["prompt_template"].format(training_output_dir=str(training_output_dir))
-        for turn in TURN_SPECS
-    ]
+    return [turn["prompt_template"] for turn in TURN_SPECS]
 
 
 def prepare_training_dataset_ready_state(
     study: Any,
     source_path: Path,
+    training_output_dir: Path,
 ) -> dict[str, Any]:
     """Prepare dataset-ready state with epoch duration suitable for EEGNet."""
     service = get_application_service(study)
@@ -239,6 +284,13 @@ def prepare_training_dataset_ready_state(
             val_ratio=0.25,
             split_strategy="trial",
             training_mode="individual",
+        ),
+        ConfigureTrainingCommand(
+            epoch=1,
+            batch_size=2,
+            learning_rate=0.001,
+            device="cpu",
+            output_dir=str(training_output_dir),
         ),
     ]
     results: list[dict[str, Any]] = []
@@ -275,13 +327,17 @@ def run_training_completion_walkthrough(
 
     _clear_saved_main_window_geometry()
     study = Study()
-    dataset_preparation = prepare_training_dataset_ready_state(study, source_path)
+    dataset_preparation = prepare_training_dataset_ready_state(
+        study,
+        source_path,
+        training_output_dir,
+    )
     window = MainWindow(study)
     _set_baseline_window_geometry(window)
     window.show()
 
     started_at = time.monotonic()
-    prompts = build_prompts(training_output_dir)
+    prompts = build_prompts()
     state: dict[str, Any] = {
         "status": "running",
         "failure_reason": "",
@@ -293,7 +349,7 @@ def run_training_completion_walkthrough(
         "turns": [],
         "visible_messages": [],
         "executed_tools": [],
-        "confirmation_dialogs": [],
+        "confirmation_events": [],
         "training_completion": {},
         "final_state": {},
         "send_button_text": "",
@@ -301,41 +357,62 @@ def run_training_completion_walkthrough(
         "input_enabled": False,
         "chat_processing": True,
         "controller_processing": True,
+        "shutdown": {"status": "pending", "detail": ""},
+        "runtime_snapshot": {},
+        "terminal_started": False,
         "elapsed_seconds": 0.0,
     }
+    handled_confirmation_ids: set[str] = set()
+    shutdown = BoundedQtShutdown(
+        app=app,
+        window=window,
+        manager_provider=lambda: window.agent_manager,
+        state=state,
+        schedule=QTimer.singleShot,
+        now=time.monotonic,
+    )
 
     def fail(reason: str) -> None:
         state["status"] = "failed"
         state["failure_reason"] = reason
         finish()
 
-    def approve_confirmation_dialogs() -> None:
-        for widget in QApplication.topLevelWidgets():
-            if not isinstance(widget, QMessageBox) or not widget.isVisible():
-                continue
-            if widget.windowTitle() != "Confirm Action":
-                continue
-            state["confirmation_dialogs"].append(
-                {
-                    "title": widget.windowTitle(),
-                    "text": widget.text(),
-                    "informative_text": widget.informativeText(),
-                    "approved": True,
-                },
-            )
-            yes_button = widget.button(QMessageBox.StandardButton.Yes)
-            if yes_button is not None:
-                yes_button.click()
-            else:
-                widget.done(int(QMessageBox.StandardButton.Yes))
+    def approve_confirmation_cards() -> None:
+        manager = window.agent_manager
+        panel = manager.chat_panel if manager is not None else None
+        event = (
+            describe_visible_confirmation_card(panel, approved=True)
+            if panel is not None
+            else None
+        )
+        if event is not None and event["request_id"] not in handled_confirmation_ids:
+            request_id = str(event["request_id"])
+            handled_confirmation_ids.add(request_id)
+            screenshot_path = output_dir / "chatpanel-training-confirmation-approve.png"
+            if _capture_current_window(window, screenshot_path) != 0:
+                fail("Training confirmation card screenshot could not be saved.")
+                return
+            event["screenshot"] = str(screenshot_path)
+            state["confirmation_events"].append(event)
+            if not resolve_visible_confirmation_card(
+                panel,
+                request_id=request_id,
+                expected_command_name="start_training",
+                approved=True,
+            ):
+                fail("Training confirmation card changed before approval.")
+                return
         if state["status"] == "running":
-            QTimer.singleShot(250, approve_confirmation_dialogs)
+            QTimer.singleShot(250, approve_confirmation_cards)
 
     def finish() -> None:
+        if state["terminal_started"]:
+            return
+        state["terminal_started"] = True
         state["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         manager = window.agent_manager
-        panel = manager.chat_panel
-        controller = manager.agent_controller
+        panel = manager.chat_panel if manager is not None else None
+        controller = manager.agent_controller if manager is not None else None
         if panel is not None:
             state["visible_messages"] = [
                 message.__dict__ for message in collect_visible_messages(panel)
@@ -345,29 +422,52 @@ def run_training_completion_walkthrough(
             state["input_enabled"] = panel.input_field.isEnabled()
         if controller is not None:
             state["executed_tools"] = collect_executed_tools(controller.metrics)
+        lifecycle = getattr(manager, "assistant_runtime", None)
+        current_runtime = getattr(lifecycle, "current", None)
+        if current_runtime is not None and hasattr(current_runtime, "to_dict"):
+            state["runtime_snapshot"] = current_runtime.to_dict()
         try:
             state["final_state"] = get_application_service(study).get_state().to_dict()
         except Exception:
             state["final_state"] = {}
-        state["chat_processing"] = bool(manager.chat_controller.is_processing)
+        state["chat_processing"] = bool(
+            manager is not None and manager.chat_controller.is_processing
+        )
         state["controller_processing"] = bool(
             controller and getattr(controller, "is_processing", False)
         )
         if state["status"] == "running":
-            ok, reason = validate_training_completion_payload(state)
+            ok, reason = validate_training_completion_payload(state, strict=False)
             state["status"] = "passed" if ok else "failed"
             state["failure_reason"] = "" if ok else reason
-        window.close()
+        shutdown.start()
 
     def open_assistant() -> None:
         if not dataset_preparation.get("ok"):
             fail("Dataset preparation failed before ChatPanel opened.")
             return
         window.ai_btn.click()
-        QTimer.singleShot(2500, capture_ready)
+        QTimer.singleShot(250, wait_for_assistant_ready)
+
+    def wait_for_assistant_ready() -> None:
+        if time.monotonic() - started_at > timeout_seconds:
+            fail(f"Timed out waiting for assistant readiness after {timeout_seconds}s.")
+            return
+        manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager was not initialized.")
+            return
+        ready, _reason = assistant_surface_ready(manager)
+        if not ready:
+            QTimer.singleShot(250, wait_for_assistant_ready)
+            return
+        capture_ready()
 
     def capture_ready() -> None:
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared before ready capture.")
+            return
         panel = manager.chat_panel
         if panel is None or not manager.chat_dock or not manager.chat_dock.isVisible():
             fail("Assistant dock did not open.")
@@ -381,6 +481,11 @@ def run_training_completion_walkthrough(
 
     def send_prompt(index: int) -> None:
         manager = window.agent_manager
+        if manager is None:
+            fail(
+                "Assistant manager disappeared during training-completion walkthrough."
+            )
+            return
         panel = manager.chat_panel
         if panel is None:
             fail("ChatPanel disappeared during training-completion walkthrough.")
@@ -409,6 +514,11 @@ def run_training_completion_walkthrough(
             return
 
         manager = window.agent_manager
+        if manager is None:
+            fail(
+                "Assistant manager disappeared during training-completion walkthrough."
+            )
+            return
         panel = manager.chat_panel
         controller = manager.agent_controller
         if panel is None:
@@ -482,14 +592,33 @@ def run_training_completion_walkthrough(
         if time.monotonic() - started_at > timeout_seconds:
             fail(f"Timed out after {timeout_seconds} seconds waiting for training.")
             return
+        manager = window.agent_manager
+        panel = manager.chat_panel if manager is not None else None
+        if panel is None:
+            fail("ChatPanel disappeared while waiting for training completion.")
+            return
         backend_state = get_application_service(study).get_state().to_dict()
         training = _section(backend_state, "training")
         evaluation = _section(backend_state, "evaluation")
         if training.get("has_trainer") and not training.get("is_running"):
+            visible_messages = collect_visible_messages(panel)
+            terminal_text = next(
+                (
+                    message.text.strip()
+                    for message in reversed(visible_messages)
+                    if message.sender == "assistant"
+                    and TRAINING_TERMINAL_TEXT in message.text
+                ),
+                "",
+            )
+            if not terminal_text:
+                QTimer.singleShot(250, lambda: wait_for_training_completion(index))
+                return
             state["training_completion"] = {
                 "state": backend_state,
                 "finished_run_count": training.get("finished_run_count"),
                 "metrics_available": evaluation.get("metrics_available"),
+                "assistant_terminal_text": terminal_text,
             }
             if int(training.get("finished_run_count") or 0) < 1:
                 fail("Training stopped without a completed run.")
@@ -497,7 +626,11 @@ def run_training_completion_walkthrough(
             if not state["turns"]:
                 fail("Training completed before a turn screenshot was captured.")
                 return
-            state["trained_screenshot"] = state["turns"][-1]["screenshot"]
+            trained_path = output_dir / TRAINED_SCREENSHOT
+            if _capture_current_window(window, trained_path) != 0:
+                fail("Training terminal screenshot was blank or could not be saved.")
+                return
+            state["trained_screenshot"] = str(trained_path)
             if index + 1 < len(prompts):
                 QTimer.singleShot(500, lambda: send_prompt(index + 1))
             else:
@@ -505,9 +638,10 @@ def run_training_completion_walkthrough(
             return
         QTimer.singleShot(500, lambda: wait_for_training_completion(index))
 
-    QTimer.singleShot(250, approve_confirmation_dialogs)
+    QTimer.singleShot(250, approve_confirmation_cards)
     QTimer.singleShot(1500, open_assistant)
     app.exec()
+    shutdown.reconcile_after_event_loop()
 
     config = LLMConfig.load_from_file() or LLMConfig()
     runtime = classify_runtime(config)
@@ -531,9 +665,11 @@ def run_training_completion_walkthrough(
         "turns": state["turns"],
         "visible_messages": state["visible_messages"],
         "executed_tools": state["executed_tools"],
-        "confirmation_dialogs": state["confirmation_dialogs"],
+        "confirmation_events": state["confirmation_events"],
         "training_completion": state["training_completion"],
         "final_state": state["final_state"],
+        "shutdown": state["shutdown"],
+        "_runtime_snapshot": state["runtime_snapshot"],
         "ui_state": {
             "send_button_text": state["send_button_text"],
             "send_button_enabled": state["send_button_enabled"],
@@ -556,9 +692,9 @@ def validate_turn(
     expected_tool = spec["expected_tool"]
     kind = spec["kind"]
     if kind == "confirmation":
-        if not state.get("confirmation_dialogs"):
-            return False, "Training confirmation dialog was not observed."
-        if not any(dialog.get("approved") for dialog in state["confirmation_dialogs"]):
+        if not state.get("confirmation_events"):
+            return False, "Training confirmation card was not observed."
+        if not any(event.get("approved") for event in state["confirmation_events"]):
             return False, "Training confirmation was not approved."
         if not any(_successful_tool(tool, "start_training") for tool in new_tools):
             return False, "Training did not start after confirmation approval."
@@ -580,16 +716,18 @@ def validate_turn(
 
 def validate_training_completion_payload(
     payload: dict[str, Any],
+    *,
+    strict: bool = True,
 ) -> tuple[bool, str]:
     """Validate dataset-ready -> tiny training completion -> analysis evidence."""
     if not payload.get("dataset_preparation", {}).get("ok"):
         return False, "Dataset preparation failed."
     if len(payload.get("turns", [])) != len(TURN_SPECS):
         return False, "Not all training-completion turns completed."
-    if not payload.get("confirmation_dialogs"):
-        return False, "Training confirmation dialog was not observed."
+    if not payload.get("confirmation_events"):
+        return False, "Training confirmation card was not observed."
     if not any(
-        dialog.get("approved") for dialog in payload.get("confirmation_dialogs", [])
+        event.get("approved") for event in payload.get("confirmation_events", [])
     ):
         return False, "Training confirmation was not approved."
 
@@ -631,14 +769,51 @@ def validate_training_completion_payload(
         return False, "Saliency was not configured after training."
     if not visualization.get("saliency_available"):
         return False, "Saliency was not available after configuration."
+    saliency_params = visualization.get("saliency_params")
+    if not isinstance(saliency_params, dict):
+        return False, "Authoritative saliency_params were not published."
+    methods = saliency_params.get("_methods")
+    if methods != [EXPECTED_SALIENCY_METHOD]:
+        return (
+            False,
+            f"Saliency _methods did not match {[EXPECTED_SALIENCY_METHOD]!r}.",
+        )
+    method_params = saliency_params.get(EXPECTED_SALIENCY_METHOD)
+    if not isinstance(method_params, dict):
+        return False, f"{EXPECTED_SALIENCY_METHOD} parameters were not published."
+    for field, expected in EXPECTED_SALIENCY_PARAMS.items():
+        actual = method_params.get(field)
+        if type(actual) is not type(expected) or actual != expected:
+            return (
+                False,
+                f"{EXPECTED_SALIENCY_METHOD}.{field} did not match {expected!r}.",
+            )
+    if set(method_params) != set(EXPECTED_SALIENCY_PARAMS):
+        return False, f"{EXPECTED_SALIENCY_METHOD} params were not exact."
 
     completion = payload.get("training_completion") or {}
     if int(completion.get("finished_run_count") or 0) < 1:
         return False, "Training completion checkpoint did not record a finished run."
+    terminal_text = str(completion.get("assistant_terminal_text") or "")
+    if TRAINING_TERMINAL_TEXT not in terminal_text:
+        return False, "Assistant training terminal result was not visible."
+    visible_terminal = any(
+        message.get("sender") == "assistant"
+        and TRAINING_TERMINAL_TEXT in str(message.get("text") or "")
+        for message in payload.get("visible_messages", [])
+        if isinstance(message, dict)
+    )
+    if not visible_terminal:
+        return False, "Assistant training terminal result was not retained in history."
 
     ui = payload.get("ui_state") or {}
     if ui.get("chat_processing") or ui.get("controller_processing"):
         return False, "ChatPanel did not return to idle."
+    if strict:
+        return validate_strict_capture_evidence(
+            payload,
+            required_runtime_inputs=(_RUNTIME_INPUT_NAME,),
+        )
     return True, ""
 
 
@@ -654,22 +829,28 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- status: `{payload['status']}`",
         f"- failure reason: {payload.get('failure_reason') or 'none'}",
-        f"- source path: `{payload.get('source_path', '')}`",
+        f"- dataset fixture: `{_runtime_input_display_name(payload)}`",
+        f"- dataset fixture SHA-256: `{_runtime_input_sha256(payload)}`",
         f"- training output dir: `{payload.get('training_output_dir', '')}`",
         f"- dataset preparation ok: `{payload['dataset_preparation']['ok']}`",
         f"- runtime classification: `{payload['runtime']['classification']}`",
-        f"- model: `{payload['runtime']['model_id']}`",
+        f"- requested model: `{payload['runtime'].get('requested_model_id', '')}`",
+        f"- loaded model: `{payload['runtime'].get('loaded_model_id', '')}`",
+        f"- loaded revision: `{(payload['runtime'].get('model_identity') or {}).get('loaded_revision', '')}`",
         f"- cache usage: `{payload['runtime']['cache_usage']}`",
         f"- HF offline: `{payload['hf_offline']['HF_HUB_OFFLINE']}`",
         f"- Transformers offline: `{payload['hf_offline']['TRANSFORMERS_OFFLINE']}`",
         f"- ready screenshot: `{payload['screenshots']['ready']}`",
         f"- trained screenshot: `{payload['screenshots']['trained']}`",
-        f"- training confirmations observed: `{len(payload.get('confirmation_dialogs', []))}`",
-        f"- confirmation approved: `{any(dialog.get('approved') for dialog in payload.get('confirmation_dialogs', []))}`",
+        f"- training confirmation cards observed: `{len(payload.get('confirmation_events', []))}`",
+        f"- confirmation approved: `{any(event.get('approved') for event in payload.get('confirmation_events', []))}`",
         f"- finished runs: `{training.get('finished_run_count')}`",
         f"- evaluation metrics available: `{evaluation.get('metrics_available')}`",
         f"- saliency configured: `{visualization.get('saliency_configured')}`",
         f"- saliency available: `{visualization.get('saliency_available')}`",
+        f"- saliency methods: `{(visualization.get('saliency_params') or {}).get('_methods')}`",
+        f"- {EXPECTED_SALIENCY_METHOD} params: `{(visualization.get('saliency_params') or {}).get(EXPECTED_SALIENCY_METHOD)}`",
+        f"- shutdown: `{(payload.get('shutdown') or {}).get('status', 'unknown')}`",
         f"- elapsed seconds: `{payload['elapsed_seconds']}`",
         "",
         "## Dataset Preparation",
@@ -753,6 +934,20 @@ def _section(payload: dict[str, Any], key: str) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _runtime_input_record(payload: dict[str, Any]) -> dict[str, Any]:
+    evidence = _section(payload, "runtime_input_artifacts")
+    artifacts = _section(evidence, "artifacts")
+    return _section(artifacts, _RUNTIME_INPUT_NAME)
+
+
+def _runtime_input_display_name(payload: dict[str, Any]) -> str:
+    return str(_runtime_input_record(payload).get("display_name") or "")
+
+
+def _runtime_input_sha256(payload: dict[str, Any]) -> str:
+    return str(_runtime_input_record(payload).get("sha256") or "")
+
+
 def _blocked_payload(
     args: argparse.Namespace,
     runtime: dict[str, object],
@@ -764,7 +959,7 @@ def _blocked_payload(
         "failure_reason": str(runtime.get("message") or "Local runtime not ready."),
         "source_path": str(source_path),
         "training_output_dir": str(training_output_dir),
-        "prompts": build_prompts(training_output_dir),
+        "prompts": build_prompts(),
         "turn_specs": TURN_SPECS,
         "dataset_preparation": {"ok": False, "commands": [], "state": {}},
         "runtime": _runtime_summary(runtime),
@@ -776,9 +971,10 @@ def _blocked_payload(
         "turns": [],
         "visible_messages": [],
         "executed_tools": [],
-        "confirmation_dialogs": [],
+        "confirmation_events": [],
         "training_completion": {},
         "final_state": {},
+        "shutdown": {"status": "not_started", "detail": ""},
         "ui_state": {
             "send_button_text": "",
             "send_button_enabled": False,
@@ -791,6 +987,10 @@ def _blocked_payload(
 
 
 def _write_artifacts(output_dir: Path, payload: dict[str, Any]) -> None:
+    if payload.get("status") == "passed":
+        ok, reason = validate_training_completion_payload(payload)
+        if not ok:
+            raise ValueError(f"Refusing to write invalid strict evidence: {reason}")
     (output_dir / JSON_ARTIFACT).write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

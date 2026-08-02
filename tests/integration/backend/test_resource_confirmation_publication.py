@@ -39,6 +39,7 @@ from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     ModelHolder,
+    Trainer,
     TrainingEvaluation,
     TrainingOption,
 )
@@ -223,7 +224,19 @@ def _prepare_train(
             repeat_num=1,
         )
     )
-    start_training = MagicMock(return_value=1)
+
+    def start_with_runtime_identity(
+        *,
+        append: bool = True,
+        interactive: bool = True,
+    ) -> int:
+        del append, interactive
+        trainer = Trainer([])
+        trainer.run(interact=False)
+        service.study.training_manager.trainer = trainer
+        return 1
+
+    start_training = MagicMock(side_effect=start_with_runtime_identity)
     service.training.start_training = start_training
     monkeypatch.setattr(
         training_service,

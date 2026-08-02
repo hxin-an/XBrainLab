@@ -7,7 +7,10 @@ from threading import Barrier, Event
 import pytest
 
 from XBrainLab.backend.application import ApplicationService, get_application_service
-from XBrainLab.backend.application.runtime import application_service_initialized
+from XBrainLab.backend.application.runtime import (
+    application_service_initialized,
+    get_initialized_application_service,
+)
 from XBrainLab.backend.study import Study
 
 
@@ -21,6 +24,17 @@ def test_get_application_service_caches_service_on_study():
     assert first.study is study
     assert study._application_service is first
     assert application_service_initialized(study) is True
+
+
+def test_get_initialized_application_service_never_constructs_runtime():
+    study = Study()
+
+    assert get_initialized_application_service(study) is None
+    assert study._application_service is None
+
+    service = get_application_service(study)
+
+    assert get_initialized_application_service(study) is service
 
 
 def test_direct_construction_is_initialization_only_and_not_cached():
@@ -127,14 +141,14 @@ def test_close_and_concurrent_lookup_publish_one_open_replacement() -> None:
     closing = get_application_service(study)
     cleanup_started = Event()
     release_cleanup = Event()
-    original_finalizer = closing._observer_finalizer
+    original_finalizer = closing.publication_lifecycle.observer_finalizer
 
     def blocked_finalizer() -> None:
         cleanup_started.set()
         assert release_cleanup.wait(timeout=2.0)
         original_finalizer()
 
-    closing._observer_finalizer = blocked_finalizer
+    closing.publication_lifecycle.observer_finalizer = blocked_finalizer
 
     with (
         ThreadPoolExecutor(
@@ -163,27 +177,29 @@ def test_close_and_concurrent_lookup_publish_one_open_replacement() -> None:
     replacement = replacements[0]
     assert replacement is replacements[1]
     assert replacement is not closing
-    assert replacement._closed is False
+    assert replacement.is_closed is False
     assert study._application_service is replacement
     assert application_service_initialized(study) is True
     assert get_application_service(study) is replacement
     replacement.close()
 
 
-def test_closing_one_study_does_not_block_service_creation_for_another() -> None:
+def test_closing_one_study_does_not_block_service_creation_for_another(
+    monkeypatch,
+) -> None:
     closing_study = Study()
     independent_study = Study()
     closing = get_application_service(closing_study)
     close_started = Event()
     release_close = Event()
-    original_begin_close = closing._begin_close
+    original_begin_close = closing.shutdown_lifecycle.begin_close
 
     def blocked_begin_close() -> bool:
         close_started.set()
         assert release_close.wait(timeout=2.0)
         return original_begin_close()
 
-    closing._begin_close = blocked_begin_close
+    monkeypatch.setattr(closing.shutdown_lifecycle, "begin_close", blocked_begin_close)
 
     with (
         ThreadPoolExecutor(

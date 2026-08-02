@@ -150,10 +150,10 @@ jobs:
           XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
           mkdir -p test-results
-          poetry run coverage erase
-          poetry run python scripts/dev/run_tests.py all
-          poetry run coverage xml -o coverage.xml
-          poetry run coverage report
+          poetry run -- coverage erase
+          poetry run -- python scripts/dev/run_tests.py all --result-json test-results/all-regression.json
+          poetry run -- coverage xml -o coverage.xml
+          poetry run -- coverage report
 
       - name: Run isolated test gates
         if: runner.os != 'Linux'
@@ -163,7 +163,7 @@ jobs:
           XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
           mkdir -p test-results
-          poetry run python scripts/dev/run_tests.py all
+          poetry run -- python scripts/dev/run_tests.py all --result-json test-results/all-regression.json
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -218,6 +218,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      - name: Prepare public gate evidence directory
+        run: mkdir -p test-results
+
       - name: Cache pinned public EEG fixtures
         uses: actions/cache@v4
         with:
@@ -227,28 +230,38 @@ jobs:
             public-eeg-fixtures-v1-
 
       - name: Fetch pinned size-bounded public fixtures
-        run: poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
+        run: poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
 
       - name: Verify public fixture manifest
-        run: poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci --verify-only
+        run: poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci --verify-only
 
       - name: Verify required dataset matrix
         run: |
           set -o pipefail
-          poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json | tee dataset-validation-matrix.json
+          poetry run -- python scripts/dev/report_dataset_validation_matrix.py --strict --format json | tee dataset-validation-matrix.json
 
       - name: Verify Data Interpretation format and lifecycle matrix
         run: |
           set -o pipefail
-          poetry run python scripts/dev/report_data_interpretation_format_matrix.py --strict --format json | tee data-interpretation-format-matrix.json
+          poetry run -- python scripts/dev/report_data_interpretation_format_matrix.py --strict --format json | tee data-interpretation-format-matrix.json
 
       - name: Run public BIDS visible UI wizard format matrix
-        run: QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q
+        run: QT_QPA_PLATFORM=offscreen poetry run -- python -m scripts.dev.run_required_pytest_gate --result-json test-results/public-bids-visible-ui.json -- --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q
 
       - name: Run required public dataset integration tests
         run: |
-          poetry run pytest --capture=sys \
-            tests/integration/io/test_io_integration.py \
+          poetry run -- python -m scripts.dev.run_required_pytest_gate \
+            --result-json test-results/required-public-io.json \
+            -- --capture=sys \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_gdf_file_success \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_gdf_file_restores_known_graz_channel_names \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_supported_real_formats \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_application_service_import_supported_real_formats \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_application_service_summary_excludes_resolved_gdf_channel_normalization \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_public_real_formats \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_application_service_import_public_real_formats \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_non_existent_file \
+            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_invalid_extension \
             tests/integration/io/test_public_bids_fixture.py \
             tests/integration/pipeline/test_public_cross_source_training_smoke.py \
             -q
@@ -256,7 +269,7 @@ jobs:
       - name: Run strict public cross-source training smoke
         run: |
           set -o pipefail
-          poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict | tee public-cross-source-smoke.json
+          poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict | tee public-cross-source-smoke.json
 
       - name: Upload public dataset gate reports
         uses: actions/upload-artifact@v4
@@ -267,4 +280,5 @@ jobs:
             dataset-validation-matrix.json
             data-interpretation-format-matrix.json
             public-cross-source-smoke.json
+            test-results/*.json
           if-no-files-found: warn

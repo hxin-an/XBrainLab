@@ -74,8 +74,13 @@ class _TrainingManager:
             return False
         return self.stop_training(wait_timeout=wait_timeout)
 
-    def wait_for_training_completion(self, timeout: float | None = None) -> bool:
-        self.calls.append(("wait_training", timeout))
+    def wait_for_training_completion(
+        self,
+        timeout: float | None = None,
+        *,
+        expected_trainer_identity: str | None = None,
+    ) -> bool:
+        self.calls.append(("wait_training", expected_trainer_identity, timeout))
         return True
 
     def is_training(self) -> bool:
@@ -94,6 +99,9 @@ class _TrainingManager:
         if self.trainer is None:
             return None
         return int(self.trainer.current_idx)
+
+    def get_training_progress_text(self) -> str:
+        return "Training"
 
     def get_training_terminal_outcome(self) -> TrainingTerminalOutcome:
         if self.trainer is None:
@@ -438,8 +446,14 @@ def test_training_runtime_commit_retires_stable_trainer_once() -> None:
 def test_training_runtime_waits_for_training_completion() -> None:
     runtime, manager = _runtime()
 
-    assert runtime.wait_for_training_completion(timeout=0.5) is True
-    assert manager.calls == [("wait_training", 0.5)]
+    assert (
+        runtime.wait_for_training_completion(
+            expected_trainer_identity="runtime-port",
+            timeout=0.5,
+        )
+        is True
+    )
+    assert manager.calls == [("wait_training", "runtime-port", 0.5)]
 
 
 def test_training_runtime_commits_publication_and_retirement_together() -> None:

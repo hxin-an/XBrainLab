@@ -223,6 +223,51 @@ def test_acknowledgement_bridge_accepts_only_explicit_true_slot_result() -> None
     )
 
 
+def test_acknowledgement_bridge_preserves_explicit_deferred_delivery() -> None:
+    observable = MockObservable()
+    bridge = QtObserverBridge(
+        observable,
+        "view_publication_changed",
+        require_slot_acknowledgement=True,
+    )
+    later_observer = MagicMock(return_value=None)
+    bridge.connect_to(
+        lambda _publication: ObserverDeliveryStatus.DEFERRED,
+    )
+    observable.subscribe("view_publication_changed", later_observer)
+
+    delivery = observable.notify_delivery(
+        "view_publication_changed",
+        object(),
+    )
+
+    assert delivery is ObserverDeliveryStatus.DEFERRED
+    later_observer.assert_called_once()
+
+
+def test_ordinary_bridge_does_not_acknowledge_view_publication() -> None:
+    observable = MockObservable()
+    bridge = QtObserverBridge(observable, "view_publication_changed")
+    bridge.connect_to(lambda _publication: True)
+    state = ApplicationStateSnapshot.empty()
+    store = ApplicationViewStore(state, TrainingReadBoundary.no_trainer())
+    initial = store.read()
+    publication = store.publish(
+        replace(state, pipeline_stage="data_loaded"),
+        TrainingReadBoundary.no_trainer(),
+    )
+    publisher = ApplicationViewEventPublisher(
+        initial_revision=initial.revision,
+        deliver=lambda candidate: observable.notify_delivery(
+            "view_publication_changed",
+            candidate,
+        ),
+    )
+
+    assert publisher.publish(publication) is False
+    assert publisher.has_delivered_revision(publication.revision) is False
+
+
 def test_observer_bridge_connect_to_dispatches_background_event_on_qt_thread(qtbot):
     observable = MockObservable()
     bridge = QtObserverBridge(observable, "test_event")

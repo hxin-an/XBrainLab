@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 
@@ -56,16 +56,19 @@ def _render_publication() -> SaliencyRenderPublication:
     )
 
 
-def test_render_exception_is_sanitized_for_user_and_preserved_in_log(
+def test_render_exception_is_sanitized_for_user_and_product_log(
     qtbot,
     caplog,
+    capture_product_logs,
 ) -> None:
     view = BaseSaliencyView()
     qtbot.addWidget(view)
 
-    with caplog.at_level(
+    with capture_product_logs(
         logging.ERROR,
-        logger=("XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view"),
+        logger_name=(
+            "XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view"
+        ),
     ):
         view._render_figure_async(
             lambda: (_ for _ in ()).throw(
@@ -85,12 +88,15 @@ def test_render_exception_is_sanitized_for_user_and_preserved_in_log(
     )
     assert "KeyError" not in visible
     assert "private render tuple" not in visible
-    assert "KeyError: 0 / private render tuple" in caplog.text
+    assert "KeyError: 0" in caplog.text
+    assert "private render tuple" not in caplog.text
+    assert "[REDACTED_PATH]" in caplog.text
 
 
 def test_preparation_exception_is_sanitized_before_render_dispatch(
     qtbot,
     caplog,
+    capture_product_logs,
 ) -> None:
     view = SaliencyMapWidget()
     qtbot.addWidget(view)
@@ -113,7 +119,7 @@ def test_preparation_exception_is_sanitized_before_render_dispatch(
             "require_complete_saliency_coverage",
             side_effect=RuntimeError("private preparation traceback"),
         ),
-        caplog.at_level(logging.ERROR, logger="XBrainLab"),
+        capture_product_logs(logging.ERROR),
     ):
         view.update_plot(_render_publication(), False)
 
@@ -129,8 +135,9 @@ def test_preparation_exception_is_sanitized_before_render_dispatch(
 def test_visualization_query_failure_message_sanitizes_internal_backend_detail(
     qtbot,
     caplog,
+    capture_product_logs,
 ) -> None:
-    panel = VisualizationPanel(controller=MagicMock())
+    panel = VisualizationPanel()
     qtbot.addWidget(panel)
     panel.last_application_query = CommandResult.failure_result(
         command_name="visualize",
@@ -141,7 +148,7 @@ def test_visualization_query_failure_message_sanitizes_internal_backend_detail(
         recoverable=True,
     )
 
-    with caplog.at_level(logging.ERROR, logger="XBrainLab"):
+    with capture_product_logs(logging.ERROR):
         visible = panel._application_query_message()
 
     assert visible == (
@@ -154,8 +161,9 @@ def test_visualization_query_failure_message_sanitizes_internal_backend_detail(
 def test_compute_failed_result_uses_retryable_product_copy_without_backend_message(
     qtbot,
     caplog,
+    capture_product_logs,
 ) -> None:
-    panel = VisualizationPanel(controller=MagicMock())
+    panel = VisualizationPanel()
     qtbot.addWidget(panel)
     current_widget = panel.tabs.currentWidget()
     assert isinstance(current_widget, BaseSaliencyView)
@@ -171,10 +179,7 @@ def test_compute_failed_result_uses_retryable_product_copy_without_backend_messa
         recoverable=True,
     )
 
-    with caplog.at_level(
-        logging.ERROR,
-        logger="XBrainLab",
-    ):
+    with capture_product_logs(logging.ERROR):
         outcome = panel._on_lazy_saliency_configured(
             result,
             attempt_key=attempt_key,
@@ -194,8 +199,9 @@ def test_compute_failed_result_uses_retryable_product_copy_without_backend_messa
 def test_compute_worker_error_tuple_is_sanitized_and_logged(
     qtbot,
     caplog,
+    capture_product_logs,
 ) -> None:
-    panel = VisualizationPanel(controller=MagicMock())
+    panel = VisualizationPanel()
     qtbot.addWidget(panel)
     current_widget = panel.tabs.currentWidget()
     assert isinstance(current_widget, BaseSaliencyView)
@@ -204,7 +210,7 @@ def test_compute_worker_error_tuple_is_sanitized_and_logged(
     panel._saliency_compute_in_progress = True
     error = RuntimeError("private async tuple")
 
-    with caplog.at_level(logging.ERROR, logger="XBrainLab"):
+    with capture_product_logs(logging.ERROR):
         panel._on_lazy_saliency_error(
             (RuntimeError, error, "Traceback: private async tuple"),
             attempt_key=attempt_key,

@@ -19,7 +19,7 @@ def test_init(metric_tab):
     assert len(metric_tab.train_vals) == 0
     assert len(metric_tab.val_vals) == 0
     assert metric_tab.empty_state_label.text() == (
-        "Training metrics will appear after the first epoch."
+        "Training metrics will appear after the first training epoch."
     )
     assert metric_tab.empty_state_label.isVisibleTo(metric_tab)
     assert metric_tab.canvas.isHidden()

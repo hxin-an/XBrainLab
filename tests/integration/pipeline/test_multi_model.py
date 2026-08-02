@@ -4,14 +4,15 @@ from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
 from XBrainLab.llm.core.config import LLMConfig
 
 
-def test_model_switching(test_app, qtbot):
+def test_reselecting_only_supported_model_is_idempotent(test_app, qtbot):
     """
-    Verify that the AgentManager -> LLMController -> AgentWorker pipeline
-    correctly handles model switching at runtime.
+    Verify that reselecting the sole approved model does not reload the runtime.
+
     Mocks LLMEngine to avoid real PyTorch initialization/crash on Windows.
     """
     primary_model = LLMConfig.default_local_model_id()
     fallback_model = LLMConfig.fallback_local_model_id()
+    assert fallback_model == primary_model
     config = LLMConfig()
     config.local_model_enabled = True
     config.model_name = primary_model
@@ -42,24 +43,14 @@ def test_model_switching(test_app, qtbot):
             )
             assert agent_mgr.assistant_runtime.current.model_id == primary_model
 
-            with qtbot.waitSignal(
-                agent_mgr.agent_controller.sig_reinit,
-                timeout=1_000,
-            ):
+            with qtbot.assertNotEmitted(agent_mgr.agent_controller.sig_reinit):
                 agent_mgr.set_model(fallback_model)
 
-            qtbot.waitUntil(
-                lambda: mock_engine_instance.switch_backend.called,
-                timeout=2_000,
-            )
-            qtbot.waitUntil(
-                lambda: agent_mgr.assistant_runtime.current.phase
-                is AssistantRuntimePhase.READY,
-                timeout=2_000,
-            )
-
             assert MockEngine.called
-            mock_engine_instance.switch_backend.assert_called_once_with("local")
+            mock_engine_instance.switch_backend.assert_not_called()
+            assert (
+                agent_mgr.assistant_runtime.current.phase is AssistantRuntimePhase.READY
+            )
             assert agent_mgr.assistant_runtime.current.model_id == fallback_model
         finally:
             if agent_mgr is not None:

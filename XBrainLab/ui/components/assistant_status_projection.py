@@ -26,7 +26,7 @@ class AssistantWorkflowSurface(str, Enum):
 
     DATA_IMPORT = "Data Import"
     PREPROCESSING = "Preprocessing"
-    EPOCH_SETTINGS = "Epoch settings"
+    EPOCH_SETTINGS = "EEG epoch settings"
     DATASET_SPLIT = "Dataset split"
     TRAINING_SETTINGS = "Training settings"
     TRAINING = "Training"

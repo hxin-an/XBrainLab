@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QLabel
 
 from scripts.dev import capture_chatpanel_ui_ux_walkthrough as walkthrough_module
 from scripts.dev.capture_chatpanel_ui_ux_walkthrough import (
+    ASSISTANT_SETTINGS_SCREEN_FILES,
     DEFAULT_OUTPUT_DIR,
     EXPECTED_SCREEN_FILES,
     EXPECTED_STATE_LABELS,
@@ -28,10 +29,10 @@ from XBrainLab.ui.chat.panel import ChatPanel
 def test_scenario_contract_covers_required_surfaces_once() -> None:
     assert tuple(spec.filename for spec in SCENARIOS) == EXPECTED_SCREEN_FILES[:-4]
     assert EXPECTED_SCREEN_FILES[-4:] == (
-        "main-window-dock-320-action-visible.png",
-        "main-window-dock-320-action-click.png",
-        "main-window-dock-320-stopping.png",
-        "main-window-dock-320-command-running.png",
+        "main-window-dock-420-action-visible.png",
+        "main-window-dock-420-action-click.png",
+        "main-window-dock-420-stopping.png",
+        "main-window-dock-420-command-running.png",
     )
     assert len({spec.name for spec in SCENARIOS}) == len(SCENARIOS)
     assert len({spec.filename for spec in SCENARIOS}) == len(SCENARIOS)
@@ -66,6 +67,12 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         and spec.review_state == "long_clarification_action"
         for spec in SCENARIOS
     )
+    dpi_evidence = [spec for spec in SCENARIOS if spec.review_state == "dpi_evidence"]
+    assert [spec.logical_width for spec in dpi_evidence] == [320, 420, 760]
+    assert all(spec.render_pixel_ratio == 1.0 for spec in dpi_evidence)
+    assert all(spec.required_kinds == ("user", "error") for spec in dpi_evidence)
+    assert all(spec.confirmation_visible for spec in dpi_evidence)
+    assert all(spec.expected_confirmation_values for spec in dpi_evidence)
     assert any(
         spec.logical_width == 320
         and spec.logical_height == 650
@@ -79,8 +86,18 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         and spec.filename == "narrow-setting-change-confirmation-max-content.png"
         for spec in SCENARIOS
     )
-    assert DEFAULT_OUTPUT_DIR.as_posix().endswith(
-        "artifacts/ui/chatpanel-ui-ux-current"
+    message_boundaries = next(
+        spec for spec in SCENARIOS if spec.review_state == "message_content_boundaries"
+    )
+    assert message_boundaries.logical_width == 320
+    assert message_boundaries.scroll_to_bottom is True
+    assert message_boundaries.required_kinds == ("user", "assistant")
+    assert DEFAULT_OUTPUT_DIR == (
+        walkthrough_module.ROOT / "build" / "dev-artifacts" / "chatpanel-ui-ux"
+    )
+    assert ASSISTANT_SETTINGS_SCREEN_FILES == (
+        "assistant-settings-collapsed.png",
+        "assistant-settings-advanced.png",
     )
 
 
@@ -109,6 +126,7 @@ def test_source_fingerprint_manifest_covers_every_runtime_capture_owner() -> Non
         "XBrainLab/ui/components/assistant_command_dispatcher.py",
         "XBrainLab/ui/components/assistant_runtime_coordinator.py",
         "XBrainLab/ui/components/assistant_status_projection.py",
+        "XBrainLab/ui/dialogs/model_settings_dialog.py",
         "XBrainLab/ui/main_window.py",
         "XBrainLab/ui/panels/training/components.py",
     }.issubset(set(FINGERPRINT_RELATIVE_PATHS))
@@ -133,10 +151,13 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert provenance["all_sources_under_root"] is True
     assert all(record["under_root"] for record in provenance["modules"])
     assert payload["native_display_scaling_observed"] is False
-    assert payload["render_scale_evidence"] == "synthetic_pixmap_device_ratio"
+    assert payload["render_scale_evidence"] == (
+        "observed_widget_dpr_with_labeled_synthetic_pixmap_probe"
+    )
     assert payload["render_readiness"] == {
         "required_consecutive_content_frames": 2,
         "normalized_png_color_mode": "RGB",
+        "real_widget_capture_method": "QWidget.grab",
         "full_frame_content_check": True,
         "main_window_required_regions": [
             "main_shell",
@@ -181,7 +202,7 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     dock = payload["main_window_dock_walkthrough"]
     assert dock["real_main_window"] is True
     assert dock["real_qdockwidget"] is True
-    assert dock["assistant_usable_width"] == 320
+    assert dock["assistant_usable_width"] == 420
     assert dock["action_click"]["clicked"] is True
     assert dock["action_click"]["label"] == "Open Dataset"
     assert dock["action_click"]["history_source"] == "live_correlated_response"
@@ -201,6 +222,20 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert dock["states"]["stopping"]["late_activity_latched"] is True
     assert dock["states"]["application_command"]["button_text"] == "Working"
     assert dock["states"]["application_command"]["button_enabled"] is False
+
+    assistant_settings = payload["assistant_settings"]
+    assert assistant_settings["passed"] is True
+    assert (
+        tuple(screen["file"] for screen in assistant_settings["screens"])
+        == ASSISTANT_SETTINGS_SCREEN_FILES
+    )
+    for screen in assistant_settings["screens"]:
+        assert all(screen["checks"].values()), screen
+        settings_path = tmp_path / screen["file"]
+        assert settings_path.is_file()
+        with Image.open(settings_path) as captured:
+            assert list(captured.size) == screen["pixel_size"]
+            assert captured.mode == screen["png_color_mode"] == "RGB"
 
     first_paint = payload["first_paint_320_contract"]
     assert first_paint["target_width"] == 320
@@ -263,8 +298,8 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     readme = (tmp_path / README_ARTIFACT).read_text(encoding="utf-8")
     assert "visual reviewer verdict: `not adjudicated by this script`" in readme
     assert "capture_chatpanel_ui_ux_walkthrough.py" in readme
-    assert "synthetic pixmap scaling" in readme.lower()
-    assert "does not demonstrate native display scaling" in readme.lower()
+    assert "synthetic pixmap probe" in readme.lower()
+    assert "does not demonstrate windows native dpi" in readme.lower()
 
 
 def test_validate_payload_rejects_one_failed_geometry_check(qapp, tmp_path) -> None:
@@ -323,6 +358,14 @@ def test_validate_payload_rejects_one_failed_geometry_check(qapp, tmp_path) -> N
     metric_failures = validate_payload(stale_metric_transition)
     assert "metric" in "; ".join(metric_failures).lower()
 
+    broken_settings = copy.deepcopy(payload)
+    broken_settings["assistant_settings"]["screens"][0]["checks"][
+        "buttons_text_only"
+    ] = False
+    broken_settings["assistant_settings"]["passed"] = False
+    settings_failures = validate_payload(broken_settings)
+    assert "assistant settings" in "; ".join(settings_failures).lower()
+
     screenshot_path = tmp_path / payload["screens"][0]["file"]
     screenshot_path.write_bytes(b"tampered screenshot")
     screenshot_failures = validate_payload(payload)
@@ -375,6 +418,35 @@ def test_scaled_child_regions_maps_logical_geometry_to_physical_pixels(
     qapp.processEvents()
 
 
+def test_real_widget_capture_records_observed_device_pixel_ratio(
+    qapp,
+    tmp_path,
+) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 520)
+    panel.set_runtime_state("ready")
+    panel.show()
+    qapp.processEvents()
+
+    evidence = walkthrough_module._capture_widget(
+        panel,
+        tmp_path / "observed-dpr.png",
+        render_pixel_ratio=1.0,
+    )
+
+    observed_dpr = panel.devicePixelRatioF()
+    assert evidence["capture_method"] == "widget_grab"
+    assert evidence["capture_device_pixel_ratio"] == observed_dpr
+    assert evidence["render_pixel_ratio"] == observed_dpr
+    assert evidence["pixel_size"] == [
+        int(panel.width() * observed_dpr + 0.5),
+        int(panel.height() * observed_dpr + 0.5),
+    ]
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
 def test_product_panel_does_not_expose_legacy_mode_selector(qapp) -> None:
     panel = ChatPanel()
     panel.resize(320, 520)
@@ -393,7 +465,7 @@ def test_product_panel_does_not_expose_legacy_mode_selector(qapp) -> None:
     qapp.processEvents()
 
 
-def test_icon_only_send_button_uses_icon_evidence_not_hidden_text_width(qapp) -> None:
+def test_send_button_renders_its_visible_command_text(qapp) -> None:
     panel = ChatPanel()
     panel.resize(320, 520)
     panel.set_runtime_state("ready")
@@ -402,15 +474,15 @@ def test_icon_only_send_button_uses_icon_evidence_not_hidden_text_width(qapp) ->
 
     assert panel.send_btn.text() == "Send"
     assert panel.send_btn.accessibleName() == "Send request"
-    assert panel.send_btn.icon().isNull() is False
-    assert human_evidence._button_renders_text(panel.send_btn) is False
+    assert panel.send_btn.icon().isNull() is True
+    assert human_evidence._button_renders_text(panel.send_btn) is True
     assert "send_btn" not in human_evidence._assistant_text_overflow(panel)
     send_record = next(
         record
         for record in walkthrough_module._button_evidence(panel)[0]
         if record["name"] == "AssistantSendButton"
     )
-    assert send_record["text_rendered"] is False
+    assert send_record["text_rendered"] is True
     assert send_record["text_fits"] is True
 
     panel.close()

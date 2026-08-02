@@ -1,4 +1,4 @@
-"""Command-result-driven UI refresh coordination."""
+"""Compatibility refresh coordination outside revisioned Study UI contexts."""
 
 from __future__ import annotations
 
@@ -66,22 +66,13 @@ _OBSERVER_EVENT_REFRESH_ROUTES = {
     ),
     "training_analysis_published": (
         "training_panel",
-        # The paired saliency_changed event owns the visualization refresh.
-        # This typed publication only reconciles lifecycle generation and shared
-        # status, so it intentionally has no workflow-panel changed state.
+        # ApplicationViewPublication owns downstream analysis refresh. This event
+        # only reconciles training lifecycle delivery and shared status.
         _ChangedState(),
     ),
     "training_updated": ("training_panel", _ChangedState(training_changed=True)),
     "config_changed": ("training_panel", _ChangedState(training_changed=True)),
     "history_cleared": ("training_panel", _ChangedState(training_changed=True)),
-    "montage_changed": (
-        "visualization_panel",
-        _ChangedState(visualization_changed=True),
-    ),
-    "saliency_changed": (
-        "visualization_panel",
-        _ChangedState(visualization_changed=True),
-    ),
 }
 _OBSERVER_EVENT_PANEL_OVERRIDES = {
     # The training panel already handles live ticks with update_loop(). Routing the
@@ -96,7 +87,9 @@ _OBSERVER_EVENT_REFRESH_SHARED_STATUS = {
 
 
 def refresh_after_command(context: Any, result: Any | None) -> bool:
-    """Refresh UI surfaces affected by an ApplicationService command result."""
+    """Refresh compatibility UI from a command result, never a real Study UI."""
+    if _has_revisioned_application_context(context):
+        return False
     if result is None or not result.changed_state.any_changed():
         return False
 
@@ -124,7 +117,7 @@ def refresh_after_serialized_command(
     context: Any,
     changed_state: dict[str, Any] | None,
 ) -> bool:
-    """Refresh UI from an agent-safe serialized ``ChangedState`` payload."""
+    """Refresh compatibility UI from an agent-safe ``ChangedState`` payload."""
     normalized = _normalize_serialized_changed_state(changed_state)
     if normalized is None:
         return False
@@ -149,6 +142,8 @@ def complete_command_refresh_suppression(
     renderer is preserved without repainting evaluation, visualization, or
     shared status twice.
     """
+    if _has_revisioned_application_context(context):
+        return False
     normalized = _normalize_serialized_changed_state(changed_state)
     main_window = find_main_window(context)
     if main_window is None:
@@ -192,13 +187,17 @@ def refresh_after_navigation(main_window: Any, index: int) -> bool:
     try:
         panel = getattr(main_window, _PANEL_NAMES_BY_INDEX[index], None)
         refreshed = refresh_panel(panel)
+        if _has_revisioned_application_context(main_window):
+            return refreshed
         return _refresh_shared_status(main_window) or refreshed
     finally:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
 
 def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bool:
-    """Refresh UI surfaces affected by a backend observer event."""
+    """Refresh compatibility UI from an observer, never a real Study UI."""
+    if _has_revisioned_application_context(context):
+        return False
     main_window = find_main_window(context)
     if main_window is None:
         return refresh_panel(context)
@@ -258,7 +257,10 @@ def refresh_shared_status(context: Any) -> bool:
 
 @contextmanager
 def suppress_observer_refresh_during_command(context: Any) -> Iterator[None]:
-    """Skip observer-driven refreshes until command result refresh can run."""
+    """Coalesce compatibility observers while a command result is pending."""
+    if _has_revisioned_application_context(context):
+        yield
+        return
     main_window_id = _command_refresh_suppression_key(context)
     if main_window_id is None:
         yield
@@ -272,6 +274,8 @@ def suppress_observer_refresh_during_command(context: Any) -> Iterator[None]:
 
 def begin_command_refresh_suppression(context: Any) -> bool:
     """Begin a nestable UI observer-suppression window for one command."""
+    if _has_revisioned_application_context(context):
+        return False
     main_window_id = _command_refresh_suppression_key(context)
     if main_window_id is None:
         return False
@@ -288,6 +292,8 @@ def _begin_command_refresh_suppression_for(main_window_id: int) -> None:
 
 def end_command_refresh_suppression(context: Any) -> bool:
     """End one UI observer-suppression window opened for a command."""
+    if _has_revisioned_application_context(context):
+        return False
     main_window_id = _command_refresh_suppression_key(context)
     if main_window_id is None:
         return False
@@ -327,7 +333,6 @@ def _defer_terminal_observer_refresh(
     if normalized_event not in {
         "training_terminal_published",
         "training_analysis_published",
-        "saliency_changed",
     }:
         return
     try:
@@ -419,12 +424,12 @@ def _refresh_completed_command(
             panel = getattr(main_window, panel_name, None)
             if panel is None:
                 panel = standalone_contexts.get(panel_name)
-            event_name = panel_events[panel_name]
-            if event_name is None:
+            panel_event_name = panel_events[panel_name]
+            if panel_event_name is None:
                 refreshed = refresh_panel(panel, mark_dirty=True) or refreshed
             else:
                 refreshed = (
-                    _refresh_panel_after_observer(panel, event_name) or refreshed
+                    _refresh_panel_after_observer(panel, panel_event_name) or refreshed
                 )
         if refresh_shared_status:
             refreshed = _refresh_shared_status(main_window) or refreshed
@@ -444,6 +449,22 @@ def _command_refresh_suppression_key(context: Any) -> int | None:
     """Resolve one stable owner key while the Qt context is known to be alive."""
     main_window = find_main_window(context)
     return id(main_window) if main_window is not None else None
+
+
+def _has_revisioned_application_context(context: Any) -> bool:
+    """Keep compatibility refresh machinery outside real Study product paths."""
+    try:
+        from XBrainLab.ui.application_capabilities import (  # noqa: PLC0415
+            has_real_application_context,
+        )
+
+        return has_real_application_context(context)
+    except Exception:
+        logger.exception(
+            "Application context detection failed; compatibility refresh remains "
+            "disabled."
+        )
+        return True
 
 
 def refresh_panel(panel: Any, *, mark_dirty: bool = False) -> bool:
@@ -505,7 +526,11 @@ def find_main_window(context: Any) -> Any | None:
 
 def _panel_names_for(changed: Any) -> tuple[str, ...]:
     if bool(getattr(changed, "state_unknown", False)):
-        return _PANEL_NAMES_BY_INDEX
+        return tuple(
+            panel_name
+            for panel_name in _PANEL_NAMES_BY_INDEX
+            if panel_name not in {"evaluation_panel", "visualization_panel"}
+        )
     panel_names: list[str] = []
     if changed.raw_changed or changed.interpretation_changed:
         panel_names.append("dataset_panel")
@@ -519,16 +544,6 @@ def _panel_names_for(changed: Any) -> tuple[str, ...]:
         or changed.training_changed
     ):
         panel_names.append("training_panel")
-    if changed.training_changed or changed.evaluation_changed:
-        panel_names.append("evaluation_panel")
-    if (
-        changed.preprocessed_changed
-        or changed.epoch_changed
-        or changed.training_changed
-        or changed.evaluation_changed
-        or changed.visualization_changed
-    ):
-        panel_names.append("visualization_panel")
     return tuple(dict.fromkeys(panel_names))
 
 

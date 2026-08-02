@@ -21,6 +21,7 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
     InterpretationReviewIdentity,
 )
+from XBrainLab.chat_contract import MAX_CHAT_PRESENTATION_ROWS_PER_TURN
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
     AssistantTurnActivityPhase,
@@ -115,8 +116,8 @@ def _runtime_launch_spec(model_id: str | None = None) -> AssistantRuntimeLaunchS
 def _submit_user_turn(ctrl: Any, text: str) -> AssistantTurnCorrelation:
     """Enter controller behavior through the host-admitted turn contract."""
     if not ctrl.is_processing and not ctrl.pending_interactions.has_pending:
-        ctrl._active_host_turn_id = None
-        ctrl._active_host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
     sequence = getattr(ctrl, "_test_host_turn_sequence", 0) + 1
     ctrl._test_host_turn_sequence = sequence
     correlation = AssistantTurnCorrelation(
@@ -131,7 +132,7 @@ def _submit_user_turn(ctrl: Any, text: str) -> AssistantTurnCorrelation:
 
 def _set_guided_turn_scope(ctrl: Any) -> None:
     """Set the immutable scope used by focused controller-policy tests."""
-    ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
+    ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
 
 
 def _tool_outcome(
@@ -265,7 +266,7 @@ def _allow_prompt_tools(ctrl: Any) -> None:
             generation=1,
         ),
     )
-    ctrl._active_tool_publication = PromptToolPublication(
+    ctrl._turn_orchestrator.active_publication = PromptToolPublication(
         tool_names=frozenset(
             set(TOOL_TO_COMMAND)
             | set(READ_ONLY_TOOLS)
@@ -309,7 +310,7 @@ def _evaluate_policy(
             command_name=tool_name,
             params=params or {},
             confidence=0.9,
-            publication=ctrl._active_tool_publication,
+            publication=ctrl._turn_orchestrator.active_publication,
             latest_user_text=(
                 ctrl._latest_user_request_text() if text is None else text
             ),
@@ -541,21 +542,21 @@ def _make_real_signal_controller(
 ) -> Any:
     from PyQt6.QtCore import QObject
 
+    from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
+
+    lifecycle = rag_lifecycle or RAGRetrieverLifecycle(rag_retriever)
+
     with (
         patch("XBrainLab.llm.agent.controller.ToolRegistry"),
         patch("XBrainLab.llm.agent.controller.ContextAssembler"),
         patch("XBrainLab.llm.agent.controller.VerificationLayer"),
-        patch(
-            "XBrainLab.llm.agent.controller.RAGRetriever",
-            return_value=rag_retriever,
-        ),
         patch("XBrainLab.llm.agent.controller.QThread"),
         patch("XBrainLab.llm.agent.controller.AgentWorker"),
         patch("XBrainLab.llm.agent.controller.AVAILABLE_TOOLS", []),
     ):
         from XBrainLab.llm.agent.controller import LLMController
 
-        controller = LLMController(MagicMock(), rag_lifecycle=rag_lifecycle)
+        controller = LLMController(MagicMock(), rag_lifecycle=lifecycle)
         assert isinstance(controller, QObject)
         return controller
 
@@ -585,7 +586,6 @@ def ctrl():
         patch("XBrainLab.llm.agent.controller.ToolRegistry"),
         patch("XBrainLab.llm.agent.controller.ContextAssembler"),
         patch("XBrainLab.llm.agent.controller.VerificationLayer"),
-        patch("XBrainLab.llm.agent.controller.RAGRetriever"),
         patch("XBrainLab.llm.agent.controller.QThread"),
         patch("XBrainLab.llm.agent.controller.AgentWorker"),
         patch("XBrainLab.llm.agent.controller.AVAILABLE_TOOLS", []),
@@ -624,8 +624,8 @@ def ctrl():
         # explicit publication mock so the new publication gate does not hide
         # the behavior under test; dedicated tests above exercise fail-closed
         # publication behavior with the real contract.
-        c._active_tool_publication = MagicMock()
-        c._active_tool_publication.permits.return_value = True
+        c._turn_orchestrator.active_publication = MagicMock()
+        c._turn_orchestrator.active_publication.permits.return_value = True
         c._request_admission.evaluate = MagicMock(
             return_value=UserRequestAdmission(
                 UserRequestAdmissionAction.GENERATE,
@@ -635,8 +635,8 @@ def ctrl():
             c,
             side_effect=lambda tool_name: _enabled_tool_context(tool_name),
         )
-        c._active_host_turn_generation = 1
-        c._active_host_turn_id = 1
+        c._turn_orchestrator.host_turn_generation = 1
+        c._turn_orchestrator.host_turn_id = 1
         yield c
 
 
@@ -821,7 +821,7 @@ class TestHandleUserInput:
 
     def test_ignores_when_busy(self, ctrl):
         ctrl.is_processing = True
-        ctrl._visible_response_sent = False
+        ctrl._tool_attempt_session.visible_response_sent = False
         correlation = _submit_user_turn(ctrl, "hi")
         assert len(ctrl.history) == 0
         ctrl.turn_finished.emit.assert_called_once_with(
@@ -831,7 +831,7 @@ class TestHandleUserInput:
             )
         )
         ctrl.response_presentation_ready.emit.assert_not_called()
-        assert ctrl._visible_response_sent is False
+        assert ctrl._tool_attempt_session.visible_response_sent is False
 
     def test_normal_flow(self, ctrl):
         lifecycle = _use_rag_probe(ctrl)
@@ -839,7 +839,9 @@ class TestHandleUserInput:
         _submit_user_turn(ctrl, "do something")
         assert ctrl.is_processing
         assert len(ctrl.history) == 1
-        assert lifecycle.requests == [(ctrl._active_rag_turn_id, "do something")]
+        assert lifecycle.requests == [
+            (ctrl._turn_orchestrator.active_rag_turn_id, "do something")
+        ]
         ctrl._generate_response.assert_not_called()
 
         lifecycle.complete()
@@ -935,6 +937,66 @@ class TestHandleUserInput:
         ctrl._generate_response.assert_called_once()
         assert ctrl.is_processing
 
+    def test_immediate_informational_reference_still_uses_language_generation(
+        self,
+        ctrl,
+    ):
+        lifecycle = _use_rag_probe(ctrl)
+        ctrl._generate_response = MagicMock()
+
+        _submit_user_turn(ctrl, "Why is that useful?")
+
+        assert lifecycle.requests
+        ctrl._generate_response.assert_not_called()
+        lifecycle.complete()
+        ctrl._generate_response.assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        "text",
+        (
+            "Use the first option mentioned earlier.",
+            "Do the one above.",
+            "Use the option you mentioned earlier.",
+            "Do what you suggested before.",
+            "Pick the previous recommendation.",
+            "Go with your earlier suggestion.",
+            "Run the action from before.",
+            "Use the option in the Data Import dialog mentioned earlier.",
+            "Apply it.",
+            "This.",
+            "套用它",
+            "使用它",
+            "這個",
+            "就用剛剛那個",
+            "用前面提到的第一個選項",
+            "執行你之前建議的操作",
+            "選先前的建議",
+            "就照前面那個做",
+            "使用資料匯入對話框裡剛才提到的選項",
+        ),
+    )
+    def test_unresolved_historical_action_reference_clarifies_before_rag_or_tool(
+        self,
+        ctrl,
+        text: str,
+    ):
+        lifecycle = _use_rag_probe(ctrl)
+        ctrl._generate_response = MagicMock()
+        ctrl._request_admission.evaluate = MagicMock()
+
+        _submit_user_turn(ctrl, text)
+
+        ctrl._request_admission.evaluate.assert_not_called()
+        ctrl._generate_response.assert_not_called()
+        assert lifecycle.requests == []
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.CLARIFICATION
+        assert "which earlier option" in presentation.text
+        assert ctrl.history == [
+            {"role": "user", "content": text},
+            {"role": "assistant", "content": presentation.text},
+        ]
+
     def test_state_dependent_training_explanation_uses_publication_shortcut(
         self,
         ctrl,
@@ -1000,7 +1062,7 @@ class TestHandleUserInput:
         assert presentation.kind is AssistantResponseKind.CLARIFICATION
         assert presentation.text == (
             "Tell me which step you want to do next: import data, preview labels "
-            "and metadata, preprocess, create epochs, build a dataset, train, "
+            "and metadata, preprocess, create EEG epochs, build a dataset, train, "
             "evaluate, or inspect saliency."
         )
         assert [action.label for action in presentation.actions] == [
@@ -1096,10 +1158,59 @@ class TestHandleUserInput:
         assert presentation.actions[0].panel is AssistantPanelTarget.TRAINING
         ctrl._finalize_turn_after_tool.assert_called_once_with()
 
+    def test_blocked_evaluation_points_to_missing_training_prerequisite(self, ctrl):
+        ctrl._finalize_turn_after_tool = MagicMock()
+        result = ToolCommandResult.failure(
+            "evaluate",
+            "Create a training plan before evaluating results.",
+            error_type="precondition",
+            recoverable=True,
+        )
+
+        ctrl._handle_tool_attempt_blocked("evaluate", result)
+
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert isinstance(presentation, AssistantResponsePresentation)
+        assert presentation.kind is AssistantResponseKind.BLOCKED
+        assert len(presentation.actions) == 1
+        assert presentation.actions[0].label == "Open Training"
+        assert presentation.actions[0].panel is AssistantPanelTarget.TRAINING
+        ctrl._finalize_turn_after_tool.assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        ("changed_state", "expected_kind"),
+        [
+            ({}, AssistantResponseKind.MESSAGE),
+            ({"training_changed": False}, AssistantResponseKind.MESSAGE),
+            ({"training_changed": True}, AssistantResponseKind.TOOL_RESULT),
+        ],
+    )
+    def test_success_presentation_distinguishes_status_from_state_change(
+        self,
+        ctrl,
+        changed_state,
+        expected_kind,
+    ):
+        result = ToolCommandResult(
+            ok=True,
+            tool_name="saliency",
+            command_name="saliency",
+            message="Saliency parameters are not configured yet.",
+            changed_state=changed_state,
+        )
+
+        ctrl._tool_attempt_session.last_tool_summary_kind = (
+            ctrl._tool_result_response_kind(
+                True,
+                result,
+            )
+        )
+
+        assert ctrl._tool_attempt_session.last_tool_summary_kind is expected_kind
+
     def test_training_explanation_fails_closed_when_state_cannot_be_read(
         self,
         ctrl,
-        caplog,
     ):
         def unavailable() -> ApplicationViewPublication:
             raise RuntimeError("publication unavailable")
@@ -1110,23 +1221,29 @@ class TestHandleUserInput:
         )
         ctrl._generate_response = MagicMock()
 
-        _submit_user_turn(ctrl, "Why can't I train?")
+        with patch(
+            "XBrainLab.llm.agent.product_turn_policy.logger.error",
+        ) as log_error:
+            _submit_user_turn(ctrl, "Why can't I train?")
 
         ctrl._generate_response.assert_not_called()
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert "could not verify" in presentation.text.lower()
         assert "no training action was started" in presentation.text.lower()
         assert "training can run only" not in presentation.text.lower()
-        assert "publication unavailable" in caplog.text
+        assert "publication unavailable" in " ".join(
+            str(value) for value in log_error.call_args.args
+        )
 
     def test_new_user_turn_clears_previous_tool_loop_history(self, ctrl):
         lifecycle = _use_rag_probe(ctrl)
         ctrl._generate_response = MagicMock()
-        ctrl._tool_attempt_coordinator.reset_turn = MagicMock()
+        ctrl._tool_attempt_session.record_tool_proposal("query_state", {})
+        assert list(ctrl._tool_attempt_session.recent_tool_calls)
 
         _submit_user_turn(ctrl, "show current state")
 
-        ctrl._tool_attempt_coordinator.reset_turn.assert_called_once_with()
+        assert list(ctrl._tool_attempt_session.recent_tool_calls) == []
         ctrl._generate_response.assert_not_called()
         lifecycle.complete()
         ctrl._generate_response.assert_called_once()
@@ -1187,7 +1304,7 @@ def test_handle_user_input_does_not_block_qt_event_loop_during_rag(qtbot):
 class TestOnChunkReceived:
     def test_ignores_empty_stream_chunk(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 1
+        ctrl._turn_orchestrator.active_generation_id = 1
         turn = ctrl.metrics.start_turn()
 
         ctrl._on_chunk_received(1, "")
@@ -1198,7 +1315,7 @@ class TestOnChunkReceived:
 
     def test_buffers_short_response(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 1
+        ctrl._turn_orchestrator.active_generation_id = 1
         ctrl._on_chunk_received(1, "hi")
         assert ctrl.current_response == "hi"
         ctrl.generation_event.emit.assert_called_once_with(
@@ -1211,7 +1328,7 @@ class TestOnChunkReceived:
 
     def test_buffers_non_tool_until_generation_is_classified(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 2
+        ctrl._turn_orchestrator.active_generation_id = 2
         ctrl.current_response = "a" * 10
         ctrl._on_chunk_received(2, " more text")
         ctrl.response_presentation_ready.emit.assert_not_called()
@@ -1225,7 +1342,7 @@ class TestOnChunkReceived:
 
     def test_buffers_tool_json(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 3
+        ctrl._turn_orchestrator.active_generation_id = 3
         ctrl.current_response = '{"tool": "x"'
         ctrl._on_chunk_received(3, "}")
         assert ctrl.current_response == '{"tool": "x"}'
@@ -1239,7 +1356,7 @@ class TestOnChunkReceived:
 
     def test_prose_prefix_and_cross_chunk_tool_json_never_stream_raw_trace(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 4
+        ctrl._turn_orchestrator.active_generation_id = 4
         ctrl._on_chunk_received(4, "Sure, I will do that.\n")
         ctrl._on_chunk_received(4, '{"tool_name":"query_')
         ctrl._on_chunk_received(4, 'state","parameters":{}}')
@@ -1269,12 +1386,12 @@ class TestOnChunkReceived:
 
     def test_ignores_chunk_from_stale_generation(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 6
+        ctrl._turn_orchestrator.active_generation_id = 6
 
         ctrl._on_chunk_received(5, "stale")
 
         assert ctrl.current_response == ""
-        assert ctrl._active_generation_id == 6
+        assert ctrl._turn_orchestrator.active_generation_id == 6
         ctrl.generation_event.emit.assert_not_called()
 
 
@@ -1284,7 +1401,7 @@ class TestOnGenerationFinished:
         ctrl.current_response = "Just a regular reply, nothing special"
         ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
         ctrl.is_processing = True
-        ctrl._active_generation_id = 10
+        ctrl._turn_orchestrator.active_generation_id = 10
         ctrl._on_generation_finished(10, [])
         assert not ctrl.is_processing
         ctrl.generation_event.emit.assert_called_once_with(
@@ -1303,7 +1420,7 @@ class TestOnGenerationFinished:
         ctrl.current_response = response_text
         ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
         ctrl.is_processing = True
-        ctrl._active_generation_id = 11
+        ctrl._turn_orchestrator.active_generation_id = 11
 
         ctrl._on_generation_finished(11, [])
 
@@ -1317,7 +1434,7 @@ class TestOnGenerationFinished:
             '"message":"Load EEG data before training."}}'
         )
         ctrl.is_processing = True
-        ctrl._active_generation_id = 12
+        ctrl._turn_orchestrator.active_generation_id = 12
 
         ctrl._on_generation_finished(12, [])
 
@@ -1348,10 +1465,12 @@ class TestOnGenerationFinished:
     def test_empty_response_emits_visible_error(self, ctrl):
         ctrl.current_response = "   "
         ctrl.is_processing = True
-        ctrl._active_generation_id = 13
+        ctrl._turn_orchestrator.active_generation_id = 13
         ctrl._on_generation_finished(13, [])
         ctrl.error_occurred.emit.assert_called_once()
         assert "empty response" in ctrl.error_occurred.emit.call_args[0][0]
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.actions == ()
         ctrl.processing_finished.emit.assert_called()
 
     def test_broken_json_retries(self, ctrl):
@@ -1361,9 +1480,9 @@ class TestOnGenerationFinished:
         )
 
         ctrl.current_response = '```json\n{"broken'
-        ctrl._retry_count = 0
+        ctrl._tool_attempt_session.retry_count = 0
         ctrl.is_processing = True
-        ctrl._active_generation_id = 14
+        ctrl._turn_orchestrator.active_generation_id = 14
         ctrl._generate_response = MagicMock()
         envelope = CommandParser.parse_product(ctrl.current_response)
         expected = ctrl._strict_envelope_recovery_policy.decide(
@@ -1374,15 +1493,15 @@ class TestOnGenerationFinished:
         )
         ctrl._on_generation_finished(14, [])
         ctrl._generate_response.assert_called_once()
-        assert ctrl._retry_count == 1
+        assert ctrl._tool_attempt_session.retry_count == 1
         assert expected.message is not None
         ctrl.assembler.add_context.assert_called_once_with(expected.message.content)
 
     def test_prose_prefixed_broken_tool_marker_retries_without_streaming(self, ctrl):
         ctrl.current_response = 'Sure, I will check.\n{"tool_name":'
-        ctrl._retry_count = 0
+        ctrl._tool_attempt_session.retry_count = 0
         ctrl.is_processing = True
-        ctrl._active_generation_id = 15
+        ctrl._turn_orchestrator.active_generation_id = 15
         ctrl._generate_response = MagicMock()
 
         ctrl._on_generation_finished(15, [])
@@ -1395,9 +1514,11 @@ class TestOnGenerationFinished:
         ctrl,
     ):
         ctrl.current_response = 'Sure, I will check.\n{"tool_name":'
-        ctrl._retry_count = ctrl._strict_envelope_recovery_policy.max_recovery_attempts
+        ctrl._tool_attempt_session.retry_count = (
+            ctrl._strict_envelope_recovery_policy.max_recovery_attempts
+        )
         ctrl.is_processing = True
-        ctrl._active_generation_id = 16
+        ctrl._turn_orchestrator.active_generation_id = 16
 
         ctrl._on_generation_finished(16, [])
 
@@ -1418,7 +1539,7 @@ class TestOnGenerationFinished:
         retry_limit = ctrl._strict_envelope_recovery_policy.max_recovery_attempts
         for attempt_index in range(retry_limit + 1):
             generation_id = 20 + attempt_index
-            ctrl._active_generation_id = generation_id
+            ctrl._turn_orchestrator.active_generation_id = generation_id
             ctrl.current_response = malformed
             ctrl._on_generation_finished(generation_id, [])
             if attempt_index < retry_limit:
@@ -1434,7 +1555,7 @@ class TestOnGenerationFinished:
             '{"tool_name":"query_state","parameters":{"query":"state"}}'
         )
         ctrl.is_processing = True
-        ctrl._active_generation_id = 30
+        ctrl._turn_orchestrator.active_generation_id = 30
         ctrl._generate_response = MagicMock()
         ctrl._process_tool_calls = MagicMock()
 
@@ -1457,7 +1578,7 @@ class TestOnGenerationFinished:
     def test_non_contract_tool_output_never_reaches_execution(self, ctrl, response):
         ctrl.current_response = response
         ctrl.is_processing = True
-        ctrl._active_generation_id = 31
+        ctrl._turn_orchestrator.active_generation_id = 31
         ctrl._generate_response = MagicMock()
         ctrl._process_tool_calls = MagicMock()
 
@@ -1469,12 +1590,12 @@ class TestOnGenerationFinished:
     def test_ignores_finish_from_stale_generation(self, ctrl):
         ctrl.current_response = "active response"
         ctrl.is_processing = True
-        ctrl._active_generation_id = 41
+        ctrl._turn_orchestrator.active_generation_id = 41
 
         ctrl._on_generation_finished(40, [])
 
         assert ctrl.current_response == "active response"
-        assert ctrl._active_generation_id == 41
+        assert ctrl._turn_orchestrator.active_generation_id == 41
         assert ctrl.is_processing is True
         ctrl.generation_event.emit.assert_not_called()
         ctrl.response_presentation_ready.emit.assert_not_called()
@@ -1483,7 +1604,7 @@ class TestOnGenerationFinished:
 class TestGenerationErrors:
     def test_active_generation_publishes_correlated_typed_error(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 51
+        ctrl._turn_orchestrator.active_generation_id = 51
 
         ctrl._on_generation_error(51, "generation failed")
 
@@ -1494,21 +1615,22 @@ class TestGenerationErrors:
                 text="generation failed",
             )
         )
-        assert ctrl._active_generation_id is None
+        assert ctrl._turn_orchestrator.active_generation_id is None
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.ERROR
         assert "could not complete the request" in presentation.text
         assert "generation failed" not in presentation.text
+        assert presentation.actions == ()
         activity = ctrl.activity_changed.emit.call_args.args[0]
         assert activity.attention_kind is AssistantAttentionKind.ERROR
 
     def test_stale_generation_error_is_ignored(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 53
+        ctrl._turn_orchestrator.active_generation_id = 53
 
         ctrl._on_generation_error(52, "stale failure")
 
-        assert ctrl._active_generation_id == 53
+        assert ctrl._turn_orchestrator.active_generation_id == 53
         assert ctrl.is_processing is True
         ctrl.generation_event.emit.assert_not_called()
         ctrl.error_occurred.emit.assert_not_called()
@@ -1518,7 +1640,7 @@ class TestGenerationErrors:
 class TestRuntimeErrors:
     def test_startup_error_uses_runtime_state_without_chat_copy(self, ctrl):
         ctrl.is_processing = False
-        ctrl._active_generation_id = None
+        ctrl._turn_orchestrator.active_generation_id = None
 
         ctrl._on_runtime_error("model load failed")
 
@@ -1529,11 +1651,11 @@ class TestRuntimeErrors:
 
     def test_runtime_error_does_not_steal_active_generation(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 54
+        ctrl._turn_orchestrator.active_generation_id = 54
 
         ctrl._on_runtime_error("uncorrelated failure")
 
-        assert ctrl._active_generation_id == 54
+        assert ctrl._turn_orchestrator.active_generation_id == 54
         assert ctrl.is_processing is True
         ctrl.generation_event.emit.assert_not_called()
         ctrl.error_occurred.emit.assert_not_called()
@@ -1545,11 +1667,11 @@ class TestHandleLoopDetected:
     def test_increments_break_count(self, ctrl):
         ctrl._generate_response = MagicMock()
         ctrl._handle_loop_detected("test_tool")
-        assert ctrl._loop_break_count == 1
+        assert ctrl._tool_attempt_session.loop_break_count == 1
         ctrl._generate_response.assert_called_once()
 
     def test_aborts_after_max(self, ctrl):
-        ctrl._loop_break_count = 3
+        ctrl._tool_attempt_session.loop_break_count = 3
         ctrl._handle_loop_detected("test_tool")
 
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
@@ -1652,22 +1774,41 @@ class TestHandleToolResultLogic:
         ctrl.response_presentation_ready.emit.assert_not_called()
 
     def test_finalize_after_tool_emits_visible_summary(self, ctrl):
-        ctrl._visible_response_sent = False
-        ctrl._last_tool_summary = "Dataset summary is ready."
+        ctrl._tool_attempt_session.visible_response_sent = False
+        ctrl._tool_attempt_session.last_tool_summary = "Dataset summary is ready."
         ctrl._finalize_turn_after_tool()
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.text == "Dataset summary is ready."
         ctrl.processing_finished.emit.assert_called()
 
     def test_finalize_after_failed_tool_uses_blocked_presentation(self, ctrl):
-        ctrl._visible_response_sent = False
-        ctrl._last_tool_summary = "The requested command could not run."
-        ctrl._last_tool_summary_kind = AssistantResponseKind.BLOCKED
+        ctrl._tool_attempt_session.visible_response_sent = False
+        ctrl._tool_attempt_session.last_tool_summary = (
+            "The requested command could not run."
+        )
+        ctrl._tool_attempt_session.last_tool_summary_kind = (
+            AssistantResponseKind.BLOCKED
+        )
 
         ctrl._finalize_turn_after_tool()
 
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.BLOCKED
+
+    def test_finalize_after_tool_retries_when_terminal_publication_fails(self, ctrl):
+        ctrl._tool_attempt_session.visible_response_sent = False
+        ctrl._tool_attempt_session.last_tool_summary = "Dataset summary is ready."
+        ctrl._publish_response = MagicMock(side_effect=RuntimeError("emit failed"))
+
+        with pytest.raises(RuntimeError, match="emit failed"):
+            ctrl._finalize_turn_after_tool()
+
+        assert ctrl._tool_attempt_session.visible_response_sent is False
+        ctrl._publish_response = MagicMock()
+        ctrl._finalize_turn_after_tool()
+
+        ctrl._publish_response.assert_called_once()
+        assert ctrl._tool_attempt_session.visible_response_sent is True
 
 
 # --- _process_tool_calls ---
@@ -1936,7 +2077,7 @@ class TestProcessToolCalls:
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
         _set_guided_turn_scope(ctrl)
-        ctrl._tool_execution_count = 1
+        ctrl._tool_attempt_session.execution_count = 1
         ctrl._refresh_execution_snapshot = MagicMock(
             return_value=ExecutionSnapshot(
                 state_reliable=True,
@@ -1974,16 +2115,18 @@ class TestProcessToolCalls:
             "Use the open Import EEG Data window to review these choices."
         )
         _set_guided_turn_scope(ctrl)
-        ctrl._tool_execution_count = 1
-        ctrl._last_tool_summary = summary
-        ctrl._last_tool_summary_kind = AssistantResponseKind.TOOL_RESULT
-        ctrl._visible_response_sent = False
+        ctrl._tool_attempt_session.execution_count = 1
+        ctrl._tool_attempt_session.last_tool_summary = summary
+        ctrl._tool_attempt_session.last_tool_summary_kind = (
+            AssistantResponseKind.TOOL_RESULT
+        )
+        ctrl._tool_attempt_session.visible_response_sent = False
         ctrl._refresh_execution_snapshot = MagicMock(
             return_value=ExecutionSnapshot(
                 state_reliable=True,
                 decision_needed=("metadata_review", "label_matching"),
                 can_auto_continue=False,
-                recommended_next_step="apply_interpretation",
+                blocked_command="apply_interpretation",
             )
         )
 
@@ -1993,12 +2136,24 @@ class TestProcessToolCalls:
         assert presentation.text == summary
         assert presentation.kind is AssistantResponseKind.MESSAGE
         ctrl.workflow_ui_handoff_requested.emit.assert_called_once()
+        request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
+
+        _resolve_ui_handoff(
+            ctrl,
+            WorkflowUiHandoffResolutionStatus.COMPLETED,
+            request=request,
+        )
+
+        assert (
+            ctrl.response_presentation_ready.emit.call_count
+            == MAX_CHAT_PRESENTATION_ROWS_PER_TURN
+        )
 
     def test_import_review_continuation_binds_current_domain_identity(self, ctrl):
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
         _set_guided_turn_scope(ctrl)
-        ctrl._tool_execution_count = 1
+        ctrl._tool_attempt_session.execution_count = 1
         publication = MagicMock()
         publication.usable = True
         publication.generation = 61
@@ -2009,7 +2164,7 @@ class TestProcessToolCalls:
                 state_reliable=True,
                 decision_needed=("import_review",),
                 can_auto_continue=False,
-                recommended_next_step="apply_interpretation",
+                blocked_command="apply_interpretation",
                 publication=publication,
             )
         )
@@ -2101,7 +2256,7 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
-        ctrl._tool_failure_count = 0
+        ctrl._tool_attempt_session.tool_failure_count = 0
 
         ctrl._process_tool_calls([("cmd", {})], "json")
 
@@ -2112,7 +2267,7 @@ class TestProcessToolCalls:
         )
         context_reader.assert_called_once_with("cmd")
         ctrl._generate_response.assert_not_called()
-        assert ctrl._tool_failure_count == 0
+        assert ctrl._tool_attempt_session.tool_failure_count == 0
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_real_post_state_failure_finishes_turn_after_command_side_effect(
@@ -2177,7 +2332,7 @@ class TestProcessToolCalls:
 
     def test_max_failures_stops(self, ctrl):
         _allow_prompt_tools(ctrl)
-        ctrl._tool_failure_count = 2
+        ctrl._tool_attempt_session.tool_failure_count = 2
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=_tool_outcome("err", ok=False)
         )
@@ -2209,8 +2364,8 @@ class TestProcessToolCalls:
     ):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
-        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
-        ctrl._active_tool_publication = PromptToolPublication(
+        ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"validate_interpretation"}),
             backend_generation=3,
             recommended_command="validate_interpretation",
@@ -2235,7 +2390,7 @@ class TestProcessToolCalls:
         )
 
         assert handled is True
-        assert ctrl._tool_failure_count == 1
+        assert ctrl._tool_attempt_session.tool_failure_count == 1
         ctrl.assembler.set_recovery_feedback.assert_called_once()
         feedback = ctrl.assembler.set_recovery_feedback.call_args.args[0]
         assert feedback.guidance == (
@@ -2260,9 +2415,9 @@ class TestProcessToolCalls:
     ):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
-        ctrl._active_turn_scope = scope
-        ctrl._tool_failure_count = failure_count
-        ctrl._active_tool_publication = PromptToolPublication(
+        ctrl._turn_orchestrator.scope = scope
+        ctrl._tool_attempt_session.tool_failure_count = failure_count
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"validate_interpretation"}),
             backend_generation=3,
             recommended_command="validate_interpretation",
@@ -2415,7 +2570,7 @@ class TestProcessToolCalls:
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
         ctrl.history = [{"role": "user", "content": "Continue"}]
-        ctrl._active_tool_publication = PromptToolPublication(
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"apply_standard_preprocess", "set_model"}),
             backend_generation=3,
             recommended_command=CommandName.PREPROCESS.value,
@@ -2439,7 +2594,7 @@ class TestProcessToolCalls:
     def test_tool_not_published_for_active_generation_fails_closed(self, ctrl):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
-        ctrl._active_tool_publication = PromptToolPublication(
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"query_state"}),
             backend_generation=12,
         )
@@ -2461,7 +2616,7 @@ class TestProcessToolCalls:
     ):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
-        ctrl._active_tool_publication = PromptToolPublication(
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"scan_source"}),
             backend_generation=13,
             blocked_reasons=(("train", "Generate datasets before training"),),
@@ -2619,25 +2774,43 @@ class TestClose:
 
     def test_close_rag_error_ignored(self, ctrl):
         worker = ctrl.worker
-        ctrl.rag_retriever.close.side_effect = RuntimeError("x")
+        ctrl._rag_lifecycle.close = MagicMock(side_effect=RuntimeError("x"))
         ctrl.worker_thread.isRunning.return_value = False
         ctrl.close()
 
-        ctrl.rag_retriever.close.assert_called_once()
+        ctrl._rag_lifecycle.close.assert_called_once()
         worker.shutdown.assert_called_once()
         ctrl.worker_thread.quit.assert_called_once()
         ctrl.worker_thread.wait.assert_not_called()
 
-    def test_close_returns_true_when_only_optional_rag_is_stuck(self, ctrl):
+    def test_close_does_not_report_success_when_rag_process_is_still_alive(self, ctrl):
         ctrl._rag_lifecycle.close = MagicMock(return_value=False)
         worker = ctrl.worker
         ctrl.worker.shutdown.return_value = True
         ctrl.worker_thread.isRunning.return_value = False
 
-        assert ctrl.close() is True
+        assert ctrl.close() is False
 
         ctrl._rag_lifecycle.close.assert_called_once()
         worker.shutdown.assert_called_once()
+
+    def test_close_retries_pending_rag_cleanup_before_reporting_success(self, ctrl):
+        ctrl._rag_lifecycle.close = MagicMock(side_effect=[False, True])
+        worker = ctrl.worker
+        ctrl.worker.shutdown.return_value = True
+        ctrl.worker_thread.isRunning.return_value = False
+        terminals: list[tuple[bool, str]] = []
+        ctrl.shutdown_finished.connect(
+            lambda ok, message: terminals.append((ok, message))
+        )
+
+        assert ctrl.close() is False
+        assert terminals[-1][0] is False
+        assert "still pending" in terminals[-1][1]
+
+        assert ctrl.close() is True
+        assert terminals[-1] == (True, "")
+        assert ctrl._rag_lifecycle.close.call_count == 2
 
     def test_close_returns_false_when_worker_shutdown_fails(self, ctrl):
         ctrl._rag_lifecycle.close = MagicMock(return_value=True)
@@ -2716,9 +2889,9 @@ class TestClose:
         ctrl.worker.shutdown.return_value = True
         ctrl.worker_thread.isRunning.return_value = False
         ctrl.is_processing = True
-        ctrl._active_host_turn_generation = 7
-        ctrl._active_host_turn_id = 71
-        ctrl._active_generation_id = 17
+        ctrl._turn_orchestrator.host_turn_generation = 7
+        ctrl._turn_orchestrator.host_turn_id = 71
+        ctrl._turn_orchestrator.active_generation_id = 17
 
         ctrl.stop_generation()
         assert ctrl.close() is True
@@ -2731,8 +2904,8 @@ class TestClose:
         )
 
         assert ctrl.is_processing is False
-        assert ctrl._active_generation_id is None
-        assert ctrl._stopping_generation_id is None
+        assert ctrl._turn_orchestrator.active_generation_id is None
+        assert ctrl._turn_orchestrator.stopping_generation_id is None
         ctrl.turn_finished.emit.assert_called_once_with(
             AssistantTurnTerminal(
                 correlation=AssistantTurnCorrelation(
@@ -2749,7 +2922,7 @@ class TestClose:
 class TestStopGeneration:
     def test_stops_when_processing(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 1
+        ctrl._turn_orchestrator.active_generation_id = 1
         ctrl.stop_generation()
         assert ctrl.is_processing
         ctrl.worker.cancel_generation.assert_called_once_with(
@@ -2769,7 +2942,7 @@ class TestStopGeneration:
 
     def test_stop_generation_cancels_backend_generation(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 2
+        ctrl._turn_orchestrator.active_generation_id = 2
         ctrl.stop_generation()
 
         ctrl.worker.cancel_generation.assert_called_once_with(
@@ -2778,7 +2951,7 @@ class TestStopGeneration:
 
     def test_stop_generation_stays_stopping_after_failed_ack(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 3
+        ctrl._turn_orchestrator.active_generation_id = 3
         ctrl.stop_generation()
 
         ctrl._on_generation_stop_finished(
@@ -2797,7 +2970,7 @@ class TestStopGeneration:
         ctrl,
     ):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 4
+        ctrl._turn_orchestrator.active_generation_id = 4
         ctrl.metrics.finish_turn = MagicMock()
         request = AssistantGenerationStopRequest(generation_id=4)
 
@@ -2831,9 +3004,9 @@ class TestStopGeneration:
         ctrl,
     ):
         ctrl.is_processing = True
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_host_turn_id = 105
-        ctrl._active_generation_id = 5
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.host_turn_id = 105
+        ctrl._turn_orchestrator.active_generation_id = 5
         ctrl.current_response = "completed output queued before stop acknowledgement"
 
         ctrl.stop_generation()
@@ -2842,7 +3015,7 @@ class TestStopGeneration:
         assert stopping_activity.turn_id == 105
         ctrl._on_generation_finished(5, [])
 
-        assert ctrl._active_generation_id == 5
+        assert ctrl._turn_orchestrator.active_generation_id == 5
         ctrl.generation_event.emit.assert_not_called()
         ctrl.response_presentation_ready.emit.assert_not_called()
         ctrl.processing_finished.emit.assert_not_called()
@@ -2890,14 +3063,14 @@ class TestStopGeneration:
         ctrl,
     ):
         ctrl.is_processing = True
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_host_turn_id = 106
-        ctrl._active_generation_id = 6
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.host_turn_id = 106
+        ctrl._turn_orchestrator.active_generation_id = 6
 
         ctrl.stop_generation()
         ctrl._on_generation_error(6, "generation failed while stopping")
 
-        assert ctrl._active_generation_id == 6
+        assert ctrl._turn_orchestrator.active_generation_id == 6
         ctrl.generation_event.emit.assert_not_called()
         ctrl.error_occurred.emit.assert_not_called()
         ctrl.response_presentation_ready.emit.assert_not_called()
@@ -2946,7 +3119,7 @@ class TestStopGeneration:
         ctrl,
     ):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 5
+        ctrl._turn_orchestrator.active_generation_id = 5
         ctrl.current_response = "partial buffered response"
 
         ctrl.stop_generation()
@@ -2962,7 +3135,7 @@ class TestStopGeneration:
                 stopped=True,
             )
         )
-        active_generation_after_ack = ctrl._active_generation_id
+        active_generation_after_ack = ctrl._turn_orchestrator.active_generation_id
         ctrl._on_generation_finished(5, [])
         ctrl._on_generation_stop_finished(
             AssistantGenerationStopAcknowledgement(
@@ -3000,9 +3173,9 @@ class TestStopGeneration:
         ctrl,
     ):
         ctrl.is_processing = True
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_host_turn_id = 101
-        ctrl._active_generation_id = 41
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.host_turn_id = 101
+        ctrl._turn_orchestrator.active_generation_id = 41
 
         ctrl.stop_generation()
 
@@ -3019,9 +3192,9 @@ class TestStopGeneration:
 
         ctrl._reset_user_turn_state()
         ctrl.is_processing = True
-        ctrl._active_host_turn_generation = 2
-        ctrl._active_host_turn_id = 102
-        ctrl._active_generation_id = 42
+        ctrl._turn_orchestrator.host_turn_generation = 2
+        ctrl._turn_orchestrator.host_turn_id = 102
+        ctrl._turn_orchestrator.active_generation_id = 42
         ctrl.processing_finished.emit.reset_mock()
         ctrl.response_presentation_ready.emit.reset_mock()
 
@@ -3034,8 +3207,8 @@ class TestStopGeneration:
         )
 
         assert ctrl.is_processing is True
-        assert ctrl._active_generation_id == 42
-        assert ctrl._active_host_turn_id == 102
+        assert ctrl._turn_orchestrator.active_generation_id == 42
+        assert ctrl._turn_orchestrator.host_turn_id == 102
         ctrl.processing_finished.emit.assert_not_called()
         ctrl.response_presentation_ready.emit.assert_not_called()
 
@@ -3051,8 +3224,8 @@ class TestStopGeneration:
 
     def test_stopping_pending_rag_has_the_same_terminal_response(self, ctrl):
         ctrl.is_processing = True
-        ctrl._waiting_for_rag = True
-        ctrl._active_rag_turn_id = 1
+        ctrl._turn_orchestrator.waiting_for_rag = True
+        ctrl._turn_orchestrator.active_rag_turn_id = 1
 
         ctrl.stop_generation()
 
@@ -3100,22 +3273,22 @@ def test_initialize_forwards_the_exact_launch_spec(ctrl):
 class TestResetConversation:
     def test_clears_state(self, ctrl):
         ctrl.history = [{"role": "user", "content": "hi"}]
-        ctrl._retry_count = 5
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
-        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
-        ctrl._active_turn_terminal_command = CommandName.CREATE_EPOCH.value
-        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
-        ctrl._admitted_command_name = CommandName.SCAN_SOURCE.value
-        ctrl._admitted_publication_generation = 7
+        ctrl._tool_attempt_session.retry_count = 5
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._turn_orchestrator.terminal_command = CommandName.CREATE_EPOCH.value
+        ctrl._turn_orchestrator.excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._turn_orchestrator.admitted_command_name = CommandName.SCAN_SOURCE.value
+        ctrl._turn_orchestrator.admitted_publication_generation = 7
         ctrl.reset_conversation()
         assert ctrl.history == []
-        assert ctrl._retry_count == 0
-        assert ctrl._active_turn_scope is None
-        assert ctrl._active_turn_terminal_command is None
-        assert ctrl._active_turn_excluded_commands == frozenset()
-        assert ctrl._admitted_command_name is None
-        assert ctrl._admitted_publication_generation is None
+        assert ctrl._tool_attempt_session.retry_count == 0
+        assert ctrl._turn_orchestrator.scope is None
+        assert ctrl._turn_orchestrator.terminal_command is None
+        assert ctrl._turn_orchestrator.excluded_commands == frozenset()
+        assert ctrl._turn_orchestrator.admitted_command_name is None
+        assert ctrl._turn_orchestrator.admitted_publication_generation is None
         ctrl.assembler.clear_context.assert_called()
         ctrl.assembler.clear_turn_authorization.assert_called()
 
@@ -3123,8 +3296,8 @@ class TestResetConversation:
 # --- execute_debug_tool ---
 class TestExecuteDebugTool:
     def test_records_and_executes(self, ctrl):
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
             tool_name="test",
@@ -3135,13 +3308,16 @@ class TestExecuteDebugTool:
         acknowledgement = ctrl.execute_debug_tool(request)
         assert not ctrl.is_processing
         assert len(ctrl.history) == 2
-        assert ctrl.response_presentation_ready.emit.call_count == 2
+        assert (
+            ctrl.response_presentation_ready.emit.call_count
+            == MAX_CHAT_PRESENTATION_ROWS_PER_TURN
+        )
         assert acknowledgement.correlation == request.correlation
         assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
 
     def test_rejects_stale_debug_request_without_executing_it(self, ctrl):
-        ctrl._active_host_turn_generation = 11
-        ctrl._active_host_turn_id = 12
+        ctrl._turn_orchestrator.host_turn_generation = 11
+        ctrl._turn_orchestrator.host_turn_id = 12
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=13, turn_id=14),
             tool_name="test",
@@ -3183,8 +3359,8 @@ class TestExecuteDebugTool:
             registry.register(tool)
         ctrl.study = study
         ctrl.registry = registry
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
             tool_name="clear_dataset",
@@ -3202,8 +3378,8 @@ class TestExecuteDebugTool:
         private_path = "/home/alice/private/subject-17"
         private_token = "token=hf_super_secret"  # noqa: S105
         tool_name = f"unknown_{private_path} {private_token}"
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=10),
             tool_name=tool_name,
@@ -3236,8 +3412,8 @@ class TestExecuteDebugTool:
             registry.register(tool)
         ctrl.study = study
         ctrl.registry = registry
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=10),
             tool_name="apply_interpretation",
@@ -3268,8 +3444,8 @@ class TestExecuteDebugTool:
             registry.register(tool)
         ctrl.study = study
         ctrl.registry = registry
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
             tool_name="clear_dataset",
@@ -3302,8 +3478,8 @@ class TestExecuteDebugTool:
             registry.register(tool)
         ctrl.study = Study()
         ctrl.registry = registry
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
             tool_name="list_files",
@@ -3347,7 +3523,7 @@ class TestOnUserConfirmed:
         )
         context_reader.assert_called_once_with("clear_dataset")
         assert ctrl.pending_interactions.confirmation_decision is None
-        assert ctrl._tool_failure_count == 0
+        assert ctrl._tool_attempt_session.tool_failure_count == 0
 
     def test_approved_data_interpretation_apply_adds_confirmed_param(self, ctrl):
         context = _enabled_tool_context("apply_interpretation", generation=32)
@@ -3803,7 +3979,9 @@ class TestOnUserConfirmed:
     def test_rejected_confirmation_emits_one_structured_terminal_outcome(self, ctrl):
         """Cancellation cannot reuse a stale tool summary or continue the turn."""
         _begin_confirmation(ctrl, _pending_decision("clear_dataset", {}))
-        ctrl._last_tool_summary = "The assistant completed a background action."
+        ctrl._tool_attempt_session.last_tool_summary = (
+            "The assistant completed a background action."
+        )
         ctrl._execute_tool_no_loop = MagicMock()
         ctrl._generate_response = MagicMock()
 
@@ -3824,7 +4002,7 @@ class TestOnUserConfirmed:
         assert presentation.text == (
             "Dataset removal cancelled. Your current workspace is unchanged."
         )
-        assert ctrl._turn_cancelled is True
+        assert ctrl._turn_orchestrator.cancelled is True
 
     def test_confirmed_confirmation_emits_acceptance_and_executes_once(self, ctrl):
         """Approval is acknowledged once and executes exactly one pending command."""
@@ -3877,7 +4055,7 @@ class TestOnUserConfirmed:
         assert ctrl.pending_interactions.workflow_handoff is None
         assert ctrl.is_processing is False
         assert not any("completed 'evaluate'" in m["content"] for m in ctrl.history)
-        assert ctrl._last_tool_summary is None
+        assert ctrl._tool_attempt_session.last_tool_summary is None
         outcome = ctrl.interaction_resolved.emit.call_args.args[0]
         assert outcome.status is AgentInteractionStatus.DEFERRED_TO_UI
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
@@ -3966,7 +4144,7 @@ class TestOnUserConfirmed:
 
         assert ctrl.pending_interactions.workflow_handoff is None
         assert any("completed 'create_epoch'" in m["content"] for m in ctrl.history)
-        assert "completed" in ctrl._last_tool_summary.lower()
+        assert "completed" in ctrl._tool_attempt_session.last_tool_summary.lower()
         ctrl.status_update.emit.assert_any_call("Existing settings completed.")
         ctrl._finalize_turn_after_tool.assert_called_once_with()
 
@@ -4032,7 +4210,10 @@ class TestOnUserConfirmed:
 
         assert ctrl.pending_interactions.workflow_handoff is None
         assert any("unavailable" in m["content"] for m in ctrl.history)
-        assert "No workflow action was executed" in ctrl._last_tool_summary
+        assert (
+            "No workflow action was executed"
+            in ctrl._tool_attempt_session.last_tool_summary
+        )
         ctrl.status_update.emit.assert_any_call("Existing settings unavailable.")
         ctrl._finalize_turn_after_tool.assert_called_once_with()
 
@@ -4370,7 +4551,7 @@ class TestOnUserConfirmed:
         ctrl._generate_response = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._refresh_execution_snapshot = MagicMock()
-        ctrl._tool_failure_count = 0
+        ctrl._tool_attempt_session.tool_failure_count = 0
 
         _resolve_confirmation(ctrl, approved=True)
 
@@ -4380,7 +4561,7 @@ class TestOnUserConfirmed:
             context=context,
             expected_publication_generation=context.generation,
         )
-        assert ctrl._tool_failure_count == 1
+        assert ctrl._tool_attempt_session.tool_failure_count == 1
         context_reader.assert_called_once_with("start_training")
         ctrl._generate_response.assert_not_called()
         ctrl._refresh_execution_snapshot.assert_called_once()
@@ -4398,8 +4579,8 @@ class TestOnUserConfirmed:
             publication_generation=1,
         )
         _begin_confirmation(ctrl, pending, request)
-        ctrl._active_host_turn_generation = None
-        ctrl._active_host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
         ctrl.reset_conversation()
         assert ctrl.pending_interactions.confirmation_decision is None
         assert ctrl.pending_interactions.confirmation_request is None
@@ -4680,10 +4861,10 @@ class TestProcessToolCallsConfirmation:
         ctrl.history = [
             {
                 "role": "user",
-                "content": "Use legacy load_data for /tmp/a.gdf",
+                "content": "Check the current workflow state.",
             }
         ]
-        context = _enabled_tool_context("load_data", generation=44)
+        context = _enabled_tool_context("query_state", generation=44)
         context_reader = _set_context_reader(ctrl, return_value=context)
         mock_tool = MagicMock()
         mock_tool.requires_confirmation = False
@@ -4699,17 +4880,17 @@ class TestProcessToolCallsConfirmation:
             ctrl._handle_tool_result_logic = MagicMock(return_value=False)
             ctrl.metrics.finish_turn = MagicMock()
             ctrl._process_tool_calls(
-                [("load_data", {"paths": ["/tmp/a.gdf"]})],
-                '{"tool_name": "load_data"}',
+                [("query_state", {"query": "state"})],
+                '{"tool_name": "query_state"}',
             )
 
         assert ctrl.pending_interactions.confirmation_decision is None
         ctrl._execute_tool_no_loop.assert_called_once_with(
-            "load_data",
-            {"paths": ["/tmp/a.gdf"]},
+            "query_state",
+            {"query": "state"},
             context=context,
         )
-        context_reader.assert_called_once_with("load_data")
+        context_reader.assert_called_once_with("query_state")
 
 
 # --- ApplicationService capability gate in _execute_tool_no_loop ---
@@ -4959,11 +5140,11 @@ class TestPipelineGate:
         assert payload["ok"] is False
         assert payload["capability"]["command_name"] == "preprocess"
 
-    def test_application_service_validates_tool_without_stage_execution_gate(
+    def test_legacy_load_data_is_blocked_before_registry_execution(
         self,
         ctrl,
     ):
-        """Prompt exposure cannot replace ApplicationService command validation."""
+        """Unsafe compatibility loading never reaches the registry implementation."""
         from XBrainLab.backend.study import Study
 
         ctrl.study = Study()
@@ -4980,7 +5161,10 @@ class TestPipelineGate:
         assert not outcome.success
         assert result.ok is False
         assert result.command_name == "load_data"
-        assert "Required inputs are missing" in result.message
+        assert result.error_type == "precondition"
+        assert result.error_code == "assistant_direct_load_disabled"
+        assert result.recoverable is False
+        assert "Data Interpretation workflow" in result.message
         mock_tool.execute.assert_not_called()
 
     def test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool(self, ctrl):
@@ -5142,8 +5326,8 @@ class TestTurnScope:
         from XBrainLab.backend.application import CommandName
         from XBrainLab.llm.agent.turn import AssistantTurnScope
 
-        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
-        ctrl._active_turn_terminal_command = CommandName.CREATE_EPOCH.value
+        ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._turn_orchestrator.terminal_command = CommandName.CREATE_EPOCH.value
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._generate_response = MagicMock()
 
@@ -5157,8 +5341,8 @@ class TestTurnScope:
         from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
         from XBrainLab.llm.agent.turn import AssistantTurnScope
 
-        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
-        ctrl._active_turn_terminal_command = CommandName.CREATE_EPOCH.value
+        ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._turn_orchestrator.terminal_command = CommandName.CREATE_EPOCH.value
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._generate_response = MagicMock()
         ctrl._refresh_execution_snapshot = MagicMock(
@@ -5186,23 +5370,23 @@ class TestTurnScope:
             excluded_commands=(CommandName.PREPROCESS,),
         )
         ctrl._handle_admitted_user_input = MagicMock()
-        ctrl._active_host_turn_id = None
-        ctrl._active_host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        ctrl._turn_orchestrator.host_turn_generation = None
         ctrl.is_processing = False
 
         acknowledgement = ctrl.handle_user_turn(request)
 
         assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
-        assert ctrl._active_turn_excluded_commands == frozenset(
+        assert ctrl._turn_orchestrator.excluded_commands == frozenset(
             {CommandName.PREPROCESS}
         )
         ctrl._handle_admitted_user_input.assert_called_once_with(request.text)
 
     def test_model_proposal_cannot_execute_an_excluded_stage(self, ctrl):
         _allow_prompt_tools(ctrl)
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.excluded_commands = frozenset({CommandName.PREPROCESS})
         ctrl._execute_tool_attempt = MagicMock()
 
         ctrl._process_tool_calls(
@@ -5216,9 +5400,9 @@ class TestTurnScope:
         assert "explicitly excluded" in presentation.text
 
     def test_request_admission_cannot_route_to_an_excluded_stage(self, ctrl):
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.excluded_commands = frozenset({CommandName.PREPROCESS})
         ctrl._request_admission.evaluate = MagicMock(
             return_value=UserRequestAdmission(
                 UserRequestAdmissionAction.UI_HANDOFF,
@@ -5243,9 +5427,9 @@ class TestTurnScope:
         assert "explicitly excluded" in presentation.text
 
     def test_generate_admission_cannot_authorize_an_excluded_stage(self, ctrl):
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.excluded_commands = frozenset({CommandName.PREPROCESS})
         ctrl._request_admission.evaluate = MagicMock(
             return_value=UserRequestAdmission(
                 UserRequestAdmissionAction.GENERATE,
@@ -5263,16 +5447,16 @@ class TestTurnScope:
             )
 
         assert handled is True
-        assert ctrl._admitted_command_name is None
+        assert ctrl._turn_orchestrator.admitted_command_name is None
         ctrl.assembler.set_turn_authorized_command.assert_not_called()
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.BLOCKED
         assert "explicitly excluded" in presentation.text
 
     def test_host_continuation_cannot_execute_an_excluded_stage(self, ctrl):
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_turn_excluded_commands = frozenset(
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.excluded_commands = frozenset(
             {CommandName.PREVIEW_INTERPRETATION}
         )
         ctrl._tool_attempt_coordinator.evaluate_host_deterministic_continuation = (
@@ -5291,9 +5475,9 @@ class TestTurnScope:
         assert presentation.kind is AssistantResponseKind.BLOCKED
 
     def test_final_execution_fence_rejects_excluded_confirmed_action(self, ctrl):
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_turn_excluded_commands = frozenset({CommandName.PREPROCESS})
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.excluded_commands = frozenset({CommandName.PREPROCESS})
         ctrl._execute_tool_no_loop = MagicMock()
         decision = ToolAttemptDecision(
             ToolAttemptAction.EXECUTE,
@@ -5421,7 +5605,7 @@ class TestTurnScope:
         """Multi mode stops after reaching the max successful tool count."""
         _allow_prompt_tools(ctrl)
         _set_guided_turn_scope(ctrl)
-        ctrl._tool_execution_count = ctrl._max_tool_executions - 1
+        ctrl._tool_attempt_session.execution_count = ctrl._max_tool_executions - 1
         ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -5435,9 +5619,9 @@ class TestTurnScope:
 
     def test_handle_user_input_resets_counter(self, ctrl):
         """Starting a new user turn resets the successful tool counter."""
-        ctrl._successful_tool_count = 3
+        ctrl._tool_attempt_session.successful_tool_count = 3
         _use_rag_probe(ctrl)
         ctrl._generate_response = MagicMock()
         _submit_user_turn(ctrl, "hello")
-        assert ctrl._successful_tool_count == 0
+        assert ctrl._tool_attempt_session.successful_tool_count == 0
         ctrl._generate_response.assert_not_called()

@@ -50,7 +50,7 @@ _BOUNDARY_PHASES = [
     "waiting_after_cancel",
 ]
 _HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
-DEFAULT_ARTIFACT_ROOT = ROOT / "artifacts" / "ui" / "chatpanel-guided-boundary"
+DEFAULT_ARTIFACT_ROOT = ROOT / "build" / "dev-artifacts" / "chatpanel-guided-boundary"
 JSON_ARTIFACT = "chatpanel-local-guided-boundary-walkthrough.json"
 MARKDOWN_ARTIFACT = "chatpanel-local-guided-boundary-walkthrough.md"
 _CURRENT_SCREENSHOT_NAMES = {
@@ -69,7 +69,7 @@ def canonical_turn_calls(source_path: str, *, turn: str) -> list[dict[str, Any]]
                 "tool_name": "scan_source",
                 "parameters": {
                     "source_path": str(Path(source_path).resolve()),
-                    "source_hint": "file",
+                    "source_hint": "auto",
                 },
             },
             {"tool_name": "preview_interpretation", "parameters": {}},
@@ -710,16 +710,16 @@ def _validate_turn_tool_attempts(
         return False, "Tool attempt trace does not cover every canonical proposal."
 
     for index, expected_value in enumerate(expected_calls):
-        expected = _canonical_call(expected_value)
+        expected = _comparable_call(expected_value)
         attempt = attempts[index]
         label = str(expected.get("tool_name") or f"proposal {index}")
         if not _well_formed_call(attempt.get("canonical")):
             return False, f"{label} canonical execution evidence is malformed."
         if not _well_formed_call(attempt.get("actual")):
             return False, f"{label} host execution evidence is malformed."
-        canonical = _canonical_call(attempt["canonical"])
+        canonical = _comparable_call(attempt["canonical"])
         actual_value = _mapping(attempt["actual"])
-        actual = _canonical_call(actual_value)
+        actual = _comparable_call(actual_value)
         if canonical != expected:
             return False, f"{label} recorded canonical parameters are inconsistent."
         if index < model_proposal_count:
@@ -729,9 +729,9 @@ def _validate_turn_tool_attempts(
                 and _well_formed_call(attempt.get("normalized"))
             ):
                 return False, f"{label} model execution evidence is malformed."
-            proposal = _canonical_call(proposals[index])
-            raw = _canonical_call(attempt["raw"])
-            normalized = _canonical_call(attempt["normalized"])
+            proposal = _comparable_call(proposals[index])
+            raw = _comparable_call(attempt["raw"])
+            normalized = _comparable_call(attempt["normalized"])
             if proposal != expected or raw != expected:
                 return (
                     False,
@@ -782,6 +782,22 @@ def _canonical_call(value: object) -> dict[str, Any]:
         "tool_name": str(call.get("tool_name") or ""),
         "parameters": dict(parameters) if isinstance(parameters, Mapping) else {},
     }
+
+
+def _comparable_call(value: object) -> dict[str, Any]:
+    """Apply only schema-default equivalence used by walkthrough evidence."""
+    call = _canonical_call(value)
+    if call["tool_name"] != "scan_source":
+        return call
+
+    parameters = call["parameters"]
+    source_path = str(parameters.get("source_path") or "")
+    source_hint = str(parameters.get("source_hint") or "auto")
+    if source_hint == "file" and Path(source_path).suffix:
+        source_hint = "auto"
+    parameters["source_hint"] = source_hint
+    parameters.setdefault("label_sources", [])
+    return call
 
 
 def _validate_screenshot_artifacts(

@@ -10,6 +10,10 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QTreeWidgetItem, QWidget
 
+from tests.unit.ui.data_split_test_support import (
+    dialog_context_kwargs,
+    split_context,
+)
 from XBrainLab.backend.study import Study
 
 
@@ -194,7 +198,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         assert dlg.windowTitle() == "Data Splitting Setting"
 
@@ -209,7 +213,7 @@ class TestDataSplittingDialog:
 
         dialog = DataSplittingDialog(
             None,
-            controller,
+            **dialog_context_kwargs(),
             initial_values={
                 "training_mode": "individual",
                 "split_strategy": "subject",
@@ -234,7 +238,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         dlg.resize(available_width, 700)
         dlg.show()
@@ -277,15 +281,16 @@ class TestDataSplittingDialog:
         qtbot.addWidget(parent)
         controller.fail_on_read = True
 
-        dlg = DataSplittingDialog(parent, controller)
+        dlg = DataSplittingDialog(parent)
         qtbot.addWidget(dlg)
 
-        assert dlg.epoch_data is None
-        assert dlg.dataset_generator is None
+        assert dlg.split_context is None
+        assert not hasattr(dlg, "epoch_data")
+        assert not hasattr(dlg, "dataset_generator")
         assert dlg.btn_confirm is not None
         assert not dlg.btn_confirm.isEnabled()
         assert dlg.blocked_label is not None
-        assert "Create epochs" in dlg.blocked_label.text()
+        assert "context is unavailable" in dlg.blocked_label.text()
         assert controller.epoch_reads == 0
         assert controller.generator_reads == 0
 
@@ -298,7 +303,10 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller, epoch_data=None)
+        dlg = DataSplittingDialog(
+            None,
+            **dialog_context_kwargs(context=split_context(epoch_available=False)),
+        )
         qtbot.addWidget(dlg)
 
         with patch(
@@ -323,8 +331,16 @@ class TestDataSplittingDialog:
             test_splitter_list=[],
         )
 
-        with pytest.raises(ValueError, match="Create epochs"):
-            DataSplittingPreviewDialog(None, "Data Splitting Step 2", None, config)
+        kwargs = dialog_context_kwargs(
+            context=split_context(epoch_available=False),
+        )
+        with pytest.raises(ValueError, match="Create EEG epochs"):
+            DataSplittingPreviewDialog(
+                None,
+                "Data Splitting Step 2",
+                config=config,
+                **kwargs,
+            )
 
     def test_preview_dialog_uses_frameless_summary_cards(self, qtbot, epoch_data):
         from XBrainLab.backend.dataset import (
@@ -345,19 +361,13 @@ class TestDataSplittingDialog:
             test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
         )
 
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog."
-                "DatasetGenerator"
-            ),
-            patch("threading.Thread") as mock_thread,
-        ):
+        with patch("threading.Thread") as mock_thread:
             mock_thread.return_value.is_alive.return_value = False
             dlg = DataSplittingPreviewDialog(
                 None,
                 "Data Splitting Step 2",
-                epoch_data,
-                config,
+                config=config,
+                **dialog_context_kwargs(),
             )
 
         qtbot.addWidget(dlg)
@@ -423,7 +433,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
 
         for object_name in ("DataSplitPreviewGroup", "DataSplitOptionsGroup"):
@@ -456,7 +466,7 @@ class TestDataSplittingDialog:
             DataSplittingPreviewDialog,
         )
 
-        dialog = DataSplittingDialog(None, controller)
+        dialog = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dialog)
 
         config = DataSplittingConfig(
@@ -465,19 +475,13 @@ class TestDataSplittingDialog:
             val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
             test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
         )
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog."
-                "DatasetGenerator"
-            ),
-            patch("threading.Thread") as mock_thread,
-        ):
+        with patch("threading.Thread") as mock_thread:
             mock_thread.return_value.is_alive.return_value = False
             preview = DataSplittingPreviewDialog(
                 None,
                 "Data Splitting Step 2",
-                epoch_data,
-                config,
+                config=config,
+                **dialog_context_kwargs(),
             )
         qtbot.addWidget(preview)
         if preview.timer is not None:
@@ -502,7 +506,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
 
         with patch(
@@ -513,7 +517,7 @@ class TestDataSplittingDialog:
 
             dlg.confirm()
 
-        config = MockPreview.call_args.args[3]
+        config = MockPreview.call_args.kwargs["config"]
         assert config.test_splitter_list[0].split_type == SplitByType.TRIAL
         assert config.val_splitter_list[0].split_type == ValSplitByType.TRIAL
 
@@ -522,7 +526,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         dlg.update_preview()
 
@@ -531,7 +535,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         dlg.handle_testing()
 
@@ -540,7 +544,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         dlg.handle_validation()
 
@@ -549,7 +553,7 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         assert dlg.get_result() is None
 
@@ -562,7 +566,7 @@ class TestDataSplittingDialogSplitTypes:
             DataSplittingDialog,
         )
 
-        dlg = DataSplittingDialog(None, controller)
+        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         return dlg
 

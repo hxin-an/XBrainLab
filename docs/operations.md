@@ -1,6 +1,6 @@
 # XBrainLab 操作筆記
 
-最後更新：`2026-07-29`
+最後更新：`2026-08-02`
 
 ## 工作路徑
 
@@ -9,6 +9,12 @@ cd /mnt/d/workspace_v2/projects/lab/xbrainlab
 ```
 
 不要把新工作寫回舊路徑 `/mnt/d/repos/XBrainLab`；它目前只作 archive / reference。
+
+上面的 root checkout 是 launcher 的預設 canonical merge target，不代表每個驗證中的 worktree。
+啟動或產生 handoff evidence 前，先用 `git rev-parse --show-toplevel`、
+`git branch --show-current` 與 `git status --short` 確認實際 source identity。產品品質收斂分支目前
+在獨立 worktree 驗證；尚未 merge 回 root checkout 前，不可把 Desktop launcher 的 root startup
+當成該 candidate 的證據。
 
 ## 環境狀態
 
@@ -22,7 +28,7 @@ cd /mnt/d/workspace_v2/projects/lab/xbrainlab
 
 - `poetry install --with dev,test,docs`
 - import probe：`PIL`、`mne`、`PyQt6`、`torch`、`pytest`、`XBrainLab`
-- docs build：`poetry run mkdocs build --strict`
+- docs build：`poetry run -- mkdocs build --strict`
 - local assistant runtime：catalog / download preflight / health-check scripts
 
 目前 exact primary `ibm-granite/granite-3.3-2b-instruct` 已有本機 cache，GPU prompt
@@ -46,10 +52,18 @@ scripts/launchers/xbrainlab_wsl_launcher.ps1
 
 launcher 會：
 
-- Desktop command 指向目前 canonical repo；PowerShell launcher 再從自身位置解析 WSL 路徑，
-  不依賴歷史 worktree 名稱。搬移 repo 時可設定 `XBRAINLAB_REPO_WIN` 覆寫 desktop command。
-- 優先使用 WSL 內的 `poetry run python run.py`。
+- 已安裝的 Desktop command 預設指向 root checkout
+  `D:\workspace_v2\projects\lab\xbrainlab`；PowerShell launcher 再從自身位置解析 WSL 路徑。
+  這不是任意 worktree 的自動追蹤機制。驗證尚未 merge 的 candidate 時，必須明確設定
+  `XBRAINLAB_REPO_WIN` 或直接從該 worktree 執行，並在 artifact 中核對 branch、full SHA 與
+  dirty state。
+- 優先使用 WSL 內的 `poetry run -- python run.py`。
 - 找不到 `poetry` 時嘗試 `/home/administrator/.local/bin/poetry`，再退到 `python run.py`。
+- 在 repo 所在的 Windows 磁碟建立 rebuildable cache boundary。預設 cache root 是
+  `<repo drive>:\XBrainLabCache`，可用 `XBRAINLAB_CACHE_ROOT_WIN` 覆寫。RAG cache 位於
+  `<cache root>\rag`。若 canonical repo 內已有經驗證的 historical model cache，launcher
+  會沿用 `XBrainLab\llm\core\models`，避免為同一個 Granite 模型重複下載；新安裝則使用
+  `<cache root>\models`。這兩條路徑都在 repo 所在磁碟，不會把大型模型下載到 WSL root。
 - 將 log 寫到 Windows：
 
 ```text
@@ -59,7 +73,7 @@ launcher 會：
 啟動 smoke：
 
 ```bash
-timeout 35s xvfb-run -a poetry run python run.py --model local
+timeout 35s xvfb-run -a poetry run -- python run.py --model local
 ```
 
 `MainWindow initialized` 出現後因測試 timeout 結束屬於預期，代表 startup 未在初始化階段崩潰。
@@ -67,17 +81,17 @@ timeout 35s xvfb-run -a poetry run python run.py --model local
 Windows launcher command walkthrough：
 
 ```bash
-poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-dir artifacts/launcher
+poetry run -- python scripts/dev/capture_windows_launcher_walkthrough.py --output-dir artifacts/launcher
 ```
 
 這會從 Windows `cmd.exe` / PowerShell / `wsl.exe` 驗證 Desktop command、launcher log mirror
 和 bounded startup path，artifact 寫到 `artifacts/launcher/windows-launcher-walkthrough.*`。
 它不是真人桌面 click-through。
 
-目前 release-candidate worktree 已在 `2026-05-30` 重新 capture launcher walkthrough；
-`artifacts/launcher/windows-launcher-walkthrough.md` 顯示 status `passed`，active WSL repo
-是 `/mnt/d/workspace_v2/projects/lab/xbrainlab`。PowerShell launcher 會從自身位置解析 WSL
-路徑；desktop command 允許用 `XBRAINLAB_REPO_WIN` 指向搬移後的 repo。
+`artifacts/launcher/windows-launcher-walkthrough.md` 是可重建的自動化證據；使用前必須核對
+branch、full commit SHA 與 dirty state，不能把舊的 `passed` 當成目前 handoff 結果。
+PowerShell launcher 會從自身位置解析 WSL 路徑；desktop command 允許用
+`XBRAINLAB_REPO_WIN` 指向搬移後的 repo。
 
 ## Local LLM Runtime
 
@@ -86,8 +100,9 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 | role | model | estimated download | VRAM estimate | cache |
 | --- | --- | ---: | ---: | --- |
 | primary | `ibm-granite/granite-3.3-2b-instruct` | 5.08 GB | 6.0 GB | cached |
-| legacy explicit choice | `microsoft/Phi-4-mini-instruct` | 7.69 GB | 9.0 GB | cached |
-| legacy explicit choice | `microsoft/Phi-3.5-mini-instruct` | 7.64 GB | 8.5 GB | optional |
+
+`microsoft/Phi-4-mini-instruct` 與 `microsoft/Phi-3.5-mini-instruct` 是 retired model IDs：
+不在 product catalog、不作 fallback，也不是目前 cache 的必要內容。
 
 目前 cache：
 
@@ -95,16 +110,35 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 XBrainLab/llm/core/models
 ```
 
-目前 exact Granite inspect 回報 `classification: gpu-ready`，catalog cache 共
-`12.77 GB / 20 GB`。產品不會在 Granite 不可用時靜默換成 Phi；legacy Phi 只能由使用者
-明確選取。已刪除舊 Qwen cache；不要重新下載或使用 Qwen、DeepSeek、Yi、GLM、Baichuan、
-InternLM、MiniCPM 等中國公司或中國來源模型。
+模型 cache 是 **checkout/path-scoped runtime state**，不是 repo-wide 常數。PowerShell launcher 會明確設定
+`XBRAINLAB_MODEL_CACHE_DIR` 和 `XBRAINLAB_RAG_CACHE_DIR` 後才啟動產品。直接執行
+`poetry run -- python run.py` 不會經過 launcher，因此若需要使用相同的 cached Granite，先在
+該 shell 明確設定：
+
+```bash
+export XBRAINLAB_MODEL_CACHE_DIR="$PWD/XBrainLab/llm/core/models"
+export XBRAINLAB_RAG_CACHE_DIR=/mnt/d/XBrainLabCache/rag
+poetry run -- python run.py
+```
+
+不要靠未記錄的 shell state 判斷模型是否可用。Final handoff 只透過 canonical runner 綁定
+explicit D-mounted cache；每筆 check 的 environment policy 以 redacted mount + path digest
+記錄 identity。
+
+目前 closure worktree 的 model cache 只包含 exact Granite snapshot，實際磁碟用量約
+`5.07 GB`（`4.8 GiB`）；root checkout 的 historical cache 約 `12.77 GB`，還包含 retired Phi
+內容。Desktop launcher 若仍指向 root checkout，就會看到後者；兩者都不能在未記錄 path、branch、
+SHA、dirty state 與 model revision 時當成 handoff 事實。Catalog download estimate 是
+`5.08 GB`。容量是本機狀態，handoff 前仍要以 runtime inspect / preflight 重查。產品只接受
+exact Granite；Granite 不可用時會明確失敗，
+不會靜默換成 Phi，Phi 也不能由產品 UI 選取。已刪除舊 Qwen cache；不要重新下載或使用
+Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等中國公司或中國來源模型。
 
 下載前檢查：
 
 ```bash
-poetry run python scripts/dev/plan_local_model_download.py --format markdown
-poetry run python scripts/dev/plan_local_model_download.py \
+poetry run -- python scripts/dev/plan_local_model_download.py --format markdown
+poetry run -- python scripts/dev/plan_local_model_download.py \
   --model ibm-granite/granite-3.3-2b-instruct --format markdown
 ```
 
@@ -114,10 +148,10 @@ projected cache 不會重複加上同一模型大小。
 runtime health check：
 
 ```bash
-poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown
-poetry run python scripts/dev/inspect_local_assistant_runtime.py \
+poetry run -- python scripts/dev/inspect_local_assistant_runtime.py --format markdown
+poetry run -- python scripts/dev/inspect_local_assistant_runtime.py \
   --format markdown --prompt-smoke --structured-smoke
-poetry run python scripts/dev/inspect_local_assistant_runtime.py \
+poetry run -- python scripts/dev/inspect_local_assistant_runtime.py \
   --model ibm-granite/granite-3.3-2b-instruct \
   --format markdown --prompt-smoke --structured-smoke
 ```
@@ -132,6 +166,27 @@ rm -rf \
 
 清理後重新跑 preflight，確認 projected cache 仍低於上限。
 
+## Handoff Evidence
+
+Final handoff 的唯一執行入口是 checked-in manifest runner：
+
+```bash
+MODEL_CACHE_DIR="$(realpath XBrainLab/llm/core/models)"
+RAG_CACHE_DIR=/mnt/d/XBrainLabCache/rag
+poetry run -- python scripts/dev/run_handoff_validation_manifest.py \
+  --model-cache-dir "$MODEL_CACHE_DIR" \
+  --rag-cache-dir "$RAG_CACHE_DIR"
+```
+
+Runner 從 `scripts/dev/handoff_gate_spec.py` 讀取全部 required IDs，逐一交給 recorder，最後驗證
+完整 dossier。不要手動複製 validation 頁中的 individual commands 拼成 final result。兩個 cache
+argument 都必須是 `/mnt/d/...` absolute path；runner 不接受 C 槽、WSL home 或 implicit default。
+
+預設 evidence root 是 repo 內 gitignored 的 `build/handoff-evidence/<full-SHA>/`。若 evidence
+必須放在 checkout 外，使用 absolute SHA-scoped root 並明確加入
+`--allow-external-evidence-root`；external root 不需要也不應執行 repo-relative `git check-ignore`。
+完整 policy 和 claim boundary 看 [Validation](validation/README.md)。
+
 ## 常用指令
 
 安裝標準依賴：
@@ -143,13 +198,13 @@ poetry install --with dev,test,docs
 啟動 app：
 
 ```bash
-poetry run python run.py
+poetry run -- python run.py
 ```
 
 建立文件站：
 
 ```bash
-poetry run mkdocs build --strict
+poetry run -- mkdocs build --strict
 ```
 
 部署文件站：
@@ -164,7 +219,7 @@ poetry run mkdocs build --strict
 刷新 fast quality dashboard：
 
 ```bash
-poetry run python scripts/dev/update_quality_dashboard.py
+poetry run -- python scripts/dev/update_quality_dashboard.py
 ```
 
 跑 UI 測試 wrapper：
@@ -176,7 +231,7 @@ scripts/dev/run_ui_pytest.sh tests/unit/ui -q
 跑 targeted pipeline smoke：
 
 ```bash
-poetry run pytest --capture=sys \
+poetry run -- pytest --capture=sys \
   tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
   tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
   -q

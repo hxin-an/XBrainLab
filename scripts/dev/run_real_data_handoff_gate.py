@@ -54,6 +54,23 @@ GATE_SLICES: tuple[GateSlice, ...] = (
         ),
     ),
     GateSlice(
+        name="physionet-internal-event-continuous-handoff",
+        pytest_target=(
+            "tests/integration/pipeline/test_real_data_handoff_gate.py::"
+            "test_physionet_internal_events_reach_real_training_through_"
+            "interpretation_spine"
+        ),
+        source_families=("physionet-eegmmidb",),
+        stages=(
+            "data-interpretation",
+            "internal-event-review",
+            "epoch-materialization",
+            "dataset-generation",
+            "training-readiness",
+            "tiny-training",
+        ),
+    ),
+    GateSlice(
         name="bids-duration-boundaries",
         pytest_target="tests/integration/io/test_bids_epoch_duration_handoff.py",
         source_families=("generated-bids-duration-boundary",),

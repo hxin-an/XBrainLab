@@ -27,7 +27,7 @@ class ChannelSelectionDialog(BaseDialog):
     options and a search bar for quick channel lookup.
 
     Attributes:
-        data_list: List of loaded EEG data objects.
+        channels: Detached channel names shown by the dialog.
         selected_channels: List of channel names selected by the user.
         list_widget: QListWidget displaying available channels.
         btn_all: Button to select all channels.
@@ -35,8 +35,8 @@ class ChannelSelectionDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, data_list: list):
-        self.data_list = data_list
+    def __init__(self, parent, channels: list[str]):
+        self.channels = [str(channel) for channel in channels]
         self.selected_channels: list[str] = []
 
         # UI
@@ -61,10 +61,8 @@ class ChannelSelectionDialog(BaseDialog):
         self.list_widget = QListWidget()
         self.list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
 
-        # Get channels from first file
-        if self.data_list:
-            channels = self.data_list[0].get_mne().ch_names
-            for ch in channels:
+        if self.channels:
+            for ch in self.channels:
                 item = QListWidgetItem(ch)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Checked)

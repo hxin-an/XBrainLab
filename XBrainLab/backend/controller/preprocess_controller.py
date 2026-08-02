@@ -1,224 +1,71 @@
-"""Preprocessing controller for EEG signal processing operations.
+"""UI compatibility controller over the Study-owned preprocessing service."""
 
-Provides a high-level interface for filtering, resampling,
-re-referencing, normalisation, epoching, montage configuration, and
-preprocess-stage diagnostics.
-"""
+from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from XBrainLab.backend import preprocessor
-from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.services.preprocess_state_service import PreprocessStateService
 from XBrainLab.backend.utils.observer import Observable
-from XBrainLab.backend.utils.runtime_diagnostics import collect_runtime_diagnostics
 
 
 class PreprocessController(Observable):
-    """Controller for managing preprocessing operations.
+    """Expose legacy controller methods while sharing product preprocessing truth."""
 
-    Orchestrates EEG signal processing steps including filtering,
-    resampling, re-referencing, normalisation, epoching, and montage
-    configuration. All operations work on deep copies of the data to
-    ensure thread safety, then atomically swap results back into the
-    study.
-
-    Events:
-        preprocess_changed: Emitted when the preprocessing state
-            changes (e.g. after a filter, resample, or epoch).
-
-    Attributes:
-        study: Reference to the :class:`Study` backend instance.
-
-    """
-
-    def __init__(self, study):
-        """Initialise the preprocessing controller.
-
-        Args:
-            study: The :class:`Study` backend instance to operate on.
-
-        """
-        Observable.__init__(self)
+    def __init__(self, study: Any) -> None:
+        super().__init__()
         self.study = study
+        shared_service = getattr(study, "preprocess_state_service", None)
+        if isinstance(shared_service, PreprocessStateService):
+            self._preprocess_state = shared_service
+        else:
+            self._preprocess_state = PreprocessStateService(
+                study,
+                processor_provider=lambda name: getattr(preprocessor, name),
+            )
+        self._preprocess_state.subscribe(
+            "preprocess_changed",
+            self._relay_preprocess_changed,
+        )
 
-    def get_preprocessed_data_list(self):
-        """Return the list of currently preprocessed data objects.
+    def get_preprocessed_data_list(self) -> list[Any]:
+        return self._preprocess_state.get_preprocessed_data_list()
 
-        Returns:
-            The preprocessed data list held by the study.
+    def reset_preprocess(self) -> None:
+        self._preprocess_state.reset_preprocess()
 
-        """
-        return self.study.preprocessed_data_list
+    def is_epoched(self) -> bool:
+        return self._preprocess_state.is_epoched()
 
-    def reset_preprocess(self):
-        """Reset all preprocessing back to the raw state."""
-        self.study.reset_preprocess(force_update=True)
-        self.notify("preprocess_changed")
+    def has_data(self) -> bool:
+        return self._preprocess_state.has_data()
 
-    def is_epoched(self):
-        """Check whether the data is currently epoched.
+    def get_channel_names(self) -> list[str]:
+        return self._preprocess_state.get_channel_names()
 
-        Returns:
-            ``True`` if the first preprocessed data object is epoched,
-            ``False`` otherwise or if no data is loaded.
-
-        """
-        data_list = self.study.preprocessed_data_list
-        if data_list:
-            return not data_list[0].is_raw()
-        return False
-
-    def has_data(self):
-        """Check whether any preprocessed data exists.
-
-        Returns:
-            ``True`` if the preprocessed data list is non-empty.
-
-        """
-        return bool(self.study.preprocessed_data_list)
-
-    def get_channel_names(self):
-        """Return channel names from the first preprocessed data object.
-
-        Returns:
-            List of channel name strings, or an empty list if no data
-            is loaded.
-
-        """
-        if self.study.preprocessed_data_list:
-            return self.study.preprocessed_data_list[0].get_mne().ch_names
-        return []
-
-    def get_first_data(self):
-        """Return the first preprocessed data object.
-
-        Returns:
-            The first data object, or ``None`` if no data is loaded.
-
-        """
-        if self.study.preprocessed_data_list:
-            return self.study.preprocessed_data_list[0]
-        return None
+    def get_first_data(self) -> Any | None:
+        return self._preprocess_state.get_first_data()
 
     def get_runtime_diagnostics(self) -> dict[str, Any]:
-        """Return aggregated runtime diagnostics for preprocessed data."""
-        return collect_runtime_diagnostics(self.study.preprocessed_data_list)
+        return self._preprocess_state.get_runtime_diagnostics()
 
-    def _apply_processor(self, processor_class, *args, **kwargs):
-        """Apply a preprocessing processor and update the study.
+    def apply_filter(
+        self,
+        l_freq: float | None,
+        h_freq: float | None,
+        notch_freqs: Sequence[float] | None = None,
+    ) -> bool:
+        return self._preprocess_state.apply_filter(l_freq, h_freq, notch_freqs)
 
-        Creates deep copies of the current preprocessed data, applies
-        the given processor, and atomically swaps the result back.
+    def apply_resample(self, sfreq: float) -> bool:
+        return self._preprocess_state.apply_resample(sfreq)
 
-        Args:
-            processor_class: The preprocessor class to instantiate.
-            *args: Positional arguments forwarded to
-                ``processor.data_preprocess()``.
-            **kwargs: Keyword arguments forwarded to
-                ``processor.data_preprocess()``.
+    def apply_rereference(self, ref_channels: str | list[str]) -> bool:
+        return self._preprocess_state.apply_rereference(ref_channels)
 
-        Returns:
-            ``True`` if the processor was applied successfully.
-
-        Raises:
-            ValueError: If no data is available for preprocessing.
-            Exception: Propagated from the underlying processor on
-                failure.
-
-        """
-        data_list = self.study.preprocessed_data_list
-        if not data_list:
-            raise ValueError("No data to preprocess.")
-
-        try:
-            # Thread-safe operations: Work on a Deep Copy of the data
-            # This prevents race conditions where UI might be reading/plotting data
-            # while the background thread is modifying it in-place.
-            working_list = [d.copy() for d in data_list]
-
-            processor = processor_class(working_list)
-
-            # Apply preprocessing on the COPIES
-            result = processor.data_preprocess(*args, **kwargs)
-
-            # Atomic swap of the results back to the study
-            # This update is safe because it replaces the list reference
-            self.study.set_preprocessed_data_list(result, force_update=True)
-            self.notify("preprocess_changed")
-        except Exception as e:
-            logger.error("Preprocessing failed: %s", e)
-            raise
-        return True
-
-    def apply_filter(self, l_freq, h_freq, notch_freqs=None):
-        """Apply band-pass and optional notch filtering.
-
-        Args:
-            l_freq: Low cut-off frequency in Hz (high-pass edge).
-            h_freq: High cut-off frequency in Hz (low-pass edge).
-            notch_freqs: Optional sequence of notch filter frequencies.
-
-        Returns:
-            ``True`` on success.
-
-        Raises:
-            ValueError: If no data is available.
-
-        """
-        return self._apply_processor(
-            preprocessor.Filtering,
-            l_freq,
-            h_freq,
-            notch_freqs=notch_freqs,
-        )
-
-    def apply_resample(self, sfreq):
-        """Resample the data to a new sampling frequency.
-
-        Args:
-            sfreq: Target sampling frequency in Hz.
-
-        Returns:
-            ``True`` on success.
-
-        Raises:
-            ValueError: If no data is available.
-
-        """
-        return self._apply_processor(preprocessor.Resample, sfreq)
-
-    def apply_rereference(self, ref_channels):
-        """Apply re-referencing to the specified channels.
-
-        Args:
-            ref_channels: Channel name(s) to use as reference.
-
-        Returns:
-            ``True`` on success.
-
-        Raises:
-            ValueError: If no data is available.
-
-        """
-        return self._apply_processor(
-            preprocessor.Rereference,
-            ref_channels=ref_channels,
-        )
-
-    def apply_normalization(self, method):
-        """Apply normalisation to the data.
-
-        Args:
-            method: Normalisation method identifier (e.g. ``"zscore"``).
-
-        Returns:
-            ``True`` on success.
-
-        Raises:
-            ValueError: If no data is available.
-
-        """
-        return self._apply_processor(preprocessor.Normalize, norm=method)
+    def apply_normalization(self, method: str) -> bool:
+        return self._preprocess_state.apply_normalization(method)
 
     def apply_standard_pipeline(
         self,
@@ -230,129 +77,41 @@ class PreprocessController(Observable):
         ref_channels: str | list[str] | None = None,
         normalization: str | None = None,
     ) -> bool:
-        """Apply the standard preprocessing recipe as one atomic mutation.
+        return self._preprocess_state.apply_standard_pipeline(
+            l_freq=l_freq,
+            h_freq=h_freq,
+            notch_freq=notch_freq,
+            rate=rate,
+            ref_channels=ref_channels,
+            normalization=normalization,
+        )
 
-        Every processor runs against a private working list. The study and
-        observers are updated only after the complete recipe succeeds.
-        """
-        data_list = self.study.preprocessed_data_list
-        if not data_list:
-            raise ValueError("No data to preprocess.")
+    def get_unique_events(self) -> list[str]:
+        return self._preprocess_state.get_unique_events()
 
-        try:
-            working_list = [data.copy() for data in data_list]
-            working_list = self._process_working_list(
-                working_list,
-                preprocessor.Filtering,
-                l_freq,
-                h_freq,
-                notch_freqs=None,
-            )
-            if notch_freq:
-                working_list = self._process_working_list(
-                    working_list,
-                    preprocessor.Filtering,
-                    None,
-                    None,
-                    notch_freqs=[notch_freq],
-                )
-            if rate:
-                working_list = self._process_working_list(
-                    working_list,
-                    preprocessor.Resample,
-                    rate,
-                )
-            if ref_channels:
-                working_list = self._process_working_list(
-                    working_list,
-                    preprocessor.Rereference,
-                    ref_channels=ref_channels,
-                )
-            if normalization:
-                working_list = self._process_working_list(
-                    working_list,
-                    preprocessor.Normalize,
-                    norm=normalization,
-                )
-        except Exception as exc:
-            logger.error("Standard preprocessing pipeline failed: %s", exc)
-            raise
-
-        self.study.set_preprocessed_data_list(working_list, force_update=True)
-        self.notify("preprocess_changed")
-        return True
-
-    @staticmethod
-    def _process_working_list(
-        working_list: list[Any],
-        processor_class: Any,
-        *args: Any,
-        **kwargs: Any,
-    ) -> list[Any]:
-        processor = processor_class(working_list)
-        return list(processor.data_preprocess(*args, **kwargs))
-
-    def get_unique_events(self):
-        """Return unique event names across all preprocessed files.
-
-        Returns:
-            A sorted list of unique event name strings.
-
-        """
-        events = set()
-        for data in self.study.preprocessed_data_list:
-            try:
-                _, ev_ids = data.get_event_list()
-                if ev_ids:
-                    events.update(ev_ids.keys())
-            except Exception as e:  # noqa: PERF203
-                logger.warning("Failed to get events from preprocessed data: %s", e)
-        return sorted(events)
-
-    def apply_epoching(self, baseline, selected_events, tmin, tmax):
-        """Apply epoching to the preprocessed data.
-
-        Creates epochs around events of interest and locks the
-        dataset to prevent further raw-data modifications.
-
-        Args:
-            baseline: Baseline correction tuple ``(start, end)``
-                or ``None``.
-            selected_events: Mapping of selected event names to IDs.
-            tmin: Epoch start time relative to event onset (seconds).
-            tmax: Epoch end time relative to event onset (seconds).
-
-        Returns:
-            ``True`` on success.
-
-        Raises:
-            ValueError: If no data is available.
-
-        """
-        result = self._apply_processor(
-            preprocessor.TimeEpoch,
+    def apply_epoching(
+        self,
+        baseline: list[float] | tuple[float | None, float | None] | None,
+        selected_events: Mapping[str, int] | Sequence[str] | None,
+        tmin: float,
+        tmax: float,
+    ) -> bool:
+        return self._preprocess_state.apply_epoching(
             baseline,
             selected_events,
             tmin,
             tmax,
         )
-        if result:
-            self.study.lock_dataset()
-        return result
 
     def apply_montage(
         self,
         mapped_channels: list[str],
         mapped_positions: list[tuple[float, float, float]],
-    ):
-        """Applies montage configuration to the study.
+    ) -> bool:
+        return self._preprocess_state.apply_montage(
+            mapped_channels,
+            mapped_positions,
+        )
 
-        Args:
-            mapped_channels: List of channel names.
-            mapped_positions: List of pos tuples (x, y, z).
-
-        """
-        self.study.set_channels(mapped_channels, mapped_positions)
-        # Notify UI about preprocessing change (montage affects visualization)
-        self.notify("preprocess_changed")
-        return True
+    def _relay_preprocess_changed(self) -> bool:
+        return self.notify("preprocess_changed")

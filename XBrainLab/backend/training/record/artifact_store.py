@@ -5,13 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 import torch
+
+from ...utils.filesystem_identity import (
+    FilesystemIdentityError,
+    StableDirectoryIdentity,
+    retain_directory_identity,
+)
 
 ARTIFACT_STORE_SCHEMA_VERSION = 1
 EVALUATION_RECORD_ARTIFACT_TYPE = "xbrainlab.evaluation_record"
@@ -42,9 +48,9 @@ class UnsupportedArtifactError(ArtifactStoreError):
     """Raised when an unsafe legacy or unknown artifact cannot be loaded."""
 
 
-def _sha256(path: Path) -> str:
+def _sha256(path: Path, identity: StableDirectoryIdentity) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with identity.open_existing_binary(path) as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -52,6 +58,40 @@ def _sha256(path: Path) -> str:
 
 def _temporary_path(target: Path) -> Path:
     return target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+
+
+@contextmanager
+def _verified_parent_access(
+    target: Path,
+    directory_identity: StableDirectoryIdentity | None,
+    *,
+    create: bool,
+) -> Iterator[StableDirectoryIdentity]:
+    parent = target.parent
+    if directory_identity is not None:
+        directory_identity.assert_matches(parent)
+        yield directory_identity
+        return
+    if create:
+        parent.mkdir(parents=True, exist_ok=True)
+    retained = retain_directory_identity(parent)
+    try:
+        retained.assert_matches(parent)
+        yield retained
+    finally:
+        retained.close()
+
+
+def _cleanup_temporary(
+    path: Path,
+    identity: StableDirectoryIdentity,
+) -> None:
+    """Remove a temporary only while its parent is still trusted."""
+    try:
+        identity.assert_matches(path.parent)
+    except FilesystemIdentityError:
+        return
+    identity.unlink_entry(path, missing_ok=True)
 
 
 def _encode_json_value(value: object, *, location: str) -> object:
@@ -167,10 +207,10 @@ def write_json_npz_artifact(
     payload: Mapping[str, object],
     arrays: Mapping[str, object],
     arrays_filename: str | None = None,
+    directory_identity: StableDirectoryIdentity | None = None,
 ) -> None:
     """Atomically write one JSON manifest and one non-pickle NPZ payload."""
     target = Path(manifest_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
     array_name = arrays_filename or f"{target.name}.npz"
     if Path(array_name).name != array_name:
         raise ArtifactStoreError("Artifact array filename must be a basename.")
@@ -181,37 +221,49 @@ def write_json_npz_artifact(
             raise ArtifactStoreError(f"Invalid artifact array name: {name!r}.")
         normalized_arrays[name] = _numeric_array(value, name=name)
 
-    arrays_temp = _temporary_path(arrays_path)
-    manifest_temp = _temporary_path(target)
-    try:
-        with arrays_temp.open("wb") as stream:
-            np.savez_compressed(stream, **normalized_arrays)
-        manifest = {
-            "artifact_store_schema_version": ARTIFACT_STORE_SCHEMA_VERSION,
-            "artifact_type": artifact_type,
-            "arrays": {
-                "file": arrays_path.name,
-                "sha256": _sha256(arrays_temp),
-                "keys": sorted(normalized_arrays),
-            },
-            "payload": _encode_json_value(payload, location="payload"),
-        }
-        manifest_temp.write_text(
-            json.dumps(
-                manifest,
-                ensure_ascii=True,
-                allow_nan=False,
-                sort_keys=True,
-                separators=(",", ":"),
+    with _verified_parent_access(
+        target,
+        directory_identity,
+        create=True,
+    ) as identity:
+        arrays_temp = _temporary_path(arrays_path)
+        manifest_temp = _temporary_path(target)
+        cleanup_allowed = True
+        try:
+            identity.assert_matches(target.parent)
+            with identity.create_exclusive_binary(arrays_temp) as stream:
+                np.savez_compressed(stream, **normalized_arrays)
+            manifest = {
+                "artifact_store_schema_version": ARTIFACT_STORE_SCHEMA_VERSION,
+                "artifact_type": artifact_type,
+                "arrays": {
+                    "file": arrays_path.name,
+                    "sha256": _sha256(arrays_temp, identity),
+                    "keys": sorted(normalized_arrays),
+                },
+                "payload": _encode_json_value(payload, location="payload"),
+            }
+            encoded_manifest = (
+                json.dumps(
+                    manifest,
+                    ensure_ascii=True,
+                    allow_nan=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
             )
-            + "\n",
-            encoding="utf-8",
-        )
-        os.replace(arrays_temp, arrays_path)
-        os.replace(manifest_temp, target)
-    finally:
-        arrays_temp.unlink(missing_ok=True)
-        manifest_temp.unlink(missing_ok=True)
+            with identity.create_exclusive_binary(manifest_temp) as stream:
+                stream.write(encoded_manifest.encode("utf-8"))
+            identity.replace_entry(arrays_temp, arrays_path)
+            identity.replace_entry(manifest_temp, target)
+        except FilesystemIdentityError:
+            cleanup_allowed = False
+            raise
+        finally:
+            if cleanup_allowed:
+                _cleanup_temporary(arrays_temp, identity)
+                _cleanup_temporary(manifest_temp, identity)
 
 
 def _legacy_message(path: Path, artifact_type: str) -> str:
@@ -240,84 +292,99 @@ def read_json_npz_artifact(
     manifest_path: str | Path,
     *,
     expected_artifact_type: str,
+    directory_identity: StableDirectoryIdentity | None = None,
 ) -> tuple[dict[str, object], dict[str, np.ndarray]]:
     """Read and validate one safe artifact without enabling NumPy pickle."""
     path = Path(manifest_path)
-    try:
-        raw = json.loads(
-            path.read_text(encoding="utf-8"),
-            parse_constant=_reject_json_constant,
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise UnsupportedArtifactError(
-            _legacy_message(path, expected_artifact_type)
-        ) from exc
-    if type(raw) is not dict:
-        raise ArtifactIntegrityError("Artifact manifest root must be an object.")
-    if set(raw) != _BASE_MANIFEST_KEYS:
-        raise ArtifactIntegrityError(
-            "Artifact manifest fields are incomplete or unrecognized."
-        )
-    version = raw.get("artifact_store_schema_version")
-    if type(version) is not int or version != ARTIFACT_STORE_SCHEMA_VERSION:
-        raise UnsupportedArtifactError(
-            f"Unsupported artifact store schema version {version!r} at {path}. "
-            "Upgrade XBrainLab or create a new artifact; unsafe migration is "
-            "not supported."
-        )
-    if raw.get("artifact_type") != expected_artifact_type:
-        raise ArtifactIntegrityError(
-            f"Artifact type must be {expected_artifact_type!r}."
-        )
-    arrays_descriptor = raw.get("arrays")
-    if type(arrays_descriptor) is not dict:
-        raise ArtifactIntegrityError("Artifact array descriptor is malformed.")
-    if set(arrays_descriptor) != {"file", "sha256", "keys"}:
-        raise ArtifactIntegrityError("Artifact array descriptor fields are invalid.")
-    arrays_filename = arrays_descriptor.get("file")
-    expected_hash = arrays_descriptor.get("sha256")
-    expected_keys = arrays_descriptor.get("keys")
-    if (
-        not isinstance(arrays_filename, str)
-        or Path(arrays_filename).name != arrays_filename
-        or not isinstance(expected_hash, str)
-        or len(expected_hash) != 64
-        or not isinstance(expected_keys, list)
-        or any(not isinstance(key, str) for key in expected_keys)
-        or expected_keys != sorted(set(expected_keys))
-    ):
-        raise ArtifactIntegrityError("Artifact array descriptor values are invalid.")
-    arrays_path = path.with_name(arrays_filename)
-    if not arrays_path.is_file():
-        raise ArtifactIntegrityError(
-            f"Artifact numeric payload is missing: {arrays_path}."
-        )
-    if _sha256(arrays_path) != expected_hash:
-        raise ArtifactIntegrityError(
-            f"Artifact numeric payload failed its SHA-256 check: {arrays_path}."
-        )
-    try:
-        with np.load(arrays_path, allow_pickle=False) as archive:
-            if sorted(archive.files) != expected_keys:
-                raise ArtifactIntegrityError(
-                    "Artifact numeric payload keys do not match the manifest."
+    with _verified_parent_access(
+        path,
+        directory_identity,
+        create=False,
+    ) as identity:
+        try:
+            with identity.open_existing_binary(path) as stream:
+                raw = json.loads(
+                    stream.read().decode("utf-8"),
+                    parse_constant=_reject_json_constant,
                 )
-            loaded_arrays = {
-                name: _numeric_array(archive[name], name=name) for name in archive.files
-            }
-    except ArtifactStoreError:
-        raise
-    except (OSError, TypeError, ValueError) as exc:
-        raise ArtifactIntegrityError(
-            f"Artifact numeric payload is invalid: {arrays_path}."
-        ) from exc
-    payload = raw.get("payload")
-    if type(payload) is not dict:
-        raise ArtifactIntegrityError("Artifact JSON payload must be an object.")
-    decoded_payload = _decode_json_value(payload, location="payload")
-    if type(decoded_payload) is not dict:
-        raise ArtifactIntegrityError("Artifact JSON payload must be an object.")
-    return decoded_payload, loaded_arrays
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            raise UnsupportedArtifactError(
+                _legacy_message(path, expected_artifact_type)
+            ) from exc
+        if type(raw) is not dict:
+            raise ArtifactIntegrityError("Artifact manifest root must be an object.")
+        if set(raw) != _BASE_MANIFEST_KEYS:
+            raise ArtifactIntegrityError(
+                "Artifact manifest fields are incomplete or unrecognized."
+            )
+        version = raw.get("artifact_store_schema_version")
+        if type(version) is not int or version != ARTIFACT_STORE_SCHEMA_VERSION:
+            raise UnsupportedArtifactError(
+                f"Unsupported artifact store schema version {version!r} at {path}. "
+                "Upgrade XBrainLab or create a new artifact; unsafe migration is "
+                "not supported."
+            )
+        if raw.get("artifact_type") != expected_artifact_type:
+            raise ArtifactIntegrityError(
+                f"Artifact type must be {expected_artifact_type!r}."
+            )
+        arrays_descriptor = raw.get("arrays")
+        if type(arrays_descriptor) is not dict:
+            raise ArtifactIntegrityError("Artifact array descriptor is malformed.")
+        if set(arrays_descriptor) != {"file", "sha256", "keys"}:
+            raise ArtifactIntegrityError(
+                "Artifact array descriptor fields are invalid."
+            )
+        arrays_filename = arrays_descriptor.get("file")
+        expected_hash = arrays_descriptor.get("sha256")
+        expected_keys = arrays_descriptor.get("keys")
+        if (
+            not isinstance(arrays_filename, str)
+            or Path(arrays_filename).name != arrays_filename
+            or not isinstance(expected_hash, str)
+            or len(expected_hash) != 64
+            or not isinstance(expected_keys, list)
+            or any(not isinstance(key, str) for key in expected_keys)
+            or expected_keys != sorted(set(expected_keys))
+        ):
+            raise ArtifactIntegrityError(
+                "Artifact array descriptor values are invalid."
+            )
+        arrays_path = path.with_name(arrays_filename)
+        if not identity.regular_file_exists(arrays_path):
+            raise ArtifactIntegrityError(
+                f"Artifact numeric payload is missing: {arrays_path}."
+            )
+        if _sha256(arrays_path, identity) != expected_hash:
+            raise ArtifactIntegrityError(
+                f"Artifact numeric payload failed its SHA-256 check: {arrays_path}."
+            )
+        try:
+            with (
+                identity.open_existing_binary(arrays_path) as stream,
+                np.load(stream, allow_pickle=False) as archive,
+            ):
+                if sorted(archive.files) != expected_keys:
+                    raise ArtifactIntegrityError(
+                        "Artifact numeric payload keys do not match the manifest."
+                    )
+                loaded_arrays = {
+                    name: _numeric_array(archive[name], name=name)
+                    for name in archive.files
+                }
+        except ArtifactStoreError:
+            raise
+        except (OSError, TypeError, ValueError) as exc:
+            raise ArtifactIntegrityError(
+                f"Artifact numeric payload is invalid: {arrays_path}."
+            ) from exc
+        payload = raw.get("payload")
+        if type(payload) is not dict:
+            raise ArtifactIntegrityError("Artifact JSON payload must be an object.")
+        decoded_payload = _decode_json_value(payload, location="payload")
+        if type(decoded_payload) is not dict:
+            raise ArtifactIntegrityError("Artifact JSON payload must be an object.")
+        return decoded_payload, loaded_arrays
 
 
 def _validated_state_dict(state: object) -> dict[str, torch.Tensor]:
@@ -333,32 +400,57 @@ def _validated_state_dict(state: object) -> dict[str, torch.Tensor]:
     return normalized
 
 
-def load_model_state_dict(path: str | Path) -> dict[str, torch.Tensor]:
+def load_model_state_dict(
+    path: str | Path,
+    *,
+    directory_identity: StableDirectoryIdentity | None = None,
+) -> dict[str, torch.Tensor]:
     """Load a tensor-only model state dict with PyTorch safe mode enabled."""
-    try:
-        state = torch.load(path, map_location="cpu", weights_only=True)
-    except Exception as exc:
-        raise ArtifactIntegrityError(
-            f"Model state_dict checkpoint is invalid: {path}."
-        ) from exc
-    return _validated_state_dict(state)
+    target = Path(path)
+    with _verified_parent_access(
+        target,
+        directory_identity,
+        create=False,
+    ) as identity:
+        try:
+            with identity.open_existing_binary(target) as stream:
+                state = torch.load(stream, map_location="cpu", weights_only=True)
+        except FilesystemIdentityError:
+            raise
+        except Exception as exc:
+            raise ArtifactIntegrityError(
+                f"Model state_dict checkpoint is invalid: {target}."
+            ) from exc
+        return _validated_state_dict(state)
 
 
 def save_model_state_dict(
     state: Mapping[str, torch.Tensor],
     path: str | Path,
+    *,
+    directory_identity: StableDirectoryIdentity | None = None,
 ) -> None:
     """Atomically write a tensor-only model state dict."""
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
     normalized = _validated_state_dict(state)
-    temporary = _temporary_path(target)
-    try:
-        with temporary.open("wb") as stream:
-            torch.save(normalized, stream)
-        os.replace(temporary, target)
-    finally:
-        temporary.unlink(missing_ok=True)
+    with _verified_parent_access(
+        target,
+        directory_identity,
+        create=True,
+    ) as identity:
+        temporary = _temporary_path(target)
+        cleanup_allowed = True
+        try:
+            identity.assert_matches(target.parent)
+            with identity.create_exclusive_binary(temporary) as stream:
+                torch.save(normalized, stream)
+            identity.replace_entry(temporary, target)
+        except FilesystemIdentityError:
+            cleanup_allowed = False
+            raise
+        finally:
+            if cleanup_allowed:
+                _cleanup_temporary(temporary, identity)
 
 
 __all__ = [

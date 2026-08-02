@@ -9,6 +9,11 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+)
 from XBrainLab.llm.agent.confirmation import AgentConfirmationResolution
 from XBrainLab.llm.agent.turn import (
     AssistantDebugToolRequest,
@@ -18,6 +23,13 @@ from XBrainLab.llm.agent.turn import (
 )
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffResolution
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
+
+_QUEUED_CONTROLLER_FAILURE_MESSAGE = (
+    "Assistant controller could not complete the queued request."
+)
+_CONTROLLER_SHUTDOWN_FAILURE_MESSAGE = (
+    "Assistant controller could not complete shutdown."
+)
 
 
 class AssistantCommandDispatcherState(str, Enum):
@@ -58,7 +70,7 @@ class _ControllerShutdownBridge(QObject):
             return
         try:
             result = self._invoke_turn_handler(payload)
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 "Assistant controller rejected queued turn %s during delivery",
                 payload.turn_id,
@@ -66,7 +78,7 @@ class _ControllerShutdownBridge(QObject):
             acknowledgement = AssistantTurnDeliveryAcknowledgement(
                 correlation=payload.correlation,
                 phase=AssistantTurnDeliveryPhase.ERROR,
-                message=str(exc).strip() or type(exc).__name__,
+                message=_QUEUED_CONTROLLER_FAILURE_MESSAGE,
             )
         else:
             acknowledgement = self._normalize_turn_delivery(payload, result)
@@ -80,7 +92,7 @@ class _ControllerShutdownBridge(QObject):
             return
         try:
             result = self._invoke_debug_handler(payload)
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 "Assistant controller rejected queued debug turn %s during delivery",
                 payload.turn_id,
@@ -88,7 +100,7 @@ class _ControllerShutdownBridge(QObject):
             acknowledgement = AssistantTurnDeliveryAcknowledgement(
                 correlation=payload.correlation,
                 phase=AssistantTurnDeliveryPhase.ERROR,
-                message=str(exc).strip() or type(exc).__name__,
+                message=_QUEUED_CONTROLLER_FAILURE_MESSAGE,
             )
         else:
             acknowledgement = self._normalize_turn_delivery(payload, result)
@@ -136,9 +148,9 @@ class _ControllerShutdownBridge(QObject):
         try:
             close = getattr(self._controller, "close", None)
             result = close() if callable(close) else True
-        except Exception as exc:
+        except Exception:
             logger.exception("Assistant controller shutdown failed")
-            self._finish(False, str(exc))
+            self._finish(False, _CONTROLLER_SHUTDOWN_FAILURE_MESSAGE)
             return
         if result is False:
             if self._shutdown_finished:
@@ -160,18 +172,48 @@ class _ControllerShutdownBridge(QObject):
         if self._shutdown_finished:
             return
         self._shutdown_pending = False
-        self._finish(bool(ok), str(message or ""))
+        self._finish(
+            ok if type(ok) is bool else False,
+            _public_dispatch_message(
+                message,
+                fallback=_CONTROLLER_SHUTDOWN_FAILURE_MESSAGE,
+                allow_empty=ok is True,
+            ),
+        )
 
     def _finish(self, ok: bool, message: str) -> None:
         """Publish one terminal and restore GUI-thread ownership on success."""
         if self._shutdown_finished:
             return
         self._shutdown_pending = False
-        if ok:
+        safe_ok = ok if type(ok) is bool else False
+        if safe_ok:
             self._shutdown_finished = True
             self._controller.moveToThread(self._gui_thread)
             self.moveToThread(self._gui_thread)
-        self.finished.emit(ok, message)
+        safe_message = _public_dispatch_message(
+            message,
+            fallback=_CONTROLLER_SHUTDOWN_FAILURE_MESSAGE,
+            allow_empty=safe_ok,
+        )
+        self.finished.emit(safe_ok, safe_message)
+
+
+def _public_dispatch_message(
+    value: object,
+    *,
+    fallback: str,
+    allow_empty: bool,
+) -> str:
+    rendered = public_diagnostic_text(
+        value,
+        layout=DiagnosticTextLayout.SINGLE_LINE,
+    )
+    if rendered == PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER:
+        return fallback
+    if not rendered and not allow_empty:
+        return fallback
+    return rendered
 
 
 class AssistantCommandDispatcher(QObject):

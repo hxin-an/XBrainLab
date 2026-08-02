@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import PureWindowsPath
+
 from scripts.dev.capture_windows_launcher_walkthrough import (
     ACTIVE_WINDOWS_REPO,
     ACTIVE_WSL_REPO,
@@ -14,9 +16,17 @@ from scripts.dev.capture_windows_launcher_walkthrough import (
 
 def test_launcher_walkthrough_targets_the_active_repository() -> None:
     assert str(REPO_ROOT) == ACTIVE_WSL_REPO
-    assert ACTIVE_WINDOWS_REPO.lower().endswith(r"\lab\xbrainlab")
-    assert POWERSHELL_LAUNCHER.endswith(
-        r"\xbrainlab\scripts\launchers\xbrainlab_wsl_launcher.ps1"
+    launcher_relative_path = (
+        "scripts",
+        "launchers",
+        "xbrainlab_wsl_launcher.ps1",
+    )
+    assert (REPO_ROOT / "pyproject.toml").is_file()
+    assert REPO_ROOT.joinpath(*launcher_relative_path).is_file()
+    assert PureWindowsPath(POWERSHELL_LAUNCHER) == PureWindowsPath(
+        ACTIVE_WINDOWS_REPO,
+    ).joinpath(
+        *launcher_relative_path,
     )
     assert "integrated-manual" not in POWERSHELL_LAUNCHER.lower()
 

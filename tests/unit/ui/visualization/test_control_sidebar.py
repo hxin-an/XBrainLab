@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -165,7 +166,7 @@ def test_sidebar_set_montage_blocked_by_backend_capability(qtbot):
     mock_warning.assert_called_once_with(
         sidebar,
         "Montage blocked",
-        "Create epochs before applying a montage.",
+        "Create EEG epochs before applying a montage.",
     )
 
 
@@ -236,7 +237,7 @@ def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
         mock_execute.return_value = MagicMock(
             failed=True,
             recoverable=True,
-            message="Create epochs before applying a montage.",
+            message="Create EEG epochs before applying a montage.",
         )
 
         sidebar.set_montage()
@@ -447,8 +448,8 @@ def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
         sidebar,
         "Saliency blocked",
         (
-            "Create epochs, generate datasets, or select a model and training "
-            "settings before querying saliency readiness."
+            "Create EEG epochs, build the training dataset, or select a model "
+            "and training settings before querying saliency readiness."
         ),
     )
 
@@ -535,16 +536,16 @@ def test_sidebar_set_saliency_uses_query_configuration_readiness(qtbot):
             ],
         },
     )
+    capability = CommandCapability(command_name="saliency", enabled=True)
 
     with (
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar."
             "get_command_review_context",
-            return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
-            return_value=MagicMock(enabled=True),
+            return_value=CommandReviewContext(
+                capability=capability,
+                publication_generation=29,
+            ),
         ),
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
@@ -890,3 +891,72 @@ def test_sidebar_set_saliency_surfaces_selection_change_while_dialog_is_open(
     assert outcome.status is InteractionStatus.BLOCKED
     assert mock_warning.call_args.args[1] == "Review Saliency Settings Again"
     assert "selected run changed" in mock_warning.call_args.args[2]
+
+
+@pytest.mark.parametrize(
+    ("action_name", "review_context"),
+    [
+        pytest.param("montage", None, id="montage-missing-review"),
+        pytest.param(
+            "montage",
+            SimpleNamespace(capability=None, publication_generation=51),
+            id="montage-missing-capability",
+        ),
+        pytest.param("saliency", None, id="saliency-missing-review"),
+        pytest.param(
+            "saliency",
+            SimpleNamespace(capability=None, publication_generation=52),
+            id="saliency-missing-capability",
+        ),
+    ],
+)
+def test_visualization_actions_fail_before_command_or_dialog_without_product_review(
+    qtbot,
+    action_name,
+    review_context,
+):
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    qtbot.addWidget(main_window)
+    panel = MagicMock()
+    panel.controller = MagicMock()
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+    enabled = CommandCapability(command_name=action_name, enabled=True)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar."
+            "get_command_review_context",
+            return_value=review_context,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
+            return_value=enabled,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar."
+            "execute_application_command",
+        ) as execute,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog",
+        ) as montage_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog",
+        ) as saliency_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning",
+        ) as warning,
+    ):
+        outcome = (
+            sidebar.set_montage()
+            if action_name == "montage"
+            else sidebar.set_saliency()
+        )
+
+    assert outcome.status is InteractionStatus.BLOCKED
+    execute.assert_not_called()
+    montage_dialog.assert_not_called()
+    saliency_dialog.assert_not_called()
+    warning.assert_called_once()

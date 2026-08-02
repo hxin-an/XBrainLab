@@ -46,6 +46,7 @@ class _StablePipelineTrainer:
         self.run_id = run_id
         self.outcome_state = outcome_state
         self.clean_calls: list[bool] = []
+        self.wait_calls: list[float | None] = []
 
     def get_state_snapshot_identity(self) -> str:
         return self.identity
@@ -72,6 +73,10 @@ class _StablePipelineTrainer:
 
     def is_running(self) -> bool:
         return False
+
+    def wait_for_completion(self, timeout: float | None = None) -> bool:
+        self.wait_calls.append(timeout)
+        return True
 
     def clean(self, *, force_update: bool) -> None:
         self.clean_calls.append(force_update)
@@ -286,6 +291,56 @@ class TestTrainingPipelineMutationBoundary:
 
         assert manager.has_active_saliency_work() is True
         assert boundary.saliency_work_active is True
+
+
+class TestTrainingCompletionIdentity:
+    def test_wait_rejects_a_different_trainer_before_blocking(self) -> None:
+        manager = TrainingManager()
+        trainer = _StablePipelineTrainer(identity="trainer-a")
+        manager.trainer = cast(Any, trainer)
+
+        completed = manager.wait_for_training_completion(
+            timeout=0.1,
+            expected_trainer_identity="trainer-b",
+        )
+
+        assert completed is False
+        assert trainer.wait_calls == []
+
+    def test_wait_rejects_a_trainer_replaced_during_completion(self) -> None:
+        wait_started = Event()
+        release_wait = Event()
+
+        class _BlockingTrainer(_StablePipelineTrainer):
+            def wait_for_completion(self, timeout: float | None = None) -> bool:
+                self.wait_calls.append(timeout)
+                wait_started.set()
+                return release_wait.wait(timeout=1.0)
+
+        manager = TrainingManager()
+        original = _BlockingTrainer(identity="trainer-a")
+        replacement = _StablePipelineTrainer(identity="trainer-b")
+        manager.trainer = cast(Any, original)
+        results: list[bool] = []
+        waiter = Thread(
+            target=lambda: results.append(
+                manager.wait_for_training_completion(
+                    timeout=1.0,
+                    expected_trainer_identity="trainer-a",
+                )
+            )
+        )
+
+        waiter.start()
+        assert wait_started.wait(timeout=1.0)
+        with manager._training_pipeline_lock:
+            manager.trainer = cast(Any, replacement)
+        release_wait.set()
+        waiter.join(timeout=1.0)
+
+        assert waiter.is_alive() is False
+        assert results == [False]
+        assert original.wait_calls == [1.0]
 
 
 class TestSetTrainingOption:

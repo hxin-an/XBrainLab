@@ -6,6 +6,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from threading import Lock
+from typing import Any
 
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
@@ -23,6 +24,7 @@ from .state import ApplicationStateSnapshot
 APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT = "view_publication_changed"
 PUBLIC_VIEW_UNAVAILABLE_CODE = "application_state_unavailable"
 PUBLIC_VIEW_UNAVAILABLE_MESSAGE = "Workflow state is temporarily unavailable."
+_STABLE_CAPTURE_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,8 @@ class ApplicationViewPublication:
     training_boundary: TrainingReadBoundary = field(
         default_factory=TrainingReadBoundary.no_trainer
     )
+    training_history: tuple[dict[str, Any], ...] | None = None
+    data_summary_rows: tuple[dict[str, Any], ...] | None = None
     verified: bool = True
     stale: bool = False
     refresh_error: str | None = None
@@ -118,6 +122,9 @@ class ApplicationViewStore:
         self,
         initial_state: ApplicationStateSnapshot,
         initial_training_boundary: TrainingReadBoundary,
+        *,
+        initial_training_history: tuple[dict[str, Any], ...] | None = None,
+        initial_data_summary_rows: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
         self._lock = Lock()
         safe_state = deepcopy(initial_state)
@@ -134,6 +141,8 @@ class ApplicationViewStore:
             capabilities=build_capability_policy(safe_state),
             revision=1,
             training_boundary=deepcopy(initial_training_boundary),
+            training_history=deepcopy(initial_training_history),
+            data_summary_rows=deepcopy(initial_data_summary_rows),
             verified=safe_state.state_reliable,
             stale=not safe_state.state_reliable,
             refresh_error=diagnostic_error,
@@ -148,6 +157,9 @@ class ApplicationViewStore:
         self,
         state: ApplicationStateSnapshot,
         training_boundary: TrainingReadBoundary,
+        *,
+        training_history: tuple[dict[str, Any], ...] | None = None,
+        data_summary_rows: tuple[dict[str, Any], ...] | None = None,
     ) -> ApplicationViewPublication:
         """Atomically publish one verified state, policy, and health outcome."""
         safe_state = deepcopy(state)
@@ -159,6 +171,8 @@ class ApplicationViewStore:
             if (
                 current.state == safe_state
                 and current.training_boundary == training_boundary
+                and current.training_history == training_history
+                and current.data_summary_rows == data_summary_rows
                 and current.verified
                 and not current.stale
                 and current.refresh_error is None
@@ -170,6 +184,8 @@ class ApplicationViewStore:
                     if (
                         current.state == safe_state
                         and current.training_boundary == training_boundary
+                        and current.training_history == training_history
+                        and current.data_summary_rows == data_summary_rows
                     )
                     else current.generation + 1
                 ),
@@ -177,6 +193,8 @@ class ApplicationViewStore:
                 capabilities=capabilities,
                 revision=current.revision + 1,
                 training_boundary=deepcopy(training_boundary),
+                training_history=deepcopy(training_history),
+                data_summary_rows=deepcopy(data_summary_rows),
                 verified=True,
                 stale=False,
                 refresh_error=None,
@@ -202,6 +220,8 @@ class ApplicationViewStore:
                 capabilities=build_capability_policy(fail_closed_state),
                 revision=current.revision + 1,
                 training_boundary=deepcopy(current.training_boundary),
+                training_history=deepcopy(current.training_history),
+                data_summary_rows=deepcopy(current.data_summary_rows),
                 verified=False,
                 stale=True,
                 refresh_error=message,
@@ -237,6 +257,8 @@ class ApplicationViewStore:
                 capabilities=build_capability_policy(expected.state),
                 revision=current.revision + 1,
                 training_boundary=deepcopy(expected.training_boundary),
+                training_history=deepcopy(expected.training_history),
+                data_summary_rows=deepcopy(expected.data_summary_rows),
                 verified=True,
                 stale=False,
                 refresh_error=None,
@@ -284,13 +306,21 @@ class ApplicationViewCoordinator:
         *,
         initial_training_boundary: TrainingReadBoundary,
         build_state: Callable[[], ApplicationStateSnapshot],
+        build_training_history: Callable[[], list[dict[str, Any]]] | None = None,
+        build_data_summary_rows: Callable[[], list[dict[str, Any]]] | None = None,
         capture_training_boundary: Callable[[], TrainingReadBoundary],
+        initial_training_history: tuple[dict[str, Any], ...] | None = None,
+        initial_data_summary_rows: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
         self._store = ApplicationViewStore(
             initial_state,
             initial_training_boundary,
+            initial_training_history=initial_training_history,
+            initial_data_summary_rows=initial_data_summary_rows,
         )
         self._build_state = build_state
+        self._build_training_history = build_training_history
+        self._build_data_summary_rows = build_data_summary_rows
         self._capture_training_boundary = capture_training_boundary
 
     def committed(self) -> ApplicationViewPublication:
@@ -303,18 +333,18 @@ class ApplicationViewCoordinator:
         publish: bool = True,
     ) -> ApplicationStateSnapshot:
         """Build fresh state for verification and optionally publish it."""
-        before_boundary = self._capture_training_boundary()
         try:
-            state = self._build_state()
-            after_boundary = self._capture_training_boundary()
-            state = self._state_with_verified_training_boundary(
-                state,
-                before=before_boundary,
-                after=after_boundary,
+            state, after_boundary, training_history, data_summary_rows = (
+                self._build_with_stable_training_boundary()
             )
             if state.state_reliable:
                 return (
-                    self._store.publish(state, after_boundary).state
+                    self._store.publish(
+                        state,
+                        after_boundary,
+                        training_history=training_history,
+                        data_summary_rows=data_summary_rows,
+                    ).state
                     if publish
                     else deepcopy(state)
                 )
@@ -326,20 +356,81 @@ class ApplicationViewCoordinator:
 
     def refresh_opportunistic(self) -> ApplicationViewPublication:
         """Try to rebuild a usable publication without leaking read failures."""
-        before_boundary = self._capture_training_boundary()
         try:
-            state = self._build_state()
-            after_boundary = self._capture_training_boundary()
-            state = self._state_with_verified_training_boundary(
-                state,
-                before=before_boundary,
-                after=after_boundary,
+            state, after_boundary, training_history, data_summary_rows = (
+                self._build_with_stable_training_boundary()
             )
             if not state.state_reliable:
                 return self._store.mark_stale(self._unreliable_state_error(state))
-            return self._store.publish(state, after_boundary)
+            return self._store.publish(
+                state,
+                after_boundary,
+                training_history=training_history,
+                data_summary_rows=data_summary_rows,
+            )
         except Exception as exc:
             return self._store.mark_stale(exc)
+
+    def _build_with_stable_training_boundary(
+        self,
+    ) -> tuple[
+        ApplicationStateSnapshot,
+        TrainingReadBoundary,
+        tuple[dict[str, Any], ...] | None,
+        tuple[dict[str, Any], ...] | None,
+    ]:
+        """Retry only transient training-boundary drift during snapshot capture."""
+        state: ApplicationStateSnapshot | None = None
+        training_history: tuple[dict[str, Any], ...] | None = None
+        data_summary_rows: tuple[dict[str, Any], ...] | None = None
+        after = self._capture_training_boundary()
+        for _attempt in range(_STABLE_CAPTURE_ATTEMPTS):
+            before = after
+            state = self._build_state()
+            training_history = (
+                self._capture_training_history()
+                if state.state_reliable and before.stable
+                else None
+            )
+            data_summary_rows = (
+                self._capture_data_summary_rows()
+                if state.state_reliable and before.stable
+                else None
+            )
+            after = self._capture_training_boundary()
+            verified = self._state_with_verified_training_boundary(
+                state,
+                before=before,
+                after=after,
+            )
+            if verified.state_reliable:
+                return verified, after, training_history, data_summary_rows
+            if before == after and after.stable:
+                return verified, after, training_history, data_summary_rows
+        if state is None:  # pragma: no cover - positive retry constant invariant
+            raise RuntimeError("Application state capture did not run.")
+        return (
+            self._state_with_verified_training_boundary(
+                state,
+                before=before,
+                after=after,
+            ),
+            after,
+            training_history,
+            data_summary_rows,
+        )
+
+    def _capture_training_history(self) -> tuple[dict[str, Any], ...] | None:
+        """Detach Training rows inside the surrounding stable read boundary."""
+        if self._build_training_history is None:
+            return None
+        return tuple(deepcopy(self._build_training_history()))
+
+    def _capture_data_summary_rows(self) -> tuple[dict[str, Any], ...] | None:
+        """Detach aggregate summary rows inside the publication boundary."""
+        if self._build_data_summary_rows is None:
+            return None
+        return tuple(deepcopy(self._build_data_summary_rows()))
 
     def mark_stale(self, reason: str) -> ApplicationViewPublication:
         """Mark the committed generation stale while a command owns mutation."""
@@ -355,6 +446,8 @@ class ApplicationViewCoordinator:
         before_boundary = self._capture_training_boundary()
         try:
             state = self._build_state()
+            training_history = self._capture_training_history()
+            data_summary_rows = self._capture_data_summary_rows()
             after_boundary = self._capture_training_boundary()
         except Exception as exc:
             self._store.mark_stale(exc)
@@ -367,7 +460,12 @@ class ApplicationViewCoordinator:
         if not state.state_reliable:
             self._store.mark_stale(self._unreliable_state_error(state))
             return deepcopy(state), False
-        if state != expected.state or after_boundary != expected.training_boundary:
+        if (
+            state != expected.state
+            or after_boundary != expected.training_boundary
+            or training_history != expected.training_history
+            or data_summary_rows != expected.data_summary_rows
+        ):
             return deepcopy(state), False
         restored = self._store.restore_verified(expected)
         return restored.state, True

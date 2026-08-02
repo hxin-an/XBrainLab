@@ -73,16 +73,11 @@ def test_real_data_pipeline(tmp_path):
     assert normalize_result.ok is True
     assert normalize_result.state.preprocessed.available is True
 
-    data_lists_result = service.execute(
-        QueryStateCommand(query="data_lists", include_objects=True),
-    )
-    assert data_lists_result.ok is True
-    assert data_lists_result.diagnostics["preprocessed_count"] == 1
-    processed_raw = data_lists_result.runtime["preprocessed_data_list"][0]
-
-    _, event_id = processed_raw.get_event_list()
-    assert set(EXPECTED_A01T_CLASS_EVENT_NAMES) <= set(event_id)
-    assert {"768", "1023", "32766"} <= set(event_id)
+    epoch_context = service.get_epoch_dialog_context().require_usable()
+    assert epoch_context.epoch_setup is not None
+    event_names = {row["name"] for row in epoch_context.epoch_setup["available_events"]}
+    assert set(EXPECTED_A01T_CLASS_EVENT_NAMES) <= event_names
+    assert {"768", "1023", "32766"} <= event_names
 
     epoch_result = service.execute(
         CreateEpochCommand(
@@ -148,14 +143,14 @@ def test_real_data_pipeline(tmp_path):
     assert train_result.state.training.run_count == 1
     assert train_result.state.training.finished_run_count == 1
     history_result = service.execute(
-        QueryStateCommand(query="training_history", include_objects=True),
+        QueryStateCommand(query="training_history"),
     )
     assert history_result.ok is True
     assert history_result.diagnostics["row_count"] == 1
-    record = history_result.runtime["rows"][0]["record"]
+    train_metrics = history_result.diagnostics["rows"][0]["metrics"]["train"]
 
-    assert RecordKey.LOSS in record.train
-    assert RecordKey.ACC in record.train
+    assert RecordKey.LOSS in train_metrics
+    assert RecordKey.ACC in train_metrics
 
     evaluate_result = service.execute(EvaluateCommand())
     assert evaluate_result.ok is True
@@ -163,4 +158,7 @@ def test_real_data_pipeline(tmp_path):
     assert evaluate_result.diagnostics["available"] is True
     assert evaluate_result.diagnostics["plan_count"] == 1
     assert evaluate_result.diagnostics["finished_run_count"] == 1
-    assert evaluate_result.diagnostics["plans"][0]["metrics"]
+    evaluation_plan = evaluate_result.diagnostics["plans"][0]
+    assert evaluation_plan["finished_run_count"] == 1
+    assert evaluation_plan["evaluation_splits"]
+    assert evaluation_plan["runs"][0]["finished"] is True

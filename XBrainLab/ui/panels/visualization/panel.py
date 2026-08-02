@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QStyle,
     QTabWidget,
@@ -23,7 +24,6 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
-    ApplicationViewPublication,
     ErrorType,
     SaliencyCommand,
     SaliencyPlanIdentity,
@@ -33,33 +33,53 @@ from XBrainLab.backend.application import (
     VisualizeCommand,
 )
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.resource_preflight import (
+    ResourcePreflightContractError,
+    ResourcePreflightView,
+)
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.saliency_policy import (
     is_recommended_saliency_method,
     recommended_saliency_params_for_method,
     selected_saliency_methods_from_params,
 )
-from XBrainLab.backend.application.state import SaliencyMethodCoverageSnapshot
+from XBrainLab.backend.application.state import (
+    EpochStateSnapshot,
+    EvaluationStateSnapshot,
+    SaliencyMethodCoverageSnapshot,
+    SaliencyRunCoverageSnapshot,
+    VisualizationStateSnapshot,
+)
+from XBrainLab.backend.application.view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationViewPublication,
+)
 from XBrainLab.backend.saliency_methods import all_saliency_methods
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyStatus,
+    TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.backend.visualization.saliency_semantics import (
     NONNEGATIVE_SALIENCY_METHODS,
 )
 from XBrainLab.ui.application_capabilities import (
+    VisualizationActionPort,
+    VisualizationPublicationPort,
+    VisualizationQueryPort,
     application_ui_runtime,
     execute_application_command,
     execute_application_command_async,
-    get_controller_for_compatibility_context,
     get_saliency_render_publication,
     is_stale_publication_result,
 )
+from XBrainLab.ui.application_publication_renderer import (
+    ApplicationPublicationRenderLedger,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
-from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
@@ -86,6 +106,18 @@ _SALIENCY_COMPUTE_INVALID_RESULT_MESSAGE = (
 _SALIENCY_COMPUTE_FAILED_MESSAGE = (
     "Saliency could not be computed. Adjust the settings and try again."
 )
+_SALIENCY_RESOURCE_DIALOG_TITLE = "Saliency Resource Check"
+_SALIENCY_RESOURCE_CONFIRMATION_INVALID_MESSAGE = (
+    "The saliency resource check could not be confirmed safely. "
+    "Run the resource check again before continuing."
+)
+_SALIENCY_RESOURCE_RECEIPT_REJECTED_MESSAGE = (
+    "The saliency resource confirmation is no longer valid for this request. "
+    "Run the resource check again before continuing."
+)
+_SALIENCY_RESOURCE_CONFIRMATION_CANCELLED_MESSAGE = (
+    "Saliency resource confirmation was cancelled."
+)
 _SALIENCY_SETTINGS_REVIEW_TITLE = "Review Saliency Settings Again"
 _SALIENCY_RESULTS_CHANGED_DETAIL = (
     "Visualization results changed. Open Settings and review the saliency "
@@ -100,6 +132,28 @@ _VISUALIZATION_LOAD_FAILED_MESSAGE = (
 )
 
 
+def explanation_provenance_text(
+    tab_index: int,
+    *,
+    dataset_label: str = "",
+    plan_label: str = "",
+    run_label: str = "",
+) -> str:
+    """Return compact result identity plus grouping and aggregation provenance."""
+    aggregation = {
+        0: "True class · Mean over EEG epochs",
+        1: "True class · Mean magnitude over EEG epochs and channels",
+        2: "True class · Mean over EEG epochs and time",
+        3: "True class · Mean over EEG epochs",
+    }.get(tab_index, "True class · Mean over EEG epochs")
+    identity = [
+        value.strip()
+        for value in (dataset_label, plan_label, run_label)
+        if value.strip()
+    ]
+    return " · ".join((*identity, aggregation))
+
+
 @dataclass(frozen=True, slots=True)
 class _SaliencySettingsTarget:
     """Immutable result identity reviewed by the saliency settings dialog."""
@@ -109,6 +163,36 @@ class _SaliencySettingsTarget:
     model_name: str
 
 
+@dataclass(frozen=True, slots=True)
+class _VisualizationPublicationSignature:
+    """Application fields that can change Visualization's rendered state."""
+
+    usable: bool
+    state_reliable: bool
+    training_liveness_reliable: bool
+    pipeline_stage: str
+    trainer_identity: str | None
+    training_boundary_stable: bool
+    raw_loaded: bool
+    raw_files: tuple[str, ...]
+    raw_channels: tuple[str, ...]
+    preprocessed_available: bool
+    preprocessed_files: tuple[str, ...]
+    preprocessed_channels: tuple[str, ...]
+    epoch_state: EpochStateSnapshot
+    training_has_model: bool
+    training_model_name: str | None
+    training_has_trainer: bool
+    training_is_running: bool
+    training_plan_count: int
+    training_run_count: int
+    training_finished_run_count: int
+    training_terminal_outcome: TrainingTerminalOutcome
+    training_missing_requirements: tuple[str, ...]
+    evaluation_state: EvaluationStateSnapshot
+    visualization_state: VisualizationStateSnapshot
+
+
 class VisualizationPanel(BasePanel):
     """Panel for visualizing data and model explanations with unified controls.
     Manages multiple view tabs (Map, Topomap, Spectrogram, 3D) and coordinates updates.
@@ -116,49 +200,33 @@ class VisualizationPanel(BasePanel):
 
     def __init__(
         self,
-        controller=None,
-        training_controller=None,
         parent=None,
-        preprocess_controller=None,
-        application_runtime: "ApplicationUiRuntime | None" = None,
+        *,
+        query_port: VisualizationQueryPort | None = None,
+        publication_port: VisualizationPublicationPort | None = None,
+        action_port: VisualizationActionPort | None = None,
     ):
         """Initialize the visualization panel.
 
         Args:
-            controller: Optional ``VisualizationController``. Resolved from
-                the parent study if not provided.
-            training_controller: Optional ``TrainingController`` for
-                subscribing to training-stopped events.
-            preprocess_controller: Optional ``PreprocessController`` for
-                subscribing to preprocess invalidation events.
             parent: Parent widget (typically the main window).
+            query_port: Typed application publication/render query port.
+            publication_port: Typed application publication subscription port.
+            action_port: Typed Visualization command port.
 
         """
-        # 1. Controller Resolution
-        if controller is None and parent and hasattr(parent, "study"):
-            controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "visualization",
-            )
-        if preprocess_controller is None and parent and hasattr(parent, "study"):
-            preprocess_controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "preprocess",
-            )
-
-        # Store injected training controller
-        self.training_controller = training_controller
-        self.preprocess_controller = preprocess_controller
-        self._application_runtime = application_runtime
         self._runs_by_plan: dict[
             SaliencyPlanIdentity,
             tuple[tuple[SaliencyRunIdentity, str], ...],
         ] = {}
-        self.last_application_query = None
-        self.last_saliency_query = None
+        self.last_application_query: CommandResult | None = None
+        self.last_saliency_query: CommandResult | None = None
+        self._last_active_saliency_view: QWidget | None = None
         self._application_view_publication: ApplicationViewPublication | None = None
+        self._last_application_revision = 0
+        self._last_visualization_publication_signature: (
+            _VisualizationPublicationSignature | None
+        ) = None
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
         self._saliency_compute_in_progress = False
@@ -175,44 +243,59 @@ class VisualizationPanel(BasePanel):
         self._native_render_shutdown_requested = False
         self._native_render_resources_finalized = False
 
-        # 2. Base Init
-        super().__init__(parent=parent, controller=controller)
+        super().__init__(parent=parent, controller=None)
 
-        # 3. Bridge & UI Setup
-        self._setup_bridges()
+        self._application_render_ledger = ApplicationPublicationRenderLedger(
+            panel_name="Visualization",
+            render_publication=self._render_application_publication,
+            commit_publication=self._record_application_publication,
+            parent=self,
+        )
+        self._application_refresh_timer = self._application_render_ledger.timer
+        runtime = application_ui_runtime(self)
+        self._query_port = query_port if query_port is not None else runtime
+        self._publication_port = (
+            publication_port if publication_port is not None else runtime
+        )
+        self._action_port = action_port if action_port is not None else runtime
+        self._subscribe_to_application_publications()
         self.init_ui()
 
-    def _setup_bridges(self):
-        """Listen to TrainingController to update when training finishes."""
-        if self.training_controller:
-            self._create_bridge(
-                self.training_controller,
-                "training_started",
-                self._on_training_started,
-            )
-            self._create_bridge(
-                self.training_controller,
-                "training_stopped",
-                self._on_training_stopped,
-            )
-            self._create_refresh_bridge(self.training_controller, "history_cleared")
-            self._create_refresh_bridge(self.training_controller, "config_changed")
-        if self.controller:
-            self._create_refresh_bridge(self.controller, "montage_changed")
-            self._create_refresh_bridge(self.controller, "saliency_changed")
-        if self.preprocess_controller:
-            self._create_refresh_bridge(
-                self.preprocess_controller,
-                "preprocess_changed",
-            )
+    def _subscribe_to_application_publications(self) -> None:
+        """Subscribe once to Visualization's sole state-changing refresh truth."""
+        publication_port = self._publication_port
+        if publication_port is None:
+            return
+        self._create_bridge(
+            cast(Observable, publication_port),
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+            self._on_application_view_publication_changed,
+        )
 
-    def _on_training_stopped(self, *args, **kwargs) -> bool:
-        """Refresh after training; ApplicationService owns background saliency."""
-        return refresh_after_observer(self, event_name="training_stopped")
+    def _on_application_view_publication_changed(
+        self,
+        publication: object,
+    ) -> bool:
+        """Queue at most one render for each relevant monotonic revision."""
+        if not self._valid_application_publication(publication):
+            logger.error("Ignored malformed Visualization application publication.")
+            return False
+        typed_publication = cast(ApplicationViewPublication, publication)
+        if typed_publication.revision <= self._last_application_revision:
+            return True
+        signature = self._visualization_publication_signature(typed_publication)
+        self._accept_application_publication(typed_publication)
+        if signature == self._last_visualization_publication_signature:
+            return self._application_render_ledger.record_rendered(typed_publication)
+        self._mark_application_summaries_dirty()
+        return self._application_render_ledger.queue(typed_publication)
 
-    def _on_training_started(self, *args, **kwargs) -> bool:
-        """Drop terminal saliency status from the previous training generation."""
-        return refresh_after_observer(self, event_name="training_started")
+    def _render_application_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._accept_application_publication(publication)
+        self.update_panel()
 
     def init_ui(self):
         """Build the panel layout with control bar, tabbed plots, and sidebar."""
@@ -332,6 +415,16 @@ class VisualizationPanel(BasePanel):
         self.tabs.addTab(self.tab_3d, "3D Plot")
         self._last_active_saliency_view = self.tab_map
 
+        self.explanation_provenance_label = QLabel()
+        self.explanation_provenance_label.setObjectName("VisualizationProvenance")
+        self.explanation_provenance_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.explanation_provenance_label.setWordWrap(True)
+        self.explanation_provenance_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
+        )
+        plots_layout.addWidget(self.explanation_provenance_label)
         plots_layout.addWidget(self.tabs)
         left_layout.addWidget(plots_group, stretch=1)
         main_layout.addWidget(left_widget, stretch=1)
@@ -711,27 +804,47 @@ class VisualizationPanel(BasePanel):
         self.abs_check.setToolTip("Display absolute attribution values.")
 
     def _refresh_explanation_context(self) -> None:
-        """Explain the scientific target and aggregation used by the active view."""
+        """Explain the selected result identity and scientific aggregation."""
         if not hasattr(self, "tabs"):
             return
-        descriptions = {
-            0: "Grouped by true class label · Mean across evaluated epochs",
-            1: (
-                "Grouped by true class label · Mean magnitude across evaluated "
-                "epochs and channels"
-            ),
-            2: ("Grouped by true class label · Mean across evaluated epochs and time"),
-            3: "Grouped by true class label · Mean across evaluated epochs",
-        }
-        self._explanation_context_text = descriptions.get(
+        self._explanation_context_text = explanation_provenance_text(
             self.tabs.currentIndex(),
-            "Grouped by true class label · Mean across evaluated epochs",
+            dataset_label=self._selected_dataset_label(),
+            plan_label=self._selected_plan_label(),
+            run_label=self._selected_run_label(),
         )
+        self.explanation_provenance_label.setText(self._explanation_context_text)
+        self.explanation_provenance_label.setToolTip(self._explanation_context_text)
         self.tabs.setToolTip(self._explanation_context_text)
         self.explanation_info_button.setToolTip(self._explanation_context_text)
 
+    def _selected_dataset_label(self) -> str:
+        """Return the dataset identity bound to the selected finished result."""
+        coverage = self._selected_run_coverage()
+        return coverage.plan_name.strip() if coverage is not None else ""
+
+    def _selected_plan_label(self) -> str:
+        publication = self._application_view_publication
+        if publication is None or not publication.usable:
+            return ""
+        return (
+            self.plan_combo.currentText()
+            if isinstance(self.plan_combo.currentData(), SaliencyPlanIdentity)
+            else ""
+        )
+
+    def _selected_run_label(self) -> str:
+        publication = self._application_view_publication
+        if publication is None or not publication.usable:
+            return ""
+        return (
+            self.run_combo.currentText()
+            if isinstance(self.run_combo.currentData(), SaliencyRunIdentity)
+            else ""
+        )
+
     def _show_explanation_context_tooltip(self) -> None:
-        """Expose aggregation semantics without reserving a permanent row."""
+        """Expose the compact aggregation semantics near the active tab."""
         QToolTip.showText(
             self.explanation_info_button.mapToGlobal(
                 self.explanation_info_button.rect().bottomLeft(),
@@ -749,6 +862,7 @@ class VisualizationPanel(BasePanel):
                 view=self.tabs.tabText(self.tabs.currentIndex()),
             )
             self._application_summary_dirty = False
+        self._refresh_explanation_context()
 
         if self._application_query_blocks_display(self.last_application_query):
             message = self._application_query_message()
@@ -861,7 +975,7 @@ class VisualizationPanel(BasePanel):
             render_publication = get_saliency_render_publication(
                 self,
                 request,
-                runtime=self._application_runtime,
+                runtime=cast("ApplicationUiRuntime", self._query_port),
             )
         except PreconditionError as exc:
             logger.warning(
@@ -869,7 +983,9 @@ class VisualizationPanel(BasePanel):
                 exc,
             )
             self._application_summary_dirty = True
-            self._application_view_publication = None
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
             self._show_widget_message(
                 current_widget,
                 "Visualization results changed. Refresh Visualization and try again.",
@@ -884,7 +1000,9 @@ class VisualizationPanel(BasePanel):
             return
         if not isinstance(render_publication, SaliencyRenderPublication):
             self._application_summary_dirty = True
-            self._application_view_publication = None
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
             self._show_widget_message(
                 current_widget,
                 "Visualization results changed. Refresh Visualization and try again.",
@@ -900,7 +1018,9 @@ class VisualizationPanel(BasePanel):
             or typed_render_publication.data.method != method_name
         ):
             self._application_summary_dirty = True
-            self._application_view_publication = None
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
             self._show_widget_message(
                 current_widget,
                 "Visualization results changed. Refresh Visualization and try again.",
@@ -1154,12 +1274,23 @@ class VisualizationPanel(BasePanel):
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
         if self._saliency_summary_dirty or self.last_saliency_query is None:
-            self.last_saliency_query = execute_application_command(
-                self,
-                SaliencyCommand(),
-                refresh=False,
-                runtime=self._application_runtime,
+            publication = self._application_view_publication
+            action_port = self._action_port
+            self.last_saliency_query = (
+                execute_application_command(
+                    self,
+                    SaliencyCommand(),
+                    refresh=False,
+                    expected_publication_generation=(
+                        publication.generation if publication is not None else None
+                    ),
+                    runtime=cast("ApplicationUiRuntime", action_port),
+                )
+                if action_port is not None and publication is not None
+                else None
             )
+            if self.last_saliency_query is not None:
+                self._refresh_application_publication()
             self._saliency_summary_dirty = False
 
         if hasattr(self, "sidebar"):
@@ -1169,7 +1300,18 @@ class VisualizationPanel(BasePanel):
         self.refresh_combos()
 
     def update_panel(self):
+        """Refresh Visualization and commit a direct render only after success."""
+        self._update_panel_content()
+        if self._application_render_ledger.render_in_progress:
+            return
+        publication = self._application_view_publication
+        if publication is not None:
+            self._application_render_ledger.record_rendered(publication)
+
+    def _update_panel_content(self):
         """Called when switching to this panel."""
+        if self._application_view_publication is None:
+            self._refresh_application_publication()
         self.update_info()
         # Explicitly trigger update to ensure plot is shown even if signals were
         # suppressed
@@ -1177,14 +1319,23 @@ class VisualizationPanel(BasePanel):
 
     def mark_refresh_dirty(self) -> None:
         """Invalidate cached ApplicationService visualization summaries."""
-        self._invalidate_view_render_publications()
-        self._application_view_publication = None
+        self._mark_application_summaries_dirty(invalidate_render_publications=True)
+
+    def _mark_application_summaries_dirty(
+        self,
+        *,
+        invalidate_render_publications: bool = False,
+    ) -> None:
+        """Invalidate derived summaries without replacing publication truth."""
+        if invalidate_render_publications:
+            self._invalidate_view_render_publications()
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
         self._saliency_compute_attempted.clear()
 
     def cleanup(self) -> None:
-        """Release observer bridges."""
+        """Cancel queued renders and release the publication subscription."""
+        self._application_render_ledger.cleanup()
         super().cleanup()
 
     def event(self, event):
@@ -1195,6 +1346,7 @@ class VisualizationPanel(BasePanel):
 
     def closeEvent(self, event):  # noqa: N802
         """Finalize child native widgets through the shared idempotent path."""
+        self.cleanup()
         self.finalize_native_render_resources()
         super().closeEvent(event)
 
@@ -1252,11 +1404,37 @@ class VisualizationPanel(BasePanel):
             self._show_widget_message(current_widget, "Computing saliency...")
         show_status_message(self, "Computing saliency...")
 
+        return self._dispatch_saliency_compute_command(
+            params=params,
+            method_name=method_name,
+            current_widget=current_widget,
+            attempt_key=attempt_key,
+            expected_publication_generation=expected_publication_generation,
+        )
+
+    def _dispatch_saliency_compute_command(
+        self,
+        *,
+        params: dict[str, object],
+        method_name: str,
+        current_widget,
+        attempt_key: tuple[object, ...],
+        expected_publication_generation: int | None,
+        resource_preflight_confirmed: bool = False,
+        resource_preflight_token: str | None = None,
+        resource_confirmation_replayed: bool = False,
+    ) -> bool:
+        """Dispatch one initial or backend-receipt-authorized saliency command."""
+
         def handle_result(result: CommandResult) -> InteractionOutcome:
             return self._on_lazy_saliency_configured(
                 result,
                 attempt_key=attempt_key,
                 current_widget=current_widget,
+                params=params,
+                method_name=method_name,
+                expected_publication_generation=expected_publication_generation,
+                resource_confirmation_replayed=resource_confirmation_replayed,
             )
 
         def handle_error(error: tuple) -> None:
@@ -1269,12 +1447,17 @@ class VisualizationPanel(BasePanel):
         try:
             started = execute_application_command_async(
                 self,
-                SaliencyCommand(method=method_name, params=params),
+                SaliencyCommand(
+                    method=method_name,
+                    params=dict(params),
+                    resource_preflight_confirmed=resource_preflight_confirmed,
+                    resource_preflight_token=resource_preflight_token,
+                ),
                 on_result=handle_result,
                 on_error=handle_error,
                 refresh=False,
                 busy_target=self.main_window,
-                runtime=self._application_runtime,
+                runtime=cast("ApplicationUiRuntime", self._action_port),
                 expected_publication_generation=expected_publication_generation,
             )
         except Exception:
@@ -1300,6 +1483,10 @@ class VisualizationPanel(BasePanel):
         *,
         attempt_key: tuple[object, ...] | None = None,
         current_widget=None,
+        params: dict[str, object] | None = None,
+        method_name: str | None = None,
+        expected_publication_generation: int | None = None,
+        resource_confirmation_replayed: bool = False,
     ) -> InteractionOutcome:
         if not isinstance(result, CommandResult):
             self._finish_saliency_compute_failure(
@@ -1309,8 +1496,6 @@ class VisualizationPanel(BasePanel):
             )
             return InteractionOutcome.failed(_SALIENCY_COMPUTE_INVALID_RESULT_MESSAGE)
 
-        self._saliency_compute_in_progress = False
-        self._set_saliency_action_busy(False)
         if result.failed:
             logger.error(
                 "Saliency compute command failed: %s",
@@ -1323,6 +1508,34 @@ class VisualizationPanel(BasePanel):
                     attempt_key=attempt_key,
                 )
                 return InteractionOutcome.blocked(_SALIENCY_SETTINGS_REVIEW_TITLE)
+            resource_preflight = self._saliency_resource_preflight_from_result(result)
+            if (
+                resource_preflight is not None
+                and resource_preflight.risk_level == "blocking"
+            ):
+                message = resource_preflight.message or result.message
+                self._finish_saliency_compute_failure(
+                    message=message,
+                    attempt_key=attempt_key,
+                    current_widget=current_widget,
+                )
+                QMessageBox.critical(
+                    self,
+                    _SALIENCY_RESOURCE_DIALOG_TITLE,
+                    message,
+                )
+                return InteractionOutcome.blocked(message)
+            if result.error_type is ErrorType.CONFIRMATION_REQUIRED:
+                return self._handle_saliency_resource_confirmation(
+                    result,
+                    resource_preflight=resource_preflight,
+                    params=params,
+                    method_name=method_name,
+                    expected_publication_generation=(expected_publication_generation),
+                    resource_confirmation_replayed=(resource_confirmation_replayed),
+                    attempt_key=attempt_key,
+                    current_widget=current_widget,
+                )
             message = _SALIENCY_COMPUTE_FAILED_MESSAGE
             self._finish_saliency_compute_failure(
                 message=message,
@@ -1330,6 +1543,8 @@ class VisualizationPanel(BasePanel):
                 current_widget=current_widget,
             )
             return InteractionOutcome.failed(message)
+        self._saliency_compute_in_progress = False
+        self._set_saliency_action_busy(False)
         self._pending_saliency_params = None
         self._pending_saliency_target = None
         self._saliency_settings_review_required = False
@@ -1337,8 +1552,106 @@ class VisualizationPanel(BasePanel):
         show_status_message(self, "Saliency ready")
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
-        self.update_panel()
         return InteractionOutcome.completed(result.message)
+
+    @staticmethod
+    def _saliency_resource_preflight_from_result(
+        result: CommandResult,
+    ) -> ResourcePreflightView | None:
+        """Parse only the backend-owned resource-preflight wire contract."""
+        try:
+            return ResourcePreflightView.from_diagnostics(result.diagnostics)
+        except ResourcePreflightContractError:
+            logger.warning("Rejected malformed saliency resource-preflight result.")
+            return None
+
+    def _handle_saliency_resource_confirmation(
+        self,
+        result: CommandResult,
+        *,
+        resource_preflight: ResourcePreflightView | None,
+        params: dict[str, object] | None,
+        method_name: str | None,
+        expected_publication_generation: int | None,
+        resource_confirmation_replayed: bool,
+        attempt_key: tuple[object, ...] | None,
+        current_widget,
+    ) -> InteractionOutcome:
+        """Ask once, then replay only the exact backend-issued saliency receipt."""
+        if resource_confirmation_replayed:
+            self._finish_saliency_compute_failure(
+                message=_SALIENCY_RESOURCE_RECEIPT_REJECTED_MESSAGE,
+                attempt_key=attempt_key,
+                current_widget=current_widget,
+            )
+            return InteractionOutcome.failed(
+                _SALIENCY_RESOURCE_RECEIPT_REJECTED_MESSAGE
+            )
+
+        def invalid_outcome() -> InteractionOutcome:
+            self._finish_saliency_compute_failure(
+                message=_SALIENCY_RESOURCE_CONFIRMATION_INVALID_MESSAGE,
+                attempt_key=attempt_key,
+                current_widget=current_widget,
+            )
+            return InteractionOutcome.failed(
+                _SALIENCY_RESOURCE_CONFIRMATION_INVALID_MESSAGE
+            )
+
+        if resource_preflight is None:
+            return invalid_outcome()
+        challenge = resource_preflight.challenge
+        if (
+            resource_preflight.risk_level not in {"warning", "unknown"}
+            or not resource_preflight.requires_confirmation
+            or challenge is None
+            or challenge.command_name != "saliency"
+            or not isinstance(params, dict)
+            or not params
+            or not isinstance(method_name, str)
+            or not method_name.strip()
+        ):
+            return invalid_outcome()
+
+        message = resource_preflight.message or result.message
+        reply = QMessageBox.question(
+            self,
+            _SALIENCY_RESOURCE_DIALOG_TITLE,
+            f"{message}\n\nContinue computing saliency?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            self._finish_saliency_compute_cancelled(
+                attempt_key=attempt_key,
+                current_widget=current_widget,
+            )
+            return InteractionOutcome.cancelled(
+                _SALIENCY_RESOURCE_CONFIRMATION_CANCELLED_MESSAGE
+            )
+
+        if attempt_key is None:
+            self._finish_saliency_compute_failure(
+                message=_SALIENCY_RESOURCE_CONFIRMATION_INVALID_MESSAGE,
+                attempt_key=None,
+                current_widget=current_widget,
+            )
+            return InteractionOutcome.failed(
+                _SALIENCY_RESOURCE_CONFIRMATION_INVALID_MESSAGE
+            )
+        started = self._dispatch_saliency_compute_command(
+            params=params,
+            method_name=method_name,
+            current_widget=current_widget,
+            attempt_key=attempt_key,
+            expected_publication_generation=expected_publication_generation,
+            resource_preflight_confirmed=True,
+            resource_preflight_token=challenge.challenge_id,
+            resource_confirmation_replayed=True,
+        )
+        if not started:
+            return InteractionOutcome.failed(_SALIENCY_COMPUTE_START_FAILED_MESSAGE)
+        return InteractionOutcome.accepted(message)
 
     def _on_lazy_saliency_error(
         self,
@@ -1383,32 +1696,57 @@ class VisualizationPanel(BasePanel):
             self._show_widget_error(current_widget, message)
         show_status_message(self, message)
 
+    def _finish_saliency_compute_cancelled(
+        self,
+        *,
+        attempt_key: tuple[object, ...] | None,
+        current_widget,
+    ) -> None:
+        """Restore the retryable action without presenting cancellation as failure."""
+        self._saliency_compute_in_progress = False
+        if attempt_key is None:
+            self._saliency_compute_attempted.clear()
+        else:
+            self._saliency_compute_attempted.discard(attempt_key)
+        if hasattr(self, "saliency_action_bar"):
+            self.saliency_action_title.setText("Saliency compute cancelled")
+            self.saliency_action_detail.setText(
+                _SALIENCY_RESOURCE_CONFIRMATION_CANCELLED_MESSAGE
+            )
+            self.saliency_action_bar.setVisible(True)
+        self._set_saliency_action_busy(False)
+        if current_widget is not None:
+            self._show_widget_message(
+                current_widget,
+                _SALIENCY_RESOURCE_CONFIRMATION_CANCELLED_MESSAGE,
+            )
+        show_status_message(
+            self,
+            _SALIENCY_RESOURCE_CONFIRMATION_CANCELLED_MESSAGE,
+        )
+
     def _current_saliency_settings_target(
         self,
     ) -> _SaliencySettingsTarget | None:
         """Return the selected result identity from one accepted publication."""
         publication = self._application_view_publication
-        if publication is None or not publication.usable:
-            return None
         run_identity = self.run_combo.currentData()
-        if not isinstance(run_identity, SaliencyRunIdentity):
+        run_coverage = self._selected_run_coverage()
+        if (
+            publication is None
+            or not publication.usable
+            or not isinstance(run_identity, SaliencyRunIdentity)
+            or run_coverage is None
+        ):
             return None
-        for run_coverage in publication.state.visualization.saliency_coverage:
-            if (
-                run_coverage.plan_index == run_identity.plan.plan_index
-                and run_coverage.run_index == run_identity.run_index
-            ):
-                model_name = (
-                    run_coverage.model_name
-                    or publication.state.training.model_name
-                    or ""
-                )
-                return _SaliencySettingsTarget(
-                    publication_generation=publication.generation,
-                    run_identity=run_identity,
-                    model_name=str(model_name),
-                )
-        return None
+        model_name = (
+            run_coverage.model_name or publication.state.training.model_name or ""
+        )
+        return _SaliencySettingsTarget(
+            publication_generation=publication.generation,
+            run_identity=run_identity,
+            model_name=str(model_name),
+        )
 
     def _require_saliency_settings_review(
         self,
@@ -1440,6 +1778,13 @@ class VisualizationPanel(BasePanel):
         self,
     ) -> dict[str, SaliencyMethodCoverageSnapshot] | None:
         """Read selected-run coverage only from the Application publication."""
+        run_coverage = self._selected_run_coverage()
+        if run_coverage is None:
+            return None
+        return {item.method: item for item in run_coverage.methods}
+
+    def _selected_run_coverage(self) -> SaliencyRunCoverageSnapshot | None:
+        """Return selected result coverage from the accepted publication only."""
         publication = self._application_view_publication
         if publication is None or not publication.usable:
             return None
@@ -1451,7 +1796,7 @@ class VisualizationPanel(BasePanel):
                 run_coverage.plan_index == run_identity.plan.plan_index
                 and run_coverage.run_index == run_identity.run_index
             ):
-                return {item.method: item for item in run_coverage.methods}
+                return run_coverage
         return None
 
     def _post_training_saliency_status(self) -> PostTrainingSaliencyStatus:
@@ -1626,7 +1971,7 @@ class VisualizationPanel(BasePanel):
         )
 
     def _configured_saliency_params(self) -> dict[str, object]:
-        diagnostics = (
+        diagnostics: dict[str, object] = (
             getattr(self.last_saliency_query, "diagnostics", {})
             if self.last_saliency_query is not None
             else {}
@@ -1637,7 +1982,7 @@ class VisualizationPanel(BasePanel):
         return dict(params) if isinstance(params, dict) else {}
 
     def _has_service_saliency_summary(self) -> bool:
-        diagnostics = (
+        diagnostics: dict[str, object] = (
             getattr(self.last_saliency_query, "diagnostics", {})
             if self.last_saliency_query is not None
             else {}
@@ -1685,18 +2030,21 @@ class VisualizationPanel(BasePanel):
         publication: ApplicationViewPublication,
     ) -> bool:
         """Accept only a verified, isolated Application read publication."""
-        if (
-            not isinstance(publication, ApplicationViewPublication)
-            or not publication.usable
-            or not publication.state.state_reliable
-        ):
-            self._invalidate_view_render_publications()
-            self._application_view_publication = None
+        if not self._valid_application_publication(publication):
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
+            return False
+        if not publication.usable or not publication.state.state_reliable:
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
             return False
         previous = self._application_view_publication
         if previous is not None and previous.generation != publication.generation:
             self._invalidate_view_render_publications()
         self._application_view_publication = publication
+        self._refresh_explanation_context()
         pending_target = self._pending_saliency_target
         if (
             pending_target is not None
@@ -1707,6 +2055,63 @@ class VisualizationPanel(BasePanel):
             )
         return True
 
+    @staticmethod
+    def _valid_application_publication(publication: object) -> bool:
+        if not isinstance(publication, ApplicationViewPublication):
+            return False
+        return (
+            not isinstance(publication.revision, bool)
+            and isinstance(publication.revision, int)
+            and publication.revision >= 1
+        )
+
+    def _record_application_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._last_application_revision = max(
+            self._last_application_revision,
+            publication.revision,
+        )
+        self._last_visualization_publication_signature = (
+            self._visualization_publication_signature(publication)
+        )
+
+    @staticmethod
+    def _visualization_publication_signature(
+        publication: ApplicationViewPublication,
+    ) -> _VisualizationPublicationSignature:
+        """Project one publication onto state Visualization actually renders."""
+        state = publication.state
+        training = state.training
+        boundary = publication.training_boundary
+        return _VisualizationPublicationSignature(
+            usable=publication.usable,
+            state_reliable=state.state_reliable,
+            training_liveness_reliable=state.training_liveness_reliable,
+            pipeline_stage=state.pipeline_stage,
+            trainer_identity=boundary.trainer_identity,
+            training_boundary_stable=boundary.stable,
+            raw_loaded=state.raw.loaded,
+            raw_files=tuple(state.raw.files),
+            raw_channels=tuple(state.raw.channels),
+            preprocessed_available=state.preprocessed.available,
+            preprocessed_files=tuple(state.preprocessed.files),
+            preprocessed_channels=tuple(state.preprocessed.channel_names),
+            epoch_state=state.epoch,
+            training_has_model=training.has_model,
+            training_model_name=training.model_name,
+            training_has_trainer=training.has_trainer,
+            training_is_running=training.is_running,
+            training_plan_count=training.plan_count,
+            training_run_count=training.run_count,
+            training_finished_run_count=training.finished_run_count,
+            training_terminal_outcome=training.terminal_outcome,
+            training_missing_requirements=tuple(training.missing_requirements),
+            evaluation_state=state.evaluation,
+            visualization_state=state.visualization,
+        )
+
     def _invalidate_view_render_publications(self) -> None:
         for attribute in ("tab_map", "tab_spectro", "tab_topo", "tab_3d"):
             view = getattr(self, attribute, None)
@@ -1714,24 +2119,35 @@ class VisualizationPanel(BasePanel):
             if callable(invalidate):
                 invalidate()
 
+    def _clear_application_view_publication(
+        self,
+        *,
+        invalidate_render_publications: bool = False,
+    ) -> None:
+        """Clear stale result truth and its visible provenance together."""
+        if invalidate_render_publications:
+            self._invalidate_view_render_publications()
+        self._application_view_publication = None
+        self._refresh_explanation_context()
+
     def _refresh_application_publication(self) -> bool:
         """Read the immutable publication without exposing backend domain objects."""
-        runtime = (
-            self._application_runtime
-            if self._application_runtime is not None
-            else application_ui_runtime(self)
-        )
-        if runtime is None:
-            self._application_view_publication = None
+        query_port = self._query_port
+        if query_port is None:
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
             return False
         try:
-            publication = runtime.get_view_publication()
+            publication = query_port.get_view_publication()
         except Exception:
             logger.warning(
                 "Visualization Application publication is unavailable",
                 exc_info=True,
             )
-            self._application_view_publication = None
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
             return False
         return self._accept_application_publication(publication)
 
@@ -1741,11 +2157,19 @@ class VisualizationPanel(BasePanel):
         view: str | None = None,
     ) -> bool:
         """Refresh visualization readiness without eager saliency averaging."""
+        action_port = self._action_port
+        publication = self._application_view_publication
+        if publication is None and self._refresh_application_publication():
+            publication = self._application_view_publication
+        if action_port is None or publication is None:
+            self.last_application_query = None
+            return False
         result = execute_application_command(
             self,
             VisualizeCommand(view=view),
             refresh=False,
-            runtime=self._application_runtime,
+            expected_publication_generation=publication.generation,
+            runtime=cast("ApplicationUiRuntime", action_port),
         )
         if result is None:
             return False
@@ -1767,7 +2191,7 @@ class VisualizationPanel(BasePanel):
                 or "No diagnostic message was provided.",
             )
             return _VISUALIZATION_LOAD_FAILED_MESSAGE
-        if result is not None and getattr(result, "message", ""):
+        if result is not None and result.message:
             return str(result.message)
         return "No visualization views are ready yet."
 
@@ -1793,6 +2217,8 @@ class VisualizationPanel(BasePanel):
         self._runs_by_plan = {}
         self.plan_combo.blockSignals(False)
         self.run_combo.blockSignals(False)
+        if hasattr(self, "explanation_provenance_label"):
+            self._refresh_explanation_context()
 
     @staticmethod
     def _show_widget_error(widget, message: str) -> bool:

@@ -72,6 +72,8 @@ def test_training_state_read_model_formats_history_without_controller_lookup() -
         {
             "plan": history[0]["plan"],
             "record": history[0]["record"],
+            "plan_index": 0,
+            "run_index": 0,
             "group_name": "Group 1",
             "run_name": "1",
             "model_name": "_TargetModel",

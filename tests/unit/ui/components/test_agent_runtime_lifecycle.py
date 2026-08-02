@@ -31,6 +31,10 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.assistant_activity import (
+    AssistantTurnActivity,
+    AssistantTurnActivityPhase,
+)
 from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 from XBrainLab.llm.agent.interaction import (
     AgentInteractionOutcome,
@@ -198,6 +202,54 @@ class _ControlledEngine:
         self.load_release.set()
         self.switch_release.set()
         self.generation_release.set()
+
+
+class _NoopRagRetriever:
+    """Retriever diagnostic surface for the process-free lifecycle test double."""
+
+    def initialize(self) -> None:
+        return None
+
+    def get_similar_examples(
+        self,
+        query: str,
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> str:
+        del query, allowed_tool_names
+        return ""
+
+    def close(self) -> None:
+        return None
+
+
+class _NoopRagLifecycle:
+    """Keep runtime lifecycle tests deterministic without a child process."""
+
+    def __init__(self) -> None:
+        self.retriever = _NoopRagRetriever()
+
+    def start(self) -> bool:
+        return True
+
+    def retrieve(
+        self,
+        turn_id: int,
+        query: str,
+        callback: Any,
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> bool:
+        del allowed_tool_names
+        callback(turn_id, query, "", "")
+        return True
+
+    def cancel_retrieval(self, turn_id: int) -> bool:
+        del turn_id
+        return False
+
+    def close(self) -> bool:
+        return True
 
 
 class _WorkerErrorProbe(QObject):
@@ -403,11 +455,16 @@ def _runtime_harness(
         "local_backend_status_message",
         lambda self, model_id=None: "Local runtime ready.",
     )
+    monkeypatch.setattr(
+        LLMConfig,
+        "local_backend_cpu_fallback_reason",
+        lambda self: None,
+    )
     monkeypatch.setattr(LLMConfig, "save_to_file", lambda self, filepath=None: None)
     monkeypatch.setattr(
-        controller_module.RAGRetriever,
-        "initialize",
-        lambda self: None,
+        controller_module,
+        "ProcessRAGRetrieverLifecycle",
+        _NoopRagLifecycle,
     )
     if not use_real_workflow_router:
         monkeypatch.setattr(
@@ -480,8 +537,8 @@ def _install_host_turn_lease(harness: _RuntimeHarness) -> AssistantTurnCorrelati
         correlation,
     )
     harness.runtime._active_turn = correlation
-    harness.controller._active_host_turn_generation = correlation.generation
-    harness.controller._active_host_turn_id = correlation.turn_id
+    harness.controller._turn_orchestrator.host_turn_generation = correlation.generation
+    harness.controller._turn_orchestrator.host_turn_id = correlation.turn_id
     return correlation
 
 
@@ -1069,7 +1126,7 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
         controller = harness.controller
         _install_host_turn_lease(harness)
         controller.pending_interactions.begin_workflow_handoff(request)
-        controller._visible_response_sent = True
+        controller._tool_attempt_session.visible_response_sent = True
         controller.is_processing = True
         outcome_spy = QSignalSpy(controller.interaction_resolved)
 
@@ -1090,10 +1147,14 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
             message="Epoch settings were saved.",
         )
         assert controller.is_processing is False
+        qtbot.waitUntil(
+            lambda: bool(harness.manager.chat_controller.messages),
+            timeout=WATCHDOG_MS,
+        )
         assert harness.manager.chat_controller.messages == [
             {
                 "role": "assistant",
-                "content": "Create epochs was completed in XBrainLab.",
+                "content": "Create EEG epochs was completed in XBrainLab.",
             }
         ]
 
@@ -1105,7 +1166,7 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
     with _runtime_harness(qtbot, monkeypatch) as harness:
         _release_initial_load(qtbot, harness)
         controller = harness.controller
-        _install_host_turn_lease(harness)
+        correlation = _install_host_turn_lease(harness)
         decision = ToolAttemptDecision(
             action=ToolAttemptAction.CONFIRMATION_REQUIRED,
             command_name="clear_dataset",
@@ -1120,8 +1181,19 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
             publication_generation=None,
         )
         controller.pending_interactions.begin_confirmation(decision, request)
-        controller._last_tool_summary = "The assistant completed a background action."
+        controller._tool_attempt_session.last_tool_summary = (
+            "The assistant completed a background action."
+        )
         outcome_spy = QSignalSpy(controller.interaction_resolved)
+        harness.manager.on_assistant_activity_changed(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name=request.command_name,
+                request_id=request.request_id,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+            )
+        )
         harness.manager._show_action_confirmation(request)
         assert harness.panel.confirmation_card_widget.isVisibleTo(harness.panel)
         harness.panel.confirmation_card_widget.secondary_button.click()
@@ -1146,7 +1218,7 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
         )
         assert "workspace is unchanged" in visible
         assert "background action completed" not in visible.lower()
-        assert controller._tool_execution_count == 0
+        assert controller._tool_attempt_session.execution_count == 0
 
 
 def test_model_switch_ignores_stale_ready_until_target_is_ready(

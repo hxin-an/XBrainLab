@@ -1,9 +1,10 @@
+import inspect
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QLabel, QMainWindow, QMessageBox, QPushButton
+from PyQt6.QtWidgets import QGroupBox, QLabel, QMainWindow, QMessageBox, QPushButton
 
 from XBrainLab.backend.application import (
     ChangedState,
@@ -26,7 +27,6 @@ from XBrainLab.ui.application_capabilities import CommandReviewContext
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 from XBrainLab.ui.refresh_coordinator import refresh_after_command
 from XBrainLab.ui.styles.stylesheets import Stylesheets
-from XBrainLab.ui.styles.theme import Theme
 
 
 @pytest.fixture
@@ -131,6 +131,8 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.btn_start, QPushButton)
     assert sidebar.btn_start.styleSheet() == Stylesheets.BTN_PRIMARY
     assert sidebar.findChild(QLabel, "TrainingResourceCheck") is None
+    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
+    assert sidebar.scroll_area.content_layout.itemAt(0).widget() is sidebar.info_panel
 
 
 def test_execution_section_does_not_show_persistent_resource_status(sidebar):
@@ -210,7 +212,7 @@ def _async_dispatch_recorder():
     return dispatch, calls, callbacks
 
 
-def test_start_training_dispatches_one_async_command_without_sync_preflight(sidebar):
+def test_train_result_before_publication_leaves_state_controls_unchanged(sidebar):
     dispatch, calls, callbacks = _async_dispatch_recorder()
     with (
         patch(
@@ -227,17 +229,70 @@ def test_start_training_dispatches_one_async_command_without_sync_preflight(side
     assert len(calls) == 1
     assert calls[0][1].resource_preflight_confirmed is False
 
-    callbacks[0][0](_training_result(preflight=_training_preflight()))
+    sidebar.btn_stop.setEnabled(False)
+    with patch.object(
+        sidebar.panel,
+        "reconcile_training_terminal_outcome",
+    ) as reconcile:
+        callbacks[0][0](_training_result(preflight=_training_preflight()))
+
+    reconcile.assert_not_called()
+    assert sidebar.btn_stop.isEnabled() is False
+
+    sidebar.on_training_started(refresh_ready=False)
+
     assert sidebar.btn_stop.isEnabled() is True
 
 
-def test_completed_command_result_leaves_readiness_to_refresh_coordinator(sidebar):
-    with patch.object(sidebar, "check_ready_to_train") as check_ready:
-        sidebar._check_ready_after_command_result(
-            _training_result(preflight=_training_preflight())
+def test_train_result_after_running_publication_does_not_reapply_state(sidebar):
+    sidebar.on_training_started(refresh_ready=False)
+
+    with patch.object(
+        sidebar.panel,
+        "reconcile_training_terminal_outcome",
+    ) as reconcile:
+        sidebar._handle_start_training_result(
+            _training_result(preflight=_training_preflight()),
+            unknown_retried=False,
+        )
+
+    reconcile.assert_not_called()
+    assert sidebar.btn_stop.isEnabled() is True
+
+
+def test_duplicate_late_train_results_cannot_overwrite_terminal_publication(sidebar):
+    sidebar.on_training_started(refresh_ready=False)
+    sidebar.on_training_stopped(refresh_ready=False)
+
+    with patch.object(
+        sidebar.panel,
+        "reconcile_training_terminal_outcome",
+    ) as reconcile:
+        for _ in range(2):
+            sidebar._handle_start_training_result(
+                _training_result(preflight=_training_preflight()),
+                unknown_retried=False,
+            )
+
+    reconcile.assert_not_called()
+    assert sidebar.btn_stop.isEnabled() is False
+
+
+def test_completed_command_ack_leaves_readiness_to_publication(sidebar):
+    with (
+        patch.object(sidebar, "check_ready_to_train") as check_ready,
+        patch.object(
+            sidebar.panel,
+            "reconcile_training_terminal_outcome",
+        ) as reconcile,
+    ):
+        sidebar._handle_start_training_result(
+            _training_result(preflight=_training_preflight()),
+            unknown_retried=False,
         )
 
     check_ready.assert_not_called()
+    reconcile.assert_not_called()
 
 
 def test_start_training_warning_is_confirmed_on_gui_then_redispatched(sidebar):
@@ -513,6 +568,35 @@ def test_stop_training(sidebar):
     assert warning.call_args.args[1] == "Stop Training Blocked"
 
 
+def test_stop_result_waits_for_stopped_publication_to_disable_control(sidebar):
+    result = CommandResult.success_result(
+        command_name="stop_training",
+        message="Training stop requested.",
+        state=None,
+        changed_state=ChangedState(training_changed=True),
+    )
+    sidebar.btn_stop.setEnabled(True)
+
+    with (
+        patch.object(
+            sidebar,
+            "_command_capability",
+            return_value=CommandCapability(
+                command_name=CommandName.STOP_TRAINING.value,
+                enabled=True,
+            ),
+        ),
+        patch.object(sidebar, "_execute_action", return_value=result),
+    ):
+        sidebar.stop_training()
+
+    assert sidebar.btn_stop.isEnabled() is True
+
+    sidebar.on_training_stopped(refresh_ready=False)
+
+    assert sidebar.btn_stop.isEnabled() is False
+
+
 def test_check_ready_to_train(sidebar):
     # Ensure button starts enabled or disabled based on init.
     # Init calls check_ready_to_train. Mock default is True (MagicMock is truthy).
@@ -530,7 +614,7 @@ def test_check_ready_to_train(sidebar):
     assert sidebar.btn_start.isEnabled() is True
 
 
-def test_training_readiness_shows_only_first_blocking_next_action(sidebar, qtbot):
+def test_training_capability_blocks_start_without_rendering_readiness(sidebar, qtbot):
     capability = CommandCapability(
         command_name="train",
         enabled=False,
@@ -567,35 +651,195 @@ def test_training_readiness_shows_only_first_blocking_next_action(sidebar, qtbot
                 "readiness must use the capability from the same publication",
             ),
         ),
-        patch.object(sidebar, "split_data") as split_data,
     ):
         sidebar.check_ready_to_train()
         qtbot.wait(0)
-        visible_actions = [
-            button
-            for button in sidebar.readiness_group.findChildren(QPushButton)
-            if not button.isHidden()
-        ]
-        assert visible_actions == [sidebar.readiness_next_button]
-        assert sidebar.readiness_next_button.text() == "Next: Configure dataset split"
-        assert "Generate datasets before training." in sidebar.readiness_blocker.text()
-        assert sidebar.readiness_status_labels["EEG epochs"].text() == "Ready"
-        assert sidebar.readiness_status_labels["Training datasets"].text() == "Needed"
-        assert (
-            f"color: {Theme.LOG_INFO};"
-            in sidebar.readiness_status_labels["EEG epochs"].styleSheet()
+        assert not sidebar.btn_start.isEnabled()
+        assert "Generate datasets before training." in sidebar.btn_start.toolTip()
+        assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
+
+
+@pytest.mark.parametrize(
+    (
+        "raw",
+        "preprocessed",
+        "epochs",
+        "split",
+        "model",
+        "settings",
+        "capability_enabled",
+        "capability_reason",
+        "expected_statuses",
+        "expected_next",
+    ),
+    [
+        pytest.param(
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            "Import EEG data before training.",
+            ("Needed", "Needed", "Needed"),
+            "Next: Import EEG data",
+            id="import",
+        ),
+        pytest.param(
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            "Preprocess the imported EEG data before training.",
+            ("Needed", "Needed", "Needed"),
+            "Next: Preprocess EEG",
+            id="preprocess",
+        ),
+        pytest.param(
+            True,
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            "Create EEG epochs before configuring training datasets.",
+            ("Needed", "Needed", "Needed"),
+            "Next: Create EEG epochs",
+            id="epochs-before-split",
+        ),
+        pytest.param(
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+            False,
+            "Generate datasets before training.",
+            ("Needed", "Needed", "Needed"),
+            "Next: Configure dataset split",
+            id="split",
+        ),
+        pytest.param(
+            True,
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+            "Select a model before training.",
+            ("Ready", "Needed", "Needed"),
+            "Next: Select model",
+            id="model",
+        ),
+        pytest.param(
+            True,
+            True,
+            True,
+            True,
+            True,
+            False,
+            False,
+            "Set training options before training.",
+            ("Ready", "Ready", "Needed"),
+            "Next: Set training options",
+            id="settings",
+        ),
+        pytest.param(
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            "",
+            ("Ready", "Ready", "Ready"),
+            None,
+            id="ready",
+        ),
+    ],
+)
+def test_training_start_availability_uses_one_application_publication(
+    sidebar,
+    raw,
+    preprocessed,
+    epochs,
+    split,
+    model,
+    settings,
+    capability_enabled,
+    capability_reason,
+    expected_statuses,
+    expected_next,
+):
+    capability = CommandCapability(
+        command_name="train",
+        enabled=capability_enabled,
+        reasons=[capability_reason] if capability_reason else [],
+    )
+    publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            active_dataset=SimpleNamespace(
+                has_raw_data=raw,
+                has_preprocessed_data=preprocessed,
+                has_epoch_data=epochs,
+                has_datasets=split,
+            ),
+            active_training=SimpleNamespace(
+                has_model=model,
+                has_training_option=settings,
+            ),
+        ),
+        effective_capabilities={CommandName.TRAIN: capability},
+    )
+    for method_name in (
+        "validate_ready",
+        "has_datasets",
+        "has_model",
+        "has_training_option",
+    ):
+        controller_method = getattr(sidebar.controller, method_name)
+        controller_method.reset_mock()
+        controller_method.side_effect = AssertionError(
+            f"publication readiness must not call controller.{method_name}",
         )
-        assert (
-            f"color: {Theme.LOG_WARNING};"
-            in sidebar.readiness_status_labels["Training datasets"].styleSheet()
-        )
 
-        sidebar.readiness_next_button.click()
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            side_effect=AssertionError(
+                "readiness must use the capability from the same publication",
+            ),
+        ),
+    ):
+        sidebar.check_ready_to_train()
 
-    split_data.assert_called_once_with()
+    assert sidebar.btn_start.isEnabled() is capability_enabled
+    expected_tooltip = "Start Training" if capability_enabled else capability_reason
+    assert expected_tooltip in sidebar.btn_start.toolTip()
+    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
+    for method_name in (
+        "validate_ready",
+        "has_datasets",
+        "has_model",
+        "has_training_option",
+    ):
+        getattr(sidebar.controller, method_name).assert_not_called()
 
 
-def test_training_readiness_fails_closed_when_product_publication_is_unavailable(
+def test_training_start_fails_closed_when_product_publication_is_unavailable(
     sidebar,
 ):
     publication = SimpleNamespace(usable=False, state=None)
@@ -607,28 +851,73 @@ def test_training_readiness_fails_closed_when_product_publication_is_unavailable
 
     with (
         patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+        patch(
             "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
             return_value=True,
         ),
         patch.object(
             sidebar,
-            "_compatibility_readiness",
+            "_compatibility_controller_value",
             side_effect=AssertionError(
                 "product readiness must not fall back to controller state",
             ),
         ),
     ):
-        sidebar._update_readiness_presentation(publication, capability)
+        sidebar.check_ready_to_train()
 
-    assert all(
-        label.text() == "Needed" for label in sidebar.readiness_status_labels.values()
+    assert not sidebar.btn_start.isEnabled()
+    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
+    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
+
+
+def test_clear_history_button_uses_same_publication_capability(sidebar):
+    train_capability = CommandCapability(
+        command_name=CommandName.TRAIN.value,
+        enabled=False,
+        reasons=["Training is running."],
     )
-    assert (
-        sidebar.readiness_blocker.text()
-        == "Training state is unavailable. Reopen Training or reload the workflow."
+    clear_capability = CommandCapability(
+        command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+        enabled=False,
+        reasons=["Stop training before clearing history."],
     )
-    assert sidebar.readiness_next_button.isHidden()
-    assert sidebar._readiness_next_action is None
+    capabilities = {
+        CommandName.TRAIN: train_capability,
+        CommandName.CLEAR_TRAINING_HISTORY: clear_capability,
+    }
+    publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            active_dataset=SimpleNamespace(
+                has_raw_data=True,
+                has_preprocessed_data=True,
+                has_epoch_data=True,
+                has_datasets=True,
+            ),
+            active_training=SimpleNamespace(
+                has_model=True,
+                has_training_option=True,
+            ),
+        ),
+        effective_capabilities=capabilities,
+    )
+
+    sidebar.check_ready_to_train(publication=publication)
+
+    assert sidebar.btn_clear.isEnabled() is False
+    assert sidebar.btn_clear.toolTip() == "Stop training before clearing history."
+
+    capabilities[CommandName.CLEAR_TRAINING_HISTORY] = CommandCapability(
+        command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+        enabled=True,
+    )
+    sidebar.check_ready_to_train(publication=publication)
+
+    assert sidebar.btn_clear.isEnabled() is True
+    assert sidebar.btn_clear.toolTip() == "Clear training history"
 
 
 def test_real_study_controller_compatibility_stops_before_fallback_gateway(
@@ -681,14 +970,10 @@ def test_real_study_missing_publication_never_reads_controller(
 
     assert not sidebar.btn_start.isEnabled()
     assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
-    assert (
-        sidebar.readiness_blocker.text()
-        == "Training state is unavailable. Reopen Training or reload the workflow."
-    )
-    assert sidebar.readiness_next_button.isHidden()
+    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
 
 
-def test_product_action_result_refresh_reads_the_next_publication(
+def test_product_action_result_waits_for_the_next_publication(
     real_study_sidebar,
 ):
     sidebar, *_ = real_study_sidebar
@@ -742,8 +1027,6 @@ def test_product_action_result_refresh_reads_the_next_publication(
     panel = sidebar.panel
     main_window = sidebar.main_window
     cast(Any, main_window).training_panel = panel
-    panel.update_panel.side_effect = sidebar.check_ready_to_train
-
     with (
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
@@ -763,12 +1046,14 @@ def test_product_action_result_refresh_reads_the_next_publication(
             sidebar,
             _training_result(preflight=_training_preflight()),
         )
+        assert refreshed is False
+        panel.update_panel.assert_not_called()
+        assert not sidebar.btn_start.isEnabled()
 
-    assert refreshed is True
-    panel.update_panel.assert_called_once_with()
+        sidebar.check_ready_to_train()
+
     assert sidebar.btn_start.isEnabled()
-    assert sidebar.readiness_blocker.text() == "Ready to start training."
-    assert sidebar.readiness_next_button.isHidden()
+    assert sidebar.btn_start.toolTip() == "Start Training"
 
 
 def test_check_ready_to_train_never_reads_controller_when_product_truth_is_missing(
@@ -801,11 +1086,7 @@ def test_check_ready_to_train_never_reads_controller_when_product_truth_is_missi
 
     assert not sidebar.btn_start.isEnabled()
     assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
-    assert (
-        sidebar.readiness_blocker.text()
-        == "Training state is unavailable. Reopen Training or reload the workflow."
-    )
-    assert sidebar.readiness_next_button.isHidden()
+    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
 
 
 def test_check_ready_to_train_rejects_enabled_capability_from_unusable_publication(
@@ -843,7 +1124,7 @@ def test_check_ready_to_train_rejects_enabled_capability_from_unusable_publicati
 
     assert not sidebar.btn_start.isEnabled()
     assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
-    assert "state is unavailable" in sidebar.readiness_blocker.text()
+    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
 
 
 def test_check_ready_to_train_rejects_malformed_product_capability(sidebar):
@@ -885,7 +1166,331 @@ def test_check_ready_to_train_rejects_malformed_product_capability(sidebar):
 
     assert not sidebar.btn_start.isEnabled()
     assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
-    assert "state is unavailable" in sidebar.readiness_blocker.text()
+    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
+
+
+@pytest.mark.parametrize(
+    "action_name",
+    ["select_model", "configure_training", "training_setting"],
+)
+@pytest.mark.parametrize(
+    "review_context",
+    [
+        pytest.param(None, id="missing-review"),
+        pytest.param(
+            SimpleNamespace(capability=None, publication_generation=81),
+            id="missing-capability",
+        ),
+    ],
+)
+def test_training_configuration_fails_before_dialog_without_product_review(
+    real_study_sidebar,
+    action_name,
+    review_context,
+):
+    sidebar, _study = real_study_sidebar
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+            return_value=review_context,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog",
+        ) as model_dialog,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog",
+        ) as settings_dialog,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+        ) as execute,
+        patch.object(QMessageBox, "warning") as warning,
+    ):
+        outcome = getattr(sidebar, action_name)()
+
+    assert outcome.status.value == "blocked"
+    model_dialog.assert_not_called()
+    settings_dialog.assert_not_called()
+    execute.assert_not_called()
+    warning.assert_called_once()
+
+
+def test_start_training_fails_before_dispatch_when_product_review_disappears(
+    real_study_sidebar,
+):
+    sidebar, _study = real_study_sidebar
+    enabled = CommandCapability(command_name="train", enabled=True)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            return_value=enabled,
+        ),
+        patch.object(sidebar, "_dispatch_start_training") as dispatch,
+        patch.object(QMessageBox, "warning") as warning,
+    ):
+        sidebar.start_training_ui_action()
+
+    dispatch.assert_not_called()
+    warning.assert_called_once()
+
+
+def test_clear_history_fails_before_confirmation_when_publication_disappears(
+    real_study_sidebar,
+):
+    sidebar, _study = real_study_sidebar
+    enabled = CommandCapability(
+        command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+        enabled=True,
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            return_value=enabled,
+        ),
+        patch.object(QMessageBox, "question") as question,
+        patch.object(QMessageBox, "warning") as warning,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+        ) as execute,
+    ):
+        sidebar.clear_history()
+
+    question.assert_not_called()
+    execute.assert_not_called()
+    warning.assert_called_once()
+
+
+def test_dataset_split_dialog_binding_uses_typed_runtime_callbacks():
+    from XBrainLab.backend.application.dataset_split_preview import (
+        DatasetSplitContext,
+        DatasetSplitContextPublication,
+        DatasetSplitContextRequest,
+        DatasetSplitPreviewPublication,
+        DatasetSplitPreviewRequest,
+        DatasetSplitPreviewRow,
+        DatasetSplitSpecification,
+    )
+    from XBrainLab.ui.application_capabilities import (
+        get_dataset_split_dialog_binding,
+    )
+
+    generation = 91
+    context_request = DatasetSplitContextRequest(
+        publication_generation=generation,
+    )
+    context_publication = DatasetSplitContextPublication(
+        request=context_request,
+        generation=generation,
+        context=DatasetSplitContext(
+            epoch_available=True,
+            subject_count=2,
+            session_count=1,
+            label_count=2,
+            trial_count=12,
+        ),
+    )
+    preview_request = DatasetSplitPreviewRequest(
+        request_id="preview-91",
+        publication_generation=generation,
+        specification=DatasetSplitSpecification(
+            train_type="Individual",
+            is_cross_validation=False,
+        ),
+    )
+    preview_publication = DatasetSplitPreviewPublication(
+        request=preview_request,
+        generation=generation,
+        rows=(
+            DatasetSplitPreviewRow(
+                name="Subject 1",
+                train_count=8,
+                validation_count=2,
+                test_count=2,
+            ),
+        ),
+    )
+
+    class Runtime:
+        def __init__(self):
+            self.context_requests = []
+            self.preview_requests = []
+            self.cancelled_request_ids = []
+
+        def get_dataset_split_context(self, request):
+            self.context_requests.append(request)
+            return context_publication
+
+        def get_dataset_split_preview(self, request):
+            self.preview_requests.append(request)
+            return preview_publication
+
+        def cancel_dataset_split_preview(self, request_id):
+            self.cancelled_request_ids.append(request_id)
+            return True
+
+    runtime = Runtime()
+
+    binding = get_dataset_split_dialog_binding(
+        object(),
+        publication_generation=generation,
+        runtime=cast(Any, runtime),
+    )
+
+    assert binding is not None
+    assert runtime.context_requests == [context_request]
+    assert binding.split_context is context_publication.context
+    assert binding.publication_generation == generation
+    assert binding.preview_provider(preview_request) is preview_publication
+    assert binding.preview_canceller("preview-91") is True
+    assert runtime.preview_requests == [preview_request]
+    assert runtime.cancelled_request_ids == ["preview-91"]
+
+
+def test_split_data_passes_typed_detached_binding_to_dialog(
+    sidebar,
+):
+    from PyQt6.QtWidgets import QDialog
+
+    from XBrainLab.backend.application.dataset_split_preview import DatasetSplitContext
+    from XBrainLab.ui.application_capabilities import DatasetSplitDialogBinding
+    from XBrainLab.ui.interaction_outcome import InteractionStatus
+
+    generation = 92
+    capability = CommandCapability(
+        command_name=CommandName.GENERATE_DATASET.value,
+        enabled=True,
+    )
+    publication = SimpleNamespace(
+        generation=generation,
+        effective_capabilities={CommandName.GENERATE_DATASET: capability},
+    )
+    split_context = DatasetSplitContext(
+        epoch_available=True,
+        subject_count=2,
+        session_count=1,
+        label_count=2,
+        trial_count=12,
+    )
+    preview_provider = MagicMock()
+    preview_canceller = MagicMock()
+    binding = DatasetSplitDialogBinding(
+        split_context=split_context,
+        publication_generation=generation,
+        preview_provider=preview_provider,
+        preview_canceller=preview_canceller,
+    )
+    initial_values = {
+        "training_mode": "individual",
+        "split_strategy": "subject",
+    }
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_dataset_split_dialog_binding",
+            return_value=binding,
+        ) as get_binding,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
+        ) as dialog,
+    ):
+        dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+        outcome = sidebar.split_data(suggested_values=initial_values)
+
+    assert outcome.status is InteractionStatus.CANCELLED
+    get_binding.assert_called_once_with(
+        sidebar,
+        publication_generation=generation,
+    )
+    dialog.assert_called_once_with(
+        sidebar,
+        split_context=split_context,
+        publication_generation=generation,
+        preview_provider=preview_provider,
+        preview_canceller=preview_canceller,
+        initial_values=initial_values,
+    )
+
+
+def test_data_splitting_context_fails_closed_when_product_binding_disappears(
+    real_study_sidebar,
+):
+    sidebar, _study = real_study_sidebar
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_dataset_split_dialog_binding",
+            return_value=None,
+        ) as get_binding,
+        patch.object(QMessageBox, "warning") as warning,
+    ):
+        context = sidebar._data_splitting_dialog_context(
+            expected_publication_generation=91,
+        )
+
+    assert context is None
+    get_binding.assert_called_once_with(
+        sidebar,
+        publication_generation=91,
+    )
+    warning.assert_called_once_with(
+        sidebar,
+        "Data Splitting Blocked",
+        (
+            "XBrainLab could not safely complete this action from the current "
+            "window state. Refresh the workflow and try again."
+        ),
+    )
+
+
+def test_data_splitting_context_stale_publication_requires_review(sidebar):
+    from XBrainLab.backend.application import PreconditionError
+
+    error = PreconditionError(
+        "The application data changed before dataset splitting could begin.",
+        diagnostics={
+            "requested_generation": 92,
+            "current_generation": 93,
+        },
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_dataset_split_dialog_binding",
+            side_effect=error,
+        ),
+        patch.object(QMessageBox, "warning") as warning,
+    ):
+        binding = sidebar._data_splitting_dialog_context(
+            expected_publication_generation=92,
+        )
+
+    assert binding is None
+    warning.assert_called_once_with(
+        sidebar,
+        "Review Data Splitting Again",
+        str(error),
+    )
+
+
+def test_data_splitting_launch_uses_typed_detached_binding():
+    source = inspect.getsource(TrainingSidebar._data_splitting_dialog_context)
+
+    assert "get_dataset_split_dialog_binding" in source
+    assert "publication_generation" in source
 
 
 def test_on_training_stopped(sidebar):

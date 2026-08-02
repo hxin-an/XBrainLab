@@ -71,6 +71,7 @@ def _launch_spec(
             else f"Model cache not found for {candidate}."
         ),
     )
+    monkeypatch.setattr(config, "local_backend_cpu_fallback_reason", lambda: None)
     resolution = AssistantRuntimeLaunchResolver().resolve(config)
     assert resolution.launch_spec is not None
     return resolution.launch_spec
@@ -107,6 +108,8 @@ def test_worker_initializes_only_from_the_exact_launch_spec(
     assert snapshots[-1].requested_model_id == spec.requested_model_id
     assert snapshots[-1].selection_outcome is spec.outcome
     assert snapshots[-1].selection_detail == spec.selection_detail
+    assert snapshots[-1].execution_device == spec.execution_device
+    assert snapshots[-1].device_fallback_reason == spec.device_fallback_reason
 
 
 def test_generation_settings_reload_cannot_reselect_the_active_model(

@@ -205,11 +205,14 @@ class _WizardDriver:
     last_heartbeat_at: float = field(default_factory=time.monotonic)
     max_heartbeat_gap_seconds: float = 0.0
     openneuro_values_started: bool = False
+    openneuro_setup_stage: int = 0
     openneuro_value_index: int = 0
     openneuro_value_stage: int = 0
     last_surface_key: tuple[int, int] | None = None
     last_heartbeat_context: str = "driver startup"
     max_heartbeat_gap_context: str = ""
+    last_progress_at: float = field(default_factory=time.monotonic)
+    last_progress_key: tuple[object, ...] | None = None
 
 
 def _require_manifest_group(group_name: str) -> None:
@@ -281,6 +284,8 @@ def _select_combo_data(combo: QComboBox, value: str) -> None:
     for _ in range(index):
         QTEST.keyClick(combo, Qt.Key.Key_Down)
     QTEST.keyClick(combo, Qt.Key.Key_Return)
+    combo.hidePopup()
+    QApplication.processEvents()
     if combo.currentData() != value:
         raise AssertionError(
             f"{combo.objectName()} selected {combo.currentData()!r}, expected {value!r}."
@@ -587,7 +592,9 @@ def _start_wizard_driver(
         resolve_openneuro_values=resolve_openneuro_values,
         expect_blocked=expect_blocked,
     )
-    driver.timer.setInterval(5)
+    # Human-scale actions must leave one event-loop turn for combo popups,
+    # geometry refreshes, and asynchronous command delivery to settle.
+    driver.timer.setInterval(25)
 
     def _fail(message: str, modal: QWidget | None) -> None:
         driver.errors.append(message)
@@ -604,6 +611,40 @@ def _start_wizard_driver(
         driver.last_heartbeat_at = heartbeat_at
         driver.heartbeat_count += 1
         modal = QApplication.activeModalWidget()
+        progress_key = (
+            driver.phase,
+            driver.dialog_count,
+            driver.awaiting_label_field_refresh,
+            driver.openneuro_setup_stage,
+            driver.openneuro_value_index,
+            driver.openneuro_value_stage,
+            type(modal).__name__ if modal is not None else "None",
+        )
+        if progress_key != driver.last_progress_key:
+            driver.last_progress_key = progress_key
+            driver.last_progress_at = heartbeat_at
+        # Wizard interactions should advance promptly. Once Confirm and Import has
+        # handed a real public dataset to the background Application command, the
+        # outer workflow timeout owns the bounded wait because EEGLAB file reads do
+        # not expose row-level progress events.
+        stall_limit = 240.0 if driver.phase >= len(STEP_TITLES) else 60.0
+        if (
+            progress_key == driver.last_progress_key
+            and heartbeat_at - driver.last_progress_at > stall_limit
+        ):
+            _fail(
+                "Wizard driver made no visible progress for "
+                f"{stall_limit:.0f} seconds: "
+                f"phase={driver.phase}; dialog_count={driver.dialog_count}; "
+                f"awaiting_refresh={driver.awaiting_label_field_refresh}; "
+                f"openneuro_setup_stage={driver.openneuro_setup_stage}; "
+                f"openneuro_row={driver.openneuro_value_index}; "
+                f"openneuro_stage={driver.openneuro_value_stage}; "
+                f"modal={type(modal).__name__ if modal is not None else 'None'}; "
+                f"trace={driver.trace!r}",
+                modal,
+            )
+            return
         driver.last_heartbeat_context = (
             f"phase={driver.phase}; dialog_count={driver.dialog_count}; "
             f"modal={type(modal).__name__ if modal is not None else 'None'}; "
@@ -690,17 +731,36 @@ def _start_wizard_driver(
                 return
 
             if driver.phase == 3:
-                if driver.resolve_openneuro_values and driver.dialog_count == 1:
-                    _select_combo_data(modal.rule_label_field_combo, "value")
-                    placement_button = modal.placement_method_buttons["time_field"]
-                    QTEST.mouseClick(
-                        placement_button,
-                        Qt.MouseButton.LeftButton,
-                    )
-                    _select_combo_data(modal.rule_alignment_combo, "onset")
+                if (
+                    driver.resolve_openneuro_values
+                    and driver.dialog_count == 1
+                    and not driver.awaiting_label_field_refresh
+                ):
+                    if driver.openneuro_setup_stage == 0:
+                        _select_combo_data(modal.rule_label_field_combo, "value")
+                        driver.openneuro_setup_stage = 1
+                        return
+                    if driver.openneuro_setup_stage == 1:
+                        placement_button = modal.placement_method_buttons["time_field"]
+                        QTEST.mouseClick(
+                            placement_button,
+                            Qt.MouseButton.LeftButton,
+                        )
+                        driver.openneuro_setup_stage = 2
+                        return
+                    if driver.openneuro_setup_stage == 2:
+                        _select_combo_data(modal.time_field_combo, "onset")
+                        driver.openneuro_setup_stage = 3
+                        return
                     driver.awaiting_label_field_refresh = True
                     driver.trace.append("choose label field value")
                     QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                    return
+                if (
+                    driver.resolve_openneuro_values
+                    and driver.dialog_count == 1
+                    and driver.awaiting_label_field_refresh
+                ):
                     return
                 if driver.resolve_openneuro_values:
                     if not _advance_openneuro_event_values(modal, driver):

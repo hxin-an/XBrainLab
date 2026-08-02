@@ -278,6 +278,9 @@ def test_submit_resolves_one_immutable_scope_from_each_natural_request() -> None
     guided = lifecycle.submit("Load this EEG file, preprocess it, and create epochs.")
 
     assert guided.accepted is True
+    assert guided.scope is AssistantTurnScope.GUIDED_WORKFLOW
+    assert guided.terminal_command == "create_epoch"
+    assert guided.excluded_commands == ()
     guided_request = dispatcher.turn_requests[-1]
     assert guided_request.scope is AssistantTurnScope.GUIDED_WORKFLOW
     assert guided_request.terminal_command == "create_epoch"
@@ -290,6 +293,9 @@ def test_submit_does_not_grant_an_excluded_preprocess_endpoint() -> None:
     result = lifecycle.submit("Load the data but not preprocess it.")
 
     assert result.accepted is True
+    assert result.scope is AssistantTurnScope.SINGLE_ACTION
+    assert result.terminal_command is None
+    assert result.excluded_commands == (CommandName.PREPROCESS,)
     [request] = dispatcher.turn_requests
     assert request.scope is AssistantTurnScope.SINGLE_ACTION
     assert request.terminal_command is None
@@ -346,6 +352,97 @@ def test_delivery_error_releases_only_its_correlated_turn() -> None:
     assert [terminal.outcome for terminal in terminals] == [
         "delivery_error",
         "completed",
+    ]
+
+
+def test_terminal_before_delivery_ack_is_not_reported_as_stale(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    dispatcher = _AcknowledgingDeliveryDispatcher()
+    lifecycle, controller = _ready_lifecycle(dispatcher)
+
+    admission = lifecycle.submit("request resolved synchronously")
+    correlation = admission.correlation
+    assert correlation is not None
+    controller.turn_finished.emit(
+        AssistantTurnTerminal(
+            correlation=correlation,
+            outcome="blocked",
+        )
+    )
+
+    with caplog.at_level("WARNING"):
+        dispatcher.turn_delivery_acknowledged.emit(
+            AssistantTurnDeliveryAcknowledgement(
+                correlation=correlation,
+                phase=AssistantTurnDeliveryPhase.ACCEPTED,
+            )
+        )
+
+    assert lifecycle.turn_in_flight is False
+    assert "Ignored stale assistant turn delivery" not in caplog.text
+
+
+def test_delivery_timeout_fences_retry_until_correlated_terminal() -> None:
+    dispatcher = _AcknowledgingDeliveryDispatcher()
+    lifecycle, controller = _ready_lifecycle(dispatcher)
+    terminals: list[AssistantTurnTerminal] = []
+    lifecycle.turn_finished.connect(terminals.append)
+
+    admission = lifecycle.submit("request with a lost delivery acknowledgement")
+    correlation = admission.correlation
+    assert correlation is not None
+
+    lifecycle._on_turn_delivery_timeout(correlation)
+
+    assert lifecycle.turn_in_flight is True
+    assert lifecycle._stop_requested_for == correlation
+    assert terminals == []
+    assert dispatcher.calls[-1] == "stop"
+    retry = lifecycle.submit("do not execute this duplicate request")
+    assert retry.status is RuntimeCommandAdmissionStatus.BUSY
+
+    controller.turn_finished.emit(
+        AssistantTurnTerminal(
+            correlation=correlation,
+            outcome="cancelled",
+        )
+    )
+
+    assert lifecycle.turn_in_flight is False
+    assert terminals == [
+        AssistantTurnTerminal(correlation=correlation, outcome="delivery_timeout")
+    ]
+    assert lifecycle.submit("new request after terminal").accepted is True
+
+
+def test_async_close_disarms_delivery_watchdog_until_shutdown_terminal() -> None:
+    dispatcher = _AcknowledgingDeliveryDispatcher()
+    lifecycle, _controller = _ready_lifecycle(dispatcher)
+    terminals: list[AssistantTurnTerminal] = []
+    lifecycle.turn_finished.connect(terminals.append)
+    dispatcher.close = lambda: False
+
+    admission = lifecycle.submit("request still waiting for delivery acknowledgement")
+    correlation = admission.correlation
+    assert correlation is not None
+    assert lifecycle._turn_delivery_watchdog is not None
+
+    assert lifecycle.close() is False
+    assert lifecycle._turn_delivery_watchdog is None
+    lifecycle._on_turn_delivery_timeout(correlation)
+
+    assert lifecycle.turn_in_flight is True
+    assert terminals == []
+
+    lifecycle._complete_close()
+
+    assert lifecycle.turn_in_flight is False
+    assert terminals == [
+        AssistantTurnTerminal(
+            correlation=correlation,
+            outcome="shutdown_cancelled",
+        )
     ]
 
 

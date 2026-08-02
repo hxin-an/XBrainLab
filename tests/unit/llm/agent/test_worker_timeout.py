@@ -15,6 +15,10 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationStopRequest,
     AssistantResponseContract,
 )
+from XBrainLab.llm.agent.turn_orchestrator import (
+    AssistantToolAttemptSession,
+    AssistantTurnOrchestrator,
+)
 from XBrainLab.llm.agent.worker import ACTIVE_GENERATION_THREADS, AgentWorker
 from XBrainLab.llm.core.config import LLMConfig
 
@@ -240,14 +244,15 @@ class TestAgentWorkerTimeout:
 
             def __init__(self) -> None:
                 super().__init__()
-                self._turn_cancelled = True
+                self._turn_orchestrator = AssistantTurnOrchestrator(
+                    host_turn_id=77,
+                    host_turn_generation=3,
+                    active_generation_id=1,
+                    stopping_generation_id=1,
+                    cancelled=True,
+                )
+                self._tool_attempt_session = AssistantToolAttemptSession()
                 self.is_processing = True
-                self._active_host_turn_id = 77
-                self._active_host_turn_generation = 3
-                self._active_generation_id = 1
-                self._stopping_generation_id = 1
-                self._cancellation_response_sent = False
-                self._visible_response_sent = False
                 self.history: list[dict[str, str]] = []
 
             def _append_history(self, role: str, content: str) -> None:

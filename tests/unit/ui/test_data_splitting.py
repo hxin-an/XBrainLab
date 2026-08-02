@@ -18,7 +18,28 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from tests.unit.ui.data_split_test_support import (
+    dialog_context_kwargs,
+    split_context,
+    successful_preview,
+)
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitPreviewRow,
+)
+
 _REAL_THREAD_CLASS = threading.Thread
+
+
+class _HostileExceptionMeta(type):
+    def __getattribute__(cls, name: str) -> object:
+        if name == "__name__":
+            raise AssertionError("hostile exception metaclass name access executed")
+        return super().__getattribute__(name)
+
+
+class _HostileSplitError(Exception, metaclass=_HostileExceptionMeta):
+    def __str__(self) -> str:
+        raise AssertionError("hostile exception string protocol executed")
 
 
 def _split_config_payload() -> dict[str, object]:
@@ -197,7 +218,7 @@ class TestDataSplittingDialog:
 
         ctrl = FakeDataSplittingController()
 
-        d = DataSplittingDialog(None, ctrl)
+        d = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(d)
         return d
 
@@ -295,34 +316,22 @@ class TestDataSplittingPreviewDialogDeep:
     def dlg(self, qtbot):
         from XBrainLab.backend.dataset import TrainingType
 
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-            ) as MockGen,
-            patch("threading.Thread"),
-        ):
-            MockGen.return_value.preview_failed = None
+        with patch("threading.Thread"):
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplittingPreviewDialog,
             )
-
-            epoch_data = MagicMock()
-            epoch_data.get_data_length.return_value = 100
-            epoch_data.subject_map = {
-                "S01": list(range(50)),
-                "S02": list(range(50, 100)),
-            }
-            epoch_data.session_map = {"sess1": list(range(100))}
-            epoch_data.label_map = {"left": 0, "right": 1}
-            epoch_data.get_subject_map.return_value = epoch_data.subject_map
-            epoch_data.get_session_map.return_value = epoch_data.session_map
 
             config = MagicMock()
             config.train_type = TrainingType.FULL
             config.is_cross_validation = False
             config.get_splitter_option.return_value = ([], [])
 
-            d = DataSplittingPreviewDialog(None, "Preview", epoch_data, config)
+            d = DataSplittingPreviewDialog(
+                None,
+                "Preview",
+                config=config,
+                **dialog_context_kwargs(),
+            )
             qtbot.addWidget(d)
             if hasattr(d, "timer"):
                 d.timer.stop()
@@ -339,9 +348,18 @@ class TestDataSplittingPreviewDialogDeep:
     def test_obsolete_show_split_button_is_not_rendered(self, dlg):
         assert dlg.btn_info is None
 
-        dataset = MagicMock()
-        dataset.get_treeview_row_info.return_value = ["", "Split A", 8, 1, 1]
-        dlg.datasets = [dataset]
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "succeeded",
+            rows=(
+                DatasetSplitPreviewRow(
+                    name="Split A",
+                    train_count=8,
+                    validation_count=1,
+                    test_count=1,
+                ),
+            ),
+        )
         dlg.update_table()
 
         button_texts = [button.text() for button in dlg.findChildren(QPushButton)]
@@ -358,30 +376,11 @@ class TestDataSplittingPreviewDialogSplitters:
     def dlg(self, qtbot):
         from XBrainLab.backend.dataset import SplitByType, TrainingType, ValSplitByType
 
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-            ) as MockGen,
-            patch("threading.Thread"),
-        ):
-            MockGen.return_value.preview_failed = None
-            MockGen.return_value.generate = MagicMock()
+        with patch("threading.Thread"):
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplitterHolder,
                 DataSplittingPreviewDialog,
             )
-
-            epoch_data = MagicMock()
-            epoch_data.get_data_length.return_value = 100
-            epoch_data.subject_map = {
-                "S01": list(range(50)),
-                "S02": list(range(50, 100)),
-            }
-            epoch_data.session_map = {"sess1": list(range(100))}
-            epoch_data.label_map = {"left": 0, "right": 1}
-            epoch_data.data = list(range(100))
-            epoch_data.get_subject_map.return_value = epoch_data.subject_map
-            epoch_data.get_session_map.return_value = epoch_data.session_map
 
             val_splitters = [
                 DataSplitterHolder(is_option=True, split_type=ValSplitByType.SESSION),
@@ -398,7 +397,12 @@ class TestDataSplittingPreviewDialogSplitters:
                 val_splitters,
                 test_splitters,
             )
-            d = DataSplittingPreviewDialog(None, "Preview", epoch_data, config)
+            d = DataSplittingPreviewDialog(
+                None,
+                "Preview",
+                config=config,
+                **dialog_context_kwargs(),
+            )
             qtbot.addWidget(d)
             if hasattr(d, "timer"):
                 d.timer.stop()
@@ -409,6 +413,30 @@ class TestDataSplittingPreviewDialogSplitters:
         dialog = cast(Any, dlg)
         assert len(dialog.val_widgets) >= 1
         assert len(dialog.test_widgets) >= 1
+        assert not hasattr(dialog, "epoch_data")
+        assert not hasattr(dialog, "dataset_generator")
+        assert not hasattr(dialog, "datasets")
+
+    def test_preview_worker_renders_detached_application_rows(self, dlg):
+        dlg.preview_provider = successful_preview
+        dlg.preview_worker = None
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            _REAL_THREAD_CLASS,
+        ):
+            dlg.preview()
+            worker = dlg.preview_worker
+            assert worker is not None
+            worker.join(timeout=1.0)
+
+        assert worker.is_alive() is False
+        dlg.update_table()
+        assert dlg._preview_status == "succeeded"
+        assert dlg.tree.topLevelItem(0).text(0) == "Fold_0"
+        assert dlg.tree.topLevelItem(0).text(1) == "80"
+        assert dlg.tree.topLevelItem(0).text(2) == "10"
+        assert dlg.tree.topLevelItem(0).text(3) == "10"
+        assert dlg.tree.columnCount() == 4
 
     def test_on_split_type_change(self, dlg):
         splitter = dlg.val_splitter_list[0]
@@ -431,27 +459,11 @@ class TestDataSplittingPreviewDialogSplitters:
     def test_cross_validation_defaults_testing_to_kfold(self, qtbot):
         from XBrainLab.backend.dataset import SplitByType, TrainingType, ValSplitByType
 
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-            ) as MockGen,
-            patch("threading.Thread"),
-        ):
-            MockGen.return_value.preview_failed = None
-            MockGen.return_value.generate = MagicMock()
+        with patch("threading.Thread"):
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplitterHolder,
                 DataSplittingPreviewDialog,
             )
-
-            epoch_data = MagicMock()
-            epoch_data.get_data_length.return_value = 100
-            epoch_data.subject_map = {"S01": list(range(100))}
-            epoch_data.session_map = {"sess1": list(range(100))}
-            epoch_data.label_map = {"left": 0, "right": 1}
-            epoch_data.data = list(range(100))
-            epoch_data.get_subject_map.return_value = epoch_data.subject_map
-            epoch_data.get_session_map.return_value = epoch_data.session_map
 
             val_splitters = [
                 DataSplitterHolder(is_option=True, split_type=ValSplitByType.TRIAL),
@@ -467,7 +479,12 @@ class TestDataSplittingPreviewDialogSplitters:
                 val_splitters,
                 test_splitters,
             )
-            dialog = DataSplittingPreviewDialog(None, "Preview", epoch_data, config)
+            dialog = DataSplittingPreviewDialog(
+                None,
+                "Preview",
+                config=config,
+                **dialog_context_kwargs(context=split_context(subject_count=1)),
+            )
             qtbot.addWidget(dialog)
             if hasattr(dialog, "timer"):
                 dialog.timer.stop()
@@ -480,6 +497,18 @@ class TestDataSplittingPreviewDialogSplitters:
         assert val_combo.currentText() == "Ratio"
         assert val_entry.text() == "0.2"
 
+        dialog._set_preview_state(
+            dialog._preview_generation_id,
+            "succeeded",
+            rows=(
+                DatasetSplitPreviewRow(
+                    name="Fold_0",
+                    train_count=80,
+                    validation_count=10,
+                    test_count=10,
+                ),
+            ),
+        )
         payload = dialog.get_result()
         assert payload is not None
         assert payload["is_cross_validation"] is True
@@ -501,17 +530,16 @@ class TestDataSplittingPreviewDialogSplitters:
         assert QSizePolicy.Policy.Maximum in right_panel_heights
 
     def test_step2_results_table_uses_width_without_small_row_scrollbar(self, dlg):
-        for i in range(5):
-            dataset = MagicMock()
-            dataset.get_treeview_row_info.return_value = [
-                "",
-                f"Fold_{i}",
-                80 - i,
-                10,
-                10 + i,
-            ]
-            dlg.datasets.append(dataset)
-
+        rows = tuple(
+            DatasetSplitPreviewRow(
+                name=f"Fold_{index}",
+                train_count=80 - index,
+                validation_count=10,
+                test_count=10 + index,
+            )
+            for index in range(5)
+        )
+        dlg._set_preview_state(dlg._preview_generation_id, "succeeded", rows=rows)
         dlg.update_table()
         dlg.show()
 
@@ -560,16 +588,30 @@ class TestDataSplittingPreviewDialogSplitters:
             MockDlg.return_value.get_result.return_value = ["S01"]
             dlg.handle_manual_split(splitter)
 
-    def test_update_table_with_datasets(self, dlg):
-        mock_ds = MagicMock()
-        mock_ds.get_treeview_row_info.return_value = ["", "ds1", "80", "10", "10"]
-        dlg.datasets.append(mock_ds)
+    def test_update_table_with_detached_rows(self, dlg):
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "succeeded",
+            rows=(
+                DatasetSplitPreviewRow(
+                    name="ds1",
+                    train_count=80,
+                    validation_count=10,
+                    test_count=10,
+                ),
+            ),
+        )
         dlg.update_table()
+        assert dlg.tree.topLevelItem(0).text(0) == "ds1"
 
     def test_update_table_preview_failed(self, dlg):
-        dlg.dataset_generator = MagicMock()
-        dlg.dataset_generator.preview_failed = True
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "failed",
+            "Preview failed safely.",
+        )
         dlg.update_table()
+        assert dlg.tree.topLevelItem(0).text(0) == "Preview failed"
 
     def test_obsolete_show_info_action_is_removed(self, dlg):
         assert not hasattr(dlg, "show_info")
@@ -585,46 +627,44 @@ class TestDataSplittingPreviewDialogSplitters:
     def test_confirm_success(self, dlg):
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = False
-        dlg.dataset_generator = MagicMock()
         dlg.timer = MagicMock()
         dlg.preview_debounce_timer = MagicMock()
-        dlg._preview_status = "succeeded"
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "succeeded",
+            rows=(
+                DatasetSplitPreviewRow(
+                    name="Fold_0",
+                    train_count=80,
+                    validation_count=10,
+                    test_count=10,
+                ),
+            ),
+        )
         with patch.object(type(dlg), "accept"):
             dlg.confirm()
-            dlg.dataset_generator.prepare_result.assert_called_once()
             dlg.timer.stop.assert_called_once()
             dlg.preview_debounce_timer.stop.assert_called_once()
 
-    def test_confirm_error(self, dlg):
+    def test_confirm_without_successful_preview_is_blocked(self, dlg):
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = False
-        dlg.dataset_generator = MagicMock()
-        dlg.dataset_generator.prepare_result.side_effect = RuntimeError("fail")
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QMessageBox"
-        ):
+        dlg._set_preview_state(dlg._preview_generation_id, "idle")
+        with patch.object(dlg, "_show_message_box") as message:
             dlg.confirm()
+        message.assert_called_once()
 
     def test_unexpected_preview_exception_is_visible_and_confirm_does_not_retry(
         self,
         dlg,
     ):
-        generator = MagicMock()
-        generator.generate.side_effect = RuntimeError("split backend failed")
-        generator.interrupted = False
-        generator.preview_failed = False
-        dlg.dataset_generator = None
+        provider = MagicMock(side_effect=RuntimeError("split backend failed"))
+        dlg.preview_provider = provider
         dlg.preview_worker = None
 
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator",
-                return_value=generator,
-            ),
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
-                _REAL_THREAD_CLASS,
-            ),
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            _REAL_THREAD_CLASS,
         ):
             dlg.preview()
             worker = dlg.preview_worker
@@ -632,82 +672,112 @@ class TestDataSplittingPreviewDialogSplitters:
             worker.join(timeout=1.0)
 
         assert worker.is_alive() is False
-        generator.generate.assert_called_once_with()
+        provider.assert_called_once()
         dlg.update_table()
 
         assert dlg._preview_status == "failed"
-        assert dlg._preview_error == "split backend failed"
+        assert dlg._preview_error.endswith("split backend failed")
         assert dlg.tree.topLevelItem(0).text(0) == "Preview failed"
         assert dlg.btn_confirm.isEnabled() is False
 
         with patch.object(dlg, "_show_message_box") as message:
             dlg.confirm()
 
-        generator.prepare_result.assert_not_called()
         assert "split backend failed" in message.call_args.args[2]
 
-    def test_close_stops_timer_and_generator_after_worker_exits(self, dlg):
+    def test_preview_contains_hostile_exception_at_public_boundary(self, dlg):
+        def hostile_provider(_request):
+            raise _HostileSplitError("/srv/Clinical Records/Mary Example")
+
+        dlg.preview_provider = hostile_provider
+        dlg.preview_worker = None
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            _REAL_THREAD_CLASS,
+        ):
+            dlg.preview()
+            worker = dlg.preview_worker
+            assert worker is not None
+            worker.join(timeout=1.0)
+
+        assert dlg._preview_status == "failed"
+        assert dlg._preview_error == (
+            "The split preview failed. Adjust the split settings and try again."
+        )
+        assert "Mary Example" not in dlg._preview_error
+
+    def test_confirm_does_not_regenerate_domain_datasets(self, dlg):
+        dlg.preview_worker = MagicMock()
+        dlg.preview_worker.is_alive.return_value = False
+        provider = MagicMock()
+        dlg.preview_provider = provider
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "succeeded",
+            rows=(
+                DatasetSplitPreviewRow(
+                    name="Fold_0",
+                    train_count=80,
+                    validation_count=10,
+                    test_count=10,
+                ),
+            ),
+        )
+
+        with patch.object(type(dlg), "accept"):
+            dlg.confirm()
+
+        provider.assert_not_called()
+
+    def test_close_stops_timer_after_worker_exits(self, dlg):
         from PyQt6.QtGui import QCloseEvent
 
         dlg.timer = MagicMock()
-        dlg.dataset_generator = MagicMock()
+        dlg.preview_canceller = MagicMock()
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = False
         event = QCloseEvent()
         dlg.closeEvent(event)
         dlg.timer.stop.assert_called_once()
-        dlg.dataset_generator.set_interrupt.assert_called_once()
+        dlg.preview_canceller.assert_not_called()
         dlg.preview_worker.join.assert_not_called()
         assert event.isAccepted() is True
 
     def test_preview_does_not_replace_worker_that_is_still_alive(self, dlg):
-        old_generator = MagicMock()
         old_worker = MagicMock()
         old_worker.is_alive.return_value = True
         new_worker = MagicMock()
-        dlg.dataset_generator = old_generator
         dlg.preview_worker = old_worker
+        dlg.preview_canceller = MagicMock(return_value=True)
+        dlg._active_preview_request = (9, "active-preview")
 
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-            ) as mock_generator,
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
-                return_value=new_worker,
-            ),
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            return_value=new_worker,
         ):
-            mock_generator.return_value.preview_failed = None
             dlg.preview()
 
-        old_generator.set_interrupt.assert_called_once()
+        dlg.preview_canceller.assert_called_once_with("active-preview")
         old_worker.join.assert_not_called()
         new_worker.start.assert_not_called()
-        assert dlg.dataset_generator is old_generator
         assert dlg.preview_worker is old_worker
         assert dlg.preview_debounce_timer.isActive()
         dlg.preview_debounce_timer.stop()
         old_worker.is_alive.return_value = False
 
     def test_preview_restarts_after_previous_worker_exits(self, dlg):
-        old_generator = MagicMock()
         old_worker = MagicMock()
         old_worker.is_alive.return_value = True
         new_worker = MagicMock()
         new_worker.is_alive.return_value = False
-        dlg.dataset_generator = old_generator
         dlg.preview_worker = old_worker
+        dlg.preview_canceller = MagicMock(return_value=True)
+        dlg._active_preview_request = (9, "active-preview")
 
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-            ) as mock_generator,
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
-                return_value=new_worker,
-            ),
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            return_value=new_worker,
         ):
-            mock_generator.return_value.preview_failed = None
             dlg.preview()
 
             assert new_worker.start.call_count == 0
@@ -716,19 +786,19 @@ class TestDataSplittingPreviewDialogSplitters:
             old_worker.is_alive.return_value = False
             dlg.preview()
 
-        assert old_generator.set_interrupt.call_count == 2
+        dlg.preview_canceller.assert_called_once_with("active-preview")
         old_worker.join.assert_not_called()
         new_worker.start.assert_called_once()
-        assert dlg.dataset_generator is mock_generator.return_value
         assert dlg.preview_worker is new_worker
 
     def test_close_waits_for_preview_worker_ownership_release(self, dlg):
         from PyQt6.QtGui import QCloseEvent
 
         dlg.timer = MagicMock()
-        dlg.dataset_generator = MagicMock()
+        dlg.preview_canceller = MagicMock(return_value=True)
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = True
+        dlg._active_preview_request = (9, "active-preview")
         event = QCloseEvent()
 
         with patch(
@@ -738,8 +808,8 @@ class TestDataSplittingPreviewDialogSplitters:
             dlg.closeEvent(QCloseEvent())
 
         assert event.isAccepted() is False
-        assert dlg.dataset_generator is not None
         assert dlg.preview_worker is not None
+        dlg.preview_canceller.assert_called()
         retry.assert_called_once()
         dlg.preview_worker.is_alive.return_value = False
 
@@ -765,7 +835,8 @@ class TestDataSplittingPreviewDialogSplitters:
         release_worker = threading.Event()
         worker = _REAL_THREAD_CLASS(target=release_worker.wait)
         worker.start()
-        dlg.dataset_generator = MagicMock()
+        dlg.preview_canceller = MagicMock(return_value=True)
+        dlg._active_preview_request = (9, "active-preview")
         dlg.preview_worker = worker
         dlg.show()
 
@@ -777,7 +848,7 @@ class TestDataSplittingPreviewDialogSplitters:
             qtbot.keyClick(dlg, Qt.Key.Key_Escape)
 
         assert dlg.isVisible() is True
-        dlg.dataset_generator.set_interrupt.assert_called_once()
+        dlg.preview_canceller.assert_called_once_with("active-preview")
         assert len(callbacks) == 1
         assert dlg._preview_pending_close_action == "reject"
 
@@ -797,7 +868,8 @@ class TestDataSplittingPreviewDialogSplitters:
         release_worker = threading.Event()
         worker = _REAL_THREAD_CLASS(target=release_worker.wait)
         worker.start()
-        dlg.dataset_generator = MagicMock()
+        dlg.preview_canceller = MagicMock(return_value=True)
+        dlg._active_preview_request = (9, "active-preview")
         dlg.preview_worker = worker
         dlg.show()
         callbacks = []
@@ -824,7 +896,8 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.timer.isActive() is False
 
     def test_preview_close_retry_continues_safely_after_timeout(self, dlg):
-        dlg.dataset_generator = MagicMock()
+        dlg.preview_canceller = MagicMock(return_value=True)
+        dlg._active_preview_request = (9, "active-preview")
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = True
         dlg.show()

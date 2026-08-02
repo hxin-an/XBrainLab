@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, cast
+from weakref import WeakKeyDictionary
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,17 +39,21 @@ from PyQt6.QtCore import (
     QEventLoop,
     QObject,
     QPoint,
+    QRect,
     Qt,
     QThread,
     QTimer,
+    pyqtSignal,
     pyqtSlot,
 )
 from PyQt6.QtGui import QColor, QPainter, QPixmap
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QAbstractButton,
+    QAbstractSpinBox,
     QApplication,
     QDockWidget,
+    QLabel,
     QMainWindow,
     QToolButton,
     QWidget,
@@ -79,6 +84,12 @@ from XBrainLab.llm.agent.response_presentation import (
     AssistantResponsePresentation,
 )
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation, AssistantTurnTerminal
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.model_download_lifecycle import (
+    ModelCacheCleanupReason,
+    ModelStatusInspectionRequest,
+    ModelStatusInspectionResult,
+)
 from XBrainLab.ui.chat.message_bubble import (
     MessageBubble,
     MessagePresentationKind,
@@ -89,19 +100,22 @@ from XBrainLab.ui.chat.presentation import (
     ChatTurnPresentation,
     ChatTurnPresentationPhase,
 )
+from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.main_window import MainWindow
 from XBrainLab.ui.panels.training.components import MetricTab
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts/ui/chatpanel-ui-ux-current"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-ui-ux"
 JSON_ARTIFACT = "walkthrough.json"
 README_ARTIFACT = "README.md"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 9
 GENERATOR = "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
 CLAIM_BOUNDARY = (
     "Linux/Qt offscreen rendering and geometry evidence, including a real "
-    "MainWindow/QDockWidget composition. The 1.5x image uses synthetic QPixmap "
-    "device-ratio rendering and does not demonstrate native display scaling. "
+    "MainWindow/QDockWidget composition. Real widget captures preserve the "
+    "device pixel ratio observed by Qt; the separate 1.5x synthetic QPixmap "
+    "probe remains explicitly labeled. Configured offscreen scaling does not "
+    "demonstrate native display scaling. "
     "This gate does not prove Windows launcher acceptance, Windows native DPI, "
     "multi-monitor behavior, local-model correctness, long-session behavior, or "
     "full-product completion."
@@ -110,6 +124,7 @@ CLAIM_BOUNDARY = (
 EXPECTED_SCREEN_FILES = (
     "desktop-conversation-states.png",
     "narrow-conversation-states.png",
+    "narrow-message-content-boundaries.png",
     "desktop-runtime-loading.png",
     "narrow-runtime-unavailable.png",
     "narrow-history-restored-audit.png",
@@ -120,6 +135,9 @@ EXPECTED_SCREEN_FILES = (
     "narrow-setting-change-confirmation.png",
     "narrow-setting-change-confirmation-max-content.png",
     "pixmap-scaled-narrow.png",
+    "dpi-320-message-error-confirmation.png",
+    "dpi-420-message-error-confirmation.png",
+    "dpi-760-message-error-confirmation.png",
     "responsive-320-idle.png",
     "responsive-320-multiline-composer.png",
     "responsive-320-long-clarification-action-520.png",
@@ -134,10 +152,10 @@ EXPECTED_SCREEN_FILES = (
     "responsive-1280-long-clarification-action.png",
     "responsive-1280-processing-stop.png",
     "responsive-1280-runtime-unavailable.png",
-    "main-window-dock-320-action-visible.png",
-    "main-window-dock-320-action-click.png",
-    "main-window-dock-320-stopping.png",
-    "main-window-dock-320-command-running.png",
+    "main-window-dock-420-action-visible.png",
+    "main-window-dock-420-action-click.png",
+    "main-window-dock-420-stopping.png",
+    "main-window-dock-420-command-running.png",
 )
 FIRST_PAINT_SCREEN_FILES = (
     "first-paint-320-standalone.png",
@@ -146,6 +164,10 @@ FIRST_PAINT_SCREEN_FILES = (
 METRIC_TAB_SCREEN_FILES = (
     "training-metric-pre-first-epoch.png",
     "training-metric-first-data.png",
+)
+ASSISTANT_SETTINGS_SCREEN_FILES = (
+    "assistant-settings-collapsed.png",
+    "assistant-settings-advanced.png",
 )
 
 EXPECTED_STATE_LABELS = {
@@ -188,6 +210,7 @@ FINGERPRINT_RELATIVE_PATHS = (
     "XBrainLab/ui/components/assistant_runtime_coordinator.py",
     "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
     "XBrainLab/ui/components/assistant_status_projection.py",
+    "XBrainLab/ui/dialogs/model_settings_dialog.py",
     "XBrainLab/ui/main_window.py",
     "XBrainLab/ui/panels/training/components.py",
     "XBrainLab/ui/product_language.py",
@@ -290,11 +313,83 @@ class _TeardownProbeController(QObject):
         return True
 
 
+class _AssistantSettingsCaptureLifecycle(QObject):
+    """Deterministic, side-effect-free model lifecycle for Settings evidence."""
+
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(object)
+    terminal = pyqtSignal(bool, str)
+    cache_cleanup_finished = pyqtSignal(object)
+    inspection_finished = pyqtSignal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.idle = True
+        self.active_target = None
+        self.inspection_requests: list[ModelStatusInspectionRequest] = []
+
+    def request_model_inspection(
+        self,
+        request: ModelStatusInspectionRequest,
+    ) -> bool:
+        self.inspection_requests.append(request)
+        return True
+
+    def start_download(self, repo_id: str, cache_dir: str) -> bool:
+        del repo_id, cache_dir
+        return False
+
+    def request_cancel(self) -> bool:
+        return True
+
+    def request_shutdown(self) -> bool:
+        return True
+
+    def request_cache_removal(
+        self,
+        repo_id: str,
+        cache_dir: str,
+        *,
+        reason: ModelCacheCleanupReason,
+    ) -> bool:
+        del repo_id, cache_dir, reason
+        return False
+
+    def is_idle(self) -> bool:
+        return True
+
+    def publish_ready_inspection(self) -> None:
+        if not self.inspection_requests:
+            raise RuntimeError("Assistant Settings did not request model inspection.")
+        request = self.inspection_requests[-1]
+        self.inspection_finished.emit(
+            ModelStatusInspectionResult(
+                request=request,
+                installed=True,
+                runtime_ready=True,
+                runtime_message="Local runtime ready.",
+                estimated_download_bytes=3_100_000_000,
+                current_cache_bytes=3_100_000_000,
+                projected_cache_bytes=3_100_000_000,
+                available_disk_bytes=100_000_000_000,
+                preflight_ok=True,
+                preflight_message="Ready",
+                cleanup_candidates=(),
+                resolved_config=None,
+            )
+        )
+
+
+_CAPTURE_CONTROLLERS: WeakKeyDictionary[ChatPanel, ChatController] = WeakKeyDictionary()
+
+
 def _controller(panel: ChatPanel) -> ChatController:
-    existing = getattr(panel, "_chat_controller", None)
-    if isinstance(existing, ChatController):
+    existing = _CAPTURE_CONTROLLERS.get(panel)
+    if existing is not None:
         return existing
     controller = ChatController()
+    _CAPTURE_CONTROLLERS[panel] = controller
     panel.connect_controller(controller)
     return controller
 
@@ -370,6 +465,29 @@ def _prepare_narrow_conversation(panel: ChatPanel) -> None:
         panel,
         "Request cancelled. You can revise it or ask something else.",
         ChatMessagePresentationKind.CANCELLED,
+    )
+
+
+def _prepare_message_content_boundaries(panel: ChatPanel) -> None:
+    panel.set_runtime_state("ready")
+    controller = _controller(panel)
+    controller.add_user_message(
+        "請檢查 EEG workflow 與這個長路徑: "
+        "/mnt/d/workspace_v2/projects/lab/xbrainlab/tests/fixtures/data/"
+        "subject_01_session_02_recording_without_spaces.edf"
+    )
+    _add_response(
+        panel,
+        (
+            "The path and URL remain inside the transcript.\n\n"
+            "https://example.com/reference/"
+            "a_very_long_resource_identifier_without_break_points\n\n"
+            "```python\n"
+            "資料\t欄位\t值\n"
+            'selected_files = ["' + ("subject_session_task_run_" * 10) + '.edf"]\n'
+            "```"
+        ),
+        ChatMessagePresentationKind.ASSISTANT,
     )
 
 
@@ -523,11 +641,32 @@ def _prepare_scaled_pixmap(panel: ChatPanel) -> None:
     )
 
 
-_RESPONSIVE_ACTION_LABEL = (
-    "Review "
-    "subject_01_session_02_task_motor_run_000000000000000000000000000001 "
-    "label alignment before continuing"
-)
+def _prepare_dpi_evidence(panel: ChatPanel) -> None:
+    """Compose the same message, error, and confirmation state at each width."""
+    panel.set_runtime_state("ready")
+    controller = _controller(panel)
+    controller.add_user_message("Review the proposed training setting.")
+    _add_response(
+        panel,
+        "The current batch size may exceed available GPU memory.",
+        ChatMessagePresentationKind.ERROR,
+    )
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={"batch_size": 16},
+        action_label="Apply change",
+        description="Reduce the batch size before starting training.",
+        destructive=False,
+        publication_generation=1,
+        request_id=f"dpi-batch-size-change-{panel.width()}",
+    )
+    panel.show_confirmation_request(
+        request,
+        current_values={"Batch size": "32"},
+    )
+
+
+_RESPONSIVE_ACTION_LABEL = "Review import decision"
 
 
 def _prepare_responsive_idle(panel: ChatPanel) -> None:
@@ -630,6 +769,17 @@ SCENARIOS = (
         1.0,
         _prepare_narrow_conversation,
         required_kinds=("user", "tool_result", "attention", "cancelled"),
+    ),
+    ScenarioSpec(
+        "narrow_message_content_boundaries",
+        "narrow-message-content-boundaries.png",
+        320,
+        760,
+        1.0,
+        _prepare_message_content_boundaries,
+        required_kinds=("user", "assistant"),
+        review_state="message_content_boundaries",
+        scroll_to_bottom=True,
     ),
     ScenarioSpec(
         "desktop_runtime_loading",
@@ -745,8 +895,8 @@ SCENARIOS = (
         expected_confirmation_title="Suggested change",
         expected_confirmation_values=("Parameter 00", "Parameter 13"),
         expected_confirmation_actions=(
-            "Keep current value",
-            "Apply reviewed settings",
+            "Keep current settings",
+            "Apply changes",
         ),
         scroll_to_bottom=True,
     ),
@@ -758,6 +908,48 @@ SCENARIOS = (
         1.5,
         _prepare_scaled_pixmap,
         required_kinds=("user", "tool_result", "attention", "cancelled"),
+    ),
+    ScenarioSpec(
+        "dpi_320_message_error_confirmation",
+        "dpi-320-message-error-confirmation.png",
+        320,
+        720,
+        1.0,
+        _prepare_dpi_evidence,
+        required_kinds=("user", "error"),
+        confirmation_visible=True,
+        expected_confirmation_title="Suggested change",
+        expected_confirmation_values=("Batch size", "32  ->  16"),
+        expected_confirmation_actions=("Keep current value", "Apply change"),
+        review_state="dpi_evidence",
+    ),
+    ScenarioSpec(
+        "dpi_420_message_error_confirmation",
+        "dpi-420-message-error-confirmation.png",
+        420,
+        720,
+        1.0,
+        _prepare_dpi_evidence,
+        required_kinds=("user", "error"),
+        confirmation_visible=True,
+        expected_confirmation_title="Suggested change",
+        expected_confirmation_values=("Batch size", "32  ->  16"),
+        expected_confirmation_actions=("Keep current value", "Apply change"),
+        review_state="dpi_evidence",
+    ),
+    ScenarioSpec(
+        "dpi_760_message_error_confirmation",
+        "dpi-760-message-error-confirmation.png",
+        760,
+        720,
+        1.0,
+        _prepare_dpi_evidence,
+        required_kinds=("user", "error"),
+        confirmation_visible=True,
+        expected_confirmation_title="Suggested change",
+        expected_confirmation_values=("Batch size", "32  ->  16"),
+        expected_confirmation_actions=("Keep current value", "Apply change"),
+        review_state="dpi_evidence",
     ),
     ScenarioSpec(
         "responsive_320_idle",
@@ -972,6 +1164,7 @@ def runtime_import_provenance() -> dict[str, Any]:
         ("MainWindow", MainWindow),
         ("ChatController", ChatController),
         ("AssistantResponsePresentation", AssistantResponsePresentation),
+        ("ModelSettingsDialog", ModelSettingsDialog),
     )
     modules: list[dict[str, Any]] = []
     for symbol_name, symbol in symbols:
@@ -1098,6 +1291,31 @@ def _geometry_inside(record: dict[str, Any] | None) -> bool:
     return bool(record and record.get("inside_panel_on_all_sides"))
 
 
+def _dpi_content_widgets(
+    panel: ChatPanel,
+    spec: ScenarioSpec,
+) -> dict[str, QWidget] | None:
+    """Return the painted regions required by dedicated DPI evidence frames."""
+    if spec.review_state != "dpi_evidence":
+        return None
+    bubbles = _layout_bubbles(panel)
+    user_bubble = next(
+        (bubble for bubble in bubbles if bubble.presentation_kind.value == "user"),
+        None,
+    )
+    error_bubble = next(
+        (bubble for bubble in bubbles if bubble.presentation_kind.value == "error"),
+        None,
+    )
+    if user_bubble is None or error_bubble is None:
+        raise RuntimeError(f"{spec.name}: required DPI message content is missing.")
+    return {
+        "message_content": user_bubble,
+        "warning_or_error": error_bubble,
+        "confirmation_card": panel.confirmation_card_widget,
+    }
+
+
 def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
     horizontal = panel.scroll_area.horizontalScrollBar()
     viewport = panel.scroll_area.viewport()
@@ -1183,9 +1401,30 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         ),
         "request_id": confirmation_card.request_id,
     }
+    prose_scroll_maxima = [
+        scrollbar.maximum()
+        for bubble in bubbles
+        for view in bubble.content_view.text_views
+        if (scrollbar := view.horizontalScrollBar()) is not None
+    ]
+    code_scroll_maxima = [
+        scrollbar.maximum()
+        for bubble in bubbles
+        for code_block in bubble.code_blocks
+        if (scrollbar := code_block.horizontalScrollBar()) is not None
+    ]
     checks = {
         "no_horizontal_scroll": horizontal.maximum() == 0,
+        "prose_has_no_horizontal_scroll": not any(prose_scroll_maxima),
         "message_bubbles_inside_viewport": not clipped,
+        "message_bubble_widths_are_bounded": all(
+            record["width"] <= int(viewport.width() * 0.84) + 2
+            for record in bubble_bounds
+        ),
+        "code_block_scrolls_inside_message": (
+            spec.review_state != "message_content_boundaries"
+            or any(value > 0 for value in code_scroll_maxima)
+        ),
         "visible_buttons_inside_panel": not outside_buttons,
         "visible_button_text_fits": all(button["text_fits"] for button in buttons),
         "visible_text_fits": not text_overflow,
@@ -1274,12 +1513,7 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "name": spec.name,
         "file": spec.filename,
         "logical_size": [panel.width(), panel.height()],
-        "render_pixel_ratio": spec.render_pixel_ratio,
-        "render_scale_evidence": (
-            "synthetic_pixmap_device_ratio"
-            if spec.render_pixel_ratio != 1.0
-            else "logical_widget_render"
-        ),
+        "requested_render_pixel_ratio": spec.render_pixel_ratio,
         "native_display_scaling_observed": False,
         "viewport_width": viewport.width(),
         "horizontal_scroll_max": horizontal.maximum(),
@@ -1291,6 +1525,7 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
             for message in collect_visible_messages(panel)
         ],
         "bubble_bounds": bubble_bounds,
+        "message_horizontal_scroll_maxima": code_scroll_maxima,
         "visible_buttons": buttons,
         "visible_actions": visible_actions,
         "visible_response_actions": response_actions,
@@ -1317,23 +1552,16 @@ def _capture_widget(
     render_pixel_ratio: float,
     required_content_widgets: Mapping[str, QWidget] | None = None,
 ) -> dict[str, Any]:
-    """Render two content-ready frames; this does not observe native display DPI."""
-    pixel_width = round(widget.width() * render_pixel_ratio)
-    pixel_height = round(widget.height() * render_pixel_ratio)
-    required_regions: dict[str, tuple[int, int, int, int]] = {}
-    for name, child in (required_content_widgets or {}).items():
-        origin = child.mapTo(widget, QPoint(0, 0))
-        required_regions[name] = (
-            round(origin.x() * render_pixel_ratio),
-            round(origin.y() * render_pixel_ratio),
-            round(child.width() * render_pixel_ratio),
-            round(child.height() * render_pixel_ratio),
-        )
+    """Capture two content-ready frames while preserving Qt's observed DPR."""
+    synthetic_capture = render_pixel_ratio != 1.0
+    widget_device_pixel_ratio = float(widget.devicePixelRatioF())
 
     app = QApplication.instance()
     consecutive_ready = 0
     content: dict[str, Any] = {}
     render_attempts = 0
+    capture_device_pixel_ratio = 0.0
+    required_regions: dict[str, tuple[int, int, int, int]] = {}
     for _attempt in range(10):
         render_attempts += 1
         widget.ensurePolished()
@@ -1345,12 +1573,26 @@ def _capture_widget(
         if isinstance(app, QApplication):
             app.processEvents()
 
-        pixmap = QPixmap(pixel_width, pixel_height)
-        pixmap.setDevicePixelRatio(render_pixel_ratio)
-        pixmap.fill(QColor("#1e1e1e"))
-        painter = QPainter(pixmap)
-        widget.render(painter)
-        painter.end()
+        if synthetic_capture:
+            pixel_width = _physical_dimension(widget.width(), render_pixel_ratio)
+            pixel_height = _physical_dimension(widget.height(), render_pixel_ratio)
+            pixmap = QPixmap(pixel_width, pixel_height)
+            pixmap.setDevicePixelRatio(render_pixel_ratio)
+            pixmap.fill(QColor("#1e1e1e"))
+            painter = QPainter(pixmap)
+            widget.render(painter)
+            painter.end()
+        else:
+            pixmap = widget.grab()
+        if pixmap.isNull():
+            raise RuntimeError(f"Could not grab {output_path}.")
+        capture_device_pixel_ratio = float(pixmap.devicePixelRatio())
+        required_regions = _scaled_child_regions(
+            widget,
+            required_content_widgets or {},
+            pixel_width=pixmap.width(),
+            pixel_height=pixmap.height(),
+        )
         if not pixmap.save(str(output_path)):
             raise RuntimeError(f"Could not save {output_path}.")
         with Image.open(output_path) as rendered:
@@ -1380,10 +1622,24 @@ def _capture_widget(
     return {
         "pixel_size": pixel_size,
         "image_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+        "capture_method": ("synthetic_qpixmap" if synthetic_capture else "widget_grab"),
+        "widget_device_pixel_ratio": widget_device_pixel_ratio,
+        "capture_device_pixel_ratio": capture_device_pixel_ratio,
+        "render_pixel_ratio": capture_device_pixel_ratio,
+        "render_scale_evidence": (
+            "synthetic_pixmap_device_ratio"
+            if synthetic_capture
+            else "observed_widget_device_pixel_ratio"
+        ),
         "render_attempts": render_attempts,
         "png_color_mode": "RGB",
         "render_content": content,
     }
+
+
+def _physical_dimension(logical_size: int, device_pixel_ratio: float) -> int:
+    """Match Qt's positive rounding for backing-store dimensions."""
+    return max(int(logical_size * device_pixel_ratio + 0.5), 1)
 
 
 def _region_content_evidence(
@@ -1478,6 +1734,11 @@ def _capture_immediate_widget_frame(
     return {
         "pixel_size": pixel_size,
         "image_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+        "capture_method": "widget_grab",
+        "widget_device_pixel_ratio": float(widget.devicePixelRatioF()),
+        "capture_device_pixel_ratio": float(pixmap.devicePixelRatio()),
+        "render_pixel_ratio": float(pixmap.devicePixelRatio()),
+        "render_scale_evidence": "observed_widget_device_pixel_ratio",
         "png_color_mode": "RGB",
         "render_attempts": 1,
         "render_content": image_content_evidence(
@@ -1665,7 +1926,7 @@ def _capture_metric_tab_transition(
         ),
         "empty_state_copy_names_first_epoch": (
             before["empty_state_text"]
-            == "Training metrics will appear after the first epoch."
+            == "Training metrics will appear after the first training epoch."
         ),
         "first_data_empty_state_hidden": after["empty_state_visible"] is False,
         "first_data_canvas_visible": after["canvas_visible"] is True,
@@ -1722,7 +1983,6 @@ def _main_window_screen_record(
     name: str,
     filename: str,
 ) -> dict[str, Any]:
-    _set_dock_panel_width(app, window, dock, panel, 320)
     _settle_layout(app, window)
     dock_evidence = human_evidence.assistant_dock_evidence(dock, panel)
     placeholder = human_evidence.assistant_composer_placeholder_evidence(panel)
@@ -1732,11 +1992,18 @@ def _main_window_screen_record(
         for button in panel.response_actions_widget.findChildren(QToolButton)
         if button.isVisibleTo(panel)
     ]
+    summary_label = window.findChild(QLabel, "DataSummaryEmpty")
+    summary_text_fit = _wrapped_label_text_fit(summary_label)
     checks = {
         "real_main_window_visible": window.isVisible(),
         "real_qdockwidget_visible": dock.isVisible(),
         "dock_is_not_floating": not dock.isFloating(),
-        "assistant_usable_width_is_320": panel.width() == 320,
+        "assistant_uses_product_standard_width": (
+            panel.width() == window.ASSISTANT_DOCK_STANDARD_WIDTH
+        ),
+        "assistant_panel_fills_dock_width": bool(
+            dock_evidence.get("panel_fills_dock_width")
+        ),
         "panel_inside_dock": bool(dock_evidence.get("panel_inside_bounds")),
         "no_horizontal_scroll": (
             int(dock_evidence.get("horizontal_scrollbar_max", -1)) == 0
@@ -1753,6 +2020,9 @@ def _main_window_screen_record(
         ),
         "response_action_inside_panel_on_all_sides": (
             not response_actions or _geometry_inside(panel_geometry["response_action"])
+        ),
+        "visible_data_summary_empty_copy_fits": (
+            summary_text_fit["fits"] if summary_text_fit["visible"] else True
         ),
     }
     evidence: dict[str, Any] = {
@@ -1772,6 +2042,7 @@ def _main_window_screen_record(
         "composer_placeholder": placeholder,
         "visible_response_actions": response_actions,
         "panel_relative_geometry": panel_geometry,
+        "data_summary_empty_copy": summary_text_fit,
     }
     bubbles = _layout_bubbles(panel)
     if not bubbles:
@@ -1795,6 +2066,34 @@ def _main_window_screen_record(
     checks["render_content_ready"] = capture["render_content"]["passed"]
     evidence["failures"] = [key for key, passed in checks.items() if not passed]
     return evidence
+
+
+def _wrapped_label_text_fit(label: QLabel | None) -> dict[str, Any]:
+    """Measure one visible wrapped label instead of trusting its widget bounds."""
+    if label is None or not label.isVisibleTo(label.window()):
+        return {"visible": False, "fits": True}
+    content = label.contentsRect()
+    flags = int(label.alignment())
+    if label.wordWrap():
+        flags |= int(Qt.TextFlag.TextWordWrap)
+    measured = label.fontMetrics().boundingRect(
+        QRect(0, 0, max(1, content.width()), 10_000),
+        flags,
+        label.text(),
+    )
+    return {
+        "visible": True,
+        "word_wrap": label.wordWrap(),
+        "text": label.text(),
+        "available_width": content.width(),
+        "available_height": content.height(),
+        "required_width": measured.width(),
+        "required_height": measured.height(),
+        "fits": bool(
+            measured.width() <= content.width()
+            and measured.height() <= content.height()
+        ),
+    }
 
 
 def _capture_manager_teardown(manager: Any) -> dict[str, Any]:
@@ -1949,7 +2248,14 @@ def _capture_main_window_dock_walkthrough(
     """Drive real dock actions and typed busy states in the composed product shell."""
     window = cast(MainWindow, MainWindow(Study()))
     window.setWindowState(Qt.WindowState.WindowNoState)
-    window.resize(1180, 760)
+    # The product shrinks the dock to its supported 320px floor when the
+    # workflow surface needs the remaining width. This establishes the real
+    # narrow first-paint contract without pinning the ChatPanel itself.
+    window.resize(
+        MainWindow.ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH
+        + MainWindow.ASSISTANT_DOCK_MINIMUM_WIDTH,
+        760,
+    )
     window.show()
     _settle_layout(app, window)
     window.init_agent()
@@ -1958,8 +2264,6 @@ def _capture_main_window_dock_walkthrough(
         raise RuntimeError("MainWindow did not create the real assistant dock.")
     dock = cast(QDockWidget, manager.chat_dock)
     panel = cast(ChatPanel, manager.chat_panel)
-    dock.setFixedWidth(320)
-    panel.setFixedWidth(320)
     first_paint = _observe_first_paint(
         app,
         panel,
@@ -1972,6 +2276,8 @@ def _capture_main_window_dock_walkthrough(
             "assistant_composer": panel.input_widget,
         },
     )
+    assistant_entry_origin = window.ai_btn.mapTo(window, QPoint(0, 0))
+    dock_origin = dock.mapTo(window, QPoint(0, 0))
     first_paint.update(
         {
             "real_main_window": isinstance(window, MainWindow),
@@ -1979,6 +2285,40 @@ def _capture_main_window_dock_walkthrough(
             "dock_visible": dock.isVisible(),
             "dock_floating": dock.isFloating(),
             "panel_is_dock_widget": dock.widget() is panel,
+            "assistant_entry": {
+                "label": window.ai_btn.text(),
+                "width": window.ai_btn.width(),
+                "minimum_width": window.ai_btn.minimumWidth(),
+                "left": assistant_entry_origin.x(),
+                "right": assistant_entry_origin.x() + window.ai_btn.width(),
+                "dock_left": dock_origin.x(),
+                "required_text_width": (
+                    window.ai_btn.fontMetrics().horizontalAdvance(window.ai_btn.text())
+                    + 24
+                ),
+            },
+            "top_bar_layout": {
+                "width": window.top_bar.width(),
+                "compact_navigation_visible": (
+                    window.compact_nav_combo.isVisibleTo(window)
+                ),
+                "compact_navigation_geometry": [
+                    window.compact_nav_combo.x(),
+                    window.compact_nav_combo.y(),
+                    window.compact_nav_combo.width(),
+                    window.compact_nav_combo.height(),
+                ],
+                "flexible_space_hidden": window.top_bar_spacer.isHidden(),
+                "flexible_space_geometry": [
+                    window.top_bar_spacer.x(),
+                    window.top_bar_spacer.y(),
+                    window.top_bar_spacer.width(),
+                    window.top_bar_spacer.height(),
+                ],
+                "visible_navigation_buttons": sum(
+                    button.isVisibleTo(window) for button in window.nav_btns
+                ),
+            },
         }
     )
     first_paint_checks = cast(dict[str, bool], first_paint["checks"])
@@ -1989,11 +2329,30 @@ def _capture_main_window_dock_walkthrough(
             "dock_visible": first_paint["dock_visible"],
             "dock_not_floating": not first_paint["dock_floating"],
             "panel_owned_by_dock": first_paint["panel_is_dock_widget"],
+            "assistant_entry_text_fits": (
+                first_paint["assistant_entry"]["width"]
+                >= first_paint["assistant_entry"]["required_text_width"]
+            ),
+            "assistant_entry_inside_visible_central_area": (
+                first_paint["assistant_entry"]["left"] >= 0
+                and first_paint["assistant_entry"]["right"]
+                <= first_paint["assistant_entry"]["dock_left"]
+            ),
         }
     )
     first_paint["passed"] = all(first_paint_checks.values())
     panel.set_runtime_state("ready")
-    _set_dock_panel_width(app, window, dock, panel, 320)
+    # Return to the normal product shell. MainWindow owns the 420px standard
+    # dock width and the child panel remains responsive to that live geometry.
+    window.resize(1180, 760)
+    _settle_layout(app, window)
+    _set_dock_panel_width(
+        app,
+        window,
+        dock,
+        panel,
+        MainWindow.ASSISTANT_DOCK_STANDARD_WIDTH,
+    )
 
     restored_presentation_id = "restored-open-dataset"
     source_history = ChatController()
@@ -2081,8 +2440,8 @@ def _capture_main_window_dock_walkthrough(
         window,
         dock,
         panel,
-        name="main_window_dock_320_action_visible",
-        filename="main-window-dock-320-action-visible.png",
+        name="main_window_dock_420_action_visible",
+        filename="main-window-dock-420-action-visible.png",
     )
     before_index = window.stack.currentIndex()
     before_widget = window.stack.currentWidget()
@@ -2109,8 +2468,8 @@ def _capture_main_window_dock_walkthrough(
             window,
             dock,
             panel,
-            name="main_window_dock_320_action_click",
-            filename="main-window-dock-320-action-click.png",
+            name="main_window_dock_420_action_click",
+            filename="main-window-dock-420-action-click.png",
         ),
     ]
 
@@ -2162,8 +2521,8 @@ def _capture_main_window_dock_walkthrough(
             window,
             dock,
             panel,
-            name="main_window_dock_320_stopping",
-            filename="main-window-dock-320-stopping.png",
+            name="main_window_dock_420_stopping",
+            filename="main-window-dock-420-stopping.png",
         )
     )
 
@@ -2227,12 +2586,18 @@ def _capture_main_window_dock_walkthrough(
             window,
             dock,
             panel,
-            name="main_window_dock_320_command_running",
-            filename="main-window-dock-320-command-running.png",
+            name="main_window_dock_420_command_running",
+            filename="main-window-dock-420-command-running.png",
         )
     )
 
-    _set_dock_panel_width(app, window, dock, panel, 320)
+    _set_dock_panel_width(
+        app,
+        window,
+        dock,
+        panel,
+        MainWindow.ASSISTANT_DOCK_STANDARD_WIDTH,
+    )
     assistant_viewport = panel.scroll_area.viewport()
     if assistant_viewport is None:
         raise RuntimeError("Real assistant dock viewport is unavailable.")
@@ -2418,12 +2783,195 @@ def _metric_tab_contract_failures(payload: dict[str, Any]) -> list[str]:
     return [] if passed else ["MetricTab empty-state to first-data contract failed"]
 
 
+def _capture_assistant_settings(
+    app: QApplication,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Capture collapsed and advanced Settings from the real product dialog."""
+    config = LLMConfig(device="cpu")
+    config.inference_mode = "local"
+    config.active_mode = "local"
+    config.model_name = LLMConfig.default_local_model_id()
+    config.local_model_enabled = True
+    lifecycle = _AssistantSettingsCaptureLifecycle()
+    dialog = ModelSettingsDialog(
+        config=config,
+        download_lifecycle=lifecycle,
+    )
+    dialog.show()
+    _settle_layout(app, dialog)
+    if not lifecycle.inspection_requests:
+        dialog.check_local_model_status()
+        _settle_layout(app, dialog)
+    lifecycle.publish_ready_inspection()
+    _settle_layout(app, dialog)
+
+    def record(filename: str, *, advanced: bool) -> dict[str, Any]:
+        body_viewport = dialog.settings_body_scroll.viewport()
+        if body_viewport is None:
+            raise RuntimeError("Assistant Settings scroll viewport is unavailable.")
+        visible_segment_buttons = [
+            button
+            for control in (
+                dialog.response_style_control,
+                dialog.response_length_control,
+            )
+            for button in control.findChildren(QAbstractButton)
+            if button.isVisibleTo(dialog)
+        ]
+        segment_text_fits = all(
+            button.fontMetrics().horizontalAdvance(button.text()) + 20
+            <= button.contentsRect().width() + 2
+            for button in visible_segment_buttons
+        )
+        footer_inside = all(
+            human_evidence._widget_inside(dialog, button)
+            for button in (dialog.btn_cancel, dialog.btn_activate)
+        )
+        fields_inside_viewport = True
+        if advanced:
+            fields_inside_viewport = all(
+                human_evidence._widget_inside(body_viewport, field)
+                for field in (
+                    dialog.temperature_spin,
+                    dialog.top_p_spin,
+                    dialog.max_tokens_spin,
+                )
+            )
+        checks = {
+            "dialog_title_complete": dialog.windowTitle() == "Assistant Settings",
+            "heading_complete": dialog.heading_label.text() == "Assistant Settings",
+            "model_status_ready": (
+                dialog.local_status_label.text() == "Model: Installed"
+                and dialog.local_runtime_label.text() == "Environment check: Ready"
+            ),
+            "primary_controls_selected": (
+                dialog.response_style_control.selected_key() == "balanced"
+                and dialog.response_length_control.selected_key() == "standard"
+            ),
+            "segment_text_fits": segment_text_fits,
+            "horizontal_scroll_absent": (
+                (horizontal_scroll := dialog.settings_body_scroll.horizontalScrollBar())
+                is not None
+                and horizontal_scroll.maximum() == 0
+            ),
+            "footer_inside_dialog": footer_inside,
+            "buttons_text_only": (
+                dialog.btn_activate.icon().isNull()
+                and dialog.btn_cancel.icon().isNull()
+            ),
+            "save_is_primary_and_enabled": (
+                dialog.btn_activate.objectName() == "AssistantPrimaryButton"
+                and dialog.btn_activate.isEnabled()
+            ),
+            "advanced_visibility_matches": (
+                dialog.advanced_content.isVisibleTo(dialog) is advanced
+            ),
+            "advanced_fields_inside_viewport": fields_inside_viewport,
+            "spinbox_strips_absent": (
+                not advanced
+                or all(
+                    field.buttonSymbols() is QAbstractSpinBox.ButtonSymbols.NoButtons
+                    for field in (
+                        dialog.temperature_spin,
+                        dialog.top_p_spin,
+                        dialog.max_tokens_spin,
+                    )
+                )
+            ),
+        }
+        capture = _capture_widget(
+            dialog,
+            output_dir / filename,
+            render_pixel_ratio=1.0,
+            required_content_widgets={
+                "footer": dialog.footer_widget,
+                **(
+                    {"advanced_fields": dialog.max_tokens_spin}
+                    if advanced
+                    else {
+                        "heading": dialog.heading_label,
+                        "model": dialog.local_model_combo,
+                        "response_style": dialog.response_style_control,
+                    }
+                ),
+            },
+        )
+        checks["render_content_ready"] = capture["render_content"]["passed"]
+        return {
+            "file": filename,
+            "state": "advanced" if advanced else "collapsed",
+            "logical_size": [dialog.width(), dialog.height()],
+            "checks": checks,
+            "failures": [name for name, passed in checks.items() if not passed],
+            **capture,
+        }
+
+    collapsed = record(ASSISTANT_SETTINGS_SCREEN_FILES[0], advanced=False)
+    dialog.advanced_toggle.setChecked(True)
+    _settle_layout(app, dialog)
+    vertical_scroll = dialog.settings_body_scroll.verticalScrollBar()
+    if vertical_scroll is not None:
+        vertical_scroll.setValue(vertical_scroll.maximum())
+    _settle_layout(app, dialog)
+    advanced = record(ASSISTANT_SETTINGS_SCREEN_FILES[1], advanced=True)
+    screens = [collapsed, advanced]
+    result = {
+        "screens": screens,
+        "passed": all(
+            all(record["checks"].values()) and not record["failures"]
+            for record in screens
+        ),
+    }
+    dialog.close()
+    dialog.deleteLater()
+    app.processEvents()
+    return result
+
+
+def _assistant_settings_contract_failures(payload: dict[str, Any]) -> list[str]:
+    settings = payload.get("assistant_settings")
+    if not isinstance(settings, dict):
+        return ["Assistant Settings presentation evidence is missing"]
+    screens = settings.get("screens")
+    if (
+        not isinstance(screens, list)
+        or tuple(screen.get("file") for screen in screens if isinstance(screen, dict))
+        != ASSISTANT_SETTINGS_SCREEN_FILES
+    ):
+        return ["Assistant Settings screenshot set is incomplete or out of order"]
+    failures: list[str] = []
+    artifact_directory = Path(str(payload.get("artifact_directory") or ""))
+    for record in screens:
+        name = str(record.get("state") or record.get("file") or "settings")
+        checks = record.get("checks")
+        if not isinstance(checks, dict):
+            failures.append(f"Assistant Settings {name}: checks are missing")
+            continue
+        failures.extend(
+            f"Assistant Settings {name}: {check}"
+            for check, passed in checks.items()
+            if passed is not True
+        )
+        screenshot_path = artifact_directory / str(record.get("file") or "")
+        if not screenshot_path.is_file():
+            failures.append(f"Assistant Settings {name}: screenshot is missing")
+            continue
+        observed_hash = hashlib.sha256(screenshot_path.read_bytes()).hexdigest()
+        if record.get("image_sha256") != observed_hash:
+            failures.append(f"Assistant Settings {name}: screenshot hash is stale")
+    if settings.get("passed") is not True:
+        failures.append("Assistant Settings presentation contract failed")
+    return failures
+
+
 def validate_payload(payload: dict[str, Any]) -> list[str]:
     """Return every evidence contract failure."""
     failures: list[str] = []
     failures.extend(_first_paint_contract_failures(payload))
     failures.extend(_teardown_contract_failures(payload))
     failures.extend(_metric_tab_contract_failures(payload))
+    failures.extend(_assistant_settings_contract_failures(payload))
     screens = payload.get("screens")
     if not isinstance(screens, list):
         return ["screens payload is missing"]
@@ -2432,6 +2980,10 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
         failures.append("artifact directory is missing")
     if tuple(screen.get("file") for screen in screens) != EXPECTED_SCREEN_FILES:
         failures.append("required screenshot set is incomplete or out of order")
+    try:
+        observed_dpr = float(payload.get("observed_screen_device_pixel_ratio", 0.0))
+    except (TypeError, ValueError):
+        observed_dpr = 0.0
     observed_labels: dict[str, str] = {}
     for screen in screens:
         name = str(screen.get("name") or screen.get("file") or "unknown")
@@ -2450,18 +3002,39 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
         pixel_size = screen.get("pixel_size")
         logical_size = screen.get("logical_size")
         ratio = screen.get("render_pixel_ratio")
+        requested_ratio = screen.get("requested_render_pixel_ratio", 1.0)
+        capture_ratio = screen.get("capture_device_pixel_ratio")
+        capture_method = screen.get("capture_method")
         if (
             not isinstance(pixel_size, list)
             or not isinstance(logical_size, list)
             or not isinstance(ratio, (float, int))
             or pixel_size
-            != [round(int(value) * float(ratio)) for value in logical_size]
+            != [_physical_dimension(int(value), float(ratio)) for value in logical_size]
         ):
             failures.append(f"{name}: rendered pixel size does not match render ratio")
+        if (
+            not isinstance(capture_ratio, (float, int))
+            or abs(float(capture_ratio) - float(ratio or 0.0)) > 0.001
+        ):
+            failures.append(f"{name}: capture DPR metadata is inconsistent")
         if screen.get("native_display_scaling_observed") is not False:
             failures.append(f"{name}: native display scaling claim must remain false")
-        if float(ratio or 0) != 1.0 and screen.get("render_scale_evidence") != (
-            "synthetic_pixmap_device_ratio"
+        if requested_ratio == 1.0:
+            if capture_method != "widget_grab":
+                failures.append(
+                    f"{name}: real widget capture did not use widget.grab()"
+                )
+            if abs(float(capture_ratio or 0.0) - observed_dpr) > 0.02:
+                failures.append(f"{name}: capture DPR does not match observed Qt DPR")
+            if screen.get("render_scale_evidence") != (
+                "observed_widget_device_pixel_ratio"
+            ):
+                failures.append(f"{name}: observed-DPR capture is mislabeled")
+        elif (
+            capture_method != "synthetic_qpixmap"
+            or screen.get("render_scale_evidence") != "synthetic_pixmap_device_ratio"
+            or abs(float(capture_ratio or 0.0) - float(requested_ratio or 0.0)) > 0.001
         ):
             failures.append(f"{name}: scaled pixmap evidence is mislabeled")
         render_content = screen.get("render_content")
@@ -2514,8 +3087,10 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
     if not isinstance(dock, dict):
         failures.append("real MainWindow/QDockWidget walkthrough is missing")
     else:
-        if dock.get("assistant_usable_width") != 320:
-            failures.append("real assistant dock usable width is not 320px")
+        if dock.get("assistant_usable_width") != (
+            MainWindow.ASSISTANT_DOCK_STANDARD_WIDTH
+        ):
+            failures.append("real assistant dock does not use the standard width")
         if not dock.get("action_click", {}).get("clicked"):
             failures.append("real response action click was not observed")
         states = dock.get("states", {})
@@ -2620,6 +3195,7 @@ def capture_walkthrough(
             panel,
             output_dir / spec.filename,
             render_pixel_ratio=spec.render_pixel_ratio,
+            required_content_widgets=_dpi_content_widgets(panel, spec),
         )
         evidence.update(capture)
         send_contrast = human_evidence.icon_only_control_contrast_evidence(
@@ -2647,6 +3223,7 @@ def capture_walkthrough(
         teardown,
     ) = _capture_main_window_dock_walkthrough(app, output_dir)
     screens.extend(dock_screens)
+    assistant_settings = _capture_assistant_settings(app, output_dir)
     source_files_at_completion = source_file_manifest()
     fingerprint_at_completion = source_fingerprint(source_files_at_completion)
     first_paint_contract = {
@@ -2669,7 +3246,7 @@ def capture_walkthrough(
         "generator": GENERATOR,
         "artifact_directory": str(output_dir.resolve()),
         "replay_command": (
-            'PYTHONPATH="$PWD" QT_QPA_PLATFORM=offscreen poetry run python '
+            'PYTHONPATH="$PWD" QT_QPA_PLATFORM=offscreen poetry run -- python '
             "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
         ),
         "platform": QApplication.platformName(),
@@ -2688,10 +3265,13 @@ def capture_walkthrough(
             ),
         },
         "runtime_import_provenance": runtime_import_provenance(),
-        "render_scale_evidence": "synthetic_pixmap_device_ratio",
+        "render_scale_evidence": (
+            "observed_widget_dpr_with_labeled_synthetic_pixmap_probe"
+        ),
         "render_readiness": {
             "required_consecutive_content_frames": 2,
             "normalized_png_color_mode": "RGB",
+            "real_widget_capture_method": "QWidget.grab",
             "full_frame_content_check": True,
             "main_window_required_regions": [
                 "main_shell",
@@ -2708,6 +3288,7 @@ def capture_walkthrough(
         "main_window_dock_walkthrough": dock_walkthrough,
         "teardown": teardown,
         "metric_tab_transition": metric_tab_transition,
+        "assistant_settings": assistant_settings,
         "screens": screens,
     }
     failures = validate_payload(payload)
@@ -2787,6 +3368,19 @@ def render_readme(payload: dict[str, Any]) -> str:
             f"- first-data frame: "
             f"`{payload['metric_tab_transition']['first_data']['file']}`",
             "",
+            "## Assistant Settings",
+            "",
+            "The real local-only Settings dialog is captured in collapsed and "
+            "advanced states. The gate checks model/runtime status, selected presets, "
+            "text-only footer actions, bounded controls, spinbox presentation, and "
+            "horizontal-overflow absence without reading or downloading model files.",
+            "",
+            f"- settings contract passed: `{payload['assistant_settings']['passed']}`",
+            f"- collapsed frame: "
+            f"`{payload['assistant_settings']['screens'][0]['file']}`",
+            f"- advanced frame: "
+            f"`{payload['assistant_settings']['screens'][1]['file']}`",
+            "",
             "## Teardown",
             "",
             "The composed walkthrough binds a dedicated `AssistantCommandThread`, "
@@ -2820,7 +3414,7 @@ def render_readme(payload: dict[str, Any]) -> str:
             "## Render Readiness",
             "",
             "Every saved frame must pass the pixel-content gate twice consecutively. "
-            "QPixmap output is normalized to a standard RGB PNG before inspection. "
+            "Captured output is normalized to a standard RGB PNG before inspection. "
             "The composed MainWindow frames additionally require painted main-shell, "
             "assistant transcript, and primary-action regions; visible activity cards "
             "are checked separately. Restored actions must remain inert, and the live "
@@ -2829,10 +3423,13 @@ def render_readme(payload: dict[str, Any]) -> str:
             "",
             "## Render Scaling",
             "",
-            "`pixmap-scaled-narrow.png` uses synthetic pixmap scaling via "
-            "`QPixmap.setDevicePixelRatio(1.5)`. It checks scaled rendering output "
-            "dimensions only. It does not demonstrate native display scaling, Windows "
-            "DPI behavior, monitor transitions, or operating-system compositor behavior.",
+            "Real widget frames use `QWidget.grab()` and retain the device pixel ratio "
+            "observed by Qt in their physical PNG dimensions. The dedicated 320 / "
+            "420 / 760 frames include message content, an error, and a confirmation "
+            "card. `pixmap-scaled-narrow.png` remains a separately labeled synthetic "
+            "pixmap probe via `QPixmap.setDevicePixelRatio(1.5)`. Configured Linux "
+            "offscreen scaling does not demonstrate Windows native DPI behavior, "
+            "monitor transitions, or operating-system compositor behavior.",
             "",
             "## Claim Boundary",
             "",

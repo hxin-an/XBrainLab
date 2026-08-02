@@ -29,14 +29,23 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitContext,
+    DatasetSplitPreviewPublication,
+    DatasetSplitPreviewRequest,
+    DatasetSplitPreviewRow,
+    DatasetSplitSpecification,
+)
 from XBrainLab.backend.dataset import (
-    DatasetGenerator,
     DataSplitter,
     SplitByType,
     SplitUnit,
     ValSplitByType,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.public_diagnostics import (
+    public_exception_message,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.styles.theme import Theme
@@ -53,9 +62,17 @@ PREVIEW_STATUS_RUNNING = "running"
 PREVIEW_STATUS_SUCCEEDED = "succeeded"
 PREVIEW_STATUS_FAILED = "failed"
 PREVIEW_STATUS_CANCELLED = "cancelled"
+_PREVIEW_FAILURE_MESSAGE = (
+    "The split preview failed. Adjust the split settings and try again."
+)
 _CHEVRON_DOWN_ICON = (
     Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
 ).as_posix()
+
+
+def _public_split_failure(error: BaseException, *, fallback: str) -> str:
+    return public_exception_message(error, fallback=fallback)
+
 
 _PREVIEW_DIALOG_STYLE = f"""
     QDialog {{
@@ -140,7 +157,7 @@ _RESULT_TREE_STYLE = f"""
         min-height: 26px;
     }}
     QTreeWidget::item:selected {{
-        background-color: {Theme.METRICS_TABLE_SELECTION};
+        background-color: {Theme.TABLE_SELECTION};
         color: {Theme.TEXT_PRIMARY};
     }}
     QHeaderView::section {{
@@ -231,10 +248,8 @@ class DataSplittingPreviewDialog(BaseDialog):
     and testing sets.
 
     Attributes:
-        epoch_data: The loaded epoch data to split.
+        split_context: Detached subject/session/label/trial summary.
         config: DataSplittingConfig defining the split strategy.
-        datasets: List of generated Dataset objects.
-        dataset_generator: DatasetGenerator managing the split process.
         preview_worker: Background thread for dataset generation.
         tree: QTreeWidget displaying dataset split information.
         val_splitter_list: List of DataSplitterHolder for validation splits.
@@ -246,24 +261,38 @@ class DataSplittingPreviewDialog(BaseDialog):
         self,
         parent,
         title,
-        epoch_data,
-        config,
         *,
+        split_context: DatasetSplitContext | None,
+        publication_generation: int | None,
+        config: Any,
+        preview_provider: Any,
+        preview_canceller: Any,
         initial_values: dict[str, str] | None = None,
     ):
-        if epoch_data is None:
-            raise ValueError("Create epochs before previewing data splitting.")
-        self.epoch_data = epoch_data
+        if split_context is None or not split_context.epoch_available:
+            raise ValueError("Create EEG epochs before previewing data splitting.")
+        if (
+            isinstance(publication_generation, bool)
+            or not isinstance(publication_generation, int)
+            or publication_generation < 1
+        ):
+            raise ValueError("A current application publication is required.")
+        if not callable(preview_provider) or not callable(preview_canceller):
+            raise TypeError("Dataset split preview callbacks must be callable.")
+        self.split_context = split_context
+        self.publication_generation = publication_generation
         self.config = config
+        self.preview_provider = preview_provider
+        self.preview_canceller = preview_canceller
         self.initial_values = dict(initial_values or {})
-        self.datasets = []
-        self._datasets_lock = threading.Lock()
         self._preview_state_lock = threading.Lock()
         self._preview_generation_id = 0
         self._preview_status = PREVIEW_STATUS_IDLE
         self._preview_error = ""
-        self.dataset_generator: DatasetGenerator | None = None
-        self.preview_worker = None
+        self._preview_rows: tuple[DatasetSplitPreviewRow, ...] = ()
+        self._active_preview_request: tuple[int, str] | None = None
+        self._cancel_requested_generations: set[int] = set()
+        self.preview_worker: threading.Thread | None = None
         self.preview_debounce_timer: QTimer | None = None
         self._preview_close_retry_pending = False
         self._preview_close_started_at: float | None = None
@@ -271,13 +300,13 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._preview_close_warning_shown = False
 
         # UI
-        self.tree = None
-        self.btn_info = None
-        self.btn_confirm = None
-        self.val_widgets = []
-        self.test_widgets = []
-        self.val_splitter_list = []
-        self.test_splitter_list = []
+        self.tree: QTreeWidget | None = None
+        self.btn_info: QLabel | None = None
+        self.btn_confirm: QPushButton | None = None
+        self.val_widgets: list[tuple[QComboBox, QLineEdit]] = []
+        self.test_widgets: list[tuple[QComboBox, QLineEdit]] = []
+        self.val_splitter_list: list[DataSplitter] = []
+        self.test_splitter_list: list[DataSplitter] = []
 
         # We need to call super init LAST because init_ui relies on members
         # But BaseDialog calls init_ui in init.
@@ -325,7 +354,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         results_layout.addWidget(results_title)
         self.tree = QTreeWidget()
         self.tree.setFrameShape(QFrame.Shape.NoFrame)
-        self.tree.setHeaderLabels(["Dataset", "Train", "Validation", "Test"])
+        self.tree.setHeaderLabels(["Split", "Train", "Validation", "Test"])
         self.tree.setRootIsDecorated(False)
         self.tree.setAlternatingRowColors(True)
         self.tree.setUniformRowHeights(True)
@@ -363,10 +392,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         info_layout.setHorizontalSpacing(12)
         info_layout.setVerticalSpacing(8)
         summary_rows = [
-            ("Subjects", str(len(self.epoch_data.subject_map))),
-            ("Sessions", str(len(self.epoch_data.session_map))),
-            ("Labels", str(len(self.epoch_data.label_map))),
-            ("Trials", str(len(self.epoch_data.data))),
+            ("Subjects", str(self.split_context.subject_count)),
+            ("Sessions", str(self.split_context.session_count)),
+            ("Labels", str(self.split_context.label_count)),
+            ("Trials", str(self.split_context.trial_count)),
             ("Training", self.config.train_type.value),
         ]
         for row, (name, value) in enumerate(summary_rows):
@@ -562,28 +591,12 @@ class DataSplittingPreviewDialog(BaseDialog):
     def _split_target_count(self, splitter: DataSplitter) -> int:
         split_type = getattr(splitter, "split_type", None)
         if split_type in {SplitByType.SUBJECT, SplitByType.SUBJECT_IND}:
-            return len(getattr(self.epoch_data, "subject_map", {}) or {})
+            return self.split_context.subject_count
         if split_type in {SplitByType.SESSION, SplitByType.SESSION_IND}:
-            return len(getattr(self.epoch_data, "session_map", {}) or {})
+            return self.split_context.session_count
         if split_type in {SplitByType.TRIAL, SplitByType.TRIAL_IND}:
-            get_data_length = getattr(self.epoch_data, "get_data_length", None)
-            if callable(get_data_length):
-                try:
-                    value = get_data_length()
-                except Exception:
-                    return self._epoch_data_length()
-                if isinstance(value, (int, float, str)):
-                    return int(value)
-                return self._epoch_data_length()
-            return self._epoch_data_length()
+            return self.split_context.trial_count
         return 0
-
-    def _epoch_data_length(self) -> int:
-        data = getattr(self.epoch_data, "data", None)
-        try:
-            return len(data) if data is not None else 0
-        except TypeError:
-            return 0
 
     def on_split_type_change(self, splitter, text):
         """Handle changes to the split unit combo box.
@@ -624,20 +637,28 @@ class DataSplittingPreviewDialog(BaseDialog):
             SplitByType.SESSION_IND,
             ValSplitByType.SESSION,
         ]:
-            choices = list(self.epoch_data.get_session_map().items())
+            choices = [
+                (choice.value, choice.label)
+                for choice in self.split_context.session_choices
+            ]
         elif splitter.split_type in [
             SplitByType.TRIAL,
             SplitByType.TRIAL_IND,
             ValSplitByType.TRIAL,
         ]:
-            choices = list(range(self.epoch_data.get_data_length()))
-            choices = [(c, c) for c in choices]
+            choices = [
+                (trial_index, str(trial_index))
+                for trial_index in range(self.split_context.trial_count)
+            ]
         elif splitter.split_type in [
             SplitByType.SUBJECT,
             SplitByType.SUBJECT_IND,
             ValSplitByType.SUBJECT,
         ]:
-            choices = list(self.epoch_data.get_subject_map().items())
+            choices = [
+                (choice.value, choice.label)
+                for choice in self.split_context.subject_choices
+            ]
 
         dlg = ManualSplitDialog(self, choices)
         if dlg.exec():
@@ -655,14 +676,13 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self.test_widgets[idx][1].setText(value)
 
     def preview(self):
-        """Start background dataset generation and update the tree view."""
+        """Request a detached preview from the application-owned generator."""
         if self.preview_debounce_timer:
             self.preview_debounce_timer.stop()
         if not self._request_preview_worker_stop():
             if self.preview_debounce_timer:
                 self.preview_debounce_timer.start(PREVIEW_DEBOUNCE_MS)
             return
-        self.datasets = []
         if self.tree:
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
@@ -670,22 +690,27 @@ class DataSplittingPreviewDialog(BaseDialog):
             item.setText(0, "Calculating")
             self._resize_tree_to_rows()
 
-        # Prepare splitters
-        # Assuming splitter has to_thread (which Holder does)
-        for splitter in self.test_splitter_list:
-            if hasattr(splitter, "to_thread"):
-                splitter.to_thread()
-        for splitter in self.val_splitter_list:
-            if hasattr(splitter, "to_thread"):
-                splitter.to_thread()
-
-        self.dataset_generator = DatasetGenerator(
-            self.epoch_data,
-            config=self.config,
-            datasets=self.datasets,
-        )
         self._preview_generation_id += 1
         generation_id = self._preview_generation_id
+        try:
+            specification = DatasetSplitSpecification.from_payload(
+                self._split_config_payload()
+            )
+            request = DatasetSplitPreviewRequest(
+                request_id=f"split-preview-{id(self):x}-{generation_id}",
+                publication_generation=self.publication_generation,
+                specification=specification,
+            )
+        except (TypeError, ValueError) as exc:
+            self._set_preview_state(
+                generation_id,
+                PREVIEW_STATUS_FAILED,
+                _public_split_failure(exc, fallback=_PREVIEW_FAILURE_MESSAGE),
+            )
+            return
+        with self._preview_state_lock:
+            self._active_preview_request = (generation_id, request.request_id)
+            self._cancel_requested_generations.discard(generation_id)
         self._set_preview_state(
             generation_id,
             PREVIEW_STATUS_RUNNING,
@@ -694,7 +719,7 @@ class DataSplittingPreviewDialog(BaseDialog):
             self.btn_confirm.setEnabled(False)
         self.preview_worker = threading.Thread(
             target=self._run_preview_generation,
-            args=(generation_id, self.dataset_generator),
+            args=(generation_id, request),
             name=f"xbrainlab-split-preview-{generation_id}",
         )
         self.preview_worker.start()
@@ -702,37 +727,61 @@ class DataSplittingPreviewDialog(BaseDialog):
     def _run_preview_generation(
         self,
         generation_id: int,
-        generator: DatasetGenerator,
+        request: DatasetSplitPreviewRequest,
     ) -> None:
         """Capture completion so the GUI never infers success from thread exit."""
         try:
-            generator.generate()
+            publication = self.preview_provider(request)
+            publication = self._validated_preview_publication(publication, request)
         except KeyboardInterrupt:
             self._set_preview_state(
                 generation_id,
                 PREVIEW_STATUS_CANCELLED,
             )
         except Exception as exc:
-            generator.preview_failed = True
-            logger.exception("Data-splitting preview generation failed")
-            self._set_preview_state(
-                generation_id,
-                PREVIEW_STATUS_FAILED,
-                str(exc) or exc.__class__.__name__,
-            )
+            if self._cancel_was_requested(generation_id):
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_CANCELLED,
+                )
+            else:
+                logger.exception("Data-splitting preview generation failed")
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_FAILED,
+                    _public_split_failure(exc, fallback=_PREVIEW_FAILURE_MESSAGE),
+                )
         else:
-            status = (
-                PREVIEW_STATUS_CANCELLED
-                if generator.interrupted
-                else PREVIEW_STATUS_SUCCEEDED
-            )
-            self._set_preview_state(generation_id, status)
+            if self._cancel_was_requested(generation_id):
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_CANCELLED,
+                )
+            else:
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_SUCCEEDED,
+                    rows=publication.rows,
+                )
+
+    @staticmethod
+    def _validated_preview_publication(
+        publication: Any,
+        request: DatasetSplitPreviewRequest,
+    ) -> DatasetSplitPreviewPublication:
+        if not isinstance(publication, DatasetSplitPreviewPublication):
+            raise TypeError("Dataset split preview returned an invalid publication.")
+        if publication.request != request:
+            raise ValueError("Dataset split preview returned a mismatched request.")
+        return publication
 
     def _set_preview_state(
         self,
         generation_id: int,
         status: str,
         error: str = "",
+        *,
+        rows: tuple[DatasetSplitPreviewRow, ...] = (),
     ) -> None:
         """Publish one generation result without letting stale workers overwrite it."""
         with self._preview_state_lock:
@@ -740,18 +789,30 @@ class DataSplittingPreviewDialog(BaseDialog):
                 return
             self._preview_status = status
             self._preview_error = error
+            self._preview_rows = tuple(rows)
+            if status != PREVIEW_STATUS_RUNNING:
+                active = self._active_preview_request
+                if active is not None and active[0] == generation_id:
+                    self._active_preview_request = None
+                self._cancel_requested_generations.discard(generation_id)
 
-    def _preview_state(self) -> tuple[str, str]:
-        """Return the current preview status and user-safe error text."""
+    def _preview_state(
+        self,
+    ) -> tuple[str, str, tuple[DatasetSplitPreviewRow, ...]]:
+        """Return current status, safe error text, and detached rows."""
         with self._preview_state_lock:
-            return self._preview_status, self._preview_error
+            return self._preview_status, self._preview_error, self._preview_rows
+
+    def _cancel_was_requested(self, generation_id: int) -> bool:
+        with self._preview_state_lock:
+            return generation_id in self._cancel_requested_generations
 
     def update_table(self):
-        """Poll the dataset generator and update the tree view with results."""
+        """Render detached preview rows without touching Dataset objects."""
         if not self.tree:
             return
 
-        status, error = self._preview_state()
+        status, error, rows = self._preview_state()
         if status == PREVIEW_STATUS_FAILED:
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
@@ -770,36 +831,37 @@ class DataSplittingPreviewDialog(BaseDialog):
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
             self._resize_tree_to_rows()
-        else:
-            with self._datasets_lock:
-                snapshot = list(self.datasets)
-            if len(snapshot) > 0:
-                item0 = self.tree.topLevelItem(0)
-                if (
-                    self.tree.topLevelItemCount() == 1
-                    and item0
-                    and item0.text(0) == "Calculating"
-                ):
-                    self.tree.clear()
+        elif rows:
+            item0 = self.tree.topLevelItem(0)
+            if (
+                self.tree.topLevelItemCount() == 1
+                and item0
+                and item0.text(0) == "Calculating"
+            ):
+                self.tree.clear()
 
-                current_count = self.tree.topLevelItemCount()
-                if current_count < len(snapshot):
-                    for i in range(current_count, len(snapshot)):
-                        dataset = snapshot[i]
-                        item = QTreeWidgetItem(self.tree)
-                        item.setSizeHint(0, QSize(0, 28))
-                        info = dataset.get_treeview_row_info()
-                        visible_info = info[1:] if len(info) >= 5 else info
-                        for col, val in enumerate(visible_info):
-                            item.setText(col, str(val))
-                self._clear_tree_current_item()
-                self._resize_tree_to_rows()
-                if (
-                    status == PREVIEW_STATUS_SUCCEEDED
-                    and self.btn_confirm is not None
-                    and self._preview_pending_close_action is None
-                ):
-                    self.btn_confirm.setEnabled(True)
+            current_count = self.tree.topLevelItemCount()
+            if current_count < len(rows):
+                for i in range(current_count, len(rows)):
+                    row = rows[i]
+                    item = QTreeWidgetItem(self.tree)
+                    item.setSizeHint(0, QSize(0, 28))
+                    visible_info = (
+                        row.name,
+                        row.train_count,
+                        row.validation_count,
+                        row.test_count,
+                    )
+                    for col, val in enumerate(visible_info):
+                        item.setText(col, str(val))
+            self._clear_tree_current_item()
+            self._resize_tree_to_rows()
+            if (
+                status == PREVIEW_STATUS_SUCCEEDED
+                and self.btn_confirm is not None
+                and self._preview_pending_close_action is None
+            ):
+                self.btn_confirm.setEnabled(True)
 
     def _clear_tree_current_item(self) -> None:
         if self.tree is None:
@@ -834,8 +896,8 @@ class DataSplittingPreviewDialog(BaseDialog):
             self.fit_to_content(minimum_width=920)
 
     def confirm(self):
-        """Finalize dataset generation and accept the dialog."""
-        status, error = self._preview_state()
+        """Accept a successful preview; the command later owns final generation."""
+        status, error, rows = self._preview_state()
         if status == PREVIEW_STATUS_RUNNING or (
             self.preview_worker and self.preview_worker.is_alive()
         ):
@@ -847,7 +909,7 @@ class DataSplittingPreviewDialog(BaseDialog):
             return
         if status in {PREVIEW_STATUS_FAILED, PREVIEW_STATUS_CANCELLED}:
             message = error or (
-                "The split preview failed. Adjust the split settings and try again."
+                _PREVIEW_FAILURE_MESSAGE
                 if status == PREVIEW_STATUS_FAILED
                 else (
                     "The split preview was cancelled. Adjust the split settings "
@@ -861,18 +923,16 @@ class DataSplittingPreviewDialog(BaseDialog):
             )
             return
 
-        try:
-            if self.dataset_generator:
-                self.dataset_generator.prepare_result()
-                self._stop_preview_ui_timers()
-                self._clear_preview_close_state()
-                super().accept()
-        except Exception as e:
+        if status != PREVIEW_STATUS_SUCCEEDED or not rows:
             self._show_message_box(
                 QMessageBox.Icon.Critical,
                 "Data splitting failed",
-                str(e),
+                _PREVIEW_FAILURE_MESSAGE,
             )
+            return
+        self._stop_preview_ui_timers()
+        self._clear_preview_close_state()
+        super().accept()
 
     def _show_message_box(
         self,
@@ -920,10 +980,22 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def _request_preview_worker_stop(self) -> bool:
         """Interrupt active preview work without blocking the Qt event loop."""
-        if self.dataset_generator:
-            self.dataset_generator.set_interrupt()
         worker = self.preview_worker
-        return worker is None or not worker.is_alive()
+        if worker is None or not worker.is_alive():
+            return True
+        with self._preview_state_lock:
+            active = self._active_preview_request
+            if active is not None:
+                generation_id, request_id = active
+                self._cancel_requested_generations.add(generation_id)
+            else:
+                request_id = None
+        if request_id is not None:
+            try:
+                self.preview_canceller(request_id)
+            except Exception:
+                logger.exception("Could not cancel data-splitting preview")
+        return False
 
     def _close_when_preview_worker_stops(self) -> None:
         """Retry dialog close after the Python preview thread releases ownership."""
@@ -1002,10 +1074,11 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         Returns:
             A serializable split configuration accepted by GenerateDatasetCommand,
-            or None when the preview did not produce a generator.
+            or None when no successful detached preview exists.
 
         """
-        if self.dataset_generator is None:
+        status, _error, rows = self._preview_state()
+        if status != PREVIEW_STATUS_SUCCEEDED or not rows:
             return None
         return self._split_config_payload()
 

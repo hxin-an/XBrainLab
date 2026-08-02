@@ -28,6 +28,7 @@ from XBrainLab.backend.training.option import TrainingEvaluation
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
 from XBrainLab.backend.training.trainer import Trainer
 from XBrainLab.backend.training.training_plan import (
+    FinalEvaluationUnavailableError,
     ModelHolder,
     TrainingOption,
     TrainingPlanHolder,
@@ -57,6 +58,21 @@ BS = 2
 def _prepared_saliency_record() -> Mock:
     """Return a contract-correct evaluator result for orchestration tests."""
     return Mock(spec=EvalRecord)
+
+
+def _bind_selected_evaluation_checkpoint(base_holder, record) -> None:
+    """Make a synthetic finished record satisfy the real checkpoint contract."""
+    state = {
+        name: value.detach().cpu().clone()
+        for name, value in record.model.state_dict().items()
+    }
+    attribute = {
+        TrainingEvaluation.VAL_LOSS: f"best_val_{RecordKey.LOSS}_model",
+        TrainingEvaluation.VAL_ACC: f"best_val_{RecordKey.ACC}_model",
+        TrainingEvaluation.VAL_AUC: f"best_val_{RecordKey.AUC}_model",
+    }.get(base_holder.option.evaluation_option)
+    if attribute is not None:
+        setattr(record, attribute, state)
 
 
 class FakeModel(torch.nn.Module):
@@ -245,6 +261,7 @@ def test_training_plan_holder_keeps_saliency_empty_until_configured(
 
 def test_saliency_producer_identity_is_stable_for_same_training_run(base_holder):
     record = base_holder.get_plans()[0]
+    record.best_val_loss_model = record.model.state_dict()
 
     first = base_holder.build_saliency_producer_identity(
         record,
@@ -263,6 +280,7 @@ def test_saliency_producer_identity_separates_dataset_split_run_and_model(
     base_holder,
 ):
     record = base_holder.get_plans()[0]
+    record.best_val_loss_model = record.model.state_dict()
     epoch_data = base_holder.dataset.get_epoch_data()
     baseline = base_holder.build_saliency_producer_identity(
         record,
@@ -345,9 +363,14 @@ def test_training_plan_holder_get_eval_loader(
     record = TrainRecord(
         repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
     )
+    record.best_val_loss_model = record.model.state_dict()
 
-    _, target_loader = base_holder.get_eval_pair(record, val_loader, test_loader)
-    assert target_loader == expected_loader
+    if expected_loader is None:
+        with pytest.raises(FinalEvaluationUnavailableError):
+            base_holder.get_eval_pair(record, val_loader, test_loader)
+    else:
+        _, target_loader = base_holder.get_eval_pair(record, val_loader, test_loader)
+        assert target_loader == expected_loader
 
 
 @pytest.mark.parametrize(
@@ -370,7 +393,7 @@ def test_training_plan_holder_get_eval_model(
 ):
     repeat = 0
     val_loader = None
-    test_loader = None
+    test_loader = object()
     seed = set_seed()
     model = model_holder.get_model({})
     training_option.evaluation_option = evaluation_option
@@ -380,17 +403,76 @@ def test_training_plan_holder_get_eval_model(
     expected = np.random.rand(1) if has_best_state else None
     setattr(record, state_dict_attr_name, expected)
 
-    target_model, _ = base_holder.get_eval_pair(record, val_loader, test_loader)
-    assert isinstance(target_model, FakeModel)
     if has_best_state:
+        target_model, _ = base_holder.get_eval_pair(record, val_loader, test_loader)
+        assert isinstance(target_model, FakeModel)
         assert target_model.my_state_dict == expected
     else:
-        expected_state = record.model.state_dict()
-        assert target_model.my_state_dict.keys() == expected_state.keys()
-        assert all(
-            torch.equal(target_model.my_state_dict[key], expected_state[key])
-            for key in expected_state
-        )
+        with pytest.raises(FinalEvaluationUnavailableError) as raised:
+            base_holder.get_eval_pair(record, val_loader, test_loader)
+        assert "selected validation checkpoint" in str(raised.value)
+
+
+def test_train_one_repeat_does_not_evaluate_without_validation_checkpoint(
+    base_holder,
+):
+    base_holder.option.evaluation_option = TrainingEvaluation.VAL_LOSS
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    record.eval_record = None
+    record.best_val_loss_model = None
+
+    with (
+        patch.object(Evaluator, "evaluate") as evaluate,
+        patch.object(record, "export_checkpoint") as export_checkpoint,
+        pytest.raises(FinalEvaluationUnavailableError) as raised,
+    ):
+        base_holder.train_one_repeat(record)
+
+    evaluate.assert_not_called()
+    assert record.eval_record is None
+    assert "selected validation checkpoint" in str(raised.value)
+    export_checkpoint.assert_called_once()
+
+
+def test_train_one_repeat_does_not_use_training_loader_for_final_evaluation(
+    base_holder,
+):
+    base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    record.eval_record = None
+    base_holder.dataset.val_mask[:] = False
+    base_holder.dataset.test_mask[:] = False
+
+    with (
+        patch.object(Evaluator, "evaluate") as evaluate,
+        patch.object(record, "export_checkpoint") as export_checkpoint,
+        pytest.raises(FinalEvaluationUnavailableError) as raised,
+    ):
+        base_holder.train_one_repeat(record)
+
+    evaluate.assert_not_called()
+    assert record.eval_record is None
+    assert "no validation or test split" in str(raised.value)
+    export_checkpoint.assert_called_once()
+
+
+def test_training_plan_records_unavailable_final_evaluation_as_failure(base_holder):
+    base_holder.option.repeat_num = 1
+    base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    base_holder.dataset.val_mask[:] = False
+    base_holder.dataset.test_mask[:] = False
+
+    with patch.object(record, "export_checkpoint"):
+        base_holder.train()
+
+    assert base_holder.error == (
+        "Final evaluation unavailable: no validation or test split is configured."
+    )
+    assert base_holder.is_finished() is False
 
 
 @pytest.mark.parametrize(
@@ -421,9 +503,28 @@ def test_training_plan_holder_get_eval_pair_not_implemented(
         repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
     )
 
-    if evaluation_option:
+    if evaluation_option in {
+        TrainingEvaluation.VAL_LOSS,
+        TrainingEvaluation.VAL_ACC,
+        TrainingEvaluation.VAL_AUC,
+    }:
+        selected_state_attributes = {
+            TrainingEvaluation.VAL_LOSS: f"best_val_{RecordKey.LOSS}_model",
+            TrainingEvaluation.VAL_ACC: f"best_val_{RecordKey.ACC}_model",
+            TrainingEvaluation.VAL_AUC: f"best_val_{RecordKey.AUC}_model",
+        }
+        setattr(
+            record,
+            selected_state_attributes[evaluation_option],
+            record.model.state_dict(),
+        )
+
+    if evaluation_option and expected_loader is not None:
         _, target_loader = base_holder.get_eval_pair(record, val_loader, test_loader)
         assert target_loader == expected_loader
+    elif evaluation_option:
+        with pytest.raises(FinalEvaluationUnavailableError):
+            base_holder.get_eval_pair(record, val_loader, test_loader)
     else:
         with pytest.raises(NotImplementedError):
             base_holder.get_eval_pair(record, val_loader, test_loader)
@@ -434,7 +535,7 @@ def test_training_plan_holder_get_eval_model_by_lastest_model(
 ):
     repeat = 0
     val_loader = None
-    test_loader = None
+    test_loader = object()
     seed = set_seed()
     model = model_holder.get_model({})
 
@@ -929,6 +1030,7 @@ def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder)
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
     record.eval_record = object()
+    _bind_selected_evaluation_checkpoint(base_holder, record)
     sentinel = _prepared_saliency_record()
 
     with (
@@ -971,6 +1073,7 @@ def test_saliency_update_binds_epoch_identity_before_publication(base_holder):
         {},
         {},
     )
+    _bind_selected_evaluation_checkpoint(base_holder, record)
     prepared = EvalRecord(
         np.arange(CLASS_NUM),
         np.eye(CLASS_NUM),
@@ -1022,6 +1125,7 @@ def _mark_finished_records(base_holder, count: int) -> tuple[list, list[object]]
     for record, eval_record in zip(records, eval_records, strict=True):
         record.epoch = base_holder.option.epoch
         record.eval_record = eval_record
+        _bind_selected_evaluation_checkpoint(base_holder, record)
     return records, eval_records
 
 
@@ -1332,6 +1436,7 @@ def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
     for record, old_eval_record in zip(records, old_eval_records, strict=True):
         record.epoch = base_holder.option.epoch
         record.eval_record = old_eval_record
+        _bind_selected_evaluation_checkpoint(base_holder, record)
     base_holder.saliency_params = old_params
     trainer = Trainer([base_holder])
     train_loader, val_loader, test_loader = object(), object(), object()
@@ -1387,6 +1492,7 @@ def test_saliency_update_rejects_split_change_during_expensive_compute(base_hold
     record.epoch = base_holder.option.epoch
     previous_eval_record = object()
     record.eval_record = previous_eval_record
+    _bind_selected_evaluation_checkpoint(base_holder, record)
     original_test_mask = base_holder.dataset.test_mask.copy()
 
     def mutate_split_during_compute(*_args, **_kwargs):
@@ -1424,6 +1530,7 @@ def test_set_saliency_params_second_record_failure_preserves_previous_state(
     for record, old_eval_record in zip(records, old_eval_records, strict=True):
         record.epoch = base_holder.option.epoch
         record.eval_record = old_eval_record
+        _bind_selected_evaluation_checkpoint(base_holder, record)
     base_holder.saliency_params = old_params
     prepared_first_record = _prepared_saliency_record()
 
@@ -1461,6 +1568,7 @@ def test_training_manager_saliency_success_commits_all_holders_once(base_holder)
         record = holder.get_plans()[0]
         record.epoch = holder.option.epoch
         record.eval_record = old_eval_record
+        _bind_selected_evaluation_checkpoint(holder, record)
         holder.saliency_params = old_params
 
     trainer = Trainer(holders)
@@ -1559,6 +1667,7 @@ def test_training_manager_saliency_second_holder_failure_preserves_all_state(
         record = holder.get_plans()[0]
         record.epoch = holder.option.epoch
         record.eval_record = old_eval_record
+        _bind_selected_evaluation_checkpoint(holder, record)
         holder.saliency_params = holder_params
 
     manager = TrainingManager()

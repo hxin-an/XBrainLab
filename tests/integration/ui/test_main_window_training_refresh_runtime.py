@@ -27,16 +27,17 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
 )
 from XBrainLab.backend.application.runtime import get_application_service
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.training_plan import TrainingPlanHolder
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingStateToken,
     TrainingTerminalOutcome,
 )
 from XBrainLab.ui import refresh_coordinator
+from XBrainLab.ui.application_capabilities import get_application_view_publication
 from XBrainLab.ui.async_command_runner import (
     AsyncCommandRegistry,
     QtApplicationCommandRunner,
@@ -130,7 +131,7 @@ def _open_runtime_panels(qtbot, study: Study) -> Any:
         )
 
     assert window.training_panel.sidebar.btn_start.isEnabled()
-    assert window.evaluation_panel.last_application_query is not None
+    assert window.evaluation_panel._application_generation is not None
     assert window.visualization_panel.last_application_query is not None
     assert window.visualization_panel.last_saliency_query is not None
     return window
@@ -162,7 +163,7 @@ def _terminal_ui_has_refreshed(
     return bool(
         training.history_table.rowCount() == 1
         and training.history_table.item(0, 3) is not None
-        and evaluation.last_application_query is not initial_evaluation_query
+        and evaluation._application_generation != initial_evaluation_query
         and visualization.last_application_query is not initial_visualization_query
         and visualization.last_saliency_query is not initial_saliency_query
         and application_command_registry().active_count(training.sidebar) == 0
@@ -173,12 +174,16 @@ def _analysis_panels_show_training_state(
     window: Any,
     state: TrainingOutcomeState,
 ) -> bool:
-    evaluation_query = window.evaluation_panel.last_application_query
+    evaluation_publication = get_application_view_publication(
+        window.evaluation_panel,
+    )
     visualization_query = window.visualization_panel.last_application_query
     return bool(
-        evaluation_query is not None
+        evaluation_publication is not None
+        and window.evaluation_panel._application_generation
+        == evaluation_publication.generation
         and visualization_query is not None
-        and evaluation_query.state.training.terminal_outcome.state is state
+        and evaluation_publication.state.training.terminal_outcome.state is state
         and visualization_query.state.training.terminal_outcome.state is state
     )
 
@@ -270,7 +275,7 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     training = window.training_panel
     evaluation = window.evaluation_panel
     visualization = window.visualization_panel
-    initial_evaluation_query = evaluation.last_application_query
+    initial_evaluation_query = evaluation._application_generation
     initial_visualization_query = visualization.last_application_query
     initial_saliency_query = visualization.last_saliency_query
     initial_publication = visualization._application_view_publication
@@ -331,7 +336,7 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
         qtbot.waitUntil(training_terminal_rendered, timeout=10_000)
         assert analysis_publications == []
         _deliver_pending_qt_events()
-        terminal_evaluation_query = evaluation.last_application_query
+        terminal_evaluation_query = evaluation._application_generation
         terminal_visualization_query = visualization.last_application_query
         analysis_update_counts = _install_panel_update_probes(monkeypatch, window)
     finally:
@@ -360,7 +365,10 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
 
     history = training.history_table
     assert history.item(0, 3).text() == "Completed"
-    assert history.item(0, 4).text() == "1/1"
+    assert history.item(0, 4).text() == "1/1", (
+        f"verified={training._has_verified_history_render}; "
+        f"last_verified={training._last_verified_history_rows!r}"
+    )
     assert training.sidebar.btn_start.isEnabled()
     assert not training.sidebar.btn_stop.isEnabled()
     assert training.tab_acc.epochs == [1]
@@ -369,14 +377,23 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     assert len(training.tab_loss.train_vals) == 1
     visible_log = training.log_text.toPlainText()
     assert "All training jobs finished." in visible_log
-    assert "Training stopped (event)." in visible_log
+    assert "Training stopped (event)." not in visible_log
 
-    evaluation_query = evaluation.last_application_query
-    assert evaluation_query.state.training.terminal_outcome.state is (
+    evaluation_publication = get_application_view_publication(evaluation)
+    assert evaluation_publication is not None
+    assert evaluation_publication.state.training.terminal_outcome.state is (
         TrainingOutcomeState.COMPLETED
     )
-    assert evaluation_query.diagnostics["available"] is True
-    assert evaluation_query.diagnostics["finished_run_count"] == 1
+    assert evaluation._evaluation_summary is not None
+    assert evaluation._evaluation_summary.available is True
+    assert (
+        sum(
+            run.finished
+            for plan in evaluation._evaluation_summary.plans
+            for run in plan.runs
+        )
+        == 1
+    )
     assert evaluation.model_combo.count() == 1
     assert evaluation.run_combo.currentText() == "Repeat 1 (Finished)"
 
@@ -397,18 +414,17 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     assert all(item.available for item in gradient.classes)
     assert visualization.tab_map._saliency_coverage == gradient
     _deliver_pending_qt_events()
-    assert analysis_update_counts == {
-        "training": 0,
-        "evaluation": 0,
-        "visualization": 1,
-    }
-    assert evaluation.last_application_query is terminal_evaluation_query
+    assert analysis_update_counts is not None
+    assert analysis_update_counts["training"] == 0
+    assert analysis_update_counts["evaluation"] == 1
+    assert analysis_update_counts["visualization"] == 1
+    assert evaluation._application_generation != terminal_evaluation_query
     assert visualization.last_application_query is not terminal_visualization_query
     assert len(terminal_publications) == 1
     assert len(analysis_publications) == 1
 
 
-def test_saliency_completion_replays_once_after_unrelated_nested_commands(
+def test_saliency_completion_publishes_once_during_unrelated_nested_commands(
     qtbot,
     tmp_path: Path,
     monkeypatch,
@@ -468,7 +484,7 @@ def test_saliency_completion_replays_once_after_unrelated_nested_commands(
     )
     _deliver_pending_qt_events()
 
-    pending_evaluation_query = evaluation.last_application_query
+    pending_evaluation_query = evaluation._application_generation
     pending_visualization_query = visualization.last_application_query
     update_counts = _install_panel_update_probes(monkeypatch, window)
     command_registry = AsyncCommandRegistry()
@@ -512,18 +528,23 @@ def test_saliency_completion_replays_once_after_unrelated_nested_commands(
         qtbot.waitUntil(outer_started.is_set, timeout=3_000)
         assert inner_runner.start() is True
         qtbot.waitUntil(inner_started.is_set, timeout=3_000)
-        assert refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS[id(window)] == 2
+        assert id(window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
         release_saliency.set()
         qtbot.waitUntil(analysis_published.is_set, timeout=20_000)
         qtbot.waitUntil(saliency_published.is_set, timeout=5_000)
-        _deliver_pending_qt_events()
+        qtbot.waitUntil(
+            lambda: (
+                update_counts["evaluation"] == 1 and update_counts["visualization"] == 1
+            ),
+            timeout=5_000,
+        )
         assert update_counts == {
             "training": 0,
-            "evaluation": 0,
-            "visualization": 0,
+            "evaluation": 1,
+            "visualization": 1,
         }
-        assert visualization.last_application_query is pending_visualization_query
+        assert visualization.last_application_query is not pending_visualization_query
 
         release_inner.set()
         qtbot.waitUntil(
@@ -531,19 +552,15 @@ def test_saliency_completion_replays_once_after_unrelated_nested_commands(
             timeout=3_000,
         )
         _deliver_pending_qt_events()
-        assert refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS[id(window)] == 1
+        assert id(window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
         assert update_counts == {
             "training": 0,
-            "evaluation": 0,
-            "visualization": 0,
+            "evaluation": 1,
+            "visualization": 1,
         }
 
         release_outer.set()
         qtbot.waitUntil(lambda: command_registry.active_count() == 0, timeout=3_000)
-        qtbot.waitUntil(
-            lambda: update_counts["visualization"] == 1,
-            timeout=5_000,
-        )
         _deliver_pending_qt_events()
     finally:
         release_saliency.set()
@@ -552,10 +569,10 @@ def test_saliency_completion_replays_once_after_unrelated_nested_commands(
 
     assert update_counts == {
         "training": 0,
-        "evaluation": 0,
+        "evaluation": 1,
         "visualization": 1,
     }
-    assert evaluation.last_application_query is pending_evaluation_query
+    assert evaluation._application_generation != pending_evaluation_query
     assert visualization.last_application_query is not pending_visualization_query
     publication = visualization._application_view_publication
     assert publication is not None
@@ -579,7 +596,7 @@ def test_start_training_click_publishes_oom_failure_to_all_runtime_panels(
     training = window.training_panel
     evaluation = window.evaluation_panel
     visualization = window.visualization_panel
-    initial_evaluation_query = evaluation.last_application_query
+    initial_evaluation_query = evaluation._application_generation
     initial_visualization_query = visualization.last_application_query
     initial_saliency_query = visualization.last_saliency_query
     terminal_publications = []
@@ -612,21 +629,25 @@ def test_start_training_click_publishes_oom_failure_to_all_runtime_panels(
         status_item = training.history_table.item(0, 3)
         assert status_item is not None
         assert status_item.text() == "Failed"
-        assert (
-            evaluation.last_application_query.state.training.terminal_outcome.state
-            is (TrainingOutcomeState.FAILED)
+        evaluation_publication = get_application_view_publication(evaluation)
+        assert evaluation_publication is not None
+        assert evaluation_publication.state.training.terminal_outcome.state is (
+            TrainingOutcomeState.FAILED
         )
         assert training.sidebar.btn_start.isEnabled()
         assert not training.sidebar.btn_stop.isEnabled()
         assert "Training failed:" in training.log_text.toPlainText()
 
     qtbot.waitUntil(assert_terminal_ui, timeout=15_000)
+    qtbot.waitUntil(lambda: len(terminal_publications) == 1, timeout=5_000)
 
-    outcome = evaluation.last_application_query.state.training.terminal_outcome
+    evaluation_publication = get_application_view_publication(evaluation)
+    assert evaluation_publication is not None
+    outcome = evaluation_publication.state.training.terminal_outcome
     assert outcome.state is TrainingOutcomeState.FAILED
     assert outcome.detail is not None
     assert "CUDA out of memory during training" in outcome.detail
-    assert evaluation.last_application_query.state.evaluation.finished_runs == 0
+    assert evaluation_publication.state.evaluation.finished_runs == 0
     assert evaluation.run_combo.count() == 0
 
     assert training.history_table.item(0, 3).text() == "Failed"
@@ -694,29 +715,38 @@ def test_delayed_oom_refreshes_every_running_panel_once_at_terminal(
         ),
         timeout=10_000,
     )
-    running_evaluation_query = window.evaluation_panel.last_application_query
+    running_evaluation_query = window.evaluation_panel._application_generation
     running_visualization_query = window.visualization_panel.last_application_query
     update_counts = _install_panel_update_probes(monkeypatch, window)
 
     release_training.set()
 
-    qtbot.waitUntil(
-        lambda: (
-            training.history_table.item(0, 3) is not None
-            and training.history_table.item(0, 3).text() == "Failed"
-            and _analysis_panels_show_training_state(
-                window,
-                TrainingOutcomeState.FAILED,
-            )
-            and "Training stopped (event)." in training.log_text.toPlainText()
-        ),
-        timeout=15_000,
-    )
+    def assert_failed_terminal_visible() -> None:
+        trainer = study.trainer
+        status_item = training.history_table.item(0, 3)
+        status = status_item.text() if status_item is not None else None
+        outcome = trainer.get_terminal_outcome() if trainer is not None else None
+        assert status == "Failed", (
+            f"status={status!r}; outcome={outcome!r}; "
+            f"is_training={study.is_training()}; "
+            f"terminal_publications={len(terminal_publications)}"
+        )
+        assert _analysis_panels_show_training_state(
+            window,
+            TrainingOutcomeState.FAILED,
+        ), (
+            f"analysis panels did not render FAILED; outcome={outcome!r}; "
+            f"terminal_publications={len(terminal_publications)}"
+        )
+        assert "Training failed:" in training.log_text.toPlainText(), (
+            f"terminal failure log missing; log={training.log_text.toPlainText()!r}; "
+            f"terminal_publications={len(terminal_publications)}"
+        )
+
+    qtbot.waitUntil(assert_failed_terminal_visible, timeout=15_000)
     _deliver_pending_qt_events()
 
-    assert window.evaluation_panel.last_application_query is not (
-        running_evaluation_query
-    )
+    assert window.evaluation_panel._application_generation != running_evaluation_query
     assert window.visualization_panel.last_application_query is not (
         running_visualization_query
     )
@@ -725,6 +755,7 @@ def test_delayed_oom_refreshes_every_running_panel_once_at_terminal(
         "evaluation": 1,
         "visualization": 1,
     }
+    qtbot.waitUntil(lambda: len(terminal_publications) == 1, timeout=5_000)
     assert len(terminal_publications) == 1
     assert analysis_publications == []
     assert training.sidebar.btn_start.isEnabled()
@@ -787,7 +818,7 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
         ),
         timeout=10_000,
     )
-    stop_requested_evaluation_query = window.evaluation_panel.last_application_query
+    stop_requested_evaluation_query = window.evaluation_panel._application_generation
     stop_requested_visualization_query = (
         window.visualization_panel.last_application_query
     )
@@ -805,8 +836,9 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
     _deliver_pending_qt_events()
 
     assert training.history_table.item(0, 3).text() != "Running"
-    assert window.evaluation_panel.last_application_query is not (
-        stop_requested_evaluation_query
+    assert (
+        window.evaluation_panel._application_generation
+        != stop_requested_evaluation_query
     )
     assert window.visualization_panel.last_application_query is not (
         stop_requested_visualization_query
@@ -816,6 +848,7 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
         "evaluation": 1,
         "visualization": 1,
     }
+    qtbot.waitUntil(lambda: len(terminal_publications) == 1, timeout=5_000)
     assert len(terminal_publications) == 1
     assert analysis_publications == []
     assert training.sidebar.btn_start.isEnabled()
@@ -824,7 +857,7 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
 
 
 @pytest.mark.parametrize("terminal_first", [False, True])
-def test_cross_sender_started_and_terminal_delivery_remains_terminal(
+def test_cross_sender_legacy_events_cannot_override_typed_terminal(
     qtbot,
     tmp_path: Path,
     monkeypatch,
@@ -853,7 +886,7 @@ def test_cross_sender_started_and_terminal_delivery_remains_terminal(
                 window,
                 TrainingOutcomeState.FAILED,
             )
-            and "Training stopped (event)." in training.log_text.toPlainText()
+            and "Training failed:" in training.log_text.toPlainText()
         ),
         timeout=15_000,
     )
@@ -880,9 +913,7 @@ def test_cross_sender_started_and_terminal_delivery_remains_terminal(
         outcome=published.outcome,
         publication_generation=published.publication_generation + 1,
     )
-    terminal_log_count = training.log_text.toPlainText().count(
-        "Training stopped (event)."
-    )
+    visible_log = training.log_text.toPlainText()
     if terminal_first:
         ordered_events = (
             ("training_terminal_published", terminal),
@@ -898,28 +929,16 @@ def test_cross_sender_started_and_terminal_delivery_remains_terminal(
         service.training,
         ordered_events,
     )
-
-    qtbot.waitUntil(
-        lambda: (
-            training.log_text.toPlainText().count("Training stopped (event).")
-            == terminal_log_count + 1
-            and training.history_table.item(0, 3) is not None
-            and training.history_table.item(0, 3).text() == "Failed"
-            and _analysis_panels_show_training_state(
-                window,
-                TrainingOutcomeState.FAILED,
-            )
-        ),
-        timeout=10_000,
-    )
     _deliver_pending_qt_events()
 
     assert training.history_table.item(0, 3).text() == "Failed"
     assert training.sidebar.btn_start.isEnabled()
     assert not training.sidebar.btn_stop.isEnabled()
     assert window.statusBar().currentMessage() == "Training failed · Adjust settings"
-    assert training.log_text.toPlainText().splitlines()[-1] == (
-        "Training stopped (event)."
+    assert training.log_text.toPlainText() == visible_log
+    assert _analysis_panels_show_training_state(
+        window,
+        TrainingOutcomeState.FAILED,
     )
 
 

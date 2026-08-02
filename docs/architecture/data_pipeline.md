@@ -291,7 +291,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 - preview / validation payload 已輸出 `action_items`，每項包含 `target_step`、`issue`、`impact`、
   `next_action` 和 `severity`，供 UI、agent、headless 讀同一份 command result。
 - import dialog 目前以 `QStackedWidget` step panels 呈現，一次只顯示一個 task panel：
-  Choose EEG Data、Attach Labels、Review Metadata、Match Labels、Review and Import。
+  Choose EEG Data、Load Labels、Review Metadata、Match Labels、Review and Import。
 - Dataset sidebar 主要入口已改成 `Import file`、`Import folder`、`Import BIDS folder`；
   `Import BIDS folder` 是 strict BIDS path，一般 `Import folder` 即使掃到 `events.tsv`
   仍走普通 label-file flow。
@@ -308,7 +308,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | Match Labels task-oriented UI | 第一層分成 label source、file pairing、label values、placement task panel、class names、check；不再把 `Anchor` / `Time` / `Granularity` / `Role` / `Label unit` 當主 UI。Strict BIDS import 另有 `events.tsv` review card 與 class-value summary。 | Advanced event/class diagnostics still live in the same dialog instead of a collapsed details surface. |
 | Mainstream label placement evidence | backend preview 會依資料結構支援 EEG event order、label time、label interval、label event code；UI 讀 `placement_reviews` 顯示 check，而不是靠前端硬猜。Blocked placement review 現在會成為 candidate blocker，不會只變成 confirmation。 | 仍不宣稱 full BIDS；BIDS inheritance、跨 datatype 和更複雜 run-level semantics 需要另外確認。 |
 | Actionable Review and Import checklist | preview / validation emits structured action items; UI renders only blockers / required decisions as first-layer cards with issue、impact、next action and target step. | `View import report` exposes report-only warnings、format capability、recipe trace and remap selectors; it is secondary detail, not the first-layer review layout. |
-| Import without labels / limited mode | `Skip labels for now` is saved in choices and produces a supervised-limited action item. | Downstream dataset/training capability policy should consume this limited state more explicitly. |
+| Import without labels / limited mode | `Continue without labels` is saved in choices and produces an authoritative `supervised_ready=false` handoff with structured blockers. Dataset/training capability policy consumes that handoff, so raw inspection/preprocessing can continue while supervised dataset/training remains blocked. | This does not infer missing class semantics or promise supervised readiness for unsupported sidecars. |
 | UI / agent / headless alignment | ApplicationService, tool definitions, real/mock tools, and state snapshot use the same extended command surface. | Broader tool-call eval waits until product stabilization. MCP is no longer active roadmap. |
 
 ### Remaining gaps
@@ -319,16 +319,14 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | Internal event semantics | internal EEG events 已有 candidate label events / not-used events / coverage / evidence preview；response、comment、artifact、boundary 類 markers 不會預設當 class label。PhysioNet-style `T1` / `T2` run-dependent semantics 會產生 review warning。 | Class semantics 仍要靠 sidecar、recipe、preset 或使用者確認；epoch anchor / response / artifact 的 downstream contract 還要和 epoch UI 對齊。 |
 | Wizard polish | Current implementation is a task-oriented step-panel dialog with step-specific cards, left-side Cancel, right-side navigation/apply, and screenshot evidence under `artifacts/ui/data-import-wizard-steps/`. | Human Windows desktop acceptance is still needed; offscreen screenshots are product evidence but not release approval. |
 | Grouped checklist hierarchy | action items are structured and rendered as target-step review cards. | Very long review text may still need a detail drawer or row expansion after human walkthrough. |
-| Downstream limited state | Skip-label choice is preserved and reviewable, but downstream supervised workflow blocking still needs a dedicated capability signal. | Capability policy 要能表示 imported raw-only / supervised-limited 狀態，並阻擋 supervised dataset / training claim。 |
 
 ### 建議下一個 backend slice
 
 不要先大改整個 importer。下一個有效切片應是：
 
-1. 讓 downstream capability policy 讀 skip-label / supervised-limited state。
-2. 補 event extraction summary，讓 internal GDF / BIDS events 的 class cues 更容易人工確認。
-3. 把 metadata Smart Parse provenance 寫進 recipe trace。
-4. 補 screenshot / walkthrough artifact：EEG files 在 `eeg/`、labels 在 sibling `labels/`，使用者能
+1. 補 event extraction summary，讓 internal GDF / BIDS events 的 class cues 更容易人工確認。
+2. 把 metadata Smart Parse provenance 寫進 recipe trace。
+3. 補 screenshot / walkthrough artifact：EEG files 在 `eeg/`、labels 在 sibling `labels/`，使用者能
    attach labels 並完成 preview / validate / apply。
 
 ## 後續重構前要做

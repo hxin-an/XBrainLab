@@ -45,6 +45,8 @@ class RAGRetrieverLifecycle:
         self._closed = False
         self._init_thread: threading.Thread | None = None
         self._retrieval_thread: threading.Thread | None = None
+        self._retrieval_turn_id: int | None = None
+        self._cancelled_turns: set[int] = set()
 
     @property
     def is_initializing(self) -> bool:
@@ -123,6 +125,7 @@ class RAGRetrieverLifecycle:
                 name=f"xbrainlab-rag-retrieval-{turn_id}",
                 daemon=True,
             )
+            self._retrieval_turn_id = int(turn_id)
             self._retrieval_thread.start()
             return True
 
@@ -150,9 +153,33 @@ class RAGRetrieverLifecycle:
             error = failure.message
 
         with self._lock:
-            if self._closed:
+            cancelled = turn_id in self._cancelled_turns
+            self._cancelled_turns.discard(turn_id)
+            if self._closed or cancelled:
                 return
+            if self._retrieval_turn_id == turn_id:
+                self._retrieval_turn_id = None
         callback(turn_id, query, features, error)
+
+    def cancel_retrieval(self, turn_id: int) -> bool:
+        """Fence an injected retrieval; production uses process hard-cancel."""
+        cancel = getattr(self.retriever, "cancel_retrieval", None)
+        with self._lock:
+            if self._retrieval_turn_id != int(turn_id):
+                return False
+            self._cancelled_turns.add(int(turn_id))
+            self._retrieval_turn_id = None
+        if callable(cancel):
+            try:
+                cancel()
+            except Exception as exc:
+                safe_unexpected_failure(
+                    logger,
+                    exc,
+                    boundary="rag_retriever_lifecycle",
+                    operation="cancel_retrieval",
+                )
+        return True
 
     def close(self) -> bool:
         """Fence retriever work, then join owned threads for bounded time."""

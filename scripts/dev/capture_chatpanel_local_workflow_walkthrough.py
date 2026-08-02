@@ -26,7 +26,7 @@ from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.llm.core.config import LLMConfig
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-workflow" / "current"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-local-workflow"
 READY_SCREENSHOT = "chatpanel-workflow-ready.png"
 JSON_ARTIFACT = "chatpanel-local-workflow-walkthrough.json"
 MD_ARTIFACT = "chatpanel-local-workflow-walkthrough.md"
@@ -149,12 +149,14 @@ def run_workflow(
     def open_assistant() -> None:
         nonlocal manager_ref, runtime_ref
         window.init_agent()
-        if window.agent_manager is None:
+        manager = window.agent_manager
+        if manager is None:
             fail("Assistant manager was not initialized.")
             return
-        manager_ref = window.agent_manager
-        runtime_ref = manager_ref.assistant_runtime
-        runtime_ref.cleanup_finished.connect(
+        manager_ref = manager
+        runtime = manager.assistant_runtime
+        runtime_ref = runtime
+        runtime.cleanup_finished.connect(
             lambda ok, message: cleanup_events.append(
                 {"ok": bool(ok), "message": str(message or "")}
             )
@@ -190,6 +192,9 @@ def run_workflow(
 
     def send_prompt(index: int) -> None:
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared during workflow.")
+            return
         panel = manager.chat_panel
         if panel is None:
             fail("ChatPanel disappeared during workflow.")
@@ -222,6 +227,9 @@ def run_workflow(
             return
 
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared during workflow.")
+            return
         panel = manager.chat_panel
         controller = manager.agent_controller
         if panel is None:

@@ -246,6 +246,150 @@ def test_bids_preflight_scope_discovers_all_scan_materialization_paths_without_t
     }
 
 
+def test_bids_preflight_rejects_dataset_description_symlink_outside_selected_root(
+    tmp_path: Path,
+) -> None:
+    selected_root = tmp_path / "selected"
+    eeg_file = selected_root / "sub-01" / "eeg" / "sub-01_task-mi_eeg.fif"
+    eeg_file.parent.mkdir(parents=True)
+    eeg_file.write_bytes(b"header only")
+    outside_description = tmp_path / "outside-dataset-description.json"
+    outside_description.write_text(
+        '{"Name": "outside", "BIDSVersion": "1.11.1"}',
+        encoding="utf-8",
+    )
+    description_link = selected_root / "dataset_description.json"
+    description_link.symlink_to(outside_description)
+
+    scope = discover_source_preflight_scope(
+        source_path=str(selected_root),
+        source_hint="bids",
+    )
+
+    escaped_description = str(outside_description.resolve())
+    assert scope.bids["looks_like_bids"] is False
+    assert scope.bids["is_bids"] is False
+    assert escaped_description not in scope.metadata_files
+    assert escaped_description not in scope.paths
+    assert scope.bids["dataset_description"] is None
+    assert any(
+        "Skipped symbolic link" in warning for warning in scope.discovery_warnings
+    )
+
+
+def test_folder_preflight_does_not_discover_bids_metadata_from_parent(
+    tmp_path: Path,
+) -> None:
+    _write_valid_bids_description(tmp_path)
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    eeg_file = selected_root / "subject.gdf"
+    eeg_file.write_bytes(b"header only")
+
+    scope = discover_source_preflight_scope(
+        source_path=str(selected_root),
+        source_hint="folder",
+    )
+
+    assert scope.bids["root"] == str(selected_root.resolve())
+    assert scope.bids["dataset_description"] is None
+    assert scope.metadata_files == []
+    assert str((tmp_path / "dataset_description.json").resolve()) not in scope.paths
+
+
+def test_bids_provisional_discovery_rejects_windows_datatype_reparse_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    _write_valid_bids_description(selected_root)
+    datatype_junction = selected_root / "sub-01" / "eeg"
+    datatype_junction.mkdir(parents=True)
+    junction_visible_eeg = datatype_junction / "sub-01_task-mi_eeg.fif"
+    junction_visible_eeg.write_bytes(b"outside through junction")
+    original_lstat = Path.lstat
+
+    class _ReparseDirectoryStat:
+        def __init__(self, value):
+            self._value = value
+            self.st_file_attributes = scan_module._WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT
+
+        def __getattr__(self, name: str):
+            return getattr(self._value, name)
+
+    def _lstat_with_simulated_reparse_point(path: Path):
+        value = original_lstat(path)
+        if path == datatype_junction:
+            return _ReparseDirectoryStat(value)
+        return value
+
+    monkeypatch.setattr(Path, "lstat", _lstat_with_simulated_reparse_point)
+
+    scope = discover_source_preflight_scope(
+        source_path=str(selected_root),
+        source_hint="bids",
+    )
+
+    assert scope.bids["looks_like_bids"] is False
+    assert scope.bids["is_bids"] is False
+    assert scope.eeg_files == []
+    assert str(junction_visible_eeg.resolve()) not in scope.paths
+    assert any(
+        "directory junction or reparse point" in warning
+        for warning in scope.discovery_warnings
+    )
+
+
+def test_bids_preflight_rejects_metadata_symlinks_outside_selected_root(
+    tmp_path: Path,
+) -> None:
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    _write_valid_bids_description(selected_root)
+    eeg_file = selected_root / "sub-01" / "eeg" / "sub-01_task-mi_eeg.fif"
+    eeg_file.parent.mkdir(parents=True)
+    eeg_file.write_bytes(b"header only")
+    outside_root = tmp_path / "outside"
+    outside_root.mkdir()
+    outside_participants = outside_root / "participants.tsv"
+    outside_channels = outside_root / "sub-01_task-mi_channels.tsv"
+    outside_participants.write_text("participant_id\nsub-99\n", encoding="utf-8")
+    outside_channels.write_text("name\tstatus\nC3\tbad\n", encoding="utf-8")
+    (selected_root / "participants.tsv").symlink_to(outside_participants)
+    (eeg_file.parent / "sub-01_task-mi_channels.tsv").symlink_to(outside_channels)
+
+    scope = discover_source_preflight_scope(
+        source_path=str(selected_root),
+        source_hint="bids",
+    )
+    reader = AdmittedResourceReader.from_resource_preflight(
+        scope.paths,
+        check_import_resource_preflight(scope.paths),
+    )
+    scan = scan_source_path(
+        scan_id="scan-external-metadata",
+        source_path=str(selected_root),
+        source_hint="bids",
+        preflight_scope=scope,
+        materialize_metadata=False,
+    )
+
+    description = str((selected_root / "dataset_description.json").resolve())
+    escaped_paths = {
+        str(outside_participants.resolve()),
+        str(outside_channels.resolve()),
+    }
+    assert scope.metadata_files == [description]
+    assert escaped_paths.isdisjoint(scope.paths)
+    assert reader.admits(outside_participants) is False
+    assert reader.admits(outside_channels) is False
+    assert scope.bids["participants_file"] is None
+    assert scope.bids["channels_files"] == []
+    assert scan.bids["participants_file"] is None
+    assert scan.bids["channels_files"] == []
+
+
 def test_bids_metadata_materialization_rejects_changed_admitted_file(
     tmp_path: Path,
 ) -> None:
@@ -609,6 +753,42 @@ def test_folder_scan_does_not_treat_annotation_only_edf_as_eeg(
     assert hypnogram_capability["status"] == "limited"
 
 
+def test_discovery_scan_classifies_admitted_annotation_only_edf_from_header(
+    tmp_path: Path,
+) -> None:
+    psg = tmp_path / "subject-PSG.edf"
+    hypnogram = tmp_path / "subject-Hypnogram.edf"
+    _write_minimal_edf_header(psg, ["EEG Fpz-Cz", "EOG horizontal"])
+    _write_minimal_edf_header(hypnogram, ["EDF Annotations"])
+    scope = discover_source_preflight_scope(
+        source_path=str(tmp_path),
+        source_hint="folder",
+    )
+    reader = AdmittedResourceReader.from_resource_preflight(
+        scope.paths,
+        check_import_resource_preflight(scope.paths),
+    )
+
+    scan = scan_source_path(
+        scan_id="scan-discovery",
+        source_path=str(tmp_path),
+        source_hint="folder",
+        preflight_scope=scope,
+        materialize_metadata=False,
+        resource_reader=reader,
+    )
+
+    hypnogram_capability = next(
+        item
+        for item in scan.format_capabilities
+        if item["path"] == str(hypnogram.resolve())
+    )
+    assert scan.eeg_files == [str(psg.resolve())]
+    assert hypnogram_capability["format"] == "EDF+ annotations"
+    assert hypnogram_capability["role"] == "sidecar"
+    assert hypnogram_capability["status"] == "limited"
+
+
 @pytest.mark.parametrize(
     "signal_labels",
     (
@@ -786,6 +966,71 @@ def test_scan_source_path_for_single_eeg_file_detects_label_subfolder(
     assert str(sibling_label.resolve()) not in scan.label_carriers
 
 
+def test_single_file_nearby_label_scan_rejects_windows_directory_reparse_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    selected_eeg = selected_root / "A01T.gdf"
+    selected_eeg.write_bytes(b"header only")
+    junction = selected_root / "labels"
+    junction.mkdir()
+    junction_child = junction / "A01T.mat"
+    junction_child.write_bytes(b"junction-visible label")
+    outside_root = tmp_path / "private"
+    outside_root.mkdir()
+    escaped_label = outside_root / "A01T.mat"
+    escaped_label.write_bytes(b"outside label")
+    original_iterdir = Path.iterdir
+    original_lstat = Path.lstat
+    original_resolve = Path.resolve
+    enumerated_directories: list[Path] = []
+
+    class _ReparseDirectoryStat:
+        def __init__(self, value):
+            self._value = value
+            self.st_file_attributes = scan_module._WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT
+
+        def __getattr__(self, name: str):
+            return getattr(self._value, name)
+
+    def _track_directory_enumeration(path: Path):
+        enumerated_directories.append(path)
+        return original_iterdir(path)
+
+    def _lstat_with_simulated_reparse_point(path: Path):
+        value = original_lstat(path)
+        if path == junction:
+            return _ReparseDirectoryStat(value)
+        return value
+
+    def _resolve_junction_child(path: Path, strict: bool = False) -> Path:
+        if path == junction_child:
+            return original_resolve(escaped_label, strict=strict)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "iterdir", _track_directory_enumeration)
+    monkeypatch.setattr(Path, "lstat", _lstat_with_simulated_reparse_point)
+    monkeypatch.setattr(Path, "resolve", _resolve_junction_child)
+
+    scope = discover_source_preflight_scope(source_path=str(selected_eeg))
+    reader = AdmittedResourceReader.from_resource_preflight(
+        scope.paths,
+        check_import_resource_preflight(scope.paths),
+    )
+
+    escaped_path = str(original_resolve(escaped_label))
+    assert junction not in enumerated_directories
+    assert escaped_path not in scope.label_carriers
+    assert escaped_path not in scope.all_files
+    assert escaped_path not in scope.paths
+    assert reader.admits(escaped_label) is False
+    assert scope.discovery_warnings == [
+        f"Skipped directory junction or reparse point during source scan: {junction}."
+    ]
+
+
 @pytest.mark.parametrize("directory_name", ["labels", "events"])
 def test_single_file_nearby_label_subdir_uses_shared_lazy_scan_budget(
     tmp_path: Path,
@@ -865,6 +1110,108 @@ def test_scan_source_path_skips_symbolic_links(tmp_path: Path):
 
     assert scan.eeg_files == [str(eeg_file.resolve())]
     assert any("Skipped symbolic link" in warning for warning in scan.warnings)
+
+
+def test_regular_folder_scan_rejects_child_resolved_outside_selected_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    substituted_child = selected_root / "substituted.gdf"
+    substituted_child.write_bytes(b"inside before resolution")
+    outside_eeg = tmp_path / "outside.gdf"
+    outside_eeg.write_bytes(b"outside")
+    original_resolve = Path.resolve
+
+    def _resolve_substituted_child(path: Path, strict: bool = False) -> Path:
+        if path == substituted_child:
+            return original_resolve(outside_eeg, strict=strict)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", _resolve_substituted_child)
+
+    scope = discover_source_preflight_scope(
+        source_path=str(selected_root),
+        source_hint="folder",
+    )
+
+    assert scope.eeg_files == []
+    assert scope.all_files == []
+    assert any(
+        "resolved outside the selected source root" in warning
+        for warning in scope.discovery_warnings
+    )
+
+
+def test_regular_folder_scan_rejects_post_enumeration_outside_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    outside_eeg = tmp_path / "outside.gdf"
+    outside_eeg.write_bytes(b"outside")
+    original_iterdir = Path.iterdir
+
+    def _iterdir_with_outside_entry(path: Path):
+        if path == selected_root:
+            return iter([outside_eeg])
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", _iterdir_with_outside_entry)
+
+    scope = discover_source_preflight_scope(
+        source_path=str(selected_root),
+        source_hint="folder",
+    )
+
+    assert scope.eeg_files == []
+    assert scope.all_files == []
+    assert any(
+        "outside the selected source root after directory enumeration" in warning
+        for warning in scope.discovery_warnings
+    )
+
+
+def test_regular_folder_scan_rejects_simulated_windows_directory_reparse_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_root = tmp_path / "selected"
+    junction = selected_root / "junction"
+    junction.mkdir(parents=True)
+    escaped_eeg = junction / "outside.gdf"
+    escaped_eeg.write_bytes(b"outside through junction")
+    original_lstat = Path.lstat
+
+    class _ReparseDirectoryStat:
+        def __init__(self, value):
+            self._value = value
+            self.st_file_attributes = scan_module._WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT
+
+        def __getattr__(self, name: str):
+            return getattr(self._value, name)
+
+    def _lstat_with_simulated_reparse_point(path: Path):
+        value = original_lstat(path)
+        if path == junction:
+            return _ReparseDirectoryStat(value)
+        return value
+
+    monkeypatch.setattr(Path, "lstat", _lstat_with_simulated_reparse_point)
+
+    scope = discover_source_preflight_scope(
+        source_path=str(selected_root),
+        source_hint="folder",
+    )
+
+    assert scope.eeg_files == []
+    assert scope.all_files == []
+    assert any(
+        "directory junction or reparse point" in warning
+        for warning in scope.discovery_warnings
+    )
 
 
 def test_scan_source_path_warns_when_folder_depth_budget_is_reached(tmp_path: Path):

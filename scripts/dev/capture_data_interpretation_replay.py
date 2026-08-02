@@ -3,7 +3,7 @@
 
 Expected usage in WSL/headless environments:
 
-    xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py \
+    xvfb-run -a poetry run -- python scripts/dev/capture_data_interpretation_replay.py \
         --output-dir /tmp/xbrainlab-data-interpretation-replay
 
 The current tree keeps Data Import wizard screenshots under
@@ -15,14 +15,16 @@ screenshots as canonical evidence.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -54,6 +56,32 @@ from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
 
 ROOT = Path(__file__).resolve().parents[2]
+GENERATOR = "scripts/dev/capture_data_interpretation_replay.py"
+SCHEMA_VERSION = 1
+FINGERPRINT_PATTERNS = (
+    GENERATOR,
+    "pyproject.toml",
+    "poetry.lock",
+    "XBrainLab/backend/application/data_interpretation_*.py",
+    "XBrainLab/backend/application/resource_guard.py",
+    "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
+    "XBrainLab/ui/dialogs/dataset/event_value_decision_editor.py",
+    "XBrainLab/ui/dialogs/dataset/internal_event_step.py",
+    "XBrainLab/ui/dialogs/dataset/label_placement_step.py",
+    "XBrainLab/ui/dialogs/dataset/load_labels_step.py",
+    "XBrainLab/ui/dialogs/dataset/review_import_presenter.py",
+    "XBrainLab/ui/dialogs/dataset/review_import_step.py",
+    "XBrainLab/ui/dialogs/dataset/review_presenter.py",
+    "XBrainLab/ui/dialogs/dataset/wizard_host_protocol.py",
+    "XBrainLab/ui/dialogs/dataset/wizard_state.py",
+    "XBrainLab/ui/components/info_panel.py",
+    "XBrainLab/ui/components/info_panel_service.py",
+    "XBrainLab/ui/panels/dataset/actions.py",
+    "XBrainLab/ui/panels/dataset/panel.py",
+    "XBrainLab/ui/panels/dataset/sidebar.py",
+    "XBrainLab/ui/styles/stylesheets.py",
+    "XBrainLab/ui/styles/theme.py",
+)
 DEFAULT_ARTIFACTS_DIR = (
     Path(tempfile.gettempdir()) / "xbrainlab_data_interpretation_replay_artifacts"
 )
@@ -103,6 +131,67 @@ class ReplayArtifactPaths:
 
 
 ARTIFACT_PATHS = ReplayArtifactPaths(DEFAULT_ARTIFACTS_DIR)
+
+
+def source_file_manifest() -> list[dict[str, str]]:
+    """Return the exact product source represented by this replay."""
+    paths: set[Path] = set()
+    for pattern in FINGERPRINT_PATTERNS:
+        matches = [path for path in ROOT.glob(pattern) if path.is_file()]
+        if not matches:
+            raise FileNotFoundError(f"Replay fingerprint source is missing: {pattern}")
+        paths.update(matches)
+    return [
+        {
+            "path": path.relative_to(ROOT).as_posix(),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+        for path in sorted(paths, key=lambda item: item.relative_to(ROOT).as_posix())
+    ]
+
+
+def source_fingerprint(
+    source_files: Iterable[Mapping[str, str]] | None = None,
+) -> str:
+    """Hash the ordered source manifest used by the replay."""
+    digest = hashlib.sha256()
+    records = source_file_manifest() if source_files is None else source_files
+    for record in records:
+        digest.update(record["path"].encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(record["sha256"].encode("ascii"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def ensure_source_manifest_stable(
+    source_files_at_start: list[dict[str, str]],
+) -> None:
+    """Reject replay evidence when represented source changes mid-capture."""
+    if source_file_manifest() != source_files_at_start:
+        raise RuntimeError(
+            "Data Import source changed while replay evidence was captured."
+        )
+
+
+def artifact_file_manifest(
+    artifact_paths: Mapping[str, Path],
+    *,
+    artifact_root: Path,
+) -> dict[str, dict[str, object]]:
+    """Return fail-closed identities for replay screenshots."""
+    root = artifact_root.resolve()
+    manifest: dict[str, dict[str, object]] = {}
+    for name, path in sorted(artifact_paths.items()):
+        resolved = path.resolve(strict=True)
+        relative_path = resolved.relative_to(root).as_posix()
+        content = resolved.read_bytes()
+        manifest[name] = {
+            "relative_path": relative_path,
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "byte_size": len(content),
+        }
+    return manifest
 
 
 def set_artifact_dir(output_dir: Path) -> None:
@@ -723,6 +812,17 @@ def apply_replay_review_choices(
             if index >= 0:
                 selector.setCurrentIndex(index)
 
+    value_editor = getattr(dialog, "event_value_editor", None)
+    if value_editor is not None and value_editor.has_rows():
+        class_names = {"left": "Left hand", "right": "Right hand"}
+        for raw_value in value_editor.unresolved_values():
+            value_editor.set_value_decision(
+                raw_value,
+                role="stimulus",
+                use="class",
+                class_name=class_names.get(raw_value, raw_value),
+            )
+
     for index in range(dialog.event_tree.topLevelItemCount()):
         event_item = dialog.event_tree.topLevelItem(index)
         if (
@@ -821,6 +921,8 @@ def pairing_rows_state_for_step(
 def capture_replay(app: QApplication) -> int:
     """Run the replay and write JSON / screenshot artifacts."""
     result: dict[str, int] = {"code": 1}
+    source_files_at_start = source_file_manifest()
+    source_fingerprint_at_start = source_fingerprint(source_files_at_start)
     ARTIFACT_PATHS.directory.mkdir(parents=True, exist_ok=True)
     source_path = write_synthetic_raw_fif()
     study = Study()
@@ -1059,6 +1161,19 @@ def capture_replay(app: QApplication) -> int:
             capture_widget(window, ARTIFACT_PATHS.applied_screenshot)
 
             replay = {
+                "schema_version": SCHEMA_VERSION,
+                "generated_at": datetime.now(UTC).isoformat(),
+                "generator": GENERATOR,
+                "source_files": source_files_at_start,
+                "source_fingerprint": source_fingerprint_at_start,
+                "artifacts": artifact_file_manifest(
+                    {
+                        "preview": ARTIFACT_PATHS.preview_screenshot,
+                        "remap": ARTIFACT_PATHS.remap_screenshot,
+                        "applied": ARTIFACT_PATHS.applied_screenshot,
+                    },
+                    artifact_root=ARTIFACT_PATHS.directory,
+                ),
                 "workflow": "data_interpretation_ui_replay",
                 "source": SOURCE_DIR.name,
                 "transcript": [
@@ -1129,6 +1244,7 @@ def capture_replay(app: QApplication) -> int:
             }
             ensure_replay_geometry_passed(geometry_review)
             ensure_visible_text_review_passed(visible_text_review)
+            ensure_source_manifest_stable(source_files_at_start)
             ARTIFACT_PATHS.replay_json.write_text(
                 json.dumps(replay, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",

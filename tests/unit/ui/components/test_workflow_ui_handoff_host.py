@@ -48,9 +48,6 @@ def _main_window() -> Any:
                 review_current_import=MagicMock(
                     return_value=InteractionOutcome.completed("Data imported.")
                 ),
-                _continue_data_interpretation_import=MagicMock(
-                    return_value=InteractionOutcome.completed("Data imported.")
-                ),
             )
         ),
         preprocess_panel=SimpleNamespace(
@@ -342,7 +339,9 @@ def test_completed_modal_routes_through_concrete_epoch_adapter() -> None:
     assert outcome.decision_fields == ("epoch_window",)
     window.switch_page.assert_called_once_with(1)
     window.preprocess_panel.sidebar.open_epoching.assert_called_once_with()
-    window.statusBar.return_value.showMessage.assert_called_with("Preprocess is open.")
+    window.statusBar.return_value.showMessage.assert_called_with(
+        "Opened Preprocess panel."
+    )
 
 
 def test_unmaterialized_modal_handoff_defers_without_touching_placeholder() -> None:
@@ -551,7 +550,6 @@ def test_apply_interpretation_handoff_opens_current_review_at_target_step(
         initial_step=expected_step,
         expected_identity=identity,
     )
-    window.dataset_panel.action_handler._continue_data_interpretation_import.assert_not_called()
     window.dataset_panel.action_handler.import_data.assert_not_called()
     assert not hasattr(host, "_application_service")
 
@@ -821,7 +819,7 @@ def test_montage_handoff_uses_existing_dialog_and_preserves_agent_suggestion() -
         warning="Review channel identities.",
     )
     window.statusBar.return_value.showMessage.assert_called_with(
-        "Visualization is open."
+        "Opened Visualization panel."
     )
     route = host._router.route_for("apply_montage")
     assert route is not None

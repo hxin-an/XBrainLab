@@ -72,14 +72,23 @@ class TestGetDeviceCount:
 
 
 class TestGetDeviceName:
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="No CUDA device")
-    def test_returns_string_for_cuda_device(self):
-        name = get_device_name(0)
-        assert isinstance(name, str)
-        assert len(name) > 0
+    def test_returns_string_for_cuda_device(self, monkeypatch):
+        monkeypatch.setattr(
+            torch.cuda,
+            "get_device_name",
+            lambda index: "Test CUDA Device" if index == 0 else "Unexpected Device",
+        )
 
-    def test_raises_on_invalid_index_without_cuda(self):
-        if torch.cuda.is_available():
-            pytest.skip("CUDA available — cannot test invalid index safely")
+        name = get_device_name(0)
+
+        assert isinstance(name, str)
+        assert name == "Test CUDA Device"
+
+    def test_raises_on_invalid_index(self, monkeypatch):
+        def raise_for_invalid_index(_index: int) -> str:
+            raise AssertionError("Invalid device index")
+
+        monkeypatch.setattr(torch.cuda, "get_device_name", raise_for_invalid_index)
+
         with pytest.raises((RuntimeError, AssertionError)):
             get_device_name(0)

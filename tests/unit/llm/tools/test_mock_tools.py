@@ -100,11 +100,14 @@ class TestDatasetMocks:
             dataset_generated=True,
         )
         result = MockLoadDataTool(state).execute(study, paths=["/data/f.gdf"])
-        _assert_tool_result(
-            result,
-            ok=True,
-            message="Successfully loaded data from 1 sources: ['/data/f.gdf']",
-        )
+        assert isinstance(result, ToolResult)
+        assert result.ok is True
+        assert "Successfully loaded data from 1 sources" in result.message
+        assert "f.gdf" in result.message
+        assert "/data/f.gdf" in result.message
+        assert result.payload is None
+        assert result.error_type == "none"
+        assert result.recoverable is True
         assert state.data_loaded is True
         assert state.epochs_ready is False
         assert state.dataset_generated is False
@@ -122,11 +125,15 @@ class TestDatasetMocks:
             epochs_ready=True,
             dataset_generated=True,
         )
-        _assert_tool_result(
-            MockScanSourceTool().execute(study, source_path="/data"),
-            ok=True,
-            message="Scanned /data as auto; found 1 EEG file.",
-        )
+        scan_result = MockScanSourceTool().execute(study, source_path="/data")
+        assert isinstance(scan_result, ToolResult)
+        assert scan_result.ok is True
+        assert "Scanned /data" in scan_result.message
+        assert "as auto; found 1 EEG file." in scan_result.message
+        assert "/data" in scan_result.message
+        assert scan_result.payload is None
+        assert scan_result.error_type == "none"
+        assert scan_result.recoverable is True
         _assert_tool_result(
             MockScanSourceTool().execute(study),
             ok=False,
@@ -151,22 +158,23 @@ class TestDatasetMocks:
         assert state.data_loaded is True
         assert state.epochs_ready is False
         assert state.dataset_generated is False
-        _assert_tool_result(
-            MockSaveInterpretationRecipeTool().execute(
-                study,
-                recipe_path="/tmp/import.json",
-            ),
-            ok=True,
-            message="Interpretation recipe saved to /tmp/import.json.",
+        saved = MockSaveInterpretationRecipeTool().execute(
+            study,
+            recipe_path="/tmp/import.json",
         )
-        _assert_tool_result(
-            MockReloadInterpretationRecipeTool().execute(
-                study,
-                recipe_path="/tmp/import.json",
-            ),
-            ok=True,
-            message="Interpretation recipe reloaded from /tmp/import.json.",
+        reloaded = MockReloadInterpretationRecipeTool().execute(
+            study,
+            recipe_path="/tmp/import.json",
         )
+        for result, action in ((saved, "saved to"), (reloaded, "reloaded from")):
+            assert isinstance(result, ToolResult)
+            assert result.ok is True
+            assert f"Interpretation recipe {action}" in result.message
+            assert "import.json" in result.message
+            assert "/tmp/import.json" in result.message
+            assert result.payload is None
+            assert result.error_type == "none"
+            assert result.recoverable is True
         _assert_tool_result(
             MockReloadInterpretationRecipeTool().execute(study),
             ok=False,
@@ -397,7 +405,7 @@ class TestPreprocessMocks:
         _assert_tool_result(
             result,
             ok=True,
-            message="Epoched data from -0.5s to 1.0s.",
+            message="Created EEG epochs from -0.5s to 1.0s.",
         )
         assert state.epochs_ready is True
         assert state.dataset_generated is False
@@ -480,7 +488,7 @@ class TestTrainingMocks:
             result,
             ok=True,
             message=(
-                "Training configured (Epochs: 100, LR: 0.001, Device: cpu, "
+                "Training configured (Training epochs: 100, LR: 0.001, Device: cpu, "
                 "Optim: adam, Ckt: 0)."
             ),
         )
@@ -659,7 +667,7 @@ class TestAnalysisMocks:
             message="Saliency readiness checked with Gradient.",
         )
         _assert_tool_result(
-            MockSaliencyTool().execute(study, params={"samples": 8}),
+            MockSaliencyTool().execute(study, nt_samples=8),
             ok=True,
             message="Saliency readiness checked with custom parameters.",
         )

@@ -51,10 +51,23 @@ class RealSaliencyTool(BaseSaliencyTool):
         study: Any,
         method: str | None = None,
         params: dict[str, Any] | None = None,
+        nt_samples: int | None = None,
+        nt_samples_batch_size: int | None = None,
+        stdevs: float | None = None,
         **kwargs,
     ) -> ToolResult:
+        saliency_params = dict(params or {})
+        if nt_samples is not None:
+            saliency_params["nt_samples"] = nt_samples
+        if nt_samples_batch_size is not None:
+            saliency_params["nt_samples_batch_size"] = nt_samples_batch_size
+        if stdevs is not None:
+            saliency_params["stdevs"] = stdevs
         return execute_real_application_tool(
             study,
             self.name,
-            {"method": method, "params": params},
+            {
+                "method": method,
+                "params": saliency_params or None,
+            },
         )

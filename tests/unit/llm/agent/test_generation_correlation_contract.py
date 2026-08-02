@@ -21,6 +21,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
 )
+from XBrainLab.llm.agent.turn_orchestrator import AssistantTurnOrchestrator
 from XBrainLab.llm.agent.worker import AgentWorker
 
 
@@ -503,6 +504,23 @@ def test_host_turn_delivery_acknowledgement_is_typed_and_correlated() -> None:
     assert failed.message == "controller setup failed"
 
 
+def test_host_turn_delivery_error_redacts_private_exception_context() -> None:
+    private_path = "/srv/clinical/subject-17/events.tsv"
+
+    failed = AssistantTurnDeliveryAcknowledgement(
+        correlation=AssistantTurnCorrelation(generation=7, turn_id=13),
+        phase=AssistantTurnDeliveryPhase.ERROR,
+        message=f"Controller failed for {private_path}; subject_id=Alice-Smith.",
+    )
+
+    assert private_path not in failed.message
+    assert "subject-17" not in failed.message
+    assert "Alice-Smith" not in failed.message
+    assert "events.tsv" in failed.message
+    assert "[REDACTED_PATH]" in failed.message
+    assert "[SUBJECT_REF:" in failed.message
+
+
 def test_controller_has_a_distinct_worker_dispatch_acknowledgement_handler() -> None:
     parameters = list(
         inspect.signature(
@@ -516,9 +534,10 @@ def test_controller_has_a_distinct_worker_dispatch_acknowledgement_handler() -> 
 def test_dispatch_acknowledgements_are_ordered_exactly_once_and_correlated() -> None:
     controller = LLMController.__new__(LLMController)
     QObject.__init__(controller)
-    controller._active_generation_id = 41
-    controller._active_generation_dispatch_phase = None
-    controller._turn_cancelled = False
+    controller._turn_orchestrator = AssistantTurnOrchestrator()
+    controller._turn_orchestrator.active_generation_id = 41
+    controller._turn_orchestrator.dispatch_phase = None
+    controller._turn_orchestrator.cancelled = False
     controller._closing = False
     controller._closed = False
     controller.generation_event = MagicMock()
@@ -537,7 +556,7 @@ def test_dispatch_acknowledgements_are_ordered_exactly_once_and_correlated() -> 
     controller._on_generation_dispatch_acknowledged(started)
 
     assert (
-        controller._active_generation_dispatch_phase
+        controller._turn_orchestrator.dispatch_phase
         is AssistantGenerationDispatchPhase.STARTED
     )
     controller.generation_event.emit.assert_called_once_with(
@@ -547,21 +566,22 @@ def test_dispatch_acknowledgements_are_ordered_exactly_once_and_correlated() -> 
         )
     )
 
-    controller._active_generation_id = 42
-    controller._active_generation_dispatch_phase = None
+    controller._turn_orchestrator.active_generation_id = 42
+    controller._turn_orchestrator.dispatch_phase = None
     controller._on_generation_dispatch_acknowledged(accepted)
     controller._on_generation_dispatch_acknowledged(started)
 
-    assert controller._active_generation_dispatch_phase is None
+    assert controller._turn_orchestrator.dispatch_phase is None
     assert controller.generation_event.emit.call_count == 1
 
 
 def test_cancelled_or_closing_turn_ignores_late_dispatch_acknowledgements() -> None:
     controller = LLMController.__new__(LLMController)
     QObject.__init__(controller)
-    controller._active_generation_id = 51
-    controller._active_generation_dispatch_phase = None
-    controller._turn_cancelled = True
+    controller._turn_orchestrator = AssistantTurnOrchestrator()
+    controller._turn_orchestrator.active_generation_id = 51
+    controller._turn_orchestrator.dispatch_phase = None
+    controller._turn_orchestrator.cancelled = True
     controller._closing = False
     controller._closed = False
     controller.generation_event = MagicMock()
@@ -576,12 +596,12 @@ def test_cancelled_or_closing_turn_ignores_late_dispatch_acknowledgements() -> N
 
     controller._on_generation_dispatch_acknowledged(accepted)
     controller._on_generation_dispatch_acknowledged(started)
-    controller._turn_cancelled = False
+    controller._turn_orchestrator.cancelled = False
     controller._closing = True
     controller._on_generation_dispatch_acknowledged(accepted)
     controller._on_generation_dispatch_acknowledged(started)
 
-    assert controller._active_generation_dispatch_phase is None
+    assert controller._turn_orchestrator.dispatch_phase is None
     controller.generation_event.emit.assert_not_called()
 
 

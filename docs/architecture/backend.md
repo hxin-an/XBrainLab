@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-07-12`
+最後更新：`2026-07-31`
 
 ## 快速讀法
 
@@ -12,19 +12,19 @@
 | backend 主入口是什麼？ | `ApplicationService / Command API`。UI high-value actions、assistant、headless scripts 都應從這裡進 backend。 |
 | `BackendFacade` 還是不是架構的一部分？ | 不是。module 已刪除，architecture guard 會擋 product runtime 和 product-success tests 重新 import / construct。 |
 | `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
-| UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / compatibility compatibility、部分 readonly display fallback。 |
+| UI 是否完全不碰 controllers？ | Product MainWindow wiring 不使用 controller bundle；controllers 仍存在於 outer adapters、standalone/mock compatibility 與少數 lower-level utilities。 |
 | product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、controller compatibility、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
-| UI 和 assistant 同時下 command 怎麼辦？ | mutation lock 由 `Study` 擁有，序列化 state-changing command。UI、assistant 與 headless preflight 讀同一份 `ApplicationViewPublication(state, capabilities, generation)`；lock 空閒時刷新背景 truth，mutation 進行中則立即回最後一份已驗證 publication，不等待長命令。 |
+| UI 和 assistant 同時下 command 怎麼辦？ | mutation lock 由 `Study` 擁有，序列化 state-changing command。已遷移的 UI readers、assistant 與 headless preflight 讀同一份 `ApplicationViewPublication(state, capabilities, generation)`；lock 空閒時刷新背景 truth，mutation 進行中則立即回最後一份已驗證 publication，不等待長命令。尚未遷移的 display path 仍是 closure debt。 |
 
 ## Current Target Gap
 
 | Area | 已接近 target | 剩餘距離 |
 | --- | --- | --- |
-| Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。MCP job progress 是歷史 adapter evidence，不是 active roadmap。 |
+| Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流；retained optional adapters 不是 active roadmap。 |
 | Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；saliency method policy 由 `backend.application.saliency_policy` 共用，training resource guard 只吃明確 dataset / option context。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
-| State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、UI、assistant、headless preflight 共用這個 view。 | object-bearing data/history query 仍序列化；少數 lower-level domain / fixture tests 直接 setup/read `Study`，不能當 product smoke。 |
-| Result boundary | `CommandResult.diagnostics` 只放可序列化 evidence；trainer、history row、figure 等 in-process object 放在 `CommandResult.runtime`。 | 新 consumer 不可再從 diagnostics 偷拿 runtime object；headless/assistant payload 不應意外序列化 Qt/domain object。 |
-| UI boundary | product action method 不可直接呼叫 controller compatibility helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
+| State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、product UI readers、assistant、headless preflight 共用這個 view。 | Refresh single-truth 仍需獨立 exact-commit source guard與 product workflow evidence；少數 lower-level tests 的 direct `Study` access也不能當 product smoke。 |
+| Result boundary | Product `CommandResult` 只包含 detached state、changed-state、typed error 與 JSON-safe diagnostics；`runtime` / `local_payload` fields 和 command `include_objects` opt-in 已物理移除。Dataset、Preprocess、training history、Evaluation 與 Visualization 使用 generation-bound detached rows/publications。 | 少數 lower-level presentation utilities 仍直接接收 domain objects；它們不能重新接回 product command result，也不能當 ApplicationService workflow evidence。 |
+| UI boundary | Product action method 不可直接呼叫 controller compatibility helper；MainWindow 以 typed ports materialize 五個 panels，Training progress 由 narrow transient port 傳遞。 | Standalone/mock compatibility signatures 仍存在；不是 repo-wide controller removal，refresh exact closure 也需獨立驗證。 |
 | Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
 
 ## 驗證範圍與歷史脈絡
@@ -40,7 +40,6 @@
 - `XBrainLab/backend/training_manager.py`
 - `XBrainLab/backend/controller/*.py`
 - `XBrainLab/ui/main_window.py`
-- `XBrainLab/ui/controller_compatibility_bootstrap.py`
 - `XBrainLab/llm/tools/real/*.py`
 - `XBrainLab/llm/pipeline_state.py`
 
@@ -51,9 +50,10 @@ train / reset 的 readiness 和 blocked reason 由同一個 capability policy �
 本輪再把 UI action execution 擴大接到 `ApplicationService.execute()`：dataset import、
 reset / new session、preprocess、channel selection、epoching、split / model / training setting
 dialogs、evaluation / visualization / saliency query、training start / stop、metadata update、
-smart parse、remove files、label import、montage confirmation。controller 邊界尚未完整收斂，
-但上述 real `Study` mutating paths 已回 `CommandResult`；mock/unit-test fallback 和部分
-read-only panel refresh 仍保留相容 controller path。2026-05-03 backend hardening 又把
+smart parse、remove files、label import、montage confirmation。該階段 controller 邊界尚未完整
+收斂，但上述 real `Study` mutating paths 已回 `CommandResult`；後續 closure 已將 product
+panel construction 移到 typed ports，mock/unit-test compatibility 留在 outer boundary。
+2026-05-03 backend hardening 又把
 dataset generation 的 apply/audit failure 包成同一個 rollback boundary，避免 datasets /
 generator / trainer 半成功殘留；`evaluate` 和 `clear_training_history` 也改成需要真的
 training plan history，不能只因 trainer 物件存在就開啟。2026-05-04 Goal 1 第一個
@@ -202,25 +202,20 @@ calling blocking `get_state()`. Architecture compliance protects the private ser
 ## 一句話架構
 
 XBrainLab backend 目前是以 `Study` 作為中心狀態容器，`DataManager` 和
-`TrainingManager` 分別承接資料生命週期與訓練生命週期；UI 仍保留 controller 操作
-`Study` 的歷史路徑，但高價值 workflow 按鈕已開始透過 `ApplicationService / Command API`
-執行；assistant 和 current headless scripts 也直接進同一個 command layer。
+`TrainingManager` 分別承接資料生命週期與訓練生命週期。Product UI、assistant 和 current
+headless scripts 透過 `ApplicationService / Command API` 進入同一個 command layer；controllers
+只保留為外層 standalone/test compatibility adapters。
 
 ## 實際分層
 
 ```text
-PyQt panels
+PyQt product panels
   |
-  +--> UI action execution
+  +--> narrow query / publication / action / transient ports
   |       |
   |       +--> ApplicationService.execute(...) for import / label / metadata / preprocess / epoch / split / query / train / reset / montage
-  |       |
-  |       v
-  |     explicit compatibility helpers for mock fallback / panel bootstrap adapters
-  |
-  v
-DatasetController / PreprocessController / TrainingController
-EvaluationController / VisualizationController
+  |       +--> revisioned ApplicationViewPublication for state render
+  |       +--> TrainingTransientProgressPort for progress ticks only
   |
   v
 Study
@@ -273,7 +268,8 @@ ApplicationService / Command API
           +--> state snapshot assembly / query_state diagnostics
   |
   v
-same cached controllers from Study
+Study-owned manager/domain ports
+plus detached TrainingProjectionReadPort for Evaluation catalog/render
 
 Headless automation
   |
@@ -295,18 +291,15 @@ ApplicationService.get_capabilities()
 
 UI 不是透過 `BackendFacade` 操作 backend。
 
-`XBrainLab/ui/main_window.py` 初始化 panels 時不再把 `study.get_controller(...)` 當成
-未命名例外散在 MainWindow 內；它呼叫
-`get_compatibility_workflow_controllers_for_panel_bootstrap(study)`，由
-`XBrainLab/ui/controller_compatibility_bootstrap.py` 統一取得 dataset / preprocess / training /
-evaluation / visualization controller adapters。這個 helper 是具名 compatibility quarantine：目前
-panel constructors、observer bridge 和部分 read-only population 仍需要 injected controllers，
-但 product action execution、capability/readiness、command result refresh 不在這條路徑上。
+`XBrainLab/ui/main_window.py` 以 typed ports materialize 五個 product panels，不再建立或注入
+compatibility controller bundle。Dataset / Preprocess 使用 application publication/query port；
+Training 使用 query、publication、action 和 transient-progress ports；Evaluation /
+Visualization 使用 detached query/publication/action ports。State-changing render 由
+revisioned publication 提交，Training transient port 只承載 progress tick。
 
-因此現在 UI 仍會取得 controller layer；這些 controller 主要服務 panel bootstrap、
-observer bridge、dialog-local logic 和 read-only rendering compatibility。但高價值 workflow
-action 已不再直接呼叫 controller，而是先經過 UI command adapter 進
-`ApplicationService.execute()`。
+Controllers 仍存在於 standalone/test compatibility constructors 和外層 adapters，但 real
+`Study` product context 若缺少 typed publication/capability 必須 fail closed，不可自行回到
+controller tree。這些殘留是後續 P2 cleanup，不是 product action、readiness 或 render truth。
 
 第一批 UI-facing decision 已改讀 ApplicationService capability policy：
 
@@ -371,47 +364,27 @@ policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `Applicatio
 `import_labels` 仍可呼叫，但 metadata 明確標為非 primary workflow，並提供 Data Interpretation
 preferred commands。
 
-MCP stdio / HTTP adapter code 和 artifacts 仍存在於歷史實作中，但已從 active roadmap 移除。
-本頁不再把 MCP 視為產品目標或 handoff gate；若未來重新啟用，必須另開 decision。
+Historical boundary: MCP stdio / HTTP adapter code, tests, and artifacts may remain in the
+repository, but MCP has exited the active product and thesis roadmap. Retained transport details
+are compatibility history, not a current support, security, client-certification, or handoff claim.
+Only an explicit user-requested opt-in scope should reopen them, and any future adapter must still
+delegate through `backend.application.automation` / `ApplicationService` rather than create a
+second state, capability, or workflow truth.
 
-`XBrainLab.mcp.server` 是目前的 stdio MCP server baseline；它只處理 MCP lifecycle / tool
-transport，實際 tool call 仍包這層 automation adapter，而不是繞過 command layer 或直接碰
-controller internals。每個 stdio `tools/call` structured result 都會標出
-`adapter.mode=headless_mcp_stdio`、stable session id 和 `ui_refresh.supported=False`，避免把
-headless MCP session 誤認成桌面 UI control。對 `train` 這類 long-running command，stdio
-adapter 會先保留 backend capability / precondition truth：unready training 回 shared blocked
-reason；只有 capability 已 enabled 的 long-running training 才回
-`long_running_job_required`，不做同步阻塞執行。HTTP transport 已有 train-only in-memory job
-status / cancel baseline；job persistence / recovery、evaluation / visualization jobs 和 resource
-lock 仍是後續 architecture work。
-`XBrainLab.mcp.http_server` 是目前的 local HTTP transport baseline；它用 stdlib
-`ThreadingHTTPServer` 暴露 `POST /mcp` JSON-RPC 和 `GET /health`，同樣委派到
-`MCPServer(transport="http")` / automation adapter / `ApplicationService.execute()`。
-HTTP structured result 標示 `adapter.mode=headless_mcp_http`、`transport=http`、stable session
-id 和 `ui_refresh.supported=False`。HTTP server 預設 bind `127.0.0.1`，並支援 optional Bearer
-token；token 比對使用 constant-time compare，JSON-RPC body 也有 bounded size limit。這是
-local external-agent adapter，不是遠端多使用者服務或完整 authorization server。Backend-ready
-long-running `train` over HTTP 現在會建立 in-memory job，並提供 `GET /jobs` list、
-`GET /jobs/{id}` status / progress snapshot 和 `POST /jobs/{id}/cancel` cancellation endpoint；
-progress message 由 `ApplicationService.get_state().training.progress_message` 提供，不直接讀
-`service.study.trainer`；cancel 仍透過
-`StopTrainingCommand` / `ApplicationService.execute()`，不直接碰 controller。HTTP registry 也會
-拒絕同一 session 內 duplicate train start：既有 job 正在 start 或 running 時回
-`job_already_running`，不會啟動第二個 training command；cancelled / completed job records 會
-保存 terminal status，避免後續新 training run 把舊 job 重新顯示成 active。這是 train-only HTTP
-job baseline；evaluation / visualization jobs、job persistence / recovery、multi-client
-recovery-grade resource lock 和 full remote authorization 仍是後續 architecture work。
-Architecture compliance 也會拒絕 MCP product status/progress code 直接讀 mutable `Study`
-state，例如 `service.study.trainer`，或直接呼叫 `service.study.get_controller(...)` /
-`service.study.get_datasets_generator(...)`；只允許 explicit compatibility / fallback helper 保留相容性。
+`ApplicationService` 現在直接組合同一個 `Study` 擁有的 focused product ports：
 
-`ApplicationService` 會拿同一組 cached controllers：
+- `dataset_state_service`
+- `preprocess_state_service`
+- `training_state_service`
+- `visualization_state_service`
 
-- `dataset`
-- `preprocess`
-- `training`
-- `evaluation`
-- `visualization`
+`Study.get_controller(...)` 的 cached registry 仍保留給 outer adapter、standalone/mock compatibility
+與尚未移除的低階入口，但不是 `ApplicationService` product dependency。
+
+Evaluation 是明確例外：product path 不建立 `EvaluationControllerAdapter`，而是由
+`TrainingProjectionReadPort` 產生 serializable catalog、generation-bound detached render
+publication 與 model summary。`Study.get_controller("evaluation")` 仍是 legacy controller
+registry 的 compatibility surface，不是 ApplicationService dependency。
 
 `XBrainLab/llm/tools/real/dataset_real.py`、`preprocess_real.py`、`training_real.py` 和
 `analysis_real.py` 也已改成 command-backed real tools。Mapped workflow tools 由
@@ -419,9 +392,10 @@ state，例如 `service.study.trainer`，或直接呼叫 `service.study.get_cont
 command 並回傳 `ToolCommandResult.from_command_result(...)`；read-only tools 也從 command
 query result 取得 state truth。
 
-結論：`BackendFacade` 是 non-product legacy wrapper，不是 agent/tool surface 的 runtime
-入口。新邏輯應進 `ApplicationService` 下的 focused command service / handler；UI 目前仍是
-service-first migration 的中間狀態，尚未完整完成。
+結論：`BackendFacade` module 已物理移除，不能再被描述成 non-product wrapper、
+compatibility target 或 agent/tool runtime 入口。新邏輯應進 `ApplicationService` 下的
+focused command service / handler；UI 目前仍是 service-first migration 的中間狀態，
+尚未完整完成。
 
 ### Data Interpretation command baseline
 
@@ -452,8 +426,8 @@ service-first migration 的中間狀態，尚未完整完成。
 `ApplicationStateSnapshot` 現在包含 `interpretation` section，`CapabilityPolicy` 也包含
 Data Interpretation commands 的 `can_auto_execute`、`requires_confirmation`、
 `decision_boundary`、`continue_allowed_after_success`、`retry_limit`、`stop_after_success`、
-`blocks_downstream_until_confirmed` 等 autonomy 欄位。這些欄位目前先支撐 backend / agent
-adapter contract；UI import wizard 和 agent tool taxonomy 尚未使用這套新命令作為主入口。
+`blocks_downstream_until_confirmed` 等 autonomy 欄位。UI import wizard 與 agent tool
+taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入口。
 
 ### Agent command surface
 
@@ -464,7 +438,7 @@ ApplicationService command names：
 
 | Agent tool | Application command |
 | --- | --- |
-| `load_data` | `load_data` |
+| `load_data` | disabled legacy compatibility surface; use Data Interpretation |
 | `attach_labels` | `attach_labels` |
 | `apply_standard_preprocess` / `apply_bandpass_filter` / `apply_notch_filter` / `resample_data` / `normalize_data` / `set_reference` / `select_channels` | `preprocess` |
 | `set_montage` | `apply_montage` capability + UI confirmation request |
@@ -491,10 +465,13 @@ ChatPanel transcript。`LLMController` 會把 `ToolCommandResult` 轉成產品�
 可修正的 blocked reason。raw schema error、Python list、tool name、backend command name、
 snake_case command 只留在 history / diagnostics / logs。
 
-2026-05-02 product delivery slice 之後，mapped agent workflow tools 會優先直接執行
-ApplicationService command，包含 `load_data`、`attach_labels`、preprocess tools、`epoch_data`、
+Mapped agent workflow tools 會優先直接執行 ApplicationService command，包含
+Data Interpretation、`attach_labels`、preprocess tools、`epoch_data`、
 `generate_dataset`、`set_model`、`configure_training`、`start_training`、`clear_dataset`。
-`load_data` 會先做 directory expansion 再進 `LoadDataCommand`。`set_montage` 和
+舊 `load_data` tool definition 只保留 compatibility identity；產品 policy 與 executor
+一律 fail closed，要求改走 `scan_source -> preview_interpretation ->
+validate_interpretation -> apply_interpretation`。這避免把 identity-bound 授權目錄重新
+展開成普通字串後再開檔。`set_montage` 和
 `switch_panel` 仍是 UI request path；`set_montage` 的 capability 由 `apply_montage` policy
 決定，confirmation 後的 apply 走 `ApplyMontageCommand`。`list_files` / `get_dataset_info`
 仍是 read-only / inspection tools，但現在也會經 typed result normalization，避免 legacy
@@ -647,16 +624,77 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
 - error boundary 對 command result 已足夠支撐 UI 顯示 blocked reason；UI / agent 必須把它
   轉成 visible user feedback，而不是只記在 diagnostics。
 
+### Training artifact filesystem boundary
+
+Training/evaluation persistence 只透過
+`XBrainLab/backend/training/record/artifact_store.py` 寫入或讀取 versioned JSON manifest、
+non-pickle NPZ 與 tensor-only checkpoint。`filesystem_identity.py` 在一次 bounded artifact IO
+期間保留 output directory identity；POSIX leaf access 使用 directory-descriptor-relative
+`O_NOFOLLOW` / exclusive create，Windows leaf access 使用 native reparse-point handle。兩個平台
+都拒絕 non-regular entry 與多重 hardlink，publication 使用同一 retained parent identity 內的
+atomic replace。這個 contract 防止 artifact leaf substitution，但不能取代真人 NTFS
+junction/reparse acceptance；使用者另外選取的 pretrained weight 與 source EEG reader 屬各自的
+admission boundary，不應被誤稱為 training artifact persistence。
+
+### Public diagnostic / log privacy boundary
+
+`XBrainLab/backend/utils/public_diagnostics.py` 是 logs、exception/result messages、assistant
+feedback 與 UI interaction outcomes 的共同 privacy boundary。預設 `PUBLIC` disclosure：
+
+- 完整 POSIX / Windows / UNC 私人路徑只保留可辨識的 basename（若其中有 BIDS / subject token
+  會再遮罩）和 `[PATH_REF:...]`；parent directories 不進 log 或 user-visible message。
+- `subject_id` / `participant` / `patient` 與 BIDS `sub-*` 會變成 `[SUBJECT_REF:...]`。reference
+  使用 process-local random HMAC key，同一 app process 內穩定，restart 後刻意不可關聯，也不能
+  從低熵 subject id 反查原值。
+- NUL、ANSI escape、Unicode format/control characters 會在輸出前移除或壓成空白。default
+  logs、developer detail 與 compact status event 強制使用 `SINGLE_LINE`，避免 exception /
+  dataset metadata 製造額外 log lines；rich presentation 只允許 normalized LF，CR 和其他
+  control characters 不會保留。
+- `CommandResult.message` / `error_message`、`ApplicationError` / `XBrainLabError`、
+  `InteractionOutcome`、assistant delivery/result/presentation 都走這個 boundary。原始
+  `CommandResult.diagnostics` 仍保留在 process 內供 UI workflow 使用，不以刪資料方式換取
+  privacy。
+- `CommandResult.to_dict()` 是 local functional adapter contract，不能當公開 diagnostics；
+  export / support output 必須用 `CommandResult.to_public_dict()`。Agent 對 model/history 的
+  `ToolCommandResult.to_payload()` 也會做 recursive public projection。
+- default `XBrainLab` rotating file / console handlers 在 record 傳給其他 handler 前 redaction，
+  exception traceback 也只保留 safe basename、line / exception type 與已遮罩 detail。source
+  guard 禁止 product modules 另裝 `FileHandler` / `StreamHandler` 或設 `propagate=False` 繞過
+  central handler；inactive MCP compatibility code 不在這個 active product guard 內。
+
+Detailed diagnostics 不是 settings 或 UI toggle。只有受控診斷程式碼明確傳入
+`DiagnosticDisclosure.DETAILED` 才可開啟；這個 mode 仍套用相同 layout/control policy 並移除
+credentials 與 email，但可能保存完整 private path / subject identifier。使用政策是
+local-only、最短必要時間、使用者審閱與同意後才可分享，完成診斷後刪除，不可自動上傳。
+
+Default retention 是 active `5 MiB` 加 `5` 個 rotating backups（nominal upper bound 約
+`30 MiB`）。POSIX log directory / file 每次建立或 reopen 都驗證為目前使用者擁有的
+`0700` / `0600`。Windows 以同一個 opened file object 套用並 read-back 驗證 protected DACL：
+目錄只有目前使用者的 inheritable full-control ACE，active log、marker 與每個 rotating backup
+只有目前使用者的 non-inheritable full-control ACE。任何 Win32 API、owner、DACL、ACE、reparse
+point 或 read-back 驗證失敗都會停用 file sink，只保留已遮罩的 console logging。
+
+Windows ACL boundary 不宣稱能限制 Administrator / SYSTEM、同帳號惡意程式，或取代 ancestor
+junction race 的 SEC-06 containment gate。Packaged launcher、非 NTFS volume 與第二個標準帳號的
+實際拒絕測試仍屬 Windows acceptance。Detailed log 不可放到 shared / network location。
+
+UI source guard 會拒絕 catch-all exception 或 worker callback error 直接進
+`QMessageBox` / status sink；unexpected error 只顯示穩定可操作文案，完整 exception 先經
+central public-diagnostic boundary 後才可寫入 default diagnostics。少數 mock-only controller
+compatibility path 顯示的是固定的 public unavailable message，不是 backend exception detail。
+
 重要邊界：
 
-- command 目前仍透過既有 controllers 執行，以保留 observer event 與 UI refresh 行為。
+- product command 透過 `Study`-owned focused services / domain ports 執行；controller registry 僅是
+  outer adapter、standalone/mock compatibility 與少數尚待收斂的低階入口。
 - Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationSessionState`，並由
   `DataInterpretationCommandService` 作為 command boundary 協調；UI、agent 和
   automation 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
   interpretation state。
 - Analysis / visualization readiness truth 目前在 `AnalysisCommandService`，但 capability
   exposure 仍由 `ApplicationService.get_capabilities()` 產生。
-- `BackendFacade` 是 legacy wrapper；product runtime 不應 import 或 instantiate 它。
+- `BackendFacade` module 已物理移除；product runtime、tests 和文件都不得把它恢復成
+  wrapper、compatibility target 或可 instantiate 的 abstraction。
 - `get_application_service(study)` 會重用掛在同一個 `Study` 上的 `ApplicationService`。這是
   Data Interpretation lifecycle 的必要邊界，否則 `scan_source` 產生的 scan state 會在下一個
   `preview_interpretation` tool call 因重新建立 service 而遺失。
@@ -809,7 +847,7 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 - `DataManager` data lifecycle state
 - `TrainingManager` training lifecycle state
 - `ApplicationViewPublication.state.pipeline_stage` 與同 generation capability policy
-- controller observer events
+- controller observer events（只作 refresh signal，不是獨立 workflow/state truth）
 - quality dashboard / targeted tests
 
 不應依賴：
@@ -817,13 +855,14 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 - UI display text
 - chat wording
 - legacy docs
-- 舊 `AQ-*` queue
+- 退役的 `AQ-*` / `Prep Gate` / `Repair Loop` task systems
 - 舊絕對路徑
 
 ## 已驗證事實
 
 - `Study.get_controller()` 會 cache built-in controllers；`tests/unit/test_architecture.py` 有 coverage。
-- UI panels 目前直接吃 controllers 或 command helpers，不吃 `BackendFacade`。
+- Product MainWindow 透過 narrow typed query/publication/action ports materialize 五個 panels；
+  standalone/test constructors 仍有明確隔離的 controller compatibility signatures。
 - `BackendFacade` module 已移除；product runtime packages 和 tests 不應使用它。
 - `ApplicationService` 第一版已可回傳 state snapshot、capability policy 和
   `CommandResult`，並可執行 load / label / preprocess / epoch / dataset /
@@ -843,8 +882,13 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 
 1. `Study` 是否應繼續保留大量 delegation property，還是逐步收斂成更明確的 state API。
 2. controller 裡的 workflow logic 是否要下沉到 service / manager，讓 controller 更接近 UI adapter。
-3. UI 是否應逐步改成和 assistant 共用同一組 backend capability command，而不是各自繞 controller。
-4. error handling 已有第一版分類，但仍需用更多 real workflow 驗證是否足以支撐
+3. 剩餘 standalone/test controller compatibility 何時能由 typed application ports 取代，而不讓
+   product UI 或 assistant 回流成第二套 state truth。
+4. 哪些 UI consumer 仍直接持有 live domain/runtime object，以及 ownership / stale-generation /
+   teardown boundary 應如何收斂。
+5. 哪些 observer refresh 仍未以 matching publication revision acknowledgement 驗證，避免把
+   refresh coordinator 的存在誤寫成所有 panel 已統一。
+6. error handling 已有第一版分類，但仍需用更多 real workflow 驗證是否足以支撐
    tool-call verification，包括可恢復狀態和可回報給 agent 的 diagnostics。
 
 ## 目標方向
@@ -900,11 +944,12 @@ Agent tool: load_data(files)
 ```
 
 Assistant / script 的穩定入口是 `ApplicationService / Command API` 或薄 command adapter；
-不再保留 `BackendFacade` wrapper。
+`BackendFacade` 已物理移除，也不是 compatibility target。
 
-這個方向已由使用者確認。第一版 service 已採取保守路線：command layer 先呼叫既有
-controllers，保留 observer event、refresh、lock / running-state 行為；後續再逐步把
-controller 內的 business workflow 下沉。
+這個方向已由使用者確認。Current product path 已由 `ApplicationService` 組合 Study-owned focused
+services / domain ports；Product MainWindow 與 assistant 都從 typed application boundary 進入。
+Controller registry 仍存在於 outer/compatibility 邊界，後續只收斂有證據可替代的殘留，不可把它
+重新寫成 product command 或 render truth。
 
 ## 重構原則
 
@@ -920,13 +965,18 @@ controller 內的 business workflow 下沉。
 
 ## 目前判斷
 
-目前 backend 架構不是一團亂，但它處在「已從 monolithic Study 拆出 managers，且
-剛建立 Application Service / Command API，尚未完成 UI/controller 邊界收斂」的中間狀態。
+目前 backend 已建立 Application Service / Command API、focused command services，並物理移除
+`BackendFacade` 與 product live-object result payload，但仍處在 UI/controller 邊界收斂的
+中間狀態。Injected controllers、lower-level domain-object presentation、
+publication acknowledgement 和 refresh adoption 都還有已知 debt。
 
 因此下一階段後端重構不應直接大改資料流。比較合理的順序是：
 
-1. 擴充 command API 的 real workflow coverage，尤其是 controller parity 與更完整的
-   training execution boundary。
-2. 逐步讓 controllers 呼叫 service，再由 controllers 發出既有 observer events。
-3. 繼續將剩餘 legacy string compatibility tests 改成 `CommandResult` / state assertions。
-4. UI panel 仍保持保守，等 command API 和 tests 更穩再移除更多 controller compatibility。
+1. 盤點剩餘 controller-owned workflow、lower-level domain-object presentation 和非
+   publication refresh；不可把 domain object 重新放回 product result。
+2. 以 focused slice 將 business workflow 下沉到 service / command，controller 保留必要
+   adapter / observer 責任。
+3. 讓 display refresh 以 generation-bound publication 和 acknowledgement 驗證；observer event
+   只作 signal，不建立第二份 state truth。
+4. 繼續將 legacy compatibility tests 改成 `CommandResult`、state publication 和 visible
+   behavior assertions，再移除有證據可替代的 controller compatibility。

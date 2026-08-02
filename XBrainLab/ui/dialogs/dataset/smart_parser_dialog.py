@@ -102,7 +102,7 @@ class SmartParserDialog(BaseDialog):
         self.resize(max(size_hint.width(), 760), max(size_hint.height(), 440))
 
     @override
-    def showEvent(self, event: QShowEvent) -> None:
+    def showEvent(self, event: QShowEvent | None) -> None:
         """Center the parser over the import dialog when it is shown."""
         self._fit_settings_stack(self.settings_stack.currentIndex())
         layout = self.layout()
@@ -379,9 +379,9 @@ class SmartParserDialog(BaseDialog):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        header = self.table.horizontalHeader()
-        if header is not None:
-            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table_header = self.table.horizontalHeader()
+        if table_header is not None:
+            table_header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         vertical_header = self.table.verticalHeader()
         if vertical_header is not None:
             vertical_header.setVisible(False)
@@ -869,7 +869,7 @@ class SmartParserDialog(BaseDialog):
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
                 border-radius: 4px;
                 gridline-color: #303030;
-                selection-background-color: {Theme.BLUE_PRESSED};
+                selection-background-color: {Theme.TABLE_SELECTION};
             }}
             QTableWidget#SmartParserPreviewTable::item {{
                 padding: 3px 6px;

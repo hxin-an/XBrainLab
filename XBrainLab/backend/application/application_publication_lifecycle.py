@@ -3,22 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol, cast
 from weakref import finalize, ref
 
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
 )
 from XBrainLab.backend.utils.logger import logger
 
-from .controller_adapters import (
-    TrainingControllerAdapter,
-    VisualizationControllerAdapter,
-)
 from .post_training_saliency import (
     SaliencyTerminalNotification,
+)
+from .publication_event_ports import (
+    TrainingLifecycleEventPort,
+    VisualizationPublicationEventPort,
 )
 from .state import ApplicationStateSnapshot
 from .state_service import StateSnapshotService
@@ -33,6 +33,10 @@ from .view_publication import ApplicationViewPublication
 _ObserverCleanup = tuple[Callable[..., Any], tuple[Any, ...]]
 
 
+class _FinalizerWithAtexit(Protocol):
+    atexit: bool
+
+
 class ApplicationPublicationLifecycle:
     """Own observer subscriptions and application publication delivery.
 
@@ -44,9 +48,9 @@ class ApplicationPublicationLifecycle:
     def __init__(
         self,
         *,
-        training: TrainingControllerAdapter,
+        training_events: TrainingLifecycleEventPort,
         training_runtime: TrainingRuntimePort,
-        visualization: VisualizationControllerAdapter,
+        visualization: VisualizationPublicationEventPort,
         state_snapshot: StateSnapshotService,
         command_lock: Any,
         command_admission_lock: Any,
@@ -58,7 +62,7 @@ class ApplicationPublicationLifecycle:
         publish_view_changed: Callable[[ApplicationViewPublication], bool],
         view_revision_delivered: Callable[[int], bool],
     ) -> None:
-        self._training = training
+        self._training_events = training_events
         self._training_runtime = training_runtime
         self._visualization = visualization
         self._state_snapshot = state_snapshot
@@ -75,13 +79,22 @@ class ApplicationPublicationLifecycle:
         self.coordinator = TrainingPublicationLifecycleCoordinator(
             publish_training_terminal=self._publish_acknowledged_training_terminal,
             plan_saliency_delivery=self.plan_saliency_terminal_delivery,
-            publish_training_analysis=lambda event: self._training.notify(
-                "training_analysis_published",
-                event,
-            ),
+            publish_training_analysis=self._training_events.publish_training_analysis,
             publish_saliency_changed=self.notify_saliency_publication_changed,
         )
+        self._observer_finalizer: Callable[[], Any] = self._inactive_cleanup
+        self._observers_started = False
+
+    @staticmethod
+    def _inactive_cleanup() -> None:
+        """Represent the lifecycle before external observers are installed."""
+
+    def start(self) -> None:
+        """Subscribe only after the owning ApplicationService is fully composed."""
+        if self._observers_started:
+            return
         self._observer_finalizer = self._subscribe_lifecycle_observers()
+        self._observers_started = True
 
     @property
     def observer_finalizer(self) -> Callable[[], Any]:
@@ -113,31 +126,47 @@ class ApplicationPublicationLifecycle:
 
             return callback
 
-        for event, method_name in (
-            ("training_started", "publish_training_live_state"),
-            ("training_updated", "publish_training_live_state"),
-            ("training_stopped", "publish_training_terminal_state"),
-        ):
-            callback = weak_callback(method_name)
-            self._training.subscribe(event, callback)
-            cleanups.append((self._training.unsubscribe, (event, callback)))
+        try:
+            for subscribe, unsubscribe, method_name in (
+                (
+                    self._training_events.subscribe_training_started,
+                    self._training_events.unsubscribe_training_started,
+                    "publish_training_live_state",
+                ),
+                (
+                    self._training_events.subscribe_training_updated,
+                    self._training_events.unsubscribe_training_updated,
+                    "publish_training_live_state",
+                ),
+                (
+                    self._training_events.subscribe_training_stopped,
+                    self._training_events.unsubscribe_training_stopped,
+                    "publish_training_terminal_state",
+                ),
+            ):
+                callback = weak_callback(method_name)
+                cleanups.append((unsubscribe, (callback,)))
+                subscribe(callback)
 
-        saliency_callback = weak_callback(
-            "publish_post_training_saliency_terminal_state"
-        )
-        self._training_runtime.subscribe_saliency_terminal(saliency_callback)
-        cleanups.append(
-            (
-                self._training_runtime.unsubscribe_saliency_terminal,
-                (saliency_callback,),
+            saliency_callback = weak_callback(
+                "publish_post_training_saliency_terminal_state"
             )
-        )
+            cleanups.append(
+                (
+                    self._training_runtime.unsubscribe_saliency_terminal,
+                    (saliency_callback,),
+                )
+            )
+            self._training_runtime.subscribe_saliency_terminal(saliency_callback)
+        except BaseException:
+            self._unsubscribe_lifecycle_observers(tuple(cleanups))
+            raise
         observer_finalizer = finalize(
             self,
             ApplicationPublicationLifecycle._unsubscribe_lifecycle_observers,
             tuple(cleanups),
         )
-        observer_finalizer.atexit = False
+        cast(_FinalizerWithAtexit, observer_finalizer).atexit = False
         return observer_finalizer
 
     @staticmethod
@@ -162,6 +191,7 @@ class ApplicationPublicationLifecycle:
     def close(self) -> None:
         """Idempotently release observers and retained delivery obligations."""
         self._observer_finalizer()
+        self._observers_started = False
         self.coordinator.discard_pending()
 
     def publish_training_live_state(
@@ -264,10 +294,7 @@ class ApplicationPublicationLifecycle:
         revision = event.publication_revision
         if revision is not None and not self._view_revision_delivered(revision):
             return False
-        return self._training.notify(
-            "training_terminal_published",
-            event,
-        )
+        return self._training_events.publish_training_terminal(event)
 
     def publish_post_training_saliency_terminal_state(
         self,
@@ -442,7 +469,7 @@ class ApplicationPublicationLifecycle:
         if self._visualization.notifications_deferred:
             return False
         try:
-            return self._visualization.notify("saliency_changed") is not False
+            return self._visualization.publish_saliency_changed() is not False
         except Exception:
             logger.exception("Could not deliver terminal saliency publication")
             return False

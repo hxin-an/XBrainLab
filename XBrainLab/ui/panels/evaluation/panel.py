@@ -1,6 +1,10 @@
 """Evaluation panel for viewing confusion matrices, metrics, and model summaries."""
 
+import json
 import logging
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import cast
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
@@ -17,18 +21,45 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import EvaluateCommand
+from XBrainLab.backend.application import (
+    ApplicationError,
+    EvaluateCommand,
+    EvaluationPlanIdentity,
+    EvaluationRenderPublication,
+    EvaluationRenderRequest,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
+)
+from XBrainLab.backend.application.evaluation_render import (
+    evaluation_provenance_presentation,
+)
 from XBrainLab.backend.application.results import CommandResult
-from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
+from XBrainLab.backend.application.serialization import serialize_json_value
+from XBrainLab.backend.application.state import EvaluationStateSnapshot
+from XBrainLab.backend.application.view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationViewPublication,
+)
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyPhase,
+    TrainingTerminalOutcome,
+)
+from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
-    ControllerCompatibilityUnavailableError,
+    ApplicationPublicationSubscriptionPort,
+    ApplicationUiRuntime,
+    EvaluationActionPort,
+    EvaluationQueryPort,
+    application_ui_runtime,
     execute_application_command,
     execute_application_command_async,
-    get_controller_for_compatibility_context,
-    local_result_payload,
-    run_controller_compatibility_call,
+    get_application_view_publication,
+    get_evaluation_render_publication,
 )
-from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.application_publication_renderer import (
+    ApplicationPublicationRenderLedger,
+)
+from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.components.presentation import ElidingComboBox, ResponsiveControlsBar
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
@@ -50,14 +81,57 @@ MODEL_SUMMARY_LOAD_FAILED_TEXT = (
     "Model details could not be loaded. Select another completed run or "
     "reopen Evaluation to try again."
 )
-EVALUATION_DETAILS_LOAD_FAILED_TEXT = (
-    "Evaluation details could not be loaded. Select another completed run or "
-    "reopen Evaluation to try again."
-)
 CHART_TABS_BREAKPOINT = 720
-INFO_SIDEBAR_BREAKPOINT = 800
 COMPACT_HEIGHT_BREAKPOINT = 600
+INFO_SIDEBAR_WIDTH = 260
+COMPACT_INFO_SIDEBAR_WIDTH = 220
+COMPACT_INFO_SIDEBAR_BREAKPOINT = 540
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluationRunChoice:
+    identity: EvaluationRunIdentity
+    name: str
+    finished: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluationPlanChoice:
+    identity: EvaluationPlanIdentity
+    name: str
+    runs: tuple[_EvaluationRunChoice, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluationSummary:
+    available: bool
+    plans: tuple[_EvaluationPlanChoice, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluationPublicationSignature:
+    """Application fields that can change Evaluation's rendered catalog."""
+
+    usable: bool
+    trainer_identity: str | None
+    training_boundary_stable: bool
+    has_model: bool
+    model_name: str | None
+    model_params: str
+    has_trainer: bool
+    is_running: bool
+    stable_catalog_generation: int | None
+    plan_count: int
+    run_count: int
+    finished_run_count: int
+    terminal_outcome: TrainingTerminalOutcome
+    missing_requirements: tuple[str, ...]
+    evaluation_state: EvaluationStateSnapshot
+
+
+class _RetryEvaluationPublicationRenderError(RuntimeError):
+    """Signal that the current publication was not rendered atomically."""
 
 
 class EvaluationPanel(BasePanel):
@@ -68,10 +142,6 @@ class EvaluationPanel(BasePanel):
     percentage-toggle options.
 
     Attributes:
-        training_controller: Injected ``TrainingController`` for event
-            subscription.
-        preprocess_controller: Injected ``PreprocessController`` for
-            preprocess-state invalidation events.
         model_combo: ``QComboBox`` for selecting a training fold/plan.
         run_combo: ``QComboBox`` for selecting an individual run or
             average.
@@ -86,123 +156,154 @@ class EvaluationPanel(BasePanel):
 
     def __init__(
         self,
-        controller=None,
-        training_controller=None,
         parent=None,
-        preprocess_controller=None,
+        *,
+        query_port: EvaluationQueryPort | None = None,
+        publication_port: ApplicationPublicationSubscriptionPort | None = None,
+        action_port: EvaluationActionPort | None = None,
     ):
         """Initialize the evaluation panel.
 
         Args:
-            controller: Optional ``EvaluationController``. Resolved from
-                the parent study if not provided.
-            training_controller: Optional ``TrainingController`` for
-                subscribing to training-stopped events.
-            preprocess_controller: Optional ``PreprocessController`` for
-                subscribing to preprocess invalidation events.
             parent: Parent widget (typically the main window).
+            query_port: Typed application publication/render query port.
+            publication_port: Typed application publication subscription port.
+            action_port: Typed Evaluation command port.
 
         """
-        # 1. Controller Resolution
-        if controller is None and parent and hasattr(parent, "study"):
-            controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "evaluation",
-            )
-        if preprocess_controller is None and parent and hasattr(parent, "study"):
-            preprocess_controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "preprocess",
-            )
-
-        # Store injected training controller
-        self.training_controller = training_controller
-        self.preprocess_controller = preprocess_controller
-        self.last_application_query = None
+        self._evaluation_summary: _EvaluationSummary | None = None
+        self._evaluation_error: str | None = None
+        self._application_generation: int | None = None
+        self._application_view_publication: ApplicationViewPublication | None = None
+        self._last_application_revision = 0
+        self._last_evaluation_publication_signature: (
+            _EvaluationPublicationSignature | None
+        ) = None
+        self._evaluation_render: EvaluationRenderPublication | None = None
+        self._model_summary_identity: EvaluationSummaryIdentity | None = None
+        self._model_summary_text = ""
         self._application_summary_dirty = True
 
-        # 2. Base Init
-        super().__init__(parent=parent, controller=controller)
+        super().__init__(parent=parent, controller=None)
 
-        # 3. Bridge & UI Setup
-        self._setup_bridges()
+        self._application_render_ledger = ApplicationPublicationRenderLedger(
+            panel_name="Evaluation",
+            render_publication=self._render_application_publication,
+            commit_publication=self._record_application_revision,
+            parent=self,
+        )
+        self._application_refresh_timer = self._application_render_ledger.timer
+        runtime = application_ui_runtime(self)
+        self._query_port = query_port if query_port is not None else runtime
+        self._publication_port = (
+            publication_port if publication_port is not None else runtime
+        )
+        self._action_port = action_port if action_port is not None else runtime
+        self._subscribe_to_application_publications()
         self.init_ui()
 
-    def _setup_bridges(self):
-        """Listen to TrainingController to update when training finishes."""
-        if self.training_controller:
-            self._create_refresh_bridge(self.training_controller, "training_stopped")
-            self._create_refresh_bridge(self.training_controller, "history_cleared")
-            self._create_refresh_bridge(self.training_controller, "config_changed")
-        if self.preprocess_controller:
-            self._create_refresh_bridge(
-                self.preprocess_controller,
-                "preprocess_changed",
-            )
+    def _subscribe_to_application_publications(self) -> None:
+        """Refresh state-changing content from the sole application truth."""
+        publication_port = self._publication_port
+        if publication_port is None:
+            return
+        self._create_bridge(
+            cast(Observable, publication_port),
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+            self._on_application_view_publication_changed,
+        )
+
+    def _on_application_view_publication_changed(
+        self,
+        publication: object,
+    ) -> bool:
+        """Render each valid application publication revision at most once."""
+        if not self._valid_application_publication(publication):
+            logger.error("Ignored malformed Evaluation application publication.")
+            return False
+        typed_publication = cast(ApplicationViewPublication, publication)
+        if typed_publication.revision <= self._last_application_revision:
+            return True
+        self._application_view_publication = typed_publication
+        signature = self._evaluation_publication_signature(typed_publication)
+        if signature == self._last_evaluation_publication_signature:
+            self._application_generation = typed_publication.generation
+            self._evaluation_render = None
+            return self._application_render_ledger.record_rendered(typed_publication)
+        self.mark_refresh_dirty()
+        return self._application_render_ledger.queue(typed_publication)
+
+    def _render_application_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._application_view_publication = publication
+        self.update_panel()
 
     def update_panel(self):
+        """Refresh Evaluation and commit a direct render only after success."""
+        self._update_panel_content()
+        if self._application_render_ledger.render_in_progress:
+            return
+        publication = self._application_view_publication
+        if publication is not None:
+            self._application_render_ledger.record_rendered(publication)
+
+    def _update_panel_content(self):
         """Update panel content when switched to."""
         if hasattr(self, "info_panel"):
             pass  # Handled by InfoPanelService
 
-        if self._application_summary_dirty or self.last_application_query is None:
-            self._refresh_application_query()
-            self._application_summary_dirty = False
+        previous_generation = self._application_generation
+        previous_plan_identity = (
+            self.model_combo.currentData() if hasattr(self, "model_combo") else None
+        )
+        previous_run_identity = (
+            self.run_combo.currentData() if hasattr(self, "run_combo") else None
+        )
+        if self._application_summary_dirty or (
+            self._evaluation_summary is None and self._evaluation_error is None
+        ):
+            refreshed = self._refresh_application_query()
+            self._application_summary_dirty = (
+                not refreshed
+                and self._evaluation_error
+                == "Evaluation results are temporarily unavailable."
+            )
 
         if self._application_query_blocks_display():
             self._show_no_data_available()
             return
 
-        previous_plan = (
-            self.model_combo.currentData() if hasattr(self, "model_combo") else None
-        )
-        previous_plan_text = (
-            self.model_combo.currentText() if hasattr(self, "model_combo") else ""
-        )
-        previous_run = (
-            self.run_combo.currentData() if hasattr(self, "run_combo") else None
-        )
-        previous_run_text = (
-            self.run_combo.currentText() if hasattr(self, "run_combo") else ""
-        )
+        if previous_generation != self._application_generation:
+            previous_plan_identity = None
+            previous_run_identity = None
 
-        # Update Model Combo
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
 
         plans = self._plans_from_application_query()
-        if plans is None:
-            plans = self._compatibility_plans_for_render()
         if plans:
             self._show_evaluation_controls_available()
-            for i, plan in enumerate(plans):
-                self.model_combo.addItem(f"Fold {i + 1}: {plan.get_name()}", plan)
+            for i, plan_choice in enumerate(plans):
+                self.model_combo.addItem(
+                    f"Fold {i + 1}: {plan_choice.name}",
+                    plan_choice.identity,
+                )
 
             if self.model_combo.count() > 0:
                 selected_index = 0
                 for i in range(self.model_combo.count()):
-                    if self.model_combo.itemData(i) is previous_plan:
-                        selected_index = i
-                        break
-                    if (
-                        previous_plan_text
-                        and self.model_combo.itemText(i) == previous_plan_text
-                    ):
+                    if self.model_combo.itemData(i) == previous_plan_identity:
                         selected_index = i
                         break
 
                 self.model_combo.setCurrentIndex(selected_index)
                 self.on_model_changed(
                     selected_index,
-                    preferred_run=previous_run,
-                    preferred_run_text=previous_run_text,
+                    preferred_run_identity=previous_run_identity,
                 )
-                # Show Charts
-                self.plot_stack.setCurrentIndex(0)
             else:
-                # No models found despite plans? unlikely but possible
                 self.plot_stack.setCurrentIndex(1)
         else:
             self._show_no_data_available()
@@ -212,66 +313,158 @@ class EvaluationPanel(BasePanel):
     def mark_refresh_dirty(self) -> None:
         """Invalidate the cached ApplicationService evaluation summary."""
         self._application_summary_dirty = True
+        self._evaluation_render = None
+        self._model_summary_identity = None
+        self._model_summary_text = ""
 
     def _application_query_blocks_display(self) -> bool:
         """Return whether ApplicationService says evaluation is not displayable."""
-        result = self.last_application_query
-        if result is None:
-            return False
-        if result.failed:
-            return True
-        diagnostics = getattr(result, "diagnostics", {}) or {}
-        return (
-            diagnostics.get("payload_type") == "evaluation_summary"
-            and diagnostics.get("available") is False
+        summary = self._evaluation_summary
+        return self._evaluation_error is not None or (
+            summary is not None and not summary.available
         )
 
-    def _evaluation_query_payload(self) -> dict | None:
-        """Return the current service-backed evaluation payload, if available."""
-        result = getattr(self, "last_application_query", None)
-        if result is None or result.failed:
-            return None
-        diagnostics = getattr(result, "diagnostics", {}) or {}
-        if diagnostics.get("payload_type") != "evaluation_summary":
-            return None
-        return local_result_payload(result)
-
-    def _refresh_application_query(
-        self,
-        *,
-        include_pooled_results: bool = False,
-        include_model_summaries: bool = False,
-        model_summary_plan_index: int | None = None,
-        model_summary_run_index: int | None = None,
-    ) -> bool:
-        """Refresh the service-backed evaluation payload with explicit UI needs."""
+    def _refresh_application_query(self) -> bool:
+        """Refresh the serializable Evaluation catalog."""
+        if (
+            self._query_port is None
+            or self._publication_port is None
+            or self._action_port is None
+        ):
+            self._fail_closed_application_query()
+            return False
+        before_publication = self._read_application_publication()
+        if before_publication is None or not before_publication.usable:
+            self._fail_closed_application_query()
+            return False
         result = execute_application_command(
             self,
-            EvaluateCommand(
-                include_objects=True,
-                include_metrics=False,
-                include_pooled_results=include_pooled_results,
-                include_model_summaries=include_model_summaries,
-                model_summary_plan_index=model_summary_plan_index,
-                model_summary_run_index=model_summary_run_index,
-            ),
+            EvaluateCommand(),
             refresh=False,
+            expected_publication_generation=before_publication.generation,
+            runtime=cast(ApplicationUiRuntime, self._action_port),
         )
-        if result is None:
+        if not isinstance(result, CommandResult):
+            self._evaluation_summary = None
+            self._evaluation_error = "No evaluation results available yet."
             return False
-        self.last_application_query = result
-        return not result.failed
+        accepted = self._accept_application_summary(result)
+        after_publication = self._read_application_publication()
+        catalog_generation = result.diagnostics.get("evaluation_publication_generation")
+        if (
+            after_publication is None
+            or not after_publication.usable
+            or after_publication.revision < before_publication.revision
+            or (
+                accepted
+                and (
+                    isinstance(catalog_generation, bool)
+                    or not isinstance(catalog_generation, int)
+                    or catalog_generation < 1
+                    or after_publication.generation != catalog_generation
+                )
+            )
+        ):
+            self._fail_closed_application_query()
+            return False
+        self._application_view_publication = after_publication
+        self._application_generation = after_publication.generation
+        return accepted
+
+    def _read_application_publication(
+        self,
+    ) -> ApplicationViewPublication | None:
+        query_port = self._query_port
+        if query_port is None:
+            return None
+        try:
+            publication = get_application_view_publication(
+                self,
+                runtime=cast(ApplicationUiRuntime, query_port),
+            )
+        except Exception:
+            logger.error(
+                "Evaluation application publication query failed.",
+                exc_info=True,
+            )
+            return None
+        if not self._valid_application_publication(publication):
+            return None
+        return cast(ApplicationViewPublication, publication)
+
+    @staticmethod
+    def _valid_application_publication(publication: object) -> bool:
+        if not isinstance(publication, ApplicationViewPublication):
+            return False
+        return (
+            not isinstance(publication.revision, bool)
+            and isinstance(publication.revision, int)
+            and publication.revision >= 1
+        )
+
+    def _record_application_revision(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._last_application_revision = max(
+            self._last_application_revision,
+            publication.revision,
+        )
+        self._last_evaluation_publication_signature = (
+            self._evaluation_publication_signature(publication)
+        )
+
+    @staticmethod
+    def _evaluation_publication_signature(
+        publication: ApplicationViewPublication,
+    ) -> _EvaluationPublicationSignature:
+        """Project one publication onto state that Evaluation actually renders."""
+        training = publication.state.training
+        boundary = publication.training_boundary
+        saliency_phase = publication.state.visualization.post_training_saliency.phase
+        saliency_is_mutating_evaluation = saliency_phase in {
+            PostTrainingSaliencyPhase.PENDING,
+            PostTrainingSaliencyPhase.RUNNING,
+        }
+        return _EvaluationPublicationSignature(
+            usable=publication.usable,
+            trainer_identity=boundary.trainer_identity,
+            training_boundary_stable=boundary.stable,
+            has_model=training.has_model,
+            model_name=training.model_name,
+            model_params=json.dumps(
+                serialize_json_value(training.model_params),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            has_trainer=training.has_trainer,
+            is_running=training.is_running,
+            stable_catalog_generation=(
+                boundary.token.generation
+                if not training.is_running and not saliency_is_mutating_evaluation
+                else None
+            ),
+            plan_count=training.plan_count,
+            run_count=training.run_count,
+            finished_run_count=training.finished_run_count,
+            terminal_outcome=training.terminal_outcome,
+            missing_requirements=tuple(training.missing_requirements),
+            evaluation_state=publication.state.evaluation,
+        )
+
+    def _fail_closed_application_query(self) -> None:
+        self._evaluation_summary = None
+        self._evaluation_error = "Evaluation results are temporarily unavailable."
+        self._application_generation = None
 
     def _refresh_application_query_async(
         self,
         *,
-        include_pooled_results: bool = False,
-        include_model_summaries: bool = False,
-        model_summary_plan_index: int | None = None,
-        model_summary_run_index: int | None = None,
+        summary_identity: EvaluationSummaryIdentity,
         on_ready=None,
     ) -> bool:
-        """Load heavy evaluation payloads off the UI thread when possible."""
+        """Load one model summary off the UI thread."""
 
         def _handle_result(result) -> None:
             if not isinstance(result, CommandResult):
@@ -279,9 +472,7 @@ class EvaluationPanel(BasePanel):
                     "Evaluation background query returned an invalid result: %s",
                     type(result).__name__,
                 )
-                self._show_async_query_failure(
-                    include_model_summaries=include_model_summaries,
-                )
+                self._show_async_query_failure()
                 return
             if result.failed:
                 logger.error(
@@ -290,11 +481,11 @@ class EvaluationPanel(BasePanel):
                     or getattr(result, "message", "")
                     or "No diagnostic message was provided.",
                 )
-                self._show_async_query_failure(
-                    include_model_summaries=include_model_summaries,
-                )
+                self._show_async_query_failure()
                 return
-            self.last_application_query = result
+            if not self._accept_model_summary(result, summary_identity):
+                self._show_async_query_failure()
+                return
             if callable(on_ready):
                 on_ready()
 
@@ -306,52 +497,168 @@ class EvaluationPanel(BasePanel):
                 value,
                 formatted_traceback,
             )
-            self._show_async_query_failure(
-                include_model_summaries=include_model_summaries,
-            )
+            self._show_async_query_failure()
 
         return execute_application_command_async(
             self,
-            EvaluateCommand(
-                include_objects=True,
-                include_metrics=False,
-                include_pooled_results=include_pooled_results,
-                include_model_summaries=include_model_summaries,
-                model_summary_plan_index=model_summary_plan_index,
-                model_summary_run_index=model_summary_run_index,
-            ),
+            EvaluateCommand(summary_identity=summary_identity),
             on_result=_handle_result,
             on_error=_handle_error,
             refresh=False,
             busy_target=self,
+            expected_publication_generation=self._application_generation,
+            runtime=cast(ApplicationUiRuntime, self._action_port),
         )
 
-    def _show_async_query_failure(
-        self,
-        *,
-        include_model_summaries: bool,
-    ) -> None:
+    def _show_async_query_failure(self) -> None:
         """Publish a stable terminal state without exposing backend diagnostics."""
-        if include_model_summaries:
-            self.summary_text.setText(MODEL_SUMMARY_LOAD_FAILED_TEXT)
-            return
-        self._clear_metric_views()
-        self.no_data_label.setText(EVALUATION_DETAILS_LOAD_FAILED_TEXT)
-        self.plot_stack.setCurrentIndex(1)
+        self.summary_text.setText(MODEL_SUMMARY_LOAD_FAILED_TEXT)
 
     def _plans_from_application_query(self):
-        payload = self._evaluation_query_payload()
-        if payload is None:
-            return None
-        return list(payload.get("plan_objects") or [])
+        summary = self._evaluation_summary
+        return summary.plans if summary is not None else ()
 
-    def _compatibility_plans_for_render(self):
-        if self.controller is None:
-            return []
+    def _accept_application_summary(self, result: CommandResult) -> bool:
+        if result.failed:
+            self._evaluation_summary = None
+            self._evaluation_error = str(result.message).strip() or (
+                "No evaluation results available yet."
+            )
+            self._application_generation = None
+            return False
+        diagnostics = result.diagnostics
+        if (
+            not isinstance(diagnostics, Mapping)
+            or diagnostics.get("payload_type") != "evaluation_summary"
+            or not isinstance(diagnostics.get("available"), bool)
+        ):
+            self._evaluation_summary = None
+            self._evaluation_error = "Evaluation results are temporarily unavailable."
+            self._application_generation = None
+            return False
         try:
-            return run_controller_compatibility_call(self, self.controller.get_plans)
-        except ControllerCompatibilityUnavailableError:
-            return []
+            plans = self._parse_plan_choices(diagnostics.get("plans"))
+        except (TypeError, ValueError):
+            logger.error("Evaluation summary identities are invalid.", exc_info=True)
+            self._evaluation_summary = None
+            self._evaluation_error = "Evaluation results are temporarily unavailable."
+            self._application_generation = None
+            return False
+        available = diagnostics["available"]
+        if available and not plans:
+            self._evaluation_summary = None
+            self._evaluation_error = "Evaluation results are temporarily unavailable."
+            self._application_generation = None
+            return False
+        self._evaluation_summary = _EvaluationSummary(
+            available=available,
+            plans=plans,
+        )
+        self._evaluation_error = None
+        self._evaluation_render = None
+        return True
+
+    @staticmethod
+    def _parse_plan_choices(value: object) -> tuple[_EvaluationPlanChoice, ...]:
+        if not isinstance(value, list):
+            raise TypeError("Evaluation plans must be a list")
+        choices: list[_EvaluationPlanChoice] = []
+        seen_plans: set[EvaluationPlanIdentity] = set()
+        for expected_plan_index, raw_plan in enumerate(value):
+            if not isinstance(raw_plan, Mapping):
+                raise TypeError("Evaluation plan summary must be a mapping")
+            raw_identity = raw_plan.get("identity")
+            if not isinstance(raw_identity, Mapping):
+                raise TypeError("Evaluation plan identity must be a mapping")
+            plan_identity = EvaluationPlanIdentity(
+                plan_index=raw_identity.get("plan_index"),
+            )
+            if (
+                plan_identity.plan_index != expected_plan_index
+                or plan_identity in seen_plans
+            ):
+                raise ValueError("Evaluation plan identity is not canonical")
+            seen_plans.add(plan_identity)
+            name = raw_plan.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("Evaluation plan name is invalid")
+            raw_runs = raw_plan.get("runs")
+            if not isinstance(raw_runs, list):
+                raise TypeError("Evaluation run summaries must be a list")
+            runs: list[_EvaluationRunChoice] = []
+            for expected_run_index, raw_run in enumerate(raw_runs):
+                if not isinstance(raw_run, Mapping):
+                    raise TypeError("Evaluation run summary must be a mapping")
+                raw_run_identity = raw_run.get("identity")
+                if not isinstance(raw_run_identity, Mapping):
+                    raise TypeError("Evaluation run identity must be a mapping")
+                run_identity = EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(
+                        plan_index=raw_run_identity.get("plan_index"),
+                    ),
+                    run_index=raw_run_identity.get("run_index"),
+                )
+                if (
+                    run_identity.plan != plan_identity
+                    or run_identity.run_index != expected_run_index
+                ):
+                    raise ValueError("Evaluation run identity is not canonical")
+                run_name = raw_run.get("name")
+                finished = raw_run.get("finished")
+                if not isinstance(run_name, str) or not run_name.strip():
+                    raise ValueError("Evaluation run name is invalid")
+                if not isinstance(finished, bool):
+                    raise TypeError("Evaluation run completion must be boolean")
+                runs.append(
+                    _EvaluationRunChoice(
+                        identity=run_identity,
+                        name=run_name.strip(),
+                        finished=finished,
+                    )
+                )
+            choices.append(
+                _EvaluationPlanChoice(
+                    identity=plan_identity,
+                    name=name.strip(),
+                    runs=tuple(runs),
+                )
+            )
+        return tuple(choices)
+
+    def _accept_model_summary(
+        self,
+        result: CommandResult,
+        expected_identity: EvaluationSummaryIdentity,
+    ) -> bool:
+        diagnostics = result.diagnostics
+        expected_generation = self._application_generation
+        result_generation = diagnostics.get("evaluation_publication_generation")
+        current_publication = self._read_application_publication()
+        if (
+            expected_generation is None
+            or isinstance(result_generation, bool)
+            or not isinstance(result_generation, int)
+            or result_generation != expected_generation
+            or current_publication is None
+            or not current_publication.usable
+            or current_publication.generation != expected_generation
+        ):
+            return False
+        payload = (
+            diagnostics.get("model_summary")
+            if isinstance(diagnostics, Mapping)
+            else None
+        )
+        if not isinstance(payload, Mapping):
+            return False
+        if payload.get("identity") != expected_identity.to_dict():
+            return False
+        text = payload.get("text")
+        if not isinstance(text, str):
+            return False
+        self._model_summary_identity = expected_identity
+        self._model_summary_text = text
+        return True
 
     def _show_no_data_available(self) -> None:
         message = self._evaluation_empty_state_message()
@@ -366,6 +673,7 @@ class EvaluationPanel(BasePanel):
         self.run_combo.setToolTip(message)
         self.run_combo.blockSignals(False)
         self.chk_percentage.setEnabled(False)
+        self._set_evaluation_provenance("")
         self._clear_metric_views()
         self.summary_text.clear()
         self.no_data_label.setText(message)
@@ -381,58 +689,45 @@ class EvaluationPanel(BasePanel):
         self.bottom_tabs.setVisible(True)
 
     def _evaluation_empty_state_message(self) -> str:
-        result = getattr(self, "last_application_query", None)
-        if result is not None and getattr(result, "failed", False):
-            message = str(getattr(result, "message", "")).strip()
-            if message:
-                return message
-        diagnostics = getattr(result, "diagnostics", {}) if result is not None else {}
-        if isinstance(diagnostics, dict):
-            blocked_reason = str(diagnostics.get("blocked_reason", "")).strip()
-            if blocked_reason:
-                return blocked_reason
-        return "No evaluation results available yet."
+        return self._evaluation_error or "No evaluation results available yet."
 
     def _clear_metric_views(self) -> None:
         self.matrix_widget.update_plot(None)
         self.bar_chart.update_plot({})
         self.metrics_table.update_data({})
 
-    def on_model_changed(self, index, preferred_run=None, preferred_run_text=""):
+    def on_model_changed(self, index, preferred_run_identity=None):
         """Handle model selection change."""
         if index < 0:
             return
 
-        plan = self.model_combo.currentData()
-        if not plan:
+        plan_identity = self.model_combo.currentData()
+        if not isinstance(plan_identity, EvaluationPlanIdentity):
+            return
+        plan_choice = self._plan_choice(plan_identity)
+        if plan_choice is None:
+            self._show_no_data_available()
             return
 
-        # Update Run Combo
         self.run_combo.blockSignals(True)
         self.run_combo.clear()
 
-        records = plan.get_plans()
-        finished_records = [r for r in records if r.is_finished()]
-
-        # Add Individual Runs
-        for i, record in enumerate(records):
-            status = " (Finished)" if record.is_finished() else ""
-            self.run_combo.addItem(f"Repeat {i + 1}{status}", record)
-
-        # Add Average Option if we have finished runs
-        if finished_records:
-            self.run_combo.addItem("Average (Finished Runs)", "average")
+        for i, run_choice in enumerate(plan_choice.runs):
+            status = " (Finished)" if run_choice.finished else ""
+            self.run_combo.addItem(
+                f"Repeat {i + 1}{status}",
+                run_choice.identity,
+            )
+        if any(run_choice.finished for run_choice in plan_choice.runs):
+            self.run_combo.addItem(
+                "Average (Finished Runs)",
+                plan_choice.identity,
+            )
 
         if self.run_combo.count() > 0:
             selected_index = 0
             for i in range(self.run_combo.count()):
-                if self.run_combo.itemData(i) is preferred_run:
-                    selected_index = i
-                    break
-                if (
-                    preferred_run_text
-                    and self.run_combo.itemText(i) == preferred_run_text
-                ):
+                if self.run_combo.itemData(i) == preferred_run_identity:
                     selected_index = i
                     break
             self.run_combo.setCurrentIndex(selected_index)
@@ -440,157 +735,192 @@ class EvaluationPanel(BasePanel):
         self.run_combo.blockSignals(False)
         self.update_views()
 
+    def _plan_choice(
+        self,
+        identity: EvaluationPlanIdentity,
+    ) -> _EvaluationPlanChoice | None:
+        summary = self._evaluation_summary
+        if summary is None:
+            return None
+        return next(
+            (choice for choice in summary.plans if choice.identity == identity),
+            None,
+        )
+
+    def _run_choice(
+        self,
+        identity: EvaluationRunIdentity,
+    ) -> _EvaluationRunChoice | None:
+        plan_choice = self._plan_choice(identity.plan)
+        if plan_choice is None:
+            return None
+        return next(
+            (choice for choice in plan_choice.runs if choice.identity == identity),
+            None,
+        )
+
     def update_views(self):
         """Update Matrix and Table based on current selection."""
-        data = self.run_combo.currentData()
-        if not data:
+        selection = self.run_combo.currentData()
+        if not isinstance(
+            selection,
+            (EvaluationPlanIdentity, EvaluationRunIdentity),
+        ):
+            self._set_evaluation_provenance("")
             self._clear_metric_views()
             return
 
-        # Handle Average
-        if data == "average":
-            plan = self.model_combo.currentData()
-            if not plan:
+        summary_identity = self._summary_identity(selection)
+        if isinstance(selection, EvaluationRunIdentity):
+            run_choice = self._run_choice(selection)
+            if run_choice is None or not run_choice.finished:
                 self._clear_metric_views()
+                self._update_summary_if_visible(summary_identity)
                 return
 
-            pooled_result = self._pooled_result_from_application_query(plan)
-            if pooled_result is None:
-                payload = self._evaluation_query_payload()
-                if payload is not None:
-                    if "pooled_eval_results" not in payload:
-                        self._clear_metric_views()
-                        if self._refresh_application_query_async(
-                            include_pooled_results=True,
-                            on_ready=self.update_views,
-                        ):
-                            return
-                        self._clear_metric_views()
-                        return
-                    pooled_result = self._pooled_result_from_application_query(plan)
-                    if pooled_result is None:
-                        self._clear_metric_views()
-                        return
-                else:
-                    pooled_result = self._compatibility_pooled_result_for_render(plan)
-                    if pooled_result is None:
-                        self._clear_metric_views()
-                        return
-            pooled_labels, pooled_outputs, metrics = pooled_result
-
-            if pooled_labels is None:
-                self._clear_metric_views()
-                return
-
-            # Create proxy record for Matrix plotting
-            # We need to construct a lightweight object that mimics the interface
-            # expected by ConfusionMatrixWidget
-            # ConfusionMatrixWidget calls record.get_confusion_figure usually, or we
-            # can update it to accept raw data.
-            # But simpler to keep widget interface same and pass a proxy here.
-
-            # But simpler to keep widget interface same and pass a proxy here.
-
-            # Use the first finished record in the plan as a template/host
-            template_record = next(
-                (r for r in plan.get_plans() if r.is_finished()), None
-            )
-            if template_record is None:
-                return
-
-            proxy_record = PooledRecordWrapper(
-                template_record,
-                pooled_labels,
-                pooled_outputs,
-            )
-
-            show_pct = self.chk_percentage.isChecked()
-            self.matrix_widget.update_plot(proxy_record, show_percentage=show_pct)
-
-            class_names = self._class_names_for_record(proxy_record)
-            self.metrics_table.update_data(metrics, class_names=class_names)
-            self.bar_chart.update_plot(metrics, class_names=class_names)
-            self._update_summary_if_visible(plan)
+        render = self._render_for_selection(selection)
+        if render is None:
+            self._clear_metric_views()
+            self._update_summary_if_visible(summary_identity)
             return
-
-        # Handle Single Record
-        record = data
-
-        # Update Matrix
+        render_data = render.data
+        provenance_text, provenance_tooltip = evaluation_provenance_presentation(
+            render_data.evaluation_split
+        )
+        self._set_evaluation_provenance(
+            provenance_text,
+            tooltip=provenance_tooltip,
+        )
+        self.plot_stack.setCurrentIndex(0)
+        self.bottom_tabs.setVisible(True)
         show_pct = self.chk_percentage.isChecked()
-        self.matrix_widget.update_plot(record, show_percentage=show_pct)
+        self.matrix_widget.update_plot(render_data, show_percentage=show_pct)
+        metrics = dict(render_data.metrics)
+        class_names = dict(render_data.class_labels)
+        self.metrics_table.update_data(metrics, class_names=class_names)
+        self.bar_chart.update_plot(metrics, class_names=class_names)
+        self._update_summary_if_visible(render_data.summary_identity)
 
-        # Update Table and Bar Chart
-        if record.eval_record:
-            metrics = record.eval_record.get_per_class_metrics()
-            class_names = self._class_names_for_record(record)
-            self.metrics_table.update_data(metrics, class_names=class_names)
-            self.bar_chart.update_plot(metrics, class_names=class_names)
-        else:
-            self.metrics_table.update_data({})
-            self.bar_chart.update_plot({})
+    def _render_for_selection(
+        self,
+        selection: EvaluationPlanIdentity | EvaluationRunIdentity,
+    ) -> EvaluationRenderPublication | None:
+        generation = self._application_generation
+        if generation is None:
+            return None
+        request = EvaluationRenderRequest(
+            publication_generation=generation,
+            selection=selection,
+        )
+        cached = self._evaluation_render
+        if cached is not None and cached.request == request:
+            return cached
+        query_port = self._query_port
+        if query_port is None:
+            return None
+        try:
+            publication = get_evaluation_render_publication(
+                self,
+                request,
+                runtime=cast(ApplicationUiRuntime, query_port),
+            )
+        except ApplicationError as exc:
+            if exc.diagnostics.get("evaluation_final_unavailable") is True:
+                self._show_evaluation_render_unavailable(str(exc))
+                return None
+            logger.error("Evaluation render publication failed.", exc_info=True)
+            self.mark_refresh_dirty()
+            if self._application_render_ledger.render_in_progress:
+                raise _RetryEvaluationPublicationRenderError(
+                    "Evaluation render changed during publication delivery."
+                ) from None
+            return None
+        except Exception:
+            logger.error("Evaluation render publication failed.", exc_info=True)
+            self.mark_refresh_dirty()
+            if self._application_render_ledger.render_in_progress:
+                raise _RetryEvaluationPublicationRenderError(
+                    "Evaluation render changed during publication delivery."
+                ) from None
+            return None
+        if publication is None or publication.request != request:
+            return None
+        self._evaluation_render = publication
+        return publication
 
-        plan = self.model_combo.currentData()
-        if plan:
-            self._update_summary_if_visible(plan, record=record)
+    def _show_evaluation_render_unavailable(self, message: str) -> None:
+        """Show one stable, user-facing reason for inadmissible final metrics."""
+        self._evaluation_render = None
+        self._set_evaluation_provenance("")
+        self._clear_metric_views()
+        self.no_data_label.setText(message)
+        self.plot_stack.setCurrentIndex(1)
+        self.bottom_tabs.setVisible(False)
+
+    def _set_evaluation_provenance(
+        self,
+        text: str,
+        *,
+        tooltip: str = "",
+    ) -> None:
+        self.provenance_label.setText(text)
+        self.provenance_label.setToolTip(tooltip)
+        self.provenance_label.setVisible(bool(text))
+
+    def cleanup(self) -> None:
+        """Cancel queued renders and release the publication subscription."""
+        self._application_render_ledger.cleanup()
+        if hasattr(self, "matrix_widget"):
+            self.matrix_widget.cleanup()
+        if hasattr(self, "bar_chart"):
+            self.bar_chart.cleanup()
+        super().cleanup()
+
+    def closeEvent(self, event):  # noqa: N802
+        """Release the application publication subscription on panel close."""
+        self.cleanup()
+        super().closeEvent(event)
 
     @staticmethod
-    def _class_names_for_record(record) -> dict[int, str]:
-        """Return the class labels used by the selected record's epoch data."""
-        dataset = getattr(record, "dataset", None)
-        get_epoch_data = getattr(dataset, "get_epoch_data", None)
-        if not callable(get_epoch_data):
-            return {}
-        epoch_data = get_epoch_data()
-        label_map = getattr(epoch_data, "label_map", {}) or {}
-        if not isinstance(label_map, dict):
-            return {}
-        class_names: dict[int, str] = {}
-        for key, value in label_map.items():
-            try:
-                class_index = int(key)
-            except (TypeError, ValueError):
-                continue
-            class_names[class_index] = str(value)
-        return class_names
+    def _summary_identity(
+        selection: EvaluationPlanIdentity | EvaluationRunIdentity,
+    ) -> EvaluationSummaryIdentity:
+        if isinstance(selection, EvaluationRunIdentity):
+            return EvaluationSummaryIdentity(
+                plan=selection.plan,
+                run=selection,
+            )
+        return EvaluationSummaryIdentity(plan=selection)
 
-    def update_model_summary(self, plan, record=None):
-        """Generate and display model summary."""
-        has_service_payload = self._evaluation_query_payload() is not None
-        if has_service_payload:
-            payload = self._evaluation_query_payload() or {}
-            plan_index = self._current_plan_index(plan)
-            run_index = None if record is None else self._plan_run_index(plan, record)
-            if (
-                "model_summaries" not in payload
-                or not self._payload_matches_model_summary_request(
-                    payload,
-                    plan_index,
-                    run_index,
-                )
-            ):
-                self.summary_text.setText("Loading model details...")
-                if self._refresh_application_query_async(
-                    include_model_summaries=True,
-                    model_summary_plan_index=plan_index,
-                    model_summary_run_index=run_index,
-                    on_ready=lambda: self.update_model_summary(plan, record=record),
-                ):
-                    return
-                self.summary_text.setText(MODEL_SUMMARY_BACKGROUND_UNAVAILABLE_TEXT)
-                return
-        summary_str = self._summary_from_application_query(plan, record)
-        if summary_str is None:
-            summary_str = self._compatibility_summary_for_render(plan, record)
-        if has_service_payload and not summary_str.strip():
-            summary_str = MODEL_SUMMARY_UNAVAILABLE_TEXT
-        self.summary_text.setText(summary_str)
+    def update_model_summary(
+        self,
+        summary_identity: EvaluationSummaryIdentity,
+    ) -> None:
+        """Load and display one identity-bound model summary."""
+        if not isinstance(summary_identity, EvaluationSummaryIdentity):
+            self.summary_text.setText(MODEL_SUMMARY_UNAVAILABLE_TEXT)
+            return
+        if self._model_summary_identity == summary_identity:
+            self.summary_text.setText(
+                self._model_summary_text or MODEL_SUMMARY_UNAVAILABLE_TEXT
+            )
+            return
+        self.summary_text.setText("Loading model details...")
+        if self._refresh_application_query_async(
+            summary_identity=summary_identity,
+            on_ready=lambda: self.update_model_summary(summary_identity),
+        ):
+            return
+        self.summary_text.setText(MODEL_SUMMARY_BACKGROUND_UNAVAILABLE_TEXT)
 
-    def _update_summary_if_visible(self, plan, record=None) -> None:
+    def _update_summary_if_visible(
+        self,
+        summary_identity: EvaluationSummaryIdentity,
+    ) -> None:
         if not self._summary_tab_visible():
             self.summary_text.setText(MODEL_SUMMARY_DEFERRED_TEXT)
             return
-        self.update_model_summary(plan, record=record)
+        self.update_model_summary(summary_identity)
 
     def _summary_tab_visible(self) -> bool:
         bottom_visible = (
@@ -607,13 +937,14 @@ class EvaluationPanel(BasePanel):
     def _on_bottom_tab_changed(self, _index: int) -> None:
         if not self._summary_tab_visible():
             return
-        plan = self.model_combo.currentData()
-        if not plan:
+        selection = self.run_combo.currentData()
+        if not isinstance(
+            selection,
+            (EvaluationPlanIdentity, EvaluationRunIdentity),
+        ):
             self.summary_text.clear()
             return
-        data = self.run_combo.currentData()
-        record = None if data == "average" else data
-        self.update_model_summary(plan, record=record)
+        self.update_model_summary(self._summary_identity(selection))
 
     def _on_chart_tab_changed(self, _index: int) -> None:
         """Load deferred model details when compact mode owns the summary tab."""
@@ -622,88 +953,6 @@ class EvaluationPanel(BasePanel):
             and self.chart_tabs.currentWidget() is self.summary_tab
         ):
             self._on_bottom_tab_changed(-1)
-
-    def _compatibility_pooled_result_for_render(self, plan):
-        controller = self.controller
-        if controller is None:
-            return None
-        try:
-            return run_controller_compatibility_call(
-                self,
-                lambda: controller.get_pooled_eval_result(plan),
-            )
-        except ControllerCompatibilityUnavailableError:
-            return None
-
-    def _compatibility_summary_for_render(self, plan, record=None) -> str:
-        controller = self.controller
-        if controller is None:
-            return ""
-        try:
-            return run_controller_compatibility_call(
-                self,
-                lambda: controller.get_model_summary_str(plan, record),
-            )
-        except ControllerCompatibilityUnavailableError:
-            return ""
-
-    def _pooled_result_from_application_query(self, plan):
-        payload = self._evaluation_query_payload()
-        if payload is None:
-            return None
-        plan_index = self._current_plan_index(plan)
-        results = payload.get("pooled_eval_results") or []
-        if plan_index < 0 or plan_index >= len(results):
-            return None
-        return results[plan_index]
-
-    def _summary_from_application_query(self, plan, record=None) -> str | None:
-        payload = self._evaluation_query_payload()
-        if payload is None:
-            return None
-        plan_index = self._current_plan_index(plan)
-        summaries = payload.get("model_summaries") or []
-        if plan_index < 0 or plan_index >= len(summaries):
-            return ""
-        summary = summaries[plan_index] or {}
-        if record is None:
-            return str(summary.get("plan") or "")
-        run_index = self._plan_run_index(plan, record)
-        run_summaries = summary.get("runs") or []
-        if 0 <= run_index < len(run_summaries):
-            return str(run_summaries[run_index] or "")
-        return str(summary.get("plan") or "")
-
-    @staticmethod
-    def _payload_matches_model_summary_request(
-        payload: dict,
-        plan_index: int,
-        run_index: int | None,
-    ) -> bool:
-        request = payload.get("model_summary_request")
-        if not isinstance(request, dict):
-            return True
-        return (
-            request.get("plan_index") == plan_index
-            and request.get("run_index") == run_index
-        )
-
-    def _current_plan_index(self, plan) -> int:
-        for index in range(self.model_combo.count()):
-            if self.model_combo.itemData(index) is plan:
-                return index
-        return -1
-
-    @staticmethod
-    def _plan_run_index(plan, record) -> int:
-        try:
-            records = list(plan.get_plans())
-        except Exception:
-            return -1
-        for index, item in enumerate(records):
-            if item is record:
-                return index
-        return -1
 
     def update_info(self):
         """Update the aggregate info panel."""
@@ -773,6 +1022,7 @@ class EvaluationPanel(BasePanel):
         self.plots_group = plots_group
         plots_layout = QVBoxLayout(plots_group)
         plots_layout.setContentsMargins(10, 20, 10, 10)
+        self.plots_layout = plots_layout
 
         # Stacked Widget for Data vs No Data
         self.plot_stack = QStackedWidget()
@@ -854,11 +1104,27 @@ class EvaluationPanel(BasePanel):
         # Options
         self.chk_percentage = QCheckBox("Percent")
         self.chk_percentage.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
+        self.chk_percentage.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.chk_percentage.setMinimumWidth(self.chk_percentage.sizeHint().width())
         self.chk_percentage.toggled.connect(self.update_views)
+
+        self.provenance_label = QLabel()
+        self.provenance_label.setObjectName("EvaluationProvenance")
+        self.provenance_label.setStyleSheet(
+            f"color: {Theme.TEXT_MUTED}; padding-left: 4px;"
+        )
+        self.provenance_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.provenance_label.hide()
 
         self.evaluation_controls_bar = ResponsiveControlsBar(
             [("Model", self.model_combo), ("Run", self.run_combo)],
-            [self.chk_percentage],
+            [self.chk_percentage, self.provenance_label],
             wrap_width=600,
         )
         self.evaluation_controls_bar.setObjectName("EvaluationControlsBar")
@@ -891,21 +1157,13 @@ class EvaluationPanel(BasePanel):
         self.bottom_tabs.addTab(self.summary_tab, "Model Summary")
         self.bottom_tabs.currentChanged.connect(self._on_bottom_tab_changed)
 
-        self.info_tab = QWidget()
-        self.info_tab_layout = QVBoxLayout(self.info_tab)
-        self.info_tab_layout.setContentsMargins(0, 0, 0, 0)
-        self.info_tab_scroll = SidebarScrollArea(self.info_tab)
-        self.info_tab_scroll.content_layout.setContentsMargins(10, 10, 10, 10)
-        self.info_tab_layout.addWidget(self.info_tab_scroll)
-        self._info_in_bottom_tabs = False
-
         # Add to left layout directly
         left_layout.addWidget(plots_group, stretch=2)
         left_layout.addWidget(self.bottom_tabs, stretch=1)
 
         # --- Right Side: Sidebar ---
         self.right_panel = QWidget()
-        self.right_panel.setFixedWidth(260)
+        self.right_panel.setFixedWidth(INFO_SIDEBAR_WIDTH)
         self.right_panel.setObjectName("RightPanel")
         self.right_panel.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
 
@@ -931,88 +1189,79 @@ class EvaluationPanel(BasePanel):
             QTimer.singleShot(0, self._update_responsive_layout)
 
     def _update_responsive_layout(self) -> None:
-        self._update_info_layout()
+        self._update_info_sidebar_width()
         self._update_chart_layout()
         self._update_height_layout()
+
+    def _update_info_sidebar_width(self) -> None:
+        """Keep the fixed summary visible when the assistant narrows the page."""
+        if not hasattr(self, "right_panel"):
+            return
+        target_width = (
+            COMPACT_INFO_SIDEBAR_WIDTH
+            if self.contentsRect().width() < COMPACT_INFO_SIDEBAR_BREAKPOINT
+            else INFO_SIDEBAR_WIDTH
+        )
+        if self.right_panel.width() != target_width:
+            self.right_panel.setFixedWidth(target_width)
 
     def _update_height_layout(self) -> None:
         """Show one result surface at a time in the shortest supported window."""
         if not hasattr(self, "plots_group"):
             return
-        compact = (
+        compact_height = (
             self.contentsRect().height() < COMPACT_HEIGHT_BREAKPOINT
             and self._charts_are_tabbed
         )
-        if compact:
+        compact_margins = self._charts_are_tabbed or compact_height
+        if compact_margins:
             self.left_layout.setContentsMargins(12, 12, 12, 12)
-            self.left_layout.setSpacing(0)
+            self.left_layout.setSpacing(0 if compact_height else 12)
+            self.plots_layout.setContentsMargins(6, 20, 6, 10)
+        else:
+            self.left_layout.setContentsMargins(20, 20, 20, 20)
+            self.left_layout.setSpacing(20)
+            self.plots_layout.setContentsMargins(10, 20, 10, 10)
+        if compact_height:
             self._move_details_into_chart_tabs()
         else:
             self._restore_detail_tabs()
-            self.left_layout.setContentsMargins(20, 20, 20, 20)
-            self.left_layout.setSpacing(20)
 
     def _move_details_into_chart_tabs(self) -> None:
         if self._details_in_chart_tabs:
             return
-        for page in (self.metrics_tab, self.summary_tab, self.info_tab):
+        for page in (self.metrics_tab, self.summary_tab):
             index = self.bottom_tabs.indexOf(page)
             if index >= 0:
                 self.bottom_tabs.removeTab(index)
         if self.chart_tabs.count() >= 2:
-            self.chart_tabs.setTabText(0, "Confusion")
-            self.chart_tabs.setTabText(1, "Per Class")
+            self.chart_tabs.setTabText(0, "Matrix")
+            self.chart_tabs.setTabText(1, "Class")
+        tab_bar = self.chart_tabs.tabBar()
+        if tab_bar is not None:
+            tab_bar.setStyleSheet("QTabBar::tab { padding: 4px 3px; min-width: 0; }")
         self.chart_tabs.addTab(self.metrics_tab, "Metrics")
         self.chart_tabs.addTab(self.summary_tab, "Model")
-        if self._info_in_bottom_tabs:
-            self.chart_tabs.addTab(self.info_tab, "Data")
         self.bottom_tabs.hide()
         self._details_in_chart_tabs = True
 
     def _restore_detail_tabs(self) -> None:
         if not self._details_in_chart_tabs:
             return
-        for page in (self.metrics_tab, self.summary_tab, self.info_tab):
+        for page in (self.metrics_tab, self.summary_tab):
             index = self.chart_tabs.indexOf(page)
             if index >= 0:
                 self.chart_tabs.removeTab(index)
         if self.chart_tabs.count() >= 2:
             self.chart_tabs.setTabText(0, "Confusion Matrix")
             self.chart_tabs.setTabText(1, "Per-Class Metrics")
+        tab_bar = self.chart_tabs.tabBar()
+        if tab_bar is not None:
+            tab_bar.setStyleSheet("")
         self.bottom_tabs.addTab(self.metrics_tab, "Metrics Summary")
         self.bottom_tabs.addTab(self.summary_tab, "Model Summary")
-        if self._info_in_bottom_tabs:
-            self.bottom_tabs.addTab(self.info_tab, "Data Summary")
         self.bottom_tabs.setVisible(self.plot_stack.currentIndex() == 0)
         self._details_in_chart_tabs = False
-
-    def _update_info_layout(self) -> None:
-        """Keep dataset context accessible without squeezing the result plots."""
-        if not hasattr(self, "right_panel"):
-            return
-        use_tab = self.contentsRect().width() < INFO_SIDEBAR_BREAKPOINT
-        if use_tab == self._info_in_bottom_tabs:
-            return
-
-        if use_tab:
-            self.right_layout.removeWidget(self.info_panel)
-            self.info_tab_scroll.content_layout.addWidget(self.info_panel)
-            if self._details_in_chart_tabs:
-                self.chart_tabs.addTab(self.info_tab, "Data")
-            else:
-                self.bottom_tabs.addTab(self.info_tab, "Data Summary")
-            self.right_panel.hide()
-        else:
-            for tabs in (self.bottom_tabs, self.chart_tabs):
-                info_index = tabs.indexOf(self.info_tab)
-                if info_index >= 0:
-                    if tabs.currentIndex() == info_index:
-                        tabs.setCurrentIndex(0)
-                    tabs.removeTab(info_index)
-            self.info_tab_scroll.content_layout.removeWidget(self.info_panel)
-            self.right_layout.insertWidget(0, self.info_panel)
-            self.right_panel.show()
-        self._info_in_bottom_tabs = use_tab
 
     def _update_chart_layout(self) -> None:
         if not hasattr(self, "chart_tabs"):

@@ -36,7 +36,7 @@ _EMPTY_STATE_COPY: dict[str, tuple[str, str]] = {
         "Prepare your EEG data",
         "Ask what preprocessing is appropriate or what must be reviewed first.",
     ),
-    "Ready for epoching": (
+    "Ready for EEG epoching": (
         "Define the analysis windows",
         "Ask me to explain event anchors or prepare the EEG epoch settings.",
     ),
@@ -89,7 +89,7 @@ _STAGE_SUGGESTIONS: dict[str, tuple[AssistantPromptSuggestion, ...]] = {
     "No data loaded": (
         AssistantPromptSuggestion(
             "Import EEG data",
-            "Prepare a request to start the guided import flow.",
+            "Review the EEG data source before starting the import.",
             "Help me import EEG data",
             required_command="scan_source",
         ),
@@ -121,7 +121,7 @@ _STAGE_SUGGESTIONS: dict[str, tuple[AssistantPromptSuggestion, ...]] = {
             "Explain how to choose the next preprocessing step",
         ),
     ),
-    "Ready for epoching": (
+    "Ready for EEG epoching": (
         AssistantPromptSuggestion(
             "Explain EEG epoch anchors",
             "Review which events can define analysis windows.",

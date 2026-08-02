@@ -77,7 +77,7 @@ class TrainingManagerWindow(BaseDialog):
         columns = [
             "Plan name",
             "Status",
-            "Epoch",
+            "Training epoch",
             "lr",
             "loss",
             "acc (%)",

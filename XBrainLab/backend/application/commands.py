@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .evaluation_render import EvaluationSummaryIdentity
 
 
 class CommandName(str, Enum):
@@ -83,6 +86,7 @@ class AttachLabelsCommand:
     mapping: dict[str, str]
     label_paths: list[str] = field(default_factory=list)
     label_format: str | None = None
+    selected_event_names: list[str] | set[str] | None = None
     resource_preflight_confirmed: bool = False
     resource_preflight_token: str | None = None
 
@@ -394,15 +398,10 @@ class ClearTrainingHistoryCommand:
 
 @dataclass(frozen=True)
 class EvaluateCommand:
-    """Read evaluation metrics and run summaries from the active backend."""
+    """Read a detached summary of available Evaluation plans and runs."""
 
     target: str | None = None
-    include_objects: bool = False
-    include_metrics: bool = True
-    include_pooled_results: bool = False
-    include_model_summaries: bool = False
-    model_summary_plan_index: int | None = None
-    model_summary_run_index: int | None = None
+    summary_identity: EvaluationSummaryIdentity | None = None
 
     @property
     def name(self) -> CommandName:
@@ -414,8 +413,6 @@ class VisualizeCommand:
     """Read visualization readiness and available view summaries."""
 
     view: str | None = None
-    include_objects: bool = False
-    include_averaged_records: bool = False
 
     @property
     def name(self) -> CommandName:
@@ -428,6 +425,8 @@ class SaliencyCommand:
 
     method: str | None = None
     params: dict[str, Any] | None = None
+    resource_preflight_confirmed: bool = False
+    resource_preflight_token: str | None = None
 
     @property
     def name(self) -> CommandName:
@@ -453,7 +452,6 @@ class QueryStateCommand:
 
     query: str = "state"
     params: dict[str, Any] = field(default_factory=dict)
-    include_objects: bool = False
 
     @property
     def name(self) -> CommandName:

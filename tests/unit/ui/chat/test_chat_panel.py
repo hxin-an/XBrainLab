@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import gc
 import re
+import weakref
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, Qt
+from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, QSize, Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
@@ -21,6 +24,8 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
+    ChatHistoryReplacement,
+    ChatHistoryReplacementKind,
     ChatMessagePresentationKind,
     ChatPanelTarget,
     ChatResponseAction,
@@ -72,6 +77,37 @@ def chat_panel(qtbot):
 
 
 class TestChatPanelInit:
+    def test_assistant_base_palette_uses_main_gui_theme_tokens(self) -> None:
+        from XBrainLab.ui.chat.styles import (
+            ASSISTANT_ACCENT,
+            ASSISTANT_BACKGROUND,
+            ASSISTANT_BORDER,
+        )
+        from XBrainLab.ui.styles.theme import Theme
+
+        assert ASSISTANT_BACKGROUND == Theme.BACKGROUND_DARK
+        assert ASSISTANT_BORDER == Theme.METRICS_TABLE_GRID
+        assert ASSISTANT_ACCENT == Theme.BLUE_PRIMARY
+
+    def test_assistant_styles_do_not_define_a_detached_hex_palette(self) -> None:
+        style_source = (
+            Path(__file__).resolve().parents[4]
+            / "XBrainLab"
+            / "ui"
+            / "chat"
+            / "styles.py"
+        ).read_text(encoding="utf-8")
+
+        assert re.search(r"#[0-9A-Fa-f]{3,8}", style_source) is None
+
+    def test_ready_cpu_runtime_is_persistently_visible_in_header(
+        self,
+        chat_panel,
+    ) -> None:
+        chat_panel.set_runtime_state("ready", execution_device="cpu")
+
+        assert chat_panel.header_status_text == "Local · CPU"
+
     def test_loading_and_empty_states_are_centered_in_the_main_content(
         self,
         qtbot,
@@ -102,6 +138,36 @@ class TestChatPanelInit:
         assert panel.runtime_state_widget.isHidden()
         assert panel.empty_state_widget.isVisibleTo(panel)
         assert center_distance(panel.empty_state_widget) <= 100
+
+    def test_state_surfaces_are_unframed_and_bounded_in_a_wide_panel(
+        self,
+        qtbot,
+    ) -> None:
+        from XBrainLab.ui.chat.styles import (
+            RUNTIME_STATE_STYLE,
+            TURN_ACTIVITY_STYLE,
+        )
+
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            panel.resize(760, 680)
+            panel.set_runtime_state("loading")
+            panel.show()
+            qtbot.wait(20)
+
+        assert "background-color: transparent" in RUNTIME_STATE_STYLE
+        assert "border: none" in RUNTIME_STATE_STYLE
+        assert "background-color: transparent" in TURN_ACTIVITY_STYLE
+        assert "border: none" in TURN_ACTIVITY_STYLE
+        assert panel.runtime_state_widget.width() <= 540
+
+        panel.set_runtime_state("ready")
+        qtbot.wait(20)
+
+        assert panel.empty_state_widget.width() <= 560
 
     def test_empty_state_suggestions_fill_the_composer_without_auto_sending(
         self,
@@ -178,7 +244,7 @@ class TestChatPanelInit:
 
         assert not hasattr(chat_panel, "mode_selector_widget")
         assert not hasattr(chat_panel, "mode_section_label")
-        assert chat_panel.input_field.height() >= 58
+        assert 52 <= chat_panel.input_field.height() <= 58
         assert chat_panel.input_field.placeholderText() == (
             "Ask about the current EEG workflow..."
         )
@@ -280,7 +346,7 @@ class TestChatPanelInit:
         assert card.proposal_rows[0].label.text() == "Batch size"
         assert card.proposal_rows[0].current_caption.text() == "Current"
         assert card.proposal_rows[0].current_value.text() == "32"
-        assert card.proposal_rows[0].proposed_caption.text() == "Suggested"
+        assert card.proposal_rows[0].proposed_caption.text() == "Proposed"
         assert card.proposal_rows[0].proposed_value.text() == "16"
         assert card.context_warning.isHidden()
 
@@ -292,6 +358,35 @@ class TestChatPanelInit:
         assert card.isVisibleTo(chat_panel)
         assert card.primary_button.isEnabled() is False
         assert card.secondary_button.isEnabled() is False
+
+    def test_action_confirmation_is_not_presented_as_a_setting_change(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        request = AgentConfirmationRequest.for_action(
+            command_name="start_training",
+            params={
+                "checkpoint_policy": "disabled",
+                "output_directory": "./output",
+            },
+            action_label="Start training",
+            description="Start the training process.",
+            destructive=False,
+            publication_generation=7,
+        )
+
+        chat_panel.show_confirmation_request(request)
+        chat_panel.resize(420, 680)
+        chat_panel.show()
+        qtbot.wait(20)
+
+        card = chat_panel.confirmation_card_widget
+        assert card.title_label.text() == "Confirmation required"
+        assert card.description_label.text() == "Start training"
+        assert card.description_label.isVisibleTo(chat_panel)
+        assert card.secondary_button.text() == "Cancel"
+        assert card.primary_button.text() == "Start training"
 
     def test_confirmation_card_stacks_actions_without_clipping_in_narrow_panel(
         self,
@@ -319,6 +414,33 @@ class TestChatPanelInit:
         for button in (card.secondary_button, card.primary_button):
             text_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
             assert text_width <= button.contentsRect().width()
+
+    def test_confirmation_card_keeps_compact_actions_inline_at_420px(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        request = AgentConfirmationRequest.for_action(
+            command_name="configure_training",
+            params={"batch_size": 16},
+            action_label="Apply reviewed settings",
+            description="Use the reviewed training configuration.",
+            destructive=False,
+            publication_generation=7,
+        )
+        chat_panel.resize(420, 680)
+        chat_panel.show_confirmation_request(
+            request,
+            current_values={"Batch size": "32"},
+        )
+        chat_panel.show()
+        qtbot.wait(20)
+
+        card = chat_panel.confirmation_card_widget
+        assert card.button_layout.direction() == QBoxLayout.Direction.LeftToRight
+        for button in (card.secondary_button, card.primary_button):
+            required_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
+            assert required_width <= button.contentsRect().width()
 
     def test_confirmation_card_shows_stale_context_warning(self, chat_panel) -> None:
         request = AgentConfirmationRequest.for_action(
@@ -348,7 +470,7 @@ class TestChatPanelInit:
             "/tmp/new/output/path"
         )
 
-    def test_confirmation_card_maximum_content_remains_scrollable_and_actionable(
+    def test_confirmation_card_uses_transcript_as_its_only_vertical_scroll_owner(
         self,
         chat_panel,
         qtbot,
@@ -374,9 +496,11 @@ class TestChatPanelInit:
         qtbot.wait(30)
 
         card = chat_panel.confirmation_card_widget
-        scrollbar = chat_panel.scroll_area.verticalScrollBar()
-        assert scrollbar.maximum() > 0
+        scrollbar = card.proposal_scroll.verticalScrollBar()
+        assert scrollbar.maximum() == 0
+        assert card.proposal_scroll.horizontalScrollBar().maximum() == 0
         assert chat_panel.scroll_area.horizontalScrollBar().maximum() == 0
+        assert chat_panel.scroll_area.verticalScrollBar().maximum() > 0
         visible_value_labels = [row.proposed_value for row in card.proposal_rows]
         assert visible_value_labels
         for value_label in visible_value_labels:
@@ -405,7 +529,8 @@ class TestChatPanelInit:
         assert clipboard.text() == copy_target.accessibleDescription()
         assert "\u200b" not in clipboard.text()
 
-        scrollbar.setValue(scrollbar.maximum())
+        transcript_scrollbar = chat_panel.scroll_area.verticalScrollBar()
+        transcript_scrollbar.setValue(transcript_scrollbar.maximum())
         qtbot.wait(20)
         viewport = chat_panel.scroll_area.viewport()
         for button in (card.secondary_button, card.primary_button):
@@ -448,7 +573,7 @@ class TestChatPanelInit:
         card = chat_panel.confirmation_card_widget
 
         assert card.request_id == second.request_id
-        assert card.title_label.text() == "Confirmation required"
+        assert card.title_label.text() == "High-risk confirmation"
         assert card.secondary_button.text() == "Cancel"
         card.primary_button.click()
         card.primary_button.click()
@@ -519,7 +644,10 @@ class TestChatPanelInit:
         assert panel.send_btn.isEnabled() is False
         assert panel.send_btn.text() == "Send"
         assert panel.send_btn.accessibleName() == "Send request"
-        assert not panel.send_btn.icon().isNull()
+        assert panel.send_btn.icon().isNull()
+        assert panel.send_btn.toolButtonStyle() == (
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         assert panel.runtime_state_title.text() == "Assistant unavailable"
         assert panel.input_field.placeholderText() == "Assistant unavailable"
 
@@ -572,7 +700,7 @@ class TestChatPanelInit:
         )
         assert "No further response" not in bubbles[-1].get_text()
         assert bubbles[-1].bubble_frame.width() <= int(
-            chat_panel.scroll_area.viewport().width() * 0.88
+            chat_panel.scroll_area.viewport().width() * 0.84
         )
         assert chat_panel.scroll_area.horizontalScrollBar().maximum() == 0
         assert bubbles[-1].presentation_kind.value == "cancelled"
@@ -697,7 +825,10 @@ class TestChatPanelInit:
         assert panel.is_processing is False
         assert panel.send_btn.text() == "Send"
         assert panel.send_btn.accessibleName() == "Send request"
-        assert not panel.send_btn.icon().isNull()
+        assert panel.send_btn.icon().isNull()
+        assert panel.send_btn.toolButtonStyle() == (
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         assert panel.send_btn.isEnabled() is False
         assert panel.input_field.isEnabled() is False
 
@@ -799,6 +930,31 @@ class TestChatPanelInit:
             )
             assert required_width <= control.contentsRect().width()
 
+    @pytest.mark.parametrize("width", [420, 760, 1280])
+    def test_runtime_actions_are_fully_inside_state_surface(
+        self,
+        qtbot,
+        width: int,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            panel.resize(width, 650)
+            panel.set_runtime_state("failed")
+            panel.show()
+            qtbot.wait(20)
+
+        for control in (panel.retry_runtime_btn, panel.setup_btn):
+            top_left = control.mapTo(panel.runtime_state_widget, QPoint(0, 0))
+            bottom_right = control.mapTo(
+                panel.runtime_state_widget,
+                control.rect().bottomRight(),
+            )
+            assert top_left.y() >= 0
+            assert bottom_right.y() < panel.runtime_state_widget.height()
+
     def test_runtime_recovery_actions_stack_without_clipping_at_very_narrow_width(
         self,
         qtbot,
@@ -888,6 +1044,340 @@ class TestChatPanelInit:
         assert [bubble.get_text() for bubble in bubbles].count(
             "The workflow check is complete."
         ) == 1
+
+    def test_large_controller_history_rebuild_is_incremental_and_converges(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        for index in range(96):
+            controller.add_user_message(f"Restored message {index}")
+
+        chat_panel.connect_controller(controller)
+
+        synchronous_bubbles = chat_panel.chat_content_widget.findChildren(MessageBubble)
+        assert len(synchronous_bubbles) < len(controller.get_typed_history())
+
+        qtbot.waitUntil(
+            lambda: len(chat_panel.chat_content_widget.findChildren(MessageBubble))
+            == len(controller.get_typed_history()),
+            timeout=3_000,
+        )
+        bubbles = chat_panel.chat_content_widget.findChildren(MessageBubble)
+        assert [bubble.get_text() for bubble in bubbles] == [
+            record.content for record in controller.get_typed_history()
+        ]
+
+    def test_history_rebuild_keeps_live_tail_and_latest_action_state(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        for index in range(64):
+            controller.add_user_message(f"Retained message {index}")
+        chat_panel.connect_controller(controller)
+
+        live_record = controller.add_agent_message(
+            "Choose the next workflow step.",
+            presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
+            presentation_id="live-tail-actions",
+            actions=(
+                ChatResponseAction(
+                    action_id="open-live-dataset",
+                    label="Open Dataset",
+                    kind=ChatResponseActionKind.OPEN_PANEL,
+                    panel=ChatPanelTarget.DATASET,
+                ),
+            ),
+        )
+        qtbot.waitUntil(
+            lambda: chat_panel.response_actions_widget.isHidden() is False,
+            timeout=3_000,
+        )
+
+        assert controller.consume_response_actions(live_record.presentation_id) is True
+        assert chat_panel.response_actions_widget.isHidden()
+
+        qtbot.waitUntil(
+            lambda: len(chat_panel.chat_content_widget.findChildren(MessageBubble))
+            == len(controller.get_typed_history()),
+            timeout=3_000,
+        )
+        bubbles = chat_panel._layout_message_bubbles()
+        assert [bubble.property("chatMessageId") for bubble in bubbles] == [
+            record.message_id for record in controller.get_typed_history()
+        ]
+        assert bubbles[-1].get_text() == live_record.content
+        assert chat_panel.response_actions_widget.isHidden()
+
+    def test_history_replacement_rebuild_uses_snapshot_without_controller_polling(
+        self,
+        chat_panel,
+        qtbot,
+        monkeypatch,
+    ) -> None:
+        controller = ChatController()
+        for index in range(48):
+            controller.add_user_message(f"Snapshot message {index}")
+        chat_panel.connect_controller(controller)
+        qtbot.waitUntil(
+            lambda: len(chat_panel._layout_message_bubbles()) == 48,
+            timeout=3_000,
+        )
+
+        retained = controller.get_typed_history()[12:]
+        replacement = ChatHistoryReplacement(
+            kind=ChatHistoryReplacementKind.PRUNE,
+            records=retained,
+        )
+        monkeypatch.setattr(
+            controller,
+            "get_typed_history",
+            lambda: pytest.fail("history rebuild polled controller truth"),
+        )
+
+        controller.history_replaced.emit(replacement)
+        qtbot.waitUntil(
+            lambda: [
+                bubble.property("chatMessageId")
+                for bubble in chat_panel._layout_message_bubbles()
+            ]
+            == [record.message_id for record in retained],
+            timeout=3_000,
+        )
+
+    def test_history_replacement_queues_live_add_and_update_in_signal_order(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        for index in range(48):
+            controller.add_user_message(f"Snapshot message {index}")
+        chat_panel.connect_controller(controller)
+        qtbot.waitUntil(
+            lambda: len(chat_panel._layout_message_bubbles()) == 48,
+            timeout=3_000,
+        )
+
+        retained = controller.get_typed_history()[8:]
+        controller.history_replaced.emit(
+            ChatHistoryReplacement(
+                kind=ChatHistoryReplacementKind.PRUNE,
+                records=retained,
+            )
+        )
+        appended = controller.add_agent_message("Live tail after replacement.")
+        updated = replace(appended, content="Updated live tail after replacement.")
+        controller.message_record_updated.emit(updated)
+
+        expected_ids = [record.message_id for record in retained] + [
+            appended.message_id
+        ]
+        qtbot.waitUntil(
+            lambda: [
+                bubble.property("chatMessageId")
+                for bubble in chat_panel._layout_message_bubbles()
+            ]
+            == expected_ids,
+            timeout=3_000,
+        )
+        assert chat_panel._layout_message_bubbles()[-1].get_text() == updated.content
+
+    def test_history_replacement_is_incremental_during_prune_teardown(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        for index in range(96):
+            controller.add_user_message(f"Existing message {index}")
+        chat_panel.connect_controller(controller)
+        qtbot.waitUntil(
+            lambda: len(chat_panel._layout_message_bubbles()) == 96,
+            timeout=3_000,
+        )
+
+        retained = controller.get_typed_history()[-24:]
+        controller.history_replaced.emit(
+            ChatHistoryReplacement(
+                kind=ChatHistoryReplacementKind.PRUNE,
+                records=retained,
+            )
+        )
+
+        # The signal handler must only capture replacement work. Removing the
+        # old transcript belongs to bounded event-loop chunks.
+        assert chat_panel._history_rebuild_active is True
+        assert len(chat_panel._layout_message_bubbles()) > len(retained)
+
+        qtbot.waitUntil(
+            lambda: [
+                bubble.property("chatMessageId")
+                for bubble in chat_panel._layout_message_bubbles()
+            ]
+            == [record.message_id for record in retained],
+            timeout=3_000,
+        )
+
+    def test_connected_panel_clear_and_restore_use_typed_replacements(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        controller.add_user_message("Inspect the imported EEG data.")
+        controller.add_agent_message(
+            "The import is ready for review.",
+            presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
+            presentation_id="restore-actions",
+            actions=(
+                ChatResponseAction(
+                    action_id="review-import",
+                    label="Review import",
+                    kind=ChatResponseActionKind.OPEN_PANEL,
+                    panel=ChatPanelTarget.DATASET,
+                ),
+            ),
+        )
+        persisted = controller.get_history()
+        expected_ids = [record["message_id"] for record in persisted]
+        chat_panel.connect_controller(controller)
+        qtbot.waitUntil(
+            lambda: len(chat_panel._layout_message_bubbles()) == 2,
+            timeout=3_000,
+        )
+        assert chat_panel.response_actions_widget.isVisibleTo(chat_panel)
+
+        controller.clear_conversation()
+        qtbot.waitUntil(
+            lambda: not chat_panel._layout_message_bubbles(),
+            timeout=3_000,
+        )
+        assert controller.get_typed_history() == ()
+        assert controller.get_history() == []
+        assert controller.pruned_row_count == 0
+        assert chat_panel.response_actions_widget.isHidden()
+        assert chat_panel.empty_state_widget.isVisibleTo(chat_panel)
+
+        assert controller.restore_history(persisted) == 2
+        qtbot.waitUntil(
+            lambda: [
+                bubble.property("chatMessageId")
+                for bubble in chat_panel._layout_message_bubbles()
+            ]
+            == expected_ids,
+            timeout=3_000,
+        )
+        assert [
+            bubble.get_text() for bubble in chat_panel._layout_message_bubbles()
+        ] == [
+            "Inspect the imported EEG data.",
+            "The import is ready for review.",
+        ]
+        assert chat_panel.response_actions_widget.isHidden()
+        assert not controller.get_typed_history()[-1].has_active_actions
+
+    def test_prune_preserves_retained_reader_anchor(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        for index in range(80):
+            controller.add_agent_message(
+                f"Detailed retained transcript message {index}. " * 3
+            )
+        chat_panel.resize(420, 520)
+        chat_panel.show()
+        chat_panel.connect_controller(controller)
+        qtbot.waitUntil(
+            lambda: len(chat_panel._layout_message_bubbles()) == 80
+            and chat_panel._history_rebuild_active is False,
+            timeout=4_000,
+        )
+        qtbot.wait(30)
+
+        viewport = chat_panel.scroll_area.viewport()
+        scroll_bar = chat_panel.scroll_area.verticalScrollBar()
+        target = chat_panel._layout_message_bubbles()[35]
+        target_top = target.mapTo(viewport, QPoint(0, 0)).y()
+        scroll_bar.setValue(scroll_bar.value() + target_top - 24)
+        qtbot.wait(30)
+        anchor = chat_panel._capture_reader_anchor()
+        assert anchor is not None
+        anchor_id, expected_y = anchor
+        assert chat_panel._follow_transcript_updates is False
+
+        history = controller.get_typed_history()
+        retained = history[10:]
+        assert anchor_id in {record.message_id for record in retained}
+        controller.history_replaced.emit(
+            ChatHistoryReplacement(
+                kind=ChatHistoryReplacementKind.PRUNE,
+                records=retained,
+            )
+        )
+        qtbot.waitUntil(
+            lambda: chat_panel._history_rebuild_active is False,
+            timeout=4_000,
+        )
+        qtbot.wait(80)
+
+        anchored_bubble = chat_panel._message_bubbles_by_id[anchor_id]
+        actual_y = anchored_bubble.mapTo(viewport, QPoint(0, 0)).y()
+        assert abs(actual_y - expected_y) <= 4
+        assert scroll_bar.value() < scroll_bar.maximum()
+        assert chat_panel._follow_transcript_updates is False
+
+    def test_connected_replacement_applies_update_then_add_fifo(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        for index in range(48):
+            controller.add_user_message(f"Snapshot message {index}")
+        active = controller.add_agent_message("Working on the current step.")
+        chat_panel.connect_controller(controller)
+        qtbot.waitUntil(
+            lambda: len(chat_panel._layout_message_bubbles()) == 49,
+            timeout=3_000,
+        )
+
+        retained = controller.get_typed_history()[8:]
+        controller.history_replaced.emit(
+            ChatHistoryReplacement(
+                kind=ChatHistoryReplacementKind.PRUNE,
+                records=retained,
+            )
+        )
+        for _ in range(20):
+            if chat_panel._history_rebuild_phase == "reflow":
+                break
+            chat_panel._history_rebuild_timer.stop()
+            chat_panel._apply_history_rebuild_chunk()
+        assert chat_panel._history_rebuild_phase == "reflow"
+        updated = replace(active, content="Current step completed.")
+        controller.message_record_updated.emit(updated)
+        appended = controller.add_agent_message("Ready for the next step.")
+
+        expected_ids = [record.message_id for record in retained] + [
+            appended.message_id
+        ]
+        qtbot.waitUntil(
+            lambda: [
+                bubble.property("chatMessageId")
+                for bubble in chat_panel._layout_message_bubbles()
+            ]
+            == expected_ids,
+            timeout=3_000,
+        )
+        bubbles = chat_panel._layout_message_bubbles()
+        assert bubbles[-2].get_text() == updated.content
+        assert bubbles[-1].get_text() == appended.content
 
     @pytest.mark.parametrize(
         ("kind", "expected_kind", "expected_label"),
@@ -1043,7 +1533,7 @@ class TestChatPanelInit:
         assert active_presentation_ids[-1] is None
         assert chat_panel._response_presentation is None
         assert chat_panel.response_actions_widget.isHidden()
-        assert controller.get_typed_history()[-1].has_active_actions is False
+        assert controller.get_typed_history()[-1].has_active_actions is True
 
         controller.add_agent_message(
             "Choose another step.",
@@ -1056,6 +1546,17 @@ class TestChatPanelInit:
         )
         controller.add_user_message("Next request")
         assert chat_panel.response_actions_widget.isHidden()
+
+    def test_panel_does_not_keep_controller_alive(self, chat_panel, qtbot) -> None:
+        controller = ChatController()
+        chat_panel.connect_controller(controller)
+        controller_ref = weakref.ref(controller)
+
+        del controller
+        gc.collect()
+        qtbot.wait(1)
+
+        assert controller_ref() is None
 
     def test_long_response_action_elides_without_widening_narrow_dock(
         self,
@@ -1089,7 +1590,8 @@ class TestChatPanelInit:
         assert button.toolTip() == full_label
         assert button.accessibleName() == full_label
         assert button.text() != full_label
-        assert button.text().endswith("…")
+        assert "…" in button.text()
+        assert button.text().startswith("Review the unresolved label")
         _assert_inside_panel_on_all_sides(chat_panel, button)
         assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
 
@@ -1103,6 +1605,11 @@ class TestChatPanelInit:
         qtbot,
         width,
     ) -> None:
+        chat_panel.set_product_status(
+            "Results available",
+            "Ready",
+            ["evaluate", "visualize"],
+        )
         chat_panel.resize(width, 650)
         chat_panel.set_runtime_state("ready")
         chat_panel.show()
@@ -1123,6 +1630,22 @@ class TestChatPanelInit:
                     label.text(),
                 )
                 assert text_rect.height() <= label.contentsRect().height() + 2
+            button_bottom = button.mapTo(
+                chat_panel.suggestion_prompt_widget,
+                button.rect().bottomRight(),
+            ).y()
+            assert button_bottom < chat_panel.suggestion_prompt_widget.height()
+
+        prompt_bottom = chat_panel.suggestion_prompt_widget.mapTo(
+            chat_panel.empty_state_widget,
+            chat_panel.suggestion_prompt_widget.rect().bottomRight(),
+        ).y()
+        assert prompt_bottom < chat_panel.empty_state_widget.height()
+
+        if width == 320:
+            assert all(
+                button.height() <= 68 for button in chat_panel.suggestion_prompt_buttons
+            )
 
     def test_narrow_empty_state_starts_at_the_title_instead_of_the_tail(
         self,
@@ -1189,7 +1712,7 @@ class TestChatPanelInit:
         assert not hasattr(chat_panel, "ask_mode_btn")
         assert not hasattr(chat_panel, "workflow_mode_btn")
 
-    def test_composer_uses_compact_integrated_send_action(
+    def test_composer_uses_one_compact_horizontal_input_surface(
         self,
         chat_panel,
         qtbot,
@@ -1200,14 +1723,117 @@ class TestChatPanelInit:
 
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.send_btn.accessibleName() == "Send request"
-        assert chat_panel.send_btn.width() == chat_panel.send_btn.height()
+        assert chat_panel.send_btn.width() > chat_panel.send_btn.height()
         assert chat_panel.send_btn.toolButtonStyle() == (
-            Qt.ToolButtonStyle.ToolButtonIconOnly
+            Qt.ToolButtonStyle.ToolButtonTextOnly
         )
         assert chat_panel.input_layout.direction() == QBoxLayout.Direction.LeftToRight
-        assert not chat_panel.input_field.geometry().intersects(
-            chat_panel.send_btn.geometry()
+        assert chat_panel.composer_actions.parentWidget() is chat_panel.input_widget
+        assert chat_panel.send_btn.size() == QSize(84, 34)
+        assert chat_panel.input_field.width() > chat_panel.send_btn.width()
+        send_top_left = chat_panel.send_btn.mapTo(
+            chat_panel.input_widget,
+            QPoint(0, 0),
         )
+        send_rect = QRect(send_top_left, chat_panel.send_btn.size())
+        assert not chat_panel.input_field.geometry().intersects(send_rect)
+        assert send_rect.left() > chat_panel.input_field.geometry().right()
+        assert abs(send_rect.bottom() - chat_panel.input_field.geometry().bottom()) <= 2
+
+    @pytest.mark.parametrize("width", [320, 420, 760])
+    def test_composer_stays_inline_and_compact_at_supported_panel_widths(
+        self,
+        chat_panel,
+        qtbot,
+        width,
+    ) -> None:
+        chat_panel.resize(width, 680)
+        chat_panel.show()
+        qtbot.wait(20)
+
+        assert chat_panel.input_layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert 52 <= chat_panel.input_field.height() <= 58
+        assert chat_panel.input_widget.height() <= 72
+        assert chat_panel.input_field.viewport().width() >= 172
+        send_top_left = chat_panel.send_btn.mapTo(
+            chat_panel.input_widget,
+            QPoint(0, 0),
+        )
+        send_rect = QRect(send_top_left, chat_panel.send_btn.size())
+        assert not chat_panel.input_field.geometry().intersects(send_rect)
+        assert send_rect.left() > chat_panel.input_field.geometry().right()
+        assert abs(send_rect.bottom() - chat_panel.input_field.geometry().bottom()) <= 2
+        assert chat_panel.input_widget.rect().contains(send_rect)
+
+    def test_suggestions_use_compact_rows_at_normal_dock_width(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(420, 680)
+        chat_panel.show()
+        qtbot.wait(20)
+
+        assert all(
+            button.height() <= 54 for button in chat_panel.suggestion_prompt_buttons
+        )
+
+    def test_long_history_runtime_failure_keeps_recovery_actions_visible_at_tail(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(420, 680)
+        chat_panel.show()
+        for index in range(20):
+            chat_panel.append_message(
+                "assistant",
+                f"Restored message {index}: " + ("workflow context " * 5),
+            )
+        qtbot.wait(20)
+
+        chat_panel.set_runtime_state(
+            "failed",
+            "The selected local model could not start.",
+        )
+        qtbot.wait(30)
+
+        viewport = chat_panel.scroll_area.viewport()
+        assert viewport is not None
+        runtime_top = chat_panel.runtime_state_widget.mapTo(viewport, QPoint(0, 0)).y()
+        runtime_bottom = runtime_top + chat_panel.runtime_state_widget.height()
+        assert runtime_top >= 0
+        assert runtime_bottom <= viewport.height()
+        assert chat_panel.retry_runtime_btn.isVisibleTo(chat_panel)
+        assert chat_panel.setup_btn.isVisibleTo(chat_panel)
+        assert chat_panel.input_field.isEnabled() is False
+
+    def test_streaming_reflow_follows_tail_only_when_reader_is_at_bottom(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(320, 520)
+        chat_panel.show()
+        for index in range(10):
+            chat_panel.append_message(
+                "assistant",
+                f"Message {index}: " + ("workflow detail " * 10),
+            )
+        qtbot.wait(30)
+        scroll_bar = chat_panel.scroll_area.verticalScrollBar()
+        latest = chat_panel._latest_message_bubble()
+        assert latest is not None
+        scroll_bar.setValue(scroll_bar.maximum())
+
+        latest.set_text(latest.get_text() + "\n\n" + ("streamed detail " * 40))
+        qtbot.wait(40)
+        assert scroll_bar.value() >= scroll_bar.maximum() - 2
+
+        scroll_bar.setValue(0)
+        latest.set_text(latest.get_text() + "\n\n" + ("more detail " * 40))
+        qtbot.wait(40)
+        assert scroll_bar.value() <= 2
 
     def test_progress_status_is_compact_and_visible_while_processing(
         self,
@@ -1244,6 +1870,9 @@ class TestChatPanelInit:
             phase=ChatTurnPresentationPhase.WORKING,
             primary_status="Working on your request",
             step="Checking the current EEG workflow",
+            scope_summary=(
+                "Scope: Continue through Create EEG epochs; stop for decisions."
+            ),
             cancelability=ChatTurnCancelability.CANCELLABLE,
             cancelability_text="You can stop before an XBrainLab action starts.",
         )
@@ -1256,6 +1885,10 @@ class TestChatPanelInit:
         assert chat_panel.turn_activity_step.text() == (
             "Current step: Checking the current EEG workflow"
         )
+        assert chat_panel.turn_activity_scope.text() == (
+            "Scope: Continue through Create EEG epochs; stop for decisions."
+        )
+        assert chat_panel.turn_activity_scope.isVisible()
         assert chat_panel.turn_activity_cancelability.text() == (
             "You can stop before an XBrainLab action starts."
         )
@@ -1447,7 +2080,36 @@ class TestChatPanelSendMessage:
             mock_sig.emit = MagicMock()
             chat_panel._on_send()
             mock_sig.emit.assert_called_once_with("hello")
+        assert chat_panel.input_field.text() == "hello"
+
+        chat_panel.accept_composer_submission("hello")
+
         assert chat_panel.input_field.text() == ""
+
+    def test_rejected_submission_keeps_exact_text_and_focus(self, chat_panel, qtbot):
+        chat_panel.show()
+        qtbot.wait(10)
+        chat_panel.input_field.setText("Review subject 01 labels")
+
+        chat_panel.reject_composer_submission(
+            "Review subject 01 labels",
+            "The assistant is still processing the previous request.",
+        )
+
+        assert chat_panel.input_field.text() == "Review subject 01 labels"
+        assert chat_panel.input_field.hasFocus()
+        assert chat_panel.notice_label.text() == (
+            "The assistant is still processing the previous request."
+        )
+        assert chat_panel.notice_label.isHidden() is False
+        assert chat_panel._notice_timer.isActive() is False
+
+    def test_accepting_stale_submission_does_not_clear_newer_draft(self, chat_panel):
+        chat_panel.input_field.setText("A newer draft")
+
+        chat_panel.accept_composer_submission("An older request")
+
+        assert chat_panel.input_field.text() == "A newer draft"
 
     def test_composer_supports_multiline_request_and_enter_submits(
         self,
@@ -1467,6 +2129,10 @@ class TestChatPanelSendMessage:
             qtbot.keyClick(chat_panel.input_field, Qt.Key.Key_Return)
 
         assert emitted.args == ["first line\nsecond line"]
+        assert chat_panel.input_field.text() == "first line\nsecond line"
+
+        chat_panel.accept_composer_submission("first line\nsecond line")
+
         assert chat_panel.input_field.text() == ""
 
     def test_composer_refits_text_entered_before_show(
@@ -1575,6 +2241,76 @@ class TestChatPanelCallbacks:
         composer_top_y = chat_panel.control_panel.mapTo(chat_panel, QPoint(0, 0)).y()
         assert panel_bottom_y <= composer_top_y - 8
 
+    def test_resize_preserves_the_first_visible_message_for_a_reader(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(760, 650)
+        chat_panel.show()
+        for index in range(24):
+            chat_panel.append_message(
+                "assistant",
+                f"Message {index}: " + ("workflow explanation " * 6),
+            )
+        qtbot.wait(30)
+
+        bubbles = chat_panel.chat_content_widget.findChildren(MessageBubble)
+        anchor = bubbles[8]
+        scroll_bar = chat_panel.scroll_area.verticalScrollBar()
+        viewport = chat_panel.scroll_area.viewport()
+        assert scroll_bar is not None
+        assert viewport is not None
+        scroll_bar.setValue(
+            max(
+                scroll_bar.minimum(),
+                anchor.mapTo(chat_panel.chat_content_widget, QPoint(0, 0)).y() - 36,
+            )
+        )
+        qtbot.wait(10)
+        captured_anchor = chat_panel._capture_reader_anchor()
+        assert captured_anchor is not None
+        anchor_id, anchor_y = captured_anchor
+        anchor = next(
+            bubble
+            for bubble in bubbles
+            if bubble.property("chatMessageId") == anchor_id
+        )
+        assert anchor_y < viewport.height()
+        assert anchor_y + anchor.height() > 0
+
+        for width in (420, 320, 760):
+            chat_panel.resize(width, 650)
+            qtbot.wait(40)
+            assert abs(anchor.mapTo(viewport, QPoint(0, 0)).y() - anchor_y) <= 4
+
+    def test_typed_record_update_streams_content_into_existing_bubble(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        chat_panel.connect_controller(controller)
+        record = controller.add_agent_message(
+            "Result:\n\n```python\nvalue = '" + ("x" * 180) + "'",
+        )
+        chat_panel.resize(320, 650)
+        chat_panel.show()
+        qtbot.wait(20)
+        bubble = chat_panel._latest_message_bubble()
+        assert bubble is not None
+        code = bubble.code_blocks[0]
+        code.horizontalScrollBar().setValue(code.horizontalScrollBar().maximum())
+        old_scroll = code.horizontalScrollBar().value()
+
+        updated = replace(record, content=record.content + "\nprint(value)")
+        controller.message_record_updated.emit(updated)
+        qtbot.wait(20)
+
+        assert chat_panel._latest_message_bubble() is bubble
+        assert bubble.get_text() == updated.content
+        assert code.horizontalScrollBar().value() == old_scroll
+
     def test_messages_added_while_hidden_reflow_to_actual_narrow_viewport(
         self,
         chat_panel,
@@ -1608,9 +2344,38 @@ class TestChatPanelCallbacks:
             )
             assert top_left.x() >= 0
             assert bottom_right.x() < viewport.width()
-            assert bubble.bubble_frame.width() <= int(viewport.width() * 0.88) + 1
+            assert bubble.bubble_frame.width() <= int(viewport.width() * 0.84) + 1
         assert chat_panel.input_field.isVisibleTo(chat_panel)
         assert chat_panel.send_btn.isVisibleTo(chat_panel)
+
+    def test_panel_resize_reflows_code_block_without_chat_overflow(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(760, 650)
+        chat_panel.show()
+        chat_panel.append_message(
+            "assistant",
+            "Result:\n\n```python\nselected_files = ['"
+            + ("subject_session_recording_" * 16)
+            + "']\n```",
+        )
+        qtbot.wait(30)
+        bubble = chat_panel._latest_message_bubble()
+        assert bubble is not None
+        assert len(bubble.code_blocks) == 1
+        wide_code_width = bubble.code_blocks[0].width()
+
+        chat_panel.resize(320, 650)
+        qtbot.wait(40)
+
+        viewport = chat_panel.scroll_area.viewport()
+        assert viewport is not None
+        assert bubble.code_blocks[0].width() < wide_code_width
+        assert bubble.code_blocks[0].horizontalScrollBar().maximum() > 0
+        assert chat_panel.scroll_area.horizontalScrollBar().maximum() == 0
+        assert bubble.bubble_frame.width() <= int(viewport.width() * 0.84) + 1
 
     def test_capture_style_resize_keeps_latest_bubble_above_composer(self, chat_panel):
         app = QApplication.instance()
@@ -1673,7 +2438,10 @@ class TestChatPanelCallbacks:
         assert chat_panel.is_processing is False
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.send_btn.accessibleName() == "Send request"
-        assert not chat_panel.send_btn.icon().isNull()
+        assert chat_panel.send_btn.icon().isNull()
+        assert chat_panel.send_btn.toolButtonStyle() == (
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         assert chat_panel.input_field.isEnabled() is True
 
     def test_clear_ui(self, chat_panel):
@@ -1688,6 +2456,17 @@ class TestChatPanelCallbacks:
             bubble.parent() is None or not bubble.isVisible()
             for bubble in stale_bubbles
         )
+
+    def test_clear_ui_discards_stale_reader_anchor(self, chat_panel) -> None:
+        chat_panel._reader_anchor = ("stale-message", -24)
+        chat_panel._reader_anchor_restore_attempts = 2
+        chat_panel._reader_anchor_timer.start(100)
+
+        chat_panel._clear_ui()
+
+        assert chat_panel._reader_anchor is None
+        assert chat_panel._reader_anchor_restore_attempts == 0
+        assert chat_panel._reader_anchor_timer.isActive() is False
 
     def test_status_summary_updates_visible_empty_state_and_tooltip(self, chat_panel):
         chat_panel.set_status_summary("Backend: empty", "Train blocked")
@@ -1725,7 +2504,10 @@ class TestChatPanelCallbacks:
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.send_btn.accessibleName() == "Send request"
-        assert not chat_panel.send_btn.icon().isNull()
+        assert chat_panel.send_btn.icon().isNull()
+        assert chat_panel.send_btn.toolButtonStyle() == (
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         assert not hasattr(chat_panel, "mode_selector_widget")
         visible_footer_labels = [
             label.text()
@@ -1782,7 +2564,9 @@ class TestChatPanelCallbacks:
             qtbot.wait(20)
 
         pixel = panel.grab().toImage().pixelColor(QPoint(8, 320)).name().lower()
-        assert pixel == "#181c20"
+        from XBrainLab.ui.styles.theme import Theme
+
+        assert pixel == Theme.BACKGROUND_DARK
 
     def test_product_status_updates_visible_empty_state(self, chat_panel):
         chat_panel.set_product_status(
@@ -1942,8 +2726,12 @@ class TestChatPanelCallbacks:
         chat_panel.show()
         qtbot.wait(10)
 
+        send_top_left = chat_panel.send_btn.mapTo(
+            chat_panel.input_widget,
+            QPoint(0, 0),
+        )
         assert not chat_panel.input_field.geometry().intersects(
-            chat_panel.send_btn.geometry()
+            QRect(send_top_left, chat_panel.send_btn.size())
         )
         assert not hasattr(chat_panel, "mode_selector_widget")
         _assert_inside_panel_on_all_sides(chat_panel, chat_panel.input_widget)
@@ -2007,7 +2795,9 @@ class TestChatPanelCallbacks:
             _assert_inside_panel_on_all_sides(chat_panel, control)
         assert not hasattr(chat_panel, "mode_selector_widget")
         assert action.toolTip() == full_label
-        assert action.text().endswith("…")
+        assert "…" in action.text()
+        assert action.text().startswith("Review ")
+        assert action.text().endswith("before continuing")
         assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
         assert (
             chat_panel.response_actions_widget.mapTo(

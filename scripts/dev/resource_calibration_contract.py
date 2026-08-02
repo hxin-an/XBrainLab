@@ -11,9 +11,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-RESOURCE_CALIBRATION_SCHEMA_VERSION = 2
+RESOURCE_CALIBRATION_SCHEMA_VERSION = 3
 RESOURCE_CALIBRATION_MAX_AGE = timedelta(days=30)
 EXPECTED_CALIBRATION_MODELS = ("EEGNet", "SCCNet", "ShallowConvNet")
+PROTECTED_LOCAL_CONFIG_PATHS = frozenset({"settings.json"})
 CALIBRATION_SOURCE_PATHS = (
     "scripts/dev/calibrate_resource_guard.py",
     "scripts/dev/resource_calibration_contract.py",
@@ -35,18 +36,37 @@ def collect_calibration_source_identity(
 ) -> dict[str, Any]:
     """Return traceability plus a content digest of calibration dependencies."""
     normalized_paths = tuple(str(path) for path in source_paths)
-    status_lines = _git_lines(repo_root, "status", "--short", "--untracked-files=all")
+    raw_status_lines = _git_lines(
+        repo_root,
+        "status",
+        "--short",
+        "--untracked-files=all",
+    )
+    status_available = raw_status_lines is not None
+    status_lines = raw_status_lines or []
     dirty_paths = [_status_path(line) for line in status_lines]
+    protected_local_changes = sorted(
+        path
+        for line, path in zip(status_lines, dirty_paths, strict=True)
+        if path in PROTECTED_LOCAL_CONFIG_PATHS and not _status_entry_is_staged(line)
+    )
+    unprotected_dirty_paths = [
+        path
+        for line, path in zip(status_lines, dirty_paths, strict=True)
+        if path not in PROTECTED_LOCAL_CONFIG_PATHS or _status_entry_is_staged(line)
+    ]
     relevant_dirty_paths = sorted(
-        path for path in dirty_paths if path in normalized_paths
+        path for path in unprotected_dirty_paths if path in normalized_paths
     )
     return {
         "branch": _git_value(repo_root, "branch", "--show-current"),
         "commit_sha": _git_value(repo_root, "rev-parse", "HEAD"),
         "tree_sha": _git_value(repo_root, "rev-parse", "HEAD^{tree}"),
-        "dirty": bool(status_lines),
-        "dirty_count": len(status_lines),
+        "status_available": status_available,
+        "dirty": bool(unprotected_dirty_paths) if status_available else None,
+        "dirty_count": len(unprotected_dirty_paths) if status_available else None,
         "relevant_dirty_paths": relevant_dirty_paths,
+        "protected_local_changes": protected_local_changes,
         "source_paths": list(normalized_paths),
         "source_digest": calibration_source_digest(
             repo_root,
@@ -187,6 +207,8 @@ def _source_identity_failures(
     if not isinstance(identity, Mapping):
         return ["calibration source identity is missing"]
     failures: list[str] = []
+    if identity.get("status_available") is not True:
+        failures.append("calibration source git status is unavailable")
     source_paths = identity.get("source_paths")
     if source_paths != list(CALIBRATION_SOURCE_PATHS):
         failures.append("calibration source path set is incomplete")
@@ -200,12 +222,48 @@ def _source_identity_failures(
         if repo_root is None:
             failures.append("repo_root is required for source freshness validation")
         else:
-            current_digest = calibration_source_digest(
+            recorded_branch = identity.get("branch")
+            if not isinstance(recorded_branch, str) or not recorded_branch.strip():
+                failures.append("calibration source branch is missing")
+            current_identity = collect_calibration_source_identity(
                 repo_root,
-                CALIBRATION_SOURCE_PATHS,
+                source_paths=CALIBRATION_SOURCE_PATHS,
             )
-            if identity.get("source_digest") != current_digest:
-                failures.append("calibration source digest is stale")
+            current_branch = current_identity.get("branch")
+            if not isinstance(current_branch, str) or not current_branch.strip():
+                failures.append("current calibration source branch is unavailable")
+            exact_fields = (
+                "branch",
+                "commit_sha",
+                "tree_sha",
+                "status_available",
+                "dirty",
+                "dirty_count",
+                "relevant_dirty_paths",
+                "protected_local_changes",
+                "source_digest",
+            )
+            for key in exact_fields:
+                if identity.get(key) != current_identity.get(key):
+                    label = "digest" if key == "source_digest" else key
+                    failures.append(f"calibration source {label} is stale")
+
+            if (
+                identity.get("dirty") is not False
+                or identity.get("dirty_count") != 0
+                or identity.get("relevant_dirty_paths") != []
+            ):
+                failures.append(
+                    "exact-source calibration was recorded from a dirty worktree"
+                )
+            if (
+                current_identity.get("dirty") is not False
+                or current_identity.get("dirty_count") != 0
+                or current_identity.get("relevant_dirty_paths") != []
+            ):
+                failures.append(
+                    "exact-source calibration is being checked from a dirty worktree"
+                )
     return failures
 
 
@@ -237,9 +295,24 @@ def _git_value(repo_root: Path, *args: str) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
-def _git_lines(repo_root: Path, *args: str) -> list[str]:
-    value = _git_value(repo_root, *args)
-    return value.splitlines() if value else []
+def _git_lines(repo_root: Path, *args: str) -> list[str] | None:
+    git = shutil.which("git")
+    if git is None:
+        return None
+    try:
+        completed = subprocess.run(  # noqa: S603 - resolved executable, no shell.
+            [git, *args],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.rstrip("\r\n").splitlines()
 
 
 def _status_path(line: str) -> str:
@@ -251,3 +324,7 @@ def _status_path(line: str) -> str:
     except json.JSONDecodeError:
         decoded = value
     return str(decoded)
+
+
+def _status_entry_is_staged(line: str) -> bool:
+    return bool(line) and line[0] not in {" ", "?"}

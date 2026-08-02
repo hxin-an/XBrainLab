@@ -1,8 +1,12 @@
 # Backend Product Goal
 
-最後更新：`2026-05-09`
+最後更新：`2026-07-30`
 
 這份 goal 給長時間 Codex runner 使用。它不是 checklist 型小任務，而是工程級交付目標。
+目前執行權威仍是 `docs/agent_goals/product_quality_closure_goal.md`、
+`docs/records/product_quality_audit_2026-07-30.md` 和 `docs/planning/now.md`；本 runbook
+不得建立平行 queue。active integration branch 是 `stabilize/product-quality-closure`，
+舊 `stabilize/desktop-mvp` flow 只保留為歷史。
 
 ## Runner 定位
 
@@ -39,6 +43,11 @@ Milestone 是最低門檻，不是工作上限。若你草草達成文字 checkl
 - 不把 deterministic tool-call eval 當 local LLM 真實能力證明。
 - 不把 patched / mocked UI walkthrough 當真產品 E2E。
 - 若需要長時間測試，先選最小可行 real-data slice，不要把 WSL 撐爆。
+- `BackendFacade` 已物理移除；不得重新加入 module、wrapper、compatibility target 或等價
+  第二個 backend 入口。
+- MCP 已退出 active product / thesis roadmap；除非使用者明確要求 opt-in MCP scope，
+  不做 transport hardening、client certification 或 MCP handoff gate。
+- 不使用退役的 `AQ-*`、`Prep Gate` 或 `Repair Loop` 作為 active task semantics。
 
 ## 產品目標
 
@@ -76,7 +85,8 @@ blocked reason、success/failure、state refresh，都應該來自 `ApplicationS
   - human-in-the-loop UI request before confirmed command
 - `evaluate`、`visualize`、`saliency`、`reset`、`new_session`、`clear_*` 要有清楚 typed result。
 - destructive commands 要有 confirmation boundary 和 product walkthrough。
-- `BackendFacade` 只能是 compatibility/headless wrapper，不新增 business logic。
+- `BackendFacade` 必須維持物理移除；headless compatibility 只可使用薄 command adapter
+  委派到 `ApplicationService / Command API`。
 
 ### 2. Evidence-Ready Data / Training Pipeline
 
@@ -117,7 +127,10 @@ blocked reason、success/failure、state refresh，都應該來自 `ApplicationS
 - `list_files` missing directory 這類錯誤要轉成使用者語言。
 - Tool output 保留 structured diagnostics。
 
-### 5. Tool-Call Evaluation Architecture
+### 5. Phase-Gated Tool-Call Evaluation Architecture
+
+這個 milestone 只有在 product-quality closure、assistant product path 和 exact-commit
+handoff evidence 穩定後才啟動；目前不得用 eval 工作取代 closure findings。
 
 完成條件：
 
@@ -129,7 +142,8 @@ blocked reason、success/failure、state refresh，都應該來自 `ApplicationS
 - 每個主要 workflow stage 至少 `10` 個 cases。
 - negative / blocked / missing-parameter / recovery cases 至少佔 `30%`。
 - multi-turn workflow cases 至少 `15` 個。
-- local LLM primary / fallback runner 至少重跑 `3` 次；不足時只能標成 exploratory。
+- active product 決策指定的 exact local model runner 至少重跑 `3` 次；不足時只能標成
+  exploratory，且不得用 silent model fallback 混合結果。
 - 資料級支撐要覆蓋 checked-in compact fixtures、event-rich public fixture slice；external EEG dataset
   只作 pipeline support，不當 thesis 主評分。
 
@@ -150,12 +164,12 @@ blocked reason、success/failure、state refresh，都應該來自 `ApplicationS
 
 ```bash
 git diff --check
-poetry run ruff check .
-poetry run basedpyright
-poetry run mkdocs build --strict
-poetry run pytest --capture=sys tests/unit/backend/application tests/integration/backend -q
-poetry run pytest --capture=sys tests/unit/llm/tools tests/integration/agent -q
-poetry run pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py -q
+poetry run -- ruff check .
+poetry run -- basedpyright
+poetry run -- mkdocs build --strict
+poetry run -- pytest --capture=sys tests/unit/backend/application tests/integration/backend -q
+poetry run -- pytest --capture=sys tests/unit/llm/tools tests/integration/agent -q
+poetry run -- pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py -q
 ```
 
 若新增 real UI E2E 或 pipeline evidence，必須跑對應 targeted test。若太慢或資源不足，

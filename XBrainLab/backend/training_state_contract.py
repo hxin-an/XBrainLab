@@ -394,6 +394,36 @@ class TrainingStateToken:
             raise TypeError("training state stability must be a boolean")
 
 
+@dataclass(frozen=True, slots=True)
+class TrainingLifecycleEvent:
+    """Generation-bound training truth shared across backend boundaries."""
+
+    token: TrainingStateToken
+    outcome: TrainingTerminalOutcome
+    publication_generation: int | None = None
+    publication_revision: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.token, TrainingStateToken):
+            raise TypeError("training lifecycle token is invalid")
+        if not isinstance(self.outcome, TrainingTerminalOutcome):
+            raise TypeError("training lifecycle outcome is invalid")
+        generation = self.publication_generation
+        if generation is not None and (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or generation < 1
+        ):
+            raise TypeError(
+                "training lifecycle publication generation must be positive"
+            )
+        revision = self.publication_revision
+        if revision is not None and (
+            isinstance(revision, bool) or not isinstance(revision, int) or revision < 1
+        ):
+            raise TypeError("training lifecycle publication revision must be positive")
+
+
 @dataclass(frozen=True)
 class TrainingReadBoundary:
     """Trainer identity plus generation for one object-bearing read boundary."""

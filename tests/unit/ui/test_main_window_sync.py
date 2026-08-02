@@ -11,6 +11,10 @@ from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
 from XBrainLab.backend.application import StopTrainingCommand
+from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.ui.application_publication_renderer import (
+    ApplicationPublicationRenderLedger,
+)
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.main_window import MainWindow
 
@@ -92,6 +96,40 @@ def test_switch_page_checks_only_active_nav_button(main_window):
     assert main_window.compact_nav_combo.currentIndex() == 3
 
 
+def test_assistant_top_bar_action_reserves_full_label_width(main_window):
+    """Dock pressure must not clip the Assistant entry-point label."""
+    label_width = main_window.ai_btn.fontMetrics().horizontalAdvance(
+        main_window.ai_btn.text()
+    )
+
+    assert main_window.ai_btn.minimumWidth() >= label_width + 24
+
+    larger_font = main_window.ai_btn.font()
+    larger_font.setPointSize(larger_font.pointSize() + 4)
+    main_window.ai_btn.setFont(larger_font)
+    main_window._update_navigation_layout()
+    resized_label_width = main_window.ai_btn.fontMetrics().horizontalAdvance(
+        main_window.ai_btn.text()
+    )
+
+    assert main_window.ai_btn.minimumWidth() >= resized_label_width + 24
+
+
+def test_compact_top_bar_removes_gap_before_assistant_action(main_window):
+    """Compact navigation must keep both controls in the visible central area."""
+    main_window.top_bar.resize(main_window.COMPACT_NAV_BREAKPOINT - 1, 50)
+    main_window._update_navigation_layout()
+
+    assert main_window.compact_nav_combo.isHidden() is False
+    assert main_window.top_bar_spacer.isHidden() is True
+
+    main_window.top_bar.resize(main_window.COMPACT_NAV_BREAKPOINT + 1, 50)
+    main_window._update_navigation_layout()
+
+    assert main_window.compact_nav_combo.isHidden() is True
+    assert main_window.top_bar_spacer.isHidden() is False
+
+
 def test_switch_page_only_updates_target_panel(main_window):
     """Only the selected panel should be refreshed for a page switch."""
     panels = [
@@ -117,8 +155,8 @@ def test_switch_page_delegates_navigation_refresh(main_window):
     refresh.assert_called_once_with(main_window, 4)
 
 
-def test_switch_page_status_uses_backend_state_when_agent_absent(main_window):
-    """Main status bar should not claim no data after backend state has data."""
+def test_switch_page_preserves_revisioned_publication_status(main_window):
+    """Navigation must not overwrite the status committed by a publication."""
     result = SimpleNamespace(
         failed=False,
         diagnostics={
@@ -135,8 +173,14 @@ def test_switch_page_status_uses_backend_state_when_agent_absent(main_window):
             },
         },
     )
+    publication_message = "Training failed · Adjust settings"
+    main_window.statusBar().showMessage(publication_message)
 
     with (
+        patch(
+            "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
         patch(
             "XBrainLab.ui.main_window.application_runtime_initialized",
             return_value=True,
@@ -148,10 +192,37 @@ def test_switch_page_status_uses_backend_state_when_agent_absent(main_window):
     ):
         main_window.switch_page(0)
 
-    execute.assert_called_once()
-    assert main_window.statusBar().currentMessage() == (
-        "Ready for preprocessing · Preprocess data"
-    )
+    execute.assert_not_called()
+    assert main_window.statusBar().currentMessage() == publication_message
+
+
+def test_page_activation_restores_cached_publication_after_opening_status(
+    main_window,
+):
+    from XBrainLab.backend.application.service import ApplicationService
+    from XBrainLab.backend.study import Study
+
+    service = ApplicationService(Study())
+    publication = service.get_view_publication()
+    main_window._last_rendered_application_publication = publication
+    main_window._loaded_panel_indices.add(0)
+    main_window.statusBar().showMessage("Opening Dataset...")
+
+    try:
+        with (
+            patch(
+                "XBrainLab.ui.main_window.has_real_application_context",
+                return_value=True,
+            ),
+            patch("XBrainLab.ui.main_window.refresh_after_navigation"),
+        ):
+            main_window._finish_page_activation(0)
+
+        assert main_window.statusBar().currentMessage() == (
+            main_window._application_publication_status_message(publication)
+        )
+    finally:
+        service.close()
 
 
 def test_switch_page_does_not_present_stale_backend_state_as_current(main_window):
@@ -209,12 +280,12 @@ def test_close_shutdown_requests_nonblocking_training_stop(main_window):
             return_value=True,
         ),
         patch(
-            "XBrainLab.ui.main_window.execute_application_command_async",
-            side_effect=fake_async,
+            "XBrainLab.ui.main_window.application_runtime_initialized",
+            return_value=True,
         ),
         patch(
-            "XBrainLab.ui.main_window.application_background_tasks_idle",
-            return_value=True,
+            "XBrainLab.ui.main_window.execute_application_command_async",
+            side_effect=fake_async,
         ),
         patch("XBrainLab.ui.main_window.QTimer.singleShot") as retry,
     ):
@@ -233,7 +304,7 @@ def test_close_shutdown_requests_nonblocking_training_stop(main_window):
     retry.assert_called_once()
 
 
-def test_close_retries_until_backend_background_tasks_are_idle(main_window):
+def test_close_does_not_self_wait_inside_training_stop_callback(main_window):
     result = SimpleNamespace(failed=False, diagnostics={"stopped": True})
     callbacks = {}
 
@@ -247,12 +318,12 @@ def test_close_retries_until_backend_background_tasks_are_idle(main_window):
             return_value=True,
         ),
         patch(
-            "XBrainLab.ui.main_window.execute_application_command_async",
-            side_effect=fake_async,
+            "XBrainLab.ui.main_window.application_runtime_initialized",
+            return_value=True,
         ),
         patch(
-            "XBrainLab.ui.main_window.application_background_tasks_idle",
-            return_value=False,
+            "XBrainLab.ui.main_window.execute_application_command_async",
+            side_effect=fake_async,
         ),
         patch.object(main_window, "_schedule_close_retry") as retry,
     ):
@@ -260,7 +331,7 @@ def test_close_retries_until_backend_background_tasks_are_idle(main_window):
         assert main_window._stop_training_for_close() is False
         callbacks["result"](result)
 
-    assert main_window._training_close_ready is False
+    assert main_window._training_close_ready is True
     assert main_window._training_close_check_in_flight is False
     retry.assert_called_once_with()
 
@@ -346,6 +417,8 @@ def test_close_quiesces_preprocess_native_plots_before_window_teardown(main_wind
     main_window.preprocess_panel = SimpleNamespace(preview_widget=preview)
 
     main_window._begin_close_attempt()
+    preview.prepare_for_shutdown.assert_not_called()
+    main_window._begin_desktop_render_shutdown()
 
     preview.prepare_for_shutdown.assert_called_once_with()
 
@@ -486,6 +559,8 @@ def test_close_retries_when_native_resource_finalizer_is_not_terminal(main_windo
 
 
 def test_cancelled_close_resumes_visualization_rendering(main_window):
+    preview = SimpleNamespace(resume_after_cancelled_shutdown=MagicMock())
+    main_window.preprocess_panel = SimpleNamespace(preview_widget=preview)
     visualization_panel = SimpleNamespace(
         cancel_native_render_shutdown=MagicMock(),
     )
@@ -495,6 +570,7 @@ def test_cancelled_close_resumes_visualization_rendering(main_window):
     main_window._restore_close_interaction()
 
     visualization_panel.cancel_native_render_shutdown.assert_called_once_with()
+    preview.resume_after_cancelled_shutdown.assert_called_once_with()
     assert main_window._closing_in_progress is False
 
 
@@ -560,6 +636,76 @@ def test_close_coalesces_repeated_training_shutdown_retries(main_window):
     retry.assert_called_once()
 
 
+def test_close_retry_from_worker_is_armed_on_the_gui_thread(main_window, qtbot):
+    timer_threads = []
+
+    def record_timer(_delay, _callback):
+        timer_threads.append(QThread.currentThread())
+
+    with patch(
+        "XBrainLab.ui.main_window.QTimer.singleShot",
+        side_effect=record_timer,
+    ):
+        worker = threading.Thread(target=main_window._schedule_close_retry)
+        worker.start()
+        worker.join(timeout=1.0)
+
+        assert worker.is_alive() is False
+        qtbot.waitUntil(lambda: bool(timer_threads), timeout=1_000)
+
+    assert timer_threads == [main_window.thread()]
+
+
+def test_runtime_wrapper_panel_blocks_desktop_revision_until_ledger_commits(
+    main_window,
+):
+    from XBrainLab.backend.application.runtime import get_application_service
+    from XBrainLab.backend.study import Study
+    from XBrainLab.ui.application_capabilities import application_ui_runtime
+
+    study = Study()
+    runtime = application_ui_runtime(SimpleNamespace(study=study))
+    assert runtime is not None
+    service = get_application_service(study)
+    publication = service.get_view_publication()
+    panel = QWidget(main_window)
+    panel._publication_port = runtime
+    panel._application_render_ledger = ApplicationPublicationRenderLedger(
+        panel_name="Runtime wrapper fixture",
+        render_publication=lambda _publication: None,
+        commit_publication=lambda _publication: None,
+        parent=panel,
+    )
+    main_window.visualization_panel = panel
+    main_window._loaded_panel_indices.add(4)
+    main_window._application_publication_renderer = SimpleNamespace(
+        service=service,
+    )
+    main_window.info_service = MagicMock()
+    main_window.info_service.render_publication.return_value = True
+
+    try:
+        assert panel._publication_port is not service
+        assert main_window._render_application_view_publication(publication) is False
+
+        assert panel._application_render_ledger.record_rendered(publication) is True
+        assert main_window._render_application_view_publication(publication) is True
+    finally:
+        service.close()
+
+
+def test_materialized_panel_without_revision_ledger_blocks_desktop_revision(
+    main_window,
+):
+    panel = QWidget(main_window)
+    panel._publication_port = Observable()
+    main_window.visualization_panel = panel
+    main_window._loaded_panel_indices.add(4)
+    main_window._application_publication_renderer = SimpleNamespace(service=object())
+
+    assert main_window._panel_rendered_application_revision(4, 8) is False
+
+
 def test_close_allows_failed_stop_when_training_liveness_is_reliable(main_window):
     result = SimpleNamespace(
         failed=True,
@@ -610,6 +756,10 @@ def test_training_close_ready_is_not_reused_outside_active_close_attempt(main_wi
             return_value=True,
         ),
         patch(
+            "XBrainLab.ui.main_window.application_runtime_initialized",
+            return_value=True,
+        ),
+        patch(
             "XBrainLab.ui.main_window.execute_application_command_async",
             return_value=True,
         ) as execute,
@@ -636,6 +786,10 @@ def test_failed_close_check_restores_window_interaction(main_window):
     with (
         patch(
             "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.application_runtime_initialized",
             return_value=True,
         ),
         patch(
@@ -789,7 +943,7 @@ def test_failed_stop_result_retains_close_fence_until_snapshot_recovers(qtbot):
         window.closeEvent(event)
 
     assert event.isAccepted() is False
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     original_build_state = service.state_snapshot.build
     service.state_snapshot.build = MagicMock(
         side_effect=RuntimeError("state backend unavailable"),
@@ -799,7 +953,7 @@ def test_failed_stop_result_retains_close_fence_until_snapshot_recovers(qtbot):
 
     callbacks["result"](result)
 
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert window._closing_in_progress is True
     assert window._shutdown_fence_active is True
     assert window._shutdown_release_retry_pending is True
@@ -809,7 +963,9 @@ def test_failed_stop_result_retains_close_fence_until_snapshot_recovers(qtbot):
     assert dock.isEnabled() is False
 
     service.state_snapshot.build = original_build_state
-    qtbot.waitUntil(lambda: service._shutdown_fenced is False, timeout=2000)
+    qtbot.waitUntil(
+        lambda: service.shutdown_lifecycle.is_shutdown_fenced is False, timeout=2000
+    )
 
     assert window._closing_in_progress is False
     assert window._shutdown_fence_active is False
@@ -903,7 +1059,7 @@ def test_close_fences_headless_training_before_async_stop_dispatch(qtbot):
 
     assert event.isAccepted() is False
     assert window._shutdown_fence_active is True
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert blocked.failed is True
     assert "closing" in blocked.message
 
@@ -914,8 +1070,7 @@ def test_close_fences_headless_training_before_async_stop_dispatch(qtbot):
     window._training_close_ready = True
 
 
-def test_real_close_retry_completes_without_manual_teardown_flags(qtbot):
-    from XBrainLab.backend.application import get_application_service
+def test_close_before_runtime_initialization_does_not_construct_service(qtbot):
     from XBrainLab.backend.study import Study
 
     study = Study()
@@ -930,14 +1085,15 @@ def test_real_close_retry_completes_without_manual_teardown_flags(qtbot):
     qtbot.addWidget(window)
     window.show()
 
-    assert window.close() is False
-
-    qtbot.waitUntil(lambda: not window.isVisible(), timeout=3000)
+    assert getattr(study, "_application_service", None) is None
+    assert window.close() is True
+    qtbot.waitUntil(lambda: not window.isVisible(), timeout=1000)
 
     assert window._closing_in_progress is True
-    assert window._training_close_ready is True
+    assert window._training_close_ready is False
     assert window._training_close_check_in_flight is False
-    assert get_application_service(study)._shutdown_fenced is True
+    assert window._shutdown_fence_active is False
+    assert getattr(study, "_application_service", None) is None
     assert application_command_registry().active_count(window) == 0
 
 
@@ -983,15 +1139,11 @@ def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
     assert window.info_service._observes_controller_events is False
 
 
-def test_init_panels_uses_compatibility_bootstrap_helper(mock_study, qtbot):
-    """MainWindow should lazy-create workflow panels from the bootstrap bundle."""
-    controllers = SimpleNamespace(
-        dataset=object(),
-        preprocess=object(),
-        training=object(),
-        evaluation=object(),
-        visualization=object(),
-    )
+def test_init_panels_never_resolves_workflow_controllers(
+    mock_study,
+    qtbot,
+):
+    """Lazy product panels must materialize only through typed ports."""
     loaded_classes = []
 
     with (
@@ -1000,13 +1152,9 @@ def test_init_panels_uses_compatibility_bootstrap_helper(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
-            return_value=controllers,
-        ) as bootstrap,
-        patch(
             "XBrainLab.ui.main_window._load_panel_class",
             side_effect=lambda _module, class_name: (
-                loaded_classes.append(class_name) or (lambda *args: QWidget())
+                loaded_classes.append(class_name) or (lambda *args, **kwargs: QWidget())
             ),
         ) as load_panel_class,
     ):
@@ -1018,11 +1166,195 @@ def test_init_panels_uses_compatibility_bootstrap_helper(mock_study, qtbot):
         qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=1_000)
 
     qtbot.addWidget(window)
-    bootstrap.assert_called_once_with(mock_study)
     mock_study.get_controller.assert_not_called()
     assert sorted(loaded_classes) == ["DatasetPanel", "TrainingPanel"]
     assert window.stack.count() == 5
     assert load_panel_class.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("panel_index", "panel_attr"),
+    ((0, "dataset_panel"), (1, "preprocess_panel")),
+)
+def test_primary_panel_materializes_with_publication_port_only(
+    mock_study,
+    qtbot,
+    panel_index,
+    panel_attr,
+):
+    """Dataset and Preprocess product construction must not touch controllers."""
+    runtime = object()
+    constructor_calls = []
+
+    class _PrimaryPanelProbe(QWidget):
+        def __init__(self, *, parent, publication_port):
+            constructor_calls.append((parent, publication_port))
+            super().__init__(parent)
+
+    mock_study.get_controller.side_effect = AssertionError(
+        "product panel construction must not call Study.get_controller",
+    )
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window.InfoPanelService"),
+        patch(
+            "XBrainLab.ui.main_window.application_ui_runtime",
+            return_value=runtime,
+        ) as resolve_runtime,
+    ):
+        window = MainWindow(mock_study)
+        panel = window._materialize_panel(
+            panel_index,
+            panel_class=_PrimaryPanelProbe,
+        )
+
+    qtbot.addWidget(window)
+    assert panel is getattr(window, panel_attr)
+    assert constructor_calls == [(window, runtime)]
+    resolve_runtime.assert_called_once_with(window)
+    mock_study.get_controller.assert_not_called()
+
+
+def test_training_materializes_with_narrow_typed_ports_only(mock_study, qtbot):
+    runtime = object()
+    transient_port = object()
+    constructor_calls = []
+
+    class _TrainingPanelProbe(QWidget):
+        def __init__(
+            self,
+            *,
+            parent,
+            query_port,
+            publication_port,
+            action_port,
+            transient_port,
+        ):
+            constructor_calls.append(
+                (
+                    parent,
+                    query_port,
+                    publication_port,
+                    action_port,
+                    transient_port,
+                )
+            )
+            super().__init__(parent)
+
+    mock_study.get_controller.side_effect = AssertionError(
+        "Training product construction must not call Study.get_controller",
+    )
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window.InfoPanelService"),
+        patch(
+            "XBrainLab.ui.main_window.application_ui_runtime",
+            return_value=runtime,
+        ) as resolve_runtime,
+        patch(
+            "XBrainLab.ui.main_window.training_transient_ui_port",
+            return_value=transient_port,
+        ) as resolve_transient,
+    ):
+        window = MainWindow(mock_study)
+        panel = window._materialize_panel(2, panel_class=_TrainingPanelProbe)
+
+    qtbot.addWidget(window)
+    assert panel is cast(Any, window).training_panel
+    assert constructor_calls == [
+        (window, runtime, runtime, runtime, transient_port),
+    ]
+    resolve_runtime.assert_called_once_with(window)
+    resolve_transient.assert_called_once_with(window)
+    mock_study.get_controller.assert_not_called()
+
+
+def test_evaluation_materializes_without_compatibility_controller_access(
+    mock_study,
+    qtbot,
+):
+    """Evaluation construction receives one runtime through its typed ports."""
+
+    runtime = object()
+    constructor_calls = []
+
+    class _EvaluationPanelProbe(QWidget):
+        def __init__(
+            self,
+            *,
+            parent,
+            query_port,
+            publication_port,
+            action_port,
+        ):
+            constructor_calls.append(
+                (parent, query_port, publication_port, action_port)
+            )
+            super().__init__(parent)
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window.InfoPanelService"),
+        patch(
+            "XBrainLab.ui.main_window.application_ui_runtime",
+            return_value=runtime,
+        ) as resolve_runtime,
+    ):
+        window = MainWindow(mock_study)
+        panel = window._materialize_panel(3, panel_class=_EvaluationPanelProbe)
+
+    qtbot.addWidget(window)
+    assert panel is cast(Any, window).evaluation_panel
+    assert constructor_calls == [(window, runtime, runtime, runtime)]
+    resolve_runtime.assert_called_once_with(window)
+
+
+def test_visualization_materializes_with_narrow_application_ports(
+    mock_study,
+    qtbot,
+):
+    """Visualization construction receives one runtime through its three ports."""
+
+    runtime = object()
+    constructor_calls = []
+
+    class _VisualizationPanelProbe(QWidget):
+        def __init__(
+            self,
+            *,
+            parent,
+            query_port,
+            publication_port,
+            action_port,
+        ):
+            constructor_calls.append(
+                (parent, query_port, publication_port, action_port)
+            )
+            super().__init__(parent)
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window.InfoPanelService"),
+        patch(
+            "XBrainLab.ui.main_window.application_ui_runtime",
+            return_value=runtime,
+        ) as resolve_runtime,
+    ):
+        window = MainWindow(mock_study)
+        panel = window._materialize_panel(4, panel_class=_VisualizationPanelProbe)
+
+    qtbot.addWidget(window)
+    assert panel is cast(Any, window).visualization_panel
+    assert constructor_calls == [(window, runtime, runtime, runtime)]
+    resolve_runtime.assert_called_once_with(window)
 
 
 def test_initial_panel_lazy_load_preserves_current_page(mock_study, qtbot):
@@ -1040,12 +1372,12 @@ def test_initial_panel_lazy_load_preserves_current_page(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
         patch(
             "XBrainLab.ui.main_window._load_panel_class",
-            return_value=lambda *args: QWidget(),
+            return_value=lambda *args, **kwargs: QWidget(),
         ),
     ):
         window = MainWindow(mock_study)
@@ -1075,13 +1407,13 @@ def test_default_startup_materializes_dataset_before_main_window_is_shown(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
         patch(
             "XBrainLab.ui.main_window._load_panel_class",
             side_effect=lambda _module, class_name: (
-                loaded_classes.append(class_name) or (lambda *args: QWidget())
+                loaded_classes.append(class_name) or (lambda *args, **kwargs: QWidget())
             ),
         ),
     ):
@@ -1111,13 +1443,13 @@ def test_startup_prewarm_result_does_not_reload_dataset(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
         patch(
             "XBrainLab.ui.main_window._load_panel_class",
             side_effect=lambda _module, class_name: (
-                loaded_classes.append(class_name) or (lambda *args: QWidget())
+                loaded_classes.append(class_name) or (lambda *args, **kwargs: QWidget())
             ),
         ),
     ):
@@ -1225,7 +1557,7 @@ def test_panel_prepare_start_failure_is_visible_and_retryable(mock_study, qtbot)
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
     ):
@@ -1269,12 +1601,13 @@ def test_prepared_panel_materialization_failure_rolls_back_and_can_retry(
     wrong_type_objects: list[QObject] = []
 
     class _ConstructorFailure(QWidget):
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             super().__init__()
             raise RuntimeError("injected constructor failure")
 
-    def _wrong_type(*args):
-        wrong_type = QObject(args[-1])
+    def _wrong_type(*args, **kwargs):
+        parent = kwargs.get("parent") or args[-1]
+        wrong_type = QObject(parent)
         wrong_type_objects.append(wrong_type)
         return wrong_type
 
@@ -1286,7 +1619,7 @@ def test_prepared_panel_materialization_failure_rolls_back_and_can_retry(
             self.workers.append(worker)
 
     class _RetryPanel(QWidget):
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             super().__init__()
 
     bad_prepared_class = (
@@ -1297,7 +1630,7 @@ def test_prepared_panel_materialization_failure_rolls_back_and_can_retry(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
     ):
@@ -1357,7 +1690,7 @@ def test_main_window_background_worker_construction_failures_release_ownership(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
     ):
@@ -1394,7 +1727,7 @@ def test_navigation_button_returns_before_slow_panel_prepare_and_builds_on_gui_t
     load_calls: list[str] = []
 
     class _PreparedPanel(QWidget):
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             super().__init__()
             application = QCoreApplication.instance()
             assert application is not None
@@ -1410,7 +1743,7 @@ def test_navigation_button_returns_before_slow_panel_prepare_and_builds_on_gui_t
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
         patch(
@@ -1458,7 +1791,7 @@ def test_public_switch_page_prepares_unloaded_panel_without_blocking_gui_thread(
     load_calls: list[str] = []
 
     class _PreparedPanel(QWidget):
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             super().__init__()
             construction_threads.append(QThread.currentThread())
 
@@ -1472,7 +1805,7 @@ def test_public_switch_page_prepares_unloaded_panel_without_blocking_gui_thread(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
         patch(
@@ -1516,7 +1849,7 @@ def test_panel_prepare_result_is_dropped_after_window_deletion(mock_study, qtbot
     constructed: list[bool] = []
 
     class _PreparedPanel(QWidget):
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             super().__init__()
             constructed.append(True)
 
@@ -1529,7 +1862,7 @@ def test_panel_prepare_result_is_dropped_after_window_deletion(mock_study, qtbot
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
         patch(
@@ -1573,7 +1906,7 @@ def test_agent_manager_is_lazy_until_ai_toggle(mock_study, qtbot):
     class _AgentManager:
         status_message_received = _Signal()
 
-        def __init__(self, *args):
+        def __init__(self, *args, **kwargs):
             self.chat_panel = None
             self.toggled = False
             self.closed = False
@@ -1596,6 +1929,11 @@ def test_agent_manager_is_lazy_until_ai_toggle(mock_study, qtbot):
             "XBrainLab.ui.main_window._load_agent_manager_class",
             return_value=_AgentManager,
         ) as load_agent_manager,
+        patch.object(
+            MainWindow,
+            "_ensure_application_publication_renderer",
+            return_value=SimpleNamespace(service=MagicMock()),
+        ),
     ):
         window = MainWindow(mock_study)
         assert window.agent_manager is None
@@ -1622,8 +1960,9 @@ def test_agent_manager_init_failure_rolls_back_and_second_click_opens_dock(
         status_message_received = _Signal()
         instances: ClassVar[list[Any]] = []
 
-        def __init__(self, main_window, _study):
+        def __init__(self, main_window, _study, *, application_service):
             self.main_window = main_window
+            self.application_service = application_service
             self.chat_panel = None
             self.chat_dock = None
             self.closed = False
@@ -1659,6 +1998,11 @@ def test_agent_manager_init_failure_rolls_back_and_second_click_opens_dock(
         patch(
             "XBrainLab.ui.main_window._load_agent_manager_class",
             return_value=_AgentManager,
+        ),
+        patch.object(
+            MainWindow,
+            "_ensure_application_publication_renderer",
+            return_value=SimpleNamespace(service=MagicMock()),
         ),
     ):
         window = MainWindow(mock_study)

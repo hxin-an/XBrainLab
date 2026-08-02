@@ -5,6 +5,7 @@ HuggingFace ``transformers`` with optional 4-bit quantization.
 """
 
 import gc
+import json
 import logging
 from dataclasses import dataclass
 from threading import Event, Lock, Thread
@@ -16,6 +17,10 @@ from XBrainLab.backend.application.resource_guard import (
     enforce_model_load_resource_preflight,
     is_cuda_oom_error,
     release_cuda_cache,
+)
+from XBrainLab.chat_contract import (
+    LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE,
+    MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
 )
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
@@ -74,7 +79,7 @@ class LocalBackend(BaseBackend):
         self._unloading = False
 
     def _normalize_runtime_device(self, torch_module) -> None:
-        """Fallback from unusable CUDA setups to CPU before model load."""
+        """Fail visibly if the pre-resolved CUDA device became unavailable."""
         device = str(getattr(self.config, "device", "cpu"))
         if not device.startswith("cuda"):
             return
@@ -91,17 +96,20 @@ class LocalBackend(BaseBackend):
             else:
                 return
 
-        logger.warning(
-            "Configured local LLM device %s is not usable; falling back to CPU: %s",
-            device,
-            reason,
+        raise PreconditionError(
+            (
+                "The selected GPU became unavailable before the local model could "
+                "load. Retry the assistant or choose a CPU-compatible setup in "
+                "Assistant Settings."
+            ),
+            diagnostics={
+                "code": "local_runtime_cuda_became_unavailable",
+                "operation": "local_model_load",
+                "requested_device": device,
+                "reason": str(reason or "unknown"),
+                "retryable": True,
+            },
         )
-        self.config.device = "cpu"
-        if getattr(self.config, "load_in_4bit", False):
-            logger.warning(
-                "Disabling 4-bit loading because local LLM is falling back to CPU.",
-            )
-            self.config.load_in_4bit = False
 
     def load(self):
         """Downloads (if necessary) and loads the model and tokenizer.
@@ -306,6 +314,19 @@ class LocalBackend(BaseBackend):
         result = [filtered[0]]
         for msg in filtered[1:]:
             if msg.get("role") == result[-1].get("role"):
+                if (
+                    preserves_system_role
+                    and msg.get("role") == "user"
+                    and self._is_untrusted_context_message(result[-1])
+                ):
+                    result.append(
+                        {
+                            "role": "assistant",
+                            "content": MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
+                        }
+                    )
+                    result.append(msg)
+                    continue
                 # Same role - merge content
                 result[-1] = {
                     "role": msg.get("role"),
@@ -317,6 +338,93 @@ class LocalBackend(BaseBackend):
                 result.append(msg)
 
         return result
+
+    @staticmethod
+    def _is_untrusted_context_message(message: dict[str, Any]) -> bool:
+        content = message.get("content")
+        if type(content) is not str or len(content.encode("utf-8")) > 8_192:
+            return False
+        try:
+            payload = json.loads(content)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return bool(
+            type(payload) is dict
+            and payload.get("schema") == "xbrainlab.untrusted_context.v1"
+            and payload.get("trust") == "untrusted"
+            and type(payload.get("items")) is list
+        )
+
+    @staticmethod
+    def _required_policy_and_request_messages(
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Keep only host policy and the exact latest user request."""
+        required_messages = [
+            dict(message) for message in messages if message.get("role") == "system"
+        ]
+        latest_user_message = next(
+            (
+                dict(message)
+                for message in reversed(messages)
+                if message.get("role") == "user"
+            ),
+            None,
+        )
+        if latest_user_message is not None:
+            required_messages.append(latest_user_message)
+        return required_messages
+
+    @staticmethod
+    def _render_chat_template_with_token_count(
+        tokenizer: Any,
+        messages: list[dict[str, Any]],
+    ) -> tuple[str, int]:
+        """Render and count one exact chat template without truncation."""
+        token_ids = tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+        )
+        token_count = len(token_ids)
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        if type(prompt) is not str:
+            raise RuntimeError("Local tokenizer did not render a text chat template.")
+        return prompt, token_count
+
+    def _fit_prompt_to_runtime_context(
+        self,
+        tokenizer: Any,
+        messages: list[dict[str, Any]],
+        *,
+        max_input_tokens: int,
+    ) -> str:
+        """Drop optional context or reject before token-level truncation."""
+        processed_messages = self._process_messages_for_template(messages)
+        prompt, token_count = self._render_chat_template_with_token_count(
+            tokenizer,
+            processed_messages,
+        )
+        if token_count <= max_input_tokens:
+            return prompt
+
+        required_messages = self._required_policy_and_request_messages(messages)
+        processed_required_messages = self._process_messages_for_template(
+            required_messages
+        )
+        required_prompt, required_token_count = (
+            self._render_chat_template_with_token_count(
+                tokenizer,
+                processed_required_messages,
+            )
+        )
+        if required_token_count > max_input_tokens:
+            raise RuntimeError(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE)
+        return required_prompt
 
     def _acquire_generation_lease(self) -> _GenerationLease:
         """Reserve the loaded model for exactly one generation."""
@@ -363,6 +471,9 @@ class LocalBackend(BaseBackend):
             RuntimeError: If the model or tokenizer is not loaded.
 
         """
+        if type(options) is not ResolvedGenerationOptions:
+            raise TypeError("options must be ResolvedGenerationOptions")
+        ResolvedGenerationOptions.validate(options)
         if not self.is_loaded:
             self.load()
         lease = self._acquire_generation_lease()
@@ -372,12 +483,6 @@ class LocalBackend(BaseBackend):
 
             text_iterator_streamer_cls = transformers.TextIteratorStreamer
 
-            processed_messages = self._process_messages_for_template(messages)
-            prompt = lease.tokenizer.apply_chat_template(
-                processed_messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
             spec = local_model_spec(self.config.model_name)
             if spec is None:
                 raise RuntimeError(
@@ -390,12 +495,15 @@ class LocalBackend(BaseBackend):
                     "Generation output budget exceeds the local model runtime "
                     "context limit."
                 )
-            lease.tokenizer.truncation_side = "left"
+            prompt = self._fit_prompt_to_runtime_context(
+                lease.tokenizer,
+                messages,
+                max_input_tokens=max_input_tokens,
+            )
             inputs = lease.tokenizer(
                 prompt,
                 return_tensors="pt",
-                truncation=True,
-                max_length=max_input_tokens,
+                add_special_tokens=False,
             ).to(lease.model.device)
 
             streamer = text_iterator_streamer_cls(
@@ -471,12 +579,16 @@ class LocalBackend(BaseBackend):
         if not isinstance(stopping_base, type) or stopping_list is None:
             return None
 
-        class _CancelStoppingCriteria(stopping_base):
-            def __call__(self, input_ids, scores, **kwargs):
-                _ = input_ids, scores, kwargs
-                return cancel_event.is_set()
+        def _cancel_requested(_self, input_ids, scores, **kwargs):
+            _ = input_ids, scores, kwargs
+            return cancel_event.is_set()
 
-        return stopping_list([_CancelStoppingCriteria()])
+        cancel_stopping_criteria = type(
+            "_CancelStoppingCriteria",
+            (stopping_base,),
+            {"__call__": _cancel_requested},
+        )
+        return stopping_list([cancel_stopping_criteria()])
 
     def cancel_generation(self, wait_timeout: float = 0.25) -> bool:
         """Request cancellation without releasing a live generation lease."""

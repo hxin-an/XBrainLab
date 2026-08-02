@@ -267,12 +267,17 @@ class Trainer:
             )
             self._active_run_start_index = self.current_idx
             self._active_run_end_index = len(holders)
+            admitted_holders = holders[
+                self._active_run_start_index : self._active_run_end_index
+            ]
             run = self._active_run
             if interact:
                 try:
                     thread = threading.Thread(
                         target=self._run_background_job,
                         args=(run,),
+                        name=f"xbrainlab-training-{run.run_id}",
+                        daemon=True,
                     )
                 except Exception as exc:
                     self._run_admitted = False
@@ -285,7 +290,7 @@ class Trainer:
                 self.job_thread = thread
 
         try:
-            for holder in holders:
+            for holder in admitted_holders:
                 holder.clear_interrupt()
             if thread is not None:
                 with self._state_tracker.mutation(), self._state_lock:

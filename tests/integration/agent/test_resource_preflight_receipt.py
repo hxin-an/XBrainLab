@@ -4,29 +4,48 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from XBrainLab.backend.application import (
+    ChangedState,
+    Command,
+    CommandName,
+    CommandResult,
     ConfigureTrainingCommand,
+    SaliencyCommand,
     ValidateInterpretationCommand,
     get_application_service,
 )
-from XBrainLab.backend.application import (
-    data_compatibility_service as compatibility_module,
-)
+from XBrainLab.backend.application import analysis_service as analysis_service_module
 from XBrainLab.backend.application import data_interpretation_service as service_module
 from XBrainLab.backend.application import training_service as training_service_module
+from XBrainLab.backend.application.analysis_service import AnalysisCommandService
+from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.errors import ApplicationError
 from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
 from XBrainLab.backend.application.resource_preflight import (
     RESOURCE_PREFLIGHT_SCHEMA_VERSION,
     ResourcePreflightView,
 )
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.training_runtime import (
+    TrainingCommandRuntimePort,
+    TrainingRuntimeContext,
+)
 from XBrainLab.backend.application.training_service import TrainingCommandService
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingRunIdentity,
+    TrainingTerminalOutcome,
+)
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ApplicationToolContextSource,
     ResourcePreflightReceipt,
@@ -34,6 +53,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptCoordinator,
     ToolAttemptDecision,
 )
+from XBrainLab.llm.agent.tool_call_normalizer import normalize_tool_call
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
@@ -330,76 +350,32 @@ def test_agent_replays_exact_backend_resource_receipt(receipt_runtime) -> None:
     service.dataset.import_files.assert_called_once()
 
 
-def test_agent_load_data_warning_consumes_exact_backend_receipt_once(
+def test_agent_legacy_load_data_is_denied_before_resource_receipt(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     eeg_path = tmp_path / "subject.fif"
     eeg_path.write_bytes(b"EEG header")
     study = Study()
     service = get_application_service(study)
     service.dataset.import_files = MagicMock(return_value=(1, []))
-    monkeypatch.setattr(
-        compatibility_module,
-        "check_import_resource_preflight",
-        _warning_preflight,
-    )
     context_source = ApplicationToolContextSource(study)
     context = context_source.get_context("load_data")
     assert context is not None
-    assert context.availability.enabled, context.availability.reasons
+    assert context.availability.enabled is False
     params = {"paths": [str(eeg_path)]}
-    challenged = execute_application_tool_command(
+    denied = execute_application_tool_command(
         study,
         "load_data",
         params,
         availability=context.availability,
         state=context.state,
     )
-    assert isinstance(challenged, ToolCommandResult)
-    assert challenged.error_type == "confirmation_required"
-    initial = ToolAttemptDecision(
-        action=ToolAttemptAction.EXECUTE,
-        command_name="load_data",
-        params=params,
-        context=context,
-    )
-    pending = ToolAttemptCoordinator.resource_confirmation(initial, challenged)
-    assert pending is not None
-    assert pending.action is ToolAttemptAction.CONFIRMATION_REQUIRED
-    coordinator = ToolAttemptCoordinator(
-        registry=MagicMock(),
-        verifier=MagicMock(),
-        context_source=context_source,
-    )
-
-    approved = coordinator.approved_params(pending)
-    accepted = execute_application_tool_command(
-        study,
-        "load_data",
-        approved,
-        availability=context.availability,
-        state=context.state,
-    )
-
-    assert isinstance(accepted, ToolCommandResult)
-    assert accepted.ok
-    assert (
-        accepted.diagnostics["resource_preflight"]["confirmation_receipt_reused"]
-        is True
-    )
-    assert approved["resource_preflight_token"] == _required_receipt(pending).token
-    service.dataset.import_files.assert_called_once_with([str(eeg_path)])
-
-    replayed = execute_application_tool_command(
-        study,
-        "load_data",
-        approved,
-        availability=context.availability,
-        state=context.state,
-    )
-    assert isinstance(replayed, ToolCommandResult)
-    assert replayed.error_type == "confirmation_required"
+    assert isinstance(denied, ToolCommandResult)
+    assert denied.ok is False
+    assert denied.error_code == "assistant_direct_load_disabled"
+    assert denied.error_type == "precondition"
+    assert "scan_source" in str(denied.recovery_action)
+    service.dataset.import_files.assert_not_called()
 
 
 def test_agent_receipt_rejects_stale_candidate_with_same_scope(
@@ -728,9 +704,15 @@ def test_agent_reload_receipt_rejects_changed_recipe_content(
 
 
 class _TrainingProbe:
-    def __init__(self) -> None:
+    trainer_identity = "agent-receipt-training-probe"
+
+    def __init__(self, resource_runtime: TrainingCommandRuntimePort) -> None:
+        self._resource_runtime = resource_runtime
         self.preflight_revision = 1
         self.start_count = 0
+        self._terminal_outcome = TrainingTerminalOutcome(
+            state=TrainingOutcomeState.NOT_STARTED,
+        )
 
     def start_training(
         self,
@@ -740,7 +722,48 @@ class _TrainingProbe:
     ) -> int:
         del append, interactive
         self.start_count += 1
+        self._terminal_outcome = TrainingTerminalOutcome(
+            state=TrainingOutcomeState.RUNNING,
+            run=TrainingRunIdentity(
+                trainer_id=self.trainer_identity,
+                run_id=self.start_count,
+            ),
+        )
         return self.start_count
+
+    def resource_context(self) -> TrainingRuntimeContext:
+        return self._resource_runtime.resource_context()
+
+    def stop_training(self, *, wait_timeout: float | None = None) -> bool:
+        del wait_timeout
+        run = self._terminal_outcome.run
+        if run is None:
+            return False
+        self._terminal_outcome = TrainingTerminalOutcome(
+            state=TrainingOutcomeState.CANCELLED,
+            run=run,
+        )
+        return True
+
+    def wait_for_training_completion(
+        self,
+        *,
+        expected_trainer_identity: str | None = None,
+        timeout: float | None = None,
+    ) -> bool:
+        del timeout
+        run = self._terminal_outcome.run
+        return bool(
+            self._terminal_outcome.is_terminal
+            and run is not None
+            and (
+                expected_trainer_identity is None
+                or run.trainer_id == expected_trainer_identity
+            )
+        )
+
+    def terminal_outcome(self) -> TrainingTerminalOutcome:
+        return self._terminal_outcome
 
 
 def _training_receipt_runtime(
@@ -766,10 +789,10 @@ def _training_receipt_runtime(
         )
     )
     assert configured.ok is True
-    probe = _TrainingProbe()
+    probe = _TrainingProbe(service.training_runtime)
     service.training_commands._service_instance = TrainingCommandService(
         training=probe,
-        training_runtime=service.training_runtime,
+        training_runtime=probe,
         get_state=service.get_state,
     )
 
@@ -861,6 +884,7 @@ def test_agent_start_training_replays_matching_preflight_once(
     assert (
         result.diagnostics["resource_preflight"]["confirmation_receipt_reused"] is True
     )
+    assert result.diagnostics["training_trainer_identity"] == probe.trainer_identity
     assert probe.start_count == 1
 
     replayed = _execute_training_replay(study, coordinator, pending)
@@ -927,3 +951,173 @@ def test_agent_training_confirmation_never_bypasses_blocking_preflight(
     assert result.error_type == "precondition"
     assert "exceeds available GPU memory" in result.message
     assert probe.start_count == 0
+
+
+def test_agent_saliency_replays_only_exact_host_issued_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = ApplicationStateSnapshot.empty()
+    state = replace(
+        state,
+        pipeline_stage="trained",
+        evaluation=replace(
+            state.evaluation,
+            available=True,
+            total_plans=1,
+            total_runs=1,
+            finished_runs=1,
+        ),
+        active_training=replace(
+            state.active_training,
+            has_model=True,
+            has_training_option=True,
+            has_trainer=True,
+        ),
+    )
+    configured: list[dict[str, Any]] = []
+    visualization = MagicMock()
+    visualization.set_saliency_params.side_effect = configured.append
+    visualization.get_saliency_params.side_effect = (
+        lambda: configured[-1] if configured else None
+    )
+    training_runtime = MagicMock()
+    training_runtime.resource_context.return_value = SimpleNamespace(
+        datasets=(object(),),
+        training_option=object(),
+        model_holder=object(),
+    )
+    training_runtime.training_plan_holders.return_value = ()
+    analysis = AnalysisCommandService(
+        training_runtime=training_runtime,
+        visualization=visualization,
+        get_state=lambda: state,
+    )
+    monkeypatch.setattr(
+        analysis_service_module,
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: ResourcePreflightResult(
+            issues=(),
+            warnings=("Saliency may use most available memory.",),
+            diagnostics={
+                "risk_level": "warning",
+                "operation": "saliency_recomputation",
+            },
+        ),
+    )
+
+    class _Runtime:
+        def __init__(self) -> None:
+            self.commands: list[SaliencyCommand] = []
+
+        def get_view_publication(self) -> ApplicationViewPublication:
+            return ApplicationViewPublication(
+                generation=1,
+                state=state,
+                capabilities=build_capability_policy(state),
+            )
+
+        def execute(self, command: Command) -> CommandResult:
+            assert isinstance(command, SaliencyCommand)
+            self.commands.append(command)
+            try:
+                handler_result = analysis.handle_saliency(command)
+            except ApplicationError as exc:
+                return CommandResult.failure_result(
+                    command_name=CommandName.SALIENCY.value,
+                    message=str(exc),
+                    state=state,
+                    changed_state=ChangedState(),
+                    error_type=exc.error_type,
+                    recoverable=exc.recoverable,
+                    error_message=str(exc),
+                    diagnostics=exc.diagnostics,
+                )
+            assert isinstance(handler_result, tuple)
+            message, diagnostics = handler_result
+            return CommandResult.success_result(
+                command_name=CommandName.SALIENCY.value,
+                message=message,
+                state=state,
+                changed_state=ChangedState(visualization_changed=True),
+                diagnostics=diagnostics,
+            )
+
+    runtime = _Runtime()
+    tool_name, model_params = normalize_tool_call(
+        "saliency",
+        {
+            "method": "Gradient",
+            "resource_preflight_confirmed": True,
+            "resource_preflight_token": "model-injected-receipt",
+        },
+    )
+    assert model_params == {"method": "Gradient"}
+    availability = ToolAvailability(
+        tool_name="saliency",
+        command_name=CommandName.SALIENCY.value,
+        enabled=True,
+    )
+    challenged = execute_application_tool_command(
+        object(),
+        tool_name,
+        model_params,
+        availability=availability,
+        state=state.to_dict(),
+        runtime=runtime,
+    )
+    assert isinstance(challenged, ToolCommandResult)
+    assert challenged.error_type == "confirmation_required"
+    initial = ToolAttemptDecision(
+        action=ToolAttemptAction.EXECUTE,
+        command_name="saliency",
+        params=model_params,
+        context=ToolAvailabilityContext(
+            availability=availability,
+            state=state.to_dict(),
+            generation=1,
+        ),
+    )
+    pending = ToolAttemptCoordinator.resource_confirmation(initial, challenged)
+    assert pending is not None
+    assert pending.action is ToolAttemptAction.CONFIRMATION_REQUIRED
+    receipt = _required_receipt(pending)
+    coordinator = ToolAttemptCoordinator(
+        registry=MagicMock(),
+        verifier=MagicMock(),
+        context_source=MagicMock(),
+    )
+
+    approved = coordinator.approved_params(pending)
+    accepted = execute_application_tool_command(
+        object(),
+        "saliency",
+        approved,
+        availability=availability,
+        state=state.to_dict(),
+        runtime=runtime,
+    )
+
+    assert runtime.commands[0].resource_preflight_confirmed is False
+    assert runtime.commands[0].resource_preflight_token is None
+    assert approved["resource_preflight_token"] == receipt.challenge_id
+    assert approved["resource_preflight_token"] != "model-injected-receipt"  # noqa: S105
+    assert isinstance(accepted, ToolCommandResult)
+    assert accepted.ok
+    assert (
+        accepted.diagnostics["resource_preflight"]["confirmation_receipt_reused"]
+        is True
+    )
+    assert configured
+
+    replayed = execute_application_tool_command(
+        object(),
+        "saliency",
+        approved,
+        availability=availability,
+        state=state.to_dict(),
+        runtime=runtime,
+    )
+
+    assert isinstance(replayed, ToolCommandResult)
+    assert replayed.error_type == "confirmation_required"
+    assert len(configured) == 1

@@ -1,6 +1,6 @@
 # Architecture Review Runbook
 
-最後更新：`2026-05-02`
+最後更新：`2026-07-30`
 
 這份 runbook 用於需要純架構複盤時使用。它不阻擋 product-delivery 任務；
 若使用者要求實作或目前 milestone 已明確，應依 `AGENTS.md` 和
@@ -32,8 +32,11 @@
 
 - `Study`、`DataManager`、`TrainingManager` 各自責任是否清楚。
 - controllers 裡哪些是 adapter，哪些是 business workflow。
-- `BackendFacade` 是否只作 wrapper，還是已承載平行邏輯。
+- 確認 `BackendFacade` module 維持物理移除，product code、tests 和文件沒有把它重新描述成
+  wrapper、compatibility layer 或 target abstraction。
 - 哪些 workflow 最適合先抽成 command。
+- 哪些 UI consumer 仍直接依賴 controller、live domain/runtime object，或未完成
+  publication acknowledgement 的 refresh path；不要把 named quarantine 當成 debt 已清除。
 
 ### Data pipeline
 
@@ -46,6 +49,8 @@
 - assistant runtime 目前和 local-only target 差距，尤其是 API / Gemini code path 的移除範圍。
 - tool registry / real tools 是否繞過 UI path。
 - tool-call validation 缺哪些 state / result / error evidence。
+- MCP 已退出 active product / thesis roadmap；除非使用者明確要求 opt-in MCP review，
+  不把 transport、client certification 或 adapter hardening 列入架構 gap。
 
 ### Validation
 
@@ -80,3 +85,5 @@
 - 不新增大量新文件。
 - 不把 target architecture 寫成 current implementation。
 - 不根據舊 records 下決策，除非重新對照 source 或 runtime evidence。
+- branch / delivery authority 以 `docs/current.md` 和 `docs/planning/now.md` 為準；不要從
+  `stabilize/desktop-mvp` 或退役的 `AQ-*` / `Prep Gate` / `Repair Loop` 恢復 active 工作流。

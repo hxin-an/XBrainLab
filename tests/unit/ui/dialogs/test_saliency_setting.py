@@ -19,6 +19,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.saliency_policy import (
+    MAX_SALIENCY_NT_SAMPLES,
+    MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+    MIN_SALIENCY_NT_SAMPLES,
+)
+
 
 @pytest.fixture
 def dialog(qtbot):
@@ -131,6 +137,15 @@ class TestSaliencySettingInit:
         for editors in dialog.param_editors.values():
             assert editors["nt_samples_batch_size"].specialValueText() == "Automatic"
             assert all(editor.toolTip() for editor in editors.values())
+
+    def test_noise_sample_editors_share_backend_admission_limits(self, dialog):
+        for editors in dialog.param_editors.values():
+            nt_samples = editors["nt_samples"]
+            nt_samples_batch_size = editors["nt_samples_batch_size"]
+            assert nt_samples.minimum() == MIN_SALIENCY_NT_SAMPLES
+            assert nt_samples.maximum() == MAX_SALIENCY_NT_SAMPLES
+            assert nt_samples_batch_size.minimum() == 0
+            assert nt_samples_batch_size.maximum() == MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE
 
     def test_method_parameters_panel_is_lightweight_not_heavy_gray_block(self, dialog):
         params_panel = dialog.findChild(QWidget, "SaliencyMethodParametersPanel")

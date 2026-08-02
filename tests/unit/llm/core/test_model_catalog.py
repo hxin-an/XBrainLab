@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
+import time
 from dataclasses import fields
 from pathlib import Path
 from unittest.mock import patch
@@ -8,11 +11,16 @@ from unittest.mock import patch
 import pytest
 
 from XBrainLab.llm.core.model_catalog import (
+    MAX_SINGLE_MODEL_DOWNLOAD_GB,
     MAX_TOTAL_MODEL_CACHE_GB,
+    MIN_DISK_FREE_AFTER_DOWNLOAD_GB,
+    CacheInspectionError,
     LocalModelSpec,
     allowed_local_model_ids,
+    cache_usage_bytes,
     default_local_model_id,
     disallowed_cache_candidates,
+    inspect_model_download_consumption,
     local_model_policy_error,
     local_model_spec,
     model_cache_complete,
@@ -28,6 +36,40 @@ RETIRED_MODEL_IDS = (
     "microsoft/Phi-3.5-mini-instruct",
 )
 VALID_TEST_WEIGHT_BYTES = 300_000_000
+
+
+def test_cache_usage_scan_is_bounded_and_interruptible(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "models"
+    cache_dir.mkdir()
+    for index in range(3):
+        (cache_dir / f"entry-{index}.bin").write_bytes(b"x")
+
+    with pytest.raises(CacheInspectionError, match="entry limit"):
+        cache_usage_bytes(str(cache_dir), max_entries=2)
+
+    cancelled = threading.Event()
+    cancelled.set()
+    with pytest.raises(CacheInspectionError, match="cancelled"):
+        cache_usage_bytes(str(cache_dir), cancel_event=cancelled)
+
+    with pytest.raises(CacheInspectionError, match="deadline"):
+        cache_usage_bytes(str(cache_dir), deadline=time.monotonic() - 1.0)
+
+
+def test_cache_usage_scan_preserves_normal_hardlink_aware_sizing(
+    tmp_path: Path,
+) -> None:
+    cache_dir = tmp_path / "models"
+    nested = cache_dir / "nested"
+    nested.mkdir(parents=True)
+    payload = nested / "weights.bin"
+    payload.write_bytes(b"12345")
+    try:
+        os.link(payload, cache_dir / "weights-hardlink.bin")
+    except OSError as exc:  # pragma: no cover - platform privilege boundary
+        pytest.skip(f"Hardlinks unavailable: {type(exc).__name__}")
+
+    assert cache_usage_bytes(str(cache_dir)) == 5
 
 
 def _write_complete_project_cache(model_root: Path) -> None:
@@ -159,6 +201,81 @@ def test_download_preflight_preserves_disk_reserve_after_download(
 
     assert result.ok is False
     assert "free after the download" in result.message
+
+
+@pytest.mark.parametrize(
+    ("model_bytes", "total_bytes", "free_bytes", "expected_message"),
+    [
+        (
+            int(MAX_SINGLE_MODEL_DOWNLOAD_GB * 1_000_000_000) + 1,
+            int(MAX_SINGLE_MODEL_DOWNLOAD_GB * 1_000_000_000) + 1,
+            10_000_000_000,
+            "per-model cache limit",
+        ),
+        (
+            1_000_000_000,
+            int(MAX_TOTAL_MODEL_CACHE_GB * 1_000_000_000) + 1,
+            10_000_000_000,
+            "total cache limit",
+        ),
+        (
+            1_000_000_000,
+            1_000_000_000,
+            int(MIN_DISK_FREE_AFTER_DOWNLOAD_GB * 1_000_000_000) - 1,
+            "free disk reserve",
+        ),
+    ],
+)
+def test_inflight_consumption_inspection_enforces_actual_resource_limits(
+    tmp_path: Path,
+    model_bytes: int,
+    total_bytes: int,
+    free_bytes: int,
+    expected_message: str,
+) -> None:
+    with (
+        patch(
+            "XBrainLab.llm.core.model_catalog._directory_size_bytes",
+            return_value=model_bytes,
+        ),
+        patch(
+            "XBrainLab.llm.core.model_catalog.cache_usage_bytes",
+            return_value=total_bytes,
+        ),
+        patch(
+            "XBrainLab.llm.core.model_catalog.available_disk_bytes",
+            return_value=free_bytes,
+        ),
+    ):
+        result = inspect_model_download_consumption(
+            PRIMARY_MODEL_ID,
+            str(tmp_path / "models"),
+        )
+
+    assert result.ok is False
+    assert expected_message in result.public_message
+    assert str(tmp_path) not in result.public_message
+    assert "model_cache_bytes=" in result.diagnostic_message
+    assert "total_cache_bytes=" in result.diagnostic_message
+    assert "available_disk_bytes=" in result.diagnostic_message
+
+
+def test_inflight_consumption_inspection_fails_closed_without_leaking_diagnostics(
+    tmp_path: Path,
+) -> None:
+    sensitive = r"C:\Users\alice\.cache token=hf_secret"
+    with patch(
+        "XBrainLab.llm.core.model_catalog._directory_size_bytes",
+        side_effect=CacheInspectionError(sensitive),
+    ):
+        result = inspect_model_download_consumption(
+            PRIMARY_MODEL_ID,
+            str(tmp_path / "models"),
+        )
+
+    assert result.ok is False
+    assert sensitive not in result.public_message
+    assert sensitive in result.diagnostic_message
 
 
 def test_download_preflight_allows_already_cached_model_without_increment(
@@ -427,7 +544,7 @@ def test_cache_scan_error_fails_closed_instead_of_assuming_zero(
     cache_dir.mkdir()
 
     with patch(
-        "XBrainLab.llm.core.model_catalog.os.walk",
+        "XBrainLab.llm.core.model_catalog.os.scandir",
         side_effect=PermissionError("cache subtree is unreadable"),
     ):
         result = plan_model_download(PRIMARY_MODEL_ID, str(cache_dir))

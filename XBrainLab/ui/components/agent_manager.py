@@ -1,5 +1,6 @@
 """Qt composition and presentation adapter for the in-app assistant."""
 
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from PyQt6.QtCore import (
@@ -10,10 +11,11 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QDockWidget,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -25,18 +27,25 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationService,
     ApplicationViewPublication,
     get_application_service,
 )
+from XBrainLab.backend.application.pipeline_stage import workflow_command_label
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatMessagePresentationKind,
+    ChatMessageRecord,
     ChatResponseAction,
     ChatResponseActionKind,
+    ChatResponseActionResolution,
     ChatResponseActionSelection,
 )
 from XBrainLab.backend.controller.chat_controller import (
     ChatPanelTarget as ChatHistoryPanelTarget,
+)
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.assistant_activity import (
@@ -60,7 +69,11 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
 )
-from XBrainLab.llm.agent.turn import AssistantTurnCorrelation, AssistantTurnTerminal
+from XBrainLab.llm.agent.turn import (
+    AssistantTurnCorrelation,
+    AssistantTurnScope,
+    AssistantTurnTerminal,
+)
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
@@ -89,6 +102,9 @@ from XBrainLab.ui.chat.turn_state import (
 from XBrainLab.ui.components.agent_presentation_service import (
     AgentPresentationService,
 )
+from XBrainLab.ui.components.assistant_application_publication_coordinator import (
+    AssistantApplicationPublicationCoordinator,
+)
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeLifecycle,
     RuntimeActivationResult,
@@ -107,14 +123,27 @@ from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
-from XBrainLab.ui.refresh_coordinator import (
-    begin_command_refresh_suppression,
-    complete_command_refresh_suppression,
-)
+from XBrainLab.ui.styles.icons import Icons
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 VIZ_TAB_3D_PLOT = 3
 """Index of the 3D Plot tab in the visualization panel."""
+
+_CHAT_PRUNE_NOTICE = (
+    "Older messages were removed from this view to keep the conversation responsive."
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AssistantTurnAdmissionResult:
+    """Exact outcome of one UI-to-runtime assistant turn admission."""
+
+    correlation: AssistantTurnCorrelation | None = None
+
+    @property
+    def accepted(self) -> bool:
+        return self.correlation is not None
+
 
 # Panel indices in the main window stack
 PANEL_DATASET = 0
@@ -161,6 +190,7 @@ _DELIVERY_TERMINAL_MESSAGES = {
 _APPLICATION_PUBLICATION_RETRY_INTERVAL_MS = 25
 _APPLICATION_PUBLICATION_MAX_RETRIES = 3
 _APPLICATION_PUBLICATION_RECOVERY_INTERVAL_MS = 500
+_ASSISTANT_TERMINAL_RENDER_RETRY_INTERVAL_MS = 500
 
 
 class AssistantDockTitleBar(QWidget):
@@ -169,29 +199,37 @@ class AssistantDockTitleBar(QWidget):
     def __init__(self, on_float_toggle, parent=None):
         super().__init__(parent)
         self._on_float_toggle = on_float_toggle
+        self.title_label: QLabel | None = None
+        self.status_indicator: QWidget | None = None
+        self.status_dot: QFrame | None = None
         self.status_badge: QLabel | None = None
         self.retry_button: QPushButton | None = None
         self._retry_available = False
         self._retry_enabled = False
 
     def set_assistant_status(self, text: str) -> None:
-        """Render one compact status without exposing runtime diagnostics."""
-        if self.status_badge is None:
-            return
+        """Expose runtime status without adding a competing header badge."""
         normalized = " ".join(str(text or "Local · Setup").split())
-        self.status_badge.setText(normalized)
-        self.status_badge.setToolTip(normalized)
-        state = normalized.rsplit("·", 1)[-1].strip().lower()
-        self.status_badge.setProperty("assistantState", state)
-        style = self.status_badge.style()
-        if style is not None:
-            style.unpolish(self.status_badge)
-            style.polish(self.status_badge)
+        state_text = normalized.rsplit("·", 1)[-1].strip() or "Setup"
+        state = state_text.lower()
+        self.setProperty("assistantState", state)
+        self.setToolTip(normalized)
+        self.setAccessibleDescription(f"Assistant status: {normalized}")
+        if self.title_label is not None:
+            self.title_label.setToolTip(normalized)
+            self.title_label.setAccessibleDescription(f"Assistant status: {normalized}")
 
     def resizeEvent(self, event):  # noqa: N802
         """Keep essential title actions readable at narrow dock widths."""
         super().resizeEvent(event)
         self._sync_responsive_actions()
+        QTimer.singleShot(0, self._finalize_title_layout)
+
+    def showEvent(self, event):  # noqa: N802
+        """Settle action geometry after the dock installs its title bar."""
+        super().showEvent(event)
+        self._sync_responsive_actions()
+        QTimer.singleShot(0, self._finalize_title_layout)
 
     def set_retry_available(self, available: bool, *, enabled: bool) -> None:
         """Show title-bar Retry only when space and request state allow it."""
@@ -201,12 +239,23 @@ class AssistantDockTitleBar(QWidget):
 
     def _sync_responsive_actions(self) -> None:
         """Hide optional controls before allowing the product title to clip."""
-        if self.status_badge is not None:
-            self.status_badge.setVisible(self.width() >= 400)
         compact = self.width() < 470
         if self.retry_button is not None:
             self.retry_button.setVisible(self._retry_available and not compact)
             self.retry_button.setEnabled(self._retry_enabled and not compact)
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+
+    def _finalize_title_layout(self) -> None:
+        """Reflow once after Qt applies the parent dock geometry."""
+        layout = self.layout()
+        if layout is None:
+            return
+        layout.invalidate()
+        layout.activate()
+        self.updateGeometry()
 
     def mousePressEvent(self, event):  # noqa: N802
         """Let QDockWidget handle title-bar drags from empty title space."""
@@ -255,6 +304,7 @@ class AgentManager(QObject):
         main_window,
         study,
         *,
+        application_service: ApplicationService | None = None,
         runtime_lifecycle: AssistantRuntimeLifecycle | None = None,
         model_download_lifecycle: ModelDownloadLifecycle | None = None,
     ):
@@ -269,12 +319,19 @@ class AgentManager(QObject):
         super().__init__(main_window)
         self.main_window = main_window
         self.study = study
-        self.application_service = get_application_service(study)
+        self.application_service = (
+            application_service
+            if application_service is not None
+            else get_application_service(study)
+        )
         self._closing = False
-        self._pending_application_view_publication: (
-            ApplicationViewPublication | None
-        ) = None
-        self._application_publication_retry_attempts = 0
+        self._application_publication_coordinator = (
+            AssistantApplicationPublicationCoordinator(
+                retry_interval_ms=_APPLICATION_PUBLICATION_RETRY_INTERVAL_MS,
+                max_fast_retries=_APPLICATION_PUBLICATION_MAX_RETRIES,
+                recovery_interval_ms=_APPLICATION_PUBLICATION_RECOVERY_INTERVAL_MS,
+            )
+        )
         self._application_publication_retry_timer = QTimer(self)
         self._application_publication_retry_timer.setSingleShot(True)
         self._application_publication_retry_timer.setInterval(
@@ -287,14 +344,13 @@ class AgentManager(QObject):
             self.application_service,
             APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
             self,
-            require_slot_acknowledgement=True,
         )
         self._application_publication_bridge.connect_to(
             self._on_application_view_publication_changed
         )
 
-        self.chat_panel = None
-        self.chat_dock = None
+        self.chat_panel: ChatPanel | None = None
+        self.chat_dock: QDockWidget | None = None
 
         self.chat_controller = ChatController()
         # Connect Chat Controller Signals
@@ -302,11 +358,18 @@ class AgentManager(QObject):
             self.on_processing_state_changed,
         )
         self._last_user_input: str | None = None
+        self._pending_prune_notice = False
         self._runtime_unavailable_notice: str | None = None
         self._assistant_status_projection: AssistantStatusProjection | None = None
         self._active_response_presentation_id: str | None = None
         self._application_command_in_flight = False
+        self._assistant_training_terminal_retry_timer = QTimer(self)
+        self._assistant_training_terminal_retry_timer.setSingleShot(True)
+        self._assistant_training_terminal_retry_timer.timeout.connect(
+            self._flush_assistant_training_terminal
+        )
         self._last_assistant_activity: AssistantTurnActivity | None = None
+        self._active_turn_scope_summary = ""
         self._assistant_turn_state = AssistantUiTurnStateMachine()
         self._deferred_submission_events: list[tuple[str, object]] | None = None
         self._assistant_runtime = runtime_lifecycle or AssistantRuntimeLifecycle(
@@ -386,71 +449,67 @@ class AgentManager(QObject):
         title bar with float/settings/new-conversation buttons, and
         adds the dock to the main window's right area.
         """
-        self.chat_panel = ChatPanel()
+        chat_panel = ChatPanel()
+        self.chat_panel = chat_panel
         self._assistant_runtime.replay_runtime_snapshot()
 
         # Connect UI to ChatController
-        self.chat_panel.active_response_presentation_changed.connect(
+        chat_panel.active_response_presentation_changed.connect(
             self._on_active_response_presentation_changed
         )
-        self.chat_panel.connect_controller(self.chat_controller)
+        chat_panel.connect_controller(self.chat_controller)
 
         # Connect ChatPanel signals to self (for further dispatch)
-        self.chat_panel.send_message.connect(self.handle_user_input)
-        self.chat_panel.stop_generation.connect(self.stop_generation)
-        self.chat_panel.debug_tool_requested.connect(self._handle_debug_tool_requested)
-        self.chat_panel.open_settings_requested.connect(self.open_settings_dialog)
+        chat_panel.send_message.connect(self.handle_user_input)
+        chat_panel.stop_generation.connect(self.stop_generation)
+        chat_panel.debug_tool_requested.connect(self._handle_debug_tool_requested)
+        chat_panel.open_settings_requested.connect(self.open_settings_dialog)
         retry_runtime_requested = getattr(
-            self.chat_panel,
+            chat_panel,
             "retry_local_assistant_requested",
             None,
         )
         if retry_runtime_requested is not None:
             retry_runtime_requested.connect(self.retry_local_assistant)
-        self.chat_panel.response_action_requested.connect(
+        chat_panel.response_action_requested.connect(
             self._handle_response_action_selection
         )
-        self.chat_panel.confirmation_decision_requested.connect(
+        chat_panel.confirmation_decision_requested.connect(
             self._resolve_action_confirmation
         )
 
-        self.chat_dock = QDockWidget("XBrainLab", self.main_window)
-        self.chat_dock.setWidget(self.chat_panel)
-        self.chat_dock.setAllowedAreas(
+        chat_dock = QDockWidget("XBrainLab", self.main_window)
+        self.chat_dock = chat_dock
+        chat_dock.setWidget(chat_panel)
+        chat_dock.setAllowedAreas(
             Qt.DockWidgetArea.RightDockWidgetArea
             | Qt.DockWidgetArea.LeftDockWidgetArea,
         )
-        self.chat_dock.setFeatures(
+        chat_dock.setFeatures(
             QDockWidget.DockWidgetFeature.DockWidgetClosable
             | QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QDockWidget.DockWidgetFeature.DockWidgetFloatable,
         )
-        self.chat_dock.setMinimumWidth(320)
+        chat_dock.setMinimumWidth(320)
 
         # Custom title bar with conversation controls and native dock dragging.
-        title_bar = AssistantDockTitleBar(self._toggle_float, self.chat_dock)
+        title_bar = AssistantDockTitleBar(self._toggle_float, chat_dock)
         self.assistant_header = title_bar
         title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
         title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(12, 4, 6, 4)
-        title_layout.setSpacing(4)
+        title_layout.setContentsMargins(12, 6, 6, 6)
+        title_layout.setSpacing(6)
 
         title_label = QLabel("XBrainLab Assistant")
         title_label.setObjectName("AssistantDockTitle")
         title_label.setStyleSheet(Stylesheets.AGENT_TITLE_LABEL)
         title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         title_label.setMinimumWidth(title_label.sizeHint().width())
+        title_bar.title_label = title_label
         title_layout.addWidget(title_label)
-
-        status_badge = QLabel("")
-        status_badge.setObjectName("AssistantDockStatus")
-        status_badge.setStyleSheet(Stylesheets.AGENT_STATUS_BADGE)
-        status_badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        title_bar.status_badge = status_badge
-        title_bar.set_assistant_status(self.chat_panel.header_status_text)
-        title_layout.addWidget(status_badge)
+        title_bar.set_assistant_status(chat_panel.header_status_text)
         title_layout.addStretch()
-        self.chat_panel.header_status_changed.connect(title_bar.set_assistant_status)
+        chat_panel.header_status_changed.connect(title_bar.set_assistant_status)
 
         title_style = title_bar.style()
         if title_style is None:
@@ -463,9 +522,12 @@ class AgentManager(QObject):
             title_style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
         )
         self.retry_title_btn.setIconSize(QSize(16, 16))
-        self.retry_title_btn.setFixedSize(28, 28)
+        self.retry_title_btn.setFixedSize(30, 30)
         self.retry_title_btn.setToolTip("Send a request before retrying.")
         self.retry_title_btn.setAccessibleName("Retry last request")
+        self.retry_title_btn.setAccessibleDescription(
+            "Retry the most recent Assistant request."
+        )
         self.retry_title_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.retry_title_btn.setEnabled(False)
         self.retry_title_btn.setVisible(False)
@@ -474,8 +536,13 @@ class AgentManager(QObject):
         title_layout.addWidget(self.retry_title_btn)
 
         # New chat clears only the assistant conversation, never workflow state.
-        self.new_conv_title_btn = QPushButton("+")
-        self.new_conv_title_btn.setFixedSize(28, 28)
+        self.new_conv_title_btn = QPushButton()
+        new_chat_icon = QIcon.fromTheme(QIcon.ThemeIcon.DocumentNew)
+        if new_chat_icon.isNull():
+            new_chat_icon = title_style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        self.new_conv_title_btn.setIcon(new_chat_icon)
+        self.new_conv_title_btn.setIconSize(QSize(16, 16))
+        self.new_conv_title_btn.setFixedSize(30, 30)
         self.new_conv_title_btn.setToolTip("New chat")
         self.new_conv_title_btn.setAccessibleName("New chat")
         self.new_conv_title_btn.setAccessibleDescription(
@@ -486,10 +553,20 @@ class AgentManager(QObject):
         title_layout.addWidget(self.new_conv_title_btn)
 
         # Options menu. Keep it to real, implemented actions.
-        self.settings_btn = QPushButton("⋮")
-        self.settings_btn.setFixedSize(28, 28)
+        self.settings_btn = QPushButton()
+        settings_icon = QIcon(Icons.SETTINGS.path)
+        if settings_icon.isNull():
+            settings_icon = title_style.standardIcon(
+                QStyle.StandardPixmap.SP_FileDialogDetailedView
+            )
+        self.settings_btn.setIcon(settings_icon)
+        self.settings_btn.setIconSize(QSize(16, 16))
+        self.settings_btn.setFixedSize(30, 30)
         self.settings_btn.setToolTip("Assistant options")
         self.settings_btn.setAccessibleName("Assistant options")
+        self.settings_btn.setAccessibleDescription(
+            "Open Assistant settings and dock options."
+        )
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.settings_menu = QMenu(self.settings_btn)
         self.settings_action = QAction("Assistant settings", self.settings_btn)
@@ -515,25 +592,32 @@ class AgentManager(QObject):
         self.settings_btn.setMenu(self.settings_menu)
         title_layout.addWidget(self.settings_btn)
 
-        self.close_btn = QPushButton("⌃")
-        self.close_btn.setFixedSize(28, 28)
+        self.close_btn = QPushButton()
+        self.close_btn.setIcon(
+            title_style.standardIcon(QStyle.StandardPixmap.SP_DockWidgetCloseButton)
+        )
+        self.close_btn.setIconSize(QSize(16, 16))
+        self.close_btn.setFixedSize(30, 30)
         self.close_btn.setToolTip("Hide assistant")
         self.close_btn.setAccessibleName("Hide assistant")
+        self.close_btn.setAccessibleDescription(
+            "Hide the Assistant panel without ending the conversation."
+        )
         self.close_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.close_btn.clicked.connect(self.chat_dock.close)
+        self.close_btn.clicked.connect(chat_dock.close)
         title_layout.addWidget(self.close_btn)
 
-        self.chat_dock.setTitleBarWidget(title_bar)
+        chat_dock.setTitleBarWidget(title_bar)
         title_bar._sync_responsive_actions()
-        self.chat_dock.topLevelChanged.connect(self._on_dock_top_level_changed)
+        chat_dock.topLevelChanged.connect(self._on_dock_top_level_changed)
 
         self.main_window.addDockWidget(
             Qt.DockWidgetArea.RightDockWidgetArea,
-            self.chat_dock,
+            chat_dock,
         )
 
-        self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
-        self.chat_dock.hide()
+        chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
+        chat_dock.hide()
         self.refresh_backend_status()
 
     def update_ai_btn_state(self, visible):
@@ -805,9 +889,8 @@ class AgentManager(QObject):
         )
 
     def _on_application_command_started(self) -> None:
-        """Suppress observer refresh until the agent command result arrives."""
+        """Mark one Assistant command as in flight and render its activity."""
         self._application_command_in_flight = True
-        begin_command_refresh_suppression(self.main_window)
         if not self.chat_controller.is_processing:
             self.chat_controller.set_processing(True)
         if self.chat_panel:
@@ -823,17 +906,41 @@ class AgentManager(QObject):
                     if isinstance(activity, AssistantTurnActivity)
                     else ChatTurnPresentation.application_command()
                 )
-            self.chat_panel.set_turn_activity(presentation)
+            self.chat_panel.set_turn_activity(self._with_active_scope(presentation))
 
     def _on_application_command_completed(self, result) -> None:
-        """Refresh product panels from the agent command result envelope."""
+        """Release command ownership and track asynchronous training completion."""
         self._application_command_in_flight = False
-        complete_command_refresh_suppression(
-            self.main_window,
-            getattr(result, "changed_state", None),
-        )
+        self._begin_assistant_training_watch(result)
 
-    def handle_user_input(self, text):
+    def _begin_assistant_training_watch(self, result: object) -> None:
+        """Track only an asynchronous training run started by this Assistant."""
+        correlation = self._assistant_turn_state.lease
+        if not isinstance(correlation, AssistantTurnCorrelation):
+            return
+        if not self._application_publication_coordinator.begin_training_watch(
+            result,
+            correlation,
+        ):
+            return
+        self._reconcile_assistant_training_terminal()
+
+    def _reconcile_assistant_training_terminal(self) -> None:
+        """Replay committed truth when a fast run finished before result delivery."""
+        try:
+            publication = self.application_service.get_view_publication()
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="agent_manager",
+                operation="reconcile_assistant_training_terminal",
+            )
+            return
+        if isinstance(publication, ApplicationViewPublication):
+            self._observe_assistant_training_publication(publication)
+
+    def handle_user_input(self, text: str) -> AssistantTurnAdmissionResult:
         """Handle text input from ChatPanel.
 
         Adds the message to ``ChatController`` history and forwards it
@@ -845,23 +952,18 @@ class AgentManager(QObject):
         """
         text = text.strip()
         if not text:
-            return
+            return AssistantTurnAdmissionResult()
         if self.agent_controller is None:
             activation = self._assistant_runtime.activate_persisted()
             if activation.available:
-                self._show_low_priority_notice(
-                    "Wait for the local assistant to finish loading."
+                self._reject_user_submission(
+                    text,
+                    "Wait for the local assistant to finish loading.",
                 )
             else:
                 self._show_runtime_unavailable(activation.message)
-            return
-
-        if not self.chat_controller.can_accept_turn():
-            self._show_low_priority_notice(
-                "Chat history is full. Clear the conversation before sending "
-                "another request."
-            )
-            return
+                self._reject_user_submission(text, activation.message)
+            return AssistantTurnAdmissionResult()
 
         # Reserve the runtime turn before changing the transcript. A rejected
         # command must not leave an unanswered user bubble behind.
@@ -875,25 +977,27 @@ class AgentManager(QObject):
             self._finish_assistant_turn_submission(submission, accepted=False)
             self._deferred_submission_events = None
             logger.error("Assistant runtime returned an invalid admission result")
-            self._show_low_priority_notice(
-                "The assistant could not accept this request. Try again."
+            self._reject_user_submission(
+                text,
+                "The assistant could not accept this request. Try again.",
             )
-            return
+            return AssistantTurnAdmissionResult()
         if not admission.accepted:
             self._finish_assistant_turn_submission(submission, accepted=False)
             self._deferred_submission_events = None
-            self._show_low_priority_notice(admission.message)
-            return
+            self._reject_user_submission(text, admission.message)
+            return AssistantTurnAdmissionResult()
 
         correlation = admission.correlation
         if correlation is None:
             self._finish_assistant_turn_submission(submission, accepted=False)
             self._deferred_submission_events = None
             logger.error("Assistant admission is missing exact turn correlation")
-            self._show_low_priority_notice(
-                "The assistant could not correlate this request. Try again."
+            self._reject_user_submission(
+                text,
+                "The assistant could not correlate this request. Try again.",
             )
-            return
+            return AssistantTurnAdmissionResult()
 
         deferred_events = self._deferred_submission_events
         self._deferred_submission_events = None
@@ -902,16 +1006,57 @@ class AgentManager(QObject):
             accepted=True,
             correlation=correlation,
         ):
-            self._show_low_priority_notice(
-                "The assistant could not correlate this request. Try again."
+            self._reject_user_submission(
+                text,
+                "The assistant could not correlate this request. Try again.",
             )
-            return
-        if self.chat_panel and hasattr(self.chat_panel, "clear_response_actions"):
-            self.chat_panel.clear_response_actions()
+            return AssistantTurnAdmissionResult()
+        self._prepare_admitted_transcript_turn()
+        self._active_turn_scope_summary = self._scope_summary_for_admission(admission)
         self.chat_controller.add_user_message(text)
+        if self.chat_panel is not None and hasattr(
+            self.chat_panel, "accept_composer_submission"
+        ):
+            self.chat_panel.accept_composer_submission(text)
         self._last_user_input = text
         self._set_retry_available(True)
         self._replay_deferred_submission_events(deferred_events)
+        return AssistantTurnAdmissionResult(correlation=correlation)
+
+    @staticmethod
+    def _scope_summary_for_admission(
+        admission: RuntimeCommandAdmissionResult,
+    ) -> str:
+        """Describe host-enforced autonomy without exposing an internal mode."""
+        if admission.scope is AssistantTurnScope.GUIDED_WORKFLOW:
+            if admission.terminal_command:
+                label = workflow_command_label(admission.terminal_command)
+                summary = f"Scope: Continue through {label}; stop for decisions."
+            else:
+                summary = (
+                    "Scope: Continue one verified step at a time; stop for decisions."
+                )
+        else:
+            summary = "Scope: Only this request."
+        if admission.excluded_commands:
+            exclusions = ", ".join(
+                workflow_command_label(command).rstrip(".")
+                for command in admission.excluded_commands
+            )
+            summary = f"{summary} Excluded: {exclusions}."
+        return summary
+
+    def _with_active_scope(
+        self,
+        presentation: ChatTurnPresentation,
+    ) -> ChatTurnPresentation:
+        """Attach the admitted host scope to one active progress projection."""
+        if not self._active_turn_scope_summary or not presentation.is_visible:
+            return presentation
+        return replace(
+            presentation,
+            scope_summary=self._active_turn_scope_summary,
+        )
 
     def _handle_debug_tool_requested(
         self,
@@ -963,9 +1108,25 @@ class AgentManager(QObject):
                 "The diagnostic action could not be correlated. Try again."
             )
             return
-        if self.chat_panel and hasattr(self.chat_panel, "clear_response_actions"):
-            self.chat_panel.clear_response_actions()
+        self._prepare_admitted_transcript_turn()
         self._replay_deferred_submission_events(deferred_events)
+
+    def _prepare_admitted_transcript_turn(
+        self,
+        *,
+        clear_response_actions: bool = True,
+    ) -> None:
+        """Establish one bounded transcript budget after runtime admission."""
+        pruned_rows = self.chat_controller.prepare_for_turn()
+        self._pending_prune_notice = bool(pruned_rows)
+        if pruned_rows:
+            self._show_low_priority_notice(_CHAT_PRUNE_NOTICE)
+        if (
+            clear_response_actions
+            and self.chat_panel
+            and hasattr(self.chat_panel, "clear_response_actions")
+        ):
+            self.chat_panel.clear_response_actions()
 
     def _replay_deferred_submission_events(
         self,
@@ -979,6 +1140,10 @@ class AgentManager(QObject):
                 self._handle_response_presentation(event_payload)
             elif event_kind == "terminal":
                 self._on_assistant_turn_finished(event_payload)
+            elif event_kind == "confirmation":
+                self._show_action_confirmation(event_payload)
+            elif event_kind == "workflow_handoff":
+                self.handle_workflow_ui_handoff(event_payload)
 
     def _begin_assistant_turn_submission(self) -> AssistantUiTurnSubmission:
         """Create one UI generation before asking the runtime for admission."""
@@ -1011,7 +1176,11 @@ class AgentManager(QObject):
         presentation: AssistantResponsePresentation,
     ) -> None:
         """Persist one response after mapping only its typed source state."""
-        if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
+        if (
+            not self._pending_prune_notice
+            and self.chat_panel
+            and hasattr(self.chat_panel, "show_notice")
+        ):
             self.chat_panel.show_notice("")
         kind = self._chat_presentation_kind(presentation)
         typed_actions = presentation.actions
@@ -1036,6 +1205,8 @@ class AgentManager(QObject):
             presentation_id=presentation.presentation_id,
             actions=actions,
         )
+        if self._pending_prune_notice:
+            self._show_low_priority_notice(_CHAT_PRUNE_NOTICE)
 
     def _chat_presentation_kind(
         self,
@@ -1107,7 +1278,43 @@ class AgentManager(QObject):
                 redact_public_text(payload.correlation),
             )
             return
-        self._render_visible_assistant_response(payload)
+        self._try_render_visible_assistant_response(payload)
+
+    def _try_render_visible_assistant_response(
+        self,
+        presentation: AssistantResponsePresentation,
+        *,
+        recover_capacity: bool = False,
+    ) -> bool:
+        """Render one bounded response without leaking contract errors into Qt."""
+        try:
+            self._render_visible_assistant_response(presentation)
+        except ValueError as exc:
+            if not recover_capacity:
+                logger.error(
+                    "Ignored assistant response outside the chat presentation "
+                    "contract: %s",
+                    redact_public_text(exc),
+                )
+                return False
+            self._prepare_admitted_transcript_turn(clear_response_actions=False)
+            try:
+                self._render_visible_assistant_response(presentation)
+            except (TypeError, ValueError) as retry_exc:
+                logger.error(
+                    "Ignored assistant response outside the chat presentation "
+                    "contract after capacity recovery: %s",
+                    redact_public_text(retry_exc),
+                )
+                return False
+            return True
+        except TypeError as exc:
+            logger.error(
+                "Ignored assistant response outside the chat presentation contract: %s",
+                redact_public_text(exc),
+            )
+            return False
+        return True
 
     def _on_active_response_presentation_changed(self, payload: object) -> None:
         """Accept the ChatPanel's immutable active-action identity as authoritative."""
@@ -1157,14 +1364,25 @@ class AgentManager(QObject):
         except (TypeError, ValueError):
             logger.warning("Ignored malformed assistant response action selection")
             return
-        action = self.chat_controller.resolve_and_consume_response_action(selection)
-        if action is None:
+        resolution = self.chat_controller.resolve_and_consume_response_action(selection)
+        if not isinstance(resolution, ChatResponseActionResolution):
             logger.warning("Ignored forged, stale, or consumed response action")
             return
-        self._on_active_response_presentation_changed(None)
+        action = resolution.action
         if action.kind is ChatResponseActionKind.SEND_MESSAGE:
-            self.handle_user_input(action.prompt)
+            admission = self.handle_user_input(action.prompt)
+            if admission.accepted:
+                self._on_active_response_presentation_changed(None)
+                return
+            source_record = resolution.source_record
+            QTimer.singleShot(
+                0,
+                lambda record=source_record: (
+                    self._restore_rejected_response_action(record)
+                ),
+            )
             return
+        self._on_active_response_presentation_changed(None)
         if action.kind is ChatResponseActionKind.OPEN_DATA_IMPORT:
             try:
                 publication = self.application_service.get_view_publication()
@@ -1182,6 +1400,22 @@ class AgentManager(QObject):
             return
         if action.panel is not None:
             self._open_assistant_panel_target(AssistantPanelTarget(action.panel.value))
+
+    def _restore_rejected_response_action(self, record: object) -> None:
+        """Re-present one still-canonical action after runtime admission rejects it."""
+        if self._closing or self.chat_panel is None:
+            return
+        if not isinstance(record, ChatMessageRecord):
+            return
+        presentation_id = record.presentation_id
+        if self._active_response_presentation_id not in {None, presentation_id}:
+            return
+        canonical_record = self.chat_controller.active_response_record(
+            message_id=record.message_id,
+            presentation_id=presentation_id,
+        )
+        if canonical_record is not None and canonical_record.has_active_actions:
+            self.chat_panel.show_response_actions(canonical_record)
 
     def _open_assistant_panel_target(
         self,
@@ -1207,7 +1441,7 @@ class AgentManager(QObject):
             if view_mode:
                 self._switch_sub_view(panel_index, view_mode)
             if status_bar:
-                status_bar.showMessage(f"{target.value.title()} is open.")
+                status_bar.showMessage(f"Opened {target.value.title()} panel.")
 
         if view_mode:
             materialized = self.main_window.switch_page(
@@ -1219,7 +1453,7 @@ class AgentManager(QObject):
         else:
             materialized = self.main_window.switch_page(panel_index)
             if materialized is not False and status_bar:
-                status_bar.showMessage(f"{target.value.title()} is open.")
+                status_bar.showMessage(f"Opened {target.value.title()} panel.")
 
         if materialized is False and status_bar:
             status_bar.showMessage(f"Opening {target.value.title()}...")
@@ -1284,7 +1518,9 @@ class AgentManager(QObject):
                 self._workflow_ui_handoff_host.abandon_active()
                 self._clear_active_response_actions()
                 if self.chat_panel:
-                    self.chat_panel.set_turn_activity(ChatTurnPresentation.stopping())
+                    self.chat_panel.set_turn_activity(
+                        self._with_active_scope(ChatTurnPresentation.stopping())
+                    )
 
     def set_model(self, model_name):
         """Switch the active LLM model and check for VRAM conflicts.
@@ -1384,6 +1620,8 @@ class AgentManager(QObject):
 
         # Clear the transcript only after the runtime accepts the boundary.
         self.chat_controller.clear_conversation()
+        self._pending_prune_notice = False
+        self._application_publication_coordinator.clear_training()
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
         self._last_user_input = None
@@ -1415,6 +1653,14 @@ class AgentManager(QObject):
         safe_message = redact_public_text(message)
         if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
             self.chat_panel.show_notice(safe_message)
+
+    def _reject_user_submission(self, text: str, message: str) -> None:
+        """Keep a runtime-rejected request editable at the product boundary."""
+        safe_message = redact_public_text(message)
+        if self.chat_panel and hasattr(self.chat_panel, "reject_composer_submission"):
+            self.chat_panel.reject_composer_submission(text, safe_message)
+            return
+        self._show_low_priority_notice(safe_message)
 
     def _surface_runtime_command_result(
         self,
@@ -1480,15 +1726,21 @@ class AgentManager(QObject):
             if correlation is not None:
                 self._assistant_turn_state.latch_stop(correlation)
         self._last_assistant_activity = payload
-        presentation = present_assistant_activity(
-            payload,
-            application_command_in_flight=self._application_command_in_flight,
+        presentation = self._with_active_scope(
+            present_assistant_activity(
+                payload,
+                application_command_in_flight=self._application_command_in_flight,
+            )
         )
         processing = presentation.is_busy
         if self.chat_controller.is_processing != processing:
             self.chat_controller.set_processing(processing)
         if self.chat_panel:
-            if processing and hasattr(self.chat_panel, "show_notice"):
+            if (
+                processing
+                and not self._pending_prune_notice
+                and hasattr(self.chat_panel, "show_notice")
+            ):
                 self.chat_panel.show_notice("")
             self.chat_panel.set_turn_activity(presentation)
         if not processing:
@@ -1523,6 +1775,7 @@ class AgentManager(QObject):
             )
             return
         self._render_delivery_terminal_error(payload)
+        self._pending_prune_notice = False
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
         cancelled_outcomes = {"cancelled", "shutdown_cancelled"}
@@ -1532,10 +1785,12 @@ class AgentManager(QObject):
         ):
             self._clear_active_response_actions()
         self._last_assistant_activity = None
+        self._active_turn_scope_summary = ""
         if self.chat_controller.is_processing:
             self.chat_controller.set_processing(False)
         elif self.chat_panel:
             self.chat_panel.set_turn_activity(ChatTurnPresentation.idle())
+        self._flush_assistant_training_terminal()
         self.refresh_backend_status()
 
     def _render_delivery_terminal_error(
@@ -1546,7 +1801,7 @@ class AgentManager(QObject):
         message = _DELIVERY_TERMINAL_MESSAGES.get(terminal.outcome)
         if message is None:
             return
-        self._render_visible_assistant_response(
+        self._try_render_visible_assistant_response(
             AssistantResponsePresentation(
                 text=message,
                 correlation=terminal.correlation,
@@ -1573,6 +1828,19 @@ class AgentManager(QObject):
         events.append((event_kind, payload))
         return True
 
+    def _defer_provisional_controller_event(
+        self,
+        event_kind: str,
+        payload: object,
+    ) -> bool:
+        """Hold synchronous decision events until their turn lease is admitted."""
+        events = self._deferred_submission_events
+        submission = self._assistant_turn_state.submission
+        if events is None or submission is None:
+            return False
+        events.append((event_kind, payload))
+        return True
+
     def _render_assistant_runtime(
         self,
         snapshot: AssistantRuntimeSnapshot,
@@ -1590,7 +1858,16 @@ class AgentManager(QObject):
                 if snapshot.phase is AssistantRuntimePhase.FAILED
                 else ""
             )
-            self.chat_panel.set_runtime_state(snapshot.phase.value, safe_error)
+            runtime_kwargs = (
+                {"execution_device": snapshot.execution_device}
+                if snapshot.execution_device
+                else {}
+            )
+            self.chat_panel.set_runtime_state(
+                snapshot.phase.value,
+                safe_error,
+                **runtime_kwargs,
+            )
             projection = self._assistant_status_projection
             if projection is not None:
                 self._render_assistant_status_projection(
@@ -1642,53 +1919,91 @@ class AgentManager(QObject):
         if self._closing:
             return False
         if not self.chat_panel or not hasattr(self.chat_panel, "set_status_summary"):
-            self._reject_application_view_publication(publication)
+            self._schedule_application_view_publication_retry(publication)
             return False
         current = self._assistant_status_projection
         if current is not None and publication.revision <= current.publication_revision:
-            self._acknowledge_application_view_publication(publication.revision)
             return True
         try:
             projection = build_assistant_status_projection(publication)
             rendered = self._render_assistant_status_projection(projection)
         except Exception:
-            self._reject_application_view_publication(publication)
+            self._schedule_application_view_publication_retry(publication)
             raise
         if rendered is not True:
-            self._reject_application_view_publication(publication)
+            self._schedule_application_view_publication_retry(publication)
             return False
         self._assistant_status_projection = projection
+        self._observe_assistant_training_publication(publication)
         self._complete_application_view_publication_retry(publication.revision)
-        self._acknowledge_application_view_publication(publication.revision)
         return True
 
-    def _acknowledge_application_view_publication(self, revision: int) -> None:
-        """Acknowledge only publication revisions that reached the visible UI."""
-        try:
-            self.application_service.acknowledge_view_publication_delivery(revision)
-        except Exception as exc:
-            safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="agent_manager",
-                operation="acknowledge_view_publication_delivery",
-            )
-
-    def _reject_application_view_publication(
+    def _observe_assistant_training_publication(
         self,
         publication: ApplicationViewPublication,
     ) -> None:
-        """Keep a deferred revision retryable after visible rendering failed."""
-        try:
-            self.application_service.reject_view_publication_delivery(publication)
-        except Exception as exc:
-            safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="agent_manager",
-                operation="reject_view_publication_delivery",
+        """Translate one verified Assistant-started run into one terminal notice."""
+        coordinator = self._application_publication_coordinator
+        watch = coordinator.snapshot().training_watch
+        outcome = publication.state.training.terminal_outcome
+        if (
+            watch is not None
+            and outcome.is_terminal
+            and (watch.run is None or outcome.run != watch.run)
+        ):
+            logger.warning(
+                "Ignored Assistant training terminal without the current run identity"
             )
-        self._schedule_application_view_publication_retry(publication)
+            return
+        notice = coordinator.observe_training_publication(publication)
+        if notice is None:
+            return
+        self._flush_assistant_training_terminal()
+
+    def _flush_assistant_training_terminal(self) -> bool:
+        """Append a terminal result only after its initiating turn is idle."""
+        notice = self._application_publication_coordinator.terminal_notice_if_idle(
+            is_idle=self._assistant_turn_state.phase is AssistantUiTurnPhase.IDLE,
+        )
+        if notice is None:
+            return False
+        copy = {
+            TrainingOutcomeState.COMPLETED: (
+                "Training completed. Results are ready in Evaluation.",
+                AssistantResponseKind.TOOL_RESULT,
+            ),
+            TrainingOutcomeState.FAILED: (
+                "Training failed. Review the Training panel, adjust the "
+                "configuration, and try again.",
+                AssistantResponseKind.ERROR,
+            ),
+            TrainingOutcomeState.CANCELLED: (
+                "Training was cancelled.",
+                AssistantResponseKind.CANCELLED,
+            ),
+        }.get(notice.outcome)
+        if copy is None:
+            self._application_publication_coordinator.complete_terminal_notice(notice)
+            self._assistant_training_terminal_retry_timer.stop()
+            return False
+        message, presentation_kind = copy
+        rendered = self._try_render_visible_assistant_response(
+            AssistantResponsePresentation(
+                text=message,
+                correlation=notice.correlation,
+                kind=presentation_kind,
+            ),
+            recover_capacity=True,
+        )
+        if rendered:
+            self._application_publication_coordinator.complete_terminal_notice(notice)
+            self._assistant_training_terminal_retry_timer.stop()
+            return True
+        if not self._closing:
+            self._assistant_training_terminal_retry_timer.start(
+                _ASSISTANT_TERMINAL_RENDER_RETRY_INTERVAL_MS
+            )
+        return False
 
     def _schedule_application_view_publication_retry(
         self,
@@ -1697,36 +2012,26 @@ class AgentManager(QObject):
         """Coalesce failed renders into fast retries plus low-frequency recovery."""
         if self._closing:
             return
-        pending = self._pending_application_view_publication
-        if pending is None or publication.revision > pending.revision:
-            self._application_publication_retry_timer.stop()
-            self._pending_application_view_publication = publication
-            self._application_publication_retry_attempts = 0
-        elif publication.revision < pending.revision:
+        schedule = self._application_publication_coordinator.schedule_publication_retry(
+            publication
+        )
+        if schedule is None:
             return
+        if schedule.pending_changed:
+            self._application_publication_retry_timer.stop()
         if self._application_publication_retry_timer.isActive():
             return
-        retry_interval = (
-            _APPLICATION_PUBLICATION_RECOVERY_INTERVAL_MS
-            if self._application_publication_retry_attempts
-            >= _APPLICATION_PUBLICATION_MAX_RETRIES
-            else _APPLICATION_PUBLICATION_RETRY_INTERVAL_MS
-        )
-        self._application_publication_retry_timer.start(retry_interval)
+        self._application_publication_retry_timer.start(schedule.interval_ms)
 
     def _retry_latest_application_view_publication(self) -> None:
         """Retry the latest revision without abandoning its delivery obligation."""
         if self._closing:
             return
-        publication = self._pending_application_view_publication
+        publication = (
+            self._application_publication_coordinator.begin_publication_retry()
+        )
         if publication is None:
             return
-        if (
-            self._application_publication_retry_attempts
-            >= _APPLICATION_PUBLICATION_MAX_RETRIES
-        ):
-            self._application_publication_retry_attempts = 0
-        self._application_publication_retry_attempts += 1
         try:
             self._render_backend_publication(publication)
         except Exception as exc:
@@ -1739,12 +2044,8 @@ class AgentManager(QObject):
 
     def _complete_application_view_publication_retry(self, revision: int) -> None:
         """Clear retry state only after this or a newer revision rendered."""
-        pending = self._pending_application_view_publication
-        if pending is None or pending.revision > revision:
-            return
-        self._application_publication_retry_timer.stop()
-        self._pending_application_view_publication = None
-        self._application_publication_retry_attempts = 0
+        if self._application_publication_coordinator.complete_publication(revision):
+            self._application_publication_retry_timer.stop()
 
     def _render_assistant_status_projection(
         self,
@@ -1786,6 +2087,20 @@ class AgentManager(QObject):
     def close(self) -> bool:
         """Clean up the agent controller resources."""
         self._closing = True
+        publication_coordinator = getattr(
+            self,
+            "_application_publication_coordinator",
+            None,
+        )
+        if publication_coordinator is not None:
+            publication_coordinator.clear()
+        assistant_terminal_retry_timer = getattr(
+            self,
+            "_assistant_training_terminal_retry_timer",
+            None,
+        )
+        if assistant_terminal_retry_timer is not None:
+            assistant_terminal_retry_timer.stop()
         publication_retry_timer = getattr(
             self,
             "_application_publication_retry_timer",
@@ -1793,7 +2108,6 @@ class AgentManager(QObject):
         )
         if publication_retry_timer is not None:
             publication_retry_timer.stop()
-        self._pending_application_view_publication = None
         publication_bridge = getattr(
             self,
             "_application_publication_bridge",
@@ -1842,6 +2156,8 @@ class AgentManager(QObject):
             self._show_low_priority_notice(
                 "The requested XBrainLab settings could not be opened."
             )
+            return
+        if self._defer_provisional_controller_event("workflow_handoff", payload):
             return
         try:
             resolution = self._workflow_ui_handoff_host.open(
@@ -1909,6 +2225,17 @@ class AgentManager(QObject):
                 redact_public_text(request),
             )
             return
+        if self._defer_provisional_controller_event("confirmation", request):
+            return
+        if not self._confirmation_identity_matches_active_turn(
+            request_id=request.request_id,
+            command_name=request.command_name,
+        ):
+            logger.warning(
+                "Ignored assistant confirmation outside its active turn: %s",
+                redact_public_text(request.request_id),
+            )
+            return
         if self.chat_panel is None:
             logger.error("Assistant confirmation arrived before the panel was ready.")
             return
@@ -1936,6 +2263,17 @@ class AgentManager(QObject):
                 redact_public_text(resolution),
             )
             return
+        if not self._confirmation_identity_matches_active_turn(
+            request_id=resolution.request_id,
+            command_name=resolution.command_name,
+        ):
+            logger.warning(
+                "Ignored stale assistant confirmation decision: %s",
+                redact_public_text(resolution.request_id),
+            )
+            if self.chat_panel is not None:
+                self.chat_panel.clear_confirmation_request(resolution.request_id)
+            return
         accepted = self._surface_runtime_command_result(
             self._assistant_runtime.confirm(resolution),
             fallback="The assistant could not receive your confirmation.",
@@ -1949,6 +2287,24 @@ class AgentManager(QObject):
                 resolution.request_id,
                 False,
             )
+
+    def _confirmation_identity_matches_active_turn(
+        self,
+        *,
+        request_id: str,
+        command_name: str,
+    ) -> bool:
+        """Bind one confirmation card to the exact active UI/runtime turn."""
+        activity = self._last_assistant_activity
+        lease = self._assistant_turn_state.lease
+        return bool(
+            lease is not None
+            and isinstance(activity, AssistantTurnActivity)
+            and activity.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
+            and activity.correlation == lease
+            and activity.request_id == request_id
+            and activity.command_name == command_name
+        )
 
     def _confirmation_current_values(
         self,

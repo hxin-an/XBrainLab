@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 import time
@@ -21,6 +20,7 @@ from XBrainLab.backend.load_data.raw_data_loader import (
     load_gdf_file,
 )
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.utils.logger import setup_logger
 
 # Register loaders
 RawDataLoaderFactory.register_loader(".gdf", load_gdf_file)
@@ -48,6 +48,7 @@ from XBrainLab.llm.tools.real.training_real import (
     RealStartTrainingTool,
 )
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+from XBrainLab.llm.tools.result_contract import UiRequest, UiRequestKind
 
 
 def _query_diagnostics(study: Study, query: str) -> dict[str, Any]:
@@ -95,16 +96,11 @@ def run_verification():
     if os.path.exists(log_file):
         os.remove(log_file)
 
-    # Setup Logger
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_file, encoding="utf-8"),
-            logging.StreamHandler(sys.stdout),
-        ],
+    # Use the product diagnostic boundary for console and bounded file output.
+    logger = setup_logger(
+        name="XBrainLab.RealToolsVerification",
+        log_file=log_file,
     )
-    logger = logging.getLogger(__name__)
 
     logger.info("Starting Comprehensive Real Tools Verification")
     study = Study()
@@ -229,7 +225,11 @@ def run_verification():
     ui_tool = RealSwitchPanelTool()
     res_ui = ui_tool.execute(study, panel_name="Training", view_mode="advanced")
     logger.info(f"Switch Panel Result: {res_ui}")
-    if "Switch UI to 'Training'" not in res_ui:
+    if (
+        not isinstance(res_ui, UiRequest)
+        or res_ui.kind is not UiRequestKind.SWITCH_PANEL
+        or res_ui.params.get("panel") != "Training"
+    ):
         logger.error("Verification Failed: Switch Panel output mismatch")
         return
 

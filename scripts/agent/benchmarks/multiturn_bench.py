@@ -137,7 +137,11 @@ def run_multiturn_benchmark(
     with open(conv_file, encoding="utf-8") as f:
         test_cases = json.load(f)
 
-    config = LLMConfig(**MODEL_CONFIGS[model_name])
+    model_config = MODEL_CONFIGS[model_name]
+    config = LLMConfig(
+        model_name=model_config["model_name"],
+        inference_mode=model_config["inference_mode"],
+    )
     engine = LLMEngine(config)
     engine.load_model()
 

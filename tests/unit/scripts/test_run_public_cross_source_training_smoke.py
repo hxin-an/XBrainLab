@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 
@@ -28,6 +29,7 @@ def test_build_snapshot_summarizes_runner_results(monkeypatch):
                 status="passed",
                 dataset_count=1,
                 message="ok",
+                artifacts_reloaded=True,
             )
         return SmokeResult(
             name=name,
@@ -150,6 +152,7 @@ def test_strict_smoke_denominator_is_fixed_when_fixture_configuration_shrinks(
             status="passed",
             dataset_count=1,
             message="ok",
+            artifacts_reloaded=True,
         ),
     )
     monkeypatch.setattr(
@@ -200,3 +203,53 @@ def test_json_output_keeps_runner_noise_off_stdout(monkeypatch, capsys):
     assert json.loads(captured.out)["summary"]["message"] == "ok"
     assert "mne progress" not in captured.out
     assert "mne progress that should not corrupt json" in captured.err
+
+
+def test_strict_smoke_rejects_training_without_real_artifact_reload(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        smoke_script,
+        "run_fixture_smoke",
+        lambda fixture: SmokeResult(
+            name=fixture["name"],
+            filename=fixture["filename"],
+            source_family=fixture["source_family"],
+            status="passed",
+            dataset_count=1,
+            message="training returned success without persistence evidence",
+            artifacts_reloaded=False,
+        ),
+    )
+    monkeypatch.setattr(
+        smoke_script,
+        "run_fixture_epoch_smoke",
+        lambda fixture: SmokeResult(
+            name=fixture["name"],
+            filename=fixture["filename"],
+            source_family=fixture["source_family"],
+            status="passed",
+            dataset_count=0,
+            message="epoch only ok",
+            protocol="epoch-only",
+        ),
+    )
+
+    summary = build_snapshot()["summary"]
+
+    assert summary["missing_artifact_reload_case_ids"] == [
+        "bbci-gdf",
+        "physionet-edf",
+    ]
+    assert summary["passed_required_case_count"] == 2
+    assert summary["all_required_passed"] is False
+
+
+def test_required_training_smoke_does_not_mock_persistence() -> None:
+    source = inspect.getsource(smoke_script.run_fixture_smoke)
+
+    assert "unittest.mock" not in source
+    assert "patch(" not in source
+    assert "torch.save" not in source
+    assert "numpy.savetxt" not in source
+    assert "os.makedirs" not in source

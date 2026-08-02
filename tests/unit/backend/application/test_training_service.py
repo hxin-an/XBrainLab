@@ -130,8 +130,13 @@ class _TrainingRuntime:
         self.training.stop_wait_timeout = wait_timeout
         return self.training.stop_result
 
-    def wait_for_training_completion(self, *, timeout: float | None = None) -> bool:
-        del timeout
+    def wait_for_training_completion(
+        self,
+        *,
+        expected_trainer_identity: str | None = None,
+        timeout: float | None = None,
+    ) -> bool:
+        del expected_trainer_identity, timeout
         return True
 
     def terminal_outcome(self) -> TrainingTerminalOutcome:
@@ -386,7 +391,7 @@ def test_incomplete_training_configuration_does_not_mutate_model() -> None:
     training.model_holder = existing_model
     training.training_option = existing_option
 
-    with pytest.raises(PreconditionError, match="epoch, batch_size"):
+    with pytest.raises(PreconditionError, match="Training epochs, batch size"):
         service.handle_configure_training(
             ConfigureTrainingCommand(
                 model_name="EEGNet",

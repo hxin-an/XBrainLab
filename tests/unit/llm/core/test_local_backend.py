@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.resource_guard import ResourceChecker
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
@@ -225,7 +226,7 @@ class TestGenerationProfiles:
             assert "temperature" not in generation_kwargs
             assert "top_p" not in generation_kwargs
 
-    def test_tokenizer_input_is_bounded_by_the_catalog_runtime_context(self):
+    def test_tokenizer_input_never_uses_token_level_truncation(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
         config = _make_config(model_name=GRANITE_MODEL_ID)
@@ -275,10 +276,8 @@ class TestGenerationProfiles:
         tokenizer.assert_called_once_with(
             "prompt text",
             return_tensors="pt",
-            truncation=True,
-            max_length=8_192 - CONFIGURED_TEST_OPTIONS.max_new_tokens,
+            add_special_tokens=False,
         )
-        assert tokenizer.truncation_side == "left"
 
 
 class TestLocalBackendLoad:
@@ -443,7 +442,10 @@ class TestLocalBackendLoad:
         assert backend.is_loaded is False
 
     @patch("XBrainLab.llm.core.backends.local.torch", create=True)
-    def test_load_falls_back_to_cpu_when_cuda_probe_fails(self, mock_torch):
+    def test_load_does_not_silently_fall_back_when_cuda_probe_fails(
+        self,
+        mock_torch,
+    ):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
         cfg = _make_config(device="cuda", load_in_4bit=True)
@@ -452,29 +454,24 @@ class TestLocalBackendLoad:
         mock_torch.cuda.is_available.return_value = True
         mock_torch.zeros.side_effect = RuntimeError("no kernel image")
 
-        mock_tokenizer = MagicMock()
-        mock_model_loader = MagicMock(return_value=MagicMock())
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "torch": mock_torch,
-                "transformers": MagicMock(
-                    BitsAndBytesConfig=MagicMock(),
-                    AutoTokenizer=MagicMock(
-                        from_pretrained=MagicMock(return_value=mock_tokenizer)
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "torch": mock_torch,
+                    "transformers": MagicMock(
+                        BitsAndBytesConfig=MagicMock(),
+                        AutoTokenizer=MagicMock(),
+                        AutoModelForCausalLM=MagicMock(),
                     ),
-                    AutoModelForCausalLM=MagicMock(from_pretrained=mock_model_loader),
-                ),
-            },
+                },
+            ),
+            pytest.raises(PreconditionError, match="GPU became unavailable"),
         ):
             backend.load()
 
-        assert cfg.device == "cpu"
-        assert cfg.load_in_4bit is False
-        call_kwargs = mock_model_loader.call_args.kwargs
-        assert "device_map" not in call_kwargs
-        assert "quantization_config" not in call_kwargs
+        assert cfg.device == "cuda"
+        assert cfg.load_in_4bit is True
 
     def test_product_backend_has_no_remote_code_compatibility_hook(self):
         from XBrainLab.llm.core.backends.local import LocalBackend

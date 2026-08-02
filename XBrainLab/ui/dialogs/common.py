@@ -89,7 +89,7 @@ def configure_dark_table(
         palette.setColor(
             group,
             QPalette.ColorRole.Highlight,
-            QColor(Theme.METRICS_TABLE_SELECTION),
+            QColor(Theme.TABLE_SELECTION),
         )
         palette.setColor(
             group,
@@ -215,7 +215,7 @@ def dark_dialog_stylesheet() -> str:
             color: {Theme.TEXT_PRIMARY};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
             border-radius: 4px;
-            selection-background-color: {Theme.METRICS_TABLE_SELECTION};
+            selection-background-color: {Theme.TABLE_SELECTION};
             selection-color: {Theme.TEXT_PRIMARY};
         }}
         QListWidget:disabled, QListView:disabled,
@@ -269,7 +269,7 @@ def form_control_stylesheet() -> str:
             background-color: {Theme.METRICS_TABLE_BG};
             color: {Theme.TEXT_PRIMARY};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
-            selection-background-color: {Theme.METRICS_TABLE_SELECTION};
+            selection-background-color: {Theme.TABLE_SELECTION};
             selection-color: {Theme.TEXT_PRIMARY};
         }}
     """
@@ -405,7 +405,7 @@ def dark_table_stylesheet(*, object_name: str | None = None) -> str:
             color: {Theme.TEXT_PRIMARY};
             gridline-color: {Theme.METRICS_TABLE_GRID};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
-            selection-background-color: {Theme.METRICS_TABLE_SELECTION};
+            selection-background-color: {Theme.TABLE_SELECTION};
             selection-color: {Theme.TEXT_PRIMARY};
         }}
         {selector}::item {{
@@ -414,7 +414,7 @@ def dark_table_stylesheet(*, object_name: str | None = None) -> str:
             border: none;
         }}
         {selector}::item:selected {{
-            background-color: {Theme.METRICS_TABLE_SELECTION};
+            background-color: {Theme.TABLE_SELECTION};
             color: {Theme.TEXT_PRIMARY};
         }}
         QHeaderView::section {{

@@ -278,6 +278,51 @@ def test_attach_warning_receipt_rejects_content_and_configuration_mutation(
     assert loader_calls == []
 
 
+def test_attach_warning_receipt_rejects_changed_target_event_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_path = tmp_path / "sub-01_raw.fif"
+    label_path = tmp_path / "labels.csv"
+    label_path.write_text("label\n1\n2\n", encoding="utf-8")
+    service, dataset, _interpretation = _service(raw_path)
+    loader_calls: list[str] = []
+
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.label_resource_admission.check_import_resource_preflight",
+        _warning_preflight,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.load_data.label_loader.load_label_file",
+        lambda path, **_kwargs: loader_calls.append(str(path)),
+    )
+
+    with pytest.raises(ResourceConfirmationRequiredError) as raised:
+        service.handle_attach_labels(
+            AttachLabelsCommand(
+                mapping={raw_path.name: str(label_path)},
+                label_paths=[str(label_path)],
+                selected_event_names=["cue"],
+            )
+        )
+    token = _challenge(raised.value)
+
+    with pytest.raises(ResourceConfirmationRequiredError) as changed:
+        service.handle_attach_labels(
+            AttachLabelsCommand(
+                mapping={raw_path.name: str(label_path)},
+                label_paths=[str(label_path)],
+                selected_event_names=["response"],
+                resource_preflight_confirmed=True,
+                resource_preflight_token=token,
+            )
+        )
+
+    assert _challenge(changed.value) != token
+    assert loader_calls == []
+    assert dataset.batch_calls == []
+
+
 def test_attach_warning_receipt_rejects_same_content_at_a_different_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

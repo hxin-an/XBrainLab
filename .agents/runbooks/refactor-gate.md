@@ -34,7 +34,7 @@
 - one non-mocked command / controller path test
 - focused integration smoke if workflow touches data / training
 - architecture / source-of-truth guard for the class of bug being fixed
-- `poetry run mkdocs build --strict` if docs changed
+- `poetry run -- mkdocs build --strict` if docs changed
 
 ## Completion Gate
 

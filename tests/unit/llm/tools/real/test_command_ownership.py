@@ -25,7 +25,7 @@ def test_mapped_real_tools_delegate_command_ownership_to_application_surface() -
     assert check_mapped_real_tool_command_ownership(root) == []
 
 
-def test_load_data_leaves_directory_expansion_to_canonical_surface(
+def test_load_data_adapter_delegates_but_canonical_builder_denies_direct_load(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -66,11 +66,7 @@ def test_load_data_leaves_directory_expansion_to_canonical_surface(
     }
 
     command = build_load_data_command({"paths": [str(source_dir)]})
-    assert command is not None
-    assert command.paths == [
-        str(source_dir / "a.gdf"),
-        str(source_dir / "b.gdf"),
-    ]
+    assert command is None
 
 
 def test_representative_real_adapters_delegate_raw_parameters(
@@ -89,8 +85,10 @@ def test_representative_real_adapters_delegate_raw_parameters(
 
     analysis_real.RealSaliencyTool().execute(
         study,
-        method="Gradient",
-        params={"target": 1},
+        method="SmoothGrad",
+        nt_samples=2,
+        nt_samples_batch_size=1,
+        stdevs=0.5,
     )
     preprocess_real.RealBandPassFilterTool().execute(
         study,
@@ -104,7 +102,17 @@ def test_representative_real_adapters_delegate_raw_parameters(
     )
 
     assert calls == [
-        ("saliency", {"method": "Gradient", "params": {"target": 1}}),
+        (
+            "saliency",
+            {
+                "method": "SmoothGrad",
+                "params": {
+                    "nt_samples": 2,
+                    "nt_samples_batch_size": 1,
+                    "stdevs": 0.5,
+                },
+            },
+        ),
         ("apply_bandpass_filter", {"low_freq": 1, "high_freq": 40}),
         (
             "start_training",

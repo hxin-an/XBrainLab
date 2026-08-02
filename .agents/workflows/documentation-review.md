@@ -15,7 +15,7 @@
 2. 判斷要處理的內容屬於 current、target、architecture、planning、decision、validation 或 record。
 3. 優先更新既有文件。
 4. 刪除已整合的短期文件或重複文件。
-5. 跑 `poetry run mkdocs build --strict`。
+5. 跑 `poetry run -- mkdocs build --strict`。
 6. 更新 `docs/records/worklog.md`。
 
 ## Done

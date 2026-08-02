@@ -41,7 +41,7 @@ def test_teacher_fixture_verification_has_an_independent_fixed_denominator(
     assert result["ok"] is expected_ok
 
 
-def test_source_dirty_paths_excludes_only_protected_settings_and_artifacts(
+def test_source_dirty_paths_excludes_only_root_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -59,7 +59,9 @@ def test_source_dirty_paths_excludes_only_protected_settings_and_artifacts(
     )
 
     assert gate._source_dirty_paths() == [
+        ".vscode/settings.json",
         "XBrainLab/backend/service.py",
+        "artifacts/ui/current.png",
         "tests/unit/test_current.py",
     ]
 

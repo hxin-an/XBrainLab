@@ -148,6 +148,25 @@ def _training_preflight() -> dict[str, Any]:
     }
 
 
+def _saliency_preflight() -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "risk_level": "warning",
+        "requires_confirmation": True,
+        "message": "Saliency may use most available memory.",
+        "warnings": ["Saliency may use most available memory."],
+        "confirmation_challenge": {
+            "schema_version": 1,
+            "challenge_id": "saliency-receipt-1",
+            "command_name": "saliency",
+            "scope_fingerprint": "saliency-scope-1",
+            "ttl_seconds": 120.0,
+            "configuration_fingerprint": "saliency-configuration-1",
+            "preflight_fingerprint": "saliency-preflight-1",
+        },
+    }
+
+
 def _interpretation_preflight(
     *,
     command_name: str,
@@ -381,6 +400,42 @@ def test_start_training_receipt_approval_injects_resource_confirmation() -> None
         "confirmed": True,
         "resource_preflight_confirmed": True,
         "resource_preflight_token": "training-receipt-1",
+    }
+
+
+def test_saliency_receipt_approval_replays_exact_backend_challenge() -> None:
+    preflight = _saliency_preflight()
+    coordinator, _source, _verifier, _registry = _coordinator(
+        _context(tool_name="saliency")
+    )
+    initial = ToolAttemptDecision(
+        action=ToolAttemptAction.EXECUTE,
+        command_name="saliency",
+        params={"method": "Gradient"},
+        context=_context(tool_name="saliency"),
+    )
+    warning = ToolCommandResult.failure(
+        "saliency",
+        str(preflight["message"]),
+        command_name="saliency",
+        error_type="confirmation_required",
+        diagnostics={"resource_preflight": preflight},
+    )
+
+    pending = coordinator.resource_confirmation(initial, warning)
+
+    assert pending is not None
+    assert pending.action is ToolAttemptAction.CONFIRMATION_REQUIRED
+    receipt = pending.resource_preflight_receipt
+    assert receipt is not None
+    assert receipt.challenge_id == "saliency-receipt-1"
+    assert receipt.command_name == "saliency"
+    assert receipt.configuration_fingerprint == "saliency-configuration-1"
+    assert receipt.preflight_fingerprint == "saliency-preflight-1"
+    assert coordinator.approved_params(pending) == {
+        "method": "Gradient",
+        "resource_preflight_confirmed": True,
+        "resource_preflight_token": "saliency-receipt-1",
     }
 
 

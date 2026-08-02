@@ -27,6 +27,10 @@ from XBrainLab.llm.tools.application_surface import (
     UserProvidedTrainingOutputDir,
     start_training_confirmation_truth,
 )
+from XBrainLab.llm.tools.authorized_paths import (
+    AuthorizedPathError,
+    authorize_existing_path,
+)
 from XBrainLab.llm.tools.result_contract import redact_public_text
 
 logger = logging.getLogger(__name__)
@@ -132,7 +136,9 @@ class TrainingParamValidator(ValidatorStrategy):
         except TrainingInputContractError as exc:
             return VerificationResult(
                 is_valid=False,
-                error_message=redact_public_text(exc),
+                error_message=redact_public_text(
+                    object.__getattribute__(exc, "public_message")
+                ),
             )
         return VerificationResult(is_valid=True)
 
@@ -662,15 +668,53 @@ class PathProvenanceVerifier:
             if not requested:
                 continue
             if self._user_text_contains_path(requested, latest_user_text):
+                if name in {
+                    "list_files",
+                    "load_data",
+                } and not self._authorize_input_path(
+                    name,
+                    params,
+                    requested,
+                    requested,
+                ):
+                    return self._rejection()
                 continue
             if policy.provenance_user_turn_only:
                 return self._rejection()
             canonical = self._canonical_path(requested)
             if canonical is None:
                 return self._rejection()
-            if canonical in exact_paths or any(
-                self._is_within(canonical, root) for root in root_paths
-            ):
+            exact_root = exact_paths.get(canonical)
+            if exact_root is not None:
+                if name in {
+                    "list_files",
+                    "load_data",
+                } and not self._authorize_input_path(
+                    name,
+                    params,
+                    requested,
+                    exact_root,
+                ):
+                    return self._rejection()
+                continue
+            authorized_root = next(
+                (
+                    raw_root
+                    for root, raw_root in root_paths.items()
+                    if self._is_lexically_within(canonical, root)
+                ),
+                None,
+            )
+            if authorized_root is not None:
+                try:
+                    authorized = authorize_existing_path(
+                        requested,
+                        authorized_root=authorized_root,
+                        expected_kind="directory" if name == "list_files" else None,
+                    )
+                except AuthorizedPathError:
+                    return self._rejection()
+                self._store_authorized_input(name, params, requested, authorized)
                 continue
             return self._rejection()
         self._apply_host_authorization(name, params, state=state)
@@ -734,17 +778,20 @@ class PathProvenanceVerifier:
         cls,
         latest_user_text: str,
         state: dict[str, Any] | None,
-    ) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
-        exact: set[tuple[str, str]] = set()
-        roots: set[tuple[str, str]] = set()
+    ) -> tuple[
+        dict[tuple[str, str], str],
+        dict[tuple[str, str], str],
+    ]:
+        exact: dict[tuple[str, str], str] = {}
+        roots: dict[tuple[str, str], str] = {}
 
         for user_path in cls._paths_from_user_text(latest_user_text):
             canonical = cls._canonical_path(user_path)
             if canonical is None:
                 continue
-            exact.add(canonical)
+            exact[canonical] = user_path
             if os.path.isdir(user_path):
-                roots.add(canonical)
+                roots[canonical] = user_path
 
         if not isinstance(state, dict):
             return exact, roots
@@ -783,8 +830,8 @@ class PathProvenanceVerifier:
     def _add_selected_path(
         cls,
         value: Any,
-        exact: set[tuple[str, str]],
-        roots: set[tuple[str, str]],
+        exact: dict[tuple[str, str], str],
+        roots: dict[tuple[str, str], str],
         *,
         root_hint: bool = False,
     ) -> None:
@@ -793,9 +840,9 @@ class PathProvenanceVerifier:
         canonical = cls._canonical_path(value)
         if canonical is None:
             return
-        exact.add(canonical)
+        exact[canonical] = value
         if root_hint or os.path.isdir(value):
-            roots.add(canonical)
+            roots[canonical] = value
 
     @classmethod
     def _paths_from_user_text(cls, text: str) -> tuple[str, ...]:
@@ -828,13 +875,58 @@ class PathProvenanceVerifier:
             return None
         if re.match(r"^[A-Za-z]:[\\/]", text):
             return "windows", ntpath.normcase(ntpath.normpath(text))
-        return "posix", os.path.realpath(os.path.abspath(text))
+        return "posix", os.path.normpath(os.path.abspath(text))
 
     @staticmethod
-    def _is_within(
+    def _authorize_input_path(
+        name: str,
+        params: dict[str, Any],
+        requested: str,
+        authorized_root: str,
+    ) -> bool:
+        try:
+            authorized = authorize_existing_path(
+                requested,
+                authorized_root=authorized_root,
+                expected_kind="directory" if name == "list_files" else None,
+            )
+        except AuthorizedPathError:
+            return False
+        return PathProvenanceVerifier._store_authorized_input(
+            name,
+            params,
+            requested,
+            authorized,
+        )
+
+    @staticmethod
+    def _store_authorized_input(
+        name: str,
+        params: dict[str, Any],
+        requested: str,
+        authorized: str,
+    ) -> bool:
+        if name == "list_files":
+            params["directory"] = authorized
+            return True
+        if name != "load_data":
+            return True
+        paths = params.get("paths")
+        if not isinstance(paths, list):
+            return False
+        replaced = False
+        for index, item in enumerate(paths):
+            if isinstance(item, str) and item.strip() == requested:
+                paths[index] = authorized
+                replaced = True
+        return replaced
+
+    @staticmethod
+    def _is_lexically_within(
         candidate: tuple[str, str],
         root: tuple[str, str],
     ) -> bool:
+        """Prefilter roots before the final filesystem-identity check."""
         if candidate[0] != root[0]:
             return False
         path_module = ntpath if candidate[0] == "windows" else os.path
@@ -1002,7 +1094,7 @@ class VerificationLayer:
 
         """
         self.confidence_threshold = confidence_threshold
-        self.validators = []
+        self.validators: list[ValidatorStrategy] = []
         if tool_schemas is not None:
             self.validators.append(ToolSchemaValidator(tool_schemas))
         self.validators.extend(

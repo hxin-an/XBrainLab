@@ -8,6 +8,7 @@ import pytest
 
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor.edit_event import EditEventId, EditEventName
+from XBrainLab.backend.utils.logger import logger
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +128,12 @@ class TestEditEventId:
     def test_duplicate_ids_merges(self, caplog):
         epoch_raw = _make_epoch_raw()
         pp = EditEventId([epoch_raw])
-        with caplog.at_level(logging.WARNING):
-            pp.data_preprocess(new_event_ids={"left": 99, "right": 99})
+        logger.addHandler(caplog.handler)
+        try:
+            with caplog.at_level(logging.WARNING, logger=logger.name):
+                pp.data_preprocess(new_event_ids={"left": 99, "right": 99})
+        finally:
+            logger.removeHandler(caplog.handler)
         _, event_id = pp.get_preprocessed_data_list()[0].get_event_list()
         # Should merge names
         assert 99 in event_id.values()

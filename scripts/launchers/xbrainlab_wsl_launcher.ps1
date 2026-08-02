@@ -20,23 +20,81 @@ $Repo = if ($env:XBRAINLAB_WSL_REPO) {
 else {
     ConvertTo-WslPath $RepoWindows
 }
+$RepoDrive = Split-Path -Qualifier $RepoWindows
+$CacheRootWindows = if ($env:XBRAINLAB_CACHE_ROOT_WIN) {
+    [System.IO.Path]::GetFullPath($env:XBRAINLAB_CACHE_ROOT_WIN)
+}
+else {
+    Join-Path "$RepoDrive\" "XBrainLabCache"
+}
+$CacheRoot = ConvertTo-WslPath $CacheRootWindows
+if ($CacheRoot.Contains("'")) {
+    throw "The XBrainLab cache path cannot contain a single quote: $CacheRootWindows"
+}
+$LegacyModelCacheWindows = Join-Path $RepoWindows "XBrainLab\llm\core\models"
+$LegacyGraniteCacheWindows = Join-Path `
+    $LegacyModelCacheWindows `
+    "models--ibm-granite--granite-3.3-2b-instruct"
+$ModelCacheWindows = if (
+    Test-Path $LegacyGraniteCacheWindows -PathType Container
+) {
+    $LegacyModelCacheWindows
+}
+else {
+    Join-Path $CacheRootWindows "models"
+}
+$ModelCache = ConvertTo-WslPath $ModelCacheWindows
+$RagCache = "$CacheRoot/rag"
+$CacheEnvironment = @"
+export XBRAINLAB_MODEL_CACHE_DIR='$ModelCache'
+export XBRAINLAB_RAG_CACHE_DIR='$RagCache'
+mkdir -p -- '$ModelCache' '$RagCache'
+"@
 $LogDir = Join-Path $env:LOCALAPPDATA "XBrainLab\logs"
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+$LauncherLogRetentionCount = 5
+$LauncherLogMaxBytes = 1MB
+
+function Remove-ExpiredLauncherLogs {
+    Get-ChildItem -Path $LogDir -Filter "launcher-*.log" -File |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -Skip $LauncherLogRetentionCount |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
 
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $script:LogFile = Join-Path $LogDir "launcher-$Timestamp.log"
 $script:LogLock = New-Object object
 $script:LogEncoding = New-Object System.Text.UTF8Encoding($false)
 
-function Write-LauncherLine {
+function Write-LauncherConsoleLine {
     param([AllowEmptyString()][string]$Message = "")
 
     [Console]::Out.WriteLine($Message)
+}
+
+function Write-LauncherLine {
+    param([AllowEmptyString()][string]$Message = "")
+
+    Write-LauncherConsoleLine $Message
     [System.Threading.Monitor]::Enter($script:LogLock)
     try {
+        $payload = "$Message`r`n"
+        $existingLength = if (Test-Path $script:LogFile) {
+            (Get-Item $script:LogFile).Length
+        }
+        else {
+            0
+        }
+        if (
+            $existingLength + $script:LogEncoding.GetByteCount($payload) -gt
+            $LauncherLogMaxBytes
+        ) {
+            return
+        }
         [System.IO.File]::AppendAllText(
             $script:LogFile,
-            "$Message`r`n",
+            $payload,
             $script:LogEncoding
         )
     }
@@ -74,26 +132,26 @@ function Invoke-WslWithLiveLog {
         ForEach-Object { ConvertTo-WindowsArgument $_ }
     $process.StartInfo.Arguments = $arguments -join " "
     if ($env:XBRAINLAB_LAUNCHER_DEBUG_ARGS -eq "1") {
-        Write-LauncherLine "Process arguments: $($process.StartInfo.Arguments)"
+        Write-LauncherConsoleLine "Process arguments: $($process.StartInfo.Arguments)"
     }
 
     [void]$process.Start()
     while ($null -ne ($line = $process.StandardOutput.ReadLine())) {
-        Write-LauncherLine $line
+        # Child output can contain EEG paths, subject identifiers, or native
+        # diagnostics that bypass Python redaction. Keep it visible in the
+        # terminal, but never persist it in the bounded launcher lifecycle log.
+        Write-LauncherConsoleLine $line
     }
     $process.WaitForExit()
     return $process.ExitCode
 }
 
 Write-LauncherLine "XBrainLab launcher"
+Remove-ExpiredLauncherLogs
 Write-LauncherLine "Starting XBrainLab..."
-Write-LauncherLine "Windows repo: $RepoWindows"
-Write-LauncherLine "WSL repo: $Repo"
-Write-LauncherLine "Log: $script:LogFile"
-Write-LauncherLine "Open log: notepad `"$script:LogFile`""
-Write-LauncherLine "Follow log: powershell -NoProfile -Command `"Get-Content -Wait '$script:LogFile'`""
 Write-LauncherLine "Geometry diagnostics: set XBRAINLAB_STARTUP_DIAGNOSTICS=1 before launch."
 Write-LauncherLine ""
+Write-LauncherConsoleLine "Launcher log: $script:LogFile"
 
 if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "1") {
     Write-LauncherLine "Launcher smoke mode: WSL launch skipped."
@@ -106,7 +164,7 @@ if ($null -eq $Wsl) {
     Read-Host "Press Enter to close"
     exit 1
 }
-Write-LauncherLine "WSL executable: $($Wsl.Source)"
+Write-LauncherConsoleLine "WSL executable: $($Wsl.Source)"
 
 if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "wsl") {
     $ExitCode = Invoke-WslWithLiveLog `
@@ -117,6 +175,7 @@ if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "wsl") {
 
 if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "startup") {
     $StartupCommand = @"
+$CacheEnvironment
 set -o pipefail
 cd '$Repo'
 export PYTHONUNBUFFERED=1
@@ -143,6 +202,7 @@ exit "`$status"
 }
 
 $Command = @"
+$CacheEnvironment
 set -o pipefail
 cd '$Repo'
 export PYTHONUNBUFFERED=1
@@ -178,7 +238,7 @@ $ExitCode = Invoke-WslWithLiveLog -WslPath $Wsl.Source -Command $Command
 if ($ExitCode -ne 0) {
     Write-LauncherLine ""
     Write-LauncherLine "XBrainLab exited with code $ExitCode."
-    Write-LauncherLine "Open log: notepad `"$script:LogFile`""
+    Write-LauncherConsoleLine "Open launcher log: notepad `"$script:LogFile`""
     Read-Host "Press Enter to close"
 }
 

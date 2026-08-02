@@ -37,7 +37,7 @@ from XBrainLab.backend.utils.logger import logger as xbrainlab_logger
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
-ARTIFACT_DIR = ROOT / "artifacts" / "data_interpretation"
+ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "teacher-data-preflight"
 ARTIFACT_JSON = "teacher-dataset-preflight.json"
 ARTIFACT_MARKDOWN = "teacher-dataset-preflight.md"
 REQUIRED_CASE_IDS = frozenset(

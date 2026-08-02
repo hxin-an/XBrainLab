@@ -62,11 +62,14 @@ class _ApplicationRuntimeFake:
         *,
         publication: ApplicationViewPublication | None = None,
         execute: Callable[[Command], CommandResult] | None = None,
+        epoch_dialog_context: EpochDialogContext | None = None,
     ) -> None:
         self._publication = publication
         self._execute = execute
+        self._epoch_dialog_context = epoch_dialog_context
         self.commands: list[Command] = []
         self.publication_reads = 0
+        self.epoch_dialog_context_reads = 0
         self.shutdown_requests = 0
         self.shutdown_releases = 0
         self.shutdown_release_succeeds = True
@@ -101,6 +104,14 @@ class _ApplicationRuntimeFake:
         expected_identity=None,
     ) -> dict[str, Any]:
         return dict(self.interpretation_review)
+
+    def get_epoch_dialog_context(self) -> EpochDialogContext:
+        self.epoch_dialog_context_reads += 1
+        if self._epoch_dialog_context is None:
+            raise AssertionError(
+                "epoch dialog context was not configured for this fake"
+            )
+        return self._epoch_dialog_context
 
     def get_saliency_render(self, request: Any) -> Any:
         raise AssertionError(
@@ -146,6 +157,16 @@ def test_ui_capability_helper_returns_application_policy(qtbot):
     assert ui_capability is not None
     assert ui_capability.enabled == backend_capability.enabled
     assert ui_capability.reasons == backend_capability.reasons
+
+
+def test_application_runtime_does_not_follow_dynamic_mock_parent_chain():
+    context = MagicMock()
+    context.study = Study()
+
+    runtime = application_capabilities.application_ui_runtime(context)
+
+    assert runtime is not None
+    context.parent.assert_not_called()
 
 
 def test_ui_publication_helper_returns_one_full_application_publication(qtbot):
@@ -243,156 +264,94 @@ def test_ui_capability_helper_ignores_non_product_study(qtbot):
     assert get_command_capability(widget, CommandName.TRAIN) is None
 
 
-def test_epoch_dialog_context_reads_one_application_view_publication(qtbot):
-    study = Study()
-    widget = QWidget()
-    cast(Any, widget).main_window = SimpleNamespace(study=study)
-    qtbot.addWidget(widget)
-    expected = {
-        "ready": True,
-        "default_epoch_events": ["Left hand", "Right hand"],
-    }
-    publication = get_application_service(study).get_view_publication()
-    publication = replace(
-        publication,
-        state=replace(
-            publication.state,
-            interpretation=replace(
-                publication.state.interpretation,
-                epoch_handoff=expected,
-            ),
-        ),
-    )
-    runtime = _ApplicationRuntimeFake(publication=publication)
-
-    assert publication.usable is True
-    assert publication.refresh_error is None
-    context = get_epoch_dialog_context(widget, runtime=runtime)
-
-    assert isinstance(context, EpochDialogContext)
-    assert context.capability == publication.capabilities.get(CommandName.CREATE_EPOCH)
-    assert context.epoch_handoff == expected
-    assert context.epoch_handoff is not expected
-    assert context.publication_generation == publication.generation
-    assert context.usable is True
-    assert context.unavailable_reason is None
-    assert runtime.publication_reads == 1
-    assert runtime.commands == []
-
-
-@pytest.mark.parametrize(
-    "publication_health",
-    [
-        {"stale": True},
-        {"verified": False},
-        {"refresh_error": "backend refresh failed"},
-    ],
-    ids=["stale", "unverified", "refresh-error"],
-)
-def test_epoch_dialog_context_fails_closed_for_untrusted_publication(
-    qtbot,
-    publication_health: dict[str, bool | str],
-):
-    widget = QWidget()
-    qtbot.addWidget(widget)
-    expected = {
-        "ready": True,
-        "default_epoch_events": ["Left hand", "Right hand"],
-    }
-    publication = get_application_service(Study()).get_view_publication()
-    publication = replace(
-        publication,
-        state=replace(
-            publication.state,
-            interpretation=replace(
-                publication.state.interpretation,
-                epoch_handoff=expected,
-            ),
-        ),
-        **publication_health,
-    )
-    runtime = _ApplicationRuntimeFake(publication=publication)
-
-    context = get_epoch_dialog_context(widget, runtime=runtime)
-
-    assert isinstance(context, EpochDialogContext)
-    assert context.usable is False
-    assert context.epoch_handoff is None
-    assert context.publication_generation == publication.generation
-    assert context.unavailable_reason == PUBLIC_VIEW_UNAVAILABLE_MESSAGE
-    with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
-        context.require_usable()
-    assert runtime.publication_reads == 1
-    assert runtime.commands == []
-
-
-def test_epoch_dialog_context_returns_typed_unavailable_on_publication_read_error(
-    qtbot,
-):
+def test_application_publication_read_failure_fails_closed(qtbot):
     widget = QWidget()
     qtbot.addWidget(widget)
     runtime = _ApplicationRuntimeFake()
     runtime.get_view_publication = MagicMock(
-        side_effect=RuntimeError("authoritative publication read failed")
+        side_effect=RuntimeError("authoritative publication unavailable")
+    )
+
+    publication = application_capabilities.get_application_view_publication(
+        widget,
+        runtime=runtime,
+    )
+    capability = get_command_capability(
+        widget,
+        CommandName.TRAIN,
+        runtime=runtime,
+    )
+
+    assert publication is None
+    assert capability is None
+
+
+def test_invalid_application_publication_shape_fails_closed(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    runtime = _ApplicationRuntimeFake()
+    runtime.get_view_publication = MagicMock(return_value={"verified": True})
+
+    publication = application_capabilities.get_application_view_publication(
+        widget,
+        runtime=runtime,
+    )
+
+    assert publication is None
+
+
+def test_epoch_dialog_context_delegates_one_typed_runtime_read(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    expected = EpochDialogContext(
+        capability=MagicMock(),
+        epoch_handoff={"ready": True},
+        epoch_setup={"available_events": [{"name": "Left hand", "count": 2}]},
+        publication_generation=7,
+        usable=True,
+        unavailable_reason=None,
+    )
+    runtime = _ApplicationRuntimeFake(epoch_dialog_context=expected)
+
+    context = get_epoch_dialog_context(widget, runtime=runtime)
+
+    assert context is expected
+    assert runtime.epoch_dialog_context_reads == 1
+    assert runtime.publication_reads == 0
+    assert runtime.commands == []
+
+
+def test_epoch_dialog_context_returns_typed_unavailable_on_runtime_error(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    runtime = _ApplicationRuntimeFake()
+    runtime.get_epoch_dialog_context = MagicMock(
+        side_effect=RuntimeError("authoritative context read failed")
     )
 
     context = get_epoch_dialog_context(widget, runtime=runtime)
 
     assert isinstance(context, EpochDialogContext)
-    assert context.capability is None
+    assert context.usable is False
     assert context.epoch_handoff is None
+    assert context.epoch_setup is None
     assert context.publication_generation is None
-    assert context.usable is False
     assert context.unavailable_reason == PUBLIC_VIEW_UNAVAILABLE_MESSAGE
     with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
         context.require_usable()
-    runtime.get_view_publication.assert_called_once_with()
+    runtime.get_epoch_dialog_context.assert_called_once_with()
 
 
-def test_epoch_dialog_context_rejects_invalid_handoff_payload(qtbot):
+def test_epoch_dialog_context_rejects_invalid_runtime_value(qtbot):
     widget = QWidget()
     qtbot.addWidget(widget)
-    publication = get_application_service(Study()).get_view_publication()
-    publication = replace(
-        publication,
-        state=replace(
-            publication.state,
-            interpretation=replace(
-                publication.state.interpretation,
-                epoch_handoff=cast(Any, {"default_epoch_events": "left"}),
-            ),
-        ),
-    )
-    runtime = _ApplicationRuntimeFake(publication=publication)
+    runtime = _ApplicationRuntimeFake()
+    runtime.get_epoch_dialog_context = MagicMock(return_value={"usable": True})
 
     context = get_epoch_dialog_context(widget, runtime=runtime)
 
     assert context.usable is False
-    assert context.epoch_handoff is None
-    assert context.publication_generation == publication.generation
-    assert context.unavailable_reason == PUBLIC_VIEW_UNAVAILABLE_MESSAGE
-    with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
-        context.require_usable()
-    assert runtime.publication_reads == 1
-
-
-def test_epoch_dialog_context_rejects_invalid_publication_health_shape(qtbot):
-    widget = QWidget()
-    qtbot.addWidget(widget)
-    publication = replace(
-        get_application_service(Study()).get_view_publication(),
-        verified=cast(bool, "verified"),
-    )
-    runtime = _ApplicationRuntimeFake(publication=publication)
-
-    context = get_epoch_dialog_context(widget, runtime=runtime)
-
-    assert context.usable is False
-    assert context.epoch_handoff is None
-    assert context.publication_generation == publication.generation
-    with pytest.raises(PreconditionError, match=PUBLIC_VIEW_UNAVAILABLE_MESSAGE):
-        context.require_usable()
-    assert runtime.publication_reads == 1
+    runtime.get_epoch_dialog_context.assert_called_once_with()
 
 
 def test_epoch_dialog_context_resolves_runtime_before_service_is_cached(
@@ -405,37 +364,28 @@ def test_epoch_dialog_context_resolves_runtime_before_service_is_cached(
     widget = QWidget()
     cast(Any, widget).main_window = SimpleNamespace(study=study)
     qtbot.addWidget(widget)
-    expected = {"ready": True, "label_source": "bids_events"}
-    baseline = get_application_service(Study()).get_view_publication()
-    publication = replace(
-        baseline,
-        state=replace(
-            baseline.state,
-            interpretation=replace(
-                baseline.state.interpretation,
-                epoch_handoff=expected,
-            ),
-        ),
+    expected = EpochDialogContext(
+        capability=MagicMock(),
+        epoch_handoff={"ready": True, "label_source": "bids_events"},
+        epoch_setup={"available_events": []},
+        publication_generation=9,
+        usable=True,
+        unavailable_reason=None,
     )
     service = SimpleNamespace(
-        get_view_publication=MagicMock(return_value=publication),
+        get_epoch_dialog_context=MagicMock(return_value=expected),
     )
     locate_service = MagicMock(return_value=service)
     monkeypatch.setattr(application_runtime, "get_application_service", locate_service)
 
     context = get_epoch_dialog_context(widget)
 
-    assert context.usable is True
-    assert context.epoch_handoff == expected
-    assert context.publication_generation == publication.generation
+    assert context is expected
     locate_service.assert_called_once_with(study)
-    service.get_view_publication.assert_called_once_with()
+    service.get_epoch_dialog_context.assert_called_once_with()
 
 
-def test_execute_application_command_triggers_changed_state_refresh(
-    qtbot,
-    monkeypatch,
-):
+def test_execute_application_command_leaves_refresh_to_publication(qtbot):
     study = Study()
     widget = QWidget()
     cast(Any, widget).main_window = SimpleNamespace(study=study)
@@ -446,7 +396,6 @@ def test_execute_application_command_triggers_changed_state_refresh(
         state=None,
         changed_state=ChangedState(raw_changed=True),
     )
-    refresh_calls = []
 
     class _Service:
         def execute(self, command):
@@ -454,14 +403,6 @@ def test_execute_application_command_triggers_changed_state_refresh(
             return result
 
     runtime = _ApplicationRuntimeFake(execute=_Service().execute)
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda context, command_result: refresh_calls.append(
-            (context, command_result),
-        ),
-    )
-
     command_result = execute_application_command(
         widget,
         QueryStateCommand(),
@@ -469,7 +410,6 @@ def test_execute_application_command_triggers_changed_state_refresh(
     )
 
     assert command_result is result
-    assert refresh_calls == [(widget, result)]
 
 
 def test_execute_application_command_forwards_expected_publication_generation(
@@ -553,10 +493,7 @@ def test_ui_stale_publication_rejection_does_not_execute_handler(qtbot):
     handler.assert_not_called()
 
 
-def test_execute_application_command_uses_publication_for_agent_status_refresh(
-    qtbot,
-    monkeypatch,
-):
+def test_execute_application_command_does_not_echo_publication_refresh(qtbot):
     study = Study()
     widget = QWidget()
     qtbot.addWidget(widget)
@@ -614,18 +551,82 @@ def test_execute_application_command_uses_publication_for_agent_status_refresh(
     )
 
     assert command_result is result
-    assert main_window.dataset_panel.update_calls == 1
-    assert main_window.preprocess_panel.update_calls == 1
-    assert main_window.training_panel.update_calls == 1
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
-    assert main_window.update_info_calls == 1
+    assert main_window.update_info_calls == 0
     # AgentManager subscribes to revisioned ApplicationService publications.
     # A second pull here would reintroduce ordering-dependent refresh truth.
     assert main_window.agent_manager.refresh_calls == 0
 
 
-def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
+def test_sync_product_command_does_not_coalesce_controller_terminal_refresh(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+
+    class _TrainingPanelSpy:
+        def __init__(self) -> None:
+            self.main_window: Any | None = None
+            self.terminal_render_calls = 0
+            self.generic_update_calls = 0
+            self.dirty_mark_calls = 0
+
+        def refresh_terminal_publication(self) -> None:
+            self.terminal_render_calls += 1
+
+        def update_panel(self) -> None:
+            self.generic_update_calls += 1
+
+        def mark_refresh_dirty(self) -> None:
+            self.dirty_mark_calls += 1
+
+    training_panel = _TrainingPanelSpy()
+    main_window = SimpleNamespace(
+        study=Study(),
+        training_panel=training_panel,
+        shared_status_refresh_calls=0,
+    )
+
+    def update_info_panel() -> None:
+        main_window.shared_status_refresh_calls += 1
+
+    main_window.update_info_panel = update_info_panel
+    training_panel.main_window = main_window
+    cast(Any, widget).main_window = main_window
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="training complete",
+        state=None,
+        changed_state=ChangedState(training_changed=True),
+    )
+
+    def execute(command: Command) -> CommandResult:
+        assert isinstance(command, QueryStateCommand)
+        assert (
+            refresh_after_observer(
+                training_panel,
+                event_name="training_terminal_published",
+            )
+            is False
+        )
+        return result
+
+    observed = execute_application_command(
+        widget,
+        QueryStateCommand(),
+        runtime=_ApplicationRuntimeFake(execute=execute),
+    )
+
+    assert observed is result
+    assert training_panel.terminal_render_calls == 0
+    assert training_panel.generic_update_calls == 0
+    assert training_panel.dirty_mark_calls == 0
+    assert main_window.shared_status_refresh_calls == 0
+
+
+def test_execute_application_command_accepts_legacy_refresh_false_parameter(qtbot):
     study = Study()
     widget = QWidget()
     cast(Any, widget).main_window = SimpleNamespace(study=study)
@@ -636,7 +637,6 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
         state=None,
         changed_state=ChangedState(raw_changed=True),
     )
-    refresh_calls = []
 
     class _Service:
         def execute(self, command):
@@ -644,14 +644,6 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
             return result
 
     runtime = _ApplicationRuntimeFake(execute=_Service().execute)
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda context, command_result: refresh_calls.append(
-            (context, command_result),
-        ),
-    )
-
     command_result = execute_application_command(
         widget,
         QueryStateCommand(),
@@ -660,7 +652,6 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
     )
 
     assert command_result is result
-    assert refresh_calls == []
 
 
 def test_ui_state_query_uses_unified_application_command_surface(
@@ -758,7 +749,7 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
 
     assert len(executed) == 1
     assert callbacks == [result]
-    assert refresh_calls == [(widget, result)]
+    assert refresh_calls == []
     assert busy_states == [True, False]
     assert application_command_registry().active_count(widget) == 0
 
@@ -998,7 +989,7 @@ def test_async_worker_ownership_is_released_only_after_finished(qtbot, monkeypat
     assert callbacks == [result]
     assert application_command_registry().active_count(widget) == 1
     assert busy_states == [True]
-    assert refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS[owner_id] == 1
+    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
     worker.signals.finished.emit()
 
@@ -1223,7 +1214,7 @@ def test_real_threadpool_cleanup_does_not_dereference_deleted_widget(
     assert worker_started.wait(timeout=1.0)
     owner_id = id(main_window)
     assert application_command_registry().active_count(widget) == 1
-    assert refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS[owner_id] == 1
+    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
     widget.deleteLater()
     qtbot.waitUntil(lambda: sip.isdeleted(widget), timeout=1_000)

@@ -184,7 +184,7 @@ def test_bids_epoching_context_flags_long_or_uneven_durations():
     assert context["suggested_t_min"] == 0.0
     assert context["suggested_t_max"] == 12.0
     assert context["window_mode"] == "duration"
-    assert "review the epoch window" in context["window_warning"]
+    assert "review the EEG epoch window" in context["window_warning"]
     requirement = context["confirmation_requirement"]
     assert requirement["code"] == "bids_duration_review"
     assert requirement["message"] in context["window_warning"]
@@ -375,5 +375,5 @@ def test_epoching_context_tolerates_mock_like_event_objects():
 
     context = build_epoching_context([data])
 
-    assert context["source"] == "Manual epoch setup"
+    assert context["source"] == "Manual EEG epoch setup"
     assert context["available_events"] == [{"name": "left", "count": None}]

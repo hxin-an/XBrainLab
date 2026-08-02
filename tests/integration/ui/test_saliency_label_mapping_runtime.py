@@ -61,6 +61,8 @@ def _class_value_decisions() -> dict[str, dict[str, object]]:
 def _render_evidence(widget: Any) -> dict[str, Any]:
     fig = getattr(widget, "fig", None)
     axes = list(getattr(fig, "axes", []) or [])
+    plot_axes = [axis for axis in axes if axis.get_title()]
+    auxiliary_axes = [axis for axis in axes if axis not in plot_axes]
     image_count = sum(
         len(getattr(axis, "images", []) or [])
         + len(getattr(axis, "collections", []) or [])
@@ -74,12 +76,15 @@ def _render_evidence(widget: Any) -> dict[str, Any]:
         "axes_count": len(axes),
         "image_count": image_count,
         "canvas_visible": bool(canvas and canvas.isVisible()),
-        "titles": [axis.get_title() for axis in axes if axis.get_title()],
-        "x_labels": [axis.get_xlabel() for axis in axes if axis.get_xlabel()],
-        "y_labels": [axis.get_ylabel() for axis in axes if axis.get_ylabel()],
+        "titles": [axis.get_title() for axis in plot_axes],
+        "x_labels": [axis.get_xlabel() for axis in plot_axes if axis.get_xlabel()],
+        "y_labels": [axis.get_ylabel() for axis in plot_axes if axis.get_ylabel()],
+        "auxiliary_y_labels": [
+            axis.get_ylabel() for axis in auxiliary_axes if axis.get_ylabel()
+        ],
         "color_limits": [
             tuple(image.get_clim())
-            for axis in axes
+            for axis in plot_axes
             for image in list(getattr(axis, "images", []) or [])
         ],
     }
@@ -138,10 +143,7 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
             output_dir=str(tmp_path / "training-output"),
         ),
         TrainCommand(confirmed=True, interactive=False),
-        SaliencyCommand(
-            method="Gradient",
-            params={"nt_samples": 1, "nt_samples_batch_size": 1, "stdevs": 1.0},
-        ),
+        SaliencyCommand(method="Gradient"),
     ]
     for command in commands:
         result = service.execute(command)
@@ -191,6 +193,8 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
         else:
             assert set(evidence["x_labels"]) == {"Time (s)"}
             assert set(evidence["y_labels"]) == {"Frequency (Hz)"}
+            assert len(evidence["auxiliary_y_labels"]) == 1
+            assert evidence["auxiliary_y_labels"][0].startswith("Attribution magnitude")
 
     context = eval_record.saliency_context
     assert context is not None

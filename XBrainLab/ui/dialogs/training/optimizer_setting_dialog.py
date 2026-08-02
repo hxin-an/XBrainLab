@@ -25,6 +25,10 @@ from XBrainLab.backend.training.utils import (
     get_optimizer_params,
     instantiate_optimizer,
 )
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 
@@ -157,8 +161,17 @@ class OptimizerSettingDialog(BaseDialog):
             self.optim = target
             super().accept()
 
-        except Exception as e:
-            QMessageBox.warning(self, "Validation Error", f"Invalid parameter: {e}")
+        except (TypeError, ValueError):
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Review the optimizer parameter values and try again.",
+            )
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_OPTIMIZER_SETTINGS,
+            )
 
     def get_result(self):
         """Return the selected optimizer class and parameters.

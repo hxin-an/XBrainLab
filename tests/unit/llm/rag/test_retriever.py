@@ -16,6 +16,8 @@ def mock_retriever():
         patch("langchain_community.embeddings.HuggingFaceEmbeddings"),
         patch("qdrant_client.QdrantClient") as mock_client_cls,
         patch("langchain_community.vectorstores.Qdrant"),
+        patch.object(RAGRetriever, "_auto_initialize", return_value=MagicMock()),
+        patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):
         # Setup mock client to pass info check
@@ -73,6 +75,57 @@ def test_get_similar_examples_empty(mock_retriever):
     mock_retriever.client.query_points.return_value = mock_result
 
     result = mock_retriever.get_similar_examples("query")
+
+    assert result == ""
+
+
+def test_raw_semantic_score_below_threshold_is_not_injected(mock_retriever):
+    low_relevance = MagicMock(
+        id="low",
+        score=RAGConfig.SIMILARITY_THRESHOLD - 0.01,
+        payload={
+            "page_content": "start training",
+            "metadata": {
+                "tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')
+            },
+        },
+    )
+    mock_retriever.client.query_points.return_value.points = [low_relevance]
+
+    result = mock_retriever.get_similar_examples(
+        "inspect this unrelated recording",
+        allowed_tool_names=frozenset({"start_training"}),
+    )
+
+    assert result == ""
+
+
+def test_bm25_cannot_admit_a_candidate_below_semantic_threshold(mock_retriever):
+    low_relevance = MagicMock(
+        id="low",
+        score=RAGConfig.SIMILARITY_THRESHOLD - 0.01,
+        payload={
+            "page_content": "start training with EEGNet",
+            "metadata": {
+                "tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')
+            },
+        },
+    )
+    mock_retriever.client.query_points.return_value.points = [low_relevance]
+    mock_retriever.bm25_index = MagicMock()
+    mock_retriever.bm25_index.query.return_value = [
+        (
+            8.0,
+            "bm25-match",
+            "start training with EEGNet",
+            {"tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')},
+        )
+    ]
+
+    result = mock_retriever.get_similar_examples(
+        "start training with EEGNet",
+        allowed_tool_names=frozenset({"start_training"}),
+    )
 
     assert result == ""
 
@@ -206,7 +259,7 @@ def test_concurrent_initialize_has_single_initializer():
         patch("langchain_community.embeddings.HuggingFaceEmbeddings", _fake_embeddings),
         patch("qdrant_client.QdrantClient") as mock_client_cls,
         patch("langchain_community.vectorstores.Qdrant", return_value=object()),
-        patch.object(RAGRetriever, "_collection_exists", return_value=True),
+        patch.object(RAGRetriever, "_auto_initialize", return_value=object()),
         patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):

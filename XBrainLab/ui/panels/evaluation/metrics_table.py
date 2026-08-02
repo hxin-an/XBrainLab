@@ -71,7 +71,7 @@ class MetricsTableWidget(QTableWidget):
             palette.setColor(
                 group,
                 QPalette.ColorRole.Highlight,
-                QColor(Theme.METRICS_TABLE_SELECTION),
+                QColor(Theme.TABLE_SELECTION),
             )
             palette.setColor(
                 group,
@@ -160,7 +160,7 @@ class MetricsTableWidget(QTableWidget):
 
         # Helper to create item
         row_color = (
-            Theme.METRICS_TABLE_SELECTION
+            Theme.TABLE_SELECTION
             if is_summary
             else (Theme.METRICS_TABLE_ALT_BG if row % 2 else Theme.METRICS_TABLE_BG)
         )

@@ -11,7 +11,10 @@ def preview(qtbot):
     from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
 
     w = PreviewWidget()
-    qtbot.addWidget(w)
+    qtbot.addWidget(
+        w,
+        before_close_func=lambda owned: owned.prepare_for_shutdown(),
+    )
     yield w
 
 

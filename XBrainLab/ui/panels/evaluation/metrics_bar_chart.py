@@ -198,9 +198,13 @@ class MetricsBarChartWidget(QWidget):
         if hasattr(canvas, "_draw_pending"):
             canvas._draw_pending = False
         self.plot_layout.removeWidget(canvas)
-        canvas.setParent(None)
+        # Avoid exposing a detached QTAgg canvas as a temporary top-level
+        # window while a queued paint callback still targets it.
+        canvas.setUpdatesEnabled(False)
+        canvas.hide()
         with suppress(RuntimeError):
             canvas.close()
+        canvas.setParent(None)
         canvas.deleteLater()
         self.canvas = None
 
@@ -210,7 +214,11 @@ class MetricsBarChartWidget(QWidget):
             self.fig = None
         self.ax = None
 
-    def closeEvent(self, event):  # noqa: N802
+    def cleanup(self) -> None:
+        """Synchronously quiesce Qt canvases before their parent is destroyed."""
         self._release_canvas()
         self._close_current_figure()
+
+    def closeEvent(self, event):  # noqa: N802
+        self.cleanup()
         super().closeEvent(event)

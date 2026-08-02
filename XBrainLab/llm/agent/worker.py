@@ -64,6 +64,15 @@ def _runtime_load_failure_message(error: Exception) -> str:
 class AssistantGenerationAdmissionError(RuntimeError):
     """Expected, user-actionable rejection before model generation starts."""
 
+    def __init__(self, message: object) -> None:
+        public_message = (
+            message
+            if type(message) is str
+            else "The assistant request could not start."
+        )
+        self.public_message = public_message
+        super().__init__(public_message)
+
 
 class GenerationThread(QThread):
     """QThread for running LLM generation without blocking the UI.
@@ -735,8 +744,10 @@ class AgentWorker(QObject):
         error: Exception,
     ) -> None:
         """Release partial setup state and emit one correlated terminal error."""
-        if isinstance(error, AssistantGenerationAdmissionError):
-            message = redact_public_text(error)
+        if type(error) is AssistantGenerationAdmissionError:
+            message = redact_public_text(
+                object.__getattribute__(error, "public_message")
+            )
             logger.warning(
                 "Assistant generation %s was not admitted: %s",
                 generation_id,
@@ -978,6 +989,8 @@ class AgentWorker(QObject):
         requested_model_id = ""
         selection_outcome = None
         selection_detail = ""
+        execution_device = ""
+        device_fallback_reason = ""
         launch_spec = launch_spec or self._runtime_launch_spec
         if launch_spec is not None:
             backend_mode = launch_spec.backend_mode
@@ -985,6 +998,10 @@ class AgentWorker(QObject):
             requested_model_id = redact_public_text(launch_spec.requested_model_id)
             selection_outcome = launch_spec.outcome
             selection_detail = redact_public_text(launch_spec.selection_detail)
+            execution_device = redact_public_text(launch_spec.execution_device)
+            device_fallback_reason = redact_public_text(
+                launch_spec.device_fallback_reason
+            )
         snapshot = AssistantRuntimeSnapshot(
             phase=self._runtime_phase,
             initialized=self.engine is not None,
@@ -993,6 +1010,8 @@ class AgentWorker(QObject):
             requested_model_id=requested_model_id,
             selection_outcome=selection_outcome,
             selection_detail=selection_detail,
+            execution_device=execution_device,
+            device_fallback_reason=device_fallback_reason,
             error=self._runtime_error,
             activation_id=(
                 self._runtime_activation_id

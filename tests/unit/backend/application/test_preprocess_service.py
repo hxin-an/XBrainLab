@@ -274,8 +274,8 @@ def test_preprocess_service_maps_individual_operations_without_facade() -> None:
         ),
     )
     assert normalize_message == (
-        "Normalization using zscore is queued for per-epoch application "
-        "during epoch creation."
+        "Normalization using zscore is queued for per-EEG-epoch application "
+        "during EEG epoch creation."
     )
     assert normalize_diagnostics == {
         "normalization_method": "zscore",
@@ -370,7 +370,7 @@ def test_preprocess_service_applies_standard_preprocess_in_batch() -> None:
     )
     assert message == (
         "Standard preprocessing applied. Normalization using z score is queued "
-        "for per-epoch application during epoch creation."
+        "for per-EEG-epoch application during EEG epoch creation."
     )
     assert diagnostics["normalization_scope"] == "per_epoch_per_channel"
     assert diagnostics["raw_requests_deferred"] == 1
@@ -403,7 +403,7 @@ def test_preprocess_service_creates_epoch() -> None:
                 t_max=1.5,
             ),
         )
-        == "Created epochs from -0.5s to 1.5s."
+        == "Created EEG epochs from -0.5s to 1.5s."
     )
 
     assert preprocess.events == [
@@ -435,7 +435,7 @@ def test_bids_duration_warning_requires_receipt_before_epoch_mutation(
     )
     assert (
         service.handle_create_epoch(accepted)
-        == f"Created epochs from {command.t_min}s to {command.t_max}s."
+        == f"Created EEG epochs from {command.t_min}s to {command.t_max}s."
     )
     assert preprocess.events == [
         (

@@ -4,15 +4,20 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import logging
+import os
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
 if __package__:
     from scripts.dev.active_checkout import assert_active_checkout_import
+    from scripts.dev.sensitive_path_redaction import redact_sensitive_value
 else:
     from active_checkout import assert_active_checkout_import
+    from sensitive_path_redaction import redact_sensitive_value
 
 ROOT = Path(__file__).resolve().parents[2]
 assert_active_checkout_import(ROOT)
@@ -119,8 +124,50 @@ def classify_runtime(config: LLMConfig) -> dict[str, Any]:
     return result
 
 
+def _cache_identity(cache_dir: str) -> dict[str, object]:
+    path = Path(cache_dir).expanduser()
+    normalized = str(path.resolve(strict=False))
+    if os.name == "nt" and path.drive:
+        mount = path.drive.upper()
+    elif normalized.startswith("/mnt/"):
+        parts = Path(normalized).parts
+        mount = "/".join(parts[:3]) if len(parts) >= 3 else "/mnt"
+    else:
+        mount = "local"
+    return {
+        "mount": mount,
+        "path_sha256": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+        "redacted": True,
+    }
+
+
+def _public_runtime_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Return a report-safe runtime projection without host cache paths."""
+    projected = dict(result)
+    cache_dir = projected.pop("cache_dir", None)
+    cache_candidates = projected.pop("cache_candidates", ())
+    disallowed_candidates = projected.pop("disallowed_cache_candidates", ())
+    projected["cache_candidate_count"] = len(cache_candidates)
+    projected["disallowed_cache_candidate_count"] = len(disallowed_candidates)
+    if isinstance(cache_dir, str) and cache_dir:
+        projected["cache_identity"] = _cache_identity(cache_dir)
+        projected = redact_sensitive_value(
+            projected,
+            {cache_dir: "<redacted:model-cache>"},
+        )
+    return projected
+
+
 def render_markdown(result: dict[str, Any]) -> str:
     """Render a human-readable host-runtime summary."""
+    result = _public_runtime_result(result)
+    cache_identity = result.get("cache_identity", {})
+    if not isinstance(cache_identity, dict):
+        cache_identity = {}
+    cache_identity_summary = (
+        f"{cache_identity.get('mount', 'local')} / "
+        f"{str(cache_identity.get('path_sha256', 'unknown'))[:12]}"
+    )
     lines = [
         "# Local Assistant Runtime Inspection",
         "",
@@ -133,7 +180,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- primary local model: `{result['primary_local_model']}`",
         "- legacy compatibility models: "
         f"`{', '.join(result['legacy_compatibility_models'])}`",
-        f"- cache directory: `{result['cache_dir']}`",
+        f"- cache identity: `{cache_identity_summary}`",
         f"- cache usage: `{result['cache_usage']}`",
         f"- max total cache: `{result['max_total_cache_gb']} GB`",
         f"- has local cache: `{result['has_local_cache']}`",
@@ -155,9 +202,11 @@ def render_markdown(result: dict[str, Any]) -> str:
             f"{estimates['estimated_vram_gb']} GB VRAM, "
             f"{estimates['quantization']}"
         )
-    if result["disallowed_cache_candidates"]:
-        lines.append("- disallowed cache candidates:")
-        lines.extend(f"  - `{path}`" for path in result["disallowed_cache_candidates"])
+    if result["disallowed_cache_candidate_count"]:
+        lines.append(
+            "- disallowed cache candidates: "
+            f"`{result['disallowed_cache_candidate_count']}`"
+        )
     lines.append(f"- message: {result['message']}")
     if "prompt_smoke" in result:
         smoke = result["prompt_smoke"]
@@ -300,7 +349,7 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -324,25 +373,49 @@ def main() -> int:
         default=None,
         help="Inspect a specific supported local model without saving settings.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail when a requested runtime smoke does not pass.",
+    )
+    args = parser.parse_args(argv)
 
-    config = LLMConfig.load_from_file() or LLMConfig()
-    if args.model:
-        config.apply_runtime_selection(
-            "local",
-            model_id=args.model,
-            ui_active_mode="local",
-        )
-    result = classify_runtime(config)
-    if args.prompt_smoke:
-        result["prompt_smoke"] = run_prompt_smoke(config)
-    if args.structured_smoke:
-        result["structured_output_smoke"] = run_structured_output_smoke(config)
+    previous_logging_disable = logging.root.manager.disable
     if args.format == "json":
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        logging.disable(logging.INFO)
+    try:
+        config = LLMConfig.load_from_file() or LLMConfig()
+        if args.model:
+            config.apply_runtime_selection(
+                "local",
+                model_id=args.model,
+                ui_active_mode="local",
+            )
+        result = classify_runtime(config)
+        if args.prompt_smoke:
+            result["prompt_smoke"] = run_prompt_smoke(config)
+        if args.structured_smoke:
+            result["structured_output_smoke"] = run_structured_output_smoke(config)
+    finally:
+        logging.disable(previous_logging_disable)
+
+    if args.format == "json":
+        print(json.dumps(_public_runtime_result(result), indent=2, ensure_ascii=False))
     else:
         print(render_markdown(result))
-    return 0
+    requested_smokes = [
+        result.get(key)
+        for requested, key in (
+            (args.prompt_smoke, "prompt_smoke"),
+            (args.structured_smoke, "structured_output_smoke"),
+        )
+        if requested
+    ]
+    smoke_failed = any(
+        not isinstance(smoke, dict) or smoke.get("status") != "passed"
+        for smoke in requested_smokes
+    )
+    return 1 if args.strict and smoke_failed else 0
 
 
 if __name__ == "__main__":

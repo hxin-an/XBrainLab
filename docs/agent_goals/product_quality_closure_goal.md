@@ -15,8 +15,9 @@ commit and the remaining boundary is limited to human Windows acceptance.
 
 - Start from clean commit `3869aaef73acf3fb30ce95d15868c2abcf17c6f5`.
 - Use integration branch `stabilize/product-quality-closure`.
-- Never stage, rewrite, revert or hide repo-root `settings.json` or
-  `.vscode/settings.json`.
+- Never stage, rewrite, revert or hide repo-root `settings.json`; it is the only
+  path permitted to remain dirty at handoff. Do not touch `.vscode/settings.json`;
+  if it is dirty, branch hygiene fails like any other source path.
 - Do not touch the dirty `stabilize/windows-public-beta` worktree. Packaging
   work is integrated only after its owner creates an independently validated
   clean commit.
@@ -84,7 +85,7 @@ The main agent must prove:
 - real Granite and secure offline RAG cover success, confirmation, error,
   retry, cancel and long-session behavior;
 - required full/narrow/DPI screenshots are readable and personally inspected;
-- Ruff, full Basedpyright, architecture checks, regression pytest, strict
+- Ruff, full configured product-source Basedpyright, architecture checks, regression pytest, strict
   MkDocs and quality dashboard pass from the same commit;
 - worktree is clean, all checkpoints are pushed, protected settings and the
   dirty packaging worktree are unchanged.

@@ -157,6 +157,17 @@ class _DatasetController:
     def get_loaded_data_list(self) -> list[Any]:
         return self.study.loaded_data_list
 
+    def get_loaded_data_rows(self) -> list[dict[str, object]]:
+        return [
+            {"filepath": item.get_filename()} for item in self.study.loaded_data_list
+        ]
+
+    def get_preprocessed_data_rows(self) -> list[dict[str, object]]:
+        return [
+            {"filepath": item.get_filename()}
+            for item in self.study.preprocessed_data_list
+        ]
+
     def get_smart_filter_suggestions(
         self, _target: Any, target_count: int
     ) -> list[int]:
@@ -1483,11 +1494,15 @@ def test_query_state_service_returns_readonly_summaries() -> None:
         "preprocessed_count",
         "raw_files",
         "preprocessed_files",
+        "raw_rows",
+        "preprocessed_rows",
     }
     assert data_lists["raw_count"] == 1
     assert data_lists["preprocessed_count"] == 1
     assert data_lists["raw_files"] == ["subject01.fif"]
     assert data_lists["preprocessed_files"] == ["subject01.fif"]
+    assert data_lists["raw_rows"] == [{"filepath": "subject01.fif"}]
+    assert data_lists["preprocessed_rows"] == [{"filepath": "subject01.fif"}]
     assert "loaded_data_list" not in data_lists
     assert "preprocessed_data_list" not in data_lists
 
@@ -1497,46 +1512,41 @@ def test_query_state_service_returns_readonly_summaries() -> None:
     assert history_message == "Training history query ready."
     assert history["row_count"] == 1
     assert history["rows"][0] == {
+        "identity": {"plan_index": 0, "run_index": 0},
         "group_name": "Group 1",
         "run_name": "1",
         "model_name": "EEGNet",
+        "status": "Running",
+        "status_detail": None,
+        "epoch": 2,
+        "max_epochs": 0,
         "is_active": True,
         "is_current_run": True,
+        "start_timestamp": None,
+        "end_timestamp": None,
+        "metrics": {
+            "train": {
+                "loss": [],
+                "accuracy": [],
+                "auc": [],
+                "lr": [],
+                "time": [],
+            },
+            "validation": {
+                "loss": [],
+                "accuracy": [],
+                "auc": [],
+            },
+        },
     }
 
-    _history_objects_message, history_objects = _expect_payload(
+    with pytest.raises(
+        ValueError,
+        match="Unknown query_state request: dataset_generation_context",
+    ):
         query.handle_query_state(
-            QueryStateCommand(query="training_history", include_objects=True),
-        ),
-    )
-    assert "plan" in history_objects["rows"][0]
-    assert "record" in history_objects["rows"][0]
-
-    split_message, split_context = _expect_payload(
-        query.handle_query_state(QueryStateCommand(query="dataset_generation_context")),
-    )
-    assert split_message == "Dataset generation context ready."
-    assert split_context == {
-        "payload_type": "dataset_generation_context",
-        "epoch_available": True,
-        "generator_exists": True,
-        "dataset_count": 1,
-    }
-
-    _split_objects_message, split_context_objects = _expect_payload(
-        query.handle_query_state(
-            QueryStateCommand(
-                query="dataset_generation_context",
-                include_objects=True,
-            ),
-        ),
-    )
-    assert split_context_objects["epoch_data"] is state_builder.study.epoch_data
-    assert (
-        split_context_objects["dataset_generator"]
-        is state_builder.study.dataset_generator
-    )
-    assert split_context_objects["datasets"] == state_builder.study.datasets
+            QueryStateCommand(query="dataset_generation_context"),
+        )
 
 
 def test_query_state_service_rejects_duplicate_state_publication_route() -> None:
@@ -1567,10 +1577,15 @@ def test_training_history_query_does_not_build_full_state_snapshot() -> None:
 
     message, payload = _expect_payload(
         query.handle_query_state(
-            QueryStateCommand(query="training_history", include_objects=True),
+            QueryStateCommand(query="training_history"),
         ),
     )
 
     assert message == "Training history query ready."
     assert payload["row_count"] == 1
-    assert "record" in payload["rows"][0]
+    assert "plan" not in payload["rows"][0]
+    assert "record" not in payload["rows"][0]
+    assert payload["rows"][0]["identity"] == {
+        "plan_index": 0,
+        "run_index": 0,
+    }

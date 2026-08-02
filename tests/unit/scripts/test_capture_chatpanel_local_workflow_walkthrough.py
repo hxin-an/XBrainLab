@@ -4,6 +4,8 @@ import pytest
 from PIL import Image
 
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
+    DEFAULT_OUTPUT_DIR,
+    ROOT,
     _assistant_is_ready,
     _build_post_close_evidence,
     _disable_first_run_dialog_for_unattended_capture,
@@ -11,6 +13,12 @@ from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     _turn_contract_failure,
     render_markdown,
 )
+
+
+def test_default_output_uses_dev_artifact_namespace() -> None:
+    assert DEFAULT_OUTPUT_DIR == (
+        ROOT / "build" / "dev-artifacts" / "chatpanel-local-workflow"
+    )
 
 
 def test_unattended_capture_bypasses_first_run_without_persistence() -> None:

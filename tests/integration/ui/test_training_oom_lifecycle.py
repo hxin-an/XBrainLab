@@ -8,17 +8,18 @@ from typing import Any, cast
 import numpy as np
 import torch
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QMainWindow
 
 from XBrainLab.backend.application import (
     ApplicationService,
-    AttachLabelsCommand,
+    ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
     GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
@@ -27,6 +28,7 @@ from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.training_plan import TrainingPlanHolder
 from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.main_window import MainWindow
 from XBrainLab.ui.panels.training.panel import TrainingPanel
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data"
@@ -36,14 +38,49 @@ def _prepare_real_training_service(tmp_path: Path) -> ApplicationService:
     service = get_application_service(Study())
     gdf_path = str(FIXTURE_ROOT / "A01T.gdf")
     label_path = str(FIXTURE_ROOT / "label" / "A01T.mat")
+    class_names = {
+        "1": "left hand",
+        "2": "right hand",
+        "3": "feet",
+        "4": "tongue",
+    }
 
-    assert service.execute(LoadDataCommand(paths=[gdf_path])).ok
-    assert service.execute(
-        AttachLabelsCommand(
-            mapping={"A01T.gdf": label_path},
-            label_paths=[label_path],
-        )
-    ).ok
+    reviewed_import_commands = (
+        ScanSourceCommand(
+            source_path=gdf_path,
+            source_hint="file",
+            label_sources=[label_path],
+        ),
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [gdf_path],
+                "label_carrier_choices": {
+                    label_path: {
+                        "label_field": "classlabel",
+                        "target_event_codes": ["769", "770", "771", "772"],
+                        "placement_method": "eeg_event",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                        "value_decisions": {
+                            value: {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": class_name,
+                            }
+                            for value, class_name in class_names.items()
+                        },
+                    }
+                },
+            }
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
+    )
+    for command in reviewed_import_commands:
+        result = service.execute(command)
+        assert result.ok, result.message
+
     assert service.execute(
         PreprocessCommand(
             operation=PreprocessOperation.BANDPASS,
@@ -51,7 +88,9 @@ def _prepare_real_training_service(tmp_path: Path) -> ApplicationService:
             high_freq=38,
         )
     ).ok
-    assert service.execute(CreateEpochCommand(0, 4, event_ids=["1", "2", "3", "4"])).ok
+    assert service.execute(
+        CreateEpochCommand(0, 4, event_ids=list(class_names.values()))
+    ).ok
     assert service.execute(
         GenerateDatasetCommand(
             test_ratio=0.2,
@@ -100,18 +139,15 @@ def test_training_panel_recovers_after_async_cuda_oom(
         "training_stopped",
         lambda: lifecycle_events.append("stopped"),
     )
-    host = QMainWindow()
-    cast(Any, host).study = study
-    panel = TrainingPanel(
-        parent=host,
-        controller=training_controller,
-        dataset_controller=study.get_controller("dataset"),
-        preprocess_controller=study.get_controller("preprocess"),
-    )
-    host.setCentralWidget(panel)
+    host = cast(Any, MainWindow(study))
     qtbot.addWidget(host)
+    host.resize(1220, 820)
     host.show()
     qtbot.waitExposed(host)
+    ready_panels = []
+    host.switch_page(2, on_ready=ready_panels.append)
+    qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=5_000)
+    panel = cast(TrainingPanel, host.training_panel)
     panel.sidebar.check_ready_to_train()
     assert panel.sidebar.btn_start.isEnabled()
 
@@ -222,5 +258,41 @@ def test_training_panel_recovers_after_async_cuda_oom(
     assert trainer.get_terminal_outcome().state is TrainingOutcomeState.COMPLETED
     assert panel.sidebar.btn_stop.isEnabled() is False
     assert panel.sidebar.btn_start.isEnabled() is True
+
+    panel.on_history_selection_changed({"plan_index": 0, "run_index": 0})
     assert panel.log_text.toPlainText().count("CUDA out of memory during training") == 1
-    assert service.wait_for_background_tasks(timeout=10.0)
+
+    panel.on_history_selection_changed({"plan_index": 1, "run_index": 0})
+    assert "CUDA out of memory during training" not in panel.log_text.toPlainText()
+
+    qtbot.waitUntil(
+        lambda: (
+            study.training_manager.get_post_training_saliency_status().generation > 0
+            and study.training_manager.get_post_training_saliency_status().phase.terminal
+        ),
+        timeout=10_000,
+    )
+    saliency_generation = (
+        study.training_manager.get_post_training_saliency_status().generation
+    )
+
+    def background_deliveries_idle() -> bool:
+        application_delivery = service.training_publications.saliency_delivery_state()
+        runtime_delivery = service.training_runtime.saliency_delivery_state()
+        return bool(
+            not application_delivery.pending_generations
+            and application_delivery.active_generation is None
+            and not application_delivery.retry_owner_active
+            and not runtime_delivery.pending_generations
+            and runtime_delivery.active_generation is None
+            and not runtime_delivery.retry_owner_active
+        )
+
+    qtbot.waitUntil(background_deliveries_idle, timeout=10_000)
+    training_delivery = service.training_publications.training_delivery_state()
+    application_delivery = service.training_publications.saliency_delivery_state()
+    runtime_delivery = service.training_runtime.saliency_delivery_state()
+    assert training_delivery.pending_count == 0
+    assert training_delivery.delivered_count == 2
+    assert application_delivery.delivered_generation == saliency_generation
+    assert runtime_delivery.delivered_generation == saliency_generation

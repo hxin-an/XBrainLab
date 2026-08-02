@@ -11,6 +11,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from XBrainLab.backend.utils.filesystem_identity import (
+    FilesystemIdentityError,
+    StableDirectoryIdentity,
+    retain_directory_identity,
+)
+
 from .errors import PreconditionError
 
 if TYPE_CHECKING:
@@ -36,9 +42,17 @@ def bids_events_json_candidates(path: Path) -> list[Path]:
     """Return local-to-dataset-root sidecars in existing lookup order."""
     if not is_bids_events_file(path):
         return []
+    directories, _dataset_root = _bids_inheritance_scope(path)
+    return _bids_events_json_candidates_in_directories(path, directories)
+
+
+def _bids_events_json_candidates_in_directories(
+    path: Path,
+    directories: Iterable[Path],
+) -> list[Path]:
     names = _bids_event_sidecar_names(path)
     candidates: list[Path] = []
-    for directory in _bids_inheritance_directories(path):
+    for directory in directories:
         for name in names:
             candidate = directory / name
             if candidate not in candidates:
@@ -51,26 +65,59 @@ def bids_events_json_resource_paths(label_carriers: Iterable[str]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for carrier in label_carriers:
-        for candidate in bids_events_json_candidates(Path(carrier)):
-            try:
-                candidate_stat = candidate.stat()
-            except FileNotFoundError:
-                continue
-            except OSError as exc:
-                raise _resource_error(
-                    code="events_json_sidecar_unavailable",
-                    message=f"BIDS events sidecar could not be inspected: {candidate}.",
-                    path=candidate,
-                    parse_started=False,
-                    details={"os_error": str(exc)},
-                ) from exc
-            if not stat.S_ISREG(candidate_stat.st_mode):
-                continue
-            key = _path_key(candidate)
-            if key in seen:
-                continue
-            seen.add(key)
-            result.append(key)
+        carrier_path = Path(carrier)
+        if not is_bids_events_file(carrier_path):
+            continue
+        directories, dataset_root = _bids_inheritance_scope(carrier_path)
+        root_identity = (
+            _retain_bids_root_identity(dataset_root)
+            if dataset_root is not None
+            else None
+        )
+        try:
+            if root_identity is not None:
+                _canonical_bids_resource_path(
+                    carrier_path,
+                    root_identity=root_identity,
+                    resource_kind="events_carrier",
+                )
+            for candidate in _bids_events_json_candidates_in_directories(
+                carrier_path,
+                directories,
+            ):
+                try:
+                    candidate_stat = candidate.stat()
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    raise _resource_error(
+                        code="events_json_sidecar_unavailable",
+                        message=(
+                            f"BIDS events sidecar could not be inspected: {candidate}."
+                        ),
+                        path=candidate,
+                        parse_started=False,
+                        details={"os_error": str(exc)},
+                    ) from exc
+                if not stat.S_ISREG(candidate_stat.st_mode):
+                    continue
+                canonical_candidate = (
+                    _canonical_bids_resource_path(
+                        candidate,
+                        root_identity=root_identity,
+                        resource_kind="events_json_sidecar",
+                    )
+                    if root_identity is not None
+                    else candidate.expanduser().resolve(strict=False)
+                )
+                key = str(canonical_candidate)
+                if key in seen:
+                    continue
+                seen.add(key)
+                result.append(key)
+        finally:
+            if root_identity is not None:
+                root_identity.close()
     return result
 
 
@@ -530,8 +577,8 @@ def _bids_event_sidecar_names(path: Path) -> list[str]:
     return list(dict.fromkeys(names))
 
 
-def _bids_inheritance_directories(path: Path) -> list[Path]:
-    """Bound inheritance at the nearest BIDS dataset marker, or stay local."""
+def _bids_inheritance_scope(path: Path) -> tuple[list[Path], Path | None]:
+    """Return inheritance directories and the nearest lexical dataset root."""
     local_directory = path.parent
     directories: list[Path] = []
     for directory in [local_directory, *local_directory.parents]:
@@ -542,9 +589,80 @@ def _bids_inheritance_directories(path: Path) -> list[Path]:
         except FileNotFoundError:
             continue
         except OSError:
-            return [local_directory]
-        return directories
-    return [local_directory]
+            return [local_directory], None
+        return directories, directory
+    return [local_directory], None
+
+
+def _retain_bids_root_identity(dataset_root: Path) -> StableDirectoryIdentity:
+    try:
+        return retain_directory_identity(dataset_root)
+    except (FilesystemIdentityError, OSError, RuntimeError) as exc:
+        raise _resource_error(
+            code="bids_dataset_root_identity_unavailable",
+            message=(
+                "The selected BIDS dataset root identity could not be verified "
+                f"safely: {dataset_root}."
+            ),
+            path=dataset_root,
+            parse_started=False,
+            details={
+                "content_loading_started": False,
+                "os_error": str(exc),
+            },
+        ) from exc
+
+
+def _canonical_bids_resource_path(
+    path: Path,
+    *,
+    root_identity: StableDirectoryIdentity,
+    resource_kind: str,
+) -> Path:
+    requested_path = str(path.expanduser().absolute())
+    try:
+        root_identity.assert_matches()
+        resolved_path = path.expanduser().resolve(strict=True)
+        with retain_directory_identity(resolved_path.parent) as parent_identity:
+            root_identity.assert_matches()
+            root_entry = root_identity.entries[-1]
+            is_within_root = any(
+                entry.device == root_entry.device
+                and entry.file_id == root_entry.file_id
+                for entry in parent_identity.entries
+            )
+    except (FilesystemIdentityError, OSError, RuntimeError) as exc:
+        raise _resource_error(
+            code="bids_resource_identity_unavailable",
+            message=f"BIDS resource identity could not be verified safely: {path}.",
+            path=path,
+            parse_started=False,
+            details={
+                "resource_kind": resource_kind,
+                "requested_path": requested_path,
+                "dataset_root": root_identity.path,
+                "content_loading_started": False,
+                "os_error": str(exc),
+            },
+        ) from exc
+    if not is_within_root:
+        raise _resource_error(
+            code="bids_resource_outside_dataset_root",
+            message=(
+                f"BIDS {resource_kind.replace('_', ' ')} resolves outside the "
+                f"selected dataset root: {path}."
+            ),
+            path=resolved_path,
+            parse_started=False,
+            details={
+                "resource_kind": resource_kind,
+                "requested_path": requested_path,
+                "resolved_path": str(resolved_path),
+                "dataset_root": root_identity.path,
+                "content_loading_started": False,
+            },
+        )
+    return resolved_path
 
 
 def _admit_file_identity(path: Path) -> _AdmittedFileIdentity:

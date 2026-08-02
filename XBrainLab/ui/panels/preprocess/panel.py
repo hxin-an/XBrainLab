@@ -1,16 +1,33 @@
 """Preprocessing panel for signal filtering, resampling, and epoching."""
 
-from typing import Any
+from typing import cast
 
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from XBrainLab.backend.application.preprocess_render import (
+    PreprocessRenderPublication,
+    PreprocessSignalState,
+)
+from XBrainLab.backend.application.view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationViewPublication,
+)
+from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
-    ControllerCompatibilityUnavailableError,
+    ApplicationViewPublicationPort,
+    application_ui_runtime,
     get_controller_for_compatibility_context,
-    run_controller_compatibility_call,
+)
+from XBrainLab.ui.application_publication_renderer import (
+    ApplicationPublicationRenderLedger,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
+from XBrainLab.ui.panels.preprocess.data_query import (
+    PreprocessRenderDataUnavailableError,
+    query_preprocess_data_rows,
+    query_preprocess_render,
+)
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
 from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
@@ -24,7 +41,14 @@ class PreprocessPanel(BasePanel):
     Connects `PreprocessController` and `DatasetController`.
     """
 
-    def __init__(self, controller=None, dataset_controller=None, parent=None):
+    def __init__(
+        self,
+        controller=None,
+        dataset_controller=None,
+        parent=None,
+        *,
+        publication_port: ApplicationViewPublicationPort | None = None,
+    ):
         """Initialize the preprocessing panel.
 
         Args:
@@ -36,13 +60,23 @@ class PreprocessPanel(BasePanel):
 
         """
         # 1. Controller Resolution
-        if controller is None and parent and hasattr(parent, "study"):
+        if (
+            controller is None
+            and publication_port is None
+            and parent
+            and hasattr(parent, "study")
+        ):
             controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "preprocess",
             )
-        if dataset_controller is None and parent and hasattr(parent, "study"):
+        if (
+            dataset_controller is None
+            and publication_port is None
+            and parent
+            and hasattr(parent, "study")
+        ):
             dataset_controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
@@ -52,6 +86,19 @@ class PreprocessPanel(BasePanel):
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
         self.dataset_controller = dataset_controller
+        runtime = application_ui_runtime(self)
+        self._publication_port = (
+            publication_port if publication_port is not None else runtime
+        )
+        self._application_view_publication: ApplicationViewPublication | None = None
+        self._last_application_revision = 0
+        self._application_render_ledger = ApplicationPublicationRenderLedger(
+            panel_name="Preprocess",
+            render_publication=self._render_application_publication,
+            commit_publication=self._commit_application_publication,
+            parent=self,
+        )
+        self._application_refresh_timer = self._application_render_ledger.timer
 
         # 3. Setup Components
         self.preview_widget = PreviewWidget(self)
@@ -59,8 +106,7 @@ class PreprocessPanel(BasePanel):
         self.sidebar = PreprocessSidebar(self, self)
 
         # 4. Setup Plotter
-        # Note: Plotter now takes the widget and controller directly
-        self.plotter = PreprocessPlotter(self.preview_widget, self.controller)
+        self.plotter = PreprocessPlotter(self.preview_widget)
 
         # 5. Connect Component Signals
         self.preview_widget.request_plot_update.connect(self.update_plot_only)
@@ -71,11 +117,76 @@ class PreprocessPanel(BasePanel):
 
     def _setup_bridges(self):
         """Register Qt observer bridges for preprocess and dataset events."""
+        if self._publication_port is not None:
+            self._create_bridge(
+                cast(Observable, self._publication_port),
+                APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+                self._on_application_view_publication_changed,
+            )
+            return
         if self.controller:
             self._create_refresh_bridge(self.controller, "preprocess_changed")
 
             if self.dataset_controller:
                 self._create_refresh_bridge(self.dataset_controller, "data_changed")
+
+    def _on_application_view_publication_changed(
+        self,
+        publication: object,
+    ) -> bool:
+        """Queue one Preprocess render for each monotonic application revision."""
+        if not self._valid_application_publication(publication):
+            logger.error("Ignored malformed Preprocess application publication.")
+            return False
+        typed_publication = cast(ApplicationViewPublication, publication)
+        return self._application_render_ledger.queue(typed_publication)
+
+    def _render_application_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._application_view_publication = publication
+        self.update_panel()
+
+    def _commit_application_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._last_application_revision = publication.revision
+
+    @staticmethod
+    def _valid_application_publication(publication: object) -> bool:
+        return (
+            isinstance(publication, ApplicationViewPublication)
+            and not isinstance(publication.revision, bool)
+            and isinstance(publication.revision, int)
+            and publication.revision >= 1
+        )
+
+    def _read_application_publication(self) -> ApplicationViewPublication | None:
+        pending = self._application_render_ledger.pending_publication
+        if pending is not None and pending.revision > self._last_application_revision:
+            self._application_view_publication = pending
+            return pending
+        port = self._publication_port
+        if port is None:
+            return None
+        try:
+            publication = port.get_view_publication()
+        except Exception:
+            logger.error(
+                "Preprocess application publication is unavailable.",
+                exc_info=True,
+            )
+            self._application_view_publication = None
+            return None
+        if not self._valid_application_publication(publication):
+            self._application_view_publication = None
+            return None
+        typed_publication = cast(ApplicationViewPublication, publication)
+        if typed_publication.revision >= self._last_application_revision:
+            self._application_view_publication = typed_publication
+        return self._application_view_publication
 
     def init_ui(self):
         """Build the panel layout with preview, history, and sidebar widgets."""
@@ -99,108 +210,106 @@ class PreprocessPanel(BasePanel):
     def closeEvent(self, event) -> None:  # noqa: N802
         """Quiesce native plot callbacks before Qt tears down the panel."""
         self.preview_widget.prepare_for_shutdown()
+        self.cleanup()
         super().closeEvent(event)
 
+    def cleanup(self) -> None:
+        """Cancel queued publication work and release observer bridges."""
+        self._application_render_ledger.cleanup()
+        super().cleanup()
+
     def update_panel(self, *args):
-        """Refresh the sidebar, history, and preview plots from controller state."""
+        """Refresh Preprocess and commit a direct render only after success."""
+        self._update_panel_content(*args)
+        if self._application_render_ledger.render_in_progress:
+            return
+        publication = self._application_view_publication
+        if publication is not None:
+            self._application_render_ledger.record_rendered(publication)
+
+    def _update_panel_content(self, *args):
+        """Refresh the sidebar, history, and preview from application truth."""
         # Update Sidebar
         if hasattr(self, "sidebar"):
             self.sidebar.update_sidebar()
 
-        # Update History
-        queried_lists = self._query_data_lists_for_render()
-        original_data_list: list[Any] = []
-        controller = self.controller
-        if controller is None:
-            data_list = []
-        elif queried_lists is None:
-            data_list, original_data_list = self._compatibility_data_lists_for_render(
-                controller
-            )
-        else:
-            data_list, original_data_list = queried_lists
-        is_epoched = False
-        if data_list:
-            first_data = data_list[0]
-            is_epoched = not first_data.is_raw()
-            self.history_widget.update_history(
-                first_data.get_preprocess_history(),
-                is_epoched,
-            )
-        else:
+        application_publication = self._read_application_publication()
+        if self._publication_port is not None and (
+            application_publication is None or not application_publication.usable
+        ):
             self.history_widget.show_no_data()
-
-        # Update Plots (Delegated to Plotter/Widget)
-        if data_list:
-            first_data = data_list[0]
-            if is_epoched:
-                self.preview_widget.show_locked_message(
-                    "Preprocessing locked",
-                )
-                return
-
-            # Update channel options
-            ch_names = first_data.get_mne().ch_names
-
-            # Use blockSignals to avoid triggering redraw during population
-            self.preview_widget.chan_combo.blockSignals(True)
-            current_idx = self.preview_widget.chan_combo.currentIndex()
-            self.preview_widget.chan_combo.clear()
-            self.preview_widget.chan_combo.addItems(ch_names)
-            # Restore index if valid (e.g. channel name mapping logic or keep index)
-            if 0 <= current_idx < len(ch_names):
-                self.preview_widget.chan_combo.setCurrentIndex(current_idx)
-            self.preview_widget.chan_combo.blockSignals(False)
-
-            # Update time range
-            duration = (
-                first_data.get_epochs_length()
-                if not first_data.is_raw()
-                else (first_data.get_mne().times[-1])
-            )
-            self.preview_widget.time_spin.setRange(0, duration)
-            self.preview_widget.time_slider.setRange(0, int(duration * 10))
-
-            self.plotter.plot_sample_data(
-                data_list=data_list,
-                original_data_list=original_data_list,
-            )
-        else:
             self.preview_widget.reset_view()
+            return
+
+        publication = self._query_render_publication()
+        if publication is None:
+            self.history_widget.show_no_data()
+            self.preview_widget.reset_view()
+            return
+        self._apply_render_publication(publication, update_history=True)
 
     def update_plot_only(self):
         """Trigger a plot refresh without updating the sidebar or history."""
-        queried_lists = self._query_data_lists_for_render()
-        if queried_lists is None:
-            self.plotter.plot_sample_data()
+        publication = self._query_render_publication()
+        if publication is None:
             return
-        data_list, original_data_list = queried_lists
-        if data_list and not data_list[0].is_raw():
+        self._apply_render_publication(publication, update_history=False)
+
+    def _apply_render_publication(
+        self,
+        publication: PreprocessRenderPublication,
+        *,
+        update_history: bool,
+    ) -> None:
+        data = publication.data
+        if update_history:
+            if data.state is PreprocessSignalState.NO_DATA:
+                self.history_widget.show_no_data()
+            else:
+                self.history_widget.update_history(
+                    list(data.history),
+                    data.state is PreprocessSignalState.LOCKED,
+                )
+
+        if data.state is PreprocessSignalState.NO_DATA:
+            self.preview_widget.reset_view()
+            return
+        if data.state is PreprocessSignalState.LOCKED:
             self.preview_widget.show_locked_message(
                 "Preprocessing locked",
             )
             return
-        self.plotter.plot_sample_data(
-            data_list=data_list,
-            original_data_list=original_data_list,
+
+        self.preview_widget.chan_combo.blockSignals(True)
+        self.preview_widget.chan_combo.clear()
+        self.preview_widget.chan_combo.addItems(list(data.channels))
+        selected_index = data.selected_channel_index
+        if selected_index is not None:
+            self.preview_widget.chan_combo.setCurrentIndex(selected_index)
+        self.preview_widget.chan_combo.blockSignals(False)
+
+        self.preview_widget.time_spin.setRange(0.0, data.cursor_max_seconds)
+        self.preview_widget.time_slider.setRange(
+            0,
+            int(data.cursor_max_seconds * 10),
         )
+        self.plotter.plot_sample_data(publication)
 
-    def _query_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
-        return query_preprocess_render_lists(self)
-
-    def _compatibility_data_lists_for_render(
-        self,
-        controller,
-    ) -> tuple[list[Any], list[Any]]:
-        def fallback() -> tuple[list[Any], list[Any]]:
-            data_list = controller.get_preprocessed_data_list()
-            study = getattr(controller, "study", None)
-            original_data_list: list[Any] = []
-            if study is not None:
-                original_data_list = list(getattr(study, "loaded_data_list", []))
-            return data_list, original_data_list
-
+    def _query_render_publication(self) -> PreprocessRenderPublication | None:
+        channel_index = max(0, self.preview_widget.chan_combo.currentIndex())
+        start_seconds = max(0.0, float(self.preview_widget.time_spin.value()))
         try:
-            return run_controller_compatibility_call(self, fallback)
-        except ControllerCompatibilityUnavailableError:
-            return [], []
+            publication = query_preprocess_render(
+                self,
+                channel_index=channel_index,
+                start_seconds=start_seconds,
+            )
+        except PreprocessRenderDataUnavailableError as error:
+            self.preview_widget.show_unavailable_message(str(error))
+            return None
+        return publication
+
+    def _query_preprocess_data_rows(
+        self,
+    ) -> tuple[list[dict], list[dict]] | None:
+        return query_preprocess_data_rows(self)

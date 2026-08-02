@@ -9,6 +9,10 @@ from enum import Enum
 from typing import Any
 
 from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.utils.public_diagnostics import (
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+)
 from XBrainLab.chat_contract import (
     MAX_CHAT_MESSAGE_CONTENT_LENGTH,
     bounded_chat_string,
@@ -237,7 +241,14 @@ class AssistantTurnDeliveryAcknowledgement:
             raise TypeError("Assistant turn delivery phase must be typed.")
         if not isinstance(self.message, str):
             raise TypeError("Assistant turn delivery message must be a string.")
-        object.__setattr__(self, "message", " ".join(self.message.split()))
+        object.__setattr__(
+            self,
+            "message",
+            public_diagnostic_text(
+                self.message,
+                layout=DiagnosticTextLayout.SINGLE_LINE,
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)

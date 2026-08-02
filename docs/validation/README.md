@@ -1,1465 +1,287 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-30`
+最後更新：`2026-08-02`
 
-這頁說明 evidence 能證明什麼，也說明不能證明什麼。
+這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
+冒充 current result；歷史結果看 records 或 Git history。
 
-## 原則
+## Current Validation Status
+
+| 項目 | Current truth |
+| --- | --- |
+| Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
+| Active branch | `stabilize/product-quality-closure` |
+| Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，baseline only |
+| Closure state | In progress；not handoff-ready；not product complete |
+| Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
+| Required authority | `docs/agent_goals/product_quality_closure_goal.md` and [Product Quality Audit](../records/product_quality_audit_2026-07-30.md) |
+
+`ux/assistant-product-v1@3869aaef` 的 clean PASS evidence 不能代表目前 closure branch。
+在 active branch 形成 clean pushed exact commit 並完成本頁 gates 之前，沒有 current final
+test total 或 handoff verdict。
+
+## Evidence 原則
 
 不要把一種 evidence 放大成所有 claim。
 
 | Evidence | 能支撐 | 不能支撐 |
 | --- | --- | --- |
-| CI green | branch 基本可 review，跨平台測試目前通過。 | product complete、human desktop acceptance。 |
-| `mkdocs build --strict` | 文件站可建。 | 文件內容一定正確。 |
-| architecture guard | 沒有已知 forbidden path regression。 | 所有 runtime flow 都已人工驗收。 |
-| backend focused tests | command / state / result contract。 | UI 使用者體驗完整。 |
-| automated UI walkthrough | 可觀察 UI baseline、截圖、按鈕狀態。 | 人手 Windows acceptance、DPI / dual-monitor、長時間 local model session。 |
-| human-observable product smoke | 代表性使用者流程的視窗可見性、primary action 可見性、selected/applied scope、無 crash。 | 完整 release approval、所有資料格式與長時間模型 session。 |
-| tool-call eval | tool selection / parameter / state transition 的 benchmark slice。 | EEG training quality、UI completion、產品完成。 |
-| launcher smoke | launcher / startup baseline。 | signed installer、release approval。 |
+| Focused regression | 指定 bug / contract 已被保護。 | 同類問題全部關閉、product handoff。 |
+| Same-class/source guard | 已知 forbidden shape 或同類 call site 沒有回流。 | Runtime behavior、UI acceptance。 |
+| Architecture/static checks | Import、dependency、typing、lint 等靜態邊界。 | 真 workflow、thread/native lifecycle。 |
+| Real ApplicationService smoke | Product command spine 的代表性 state transition 和 side effect。 | 所有 panel UX、所有 datasets。 |
+| Deterministic oracle | Event/class semantics、split integrity、held-out outputs 和 finite result contract。 | Scientific model quality 或泛化準確率。 |
+| Strict multi-dataset gate | Manifest 內固定 sources、formats、label/event placement 和 cross-source boundary。 | Full BIDS validator、任意 clinical/proprietary format。 |
+| Automated UI artifact | Exact-source visible state、layout、primary action 和 bounded interaction。 | Windows native DPI/multi-monitor、真人 usability。 |
+| Local Granite/RAG walkthrough | 指定 product policy 下的 local runtime workflow。 | Raw-model accuracy、thesis benchmark、長時間穩定性。 |
+| Launcher/startup smoke | Launcher command 和 bounded startup。 | Signed installer、release approval。 |
+| `mkdocs build --strict` | 文件站可建且 MkDocs 可解析目前 links/nav。 | 文件敘述一定符合 source。 |
 
-## Latest Desktop MVP Handoff Evidence
+## Exact-Commit Evidence Contract
 
-### 2026-07-30 Assistant Product V1 Candidate Gate
+Final totals 和 PASS claims 只能來自同一個 clean exact commit 產生的 evidence。不得從
+checkpoint notes、聊天、舊 branch、不同 pytest shards 或 dated sections 手動相加。
 
-- Candidate branch：`ux/assistant-product-v1`。產品畫面不再要求使用者先選 Single action /
-  Guided workflow；host 由本回合自然語言建立 immutable no-tool、single-step、
-  continue-until-decision 或 explicit-terminal scope。
-- backend view delivery 現在有 revision acknowledgement：若 Qt queued view 尚未確認 matching
-  `ApplicationViewPublication`，terminal training event 會保留；確認同一 revision 後 exactly-once
-  送到 AgentManager。真 `ApplicationService -> QtObserverBridge -> AgentManager` regression
-  覆蓋 deferred delivery、重試與 duplicate suppression。
-- `Stop Training` 加入 explicit terminal endpoint。四個英文 / 中文 multi-stage admission cases
-  都能正確解析；generic continuation 不能自行推論停止訓練，只有明確使用者請求才能執行。
-- Data Import action 在 click time 重新讀 publication / capability truth；可執行 controls 與只供
-  assistant 建議的 commands 分開，避免畫面顯示舊 readiness 或把 recommendation 當 action。
-- 分層 regression：backend publication/application `231 passed`、UI/chat/product `571 passed`、
-  agent/core/integration `2123 passed`、architecture/source guards `274 passed`。Ruff、
-  Ruff format 與 canonical full-repo Basedpyright `0 errors / 0 warnings / 0 notes` PASS。
-- focused UI artifact：
-  `artifacts/ui/assistant-product-v1-focused-final/`，涵蓋 320 / 760 / 1280 寬度、loading、
-  unavailable、working / stopping、confirmation、long content、real dock 與 teardown。
-- human-like artifact：
-  `artifacts/ui/assistant-product-v1-human-like-final/`，結果 `42/42` phases、`45` screenshots；
-  主 agent 檢查 full-window ready、Settings、confirmation card 與 narrow dock，未見 primary action
-  遺失、文字裁切或 control overlap。
-- exact Granite artifact：
-  `artifacts/ui/assistant-product-v1-granite-boundary-final/`。真
-  `ibm-granite/granite-3.3-2b-instruct` 在 GPU 完成 model-owned `scan_source`，host 只續行
-  parameter-free `preview_interpretation` / `validate_interpretation`，停在 typed Data Import
-  decision boundary；取消後 state 不變且 runtime 完整關閉。
-- required multi-dataset gate：IO / public BIDS / cross-source integration
-  `36 passed, 3 skipped`；三個 skip 是未下載的 OpenNeuro、Sleep-EDF、CHB-MIT extended teacher
-  fixtures，不是 required-ci case 失敗。strict runner `4/4`：PhysioNet EDF、BBCI GDF 跑
-  one-epoch training；SCCN EEGLAB、MNE CNT 跑 load / preprocess / epoch boundary。dataset 與
-  format matrix 位於 `artifacts/validation/assistant-product-v1/`。
-- architecture 與 clean-code reviewer 在第一輪發現 deferred terminal delivery 及
-  Stop Training admission blocker；修復後重跑 exact pipeline 與 probes，兩者均無剩餘 release
-  blocker。
+Final evidence 至少要記錄：
 
-這些結果支撐 automated handoff candidate，不支撐 product complete。Windows native
-click-through、DPI / 多螢幕、互動式 3D、長時間 local-model session 與 frozen XBrainLab
-benchmark 仍未完成；Granite artifact 是 host-assisted product evidence，不是 raw-model accuracy。
+- `profile=handoff`；
+- absolute worktree；
+- branch、full commit SHA 和 HEAD tree SHA；
+- dirty state、protected local changes 和 source/tree fingerprint；
+- 每個 registered command、return status、duration、timeout 和原始 log identity；
+- skip、xfail、xpass、deselection 和 fixture-manifest policy；
+- UI/runtime artifact 的 generator、source identity、claims 和 limitations；
+- evidence-root policy，以及 local runtime cache 的 redacted D-mounted identity。
 
-### 2026-07-29 Granite 2B Teacher Candidate Gate
+Final report 必須逐欄確認：
 
-- Agent unit/core/integration regression：`1236 passed`。獨立 architecture reviewer 重跑
-  explanatory-intent、turn scope、host continuation、schema-v5 evidence 與 fail-closed probes：
-  `190 passed`，無剩餘 finding。
-- 產品預設模型是 exact `ibm-granite/granite-3.3-2b-instruct`；runtime inspection 回報
-  `gpu-ready`、local cache `12.77 GB / 20 GB`。resolver 不會因 requested model 不可用而
-  自動切換 catalog model。
-- 真 Granite GPU boundary walkthrough 使用一般使用者請求啟動 Data Import：初始
-  `scan_source` 由 model 提案；模型第一次 envelope 格式錯誤時只允許一次 bounded repair；
-  parameter-free `preview_interpretation` / `validate_interpretation` 由 host policy 續行，並在
-  metadata / label decision 出現時開啟既有 Review Metadata wizard。取消後沒有 apply，backend
-  generation 與 state 不變，runtime 乾淨關閉。
-- host deterministic continuation 的 allowlist 由 `ToolAttemptCoordinator` 單一持有；白名單外
-  mutation 在讀 context、schema verifier 或 registry 前就以 non-recoverable contract failure
-  fail closed。白名單內也仍需通過 schema、registration、capability、auto-execution 與
-  confirmation policy。
-- required data gate 重新通過：Data Interpretation lifecycle `20/20`、required formats `14/14`、
-  7 個 hash-pinned public cases / 5 個 source families、7 個 external placement contracts、
-  4 個 internal-event profiles與固定 11 個 reviewed-label cases。真五步 wizard / recovery
-  `20 passed`；IO / public BIDS / cross-source pipeline `39 passed`；strict cross-source runner
-  `4/4`（2 training + 2 IO/epoch-only）。
-- `Import file` 的 explicit-scope regression 以真實 A01T/A02T/A03T GDF 驗證：共同父資料夾內即使
-  存在 `multiformat/` 子目錄，也只 review 3 個明確選取的 EEG 與 3 個同名 MAT carriers。
-  focused regression `251 passed`；可見 evidence 位於
-  `artifacts/ui/file-import-scope-fix/`。同一 artifact 也驗證標準錯誤對話框保留錯誤圖示，
-  但 OK / Cancel 不再顯示 Return / Enter glyph。
-- 老師試用前另跑 local-only extended gate：`teacher-preflight` manifest
-  `277,106,963 bytes`、10 groups 全部 hash/size verified。OpenNeuro ds003061 三個 BIDS /
-  EEGLAB P300 runs 經 scan -> preview -> validate -> apply，三 run 分別套用
-  `747 / 750 / 748` 個 reviewed class events；來源 `events.tsv` 與 runtime 的
-  `(sample, class label)` digest 逐 run 完全一致，並以 `[-0.1, 0.04]` 秒 bounded window
-  成功建立合計 `2,245` epochs。CHB-MIT chb01 與 Sleep-EDF ST7011 真實 EDF 均完成 raw
-  import；CHB summary 不再被當成逐行 labels，Sleep hypnogram 不再被當成第二個 EEG。artifact 位於
-  `artifacts/data_interpretation/teacher-dataset-preflight.{json,md}`。
-- 真 GUI OpenNeuro acceptance 會從 `Import BIDS` 選取公開 root，走完五個 wizard steps，
-  將 label field 從 `trial_type` 改為 `value` 後重新 preview，確認 8 個實際值、以 onset
-  做 time placement，再把三個 runs apply 到產品 state。QTimer heartbeat 會同時驗證長任務
-  期間 GUI event loop 沒有連續 5 秒失去回應。單一三-run case 在目前 WSL/Qt 環境約需
-  5 分鐘；它支撐正確性與有界 responsiveness，不支撐「大型 BIDS folder 即時完成」的效能主張。
-- 上述 extended gate 不把 CHB-MIT seizure sidecar 或 Sleep-EDF hypnogram 宣稱為自動
-  supervised labels，也不外推為 full BIDS validator、所有 P300 或任意臨床資料認證。
-- 最終 relevant regression 在修復 artifact Waiting guard、terminal endpoint stage order、host
-  continuation params contract、Qt runtime fake 與五層 scope ownership guard 後為
-  `2700 passed`；完整 Qt assistant dock integration 為 `17 passed`。
-- human-like teacher candidate、exact Granite local workflow 與 adaptive boundary 三套 artifact
-  都是 PASS。確認卡、等待決策、既有 Review Metadata dialog 與取消後狀態由主 agent逐張檢視；
-  UI reviewer re-gate PASS。
-- Ruff、full-repo Basedpyright `0 errors / 0 warnings / 0 notes`、architecture compliance 與
-  `mkdocs build --strict` PASS。fast dashboard 的所有技術 check PASS；提交前 overall WARN
-  僅代表 worktree 尚未形成 exact commit，提交後結果以 `artifacts/quality/latest.md` 為準。
-- Architecture reviewer 在第一次退件後重新驗證 endpoint stage order、parameter-free early
-  rejection、無手動 execution-mode transport、五層 source guard、Granite docs truth與 Qt
-  integration signature，最終 PASS。
+1. report branch 是 `stabilize/product-quality-closure`；
+2. report commit 唯一對應 pushed candidate SHA，final handoff report 另記錄
+   `git rev-parse HEAD` 的 full SHA；
+3. source tree clean，或只剩規則明確允許且未 stage 的 repo-root `settings.json`；
+   `.vscode/settings.json` 和其他 dirty path 一律不是 protected；
+4. handoff profile 沒有重用其他 SHA 的 cached report；
+5. branch 有 configured upstream、`HEAD == upstream`，ahead/behind 是 `0/0`；
+6. required gates 都由該 commit 產生，且 dossier final verification 通過。
 
-這些結果支撐「可交給老師進一步 Windows 手測的工程候選」。它仍不是 product complete：
-Windows click-through、DPI / 多螢幕、互動式 3D 與長時間 local-model session 尚待真人驗收。
-Granite walkthrough 是 host-assisted product evidence，不是 raw-model accuracy；XBrainLab
-benchmark 要等 working candidate freeze 後，依 [Agent target](../target/agent.md) 另建 cases /
-scorer / repeats。
+`artifacts/quality/latest.md` 是可覆寫的 local report。檔名中的 `latest` 不代表內容就是目前
+candidate；必須先讀 header identity。指向 `ux/assistant-product-v1@3869aaef` 的 report 只算
+baseline evidence。
 
-2026-07-20 published automated handoff candidate 已重建 backend、UI、agent、資料與產品
-walkthrough evidence。以下數字綁定候選 branch；commit `aaa47923cf5e` 的 fast dashboard
-overall PASS，repo-root `settings.json` 保持可見、未 stage，並明確列為 protected local config。
+Dashboard 是 final evidence dossier 的 summary，不是 dossier 本身。即使
+`profile=handoff` 且 dashboard checks 全部 PASS，runtime command logs、return status 和
+artifacts 仍是必須另行檢查的 evidence。
 
-- external label pairing 由 `data_interpretation_pairing.py` 統一供 candidate validation、apply
-  與 wizard review 使用。Generic multi-file partial mapping、BIDS multi-run 缺少一個
-  `events.tsv` 都會在 import 前 blocked；完整 run-specific mapping 才能 apply。
-- human-like walkthrough 會實際擷取 Data Import Step 1 / 3 / 4 / 5，檢查 active step、distinct
-  screenshot hash、step text glyph、main navigation 與 visible `RightPanel`。純色 step background
-  不再能冒充文字已渲染。
+## Current Handoff Gates
 
-本輪最新 product evidence：
-
-- full unit：`9006 passed, 1 skipped`。
-- full integration：`388 passed`。
-- fast dashboard：Ruff、BasedPyright、architecture、startup、UI baseline、dialog、product
-  walkthrough、BIDS UI matrix、UI unit `2069 passed`、real-data IO `31 passed` 全數 PASS；
-  exact-commit overall 也是 PASS。
-- Data Interpretation real lifecycle：`20/20`，固定涵蓋 14 種 format paths、7 個 public cases、
-  5 個 public source families、7 個 pinned fixture fact contracts、7 個 external placement
-  contracts、4 個 internal-event profiles、固定 11 個 reviewed label/event cases。
-- strict cross-source runner `4/4`（PhysioNet、BBCI 是 2 個 class-grounded training cases；
-  SCCN、CNT 是 2 個 IO/epoch-only cases）。SCCN `rt` / `square` 沒有 public protocol class
-  ground truth，不算 supervised class 或 training evidence。
-- latest human-like desktop walkthrough：`42/42` phases、`44` required screenshots、resource smoke PASS。
-- real local Phi-4 mini ChatPanel：GPU runtime、`query_state` tool turn 與一般問答 turn PASS；
-  關閉後 runtime / dispatcher 都是 `closed`、controller 已釋放、registered / running generation
-  threads 都是 `0`。
-- local raw tool-call candidate：`6/12`（50%）；host-assisted product policy `12/12`（100%）。後者
-  包含 request admission、normalization、verification 與 capability blocking，不能報成 raw-model
-  accuracy，也不能作 thesis claim。
-- anti-overfit robustness set：raw `1/7`（14.3%）；host-assisted product policy `7/7`（100%），
-  各跑 3 repeats 且結果 deterministic。這證明 host safety boundary，不代表 raw model 已學會
-  blocked-action、missing-input 或 decision-boundary 判斷。
-- RTX 5070 Ti bounded resource calibration：EEGNet、SCCNet、ShallowConvNet 三個單步 probe 的
-  conservative estimate 均覆蓋 observed allocated peak；artifact 在
-  `artifacts/resource_guard/calibration.json`。範圍固定為 batch 8、22 channels、301 samples，
-  folds / repeats 序列執行，不誇大為所有設定的完整訓練峰值。
-- quality dashboard 每個 check 與 overall 都已 PASS；Workspace Traceability 確認 tracked
-  source clean，唯一 local change 是受保護且未 stage 的 `settings.json`。
-
-以上仍不代表 Windows DPI、多螢幕、互動式 3D、長時間 local LLM session、full BIDS validator
-acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-quality reviewer 已在
-修復後 re-gate 並 PASS；真實 Phi-4 mid-generation shutdown、real deferred-startup transition
-與 Windows 互動式 3D 仍是明確 claim boundary，不可由自動化結果外推。
-
-### 2026-07-21 Review / Preprocess / Visualization GUI Gate
-
-- expanded backend / UI / capture regression：`1133 passed`；product walkthrough：`7 passed`。
-- human-like product walkthrough：`42/42` required phases、`44` required screenshots、resource
-  smoke PASS；table geometry findings 與 clipped rows 均為 `0`。目前 artifact 在
-  `artifacts/ui/review-preprocess-polish/human-like-walkthrough/`。
-- focused UI artifact 在 `artifacts/ui/ui-review-fixes/` 與
-  `artifacts/ui/review-preprocess-polish/app-polish/`，涵蓋 Data Import Step 5、Smart Parser 四種
-  parsing mode、filter / re-reference / normalize / resample、Signal Preview no-data / loaded /
-  locked、固定 Preprocessing / Training History 與 Explanation Plots。
-- attribution spectrogram 使用所有 class finite values 的共同 p99 display range；最新真實 render
-  為 linear `vmin=0`、shared `vmax=4.043816728517419e-4`、dynamic range 約 `67.09`，兩個 class
-  共用 `coolwarm` 紅白藍 normalization 與 colorbar，和 Saliency Map 使用同一套色彩語彙。
-  資料維度、finite values、frequency/time axis 與 aggregation diagnostics 皆通過；artifact 在
-  `artifacts/ui/review-preprocess-polish/visualization-render/`。
-- 動態內容 dialog 改由 `BaseDialog.fit_to_content()` 保留目前視窗中心；Filtering validation、
-  Saliency method、Model Selection、Set Montage、Data Splitting、Data Import review/report 的內容
-  高度改變不再以左上角為錨點造成視窗漂移。相關 dialog regression `292 passed`，合併
-  visualization regression 後 `345 passed`；完整 UI unit suite `2123 passed`，product
-  walkthrough `7 passed`。
-- required multi-dataset gate 維持 strict PASS：real lifecycle `20`、14 format paths、7 public
-  cases / 5 source families，以及 strict cross-source `4/4`（2 training + 2 IO/epoch-only）。
-- Preprocess 的 PyQtGraph teardown 另以相關 `267` tests 連續重跑三次，並以
-  `tests/integration/ui/test_native_render_lifecycle.py` 的真實 EEG Time / PSD panel-switching
-  subprocess stress 驗證。關閉 panel / MainWindow 前會停止 debounce、解除 `SignalProxy`，再呼叫
-  PyQtGraph `PlotWidget.close()` 依 library contract 釋放 PlotItem / Axis / Label / scene，避免 deferred
-  paint / resize event 存取已刪除的 native graphics item。Walkthrough cleanup 也會略過已由主視窗
-  teardown 關閉的 PlotWidget，並保證 `app.quit()` 執行，避免二次 close 卡住 exit-code gate。
-
-這些結果支撐 automated handoff candidate，不取代 Windows 真人 DPI、遠端桌面、互動式 3D
-與長時間操作 acceptance。
-
-### 2026-07-23 Agent Panel Presentation Gate
-
-- latest focused presentation / regression suite：`511 passed`。範圍包含 ChatPanel、MessageBubble、
-  AgentManager、Assistant Settings、capture contracts 與 product walkthrough；deferred reflow
-  改由 owner-bound `QTimer` 管理，widget 刪除後不再留下無 owner callback。
-- compact evidence 在 `artifacts/ui/assistant-presentation-current/`。focused walkthrough 的
-  source fingerprint 為
-  `dc19918c555fbcc9ea659d7cea8117c254c02bc63f2af2c9a39fdd0f69ed2f71`；
-  human-like walkthrough 的開始與完成 fingerprint 都是
-  `4b5771bf1631a4281953cdd26869e7b60019d158b04664feab40141f6d897834`，
-  結果為 `42/42` phases、`44` required screenshots、resource smoke PASS。
-- Qt scale gate 在獨立 subprocess 使用 100% / 125% / 150% 全數 PASS。Settings constrained-height
-  probe 驗證 expanded dialog `520 x 552`、固定 footer 的 Save bottom `y=535`、body scroll
-  maximum `166`；320 / 420 / 760 寬度的主要動作沒有遺失或水平裁切。
-- 視覺 reviewer 與 code reviewer 均無 blocking finding。已知 nonblocking debt 是 working
-  期間 disabled mode selector 的 checked 狀態較淡，以及 552px 高度初始 viewport 會露出下一個
-  advanced field 的一部分；controls 可經 body scroll 完整到達，footer 始終可見。
-- architecture compliance、Ruff 與 touched product files 的 BasedPyright 全數 PASS。
-  full-repo BasedPyright 目前仍有 `122` 個既有 errors；這是明確 debt，不能把 scoped clean
-  外推成全 repo type-clean。
-
-這些 evidence 證明目前 source 的 Linux/Qt presentation、狀態切換、text fit、interaction 與
-teardown contract。它們不證明 Windows native DPI、多螢幕、真實模型長 session、實際模型下載
-中的進度畫面、local-model/tool correctness 或真人 desktop acceptance。
-
-#### 2026-07-21 既有 Agent Panel gate
-
-- focused unit / script gate：`455 passed`，覆蓋 composer auto-grow、manual-scroll preservation、
-  runtime states、mode selector、response actions、typed confirmation correlation、manager lifecycle
-  與 walkthrough contracts；12 列長 setting card 會捲到底並實際送出 correlated Cancel，連續
-  160 字元、無空白的 path / hash / identifier 類值也會斷行且被 geometry guard 檢查；
-  Ctrl+C / 右鍵 Copy 會移除顯示用 soft-wrap mark，clipboard 與原始值精確相同；hidden dock
-  收到 runtime refresh 或 confirmation cleanup 後，empty state 仍不會與既有 transcript 並存。
-- 完整 UI unit suite：`2089 passed`；同時移除舊 modal confirmation 測試假設，並保護
-  partially constructed AgentManager 的 model-download / runtime shutdown。
-- product integration：`tests/integration/ui/test_product_walkthrough.py` 完整 `7/7` 連續重跑
-  3 次；async preprocessing 會等 panel busy lease 釋放後才查 ApplicationService state。
-- focused screenshot matrix：`artifacts/ui/chatpanel-ui-ux-current/`，涵蓋 320 / 760 / 1280
-  寬度、loading、empty、working / stopping、error / retry、長 clarification、setting change card
-  與 12 列 max-content card、real MainWindow dock；teardown 會量測 close latency、GUI heartbeat
-  與 QThread terminal signals。
-- latest human-like product walkthrough：`42/42` phases、`44` required screenshots、resource smoke PASS；confirmation
-  會實際按 Cancel / Apply，並驗證 request correlation、signal path 與 QThread teardown；
-  fingerprint 包含 action card、confirmation contract 與 shared stylesheet owner。
-- `scripts/dev/run_chatpanel_ui_dpi_gate.py` 以 `QT_SCALE_FACTOR=1`、`1.25`、`1.5`
-  建立三個獨立 Qt subprocess，結果與選定截圖位於
-  `artifacts/ui/chatpanel-dpi-current/`；三者 geometry / text-fit / interaction contract 全數 PASS。
-  這仍是 Linux offscreen Qt evidence，不是 Windows native DPI 或多螢幕 acceptance。
-- 主 UI approved baseline 已更新 Agent Panel reference；重新 capture 後 `7` 張 baseline
-  全部符合門檻，最高 mean diff `0.864`、changed pixels `1.16%`。
-
-## Roadmap Evidence Gate
-
-| Phase | 需要的最低 evidence |
+| Gate | Required evidence |
 | --- | --- |
-| Rebaseline | docs gate、branch/worktree inventory、known blocker board、handoff gate reset。 |
-| Desktop MVP | Desktop MVP audit、architecture guard、focused command tests、UI refresh tests、Data Import format matrix、required multi-dataset gate、human-observable desktop smoke。 |
-| Product Polish / Release Candidate | screenshot artifact review、UI visual consistency walkthrough、known limitations、troubleshooting docs、release-candidate preflight。 |
-| Assistant MVP | assistant tool tests、blocked reason / structured result checks、verification boundary evidence、local LLM unavailable state。 |
-| Thesis Evidence | frozen case suite、dataset protocol、scorer version、repeat count、failure taxonomy、statistical report。 |
+| Scope and inventory | `git status --short --branch`、full HEAD、worktree inventory、scope/non-goals、dirty ownership。 |
+| Finding closure | Audit row 有 implementation、focused regression、same-class sweep、claim boundary 和主 agent verification。 |
+| Architecture | `ApplicationService / Command API` 保持唯一 product command spine；`BackendFacade` 保持物理移除；沒有新的 controller/policy/fallback bypass。 |
+| Functional happy path | Real FIF import 經 ApplicationService 到 preprocess、epoch、split、persisted training、evaluation、visualization readiness，且不 mock persistence。 |
+| Semantic oracle | Deterministic dataset 驗證 source events/classes、disjoint/exhaustive splits、held-out targets/logits、finite metrics/probabilities 和 safe persistence。 |
+| Data diversity | Required fixture manifest、Data Interpretation matrix、visible wizard matrix、IO/BIDS integration 和 strict cross-source runner 全部通過，mandatory case 不得 skip/xfail/deselect。 |
+| Assistant/local runtime | Exact Granite、secure offline RAG、confirmation/error/retry/cancel/long-session 和 bounded shutdown；不做 silent fallback。 |
+| UI/product | Relevant happy path、edge states、full/narrow/DPI screenshots、source identity 和人工 artifact review。 |
+| Native lifecycle | Qt/PyTorch/MNE/Matplotlib/PyQtGraph tests 使用 timeout 與 `prlimit --core=0`；Preprocess 和 Visualization ownership gate 分開判讀。 |
+| Static/quality | Ruff、完整 configured product-source Basedpyright（`XBrainLab/`，排除模型 cache）、architecture checks、relevant regression 和 handoff dashboard 由 final commit 重跑。Scripts/tests 由 Ruff、pytest 與各自 executable gates 保護，不宣稱納入 Basedpyright scope。 |
+| Docs | Canonical truth 一致、stale current-tense claims 移除、source/link search clean、MkDocs strict PASS。 |
+| Branch hygiene | Expected branch 有 configured upstream；`HEAD == upstream`、ahead/behind `0/0`；只有 unstaged repo-root `settings.json` 可例外；final report identity 吻合。 |
+| Claim boundary | Windows native DPI/multi-monitor、interactive 3D、teacher datasets、long-session 和 product completion 仍分開。 |
 
-## Handoff Candidate Gate
+任何 required gate 未完成時，狀態只能是：
 
-交給使用者手測前，必須先把 branch 判定為 handoff candidate。這個 gate 的目的不是取代
-human Windows acceptance，而是避免使用者成為第一層 QA。
+- `checkpoint`：局部工作已驗證，但完整 handoff gate 尚未完成；
+- `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence；
+- `handoff-ready`：只有全部 gate 從同一 clean pushed commit 完成後才可使用。
 
-## Desktop MVP Delivery Flow Gate
+目前狀態是 `checkpoint`。
 
-Desktop MVP 期間，branch、validation、handoff 合併成一條流程：
+## Current UI Checkpoint
 
-```text
-stabilize/desktop-mvp
-  -> short task branch
-      focused regression + same-class sweep + relevant validation
-  -> merge back to stabilize/desktop-mvp
-      happy path + edge/multi-dataset + artifact review
-  -> user manual acceptance
-      main merge decision
-```
+The working tree currently has focused, non-final UI evidence for the restored fixed
+`Data Summary` sidebar, Assistant presentation and Data Import replay. The Assistant set covers
+loading, empty, conversation, confirmation, long content, 320/760/1280 widths and 100/125/150%
+offscreen scale. The message layout uses content-aware bubbles, code-block-local horizontal
+scrolling and a stable multi-line composer action column. The visible header status badge is
+intentionally absent; runtime state remains available through typed panel state and accessibility
+metadata. The Data Import set covers preview, remap and applied states with source-manifest and
+fingerprint provenance.
 
-這個流程的目的不是增加儀式，而是避免兩種失敗：
+Current development evidence lives under
+`build/dev-artifacts/assistant-product-closure-current-v6/` and
+`build/dev-artifacts/data-import-current-v9/`. The Data Import evidence records source and
+screenshot hashes, including the applied `Data Summary` source. The seven approved shell/panel captures also pass
+two-consecutive-frame stability and match `tests/baselines/ui/` exactly, including the accepted
+fixed 13-row `Data Summary` and absent visible Readiness block. These are dirty working-checkpoints
+only. They do not replace clean exact-SHA capture, real Granite/RAG evidence or Windows native
+DPI/multi-monitor acceptance.
 
-- 長期分支堆太多內容，最後 merge 風險和 review 成本過高。
-- 單點 bug 修完就交給使用者，導致使用者成為第一層 QA。
-
-因此：
-
-- task branch gate 只證明「這個小修復可合回 stabilization line」。
-- handoff candidate gate 才證明「可以交給使用者手測」。
-- main merge gate 要等使用者 acceptance 或明確同意的 release-candidate preflight。
-
-## Desktop MVP Audit Gate
-
-Desktop MVP 的第一輪修復不能只針對使用者指出的一個 symptom。使用者回報的 bug 是 audit
-trigger；agent 要主動找產品 bug 和 code quality issue。
-
-Audit 至少覆蓋：
-
-| Area | 要找的問題 |
-| --- | --- |
-| Product workflow | import、label、metadata、epoch、preprocess、dataset split、training、evaluation、visualization 是否能完成主要路徑。 |
-| UI / UX | 明顯跑版、白字白底、primary action 消失、不可點狀態誤導、loading/error/empty state 不清楚。 |
-| Backend correctness | command result、state lifecycle、data mutation、label/event recipe、thread/figure cleanup。 |
-| Architecture / clean code | duplicated truth、legacy/fallback creep、direct controller mutation、god object / long method / shotgun surgery。 |
-| Test quality | mock-heavy 假保護、缺 non-mocked smoke、缺 screenshot / artifact、缺 multi-dataset edge。 |
-| Performance/resource | UI-thread blocking、eager imports、background job cleanup、GPU/CPU/RAM guard、Matplotlib / Qt resource leaks。 |
-| Docs / claim | current truth、known blockers、validation claim、artifact freshness 是否一致。 |
-
-Audit 輸出必須產生 blocker queue，並把 blocking findings 修完或標成 blocked 後，才可以進入
-handoff-ready 判定。若只完成單一修復，回報語意只能是 checkpoint。
-
-handoff candidate 必須同時具備：
-
-- focused regression：使用者指出的 bug 有測試、script 或 artifact 保護。
-- same-class sweep：同類 UI / backend / state / data flow 問題已搜尋並處理。
-- happy path：至少一條使用者可理解的 product workflow 或 UI-observable walkthrough 通過。
-- edge / regression：依改動類型跑相鄰 workflow 或 multi-dataset / architecture / source guard。
-- artifact review：可見 UI 改動有 screenshot / walkthrough artifact，且已人工檢查明顯跑版。
-- branch hygiene：worktree clean 或 dirty files 已解釋；validated checkpoint 已 commit 並 push。
-- claim boundary：明確列出仍不能宣稱的範圍。
-
-未完成這些條件時，只能稱為 checkpoint 或 blocked，不可回報「可以手測」。
-
-## Required Multi-Dataset Gate
-
-給使用者手測、宣稱 handoff-ready、或整理 release-candidate preflight 前，
-不同資料集來源是必測項目。只用 `A01T/A02T/A03T`，或只把同一份資料轉成多種副檔名，
-都不夠支撐「主流資料可用」。
-
-必跑 command：
-
-```bash
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
-  --profile required-ci --verify-only
-poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
-  --strict --format json --write-artifacts
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/ui/test_data_import_wizard_format_matrix.py -q
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/io/test_io_integration.py \
-  tests/integration/io/test_public_bids_fixture.py \
-  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
-
-poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
-  --format json --strict
-```
-
-`report_dataset_validation_matrix.py --strict` 會把以下資料集多樣性當成 fail/pass gate：
-
-- checked-in GDF + MAT：`A01T`、`A02T`、`A03T` 都要存在並有對應 label。
-- compact multiformat：FIF、FIF.GZ、epoched FIF、EDF、BDF、BrainVision、EEGLAB SET 都要存在。
-- public class-grounded training sources：固定 PhysioNet motor EDF、BBCI GDF 兩個 fixtures。
-- public IO/epoch-only sources：固定 SCCN EEGLAB、MNE CNT 兩個 fixtures，不計入 training
-  evidence。
-- public BIDS EEG：必須有 downloaded tiny BIDS EEG root，包含 `events.tsv` / sidecar path。
-- real Data Interpretation lifecycle：20 個必要案例都要走完
-  `scan -> preview -> validate -> apply`，不能只靠非空檔案、header 或副檔名通過。
-- real public source diversity：7 個 public cases 必須涵蓋至少 5 個真正不同的 source families；
-  同一 A01T 的轉檔只算 format coverage，不算 source diversity。
-- Tier format apply：固定的 14 種格式路徑都必須到達 apply，包含 GDF/MAT、FIF/FIF.GZ、
-  epoched FIF、EDF、BDF、BrainVision、EEGLAB、CNT、BIDS EEG、CSV、TSV、TXT。required set
-  是固定集合，不能藉由移除失敗案例縮小分母。
-- external label placement：固定 7 個 contract 都必須保留 reviewed placement choices 並到達各自
-  宣告的 evidence tier：
-  MAT event order、CSV event order、CSV sample time、TSV interval、CSV event code、TXT event
-  order、BIDS interval。CSV / TSV / TXT 使用有效的小型 generated fixtures，但不計入 public
-  source diversity。
-- reviewed internal events：PhysioNet run-dependent T1/T2、BBCI event selection、SCCN annotation
-  selection、CNT event selection 是 4 個固定 reviewed-choice profiles；移除其中任何一個都會讓
-  strict gate 失敗。PhysioNet case 另外要求 run-level mapping 被保存。這裡的 profile 不等於
-  scientific class semantics；SCCN 與 CNT 只要求 IO/epoch-only。
-- reviewed label/event 固定必要集合是 11 個案例，不能由本次結果動態計算分母：
-  checked-in GDF+MAT、PhysioNet motor EDF、BBCI GDF、SCCN EEGLAB、MNE CNT、MNE-BIDS EEG、
-  generated CSV event-order、CSV sample-time、TSV interval、CSV event-code、TXT event-order。
-  其中 8 個要求 supervised tier、MNE-BIDS 要求 label-apply-only、SCCN 與 CNT 要求
-  IO/epoch-only。任何 case ID 缺失、evidence tier 降級或 reviewed choice 未保存都會 strict
-  FAIL。
-- public fixture facts：7 個 public cases 固定檢查 sampling rate、channel count/type、
-  canonical/source unit、sample count、embedded event count/labels 與 import warnings；任一欄
-  漂移都會 strict FAIL。
-
-`report_data_interpretation_format_matrix.py --strict` 同時輸出兩層證據：synthetic format
-capability contract，以及 checked-in / SHA-pinned real files 的 ApplicationService lifecycle。
-目前 lifecycle layer 是 20 個 cases：15 個 checked-in / SHA-pinned real-file cases，加上 5 個
-generated external-label contract cases；固定涵蓋 14 種 format paths、7 個 public cases、5 個
-public source families。它能證明列出的資料與明確 carrier schema 可完成 Data Interpretation
-apply；generated carrier 不代表新的資料來源，也不能單獨證明任意 schema、epoch creation、
-dataset split、training、evaluation、OOM recovery 或 scientific label semantics，這些仍由下方
-integration tests 與 strict cross-source runner 分別支撐。
-
-`test_data_import_wizard_format_matrix.py` 會把 synthetic format-boundary cases 送進
-`ApplicationService scan -> preview -> validate`，再打開
-`DataInterpretationPreviewDialog` 走完 `Choose EEG Data`、`Load Labels`、`Review Metadata`、
-`Match Labels`、`Review and Import` 五個 step。它覆蓋 GDF+MAT、EDF、BDF、EEGLAB、BrainVision、
-FIF、BIDS events、CSV / TSV / TXT labels，以及目前明確 blocked 的 XDF / LSL。
-
-這個 UI gate 證明 wizard shell 對各 capability state 可用；public source diversity 與真正 apply
-由兩份 strict report 的 real-workflow layer 證明。整組 gate 仍不能支撐 full BIDS validator
-compliance、任意 proprietary format、長時間訓練穩定性或 scientific model-quality claim。
-
-## Artifact 解讀
-
-`artifacts/` 是機器產物和 evidence，不是 current truth。
-
-MCP artifacts 若仍存在，只代表歷史探索或相容性證據。MCP 已從 active roadmap 移除，因此
-handoff-ready、release-candidate、或 thesis evidence 不再需要 MCP walkthrough / adapter gate。
-
-current truth 以這些文件為準：
-
-- [current.md](../current.md)
-- [planning/roadmap.md](../planning/roadmap.md)
-- [architecture/README.md](../architecture/README.md)
-- [validation/README.md](README.md)
-
-## 2026-06-20 BIDS Epoch / Saliency Baseline / Resource Guard Gate
-
-`stabilize/bids-epoch-saliency-baseline` implements the 2026-06-17 progress-report
-decision for this slice:
-
-- Strict BIDS folder import recipes keep onset / duration / label-field placement as
-  epoch handoff hints, and Create Epochs can use duration windows or event-locked
-  fallbacks depending on reviewed `events.tsv` duration values.
-- Visualization starts the fast saliency baseline (`Gradient` + `Gradient * Input`)
-  in the background after training or when a metric-only run is opened.
-- SmoothGrad / SmoothGrad_Squared / VarGrad stay behind Saliency Settings; selecting
-  or changing an advanced method recomputes that method instead of recomputing every
-  saliency method.
-- Import and training commands now have resource preflight: `LoadData` / Data Import
-  apply check selected file sizes against available RAM, and `TrainCommand` checks
-  dataset RAM and GPU-batch VRAM estimates before starting training.
-
-Validation:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_application_service.py \
-  tests/unit/backend/application/test_analysis_service.py \
-  tests/unit/backend/application/test_training_service.py -q
-# 87 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/test_visualization_panel_redesign.py \
-  tests/unit/ui/dialogs/test_saliency_setting.py \
-  tests/unit/ui/components/test_plot_figure_window.py -q
-# 46 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_epoch_context.py \
-  tests/integration/ui/test_dialog_acceptance.py::test_epoching_dialog_uses_import_interval_defaults \
-  tests/unit/backend/application/test_application_service.py::test_apply_interpretation_honors_interval_end_field -q
-# 5 passed
-
-poetry run pytest --capture=sys tests/unit/backend/application/test_data_compatibility_service.py -q
-# 8 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_data_interpretation_service.py \
-  tests/unit/backend/application/test_application_service.py::test_apply_interpretation_honors_interval_end_field \
-  tests/unit/backend/application/test_training_service.py -q
-# 21 passed
-
-poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-# strict_validation.ok: true
-
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
-  --strict --format json --write-artifacts
-# all_expected_capabilities_observed: true
-# all_expected_capabilities_match: true
-# real_workflows.summary.all_required_passed: true
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/ui/test_data_import_wizard_format_matrix.py -q
-# 10 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/io/test_io_integration.py \
-  tests/integration/io/test_public_bids_fixture.py \
-  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
-# 39 passed
-
-poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict
-# 4 passed, 0 missing, 0 failed
-```
-
-This supports a manual-test candidate after final dashboard/docs/branch hygiene pass.
-It still does not claim human Windows acceptance, full BIDS validator compliance,
-arbitrary public dataset certification, or scientific model-quality evidence.
-
-## 2026-07-10 Historical Desktop MVP Checkpoint
-
-> This checkpoint was invalidated by the 2026-07-11 re-audit. The listed runs remain
-> historical evidence, but they do not support a current handoff-ready claim because
-> the dashboard, walkthrough, and reviewer conclusions were not fully bound to the
-> current HEAD.
-
-本輪 audit 不是用單一 dashboard 取代產品驗收，而是分別修正 command/runtime、assistant/UI、
-真實 EEG evidence 和 validation truth：
-
-- 同一個 Study-scoped `ApplicationService` command/state/capability access 已序列化；UI 與 assistant
-  command completion 共用 observer suppression 與 serialized `changed_state` refresh。
-- assistant `One Step` / `Workflow` policy、existing-dialog decision boundary、worker/QTimer owner-thread
-  teardown、failed shutdown retry ownership 有 focused regression。
-- shared GDF semantics 將 1023 視為 rejected trial、32766 視為 system boundary；內部 event path
-  與外部 MAT label path 使用同一套 artifact exclusion。A01T 內部事件路徑因此建立 273 個有效
-  epochs，而不是把 rejected trials 算進 288 個 cue events。
-- 真實 A01T GDF+MAT 已走完整 Data Interpretation wizard contract：scan、preview、validate、apply、
-  preprocess、epoch、split、EEGNet one-epoch training、evaluate；另有 async CUDA OOM failure
-  狀態與成功 retry 的整合測試。
-- dataset matrix 不把 SCCN 或 MNE CNT 誤稱為 training pass；strict runner 固定回報
-  2 個 class-grounded training sources + 2 個 IO/epoch-only sources。
-
-當時通過的 checkpoint：
+## Delivery Flow
 
 ```text
-Core assistant / refresh / lifecycle focused merge: 283 passed
-Validation-truth focused suite: 70 passed
-Data Splitting + walkthrough focused suite: 42 passed
-Required IO + BIDS + cross-source + real GDF integration: 46 passed
-Strict cross-source runner: 4 workflows passed; corrected claim is 2 training + 2 IO/epoch-only
-Dataset matrix: strict_validation.ok = true
-Data Interpretation format matrix: observed = true, match = true
+ux/assistant-product-v1@3869aaef
+  baseline only
+  -> stabilize/product-quality-closure
+      audit slices and checkpoint evidence
+  -> one clean pushed exact commit
+      generated handoff profile + artifact review + reviewer re-gates
+  -> Windows handoff candidate
+  -> human Windows acceptance
+  -> main merge decision
 ```
 
-這些結果只能說明當時的局部工程狀態。重新稽核找到 scientific correctness、UI command
-concurrency、agent control-loop 與 validation traceability blockers；修復並在目前 HEAD 重建完整
-gate 前，不支撐 handoff candidate，也不能取代 Windows 真人 click-through。
+完整報告欄位和 task-slice 規則看 repo-root
+`.agents/workflows/handoff-candidate.md`。
 
-## 2026-07-11 Training Selection Integrity Checkpoint
+## Canonical Handoff Runner
 
-目前 training runtime 不再在每個 epoch 評估 test split，也不再提供 test-based checkpoint
-selection。每個 epoch 只更新 train / validation；validation metric 或 last epoch 固定模型後，才在
-test loader 上建立一次 final `EvalRecord`。AUC 無法定義時保存為 `None` / UI `N/A`，不會用
-`0.0` 參與 best-checkpoint ranking。舊的 `test_acc` / `test_auc` command value 會記錄 warning 並
-明確 migration 到對應 validation strategy。Saliency 參數可以在訓練前保存，但未完成的 record
-不會建立 loader 或重算 attribution；只有 checkpoint 與 final evaluation 已完成的 record 才能
-重新計算。結構化 evaluation summary 會回傳實際的 test / validation / training provenance。
+`scripts/dev/handoff_gate_spec.py` 是 required gate ID、argv、timeout、environment、pytest outcome
+和 artifact policy 的唯一 executable manifest。`scripts/dev/run_handoff_validation_manifest.py`
+依 registry 順序把所有 required gates 交給 `scripts/dev/handoff_evidence_recorder.py`，任一 gate
+失敗即停止；全部成功後，再用完整 required ID set 驗證 dossier。不要從這頁複製個別 command
+重組 final handoff，也不要用 dashboard 取代 runner。
 
-本 checkpoint 已通過：
-
-```text
-Training contract/regression batch: 464 passed, 1 skipped
-Representative pipeline and public-source integration: 54 passed
-Strict public cross-source smoke: 4 workflows passed; corrected claim is 2 training + 2 IO/epoch-only
-Ruff: PASS
-Configured Basedpyright: 0 errors
-```
-
-這一節只支撐 training selection correctness。當時阻斷完整 unit suite 的 Qt callback crash
-已由下方 non-blocking view / Qt lifecycle checkpoint 修復；仍要等 agent 與 scientific blockers
-關閉、完整 handoff gate 重建後，才能宣稱可交給使用者手測。
-
-其中 `464` tests 的 timeline、loader identity、state-dict、weighted-loss、AUC edge 與
-saliency-before-finish assertions 支撐 training-selection integrity。`54` integration tests 與
-strict cross-source runner 只證明改動後的 EDF / GDF / EEGLAB SET / CNT workflow 相容性，
-不能單獨證明 test isolation 或 scientific model quality。
-
-## 2026-07-11 Non-Blocking View / Qt Lifecycle Candidate
-
-一般 `QueryStateCommand(state)` 現在從正式 Command API 讀
-`ApplicationViewPublication(state, capabilities, generation)`。command lock 空閒時會先重建並
-發布背景 state；長 mutation 持鎖時不等待，立即回最後一份已驗證 publication。UI、assistant
-decision context / tool policy 與 headless preflight 都讀同一 generation。Object-bearing
-`data_lists` / history query 仍序列化，避免併發暴露 mutable domain objects。mutation 執行後若
-無法驗證新 state，command 會 fail closed，不會回報假成功。
-
-Qt QThreadPool result/error 改由 owner-child QObject receiver 接收；owner 被刪除時 Qt 會自動
-移除 queued delivery。獨立 cleanup receiver 保留到 terminal `finished`，才解除 busy、observer
-suppression 與 active worker ownership。這修復了 pytest-qt teardown / WSLg 時序下落在
-`application_capabilities._handle_result` 的 native segmentation fault。
-
-目前 candidate evidence（仍是 dirty-tree checkpoint，不能視為 final handoff）：
-
-```text
-Full unit: 6908 passed, 2 skipped
-Full integration: 261 passed
-UI integration: 68 passed
-Architecture/source-guard batch: 195 passed
-Human-like walkthrough: 40/40 phases, 42 screenshots
-Repeated deleted-owner/close teardown stress: 50/50 passed
-Ruff: PASS
-Basedpyright: 0 errors, 0 warnings, 0 notes
-```
-
-這支撐 non-blocking state/capability view、背景 state 新鮮度、post-state fail-closed、Qt
-deleted-owner safety，以及 BIDS bounds/run mapping、overlapping-window split protection、saliency
-atomicity 的 regression。它仍不支撐 Windows 真人 acceptance、互動式 3D 或 thesis-grade agent
-accuracy；branch clean / push 與獨立 reviewer gate也尚未關閉。
-
-## 2026-07-15 Local Assistant Product Boundary
-
-本輪用已快取的 `microsoft/Phi-4-mini-instruct`、RTX 5070 Ti 與離線 Hugging Face 模式，從真實
-ChatPanel 跑兩個 turn：第一個透過 `query_state` 回報目前 workflow，第二個回答一般 EEG
-preprocessing 問題。artifact 位於
-`artifacts/ui/chatpanel-local-workflow/current/`，status 是 `passed`。
-
-同一模型的 unassisted raw candidate 只通過 `6/12`。host layer 在相同 12 cases 的 product
-policy score 是 `12/12`，表示 blocked request、缺參數、capability policy 和 normalization 能防止
-不安全執行；它不表示模型自己做對 12 次。完整報告位於
-`artifacts/agent_evals/current_candidate_strict/`，並標明 worktree dirty、exploratory、沒有 backend
-execution。這組 evidence 只支撐 Assistant MVP 的安全邊界，不支撐論文級準確率。
-
-七個獨立 anti-overfit cases 另跑 3 repeats：raw `1/7`，host-assisted `7/7`。dashboard 將它放在
-獨立 robustness section，不把分母混進 12-case baseline。Raw failures 仍是穩定的錯誤決策，
-因此 raw release gate 保持 open。
-
-## 2026-07-15 RTX Resource Guard Calibration
-
-`scripts/dev/calibrate_resource_guard.py --strict` 在 NVIDIA GeForce RTX 5070 Ti 上執行 bounded
-CUDA probe，結果寫入 `artifacts/resource_guard/calibration.json`：
-
-| Model | Estimated VRAM | Observed allocated delta | Covered |
-| --- | ---: | ---: | --- |
-| EEGNet | 86,326,780 B | 21,408,768 B | Yes |
-| SCCNet | 87,106,590 B | 1,856,000 B | Yes |
-| ShallowConvNet | 86,703,820 B | 24,632,832 B | Yes |
-
-校準 scope 是 batch 8、22 channels、301 samples、4 classes；3 folds 與 5 repeats 不是同時放入
-VRAM，peak scope 是 `one_fold_one_repeat_one_batch`。Probe 上限是 256 MiB 且不超過當時可用
-VRAM 的 10%。這支持公式在該 bounded scope 沒有低估觀察到的 allocated peak，但不等於完整
-training、任意 input length、任意 batch 或所有 CUDA allocator 狀態的絕對保證。
-
-## 2026-06-20 Clean-Code Boundary Follow-Up
-
-`refactor/saliency-resource-boundaries` keeps the BIDS epoch / saliency behavior
-unchanged while tightening two recently touched boundaries:
-
-- saliency method selection and parameter normalization now live in
-  `backend.application.saliency_policy`, so `AnalysisCommandService` and the
-  Visualization UI no longer carry separate copies of recommended / advanced method
-  rules;
-- saliency method names originate from the backend visualization support list, and
-  the application policy / UI selectors now derive from that same list to prevent
-  method-list drift;
-- training resource preflight now receives explicit dataset / training-option context
-  from `TrainingCommandService`; `resource_guard` no longer inspects controller or
-  `Study` shapes directly.
-
-Focused validation:
+Canonical invocation：
 
 ```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_saliency_policy.py \
-  tests/unit/backend/application/test_resource_guard.py -q
-# 7 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_analysis_service.py \
-  tests/unit/backend/application/test_training_service.py -q
-# 22 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/test_visualization_panel_redesign.py -q
-# 24 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/dialogs/test_saliency_setting.py \
-  tests/unit/ui/components/test_plot_figure_window.py \
-  tests/unit/ui/dialogs/test_export_saliency.py -q
-# 39 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_application_service.py::test_saliency_command_can_configure_params \
-  tests/unit/backend/application/test_application_service.py::test_saliency_command_normalizes_flat_method_params \
-  tests/unit/backend/application/test_application_service.py::test_visualize_and_saliency_commands_return_typed_query_payloads \
-  tests/unit/ui/visualization/test_control_sidebar.py -q
-# 21 passed
-
-poetry run ruff check <touched files>
-# PASS
-
-poetry run basedpyright <touched files>
-# 0 errors, 0 warnings, 0 notes
-
-poetry run python tests/architecture_compliance.py
-# PASS
+MODEL_CACHE_DIR="$(realpath XBrainLab/llm/core/models)"
+RAG_CACHE_DIR=/mnt/d/XBrainLabCache/rag
+poetry run -- python scripts/dev/run_handoff_validation_manifest.py \
+  --model-cache-dir "$MODEL_CACHE_DIR" \
+  --rag-cache-dir "$RAG_CACHE_DIR"
 ```
 
-## 2026-05-30 Release-Candidate Gate Follow-Up
+兩個 cache argument 都是必填，必須解析為 `/mnt/d/...` 的 absolute D-mounted path。Recorder
+會先移除 inherited `XBRAINLAB_MODEL_CACHE_DIR` / `XBRAINLAB_RAG_CACHE_DIR`，再對 real Granite、
+RAG 和 local-LLM walkthrough gates 明確注入兩個 path，避免回落到 Windows C 槽或 WSL home
+default。Recorder 的 check `environment` policy 只記錄 mount 和 resolved-path SHA-256 的
+redacted identity，不把 injected cache path 寫入該欄位。這個 identity 證明每個 gate 使用同一組
+明確 cache policy，但不代表 cache content 本身正確；model/revision、RAG artifact，以及 gate
+自行產生的 logs/output 仍依各自 evidence contract 驗證。
 
-Manual-test gating on `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
-treated non-blocking findings as work to clear, not as deferred polish. The current
-branch fixed and validated these product-quality gaps:
-
-- saliency 2D map / topomap / spectrogram rendering now keeps Qt/Matplotlib
-  figure creation on the UI thread, avoiding native Qt backend crashes from
-  background-thread figure creation while still showing visible render / error
-  states;
-- metrics and model-selection tables use dark active/inactive/disabled palettes and
-  clear initial selection, preventing white selected rows from hiding text;
-- data-splitting and epoching dialogs now have current screenshot evidence with
-  dark readable controls and visible primary actions;
-- stale current-tree `human-like-walkthrough` and `audit-visualization-render`
-  artifacts were removed; historical records can still mention them, but current
-  evidence now points to `data-import-wizard-steps`, `app-polish`, and
-  `visualization-render`;
-- training record figure helpers use figure-scoped rendering and close empty
-  figures, preventing matplotlib figure accumulation during repeated visualization;
-- `ApplicationService` lazy service wrappers now expose explicit command handlers
-  instead of generic `__getattr__` forwarding;
-- UI-only `GenerateDatasetCommand.generator` is hidden from automation schemas
-  and rejected when supplied through automation payloads;
-- Dataset import UI tests were updated to the `ReviewInterpretationCommand` command
-  path, so the focused UI suite no longer protects the old scan/preview/validate
-  sequence as the product behavior;
-- evaluation and visualization approved UI baselines were refreshed after product
-  review of the intentional no-data and wrapped-control layouts.
-
-Validation:
+Runner 預設把 evidence 寫到 repo-contained、gitignored 的
+`build/handoff-evidence/<full-SHA>/`。Recorder 會自行確認 SHA segment 和 ignore policy，不依賴
+呼叫者先手動執行 `git check-ignore`。需要 external evidence root 時，必須使用 checkout 外的
+absolute SHA-scoped path，並明確 opt in：
 
 ```bash
-QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/update_quality_dashboard.py
-# Overall status: PASS
-# generated_at / commit: see local generated artifacts/quality/latest.md
-# workspace: /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
-# checks: Ruff, Basedpyright, Architecture Compliance, Startup Smoke,
-# UI Baseline Capture, UI Dialog Acceptance, UI Product Walkthrough,
-# UI Unit Suite, Real-Data IO Integration all PASS
-
-QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_epoching_dialog.py
-# PASS; refreshed artifacts/ui/epoching-dialog/
-
-QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_ui_polish_surfaces.py
-# PASS; refreshed artifacts/ui/app-polish/
-
-QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1242 passed
-
-poetry run basedpyright
-# 0 errors, 0 warnings, 0 notes
-
-poetry run mkdocs build --strict
-# PASS
-
-poetry run pytest --capture=sys \
-  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
-  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q
-# 2 passed
-
-QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_windows_launcher_walkthrough.py
-# status: passed
+HANDOFF_SHA="$(git rev-parse HEAD)"
+poetry run -- python scripts/dev/run_handoff_validation_manifest.py \
+  --model-cache-dir "$(realpath XBrainLab/llm/core/models)" \
+  --rag-cache-dir /mnt/d/XBrainLabCache/rag \
+  --evidence-root "/mnt/d/XBrainLabHandoff/$HANDOFF_SHA" \
+  --allow-external-evidence-root
 ```
 
-This supports the branch as a stronger release-candidate preflight. It still does
-not claim signed packaging, full human Windows click-through acceptance, arbitrary
-BIDS validator compliance, or scientific model-quality conclusions.
-
-## 2026-05-25 Mainstream EEG/BCI Format Gate
-
-Mainstream format coverage was rechecked with checked-in compact fixtures plus
-local-only public fixtures under `tests/fixtures/data/public/`. The public fixture
-cache is intentionally ignored by git; `scripts/dev/fetch_public_eeg_fixtures.py`
-downloads it and now verifies SHA-256 for downloaded files. Current
-small representatives cover:
-
-- checked-in GDF + MAT labels: BCI Competition IV 2a style `A01T/A02T/A03T`;
-- checked-in compact multiformat derivatives: FIF, FIF.GZ, EDF, BDF, BrainVision,
-  EEGLAB SET, and epoched FIF;
-- public local-only fixtures: PhysioNet EDF, BBCI GDF, SCCN EEGLAB SET, MNE CNT,
-  MNE BrainVision;
-- downloaded local-only MNE-BIDS tiny EEG root with BrainVision data,
-  `events.tsv`, `events.json`, `channels.tsv`, participants, sessions, scans,
-  and electrode sidecars;
-- scan/preview validation matrix entries for CSV, TSV, TXT, MAT, BIDS events,
-  and explicitly blocked XDF/LSL.
-
-The gate found one product issue: a generic `trial/class` TSV could be interpreted
-as if `trial` were an EEG event code. Event-order placement now defaults that case
-to `trial order` and asks the user to choose target EEG events instead of blocking
-on a nonexistent event called `trial`.
-
-Validation:
-
-```bash
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py
-# downloaded/validated public fixtures, including mne-bids-tiny-eeg
-
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
-  --strict --format json --write-artifacts
-# all_expected_capabilities_observed: true
-# all_expected_capabilities_match: true
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/io/test_io_integration.py \
-  tests/integration/io/test_public_bids_fixture.py \
-  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
-# 36 passed
-
-poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
-  --format json --strict
-# 4 passed, 0 missing, 0 failed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration -q
-# 215 passed
-
-poetry run ruff check .
-# PASS
-
-poetry run basedpyright scripts/dev/fetch_public_eeg_fixtures.py \
-  scripts/dev/report_data_interpretation_format_matrix.py \
-  scripts/dev/report_dataset_validation_matrix.py \
-  scripts/dev/run_public_cross_source_training_smoke.py \
-  tests/unit/scripts/test_fetch_public_eeg_fixtures.py \
-  tests/unit/scripts/test_report_data_interpretation_format_matrix.py \
-  tests/unit/scripts/test_report_dataset_validation_matrix.py \
-  tests/unit/scripts/test_run_public_cross_source_training_smoke.py \
-  tests/integration/io/test_public_bids_fixture.py
-# 0 errors, 0 warnings, 0 notes
-
-poetry run mkdocs build --strict
-# PASS
-
-poetry run python tests/architecture_compliance.py
-# Architecture compliant
-
-poetry run python scripts/dev/update_quality_dashboard.py
-# Overall status: PASS
-```
-
-This supports mainstream tier-1/tier-2 import breadth for the formats above. It
-does not claim full BIDS validator compliance, XDF/LSL support, or scientific
-replication quality for arbitrary public datasets.
-
-## 2026-05-25 Manual-Test Audit Follow-Up
-
-Manual testing exposed multiple issues that older automated evidence did not catch.
-The follow-up audit found and fixed two validation gaps:
-
-- Product walkthrough mocks and visualization capture scripts still confirmed Data
-  Interpretation without choosing the new supervised label source. They now select
-  internal EEG events when using synthetic internal labels, and visualization capture
-  starts tiny training with an explicit confirmation boundary.
-- BIDS scan had let `participants.tsv` / `*_channels.tsv` appear as label/event
-  carriers. BIDS metadata tables are now reported as metadata context, while
-  `events.tsv` remains the label/event carrier. Saved import recipes now preserve
-  the BIDS summary used by epoch handoff and recipe reload review.
-
-Focused validation from `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/ui \
-  tests/unit/scripts/test_capture_data_interpretation_replay.py \
-  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
-  tests/unit/scripts/test_capture_visualization_render_walkthrough.py \
-  tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py -q
-# 100 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_data_interpretation_scan.py \
-  tests/unit/backend/application/test_data_interpretation_candidate.py \
-  tests/unit/backend/application/test_data_interpretation_label_carriers.py \
-  tests/unit/backend/application/test_data_interpretation_service.py \
-  tests/unit/backend/application/test_data_interpretation_review.py \
-  tests/unit/backend/application/test_data_interpretation_recipe.py \
-  tests/unit/backend/application/test_data_interpretation_formats.py \
-  tests/integration/backend/test_application_service_workflow.py -q
-# 80 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/integration/ui/test_dialog_acceptance.py \
-  tests/unit/ui/test_evaluation_panel_redesign.py \
-  tests/unit/ui/test_visualization_panel_redesign.py -q
-# 106 passed
-
-QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python \
-  scripts/dev/capture_visualization_render_walkthrough.py \
-  --output-dir artifacts/ui/visualization-render --timeout-seconds 540
-# passed; 3 rendered saliency tabs and 3D blocked-state evidence captured
-
-poetry run python scripts/dev/update_quality_dashboard.py
-# Overall status: PASS
-
-poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
-# 21 passed, 10 skipped
-
-poetry run pytest --capture=sys \
-  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
-  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q
-# 2 passed
-```
-
-This supports the integrated manual-test branch as a stronger automated preflight.
-It still does not replace human Windows click-through acceptance.
-
-## 2026-05-25 Subagent-Gated Data Import Closure
-
-Subagent gates for Data Import, runtime UI, backend state, and test completeness
-were treated as blockers. Several worker findings were stale on the current branch,
-but Gate A exposed three live Data Import issues:
-
-- ordinary folders containing `sub-*` EEG filenames could be misclassified as BIDS;
-- Review and Import could split one missing `events.tsv` problem into multiple
-  action items and route label-source issues to the wrong step;
-- Smart Parse metadata only applied subject/session even though Review Metadata
-  exposes subject/session/task/run.
-
-The current branch now requires a stronger BIDS folder shape before auto-classifying
-a folder as BIDS, canonicalizes missing `events.tsv` warnings into one Load Labels
-action item, and preserves Smart Parse subject/session/task/run in the Data Import
-metadata override recipe while keeping legacy subject/session consumers compatible.
-
-Focused and broad validation after the gate fixes:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_data_interpretation_scan.py \
-  tests/unit/backend/application/test_data_interpretation_candidate.py \
-  tests/unit/backend/application/test_data_interpretation_review.py \
-  tests/unit/backend/application/test_data_table_service.py \
-  tests/unit/backend/controller/test_dataset_controller.py \
-  tests/unit/ui/dataset/test_smart_parser.py \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
-# 158 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration -q
-# 200 passed, 14 skipped
-
-poetry run python scripts/dev/update_quality_dashboard.py
-# Overall status: PASS
-
-poetry run ruff check .
-# PASS
-
-poetry run basedpyright XBrainLab/backend/application/data_interpretation_scan.py \
-  XBrainLab/backend/application/data_interpretation_candidate.py \
-  XBrainLab/backend/application/data_interpretation_review.py \
-  XBrainLab/backend/application/data_table_service.py \
-  XBrainLab/backend/controller/dataset_controller.py \
-  XBrainLab/ui/dialogs/dataset/smart_parser_dialog.py \
-  XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py
-# 0 errors, 0 warnings, 0 notes
-
-poetry run mkdocs build --strict
-# PASS
-
-poetry run python tests/architecture_compliance.py
-# Architecture compliant
-```
-
-The skipped integration cases are public EEG fixtures that are not downloaded in
-this workspace. This gate supports the branch as a stronger manual-test candidate;
-it still does not prove arbitrary BIDS coverage or replace Windows human
-click-through acceptance.
-
-## 2026-05-25 Gate E Test-Coverage Follow-Up
-
-Gate E reviewed integration-test completeness and failed the branch as originally
-gated: backend command tests were strong, but product-visible Data Import and
-wizard state still had too much mock-heavy coverage. Two regressions were then
-made reproducible and fixed:
-
-- Loading an external label folder from the Load Labels step could refresh the
-  carrier list but leave Match Labels in `Labels inside EEG files` mode. A new UI
-  integration test uses real `ApplicationService` scan / preview / validate plus
-  the real wizard rescan handler and asserts Match Labels switches to loaded
-  label files.
-- Epoch dialog event selection had regressed after checked-event support: normal
-  selection-only dialogs could no longer accept a selected event, while import
-  handoff dialogs still must reject stale selection when all recommended events
-  are unchecked.
-
-The fast quality dashboard now includes `UI Product Walkthrough`, which runs the
-existing product walkthrough plus the real Data Import wizard runtime regression.
-
-Focused validation:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/ui/test_product_walkthrough.py \
-  tests/integration/ui/test_data_import_wizard_runtime.py -q
-# 5 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/ui/test_dialog_acceptance.py::test_epoching_dialog_accepts_selected_event_and_baseline_toggle \
-  tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init \
-  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog::test_import_handoff_uses_checked_events_not_stale_selection -q
-# 3 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application \
-  tests/integration/backend/test_application_service_workflow.py -q
-# 209 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/scripts/test_capture_visualization_render_walkthrough.py \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/test_dialogs_extra.py -q
-# 132 passed
-
-QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python \
-  scripts/dev/capture_visualization_render_walkthrough.py \
-  --output-dir artifacts/ui/visualization-render --timeout-seconds 540
-# passed
-
-poetry run python scripts/dev/update_quality_dashboard.py
-# Overall status: PASS
-```
-
-Remaining coverage boundary: public cross-source fixtures are still optional /
-skipped when absent outside the required strict gate. PhysioNet EDF and BBCI GDF
-are class-grounded training-smoke fixtures. SCCN EEGLAB is IO/preprocess/epoch-only
-because the public fixture does not define `rt` / `square` as supervised protocol
-classes; compact MNE CNT is also IO/preprocess/epoch-only because it has too few
-usable epochs for a class-balanced training split. The
-default dashboard still does not claim human Windows click-through acceptance or
-full local-LLM runtime acceptance.
-
-## 2026-05-22 Epoch Dialog Label Transparency
-
-Manual UI review found that Epoch dialog text labels could render with visible
-label-background blocks on some Qt/desktop themes because the dialog and shared
-dialog info/warning label styles did not set transparent label backgrounds. Epoch
-dialog label rules and shared dialog info/warning label styles now explicitly use
-`background-color: transparent`.
-
-Focused validation:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/test_dialogs_extra.py \
-  tests/unit/ui/components/test_dialogs.py \
-  tests/unit/ui/dialogs/test_dialogs_structure.py \
-  tests/unit/ui/preprocess/test_preprocess_panel.py -q
-# 74 passed
-
-QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1161 passed
-```
-
-## 2026-05-21 Load Labels Restore Regression
-
-Manual testing found that removing a label file in Load Labels and loading it back
-could leave Match Labels stale: the Load Labels page showed the source, while Match
-Labels still filtered the carrier as removed. The fix restores excluded carriers
-when the same known label file or folder is loaded again, refreshes the Match Labels
-state, and returns the wizard to the outer scan loop before entering Match Labels
-when a brand-new label source requires rescanning.
-
-A follow-up manual test found that removing one label file from an already-loaded
-label folder, then loading the same file back, could show the carrier twice because
-the file was also added as a second source. The restore path now treats files already
-covered by a loaded folder as the same source: it restores the carrier but does not
-add a duplicate file-level label source.
-
-Another manual test found the same visual duplicate when the loaded source itself was
-the exact label file: Load Labels rendered both the carrier row and the loaded file
-source row. The UI now collapses an exact file source when a visible carrier row has
-the same normalized path, while keeping loaded folder sources visible as the source
-scope.
-
-Another follow-up found that a loaded folder rendered file rows and the folder-scope
-row with identical `Remove` buttons, making single-file removal indistinguishable
-from unloading the whole folder. File carrier rows now use `Remove file`, while the
-folder source is shown as a separate source bar with `Remove all from this folder`.
-Regression coverage verifies that removing one file from a loaded folder leaves
-sibling label files and the loaded folder source intact.
-
-A folder named `label` also looked like another label file when its basename was used
-as the row title. Loaded folder sources now render as `Label source: ...` above the
-file list, so the list itself contains only actual label files. Cleanup also detaches
-old source-row widgets from the dialog tree before `deleteLater()`, preventing stale
-hidden remove buttons from being picked up after remove -> reload cycles.
-
-The same validation pass exposed a reproducible UI-suite crash in the preprocessing
-preview: `PlotWidget.clear()` deleted persistent PyQtGraph crosshair/title items and
-later resize events touched deleted Qt objects. Preprocess preview clearing now removes
-transient plot data only and keeps persistent crosshair items alive.
-
-Focused validation:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/test_ui_misc.py \
-  tests/unit/ui/dialogs/test_preview_widget.py \
-  tests/unit/ui/preprocess/test_preprocess_plotter.py \
-  tests/unit/ui/preprocess/test_preprocess_panel.py -q
-# 273 passed
-
-poetry run python scripts/dev/run_tests.py ui
-# 1160 passed
-
-poetry run ruff check \
-  XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py \
-  XBrainLab/ui/panels/preprocess/preview_widget.py \
-  XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/dialogs/test_preview_widget.py \
-  tests/unit/ui/preprocess/test_preprocess_plotter.py
-# All checks passed!
-
-poetry run basedpyright
-# 0 errors, 0 warnings, 0 notes
-```
-
-## 2026-05-16 Manual-Test Integration Preflight
-
-Manual-test branch `integrate/all-branches-manual-test` was refreshed after a
-multi-agent read-only audit found capability, label-placement, historical MCP, and UI status
-risks. The follow-up patch fixed preprocessing-aware raw-load blockers, destructive
-command confirmation metadata, event-code versus timestamp label placement, internal
-EEG label choice persistence, conversion-fallback pairing status, MCP HTTP conflict
-confirmation metadata, and dashboard typecheck failures.
-
-Validation run from `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`:
-
-- `poetry run python scripts/dev/update_quality_dashboard.py`: `PASS`.
-- `poetry run ruff check .`: `PASS`.
-- `poetry run basedpyright`: `PASS`.
-- `poetry run mkdocs build --strict`: `PASS`.
-- `poetry run python tests/architecture_compliance.py`: `PASS`.
-- Data Import / Epoch / UI focused suite: `178 passed`.
-- ApplicationService / automation / agent surface suite: `153 passed`.
-- Historical MCP unit and integration suite: `18 passed`.
-- `poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`:
-  `21 passed, 10 skipped` because optional public fixtures are not present.
-- Pipeline smoke:
-  `tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics`
-  and
-  `tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet`:
-  `2 passed`.
-
-This supports a runnable automated preflight for hand testing. It still does not
-prove human Windows click-through acceptance, full BIDS validation, every public EEG
-format fixture, or final UI approval for Match Labels / Review and Import.
-
-## 2026-05-14 Artifact Live-Capture Deduplication Checkpoint
-
-Artifact hygiene removed tracked top-level `artifacts/ui/*.png` live-capture files that duplicated
-approved `tests/baselines/ui/` references byte-for-byte and made future top-level dashboard captures
-local-only through `artifacts/ui/.gitignore`. Current UI walkthrough evidence remains in named
-`artifacts/ui/*/` subdirectories, while approved regression references remain in
-`tests/baselines/ui/`.
-
-Focused validation from that slice covered dashboard markdown / UI baseline helper tests, strict
-docs build, architecture compliance, and whitespace checks. This supports artifact retention hygiene;
-it does not prove visual freshness, runtime correctness, or human desktop acceptance.
-
-## 2026-05-14 Agent Confirmation Boundary Payload Evidence Checkpoint
-
-Agent confirmation payloads now include a `decision_boundary` field so UI clients can distinguish
-ordinary tool confirmation from backend semantic-apply confirmation. The focused controller test
-asserts both the default `tool_confirmation` path and `semantic_apply` for Data Interpretation apply.
-This supports clearer agent/UI confirmation behavior; it does not prove full agent tool-call quality.
-
-## Reality-Gap Audit
-
-當 human walkthrough 發現 dashboard / automated smoke 沒抓到的問題時，不能只修單點 bug。
-必須反向更新 validation strategy：
-
-- 記錄是哪一種 evidence 漏掉問題。
-- 補一個能重跑的 test、walkthrough artifact 或 product smoke。
-- 明確區分 backend truth、UI presentation truth、human-observable truth。
-- 對 launcher / desktop 問題，至少記錄 Qt platform、screen geometry、window geometry、exit code。
-
-目前需要補強的代表性 smoke：
-
-```text
-launcher
--> main window visible on current screen
--> Import file / Import folder
--> Load label folder from a different location
--> Review Metadata
--> Match Labels
--> Review and Import
--> preview shows selected scope separately from scan location
--> primary Import / Apply action remains visible
--> apply loads exactly selected EEG files and loaded label carriers
-```
-
-2026-05-10 automated coverage now includes focused backend tests for external `label_sources`,
-selected scope vs scan location, structured action items, dialog primary-action visibility,
-left-side Cancel / right-side wizard navigation behavior, no nested table scroll regression,
-one-panel-per-step wizard navigation, task-panel layout checks, Dataset sidebar first-layer action
-cleanup, and a product-flow unit smoke for import -> load label folder -> review metadata ->
-match labels -> review/import. Updated offscreen screenshots live under
-`artifacts/ui/data-import-wizard-steps/`. This is not a replacement for human Windows desktop
-acceptance or a full BIDS support claim.
-
-2026-05-11 follow-up coverage adds the final first-version Match Labels source model:
-`Labels inside EEG files` hides loaded-label pairing, while `Loaded label files` exposes file
-pairing plus label field, placement method, target event / time, label unit, duration field and
-check status. Focused tests now cover placement / duration preservation for epoch handoff,
-inside-EEG source selection suppressing external label-file choices, and removing a loaded label
-source from `Load Labels`. Follow-up coverage also verifies that auto-detected label carriers can
-be removed from `Load Labels` and are excluded from the backend candidate through
-`excluded_label_carriers`. Background test coverage now adds single-file selected-scope regressions
-for sibling EEG files and service apply. Follow-up tests verify that class maps inferred from
-external label carriers are not shown or saved when the user chooses `Labels inside EEG files`.
-Offscreen screenshots include:
-
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-suggested-events-full.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-bids-events.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-conversion-fallback.png`
-
-2026-05-13 Tier 1/Tier 2 Data Import coverage adds:
-
-- single-file selected-scope tests that still detect same-stem label carriers from nearby
-  `label/` subfolders without importing sibling EEG files;
-- strict BIDS `events.tsv` coverage for missing sidecar, missing duration fallback,
-  missing selected-scope events blocking, and regular-folder `events.tsv` staying in
-  the general label-file flow;
-- internal-event evidence coverage for response/comment filtering and run-dependent `T1` / `T2`
-  warnings;
-- external label placement coverage that blocks invalid selected target events and preserves
-  selected event filters into reviewed label import recipe state;
-- UI coverage for strict BIDS event review cards, class-value summaries, and refreshed
-  canonical wizard screenshots via `scripts/dev/capture_data_import_wizard_steps.py`.
-
-Latest focused validation for this slice:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_data_interpretation_scan.py \
-  tests/unit/backend/application/test_data_interpretation_label_carriers.py \
-  tests/unit/backend/application/test_data_interpretation_candidate.py \
-  tests/unit/backend/application/test_data_interpretation_recipe.py \
-  tests/unit/backend/application/test_data_interpretation_review.py \
-  tests/unit/backend/application/test_application_service.py -q
-# 109 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/scripts/test_capture_data_interpretation_replay.py -q
-# 69 passed
-```
-
-2026-05-14 Epoch handoff coverage adds a focused bridge from Data Import review choices into the
-Create Epochs dialog:
-
-- reviewed internal EEG labels record recommended class events for epoching;
-- reviewed external label files record placement method, label field, target event selection,
-  time field, duration/end field, class map and duration statistics as runtime epoch hints;
-- interval labels using an end-time column are converted to durations before apply;
-- reviewed event-code label carriers remap matching EEG events instead of falling back to sequence
-  apply;
-- Create Epochs consumes the import hint for suggested events, time window and baseline defaults,
-  while keeping the old epoch dialog API compatible;
-- Create Epochs section titles use card headers instead of Qt group-box legends, avoiding title /
-  border overlap in the dark theme.
-
-Focused validation for this slice:
-
-```bash
-poetry run ruff check \
-  XBrainLab/backend/application/epoch_context.py \
-  XBrainLab/backend/application/data_interpretation_apply.py \
-  XBrainLab/backend/application/data_interpretation_service.py \
-  XBrainLab/backend/load_data/label_loader.py \
-  XBrainLab/ui/dialogs/preprocess/epoching_dialog.py \
-  tests/unit/backend/application/test_epoch_context.py \
-  tests/unit/backend/application/test_application_service.py \
-  tests/integration/ui/test_dialog_acceptance.py
-# All checks passed!
-
-poetry run basedpyright \
-  XBrainLab/backend/application/epoch_context.py \
-  XBrainLab/backend/application/data_interpretation_apply.py \
-  XBrainLab/backend/application/data_interpretation_service.py \
-  XBrainLab/backend/load_data/label_loader.py \
-  XBrainLab/ui/dialogs/preprocess/epoching_dialog.py \
-  tests/unit/backend/application/test_epoch_context.py \
-  tests/unit/backend/application/test_application_service.py \
-  tests/integration/ui/test_dialog_acceptance.py
-# 0 errors, 0 warnings, 0 notes
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application/test_epoch_context.py \
-  tests/unit/backend/application/test_application_service.py \
-  tests/unit/backend/application/test_preprocess_service.py \
-  tests/integration/ui/test_dialog_acceptance.py \
-  tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init \
-  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog \
-  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_accepted \
-  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_epoch_capability_not_preprocess_block \
-  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller \
-  tests/unit/ui/preprocess/test_preprocess_panel.py::test_preprocess_panel_epoching \
-  tests/unit/backend/load_data/test_label_loader.py \
-  tests/unit/backend/load_data/test_label_loader_coverage.py -q
-# 101 passed
-```
-
-Screenshot evidence:
-
-- `artifacts/ui/epoching-dialog/epoching-interval-import.png`
-- `artifacts/ui/epoching-dialog/epoching-internal-events.png`
-
-2026-05-22 manual-test follow-up:
-
-- Create Epochs now keeps its action footer fixed while the content area scrolls above it, so
-  dense import hints / event lists do not push the Time Window card below the visible dialog.
-- Data Import Review and Import now groups repeated file-scoped action items with the same target
-  step, issue and next action into one review card / tree row, while preserving ordinary non-file
-  review rows as separate items.
-- Follow-up grouping now treats file-scoped review items as the same problem even when the file
-  name appears in the issue/title rather than only in the impact text. The UI shows one card with
-  affected files instead of one repeated card per EEG file.
-- Load Labels rescan follow-up now resumes the wizard at Review Metadata after a user loads a
-  new label source and presses Next, instead of rebuilding the dialog back at Choose EEG Data.
-- Load Labels now supports in-place label-source rescan through the same command API, so the
-  visible dialog stays open while refreshed label carriers are loaded and the wizard advances to
-  Review Metadata without a close/reopen flash.
-- Review and Import now refreshes its Import Summary from current wizard state when the final
-  step is shown, so manual subject/session/task/run edits made in Review Metadata are reflected
-  before applying.
-- Load Labels now removes the containing user-loaded folder source when the removed label file is
-  the only active carrier from that folder, so duplicate auto/folder label paths do not require a
-  second removal. Multi-file folders keep the folder source and only exclude the selected file.
-- Evaluation Metrics Summary now forces a dark selected-row palette, including inactive selection
-  state, so selected rows do not fall back to unreadable white system selection colors.
-- Visualization 3D Plot now blocks known-unstable Wayland / remote OpenGL PyVistaQt sessions before
-  creating `QtInteractor`, so opening the last saliency tab shows a product message instead of
-  risking a native crash.
-
-Focused validation:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog::test_content_scrolls_above_fixed_footer \
-  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog::test_label_backgrounds_are_transparent \
-  tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_review_and_import_groups_repeated_file_action_items -q
-# 4 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/test_dialogs_extra.py \
-  tests/unit/ui/components/test_dialogs.py \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/test_ui_misc.py -q
-# 266 passed
-
-QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1171 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
-# 71 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/test_dialogs_extra.py \
-  tests/unit/ui/components/test_dialogs.py \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/test_ui_misc.py -q
-# 268 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_rescans_after_add_label_folder_product_flow -q
-# 74 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/test_dialogs_extra.py \
-  tests/unit/ui/components/test_dialogs.py \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/test_ui_misc.py -q
-# 272 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
-# 76 passed
-```
-
-## Backend Test Hygiene Inventory
-
-2026-05-11 compact inventory for the backend/test hygiene branch:
-
-| Cluster | Classification | Current evidence | Action in this branch |
-| --- | --- | --- | --- |
-| Data Interpretation backend lifecycle | Strong behavior tests | `tests/unit/backend/application/test_data_interpretation_service.py` covers scan -> preview -> validate -> apply, external label sources, selected file scope, metadata apply, label import recipe state. `tests/integration/backend/test_application_service_workflow.py` covers non-mocked ApplicationService interpretation -> recipe reload -> dataset workflow. | Strengthened selected-scope and service apply coverage; added relative selected-file normalization coverage. |
-| Scan / candidate / review / recipe contracts | Useful unit contract tests | `test_data_interpretation_scan.py`, `test_data_interpretation_candidate.py`, `test_data_interpretation_review.py`, `test_data_interpretation_recipe.py`, `test_data_interpretation_label_carriers.py`. | Preserves BIDS/file/folder scan behavior, selected scope, external label source provenance, structured action items, recipe reload/remap, label source mode, placement, duration, and class-map source. |
-| Product runtime BackendFacade guard | Strong architecture guard | `tests/architecture_compliance.py` now has a pytest gate that scans `XBrainLab/ui`, `XBrainLab/llm`, and `XBrainLab/mcp` for `BackendFacade` imports / construction. `tests/unit/test_architecture_compliance.py` covers both violation and allowed `get_application_service(study)` cases. | Product runtime packages must enter via `ApplicationService / Command API`; `BackendFacade` module is physically removed and must not return. |
-| UI command route | Mock-heavy but useful command contract tests | `tests/unit/ui/test_ui_misc.py` asserts import file/folder/BIDS/reload route through `ScanSourceCommand`, `PreviewInterpretationCommand`, `ValidateInterpretationCommand`, and `ApplyInterpretationCommand` without controller import fallback. `tests/unit/ui/dataset/test_dataset_sidebar.py` and `test_panel.py` guard real-Study fallback refusal. | Backend/test continuation adds command-route coverage only. The current dirty worktree still contains earlier Load Labels / Match Labels UX edits, so product UI acceptance must be judged separately from these route tests. |
-| Assistant command parity | Useful contract tests | `tests/unit/llm/tools/test_application_surface.py`, `tests/unit/llm/tools/real/test_real_tools.py`, `tests/unit/llm/tools/test_definitions.py`, and `tests/unit/llm/agent/test_tool_call_normalizer.py` cover exposed Data Interpretation command names, confirmation boundary, blocked reasons, schema exposure, and state truth. Historical MCP tests may still exist, but they are no longer active handoff gates. | Real agent tools now assert `ApplicationService` command objects instead of patching `BackendFacade`; tool schema and real/mock tool surfaces carry `label_sources` and the shared choice schema. |
-| Real-data fixture validation | Strong integration evidence when fixtures are present | Real-data tests now resolve fixtures under `tests/fixtures/data/`; scripts use the same path. | Replaced obsolete `tests/data/` path references so deleted tracked fixture files do not turn IO/pipeline tests into false skips. The replacement fixture tree must be included in the PR rather than left untracked. |
-| Legacy direct controller tests | Mock-heavy but useful compatibility tests | Legacy controller fallback tests remain in UI suites to guard mock/legacy contexts and real-Study refusal. | Not deleted; retained because they protect compatibility while architecture guards prevent product fallback bypass. |
-| Obsolete / duplicated clusters | Obsolete path cluster | The obsolete cluster is the deleted `tests/data/` fixture location, replaced by `tests/fixtures/data/`. No test cluster was deleted without replacement. | Consumers and docs were moved to `tests/fixtures/data/`; real-data gates must use that path. |
-| Missing coverage outside this scope | Explicitly out of current backend/test cleanup scope | Full internal event-name extraction for every EEG format, Windows human desktop acceptance, and final Epoch UI consumption of `duration_field`. | Documented as future validation/product work, not claimed by this branch. |
-
-## 2026-07-10 UI Worker And Shutdown Lifecycle Gate
-
-This checkpoint closes lifecycle races found after the first Desktop MVP handoff audit:
-
-- Data Interpretation review, reload, apply, and recipe save use QThreadPool continuations. The
-  original click handler returns immediately; there is no custom nested `QEventLoop` wait.
-- Async command cleanup captures an immutable refresh-suppression owner id before work starts.
-  A queued result can therefore clean up after its QWidget is deleted without dereferencing the
-  deleted wrapper. Normal callbacks are also suppressed after MainWindow begins closing.
-- MainWindow disables all command surfaces, installs an ApplicationService admission fence, and
-  then checks training/assistant ownership. Commands queued before the fence are checked again
-  after acquiring the command lock. Failed fence release has bounded retry and an explicit
-  Retry/Close recovery path.
-- Data Splitting preview records running/succeeded/failed/cancelled state. Unexpected worker
-  exceptions cannot leave `Calculating` forever or make Confirm rerun generation on the GUI thread;
-  Esc/X wait for the real worker and slow cancellation remains visibly in progress.
-
-Validation:
-
-```bash
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/unit/backend/application \
-  tests/unit/ui/test_application_capabilities.py \
-  tests/unit/ui/test_refresh_coordinator.py \
-  tests/unit/ui/test_data_splitting.py \
-  tests/unit/ui/dataset/test_data_splitting.py \
-  tests/unit/ui/dataset/test_interpretation_async_flow.py \
-  tests/unit/ui/test_main_window_sync.py \
-  tests/unit/ui/test_ui_misc.py \
-  tests/unit/ui/test_local_bootstrap_validation.py \
-  tests/unit/test_architecture_compliance.py -q
-# 746 passed
-
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q
-# 1375 passed
-
-poetry run basedpyright XBrainLab
-# 0 errors
-
-poetry run python tests/architecture_compliance.py
-# Architecture compliant
-```
-
-This does not replace Windows human acceptance for closing during real training, Alt+F4 while a
-real Data Splitting preview is stopping, or long-running native-library teardown.
-
-## 2026-07-30 Assistant UI Gate Determinism Follow-up
-
-The clean dashboard exposed that the AgentManager threading tests still read the user's local
-assistant settings and model-cache availability. A missing Granite cache correctly prevented
-runtime startup, but the tests misreported the absent command thread as a threading regression and
-left asynchronous Qt cleanup incomplete after failure. A same-class sweep also found one terminal
-cleanup retry fixture that called `quit()` on an auxiliary worker without waiting for the thread to
-stop, allowing a timing-dependent leak into the following real-runtime tests.
-
-The threading fixture now supplies explicit local-runtime readiness, every manager case waits for
-terminal cleanup, and the auxiliary worker has an explicit terminal wait. The focused threading
-file passed `15` tests, the threading-plus-real-runtime sequence passed `32` tests, the
-`ui/components` shard passed `392` tests in three independent processes, and the complete isolated
-UI gate passed:
-
-```text
-899 + 122 + 392 + 40 + 135 + 294 + 66 + 22 + 126 + 77 tests
-```
-
-These tests no longer depend on root `settings.json` or a machine-specific model cache. Native
-Windows click-through remains a separate acceptance boundary. The dashboard gives the ten-shard
-UI suite a `900s` gate-level bound instead of the generic `300s`; each shard retains its own
-bounded timeout, so a stalled shard still fails rather than running indefinitely.
-
-## 常用 docs gate
-
-```bash
-poetry run mkdocs build --strict
-git diff --check
-```
-
-如果改 CSS / layout，還要留下 built site screenshot 或可視覺審核 artifact。
+Repo-contained 但未 ignored 的 root 會 fail closed；checkout 外的 root 若沒有 explicit opt-in、
+不是 absolute path 或缺少 full SHA path segment，也會 fail closed。External root 不會被錯誤地
+送進 repo-relative `git check-ignore` 判斷。
+
+Required pytest gates 只能透過 source-controlled wrapper 執行。Wrapper 會在 `pytest.main()`
+正常返回後才原子寫入 SHA-scoped JSON attestation，記錄 runner、logical arguments、exit code
+和完整 outcome counts；stdout 中的 `passed` 文字不具認證效力。這個契約用來防止提前退出、截斷
+log 或偽造 terminal summary 被誤判為 PASS。它信任同一 candidate SHA 內受 review 的測試與
+runner source，不是用來抵抗能任意修改同一使用者 source/evidence 的惡意程式碼。
+
+## Registered Gate Inventory
+
+下表用來說明 gate 意圖；exact argv 只讀 checked-in registry，不在文件維護第二份 shell manifest。
+
+| Section | Registered IDs | Evidence boundary |
+| --- | --- | --- |
+| 1. Identity/static/docs | `git-status` through `mkdocs-strict` | Branch/upstream/source identity、Ruff、Basedpyright、MkDocs。 |
+| 2. Architecture/security | `architecture-compliance`、`architecture-unit`、`persistence-path-stop-barrier`、`complete-regression` | Command spine、read-side boundary、safe persistence/path、Stop barrier，以及隔離 subprocess 的完整 unit/integration/regression suite。 |
+| 3. Real command spine | `command-spine` | Real ApplicationService FIF workflow plus deterministic oracle；不支撐 scientific accuracy。 |
+| 4. Assistant/local runtime | `assistant-security-suite`、`granite-runtime`、`rag-offline`、五個 `chatpanel-*` gates | Exact Granite、secure RAG、guided/training readiness/completion、recovery、long session 與 bounded shutdown。 |
+| 5. UI artifacts | `human-like-product` through `data-import-wizard-validate` | Exact-source full/narrow/DPI/wizard/visualization artifact set。 |
+| 6. Native lifecycle | `native-lifecycle-tests`、`preprocess-native-stress`、`ui-native-render-stress` | Preprocess and render ownership；不取代 Windows native acceptance。 |
+| 7. Multi-dataset | `fetch-required-ci` through `public-cross-source-training`，包含 `real-data-interpretation-training` | Fixed denominator、verify-only、wizard、IO/BIDS、cross-source diversity，以及 Graz external labels、PhysioNet internal events、public BIDS 從 Data Interpretation 到 epoch/dataset/training 的連續 product spine。 |
+| 8. Resource/dashboard | `resource-calibration`、`handoff-dashboard` | 在 ignored exact-SHA root 產生 CUDA calibration，dashboard 保留並驗證該輸入後做 final clean-source recheck；dashboard 必須維持最後一個 gate。 |
+
+Section 2 的 WSL/POSIX regression 與 Windows native-opener source/dispatch guard 不能取代真人
+NTFS junction/reparse acceptance。Section 3 的 real command-spine smoke 和 deterministic oracle
+不能互相替代，也不能外推成 scientific model quality。
+
+Section 4 必須共同覆蓋 success、confirmation approve/reject、blocked/error、retry、cancel、
+RAG re-admission、long session 和 bounded shutdown。Deterministic tests 或 host-composed UI
+不能單獨替代 exact Granite artifacts；exact Granite artifact 也不能外推成 raw-model accuracy。
+
+Section 5 的主 agent 必須逐張檢查 full-window、narrow width、100/125/150% scale、Assistant dock、
+loading/empty/error/blocked/terminal、primary action、text fit、scroll、dialog geometry、provenance
+和 overlap。Offscreen/Xvfb evidence 不取代 Windows native DPI/multi-monitor。Tracked
+`artifacts/ui/data-import-wizard-steps/` 只能算 checkpoint；final runner 寫入 SHA-scoped
+ignored/external root，不覆寫 tracked artifact。
+
+Section 7 的 required denominator 不得用缺 fixture、刪 case、skip、xfail 或 deselection 縮小。
+`real-data-interpretation-training` 必須整檔執行
+`tests/integration/pipeline/test_real_data_handoff_gate.py`，不可只挑一個較容易的 node。它證明
+Graz 2a 外部 MAT labels、PhysioNet EEGMMIDB 內建 events 與 public MNE-BIDS events.tsv
+都能沿 current `scan -> preview -> validate -> apply` spine 進入後續 workflow；這仍不等於
+full BIDS validator 或任意 EEG source 支援。
+Extended OpenNeuro、Sleep-EDF 和 CHB-MIT teacher fixture tests 是 optional acceptance evidence，
+不混入 mandatory public IO gate。不同副檔名不等於不同 dataset source；同一 source 的轉檔
+只算 format coverage。這組 gate 不支撐 full BIDS validator、任意 clinical/proprietary format
+或 scientific accuracy。
+
+Section 8 不使用 tracked `artifacts/resource_guard/calibration.json` 認證 handoff；該檔只算開發期
+checkpoint。Canonical runner 會先將 calibration 寫到
+`build/handoff-evidence/<full-SHA>/resource-calibration.json`，再把同一檔案作為 preserved input
+交給最後的 dashboard。校正與 dashboard 都要求相同 branch、完整 commit、tree、source digest
+及無未保護 dirty source；未 stage 的 repo-root `settings.json` 仍依 protected-local policy 顯式記錄。
+
+Section 8 dashboard does not run or certify sections 3-6。它只總結自己實際執行的 checks，
+並重新驗證 expected branch、configured upstream、`HEAD == upstream`、ahead/behind `0/0`、
+dirty policy 和 execution 前後 source stability。Final dossier verification 由 canonical runner
+在 dashboard 成功後執行；任何 artifact generator 若讓 tracked worktree 變髒，runner 必須
+fail closed。
+
+## Assistant Evidence Boundary
+
+Product runtime 必須保持 local-only，exact model / embedding revision、consent/quota、offline
+loading、resource admission、confirmation、capability、verification 和 shutdown policy 都要在
+final source 重跑。
+
+Artifact 或 tests 必須分開報告：
+
+- model-owned output；
+- host normalization / bounded repair；
+- deterministic host continuation；
+- ApplicationService capability / confirmation blocking；
+- user decision boundary；
+- raw-model score versus host-assisted product behavior。
+
+Host-assisted product walkthrough 不能報成 raw-model accuracy。Tool-call benchmark 只有在產品
+closure 後 freeze cases、scorer、prompt/source fingerprint 和 repeats，才可作 thesis evidence。
+
+## Artifact and History Boundary
+
+`artifacts/` 是 generated evidence，不是 canonical current truth。Artifact 只有在 source
+identity、generator、claims 和 limitations 完整且吻合 current candidate 時才可用。
+
+MCP code/tests/artifacts 若仍存在，只代表歷史探索或使用者明確要求的專項 evidence。MCP 已退出
+active product / thesis roadmap，不是 handoff、release-candidate 或 thesis prerequisite。
+
+歷史工程結果請看：
+
+- [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md)
+- [Implementation Log](../records/implementation_log.md)
+- [Worklog](../records/worklog.md)
+- Git history
+
+這些 history sources 可以解釋一個 checkpoint 做過什麼，但不能把舊 branch 的 totals 或 PASS
+直接升格成 current handoff claim。
+
+## Claim Boundary
+
+Automated closure 全部通過後，只能宣稱 **Windows handoff candidate**。以下仍需獨立 evidence
+或真人 acceptance：
+
+- Windows native DPI、多螢幕、遠端桌面和長時間互動；
+- interactive 3D 和 native GPU teardown；
+- teacher-supplied datasets 與真實使用流程；
+- signed installer / release approval；
+- scientific model-quality；
+- frozen thesis-grade tool-call / agent accuracy；
+- product complete 和 merge to `main`。

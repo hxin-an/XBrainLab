@@ -30,9 +30,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.application.epoch_context import (
     build_epoch_confirmation_requirement,
-    build_epoching_context,
 )
-from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.components.presentation import fit_table_to_all_rows
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
@@ -72,7 +70,6 @@ class EpochingDialog(BaseDialog):
     correction. Displays duration info and warnings for short epochs.
 
     Attributes:
-        data_list: List of loaded EEG data objects.
         params: Tuple of (baseline, selected_events, tmin, tmax) after acceptance.
         event_list: QTableWidget displaying available event types.
         tmin_spin: QDoubleSpinBox for epoch start time.
@@ -88,15 +85,14 @@ class EpochingDialog(BaseDialog):
     def __init__(
         self,
         parent,
-        data_list: list,
-        epoch_context: dict | None = None,
         *,
+        epoch_context: dict,
         epoch_handoff: dict | None = None,
         assistant_suggestions: dict[str, str] | None = None,
     ):
-        self.data_list = data_list
+        if not isinstance(epoch_context, dict):
+            raise TypeError("epoch_context must be a detached dictionary")
         self.epoch_context = self._normalized_epoch_context(
-            data_list,
             epoch_context,
             epoch_handoff,
             assistant_suggestions,
@@ -141,7 +137,7 @@ class EpochingDialog(BaseDialog):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setWidget(content)
 
-        header = QLabel("Create Epochs")
+        header = QLabel("Create EEG Epochs")
         header.setObjectName("EpochDialogTitle")
         header.setStyleSheet(
             "background-color: transparent; font-size: 18px; font-weight: 700;"
@@ -149,8 +145,7 @@ class EpochingDialog(BaseDialog):
         content_layout.addWidget(header)
 
         subtitle = QLabel(
-            "Choose which events become epochs, then set the time window used "
-            "for training."
+            "Choose which events become EEG epochs, then set the analysis time window."
         )
         subtitle.setObjectName("EpochDialogSubtitle")
         subtitle.setWordWrap(True)
@@ -175,11 +170,6 @@ class EpochingDialog(BaseDialog):
         self.event_list.setShowGrid(False)
 
         available_events = self.epoch_context.get("available_events") or []
-        if not available_events:
-            events: set[str] = set()
-            for data in self.data_list:
-                self._extract_events_safely(data, events)
-            available_events = [{"name": str(ev), "count": None} for ev in events]
 
         recommended_events = set(self.epoch_context.get("recommended_events") or [])
         rows = []
@@ -228,12 +218,21 @@ class EpochingDialog(BaseDialog):
                     if item is not None:
                         item.setToolTip(f"{event_name}: {count} event(s)")
 
-        header = self.event_list.horizontalHeader()
-        if header is not None:
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        event_header = self.event_list.horizontalHeader()
+        if event_header is not None:
+            event_header.setSectionResizeMode(
+                0,
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
+            event_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            event_header.setSectionResizeMode(
+                2,
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
+            event_header.setSectionResizeMode(
+                3,
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
         fit_table_to_all_rows(self.event_list)
         self.event_list.itemChanged.connect(self._confirmation_scope_changed)
         event_layout.addWidget(self.event_list)
@@ -375,7 +374,7 @@ class EpochingDialog(BaseDialog):
         footer.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        normalize_dialog_button_box(buttons, ok_text="Create Epochs")
+        normalize_dialog_button_box(buttons, ok_text="Create EEG Epochs")
         ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setObjectName("EpochPrimaryButton")
@@ -489,14 +488,14 @@ class EpochingDialog(BaseDialog):
         if self._is_bids_epoch_context() and recommended:
             return (
                 "These labels were confirmed in Match Labels. Uncheck a class only "
-                "if this epoch run should use a subset."
+                "if this EEG epoch setup should use a subset."
             )
         if recommended:
             return (
                 "Suggested class events are checked. Adjust this list if the import "
                 "matched the wrong labels."
             )
-        return "Select the event types that should become training epochs."
+        return "Select the event types that should become EEG epochs."
 
     def _timing_summary_text(self) -> str:
         time_field = str(self.epoch_context.get("time_field") or "").strip()
@@ -517,9 +516,9 @@ class EpochingDialog(BaseDialog):
             return ""
         if mode == "duration":
             return (
-                "Use event duration. The epoch starts at onset and ends at the "
+                "Use event duration. The EEG epoch starts at onset and ends at the "
                 "largest reviewed duration; adjust only if this dataset needs a "
-                "fixed training window."
+                "fixed analysis window."
             )
         if mode == "event_locked":
             return (
@@ -530,50 +529,39 @@ class EpochingDialog(BaseDialog):
 
     @staticmethod
     def _normalized_epoch_context(
-        data_list: list,
-        epoch_context: dict | None,
+        epoch_context: dict,
         epoch_handoff: dict | None,
         assistant_suggestions: dict[str, str] | None,
     ) -> dict:
-        if epoch_context is not None:
-            context = dict(epoch_context)
-        else:
-            handoff = dict(epoch_handoff or {})
-            context = dict(
-                build_epoching_context(
-                    data_list,
-                    epoch_handoff=handoff,
-                )
+        context = dict(epoch_context)
+        handoff = dict(epoch_handoff or {})
+        if handoff:
+            blockers = [str(item) for item in handoff.get("supervised_blockers", [])]
+            ready = bool(handoff.get("ready")) and not blockers
+            placement_modes = [
+                str(item).strip()
+                for item in handoff.get("placement_modes", []) or []
+                if str(item).strip()
+            ]
+            default_events = [
+                str(item).strip()
+                for item in handoff.get("default_epoch_events", []) or []
+                if str(item).strip()
+            ]
+            context.update(
+                {
+                    "source": _label_source_display(handoff.get("label_source")),
+                    "placement_method": (
+                        placement_modes[0] if placement_modes else "manual"
+                    ),
+                    "placement_label": _placement_mode_display(placement_modes),
+                    "recommended_events": default_events if ready else [],
+                    "has_import_hint": True,
+                    "epoch_handoff": handoff,
+                    "handoff_ready": ready,
+                    "handoff_blockers": blockers,
+                }
             )
-            if handoff:
-                blockers = [
-                    str(item) for item in handoff.get("supervised_blockers", [])
-                ]
-                ready = bool(handoff.get("ready")) and not blockers
-                placement_modes = [
-                    str(item).strip()
-                    for item in handoff.get("placement_modes", []) or []
-                    if str(item).strip()
-                ]
-                default_events = [
-                    str(item).strip()
-                    for item in handoff.get("default_epoch_events", []) or []
-                    if str(item).strip()
-                ]
-                context.update(
-                    {
-                        "source": _label_source_display(handoff.get("label_source")),
-                        "placement_method": (
-                            placement_modes[0] if placement_modes else "manual"
-                        ),
-                        "placement_label": _placement_mode_display(placement_modes),
-                        "recommended_events": default_events if ready else [],
-                        "has_import_hint": True,
-                        "epoch_handoff": handoff,
-                        "handoff_ready": ready,
-                        "handoff_blockers": blockers,
-                    }
-                )
 
         suggestions = dict(assistant_suggestions or {})
         target_event = str(suggestions.get("target_event") or "").strip()
@@ -636,7 +624,7 @@ class EpochingDialog(BaseDialog):
         if self.epoch_context.get("has_import_hint"):
             if self._is_bids_epoch_context():
                 return "BIDS events confirmed in Match Labels."
-            return "Import choices are available for this epoch setup."
+            return "Import choices are available for this EEG epoch setup."
         return ""
 
     @staticmethod
@@ -802,7 +790,7 @@ class EpochingDialog(BaseDialog):
         # Most models need at least 1.0-1.2s at typical sampling rates
         if duration < 1.0:
             self.warning_label.setText(
-                "Warning: Epoch duration < 1.0s may be too short for some models "
+                "Warning: EEG epoch duration < 1.0s may be too short for some models "
                 "(EEGNet, SCCNet, ShallowConvNet). "
                 "Consider using at least 1.2s to avoid errors during training plan "
                 "generation.",
@@ -810,8 +798,8 @@ class EpochingDialog(BaseDialog):
             self.warning_label.show()
         elif duration < 1.2:
             self.warning_label.setText(
-                "Note: Epoch duration < 1.2s may cause issues with high sampling rates "
-                "(>250Hz).",
+                "Note: EEG epoch duration < 1.2s may cause issues with high "
+                "sampling rates (>250Hz).",
             )
             self.warning_label.show()
         else:
@@ -855,7 +843,7 @@ class EpochingDialog(BaseDialog):
             QMessageBox.warning(
                 self,
                 "Invalid Input",
-                "Epoch duration is too short (< 0.1s).",
+                "EEG epoch duration is too short (< 0.1s).",
             )
             return
 
@@ -874,7 +862,7 @@ class EpochingDialog(BaseDialog):
                 QMessageBox.warning(
                     self,
                     "Invalid Input",
-                    "Baseline must stay inside the epoch time window.",
+                    "Baseline must stay inside the EEG epoch time window.",
                 )
                 return
             baseline = (baseline_min, baseline_max)
@@ -942,19 +930,3 @@ class EpochingDialog(BaseDialog):
     def get_confirmation_receipt(self) -> str | None:
         """Return the backend-issued receipt accepted for the current parameters."""
         return self.confirmation_receipt
-
-    def _extract_events_safely(self, data, events):
-        """Safely extract event names from a data object.
-
-        Args:
-            data: EEG data object to extract events from.
-            events: Set to add event name strings to.
-
-        """
-        try:
-            # Use get_event_list which prioritizes imported/resampled events
-            _, ev_ids = data.get_event_list()
-            if ev_ids:
-                events.update(ev_ids.keys())
-        except Exception:
-            logger.exception("Failed to get event list for data")

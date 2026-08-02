@@ -8,12 +8,16 @@ from pathlib import Path
 
 import pytest
 
+from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.llm.tools.result_contract import (
     SAFE_UNEXPECTED_FAILURE_CODE,
     SAFE_UNEXPECTED_FAILURE_MESSAGE,
+    ToolResult,
     public_safe_result_projection,
+    recover_authoritative_failure_state,
     redact_public_text,
     safe_unexpected_failure,
+    tool_result_from_command,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -33,6 +37,16 @@ PUBLIC_LOG_BOUNDARIES = (
     "XBrainLab/llm/tools/real/dataset_real.py",
     "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
     "XBrainLab/ui/components/agent_manager.py",
+)
+PUBLIC_EXCEPTION_TYPE_BOUNDARIES = (
+    "XBrainLab/backend/utils/public_diagnostics.py",
+    "XBrainLab/backend/utils/public_diagnostic_projection.py",
+    "XBrainLab/backend/utils/logger.py",
+    "XBrainLab/backend/application/service.py",
+    "XBrainLab/llm/tools/result_contract.py",
+    "XBrainLab/ui/components/assistant_command_dispatcher.py",
+    "XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py",
+    "scripts/dev/run_application_command.py",
 )
 _SENSITIVE_LOG_NAMES = frozenset(
     {
@@ -114,6 +128,22 @@ def _unsafe_exception_exposures(path: Path) -> list[tuple[int, str]]:
     return findings
 
 
+def _unsafe_dynamic_type_name_reads(path: Path) -> list[int]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    findings: list[int] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Attribute) and node.attr == "__name__"):
+            continue
+        owner = node.value
+        if (isinstance(owner, ast.Attribute) and owner.attr == "__class__") or (
+            isinstance(owner, ast.Call)
+            and isinstance(owner.func, ast.Name)
+            and owner.func.id == "type"
+        ):
+            findings.append(node.lineno)
+    return findings
+
+
 def _contains_sensitive_log_value(node: ast.AST) -> bool:
     return any(
         (isinstance(child, ast.Name) and child.id in _SENSITIVE_LOG_NAMES)
@@ -183,6 +213,15 @@ def test_public_log_boundaries_use_the_central_redactor() -> None:
     findings = {
         relative_path: _unsafe_logger_values(PROJECT_ROOT / relative_path)
         for relative_path in PUBLIC_LOG_BOUNDARIES
+    }
+
+    assert findings == {relative_path: [] for relative_path in findings}
+
+
+def test_public_boundaries_do_not_read_dynamic_type_names() -> None:
+    findings = {
+        relative_path: _unsafe_dynamic_type_name_reads(PROJECT_ROOT / relative_path)
+        for relative_path in PUBLIC_EXCEPTION_TYPE_BOUNDARIES
     }
 
     assert findings == {relative_path: [] for relative_path in findings}
@@ -331,3 +370,171 @@ def test_public_safe_result_projection_redacts_every_feedback_surface() -> None:
     assert projection.message.startswith("Could not open")
     assert "[REDACTED_PATH]" in projection.message
     assert "[REDACTED_SECRET]" in projection.message
+
+
+def test_success_tool_result_keeps_internal_message_until_public_projection() -> None:
+    private_path = "/srv/private/sub-P001/session.edf"
+    result = ToolResult(ok=True, message=f"Loaded {private_path}")
+
+    projection = public_safe_result_projection(message=result.message)
+
+    assert private_path in result.message
+    assert private_path not in projection.message
+    assert "session.edf" in projection.message
+    assert "[REDACTED_PATH]" in projection.message
+
+
+def test_public_projection_rejects_unknown_objects_fail_closed() -> None:
+    class PrivateObject:
+        def __str__(self) -> str:
+            raise AssertionError("Unknown public values must not be rendered.")
+
+        def __repr__(self) -> str:
+            return "PrivateObject(/srv/clinical/sub-P001/session.edf, topsecret)"
+
+    private_object = PrivateObject()
+
+    projection = public_safe_result_projection(
+        message="failed",
+        raw_result=private_object,
+        diagnostics={"detail": private_object},
+    )
+
+    assert projection.raw_result == "[UNSUPPORTED_VALUE]"
+    assert projection.diagnostics == {"detail": "[UNSUPPORTED_VALUE]"}
+    assert "/srv/clinical" not in repr(projection)
+    assert "topsecret" not in repr(projection)
+
+
+def test_public_projection_shares_one_budget_across_envelope_fields() -> None:
+    shared = ["subject_id=Private-17"] * 32
+
+    projection = public_safe_result_projection(
+        message="failed",
+        raw_result=shared,
+        state={"shared": shared},
+        capability={"shared": shared},
+        diagnostics={"shared": shared},
+    )
+
+    assert isinstance(projection.raw_result, list)
+    assert projection.state == {"shared": "[SHARED]"}
+    assert projection.capability == {"shared": "[SHARED]"}
+    assert projection.diagnostics == {"shared": "[SHARED]"}
+
+
+def test_public_projection_and_tool_result_reject_hostile_truth_protocols() -> None:
+    class HostileDiagnostics(dict[str, object]):
+        def __bool__(self) -> bool:
+            raise AssertionError("diagnostic truth protocol must not execute")
+
+        def items(self):
+            raise AssertionError("diagnostic mapping protocol must not execute")
+
+    class HostileTruth:
+        def __bool__(self) -> bool:
+            raise AssertionError("tool result truth protocol must not execute")
+
+    projection = public_safe_result_projection(
+        message="failed",
+        diagnostics=HostileDiagnostics({"detail": "private"}),
+    )
+    tool_result = ToolResult(ok=HostileTruth(), message="failed")  # type: ignore[arg-type]
+
+    assert projection.diagnostics == {}
+    assert tool_result.ok is False
+    assert tool_result.message == "failed"
+
+
+def test_tool_command_adapter_uses_only_public_command_result_projection() -> None:
+    private_path = "/srv/clinical/subject-17/events.tsv"
+    command_result = CommandResult.success_result(
+        command_name="query_state",
+        message="ready",
+        state={"source_path": private_path},
+        changed_state=ChangedState(),
+        diagnostics={"source_path": private_path},
+    )
+
+    tool_result = tool_result_from_command(command_result)
+    serialized = repr(tool_result)
+
+    assert private_path not in serialized
+    assert "[REDACTED_PATH]" in serialized
+
+
+def test_failed_tool_result_projects_every_public_feedback_field() -> None:
+    private_path = "/srv/clinical/subject-17/events.tsv"
+
+    result = ToolResult(
+        ok=False,
+        message=f"Could not read {private_path}",
+        payload={"source_path": private_path},
+        state={"source_path": private_path},
+        capability={"reasons": [f"Review {private_path}"]},
+        diagnostics={"source_path": private_path},
+    )
+
+    serialized = repr(result)
+    assert private_path not in serialized
+    assert "[REDACTED_PATH]" in serialized
+
+
+def test_failure_state_recovery_contains_hostile_publication_baseexception(
+    caplog,
+) -> None:
+    class HostileBoundarySignal(BaseException):
+        pass
+
+    class HostilePublication:
+        @property
+        def usable(self) -> bool:
+            raise HostileBoundarySignal("/srv/clinical/sub-P001/events.tsv")
+
+    class Runtime:
+        def get_view_publication(self) -> HostilePublication:
+            return HostilePublication()
+
+    logger = logging.getLogger("tests.hostile-publication")
+    with caplog.at_level(logging.ERROR, logger=logger.name):
+        recovery = recover_authoritative_failure_state(
+            Runtime(),
+            logger,
+            operation="query_state",
+            boundary="assistant_state_recovery",
+        )
+
+    assert recovery.state is None
+    assert recovery.changed_state == {"state_unknown": True}
+    assert recovery.diagnostics["refresh_required"] is True
+    assert "/srv/clinical" not in "\n".join(
+        record.getMessage() for record in caplog.records
+    )
+
+
+def test_unexpected_failure_does_not_execute_hostile_exception_metaclass(
+    caplog,
+) -> None:
+    class HostileMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            if name == "__name__":
+                raise AssertionError("hostile metaclass name access executed")
+            return super().__getattribute__(name)
+
+    class HostileError(Exception, metaclass=HostileMeta):
+        def __str__(self) -> str:
+            raise AssertionError("hostile exception string protocol executed")
+
+    logger = logging.getLogger("tests.hostile-unexpected-failure")
+    with caplog.at_level(logging.ERROR, logger=logger.name):
+        failure = safe_unexpected_failure(
+            logger,
+            HostileError("/srv/Clinical Records/Mary Example"),
+            boundary="assistant_tool",
+            operation="query_state",
+        )
+
+    rendered = "\n".join(record.getMessage() for record in caplog.records)
+    assert failure.error_code == SAFE_UNEXPECTED_FAILURE_CODE
+    assert "exception_type=Exception" in rendered
+    assert "Mary Example" not in rendered

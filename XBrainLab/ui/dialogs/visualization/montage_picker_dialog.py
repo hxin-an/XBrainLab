@@ -26,6 +26,10 @@ from XBrainLab.backend.utils.mne_helper import (
     get_montage_channel_positions,
     get_montage_positions,
 )
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
     configure_dark_table,
@@ -44,7 +48,7 @@ def _mapping_table_stylesheet() -> str:
             color: {Theme.TEXT_PRIMARY};
             gridline-color: {Theme.METRICS_TABLE_GRID};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
-            selection-background-color: {Theme.BLUE_PRESSED};
+            selection-background-color: {Theme.TABLE_SELECTION};
             selection-color: {Theme.TEXT_PRIMARY};
         }}
         QTableWidget#MontageMappingTable::item {{
@@ -82,7 +86,7 @@ def _mapping_combo_stylesheet(row_color: str) -> str:
             background-color: {Theme.METRICS_TABLE_BG};
             color: {Theme.TEXT_PRIMARY};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
-            selection-background-color: {Theme.BLUE_PRESSED};
+            selection-background-color: {Theme.TABLE_SELECTION};
             selection-color: {Theme.TEXT_PRIMARY};
         }}
     """
@@ -325,8 +329,11 @@ class PickMontageDialog(BaseDialog):
 
             self._resize_mapping_table_to_content()
 
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to load montage: {e}")
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.MONTAGE_MAPPING_PREPARE,
+            )
 
     def _resize_mapping_table_to_content(self) -> None:
         """Show short mappings without an empty viewport and bound long lists."""
@@ -585,8 +592,11 @@ class PickMontageDialog(BaseDialog):
             self.positions = positions
             super().accept()
 
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error processing montage: {e}")
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.MONTAGE_MAPPING_APPLY,
+            )
 
     def get_result(self):
         """Return the channel mapping and position data.

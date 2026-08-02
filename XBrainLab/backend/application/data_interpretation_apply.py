@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from numbers import Real
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -17,9 +17,12 @@ from XBrainLab.backend.load_data.raw import (
     Raw,
     normalize_source_content_identity,
 )
-from XBrainLab.backend.services.label_import_service import (
+from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
+from XBrainLab.backend.services.label_import_errors import (
     AtomicLabelApplyError,
     AtomicLabelStateUnknownError,
+)
+from XBrainLab.backend.services.label_import_service import (
     LabelImportService,
 )
 from XBrainLab.backend.utils.logger import logger
@@ -88,7 +91,7 @@ class DataInterpretationApplyService:
 
     def __init__(
         self,
-        dataset_controller: Any,
+        dataset_controller: DatasetInterpretationPort,
         *,
         data_filename: Callable[[Any], str],
         data_filepath: Callable[[Any], str],
@@ -131,9 +134,6 @@ class DataInterpretationApplyService:
                 data.set_runtime_detail("data_interpretation_metadata", values)
             updated.append({"file": Path(filepath).name, **values})
 
-        if updated:
-            with contextlib.suppress(Exception):
-                self.dataset.notify("data_changed")
         return updated
 
     def bind_source_content_identity(
@@ -450,8 +450,9 @@ class DataInterpretationApplyService:
             candidate_id=candidate.candidate_id,
         )
 
-    @staticmethod
+    @classmethod
     def _not_ready_label_plans(
+        cls,
         label_plans: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
@@ -462,7 +463,13 @@ class DataInterpretationApplyService:
                 if isinstance(review, dict)
                 else ""
             )
-            if status != "ready":
+            unresolved_sequence_target = (
+                str(plan.get("time_model") or "").strip().lower() == "trial_order"
+                and str(plan.get("placement_method") or "").strip().lower()
+                in {"", "eeg_event"}
+                and not cls._sequence_target_event_names(plan)
+            )
+            if status != "ready" or unresolved_sequence_target:
                 result.append(plan)
         return result
 
@@ -966,7 +973,7 @@ class DataInterpretationApplyService:
         mode: str,
     ) -> dict[str, Any]:
         bids_duration_stats = self._duration_stats_from_bids_review(plan)
-        hint = {
+        hint: dict[str, Any] = {
             "source": self._epoch_hint_source(plan),
             "placement_method": str(plan.get("placement_method") or "").strip(),
             "label_field": str(plan.get("selected_label_field") or "").strip(),
@@ -1287,21 +1294,39 @@ class DataInterpretationApplyService:
     ) -> set[str] | None:
         selected: list[str] = []
         for carrier in label_plans:
-            if str(carrier.get("placement_method") or "").strip() != "eeg_event":
+            if str(carrier.get("placement_method") or "").strip() not in {
+                "",
+                "eeg_event",
+            }:
                 continue
-            raw_values = carrier.get("selected_target_event_codes")
-            if isinstance(raw_values, str):
-                values = raw_values.split(",")
-            elif isinstance(raw_values, (list, tuple, set)):
-                values = raw_values
-            else:
-                anchor = str(carrier.get("selected_anchor") or "").strip()
-                values = [anchor] if anchor and anchor != "trial order" else []
-            for value in values:
-                text = str(value).strip()
-                if text and text != "trial order" and text not in selected:
-                    selected.append(text)
+            target_events = DataInterpretationApplyService._sequence_target_event_names(
+                carrier,
+            )
+            if not target_events:
+                return None
+            for event_name in sorted(target_events):
+                if event_name not in selected:
+                    selected.append(event_name)
         return set(selected) if selected else None
+
+    @staticmethod
+    def _sequence_target_event_names(plan: dict[str, Any]) -> set[str]:
+        raw_values = plan.get("selected_target_event_codes")
+        if isinstance(raw_values, str):
+            values: Iterable[Any] = raw_values.split(",")
+        elif isinstance(raw_values, (list, tuple, set)):
+            values = raw_values
+        else:
+            values = []
+        selected = {
+            text
+            for value in values
+            if (text := str(value).strip()) and text != "trial order"
+        }
+        if selected:
+            return selected
+        anchor = str(plan.get("selected_anchor") or "").strip()
+        return {anchor} if anchor and anchor != "trial order" else set()
 
     def _reviewed_label_file_mapping(
         self,
@@ -1364,13 +1389,16 @@ class DataInterpretationApplyService:
         class_map: dict[str, str],
     ) -> bool:
         carrier_format = str(plan.get("format") or "").strip()
+        placement_method = str(plan.get("placement_method") or "").strip().lower()
         time_model = str(plan.get("time_model") or "").strip().lower()
         granularity = str(plan.get("granularity") or "").strip().lower()
         return (
             carrier_format in {"MAT", "MAT labels", "TXT", "CSV", "TSV", "BIDS events"}
+            and placement_method in {"", "eeg_event"}
             and bool(str(plan.get("selected_label_field") or "").strip())
             and time_model == "trial_order"
             and granularity == "trial"
+            and bool(DataInterpretationApplyService._sequence_target_event_names(plan))
             and bool(class_map)
         )
 

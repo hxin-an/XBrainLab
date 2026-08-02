@@ -327,15 +327,7 @@ def test_stop_is_not_queued_behind_an_uncancellable_application_command(qtbot):
     qtbot.addWidget(main_window)
     controller = _BlockingApplicationCommandController()
 
-    with (
-        _ready_manager_runtime(controller),
-        patch(
-            "XBrainLab.ui.components.agent_manager.begin_command_refresh_suppression"
-        ),
-        patch(
-            "XBrainLab.ui.components.agent_manager.complete_command_refresh_suppression"
-        ),
-    ):
+    with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
         manager.start_system()

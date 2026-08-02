@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import logging
-import os
-import re
 import uuid
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
 from XBrainLab.backend.application.results import CommandResult
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.view_publication import (
+    ApplicationViewPublication,
+)
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+    PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+    public_diagnostic_value,
+    safe_exception_type_name,
+)
 
 
 @dataclass(frozen=True)
@@ -37,80 +46,6 @@ SAFE_UNEXPECTED_FAILURE_MESSAGE = (
     "Refresh application state before retrying."
 )
 SAFE_UNEXPECTED_FAILURE_RECOVERY_ACTION = "refresh_application_state"
-
-_EMAIL_PATTERN = re.compile(
-    r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
-    re.IGNORECASE,
-)
-_SECRET_NAME = (
-    r"(?:[a-z0-9]+[_-])*"  # noqa: S105 - secret-field matching regex
-    r"(?:api[\s_-]*key|access[\s_-]*token|"
-    r"auth(?:entication|orization)?[\s_-]*token|authorization|"
-    r"bearer[\s_-]*token|hf[\s_-]*token|client[\s_-]*secret|"
-    r"private[\s_-]*key|secret[\s_-]*key|password|passwd|token|secret)"
-)
-_JSON_SECRET_ASSIGNMENT_PATTERN = re.compile(
-    rf"""(?ix)
-    (?P<key_escape>\\?)
-    (?P<quote>["'])
-    {_SECRET_NAME}
-    (?P=key_escape)
-    (?P=quote)
-    \s*:\s*
-    (?:bearer\s+)?
-    (?:
-        (?P<value_escape>\\?)
-        (?P<value_quote>["'])
-        [^"'\r\n]*
-        (?P=value_escape)
-        (?P=value_quote)
-        |
-        [^\s,;}}\]]+
-    )
-    """,
-)
-_SECRET_ASSIGNMENT_PATTERN = re.compile(
-    rf"""(?ix)
-    (?<![\w])
-    {_SECRET_NAME}
-    \s*(?::|=|%3d)\s*
-    (?:bearer\s+)?
-    (?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&]+)
-    """,
-)
-_BEARER_SECRET_PATTERN = re.compile(
-    r"(?i)(?<![\w])bearer\s+[a-z0-9._~+/=-]+",
-)
-_TOKEN_LITERAL_PATTERN = re.compile(
-    r"(?i)(?<![\w])(?:hf_[a-z0-9_-]{8,}|sk-[a-z0-9_-]{8,}|"
-    r"github_pat_[a-z0-9_]{8,}|gh[pousr]_[a-z0-9]{8,})(?![\w])",
-)
-_SECRET_KEY_PATTERN = re.compile(rf"(?i)^{_SECRET_NAME}$")
-_QUOTED_PATH_PATTERN = re.compile(
-    r"""(?P<quote>["'`])"""
-    r"""(?:[A-Za-z]:[\\/]|\\\\|//|/)"""
-    r"""[^"'`\r\n]*"""
-    r"""(?P=quote)""",
-)
-_ENV_PATH_PATTERN = re.compile(
-    r"""(?ix)
-    (?:
-        \$HOME
-        |
-        %USERPROFILE%
-    )
-    [\\/][^\s,;:)\]}]+
-    """,
-)
-_UNC_PATH_PATTERN = re.compile(
-    r"(?<![\w:])(?:\\\\|//)[^\\/\s,;]+[\\/][^\s,;)\]}]+",
-)
-_WINDOWS_PATH_PATTERN = re.compile(
-    r"(?<![\w])(?:[A-Za-z]:[\\/])[^\s,;)\]}]+",
-)
-_POSIX_PATH_PATTERN = re.compile(
-    r"(?<![\w:/])/(?!/)[^\s,;:)\]}]+",
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,43 +94,11 @@ class ApplicationPublicationReader(Protocol):
 
 def redact_public_text(value: object) -> str:
     """Keep domain guidance while removing credentials and local paths."""
-    text = str(value)
-    text = _JSON_SECRET_ASSIGNMENT_PATTERN.sub("[REDACTED_SECRET]", text)
-    text = _SECRET_ASSIGNMENT_PATTERN.sub("[REDACTED_SECRET]", text)
-    text = _BEARER_SECRET_PATTERN.sub("[REDACTED_SECRET]", text)
-    text = _TOKEN_LITERAL_PATTERN.sub("[REDACTED_SECRET]", text)
-    text = _EMAIL_PATTERN.sub("[REDACTED_EMAIL]", text)
-    text = _ENV_PATH_PATTERN.sub("[REDACTED_PATH]", text)
-    text = _QUOTED_PATH_PATTERN.sub("[REDACTED_PATH]", text)
-    text = _UNC_PATH_PATTERN.sub("[REDACTED_PATH]", text)
-    text = _WINDOWS_PATH_PATTERN.sub("[REDACTED_PATH]", text)
-    return _POSIX_PATH_PATTERN.sub("[REDACTED_PATH]", text)
+    return public_diagnostic_text(value)
 
 
 def _public_safe_value(value: Any, *, field_name: str | None = None) -> Any:
-    if field_name is not None and _SECRET_KEY_PATTERN.fullmatch(field_name):
-        return "[REDACTED_SECRET]"
-    if isinstance(value, str):
-        return redact_public_text(value)
-    if isinstance(value, os.PathLike):
-        return "[REDACTED_PATH]"
-    if isinstance(value, Enum):
-        return _public_safe_value(value.value, field_name=field_name)
-    if isinstance(value, Mapping):
-        return {
-            key: _public_safe_value(
-                item,
-                field_name=str(key),
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_public_safe_value(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_public_safe_value(item) for item in value)
-    if isinstance(value, set):
-        return {_public_safe_value(item) for item in value}
-    return value
+    return public_diagnostic_value(value, field_name=field_name)
 
 
 def public_safe_result_projection(
@@ -208,25 +111,52 @@ def public_safe_result_projection(
     diagnostics: dict[str, Any] | None = None,
 ) -> PublicSafeResultProjection:
     """Project one result onto fields safe for every public consumer."""
-    safe_state = _public_safe_value(state)
-    safe_capability = _public_safe_value(capability)
-    safe_diagnostics = _public_safe_value(diagnostics or {})
+    safe_envelope = _public_safe_value(
+        {
+            "message": message,
+            "blocked_reason": blocked_reason,
+            "raw_result": raw_result,
+            "state": state,
+            "capability": capability,
+            "diagnostics": diagnostics if type(diagnostics) is dict else {},
+        }
+    )
+    if type(safe_envelope) is not dict:
+        safe_envelope = {}
+    safe_message = safe_envelope.get(
+        "message",
+        PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+    )
+    safe_blocked_reason = safe_envelope.get("blocked_reason")
+    safe_state = safe_envelope.get("state")
+    safe_capability = safe_envelope.get("capability")
+    safe_diagnostics = safe_envelope.get("diagnostics")
     return PublicSafeResultProjection(
-        message=redact_public_text(message),
-        blocked_reason=(
-            redact_public_text(blocked_reason) if blocked_reason is not None else None
+        message=(
+            safe_message
+            if type(safe_message) is str
+            else redact_public_text(safe_message)
         ),
-        raw_result=_public_safe_value(raw_result),
-        state=safe_state if isinstance(safe_state, dict) else None,
-        capability=(safe_capability if isinstance(safe_capability, dict) else None),
-        diagnostics=(safe_diagnostics if isinstance(safe_diagnostics, dict) else {}),
+        blocked_reason=(
+            safe_blocked_reason if type(safe_blocked_reason) is str else None
+        ),
+        raw_result=safe_envelope.get(
+            "raw_result",
+            PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+        ),
+        state=safe_state if type(safe_state) is dict else None,
+        capability=(safe_capability if type(safe_capability) is dict else None),
+        diagnostics=(safe_diagnostics if type(safe_diagnostics) is dict else {}),
     )
 
 
 def redact_developer_error_detail(value: object) -> str:
     """Redact common private values before writing bounded developer detail."""
-    text = redact_public_text(value).replace("\r", " ").replace("\n", " ")
-    return text[:500] or type(value).__name__
+    text = public_diagnostic_text(
+        value,
+        layout=DiagnosticTextLayout.SINGLE_LINE,
+    )
+    return text[:500] or PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER
 
 
 def safe_unexpected_failure(
@@ -244,7 +174,7 @@ def safe_unexpected_failure(
         failure.incident_id,
         redact_developer_error_detail(boundary),
         redact_developer_error_detail(operation),
-        type(error).__name__,
+        safe_exception_type_name(error),
         redact_developer_error_detail(error),
     )
     return failure
@@ -270,12 +200,28 @@ def recover_authoritative_failure_state(
         return unavailable
     try:
         publication = runtime.get_view_publication()
-        if getattr(publication, "usable", False) is not True:
+        if type(publication) is not ApplicationViewPublication:
+            safe_unexpected_failure(
+                developer_logger,
+                TypeError("Application publication has an unsupported type"),
+                boundary=boundary,
+                operation=operation,
+            )
             return unavailable
-        state_value = getattr(publication, "state", None)
-        state_serializer = getattr(state_value, "to_dict", None)
-        state = state_serializer() if callable(state_serializer) else None
-        if not isinstance(state, dict):
+        if (
+            type(publication.verified) is not bool
+            or type(publication.stale) is not bool
+            or not publication.verified
+            or publication.stale
+        ):
+            return unavailable
+        state_value = publication.state
+        state = (
+            state_value.to_dict()
+            if type(state_value) is ApplicationStateSnapshot
+            else None
+        )
+        if type(state) is not dict:
             safe_unexpected_failure(
                 developer_logger,
                 TypeError("Application publication state is not serializable"),
@@ -283,7 +229,9 @@ def recover_authoritative_failure_state(
                 operation=operation,
             )
             return unavailable
-        generation = getattr(publication, "generation", None)
+        generation = (
+            publication.generation if type(publication.generation) is int else None
+        )
         return FailureStateRecovery(
             state=state,
             changed_state={"state_unknown": False},
@@ -293,7 +241,7 @@ def recover_authoritative_failure_state(
                 "refresh_required": False,
             },
         )
-    except Exception as error:
+    except BaseException as error:
         safe_unexpected_failure(
             developer_logger,
             error,
@@ -321,8 +269,58 @@ class ToolResult:
     changed_state: dict[str, bool] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if type(self.ok) is not bool:
+            object.__setattr__(self, "ok", False)
+        if type(self.message) is not str:
+            object.__setattr__(
+                self,
+                "message",
+                PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+            )
+        for field_name in (
+            "error_type",
+            "command_name",
+            "error_code",
+            "recovery_action",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and type(value) is not str:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    "internal" if field_name == "error_type" else None,
+                )
+        if type(self.recoverable) is not bool:
+            object.__setattr__(self, "recoverable", False)
         if not self.ok:
-            object.__setattr__(self, "message", redact_public_text(self.message))
+            projection = public_safe_result_projection(
+                message=self.message,
+                raw_result=self.payload,
+                state=self.state,
+                capability=self.capability,
+                diagnostics=(
+                    self.diagnostics if type(self.diagnostics) is dict else {}
+                ),
+            )
+            object.__setattr__(self, "message", projection.message)
+            object.__setattr__(self, "payload", projection.raw_result)
+            object.__setattr__(self, "state", projection.state)
+            object.__setattr__(self, "capability", projection.capability)
+            object.__setattr__(self, "diagnostics", projection.diagnostics)
+        for field_name in ("state", "capability"):
+            value = getattr(self, field_name)
+            if value is not None and type(value) is not dict:
+                object.__setattr__(self, field_name, None)
+        for field_name in ("diagnostics", "changed_state"):
+            value = getattr(self, field_name)
+            if type(value) is not dict:
+                object.__setattr__(self, field_name, {})
+        safe_changed_state = public_diagnostic_value(self.changed_state)
+        object.__setattr__(
+            self,
+            "changed_state",
+            safe_changed_state if type(safe_changed_state) is dict else {},
+        )
 
 
 class UiRequestKind(str, Enum):
@@ -349,23 +347,39 @@ def tool_result_from_command(
     *,
     message: str | None = None,
 ) -> ToolResult:
-    """Preserve one backend command result in the assistant tool contract."""
+    """Project one backend result onto the assistant's public tool contract."""
+    public = result.to_public_dict()
+    public_state = public.get("state")
+    public_diagnostics = public.get("diagnostics")
+    public_changed_state = public.get("changed_state")
+    public_message = public.get("message")
+    public_error_type = public.get("error_type")
     return ToolResult(
         ok=result.ok,
-        message=message if message is not None else result.message,
-        payload=dict(result.diagnostics),
-        error_type=result.error_type.value,
+        message=(
+            public_diagnostic_text(message)
+            if type(message) is str
+            else public_message
+            if type(public_message) is str
+            else PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER
+        ),
+        payload=(
+            dict.copy(public_diagnostics) if type(public_diagnostics) is dict else {}
+        ),
+        error_type=(
+            public_error_type if type(public_error_type) is str else "internal"
+        ),
         recoverable=result.recoverable,
         command_name=result.command_name,
-        state=(
-            result.state.to_dict()
-            if hasattr(result.state, "to_dict")
-            else dict(result.state)
-            if isinstance(result.state, dict)
-            else None
+        state=public_state if type(public_state) is dict else None,
+        diagnostics=(
+            dict.copy(public_diagnostics) if type(public_diagnostics) is dict else {}
         ),
-        diagnostics=dict(result.diagnostics),
-        changed_state=result.changed_state.to_dict(),
+        changed_state=(
+            dict.copy(public_changed_state)
+            if type(public_changed_state) is dict
+            else {}
+        ),
     )
 
 
@@ -387,6 +401,9 @@ def runtime_tool_failure(
         boundary="real_tool_adapter",
         operation=message,
     )
+    public_diagnostics = (
+        public_diagnostic_value(diagnostics) if type(diagnostics) is dict else {}
+    )
     return ToolResult(
         ok=False,
         message=failure.message,
@@ -399,7 +416,7 @@ def runtime_tool_failure(
         capability=capability,
         diagnostics={
             **failure.diagnostics,
-            **dict(diagnostics or {}),
+            **(public_diagnostics if type(public_diagnostics) is dict else {}),
         },
-        changed_state=dict(changed_state or {}),
+        changed_state=(dict.copy(changed_state) if type(changed_state) is dict else {}),
     )

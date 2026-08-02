@@ -1,5 +1,6 @@
-"""Unit tests for RAGConfig — constants and storage path."""
+"""Unit tests for RAGConfig constants, identity, and storage paths."""
 
+import hashlib
 import os
 
 from XBrainLab.llm.rag.config import RAGConfig
@@ -7,7 +8,15 @@ from XBrainLab.llm.rag.config import RAGConfig
 
 class TestRAGConfig:
     def test_collection_name(self):
-        assert RAGConfig.COLLECTION_NAME == "gold_set_examples_1110a243fdf4"
+        assert RAGConfig.COLLECTION_NAME == (
+            "gold_set_examples_1110a243fdf4_b123eefe00fe"
+        )
+
+    def test_gold_set_identity_matches_bundled_corpus(self):
+        bundled_bytes = RAGConfig.get_gold_set_path().read_bytes()
+
+        assert hashlib.sha256(bundled_bytes).hexdigest() == RAGConfig.GOLD_SET_SHA256
+        assert RAGConfig.gold_set_integrity_ok() is True
 
     def test_embedding_model(self):
         assert isinstance(RAGConfig.EMBEDDING_MODEL, str)
@@ -31,3 +40,9 @@ class TestRAGConfig:
         path = RAGConfig.get_storage_path()
         assert "rag" in path.replace("\\", "/").lower()
         assert path.endswith("vectors")
+
+    def test_index_manifest_path_is_inside_vector_storage(self):
+        manifest_path = RAGConfig.get_index_manifest_path()
+
+        assert manifest_path.parent == RAGConfig.get_cache_root() / "vectors"
+        assert manifest_path.name == "index-manifest.json"

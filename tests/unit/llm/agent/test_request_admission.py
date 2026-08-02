@@ -188,6 +188,17 @@ def test_blocked_explicit_command_is_resolved_before_model_generation() -> None:
     assert "Configure training options before training" in decision.message
 
 
+def test_blocked_evaluation_request_uses_backend_readiness_reason() -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        "Evaluate the current training results.",
+        _publication(_dataset_ready_state()),
+    )
+
+    assert decision.action is UserRequestAdmissionAction.BLOCKED
+    assert decision.command is CommandName.EVALUATE
+    assert decision.message == "Create a training plan before evaluating results."
+
+
 def test_guided_goal_starts_from_backend_recommended_prerequisite() -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
         "Prepare this EEG dataset for training.",

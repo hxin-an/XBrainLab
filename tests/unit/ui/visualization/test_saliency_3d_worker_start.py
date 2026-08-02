@@ -452,12 +452,13 @@ def test_3d_engine_terminal_error_is_sanitized_and_logged(
     widget,
     monkeypatch,
     caplog,
+    capture_product_logs,
 ) -> None:
     publication = _render_publication(generation=19)
     workers, _pool, _worker_calls = _install_manual_workers(widget, monkeypatch)
     _start_engine_for_publication(widget, publication)
 
-    with caplog.at_level(logging.ERROR, logger="XBrainLab"):
+    with capture_product_logs(logging.ERROR):
         workers[0].signals.error.emit(
             (
                 RuntimeError,

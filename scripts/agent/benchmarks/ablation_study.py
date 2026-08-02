@@ -30,6 +30,7 @@ import time
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import torch
 
@@ -281,7 +282,10 @@ def run_condition(
 
             for ri, (round_stage, round_expected) in enumerate(rounds):
                 if use_stage and hasattr(assembler, "current_stage"):
-                    assembler.current_stage = round_stage
+                    cast(
+                        StageAwareBenchmarkAssembler,
+                        assembler,
+                    ).current_stage = round_stage
 
                 messages = assembler.get_messages(conversation)
                 llm_calls += 1
@@ -498,7 +502,11 @@ def run_ablation(
         test_cases = json.load(f)
 
     # Model
-    config = LLMConfig(**MODEL_CONFIGS[model_name])
+    model_config = MODEL_CONFIGS[model_name]
+    config = LLMConfig(
+        model_name=model_config["model_name"],
+        inference_mode=model_config["inference_mode"],
+    )
     engine = LLMEngine(config)
     engine.load_model()
 

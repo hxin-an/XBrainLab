@@ -1,6 +1,8 @@
 """Tests for the Data Interpretation preview dialog."""
 
 import inspect
+import re
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -73,6 +75,9 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert "Review Metadata" in panel_titles
     assert "Match Labels" in panel_titles
     assert "Review and Import" in panel_titles
+    advanced_header = dialog.match_advanced_toggle.parentWidget()
+    assert advanced_header is not None
+    assert advanced_header.objectName() == "DataImportPanelHeader"
     assert dialog.event_group.title() == ""
     event_group_text = "\n".join(
         label.text()
@@ -292,6 +297,7 @@ def test_data_interpretation_preview_dialog_uses_one_panel_per_step(qtbot):
                     "path": "/tmp/source/events.tsv",
                     "name": "events.tsv",
                     "format": "TSV",
+                    "target_file": "sub-01_task-mi_raw.fif",
                     "selected_label_field": "trial_type",
                     "selected_anchor": "onset",
                     "time_model": "seconds",
@@ -474,6 +480,55 @@ def test_load_labels_step_does_not_hidden_scroll_when_content_fits(qtbot):
     assert scrollbar.value() == 0
 
 
+def test_load_labels_many_file_rows_use_compact_source_context(qtbot):
+    label_files = [f"/tmp/source/labels/A{index:02d}T.mat" for index in range(1, 9)]
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": label_files,
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 8 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_file,
+                    "name": Path(label_file).name,
+                    "source_kind": "auto",
+                    "source_location": "/tmp/source/labels",
+                }
+                for label_file in label_files
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    rows = _visible_source_rows(dialog)
+    details = [row.findChild(QLabel, "DataImportSourceDetail") for row in rows]
+
+    assert len(rows) == 8
+    assert all(row.property("dense") is True for row in rows)
+    assert all(detail is not None for detail in details)
+    assert all(detail.wordWrap() is False for detail in details if detail is not None)
+    assert all(
+        detail.text() == "Detected nearby · labels"
+        for detail in details
+        if detail is not None
+    )
+    assert "/tmp/source/labels" not in _visible_step_text(dialog, "Load Labels")
+    assert all(
+        detail.toolTip() == "Found in folder: /tmp/source/labels"
+        for detail in details
+        if detail is not None
+    )
+
+
 def test_data_interpretation_preview_dialog_uses_task_oriented_label_headers(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -650,6 +705,10 @@ def test_match_labels_pairing_board_applies_dataset_level_choices(qtbot):
     dialog.rule_use_as_combo.setCurrentIndex(
         dialog.rule_use_as_combo.findData("class cue labels")
     )
+    qtbot.wait(0)
+
+    assert dialog.next_button.isEnabled() is True
+    assert dialog.next_button.text() == "Refresh label preview"
 
     for row in range(2):
         item = dialog.label_carrier_tree.topLevelItem(row)
@@ -977,29 +1036,23 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
 
-    visible_text = "\n".join(
-        label.text()
-        for label in dialog.event_group.findChildren(QLabel)
-        if label.text().strip()
-    )
+    visible_text = _visible_step_text(dialog, "Match Labels")
     assert "Suggested training labels" in visible_text
-    assert "Suggestion evidence" in visible_text
+    assert "Source evidence" not in visible_text
     assert "Use this when class labels are stored as EEG events." not in visible_text
     assert "Other EEG events" in visible_text
-    assert "Suggestion evidence / reason" in visible_text
     assert "not currently used as class labels" in visible_text
     assert "Selection preview: train on 769, 770" in visible_text
     assert "not used: 768, 1023" in visible_text
     assert "Event names need review" in visible_text
     assert "769" in visible_text
     assert "770" in visible_text
-    assert "Class label" in visible_text
-    assert "Repeats once per trial" in visible_text
+    assert "Training class" in visible_text
+    assert "Repeats once per trial" not in visible_text
     assert "288 events · 3/3 files" in visible_text
     assert "6 events · 3/3 files" in visible_text
     assert "768" in visible_text
-    assert "Epoch anchor" in visible_text
-    assert "Trial start event" in visible_text
+    assert "Not used for training" in visible_text
     assert dialog.event_group.title() == ""
     assert dialog.event_group.maximumHeight() > 1000
 
@@ -1013,6 +1066,112 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
     class_selector.setCurrentText("Left hand")
 
     assert dialog.get_result()["choices"]["class_map"] == {"769": "left hand"}
+
+
+def test_match_labels_advanced_details_fit_at_752_and_explain_evidence(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {
+                        "event_code": "769",
+                        "event_count": 48,
+                    },
+                ],
+                "not_used_events": [
+                    {
+                        "event_code": "768",
+                        "event_count": 48,
+                    },
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(752, 720)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    first_layer_text = _visible_step_text(dialog, "Match Labels")
+    assert "Use as" in first_layer_text
+    assert "Action" in first_layer_text
+    assert (
+        re.search(
+            r"\b(?:role|evidence)\b",
+            first_layer_text,
+            re.IGNORECASE,
+        )
+        is None
+    )
+    assert dialog.match_advanced_toggle.isVisibleTo(dialog)
+    assert (
+        dialog.match_advanced_toggle.mapTo(
+            dialog,
+            dialog.match_advanced_toggle.rect().topRight(),
+        ).x()
+        <= dialog.contentsRect().right()
+    )
+
+    dialog.match_advanced_toggle.click()
+    qtbot.wait(0)
+
+    tables = [
+        dialog.findChild(QFrame, "DataImportInternalLabelsTable"),
+        dialog.findChild(QFrame, "DataImportInternalOtherEventsTable"),
+    ]
+    assert all(table is not None for table in tables)
+    expected_headers = [
+        [
+            "Event",
+            "Use as",
+            "Occurrences",
+            "Class name",
+            "Action",
+            "Source evidence",
+        ],
+        [
+            "Event",
+            "Use as",
+            "Occurrences",
+            "Action",
+            "Source evidence",
+        ],
+    ]
+    viewport = dialog.scroll_area.viewport()
+    assert viewport is not None
+    for table, headers in zip(tables, expected_headers, strict=True):
+        assert table is not None
+        visible_headers = [
+            label.text()
+            for label in table.findChildren(QLabel, "DataImportPairingHeaderLabel")
+            if label.isVisibleTo(table)
+        ]
+        assert visible_headers == headers
+        assert table.mapTo(viewport, table.rect().topLeft()).x() >= (
+            viewport.contentsRect().left()
+        )
+        assert (
+            table.mapTo(viewport, table.rect().topRight()).x()
+            <= viewport.contentsRect().right()
+        )
+
+    other_table = tables[1]
+    assert other_table is not None
+    other_text = "\n".join(
+        label.text()
+        for label in other_table.findChildren(QLabel)
+        if label.text().strip() and label.isVisibleTo(other_table)
+    )
+    assert "No source evidence was provided by the import preview." in other_text
+    assert "Suggested by event pattern" not in other_text
 
 
 def test_match_labels_internal_source_moves_events_between_sections(qtbot):
@@ -1049,19 +1208,15 @@ def test_match_labels_internal_source_moves_events_between_sections(qtbot):
 
     assert [item[1] for item in dialog._class_map_items] == ["769", "770"]
 
-    _click_button(dialog, "Not a label", event_code="769")
+    _click_button(dialog, "Exclude from training", event_code="769")
     qtbot.wait(0)
 
-    visible_text = "\n".join(
-        label.text()
-        for label in dialog.event_group.findChildren(QLabel)
-        if label.text().strip()
-    )
-    assert "Changed by user" in visible_text
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "Changed by user" not in visible_text
     assert [item[1] for item in dialog._class_map_items] == ["770"]
     assert dialog.get_result()["choices"]["event_roles"] == {"769": "not a label"}
 
-    _click_button(dialog, "Use as label", event_code="769")
+    _click_button(dialog, "Use for training", event_code="769")
     qtbot.wait(0)
 
     assert [item[1] for item in dialog._class_map_items] == ["769", "770"]
@@ -1274,7 +1429,7 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
     assert "Target EEG events" in visible_text
     assert "Target" in visible_text
     assert "Event" in visible_text
-    assert "Suggestion evidence" in visible_text
+    assert "Source evidence" not in visible_text
     assert "Use" in visible_text
     assert "768" in visible_text
     assert "288 selected EEG events" in visible_text
@@ -1527,7 +1682,7 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
             assert "Check" in visible_text
             assert "12/12 rows have usable time values" in visible_text
             assert "Range: 0 to 11 seconds" in visible_text
-            assert "Epoch window will be set later" in visible_text
+            assert "The EEG epoch window will be set later" in visible_text
         if method == "event_code":
             assert "Code mapping review" in visible_text
             assert "Label code" in visible_text
@@ -1878,6 +2033,9 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
         if button.isVisibleTo(current_widget)
     ]
     assert "View required format" in visible_buttons
+    assert "Go to Load Labels" in visible_buttons
+    assert dialog.next_button.isEnabled() is False
+    assert "Resolve label matching" in dialog.next_button.toolTip()
     assert "One row per label" not in visible_text
     assert "One placement column" not in visible_text
     assert "event_code,label" not in visible_text
@@ -1892,6 +2050,94 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     qtbot.wait(0)
 
     assert opened["value"] is True
+
+    _click_button(dialog, "Go to Load Labels")
+    qtbot.wait(0)
+
+    assert dialog._step_titles[dialog.step_stack.currentIndex()] == "Load Labels"
+
+
+def test_match_labels_keeps_controls_visible_when_target_events_need_selection(
+    qtbot,
+):
+    label_path = "/tmp/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "label_candidates": ["classlabel"],
+                    "anchor_candidates": ["trial order"],
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "trial order",
+                    "selected_target_event_codes": [],
+                    "label_row_count": 4,
+                    "label_value_counts": {"1": 2, "2": 2},
+                    "value_decisions": {
+                        "1": {"role": "", "use_as": "", "class_name": ""},
+                        "2": {"role": "", "use_as": "", "class_name": ""},
+                    },
+                    "placement_method": "eeg_event",
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "role": "external labels",
+                    "placement_reviews": {
+                        "eeg_event": {
+                            "method": "eeg_event",
+                            "status": "blocked",
+                            "decision_code": "sequence_target_events_required",
+                            "summary": "Select one or more target EEG events.",
+                        }
+                    },
+                    "placement_review": {
+                        "method": "eeg_event",
+                        "status": "blocked",
+                        "decision_code": "sequence_target_events_required",
+                        "summary": "Select one or more target EEG events.",
+                    },
+                }
+            ],
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {
+                        "event_code": "769",
+                        "use_as": "Class label",
+                        "event_count": 2,
+                    },
+                    {
+                        "event_code": "770",
+                        "use_as": "Class label",
+                        "event_count": 2,
+                    },
+                ]
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    current = dialog.step_stack.currentWidget()
+    assert current is not None
+    assert dialog.label_table_fallback_card.isVisibleTo(current) is False
+    assert dialog.label_values_card.isVisibleTo(current) is True
+    assert dialog.placement_card.isVisibleTo(current) is True
+    assert dialog.event_value_editor is not None
+    assert dialog.event_value_editor.isVisibleTo(current) is True
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "Event value decisions" in visible_text
+    assert "Target EEG events" in visible_text
 
 
 def test_load_labels_step_can_remove_auto_detected_label_carrier(qtbot):
@@ -2411,6 +2657,26 @@ def test_data_interpretation_preview_dialog_rejects_duplicate_label_sources(
     assert before_rows == after_rows == 1
     assert "label_sources" not in dialog.get_result()
     assert "Already included" in dialog.label_sources_label.text()
+
+
+def test_label_source_identity_does_not_resolve_the_filesystem(monkeypatch):
+    def _unexpected_resolve(*_args, **_kwargs):
+        raise AssertionError("UI label-source identity must not resolve the filesystem")
+
+    monkeypatch.setattr(Path, "resolve", _unexpected_resolve)
+
+    assert (
+        DataInterpretationPreviewDialog._normalized_label_source_key(
+            r"D:\\datasets\\labels\\A01T.mat"
+        )
+        == "d:/datasets/labels/a01t.mat"
+    )
+    assert (
+        DataInterpretationPreviewDialog._normalized_label_source_key(
+            "/mnt/d/datasets/labels/A01T.mat/"
+        )
+        == "/mnt/d/datasets/labels/A01T.mat"
+    )
 
 
 def test_data_interpretation_preview_dialog_rejects_duplicate_label_folder(
@@ -2977,7 +3243,7 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
         editor.text() == "Left hand"
         for editor in dialog.event_value_editor.findChildren(QLineEdit)
     )
-    assert "3 rows" in text
+    assert "3 · 1/1" in text
     assert "events.json sidecar is missing" in text
     assert "BIDS label values" in text
     assert "File pairing" not in text
@@ -4420,6 +4686,73 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert abs(restored_center.y() - working_center.y()) <= 1
 
 
+def test_collapsed_review_opened_before_show_removes_trailing_scroll_gutter(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source/A01T.gdf",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": None, "decision": "safe"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": None, "decision": "safe"},
+                },
+            ],
+            "class_map": {"769": "left", "770": "right"},
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1100, 800)
+    _show_step(dialog, "Review and Import")
+    dialog.save_recipe_check.setChecked(True)
+
+    dialog.show()
+    qtbot.wait(0)
+
+    separator = dialog.findChild(QFrame, "DataImportFooterSeparator")
+    assert separator is not None
+    report_action_bottom = dialog.import_report_toggle.mapTo(
+        dialog,
+        dialog.import_report_toggle.rect().bottomRight(),
+    ).y()
+    separator_top = separator.mapTo(dialog, separator.rect().topLeft()).y()
+    scrollbar = dialog.scroll_area.verticalScrollBar()
+    assert scrollbar is not None
+    assert separator_top - report_action_bottom <= 96
+    assert (
+        dialog.scroll_area.verticalScrollBarPolicy()
+        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    assert scrollbar.maximum() == 0
+    assert not scrollbar.isVisibleTo(dialog)
+    assert dialog.apply_button.isVisibleTo(dialog)
+    assert dialog.rect().contains(
+        dialog.apply_button.mapTo(
+            dialog,
+            dialog.apply_button.rect().bottomRight(),
+        )
+    )
+
+    dialog.import_report_toggle.click()
+    qtbot.wait(0)
+
+    assert dialog.import_report_card.isVisibleTo(dialog)
+    assert dialog.apply_button.isVisibleTo(dialog)
+    assert dialog.rect().contains(
+        dialog.apply_button.mapTo(
+            dialog,
+            dialog.apply_button.rect().bottomRight(),
+        )
+    )
+
+
 def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -4481,13 +4814,16 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
         button.text() == "Fix Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
     )
-    assert any(
-        button.text() == "Go to Label Placement"
+    match_button = next(
+        button
         for button in dialog.review_actions_panel.findChildren(QPushButton)
+        if button.text() == "Go to Match Labels"
     )
+    match_button.click()
+    assert dialog._step_titles[dialog.step_stack.currentIndex()] == "Match Labels"
     review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
     assert review_rows["Label placement"]["status"] == "Needs review"
-    assert review_rows["Label placement"]["action"] == "Go to Label Placement"
+    assert review_rows["Label placement"]["action"] == "Go to Match Labels"
 
 
 def test_blocked_import_only_promotes_true_blockers_to_first_layer(qtbot):
@@ -5213,6 +5549,42 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
         ),
         "action": "Save recipe",
     }
+
+
+def test_collapsed_review_keeps_wrapped_recipe_summary_fully_visible(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "selected_eeg_files": ["/tmp/source/A01T.gdf"],
+            "recipe_reload_summary": {
+                "message": (
+                    "Saved recipe choices were reapplied before validation: "
+                    "metadata overrides, event roles."
+                ),
+            },
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(700, 700)
+    dialog.show()
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(20)
+
+    summary = dialog._review_summary_value_labels["Recipe"]
+    required_height = summary.heightForWidth(summary.width())
+    summary_bottom = summary.mapTo(
+        dialog.import_review_card,
+        summary.rect().bottomLeft(),
+    ).y()
+
+    assert required_height > 0
+    assert summary.height() >= required_height
+    assert summary_bottom <= dialog.import_review_card.contentsRect().bottom()
 
 
 def test_data_interpretation_preview_dialog_keeps_recipe_trace_out_of_review_actions(

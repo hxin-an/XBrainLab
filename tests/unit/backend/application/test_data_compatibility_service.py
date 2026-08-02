@@ -733,13 +733,19 @@ def test_data_compatibility_service_attach_labels_rejects_corrupt_resource(
     label_path = tmp_path / "labels.mat"
     label_path.write_bytes(b"not a MATLAB payload")
 
-    with pytest.raises(FileCorruptedError, match=r"Invalid \.mat file.*labels\.mat"):
+    with pytest.raises(FileCorruptedError) as caught:
         service.handle_attach_labels(
             AttachLabelsCommand(
                 mapping={"sub-01_raw.fif": str(label_path)},
                 label_paths=[str(label_path)],
             ),
         )
+
+    public_message = str(caught.value)
+    assert "Invalid .mat file" in public_message
+    assert "[REDACTED_PATH]" in public_message
+    assert "labels.mat" not in public_message
+    assert str(label_path) not in public_message
 
     assert dataset.batch_calls == []
 
@@ -797,6 +803,7 @@ def test_data_compatibility_service_attach_labels_batches_multiple_files_without
                     "sub-02_raw.fif": str(label_2),
                 },
                 label_paths=[str(label_1), str(label_2)],
+                selected_event_names=["cue"],
             ),
         ),
     )
@@ -816,7 +823,29 @@ def test_data_compatibility_service_attach_labels_batches_multiple_files_without
         "/data/sub-02_raw.fif": str(label_2),
     }
     assert event_names == {1: "1", 2: "2"}
-    assert selected_events is None
+    assert selected_events == ["cue"]
+
+
+def test_data_compatibility_service_normalizes_target_events_at_backend_boundary(
+    tmp_path: Path,
+) -> None:
+    service, dataset, _interpretation = _service()
+    raw = _Raw("/data/sub-01_raw.fif", "sub-01_raw.fif")
+    dataset.loaded_data = [raw]
+    label_path = tmp_path / "labels.txt"
+    label_path.write_text("1 2\n", encoding="utf-8")
+
+    _expect_payload(
+        service.handle_attach_labels(
+            AttachLabelsCommand(
+                mapping={"sub-01_raw.fif": str(label_path)},
+                label_paths=[str(label_path)],
+                selected_event_names=[" response ", "cue", "cue", "", "  "],
+            ),
+        ),
+    )
+
+    assert dataset.batch_calls[0][-1] == ["cue", "response"]
 
 
 def test_data_compatibility_service_imports_labels_and_updates_recipe(

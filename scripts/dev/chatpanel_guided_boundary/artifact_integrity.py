@@ -16,42 +16,18 @@ from typing import Any
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[3]
-SOURCE_IDENTITY_VERSION = 2
+SOURCE_IDENTITY_VERSION = 3
 _GENERATED_PREFIXES = (
     "artifacts/",
+    "build/",
     ".pytest_cache/",
     ".mypy_cache/",
     ".ruff_cache/",
+    "XBrainLab/llm/core/models/",
 )
 _LOCAL_STATE_PATHS = ("settings.json",)
-_SOURCE_SUFFIXES = frozenset(
-    {
-        ".bat",
-        ".cfg",
-        ".cmd",
-        ".css",
-        ".html",
-        ".ini",
-        ".js",
-        ".json",
-        ".lock",
-        ".md",
-        ".ps1",
-        ".py",
-        ".pyi",
-        ".sh",
-        ".svg",
-        ".toml",
-        ".txt",
-        ".yaml",
-        ".yml",
-    }
-)
-_SOURCE_NAMES = frozenset({".gitignore", "Dockerfile", "Makefile"})
-_SOURCE_PATHSPECS = (
-    *(f":(glob)**/*{suffix}" for suffix in sorted(_SOURCE_SUFFIXES)),
-    *(f":(glob)**/{name}" for name in sorted(_SOURCE_NAMES)),
-)
+_INCLUDED_FILE_POLICY = "all-non-generated-tracked-and-untracked-files"
+_SOURCE_PATHSPECS = (":(glob)**",)
 _SOURCE_EXCLUDE_PATHSPECS = (
     *(f":(exclude,glob){prefix}**" for prefix in _GENERATED_PREFIXES),
     *(f":(exclude,literal){path}" for path in _LOCAL_STATE_PATHS),
@@ -75,8 +51,7 @@ SOURCE_IDENTITY_FRESHNESS_POLICY_FIELDS = (
     "repo_root",
     "excluded_generated_prefixes",
     "excluded_local_paths",
-    "included_source_suffixes",
-    "included_source_names",
+    "included_file_policy",
 )
 
 
@@ -207,8 +182,7 @@ def _collect_source_identity_cached(repo_root: str) -> dict[str, Any]:
         "untracked_source_count": len(untracked),
         "excluded_generated_prefixes": list(_GENERATED_PREFIXES),
         "excluded_local_paths": list(_LOCAL_STATE_PATHS),
-        "included_source_suffixes": sorted(_SOURCE_SUFFIXES),
-        "included_source_names": sorted(_SOURCE_NAMES),
+        "included_file_policy": _INCLUDED_FILE_POLICY,
         "error": "",
     }
     identity["source_digest"] = source_identity_digest(identity)
@@ -229,8 +203,7 @@ def source_identity_digest(identity: Mapping[str, Any]) -> str:
         "untracked_source_count": identity.get("untracked_source_count"),
         "excluded_generated_prefixes": identity.get("excluded_generated_prefixes"),
         "excluded_local_paths": identity.get("excluded_local_paths"),
-        "included_source_suffixes": identity.get("included_source_suffixes"),
-        "included_source_names": identity.get("included_source_names"),
+        "included_file_policy": identity.get("included_file_policy"),
     }
     encoded = json.dumps(
         fields,
@@ -306,7 +279,7 @@ def _dirty_source_digest(
     untracked: list[bytes],
 ) -> str:
     digest = hashlib.sha256()
-    digest.update(b"xbrainlab-dirty-source-v1\0tracked-diff\0")
+    digest.update(b"xbrainlab-dirty-source-v2\0tracked-diff\0")
     digest.update(tracked)
     digest.update(b"\0untracked-files\0")
     try:
@@ -335,7 +308,7 @@ def _dirty_source_digest(
 def _source_content_digest(root: Path, paths: list[bytes]) -> str:
     """Hash current source bytes independently of branch and commit metadata."""
     digest = hashlib.sha256()
-    digest.update(b"xbrainlab-source-content-v1\0")
+    digest.update(b"xbrainlab-source-content-v2\0")
     try:
         for raw_path in paths:
             relative = raw_path.decode("utf-8", errors="surrogateescape")
@@ -368,14 +341,8 @@ def _is_excluded_source_path(raw_path: bytes) -> bool:
     )
 
 
-def _is_source_path(raw_path: bytes) -> bool:
-    relative = raw_path.decode("utf-8", errors="surrogateescape")
-    path = Path(relative)
-    return path.suffix.casefold() in _SOURCE_SUFFIXES or path.name in _SOURCE_NAMES
-
-
 def _is_included_source_path(raw_path: bytes) -> bool:
-    return _is_source_path(raw_path) and not _is_excluded_source_path(raw_path)
+    return bool(raw_path) and not _is_excluded_source_path(raw_path)
 
 
 def _working_source_path_exists(root: Path, raw_path: bytes) -> bool:
@@ -417,7 +384,6 @@ def _unavailable_source_identity(root: Path, error: str) -> dict[str, Any]:
         "untracked_source_count": 0,
         "excluded_generated_prefixes": list(_GENERATED_PREFIXES),
         "excluded_local_paths": list(_LOCAL_STATE_PATHS),
-        "included_source_suffixes": sorted(_SOURCE_SUFFIXES),
-        "included_source_names": sorted(_SOURCE_NAMES),
+        "included_file_policy": _INCLUDED_FILE_POLICY,
         "error": error,
     }

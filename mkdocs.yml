@@ -36,7 +36,6 @@ extra_javascript:
 exclude_docs: |
   agent/**
   api/**
-  decisions/**
   development/**
   getting-started/**
   reference/**
@@ -48,7 +47,10 @@ nav:
   - 首頁: index.md
   - 專案現況:
       - 目前真相: current.md
+      - Active Product Audit: records/product_quality_audit_2026-07-30.md
       - 操作方式: operations.md
+  - 決策:
+      - 決策紀錄: decisions/README.md
   - 產品計畫:
       - 下一步: planning/now.md
       - Roadmap: planning/roadmap.md
@@ -68,14 +70,15 @@ nav:
   - 驗證:
       - 驗證策略: validation/README.md
       - Thesis Protocol: validation/thesis_protocol.md
-  - 產品回饋:
-      - UI/UX 觀察: records/product_feedback.md
-      - 2026-05-31 Lab Meeting: records/lab_meeting_2026-05-31.md
-      - Implementation Log: records/implementation_log.md
-      - Worklog: records/worklog.md
   - 研究:
       - EEG Import / Label Design: research/bci_eeg_import_label_design_source.md
       - Tool-Call Agent Practices: research/tool_call_agent_best_practices.md
+  - Records:
+      - Product Feedback Record: records/product_feedback.md
+      - 2026-05-31 Lab Meeting: records/lab_meeting_2026-05-31.md
+      - Logs:
+          - Implementation Log: records/implementation_log.md
+          - Worklog: records/worklog.md
 plugins:
   - search
   - mkdocstrings:

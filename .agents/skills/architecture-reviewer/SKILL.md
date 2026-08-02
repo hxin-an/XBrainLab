@@ -28,10 +28,15 @@ description: Use when reviewing XBrainLab current versus target architecture acr
 
 ## 特別注意
 
-- Backend 目前以 `Study` 為中心，UI 直接拿 controllers。
-- `BackendFacade` 目前比較像 assistant / headless wrapper。
-- target 是 Application Service / Command API，不是把所有邏輯塞進 facade。
+- Product command spine 目前是 `ApplicationService / Command API`；`Study` 與 managers
+  持有 domain state，部分 UI controller adapter / observer boundary 仍待收斂。
+- `BackendFacade` 已物理移除。把它描述成 current wrapper、compatibility layer 或 target
+  abstraction 都是架構失真；review 要防止它或等價 generic facade 回流。
+- target 不是把所有 workflow 邏輯塞進 `ApplicationService`；新邏輯應落在 focused command
+  service / handler，再由 command spine 統一 gate 與包裝 result。
 - agent target 包含 State Manager、Verification Layer、capability policy、tool-call scoring。
+- MCP 已退出 active product / thesis roadmap。除非使用者明確要求 MCP，review 不讀 MCP
+  adapter、不把 MCP 納入 current architecture gap，也不新增 MCP gate。
 
 ## 禁止
 

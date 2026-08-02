@@ -2784,7 +2784,9 @@
       "blocked_reasons": [
         "Label carrier pairing is incomplete: 0/1 selected EEG files are paired; unpaired EEG files: sub-01_ses-01_task-mi_run-1_raw.fif.",
         "Observed event values require complete role/keep/class decisions for labels.csv: left, right.",
-        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin."
+        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
+        "labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "case_id": "tabular_and_text_labels",
       "coverage_label": "CSV labels",
@@ -2795,12 +2797,14 @@
       "preview_blocked_reasons": [
         "Label carrier pairing is incomplete: 0/1 selected EEG files are paired; unpaired EEG files: sub-01_ses-01_task-mi_run-1_raw.fif.",
         "Observed event values require complete role/keep/class decisions for labels.csv: left, right.",
-        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin."
+        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
+        "labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "preview_confirmation_items": [
         "Confirm label placement for labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
-        "Confirm label placement for labels.tsv: Choose the EEG events that label rows follow in order.",
-        "Confirm label placement for labels.txt: Choose the EEG events that label rows follow in order."
+        "Confirm label placement for labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "Confirm label placement for labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "preview_summary": "Found 1 EEG file(s) and 3 label/event carrier(s).",
       "required_confirmations": [],
@@ -2815,7 +2819,9 @@
       "blocked_reasons": [
         "Label carrier pairing is incomplete: 0/1 selected EEG files are paired; unpaired EEG files: sub-01_ses-01_task-mi_run-1_raw.fif.",
         "Observed event values require complete role/keep/class decisions for labels.csv: left, right.",
-        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin."
+        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
+        "labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "case_id": "tabular_and_text_labels",
       "coverage_label": "TSV labels",
@@ -2826,12 +2832,14 @@
       "preview_blocked_reasons": [
         "Label carrier pairing is incomplete: 0/1 selected EEG files are paired; unpaired EEG files: sub-01_ses-01_task-mi_run-1_raw.fif.",
         "Observed event values require complete role/keep/class decisions for labels.csv: left, right.",
-        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin."
+        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
+        "labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "preview_confirmation_items": [
         "Confirm label placement for labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
-        "Confirm label placement for labels.tsv: Choose the EEG events that label rows follow in order.",
-        "Confirm label placement for labels.txt: Choose the EEG events that label rows follow in order."
+        "Confirm label placement for labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "Confirm label placement for labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "preview_summary": "Found 1 EEG file(s) and 3 label/event carrier(s).",
       "required_confirmations": [],
@@ -2846,7 +2854,9 @@
       "blocked_reasons": [
         "Label carrier pairing is incomplete: 0/1 selected EEG files are paired; unpaired EEG files: sub-01_ses-01_task-mi_run-1_raw.fif.",
         "Observed event values require complete role/keep/class decisions for labels.csv: left, right.",
-        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin."
+        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
+        "labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "case_id": "tabular_and_text_labels",
       "coverage_label": "TXT labels",
@@ -2857,12 +2867,14 @@
       "preview_blocked_reasons": [
         "Label carrier pairing is incomplete: 0/1 selected EEG files are paired; unpaired EEG files: sub-01_ses-01_task-mi_run-1_raw.fif.",
         "Observed event values require complete role/keep/class decisions for labels.csv: left, right.",
-        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin."
+        "labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
+        "labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "preview_confirmation_items": [
         "Confirm label placement for labels.csv: Sample indexes need an explicit zero- or one-based contract and a recording-relative or absolute origin.",
-        "Confirm label placement for labels.tsv: Choose the EEG events that label rows follow in order.",
-        "Confirm label placement for labels.txt: Choose the EEG events that label rows follow in order."
+        "Confirm label placement for labels.tsv: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor.",
+        "Confirm label placement for labels.txt: Trial-order label placement requires an explicit target EEG event set. Confirmation alone cannot resolve the event anchor."
       ],
       "preview_summary": "Found 1 EEG file(s) and 3 label/event carrier(s).",
       "required_confirmations": [],
@@ -2876,7 +2888,7 @@
     {
       "blocked_reasons": [
         "No EEG files were selected for interpretation.",
-        "XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+        "No supported EEG data files were found."
       ],
       "case_id": "xdf_lsl_device_export",
       "coverage_label": "XDF / LSL stream export",
@@ -2886,7 +2898,7 @@
       "observed": true,
       "preview_blocked_reasons": [
         "No EEG files were selected for interpretation.",
-        "XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+        "No supported EEG data files were found."
       ],
       "preview_confirmation_items": [],
       "preview_summary": "Found 0 EEG file(s) and 0 label/event carrier(s).",

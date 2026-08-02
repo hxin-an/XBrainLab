@@ -6,7 +6,7 @@
 下載指令：
 
 ```bash
-/home/administrator/.local/bin/poetry run python scripts/dev/fetch_public_eeg_fixtures.py
+/home/administrator/.local/bin/poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py
 ```
 
 下載器會驗證公開檔案的 SHA-256，避免 0-byte 或 partial download 被誤當成可用 fixture。
@@ -16,8 +16,8 @@
 Required CI 使用受控的小型 profile：
 
 ```bash
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
+poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py \
   --profile required-ci --verify-only
 ```
 
@@ -30,18 +30,18 @@ poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
 老師試用前另有較大的 local-only profile。它不進一般 CI，也不會進 Git：
 
 ```bash
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py \
   --profile teacher-preflight
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py \
   --profile teacher-preflight --verify-only
-timeout 600s prlimit --core=0 -- poetry run python \
+timeout 600s prlimit --core=0 -- poetry run -- python \
   scripts/dev/report_teacher_dataset_preflight.py \
   --strict --write-artifacts
 
 # Final gate from a committed product-source checkpoint. This also runs the
 # real five-step Qt workflows with missing fixtures treated as failures and
 # writes current OpenNeuro screenshots.
-timeout 1800s prlimit --core=0 -- poetry run python \
+timeout 1800s prlimit --core=0 -- poetry run -- python \
   scripts/dev/run_teacher_handoff_gate.py --require-clean-source
 ```
 
@@ -52,10 +52,10 @@ timeout 1800s prlimit --core=0 -- poetry run python \
   - Sleep-EDF ST7011：PSG EDF 與獨立 EDF+ hypnogram
 - backend runner 會經真實 `ApplicationService` 跑 scan、preview、validate、apply 與
   OpenNeuro epoch handoff，並逐 run 比對來源與匯入後的 `(sample, class label)` digest；
-  artifact 寫到
-  `artifacts/data_interpretation/teacher-dataset-preflight.{json,md}`
+  artifact 預設寫到
+  `build/dev-artifacts/teacher-data-preflight/teacher-dataset-preflight.{json,md}`
 - final gate 會先驗證 exact manifest，再跑 backend runner 與不可 skip 的真 Qt wizard，
-  screenshot / evidence 寫到 `artifacts/ui/teacher-data-preflight/`
+  screenshot / evidence 預設寫到 `build/dev-artifacts/teacher-data-preflight/ui/`
 - OpenNeuro case 是 reviewed class-label placement evidence；CHB-MIT 與 Sleep-EDF
   目前只宣稱 raw import 與 sidecar 分類正確
 - CHB-MIT seizure sidecar 與 Sleep-EDF hypnogram 尚不會自動轉成 supervised labels；這是
@@ -149,8 +149,8 @@ SCCN 的 `rt` / `square` 缺少 public protocol class ground truth；CNT 的可�
 可重跑命令：
 
 ```bash
-/home/administrator/.local/bin/poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format markdown
-/home/administrator/.local/bin/poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict
+/home/administrator/.local/bin/poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format markdown
+/home/administrator/.local/bin/poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict
 ```
 
 目前仍停在 import/facade breadth 的 fixture 是：

@@ -117,7 +117,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             stage="Data Loaded",
             status="Raw EEG data is available, but preprocessing is not complete.",
             boundary=(
-                "Preprocessing must complete before epoching and training dataset "
+                "Preprocessing must complete before EEG epoching and training dataset "
                 "construction."
             ),
         ),
@@ -133,10 +133,12 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "system_prompt": _stage_system_prompt(
             role="EEG epoching guide",
             stage="Preprocessed",
-            status="Preprocessing is complete. The workflow is Ready for epoching.",
+            status=(
+                "Preprocessing is complete. The workflow is Ready for EEG epoching."
+            ),
             boundary=(
-                "Epoch creation requires a target event and epoch window before "
-                "a training dataset can be built."
+                "EEG epoch creation requires a target event and EEG epoch window "
+                "before a training dataset can be built."
             ),
         ),
     },
@@ -151,8 +153,8 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         ],
         "system_prompt": _stage_system_prompt(
             role="EEG dataset generation guide",
-            stage="Epochs Ready",
-            status="Preprocessed epoch data is available.",
+            stage="EEG Epochs Ready",
+            status="Preprocessed EEG epoch data is available.",
             boundary=(
                 "A split strategy and dataset settings are required before model "
                 "training can be configured."

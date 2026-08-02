@@ -31,9 +31,8 @@ def verify_headless():
             print("FAIL: Controller is not instance of Observable", file=sys.stderr)
             sys.exit(1)
 
-        if hasattr(controller, "data_changed") and not isinstance(
-            controller.data_changed, str
-        ):
+        data_changed = getattr(controller, "data_changed", None)
+        if data_changed is not None and not isinstance(data_changed, str):
             # Just a loose check, actually data_changed signal shouldn't exist
             pass
 

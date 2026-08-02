@@ -170,6 +170,7 @@ class ChatTurnPresentation:
     phase: ChatTurnPresentationPhase
     primary_status: str = ""
     step: str = ""
+    scope_summary: str = ""
     cancelability: ChatTurnCancelability = ChatTurnCancelability.NONE
     cancelability_text: str = ""
 
@@ -178,7 +179,12 @@ class ChatTurnPresentation:
             raise TypeError("Chat turn presentation phase must be typed.")
         if not isinstance(self.cancelability, ChatTurnCancelability):
             raise TypeError("Chat turn cancelability must be typed.")
-        for field_name in ("primary_status", "step", "cancelability_text"):
+        for field_name in (
+            "primary_status",
+            "step",
+            "scope_summary",
+            "cancelability_text",
+        ):
             value = getattr(self, field_name)
             if not isinstance(value, str):
                 raise TypeError(f"Chat turn {field_name} must be a string.")

@@ -16,8 +16,10 @@ from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyScheduleReason,
     PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingRunIdentity,
+    TrainingStateToken,
     TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils.observer import Observable
@@ -53,6 +55,50 @@ def _state(*, finished_runs: int, progress: str = "Pending") -> SimpleNamespace:
     )
 
 
+def _publish_terminal(
+    training: _TrainingEvents,
+    *,
+    publication_generation: int = 1,
+) -> None:
+    training.notify(
+        "training_terminal_published",
+        TrainingLifecycleEvent(
+            token=TrainingStateToken(
+                generation=publication_generation,
+                stable=True,
+            ),
+            outcome=training.outcome,
+            publication_generation=publication_generation,
+            publication_revision=publication_generation,
+        ),
+    )
+
+
+def test_raw_training_stop_waits_for_acknowledged_terminal_publication() -> None:
+    training = _TrainingEvents()
+    current_state = _state(finished_runs=0)
+    configured: list[dict[str, object]] = []
+    automation = PostTrainingSaliencyAutomation(
+        training=training,
+        get_state=lambda: current_state,
+        configure_saliency=configured.append,
+    )
+
+    automation.arm()
+    assert training._observers.get("training_stopped", ()) == ()
+    assert len(training._observers.get("training_terminal_published", ())) == 1
+    current_state.evaluation.finished_runs = 1
+    training.outcome = _outcome(TrainingOutcomeState.COMPLETED)
+
+    training.notify("training_stopped")
+
+    assert configured == []
+
+    _publish_terminal(training)
+    assert automation.wait_for_idle(timeout=2.0)
+    assert len(configured) == 1
+
+
 def test_completed_training_starts_recommended_saliency_without_ui_panel() -> None:
     training = _TrainingEvents()
     current_state = _state(finished_runs=2)
@@ -66,7 +112,7 @@ def test_completed_training_starts_recommended_saliency_without_ui_panel() -> No
     automation.arm()
     current_state.evaluation.finished_runs = 3
     training.outcome = _outcome(TrainingOutcomeState.COMPLETED)
-    training.notify("training_stopped")
+    _publish_terminal(training)
     assert automation.wait_for_idle(timeout=2.0)
 
     assert configured == [
@@ -87,15 +133,15 @@ def test_cancel_unsubscribes_idempotently_and_rearm_subscribes_once() -> None:
     )
 
     automation.arm()
-    assert len(training._observers.get("training_stopped", ())) == 1
+    assert len(training._observers.get("training_terminal_published", ())) == 1
 
     automation.cancel()
     automation.cancel()
-    assert len(training._observers.get("training_stopped", ())) == 0
+    assert len(training._observers.get("training_terminal_published", ())) == 0
 
     automation.arm()
     automation.arm()
-    assert len(training._observers.get("training_stopped", ())) == 1
+    assert len(training._observers.get("training_terminal_published", ())) == 1
 
     automation.cancel()
 
@@ -117,7 +163,7 @@ def test_completed_training_scopes_saliency_to_the_verified_run() -> None:
     automation.arm(append=True)
     current_state.evaluation.finished_runs = 4
     training.outcome = _outcome(TrainingOutcomeState.COMPLETED, run_id=7)
-    training.notify("training_stopped")
+    _publish_terminal(training)
     assert automation.wait_for_idle(timeout=2.0)
 
     assert len(observed_targets) == 1
@@ -129,7 +175,7 @@ def test_completed_training_scopes_saliency_to_the_verified_run() -> None:
     assert target.append is True
 
 
-def test_training_stopped_observer_does_not_run_saliency_command_inline() -> None:
+def test_terminal_publication_observer_does_not_run_saliency_command_inline() -> None:
     training = _TrainingEvents()
     current_state = _state(finished_runs=0)
     configure_started = Event()
@@ -151,7 +197,7 @@ def test_training_stopped_observer_does_not_run_saliency_command_inline() -> Non
     automation.arm()
     current_state.evaluation.finished_runs = 1
     training.outcome = _outcome(TrainingOutcomeState.COMPLETED)
-    training.notify("training_stopped")
+    _publish_terminal(training)
 
     assert configure_started.wait(timeout=2.0)
     assert callback_threads != [notifying_thread]
@@ -211,8 +257,8 @@ def test_submission_thread_failure_publishes_typed_terminal_status_once(
         "XBrainLab.backend.application.post_training_saliency.Thread",
         SubmissionFailureThread,
     ):
-        training.notify("training_stopped")
-        training.notify("training_stopped")
+        _publish_terminal(training)
+        _publish_terminal(training)
 
     assert automation.wait_for_idle(timeout=0.01)
     assert configured == []
@@ -249,7 +295,7 @@ def test_failed_saliency_command_result_publishes_submission_failure() -> None:
     current_state.evaluation.finished_runs = 1
     training.outcome = _outcome(TrainingOutcomeState.COMPLETED)
 
-    training.notify("training_stopped")
+    _publish_terminal(training)
     assert automation.wait_for_idle(timeout=2.0)
 
     assert len(failures) == 1
@@ -275,8 +321,8 @@ def test_failed_or_duplicate_training_stop_does_not_compute_saliency() -> None:
         TrainingOutcomeState.FAILED,
         detail="CUDA out of memory",
     )
-    training.notify("training_stopped")
-    training.notify("training_stopped")
+    _publish_terminal(training)
+    _publish_terminal(training)
 
     assert configured == []
 
@@ -293,7 +339,7 @@ def test_training_without_new_finished_run_does_not_compute_saliency() -> None:
 
     automation.arm()
     training.outcome = _outcome(TrainingOutcomeState.COMPLETED)
-    training.notify("training_stopped")
+    _publish_terminal(training)
 
     assert configured == []
 
@@ -315,7 +361,7 @@ def test_replacement_training_computes_saliency_when_finished_count_is_equal() -
         TrainingOutcomeState.COMPLETED,
         trainer_id="trainer-b",
     )
-    training.notify("training_stopped")
+    _publish_terminal(training)
     assert automation.wait_for_idle(timeout=2.0)
 
     assert configured == [
@@ -345,7 +391,7 @@ def test_partial_cancelled_training_never_starts_saliency(
     automation.arm(append=True)
     current_state.evaluation.finished_runs = 3
     training.outcome = _outcome(terminal_state, run_id=2)
-    training.notify("training_stopped")
+    _publish_terminal(training)
 
     assert configured == []
 
@@ -362,16 +408,16 @@ def test_duplicate_terminal_event_for_previous_run_does_not_consume_armed_run() 
     )
 
     automation.arm(append=True)
-    training.notify("training_stopped")
+    _publish_terminal(training)
     current_state.evaluation.finished_runs = 2
     training.outcome = _outcome(TrainingOutcomeState.COMPLETED, run_id=2)
-    training.notify("training_stopped")
+    _publish_terminal(training, publication_generation=2)
     assert automation.wait_for_idle(timeout=2.0)
 
     assert len(configured) == 1
 
 
-def test_unknown_terminal_event_disarms_instead_of_claiming_a_later_run() -> None:
+def test_invalid_terminal_publication_does_not_consume_the_armed_run() -> None:
     training = _TrainingEvents()
     current_state = _state(finished_runs=0)
     configured: list[dict[str, object]] = []
@@ -382,9 +428,10 @@ def test_unknown_terminal_event_disarms_instead_of_claiming_a_later_run() -> Non
     )
 
     automation.arm()
-    training.notify("training_stopped")
+    training.notify("training_terminal_published")
     current_state.evaluation.finished_runs = 1
     training.outcome = _outcome(TrainingOutcomeState.COMPLETED)
-    training.notify("training_stopped")
+    _publish_terminal(training)
+    assert automation.wait_for_idle(timeout=2.0)
 
-    assert configured == []
+    assert len(configured) == 1

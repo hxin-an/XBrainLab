@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
 
+from XBrainLab.backend.application.commands import CommandName
+from XBrainLab.backend.utils.public_diagnostics import (
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+)
 from XBrainLab.chat_contract import (
     MAX_CHAT_ACTION_ID_LENGTH,
     MAX_CHAT_ACTION_LABEL_LENGTH,
@@ -15,6 +20,7 @@ from XBrainLab.chat_contract import (
     MAX_CHAT_RESPONSE_ACTIONS,
     bounded_chat_string,
 )
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.product_language import tool_action_label
 
 from .interaction import AgentInteractionOutcome, AgentInteractionStatus
@@ -86,50 +92,77 @@ class AssistantPanelNavigationRequest:
         object.__setattr__(self, "view_mode", normalized)
 
 
-_DATASET_PANEL_COMMANDS = (
-    "scan_source",
-    "review_interpretation",
-    "preview_interpretation",
-    "validate_interpretation",
-    "apply_interpretation",
-    "clear_interpretation",
-    "load_data",
-    "attach_labels",
-    "import_labels",
-    "clear_dataset",
+_DATASET_PANEL_COMMANDS = frozenset(
+    {
+        CommandName.SCAN_SOURCE,
+        CommandName.REVIEW_INTERPRETATION,
+        CommandName.PREVIEW_INTERPRETATION,
+        CommandName.VALIDATE_INTERPRETATION,
+        CommandName.APPLY_INTERPRETATION,
+        CommandName.SAVE_INTERPRETATION_RECIPE,
+        CommandName.RELOAD_INTERPRETATION_RECIPE,
+        CommandName.LOAD_DATA,
+        CommandName.ATTACH_LABELS,
+        CommandName.IMPORT_LABELS,
+        CommandName.UPDATE_METADATA,
+        CommandName.APPLY_SMART_PARSE,
+        CommandName.REMOVE_FILES,
+        CommandName.RESET_SESSION,
+        CommandName.NEW_SESSION,
+    }
 )
-_PREPROCESS_PANEL_COMMANDS = (
-    "apply_standard_preprocess",
-    "preprocess",
-    "filter_data",
-    "resample_data",
-    "set_reference",
-    "epoch_data",
-    "create_epoch",
-    "reset_preprocess",
+_PREPROCESS_PANEL_COMMANDS = frozenset(
+    {
+        CommandName.PREPROCESS,
+        CommandName.CREATE_EPOCH,
+        CommandName.RESET_PREPROCESS,
+    }
 )
-_TRAINING_PANEL_COMMANDS = (
-    "generate_dataset",
-    "split_dataset",
-    "set_model",
-    "set_training_option",
-    "configure_training",
-    "start_training",
-    "train",
-    "stop_training",
-    "clear_history",
+_TRAINING_PANEL_COMMANDS = frozenset(
+    {
+        CommandName.GENERATE_DATASET,
+        CommandName.CLEAR_DATASETS,
+        CommandName.CONFIGURE_TRAINING,
+        CommandName.TRAIN,
+        CommandName.STOP_TRAINING,
+        CommandName.CLEAR_TRAINING_HISTORY,
+    }
 )
 
-_COMMAND_PANEL_TARGETS: dict[str, AssistantPanelTarget] = {
+_COMMAND_PANEL_TARGETS: dict[CommandName, AssistantPanelTarget] = {
     **dict.fromkeys(_DATASET_PANEL_COMMANDS, AssistantPanelTarget.DATASET),
     **dict.fromkeys(_PREPROCESS_PANEL_COMMANDS, AssistantPanelTarget.PREPROCESS),
     **dict.fromkeys(_TRAINING_PANEL_COMMANDS, AssistantPanelTarget.TRAINING),
-    "evaluate": AssistantPanelTarget.EVALUATION,
-    "set_montage": AssistantPanelTarget.VISUALIZATION,
-    "apply_montage": AssistantPanelTarget.VISUALIZATION,
-    "visualize": AssistantPanelTarget.VISUALIZATION,
-    "saliency": AssistantPanelTarget.VISUALIZATION,
+    CommandName.EVALUATE: AssistantPanelTarget.EVALUATION,
+    CommandName.APPLY_MONTAGE: AssistantPanelTarget.VISUALIZATION,
+    CommandName.VISUALIZE: AssistantPanelTarget.VISUALIZATION,
+    CommandName.SALIENCY: AssistantPanelTarget.VISUALIZATION,
 }
+
+_BLOCKED_COMMAND_PANEL_TARGETS: dict[CommandName, AssistantPanelTarget] = {
+    CommandName.EVALUATE: AssistantPanelTarget.TRAINING,
+}
+
+
+def _command_identifier(command_identity: str | CommandName) -> str:
+    if isinstance(command_identity, CommandName):
+        return command_identity.value
+    if type(command_identity) is not str:
+        return ""
+    return command_identity.strip().lower()
+
+
+def _canonical_command_identity(
+    command_identity: str | CommandName,
+) -> CommandName | None:
+    identifier = _command_identifier(command_identity)
+    if not identifier:
+        return None
+    try:
+        return CommandName(identifier)
+    except ValueError:
+        contract = AGENT_ACTION_CONTRACTS.contract_for(identifier)
+        return contract.command if contract is not None else None
 
 
 def user_facing_generation_error(raw_error: object) -> str:
@@ -160,27 +193,41 @@ def user_facing_generation_error(raw_error: object) -> str:
     )
 
 
-def panel_target_for_command(command_name: str) -> AssistantPanelTarget | None:
+def panel_target_for_command(
+    command_name: str | CommandName,
+) -> AssistantPanelTarget | None:
     """Return one shared product-surface target for backend and tool names."""
-    normalized = str(command_name or "").strip().lower()
-    direct = _COMMAND_PANEL_TARGETS.get(normalized)
-    if direct is not None:
-        return direct
-    if normalized.startswith(("evaluat", "metric")):
-        return AssistantPanelTarget.EVALUATION
-    if any(
-        keyword in normalized
-        for keyword in ("saliency", "visual", "spectrogram", "topomap", "3d")
-    ):
-        return AssistantPanelTarget.VISUALIZATION
-    return None
+    canonical_command = _canonical_command_identity(command_name)
+    return (
+        _COMMAND_PANEL_TARGETS.get(canonical_command)
+        if canonical_command is not None
+        else None
+    )
+
+
+def panel_target_for_blocked_command(
+    command_name: str | CommandName,
+    blocked_reason: str | None,
+) -> AssistantPanelTarget | None:
+    """Route a blocked action from command identity, never display copy."""
+    # Kept in the signature for the current controller call; presentation copy is
+    # deliberately non-authoritative for routing.
+    _ = blocked_reason
+    canonical_command = _canonical_command_identity(command_name)
+    if canonical_command is None:
+        return None
+    return _BLOCKED_COMMAND_PANEL_TARGETS.get(
+        canonical_command,
+        _COMMAND_PANEL_TARGETS.get(canonical_command),
+    )
 
 
 def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
     """Translate one typed interaction result into stable product copy."""
     if not isinstance(outcome, AgentInteractionOutcome):
         raise TypeError("Interaction outcome copy requires a typed outcome.")
-    label = tool_action_label(outcome.command_name)
+    command_identifier = _command_identifier(outcome.command_name)
+    label = tool_action_label(command_identifier)
     if outcome.status is AgentInteractionStatus.CONFIRMED:
         return f"Approved: {label}. XBrainLab is starting the action."
     if outcome.status is AgentInteractionStatus.CANCELLED:
@@ -206,16 +253,19 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
             "apply_interpretation": ("Data import was cancelled. No data was added."),
         }
         return cancelled_copy.get(
-            outcome.command_name,
+            command_identifier,
             f"{label} was cancelled. Your current workflow is unchanged.",
         )
     if outcome.status is AgentInteractionStatus.DEFERRED_TO_UI:
-        if outcome.command_name == "evaluate":
+        if command_identifier == CommandName.EVALUATE.value:
             return "Evaluation is open in the main window. Review results there."
         return f"{label} is open in the main window. Continue there."
     if outcome.status is AgentInteractionStatus.COMPLETED_IN_UI:
         return f"{label} was completed in XBrainLab."
-    detail = " ".join(str(outcome.message or "").split())
+    detail = public_diagnostic_text(
+        outcome.message or "",
+        layout=DiagnosticTextLayout.SINGLE_LINE,
+    )
     if outcome.status is AgentInteractionStatus.BLOCKED:
         return detail or (
             f"{label} is blocked by the current workflow state. "
@@ -265,7 +315,7 @@ class AssistantResponseAction:
             self,
             "label",
             bounded_chat_string(
-                self.label,
+                public_diagnostic_text(self.label),
                 field_name="Assistant response action label",
                 maximum_length=MAX_CHAT_ACTION_LABEL_LENGTH,
                 normalize_whitespace=True,
@@ -275,7 +325,7 @@ class AssistantResponseAction:
             self,
             "prompt",
             bounded_chat_string(
-                self.prompt,
+                public_diagnostic_text(self.prompt),
                 field_name="Assistant response action prompt",
                 maximum_length=MAX_CHAT_ACTION_PROMPT_LENGTH,
                 normalize_whitespace=True,
@@ -359,7 +409,7 @@ class AssistantResponsePresentation:
             self,
             "text",
             bounded_chat_string(
-                self.text,
+                public_diagnostic_text(self.text),
                 field_name="Assistant response text",
                 maximum_length=MAX_CHAT_MESSAGE_CONTENT_LENGTH,
             ),

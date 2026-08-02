@@ -29,8 +29,17 @@ else:
 class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
     """Render and mutation helpers for the Load Labels step."""
 
+    _extra_label_sources: list[str]
+
     def _add_label_source_rows(self, layout: QVBoxLayout) -> None:
         carriers = self._label_carrier_preview_rows()
+        unmatched_file_sources = [
+            source
+            for source in self._extra_label_sources
+            if self._looks_like_file(source)
+            and not self._source_has_visible_label_carrier(source)
+        ]
+        dense_rows = len(carriers) + len(unmatched_file_sources) > 6
         folder_sources = [
             source
             for source in self._extra_label_sources
@@ -49,12 +58,19 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
                 or "Label source"
             )
             carrier_path = str(carrier.get("path") or "").strip()
+            full_detail = self._label_source_detail(carrier, carrier_path)
             layout.addWidget(
                 self._source_row(
                     name,
-                    self._label_source_detail(carrier, carrier_path),
+                    (
+                        self._compact_label_source_detail(carrier, carrier_path)
+                        if dense_rows
+                        else full_detail
+                    ),
                     remove_button_text="Remove file",
                     remove_tooltip="Remove this label file from the import.",
+                    detail_tooltip=full_detail,
+                    compact=dense_rows,
                     remove_callback=(
                         lambda _checked=False, item=carrier_path: (
                             self._remove_label_carrier(item)
@@ -65,16 +81,26 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
                 )
             )
 
-        for source in self._extra_label_sources:
-            if not self._looks_like_file(source):
-                continue
-            if self._source_has_visible_label_carrier(source):
-                continue
+        for source in unmatched_file_sources:
+            title, full_detail = self._user_label_source_row(source)
             layout.addWidget(
                 self._source_row(
-                    *self._user_label_source_row(source),
+                    title,
+                    (
+                        self._compact_label_source_detail(
+                            {
+                                "source_kind": "user_added",
+                                "source_location": source,
+                            },
+                            source,
+                        )
+                        if dense_rows
+                        else full_detail
+                    ),
                     remove_button_text="Remove file",
                     remove_tooltip="Remove this loaded label file from the import.",
+                    detail_tooltip=full_detail,
+                    compact=dense_rows,
                     remove_callback=lambda _checked=False, item=source: (
                         self._remove_label_source(item)
                     ),
@@ -181,29 +207,41 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         *,
         remove_button_text: str = "Remove",
         remove_tooltip: str = "Remove this loaded label source from the import.",
+        detail_tooltip: str | None = None,
+        compact: bool = False,
         remove_callback: Any | None = None,
     ) -> QFrame:
         row = QFrame()
         row.setObjectName("DataImportSourceRow")
+        row.setProperty("dense", compact)
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(10, 6 if compact else 8, 10, 6 if compact else 8)
         layout.setSpacing(10)
-        text_layout = QVBoxLayout()
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(2)
         title_label = QLabel(title)
         title_label.setObjectName("DataImportSourceTitle")
+        title_label.setToolTip(title)
         detail_label = QLabel(detail)
         detail_label.setObjectName("DataImportSourceDetail")
-        detail_label.setWordWrap(True)
-        detail_label.setToolTip(detail)
+        detail_label.setWordWrap(not compact)
+        detail_label.setToolTip(detail_tooltip or detail)
         detail_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        text_layout.addWidget(title_label)
-        if detail:
-            text_layout.addWidget(detail_label)
-        layout.addLayout(text_layout, stretch=1)
+        if compact:
+            title_label.setMinimumWidth(150)
+            layout.addWidget(title_label)
+            if detail:
+                layout.addWidget(detail_label, stretch=1)
+            else:
+                layout.addStretch()
+        else:
+            text_layout = QVBoxLayout()
+            text_layout.setContentsMargins(0, 0, 0, 0)
+            text_layout.setSpacing(2)
+            text_layout.addWidget(title_label)
+            if detail:
+                text_layout.addWidget(detail_label)
+            layout.addLayout(text_layout, stretch=1)
         if remove_callback is not None:
             remove_btn = QPushButton(remove_button_text)
             remove_btn.setObjectName("DataImportTertiaryButton")
@@ -371,6 +409,21 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
             parent = Path(carrier_path).parent.as_posix()
             return f"Found in folder: {parent}"
         return ""
+
+    @staticmethod
+    def _compact_label_source_detail(
+        carrier: dict[str, Any],
+        carrier_path: str,
+    ) -> str:
+        source_kind = str(carrier.get("source_kind") or "").strip().lower()
+        source_location = str(carrier.get("source_location") or "").strip()
+        location = source_location or str(Path(carrier_path).parent)
+        location_path = Path(location)
+        folder = (
+            location_path.parent.name if location_path.suffix else location_path.name
+        )
+        origin = "Loaded" if source_kind == "user_added" else "Detected nearby"
+        return f"{origin} · {folder}" if folder else origin
 
     @staticmethod
     def _looks_like_file(path: str) -> bool:

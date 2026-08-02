@@ -15,6 +15,7 @@ from XBrainLab.backend.application import (
     CommandName,
     ErrorType,
     LoadDataCommand,
+    QueryStateCommand,
     ResetSessionCommand,
     TrainCommand,
     command_specs,
@@ -214,6 +215,82 @@ def test_expected_publication_rejects_an_unusable_committed_view() -> None:
     assert result.diagnostics["stale_publication"] is True
     assert result.diagnostics["publication_usable"] is False
     handler.assert_not_called()
+
+
+def test_state_query_rejects_a_stale_expected_publication_generation() -> None:
+    service = ApplicationService(Study())
+    reviewed = service.get_view_publication()
+    changed_state = replace(reviewed.state, pipeline_stage="data_loaded")
+    service.state_snapshot.build = MagicMock(return_value=changed_state)
+    service.get_state()
+    current = service.get_view_publication()
+
+    result = service.execute(
+        QueryStateCommand(query="state"),
+        expected_publication_generation=reviewed.generation,
+    )
+
+    assert current.generation > reviewed.generation
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.state == current.state
+    assert result.diagnostics["stale_publication"] is True
+    assert result.diagnostics["expected_publication_generation"] == (
+        reviewed.generation
+    )
+    assert result.diagnostics["current_publication_generation"] == (current.generation)
+
+
+@pytest.mark.parametrize("query", ["data_lists", "training_history"])
+def test_detached_query_rejects_stale_generation_before_domain_read(
+    query: str,
+) -> None:
+    service = ApplicationService(Study())
+    reviewed = service.get_view_publication()
+    changed_state = replace(reviewed.state, pipeline_stage="data_loaded")
+    service.state_snapshot.build = MagicMock(return_value=changed_state)
+    service.get_state()
+    current = service.get_view_publication()
+    domain_read = MagicMock()
+    service.query_state_commands.handle_query_state = domain_read
+
+    result = service.execute(
+        QueryStateCommand(query=query),
+        expected_publication_generation=reviewed.generation,
+    )
+
+    assert current.generation > reviewed.generation
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["stale_publication"] is True
+    assert result.diagnostics["current_publication_generation"] == (current.generation)
+    domain_read.assert_not_called()
+
+
+def test_generation_bound_state_query_returns_one_atomic_publication() -> None:
+    service = ApplicationService(Study())
+    reviewed = service.get_view_publication()
+    later = replace(
+        reviewed,
+        state=replace(reviewed.state, pipeline_stage="data_loaded"),
+        generation=reviewed.generation + 1,
+        revision=reviewed.revision + 1,
+    )
+    committed_read = MagicMock(side_effect=[reviewed, later])
+    service._committed_view_publication = committed_read
+    service._publish_committed_view = MagicMock(return_value=True)
+
+    result = service.execute(
+        QueryStateCommand(query="state"),
+        expected_publication_generation=reviewed.generation,
+    )
+
+    assert result.ok is True
+    assert result.state == reviewed.state
+    assert result.diagnostics["state"] == reviewed.state.to_dict()
+    assert result.diagnostics["publication_generation"] == reviewed.generation
+    assert result.diagnostics["publication_revision"] == reviewed.revision
+    assert committed_read.call_count == 1
 
 
 def _ready_training_service() -> ApplicationService:

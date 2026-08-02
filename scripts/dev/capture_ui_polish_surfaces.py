@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, TypeVar
 from unittest.mock import MagicMock, patch
 
 from PIL import Image, ImageStat
@@ -35,7 +35,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QStyleOptionViewItem,
     QTableWidget,
-    QTreeWidgetItem,
     QWidget,
 )
 
@@ -54,6 +53,13 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_region_has_no_unpainted_block,
     assert_region_matches_reference,
     frame_readiness_payload,
+)
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitChoice,
+    DatasetSplitContext,
+    DatasetSplitPreviewPublication,
+    DatasetSplitPreviewRequest,
+    DatasetSplitPreviewRow,
 )
 from XBrainLab.backend.dataset import (
     DataSplittingConfig,
@@ -87,10 +93,17 @@ from XBrainLab.ui.panels.training.panel import TrainingPanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "app-polish"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "app-polish"
 OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 INTERNAL_EPOCH_SCREENSHOT = "preprocess-epoching-internal-events-dialog.png"
 BIDS_EPOCH_SCREENSHOT = "preprocess-epoching-bids-interval-duration-dialog.png"
+_T = TypeVar("_T")
+
+
+def _require_qt_value(value: _T | None, description: str) -> _T:
+    if value is None:
+        raise RuntimeError(f"{description} was not initialized.")
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -261,10 +274,8 @@ def _model_selection_dialog() -> QWidget:
 
 
 def _rereference_dialog() -> QWidget:
-    data = MagicMock()
-    data.get_mne.return_value.ch_names = ["Fz", "C3", "Cz", "C4", "Pz"]
-    dialog = RereferenceDialog(None, [data])
-    dialog.resize(QSize(460, 340))
+    dialog = RereferenceDialog(None, ["Fz", "C3", "Cz", "C4", "Pz"])
+    dialog.adjustSize()
     return dialog
 
 
@@ -287,14 +298,8 @@ def _training_setting_dialog() -> QWidget:
 
 
 def _epoching_internal_events_dialog() -> EpochingDialog:
-    data = MagicMock()
-    data.get_event_list.return_value = (
-        None,
-        {"768": 1, "769": 2, "770": 3, "771": 4, "772": 5},
-    )
     dialog = EpochingDialog(
         None,
-        [data],
         epoch_context={
             "available_events": [
                 {"name": "769", "count": 72},
@@ -319,11 +324,8 @@ def _epoching_internal_events_dialog() -> EpochingDialog:
 
 
 def _epoching_bids_interval_duration_dialog() -> EpochingDialog:
-    data = MagicMock()
-    data.get_event_list.return_value = (None, {"left": 1, "right": 2})
     dialog = EpochingDialog(
         None,
-        [data],
         epoch_context={
             "available_events": [
                 {"name": "left", "count": 36},
@@ -363,10 +365,13 @@ def _epoching_dialog() -> EpochingDialog:
 
 
 def _data_splitting_dialog() -> QWidget:
-    controller = MagicMock()
-    controller.get_epoch_data.return_value = object()
-    controller.get_dataset_generator.return_value = None
-    dialog = DataSplittingDialog(None, controller)
+    dialog = DataSplittingDialog(
+        None,
+        split_context=_data_split_capture_context(),
+        publication_generation=1,
+        preview_provider=_data_split_capture_provider,
+        preview_canceller=lambda _request_id: True,
+    )
     dialog.resize(QSize(820, 470))
     return dialog
 
@@ -378,12 +383,6 @@ def _data_splitting_dialog_narrow() -> QWidget:
 
 
 def _data_splitting_preview_dialog() -> DataSplittingPreviewDialog:
-    epoch = MagicMock()
-    epoch.subject_map = {"S01": [0, 1, 2], "S02": [3, 4, 5]}
-    epoch.session_map = {"session": [0, 1, 2, 3, 4, 5]}
-    epoch.label_map = {"left": 0, "right": 1}
-    epoch.data = list(range(120))
-    epoch.get_data_length.return_value = 120
     val_splitter = DataSplitterHolder(True, ValSplitByType.TRIAL)
     test_splitter = DataSplitterHolder(True, SplitByType.TRIAL)
     config = DataSplittingConfig(
@@ -392,44 +391,62 @@ def _data_splitting_preview_dialog() -> DataSplittingPreviewDialog:
         [val_splitter],
         [test_splitter],
     )
-    preview_thread = MagicMock()
-    preview_thread.is_alive.return_value = False
-    with (
-        patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-        ),
-        patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
-            return_value=preview_thread,
-        ),
-    ):
-        dialog = DataSplittingPreviewDialog(
-            None, "Data Splitting Step 2", epoch, config
-        )
+    dialog = DataSplittingPreviewDialog(
+        None,
+        "Data Splitting Step 2",
+        split_context=_data_split_capture_context(),
+        publication_generation=1,
+        config=config,
+        preview_provider=_data_split_capture_provider,
+        preview_canceller=lambda _request_id: True,
+    )
+    if dialog.preview_worker is not None:
+        dialog.preview_worker.join(timeout=2)
+    dialog.update_table()
     if dialog.preview_debounce_timer is not None:
         dialog.preview_debounce_timer.stop()
     if dialog.timer is not None:
         dialog.timer.stop()
     if dialog.tree is None:
         raise RuntimeError("Data splitting preview tree was not initialized.")
-    dialog.tree.clear()
-    for name, train, val, test in (
-        ("Fold_0", 76, 20, 24),
-        ("Fold_1", 76, 20, 24),
-        ("Fold_2", 76, 20, 24),
-        ("Fold_3", 76, 20, 24),
-        ("Fold_4", 76, 20, 24),
-    ):
-        item = QTreeWidgetItem(dialog.tree)
-        item.setText(0, name)
-        item.setText(1, str(train))
-        item.setText(2, str(val))
-        item.setText(3, str(test))
     dialog._clear_tree_current_item()
     dialog._resize_tree_to_rows()
     dialog.adjustSize()
     dialog.resize(QSize(980, dialog.sizeHint().height()))
     return dialog
+
+
+def _data_split_capture_context() -> DatasetSplitContext:
+    return DatasetSplitContext(
+        epoch_available=True,
+        subject_count=2,
+        session_count=1,
+        label_count=2,
+        trial_count=120,
+        subject_choices=(
+            DatasetSplitChoice(value="S01", label="S01"),
+            DatasetSplitChoice(value="S02", label="S02"),
+        ),
+        session_choices=(DatasetSplitChoice(value="session", label="session"),),
+    )
+
+
+def _data_split_capture_provider(
+    request: DatasetSplitPreviewRequest,
+) -> DatasetSplitPreviewPublication:
+    return DatasetSplitPreviewPublication(
+        request=request,
+        generation=request.publication_generation,
+        rows=tuple(
+            DatasetSplitPreviewRow(
+                name=f"Fold_{index}",
+                train_count=76,
+                validation_count=20,
+                test_count=24,
+            )
+            for index in range(5)
+        ),
+    )
 
 
 def _assistant_setup_required_narrow() -> ChatPanel:
@@ -553,12 +570,7 @@ def _set_montage_dialog() -> QWidget:
 
 
 def _evaluation_controls_panel() -> QWidget:
-    controller = MagicMock()
-    controller.get_model_summary_str.return_value = (
-        "Model details are available after a completed training run."
-    )
-    controller.get_pooled_eval_result.return_value = None
-    panel = EvaluationPanel(controller=controller, parent=None)
+    panel = EvaluationPanel(parent=None)
     panel.model_combo.blockSignals(True)
     panel.run_combo.blockSignals(True)
     panel.model_combo.addItem(
@@ -645,7 +657,29 @@ def _training_history_panel() -> TrainingPanel:
     controller.is_training.return_value = False
     controller.get_trainer.return_value = None
     panel = TrainingPanel(controller=controller, parent=None)
-    panel.resize(QSize(1120, 760))
+    dataset_row = {
+        "filename": "sub-01_task-mi_run-01_eeg.fif",
+        "subject": "01",
+        "session": "01",
+        "n_channels": 22,
+        "sampling_frequency": 250.0,
+        "epochs_length": 288,
+        "is_raw": False,
+        "tmin": -0.2,
+        "epoch_duration_samples": 301,
+        "highpass": 1.0,
+        "lowpass": 40.0,
+        "event": {
+            "available": True,
+            "count": 288,
+            "labels": ["left", "right", "feet", "tongue"],
+        },
+    }
+    panel.sidebar.info_panel.update_info(
+        loaded_data_list=[dataset_row],
+        preprocessed_data_list=[dataset_row],
+    )
+    panel.resize(QSize(1280, 760))
     return panel
 
 
@@ -657,32 +691,36 @@ def _training_history_rows(
     rows: list[dict[str, Any]] = []
     for index in range(count):
         is_running = running and index == 0
-        plan = MagicMock()
-        plan.option.epoch = 12
-        plan.get_training_status.return_value = ""
-        record = MagicMock()
-        record.get_epoch.return_value = 4 if is_running else 12
-        record.is_finished.return_value = not is_running
-        record.epoch = 4 if is_running else 12
-        record.train = {
-            "loss": [0.42 - index * 0.01],
-            "accuracy": [82.1 + index * 0.2],
-            "lr": [0.001],
-        }
-        record.val = {
-            "loss": [0.51 - index * 0.01],
-            "accuracy": [78.4 + index * 0.3],
-        }
-        record.start_timestamp = 1_000.0
-        record.end_timestamp = None if is_running else 1_062.0 + index
         rows.append(
             {
-                "plan": plan,
-                "record": record,
+                "identity": {
+                    "plan_index": index // 3,
+                    "run_index": index,
+                },
                 "group_name": f"Group {index // 3 + 1:02d}",
                 "run_name": f"Run {index + 1:02d}",
                 "model_name": "EEGNet" if index % 2 == 0 else "ShallowConvNet",
+                "status": "Running" if is_running else "Completed",
+                "epoch": 4 if is_running else 12,
+                "max_epochs": 12,
+                "is_active": is_running,
                 "is_current_run": is_running,
+                "start_timestamp": time.time() - 37.0 if is_running else 1_000.0,
+                "end_timestamp": None if is_running else 1_062.0 + index,
+                "metrics": {
+                    "train": {
+                        "loss": [0.42 - index * 0.01],
+                        "accuracy": [82.1 + index * 0.2],
+                        "auc": [],
+                        "lr": [0.001],
+                        "time": [],
+                    },
+                    "validation": {
+                        "loss": [0.51 - index * 0.01],
+                        "accuracy": [78.4 + index * 0.3],
+                        "auc": [],
+                    },
+                },
             }
         )
     return rows
@@ -784,12 +822,12 @@ def _save_widget_grab(widget: QWidget, output_path: Path) -> None:
 def _assert_surface_pixels(
     widget: QWidget,
     screenshot: Path,
-) -> tuple[list[str], list[dict[str, float | int | str]]]:
+) -> tuple[list[str], list[dict[str, object]]]:
     required = _required_reference_controls(widget)
     with Image.open(screenshot) as captured:
         scale_x = captured.width / max(widget.width(), 1)
         scale_y = captured.height / max(widget.height(), 1)
-    matches: list[dict[str, float | int | str]] = []
+    matches: list[dict[str, object]] = []
     for surface_name, control in required.items():
         if not control.isVisibleTo(widget):
             raise RuntimeError(f"{surface_name} is hidden in {screenshot.name}.")
@@ -805,6 +843,11 @@ def _assert_surface_pixels(
             bounds,
             surface_name=surface_name,
         )
+        # The isolated editor grab omits the parent-composited fill; its edges and
+        # detail tiles still prove that the full-frame control was painted in place.
+        transparent_composer_input = bool(
+            isinstance(widget, ChatPanel) and control is widget.input_field
+        )
         matches.append(
             assert_region_matches_reference(
                 screenshot,
@@ -818,12 +861,14 @@ def _assert_surface_pixels(
                 ),
                 maximum_changed_pixel_ratio=(
                     1.0
-                    if isinstance(control, (QLabel, QAbstractButton, QComboBox))
+                    if transparent_composer_input
+                    or isinstance(control, (QLabel, QAbstractButton, QComboBox))
                     else 0.55
                 ),
                 content_inset=(
                     1
-                    if isinstance(control, (QLabel, QAbstractButton, QComboBox))
+                    if transparent_composer_input
+                    or isinstance(control, (QLabel, QAbstractButton, QComboBox))
                     else 3
                 ),
             )
@@ -854,7 +899,22 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
         )
         phase = widget._runtime_phase.value
         if phase in {"idle", "loading", "failed"}:
-            required["Assistant runtime feedback"] = widget.runtime_state_widget
+            # The runtime surface is intentionally transparent and inherits its
+            # fill from the chat viewport.  Grabbing that container in isolation
+            # therefore produces a different background from the composited
+            # panel.  Validate its visible semantic children instead; the full
+            # ChatPanel reference above still guards the complete surface.
+            required["Assistant runtime title"] = widget.runtime_state_title
+            required["Assistant runtime detail"] = widget.runtime_state_detail
+            if widget.runtime_progress.isVisibleTo(widget):
+                required["Assistant runtime progress"] = widget.runtime_progress
+            for index, action in enumerate(
+                widget.runtime_actions.findChildren(QAbstractButton)
+            ):
+                if not action.isVisibleTo(widget):
+                    continue
+                label = " ".join(action.text().split()) or type(action).__name__
+                required[f"Assistant runtime action {index}: {label}"] = action
         if widget.is_processing:
             required["Assistant activity feedback"] = widget.turn_activity_widget
         if phase == "failed":
@@ -871,9 +931,15 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
         )
 
     for index, control in enumerate(widget.findChildren(QAbstractItemView)):
-        if control.isVisibleTo(widget):
-            name = control.objectName() or type(control).__name__
-            required.setdefault(f"{name} content {index}", control)
+        if not control.isVisibleTo(widget):
+            continue
+        top_left = control.mapTo(widget, QPoint(0, 0))
+        if not widget.rect().contains(QRect(top_left, control.size())):
+            # Scroll-area children can be intentionally clipped by their viewport;
+            # comparing a full child grab with only its visible slice is invalid.
+            continue
+        name = control.objectName() or type(control).__name__
+        required.setdefault(f"{name} content {index}", control)
 
     text_controls: list[QWidget] = [
         *widget.findChildren(QLabel),
@@ -906,7 +972,7 @@ def _pixmap_image(pixmap) -> Image.Image:
         raise RuntimeError("Could not open the live widget reference buffer.")
     if not pixmap.save(buffer, "PNG"):
         raise RuntimeError("Could not encode the live widget reference.")
-    data = bytes(buffer.data())
+    data = buffer.data().data()
     buffer.close()
     with Image.open(BytesIO(data)) as source:
         image = source.convert("RGB")
@@ -914,29 +980,29 @@ def _pixmap_image(pixmap) -> Image.Image:
     return image
 
 
-def _qt_image_to_pil(image: QImage) -> Image.Image:
+def _qt_image_to_pil(qt_image: QImage) -> Image.Image:
     buffer = QBuffer()
     if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
         raise RuntimeError("Could not open the live widget reference buffer.")
-    if not image.save(buffer, "PNG"):
+    if not qt_image.save(buffer, "PNG"):
         raise RuntimeError("Could not encode the live widget reference.")
-    data = bytes(buffer.data())
+    data = buffer.data().data()
     buffer.close()
     with Image.open(BytesIO(data)) as source:
-        image = source.convert("RGB")
-        image.load()
-    return image
+        pil_image = source.convert("RGB")
+        pil_image.load()
+    return pil_image
 
 
 def _assert_training_history_reference_pixels(
     panel: TrainingPanel,
     screenshot: Path,
-) -> list[dict[str, float | int | str]]:
+) -> list[dict[str, object]]:
     """Validate title, tabs, and each fully visible non-empty history cell."""
     with Image.open(screenshot) as captured:
         scale_x = captured.width / max(panel.width(), 1)
         scale_y = captured.height / max(panel.height(), 1)
-    matches: list[dict[str, float | int | str]] = []
+    matches: list[dict[str, object]] = []
     for surface_name, logical_bounds, reference in _training_history_reference_regions(
         panel
     ):
@@ -1021,7 +1087,7 @@ def _training_history_reference_regions(
         )
     )
 
-    tab_bar = panel.tabs.tabBar()
+    tab_bar = _require_qt_value(panel.tabs.tabBar(), "Training History tab bar")
     rendered_tabs = _pixmap_image(tab_bar.grab())
     for index in range(tab_bar.count()):
         rect = tab_bar.tabRect(index)
@@ -1047,14 +1113,15 @@ def _training_history_reference_regions(
         )
 
     table = panel.history_table
-    viewport = table.viewport()
+    viewport = _require_qt_value(table.viewport(), "Training History viewport")
+    model = _require_qt_value(table.model(), "Training History table model")
     viewport_rect = viewport.rect()
     for row in range(table.rowCount()):
         for column in range(table.columnCount()):
             item = table.item(row, column)
             if item is None or not item.text().strip():
                 continue
-            index = table.model().index(row, column)
+            index = model.index(row, column)
             rect = table.visualRect(index)
             if rect.isEmpty() or not viewport_rect.contains(rect):
                 continue
@@ -1081,17 +1148,22 @@ def _render_item_reference(
     index,
     rect: QRect,
 ) -> Image.Image:
+    viewport = _require_qt_value(table.viewport(), "Training History viewport")
+    delegate = _require_qt_value(
+        table.itemDelegate(),
+        "Training History item delegate",
+    )
     image = QImage(
         QSize(rect.width(), rect.height()),
         QImage.Format.Format_ARGB32_Premultiplied,
     )
-    image.fill(table.viewport().palette().base().color())
+    image.fill(viewport.palette().base().color())
     option = QStyleOptionViewItem()
-    option.initFrom(table.viewport())
+    option.initFrom(viewport)
     option.rect = QRect(0, 0, rect.width(), rect.height())
     painter = QPainter(image)
     try:
-        table.itemDelegate().paint(painter, option, index)
+        delegate.paint(painter, option, index)
     finally:
         painter.end()
     return _qt_image_to_pil(image)
@@ -1113,11 +1185,13 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             raise RuntimeError(f"{filename} has an inconsistent Start Training state.")
         if semantics["stop_enabled"] is not expected_running:
             raise RuntimeError(f"{filename} has an inconsistent Stop Training state.")
+        if not semantics["summary_has_data"]:
+            raise RuntimeError(f"{filename} has a contradictory empty Data Summary.")
         if not semantics["key_columns_fit"]:
             raise RuntimeError(f"{filename} clips Group, Run, Model, or Status text.")
-        if not semantics["horizontal_scroll_available"]:
+        if semantics["horizontal_scroll_maximum"] != 0:
             raise RuntimeError(
-                f"{filename} lost Training History horizontal scrolling."
+                f"{filename} unnecessarily scrolls Training History horizontally."
             )
         expected_visible_rows = list(
             range(min(expected_rows, widget.history_table.MAX_VISIBLE_ROWS))
@@ -1333,7 +1407,7 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
 
 def _training_history_semantics(panel: TrainingPanel) -> dict[str, Any]:
     table = panel.history_table
-    viewport = table.viewport()
+    viewport = _require_qt_value(table.viewport(), "Training History viewport")
     viewport_rect = viewport.rect()
     visible_rows: list[int] = []
     partially_visible_rows: list[int] = []
@@ -1352,18 +1426,42 @@ def _training_history_semantics(panel: TrainingPanel) -> dict[str, Any]:
         if (item := table.item(row, 3)) is not None
     ]
     key_columns_fit = True
+    all_visible_text_fits = True
     padding = table.KEY_COLUMN_PADDING
+    header = _require_qt_value(
+        table.horizontalHeader(),
+        "Training History horizontal header",
+    )
+    horizontal_scroll = _require_qt_value(
+        table.horizontalScrollBar(),
+        "Training History horizontal scroll bar",
+    )
+    vertical_scroll = _require_qt_value(
+        table.verticalScrollBar(),
+        "Training History vertical scroll bar",
+    )
+    header_metrics = header.fontMetrics()
+    for column in range(table.columnCount()):
+        header_item = table.horizontalHeaderItem(column)
+        if header_item is None or table.columnWidth(column) < (
+            header_metrics.horizontalAdvance(header_item.text()) + table.HEADER_PADDING
+        ):
+            all_visible_text_fits = False
     for row in range(table.rowCount()):
-        for column in (0, 1, 2, 3):
+        for column in range(table.columnCount()):
             item = table.item(row, column)
             if item is None:
-                key_columns_fit = False
+                all_visible_text_fits = False
+                if column in (0, 1, 2, 3):
+                    key_columns_fit = False
                 continue
             required_width = (
                 table.fontMetrics().horizontalAdvance(item.text()) + padding
             )
             if table.columnWidth(column) < required_width:
-                key_columns_fit = False
+                all_visible_text_fits = False
+                if column in (0, 1, 2, 3):
+                    key_columns_fit = False
     return {
         "row_count": table.rowCount(),
         "visible_row_capacity": table.MAX_VISIBLE_ROWS,
@@ -1371,11 +1469,16 @@ def _training_history_semantics(panel: TrainingPanel) -> dict[str, Any]:
         "running": "Running" in statuses,
         "start_enabled": panel.sidebar.btn_start.isEnabled(),
         "stop_enabled": panel.sidebar.btn_stop.isEnabled(),
+        "summary_has_data": panel.sidebar.info_panel.has_data,
         "start_visual": _control_visual_signature(panel.sidebar.btn_start),
         "stop_visual": _control_visual_signature(panel.sidebar.btn_stop),
         "key_columns_fit": key_columns_fit,
-        "horizontal_scroll_available": table.horizontalScrollBar().maximum() > 0,
-        "vertical_scroll_maximum": table.verticalScrollBar().maximum(),
+        "all_visible_text_fits": all_visible_text_fits,
+        "horizontal_scroll_maximum": horizontal_scroll.maximum(),
+        "all_columns_visible_without_scroll": (
+            horizontal_scroll.maximum() == 0 and header.length() <= viewport.width()
+        ),
+        "vertical_scroll_maximum": vertical_scroll.maximum(),
         "fully_visible_rows": visible_rows,
         "partially_visible_rows": partially_visible_rows,
     }
@@ -1402,7 +1505,7 @@ def _assert_epoching_dialog_contract(
 ) -> None:
     expected_text = {
         INTERNAL_EPOCH_SCREENSHOT: (
-            "Create Epochs",
+            "Create EEG Epochs",
             "Suggested from import",
             "labels inside EEG files",
             "Events inside EEG files",
@@ -1412,7 +1515,7 @@ def _assert_epoching_dialog_contract(
             "Cancel",
         ),
         BIDS_EPOCH_SCREENSHOT: (
-            "Create Epochs",
+            "Create EEG Epochs",
             "BIDS events from import",
             "BIDS events confirmed in Match Labels.",
             "Label interval",
@@ -1458,8 +1561,8 @@ def _assert_epoching_dialog_contract(
     }
     primary = buttons.get("EpochPrimaryButton")
     cancel = buttons.get("EpochSecondaryButton")
-    if primary is None or primary.text() != "Create Epochs":
-        raise RuntimeError(f"{filename} does not expose Create Epochs.")
+    if primary is None or primary.text() != "Create EEG Epochs":
+        raise RuntimeError(f"{filename} does not expose Create EEG Epochs.")
     if cancel is None or cancel.text() != "Cancel":
         raise RuntimeError(f"{filename} does not expose Cancel.")
 
@@ -1511,7 +1614,7 @@ def _data_splitting_preview_semantics(
         )
     expected_names = [f"Fold_{index}" for index in range(fold_count)]
     observed_names = [str(row["name"]) for row in rows]
-    trial_count = int(dialog.epoch_data.get_data_length())
+    trial_count = int(dialog.split_context.trial_count)
     if split_unit.currentText() != "K Fold" or fold_count < 2:
         raise RuntimeError("Data splitting preview is not configured for K Fold.")
     if len(rows) != fold_count or observed_names != expected_names:
@@ -1571,7 +1674,7 @@ def _surface_contract(
                 "duration_field": context.get("duration_field"),
                 "window_evidence": context.get("window_evidence"),
                 "selected_event_count": selected_event_count,
-                "primary_action": "Create Epochs",
+                "primary_action": "Create EEG Epochs",
                 "cancel_action": "Cancel",
             }
         )
@@ -1642,12 +1745,12 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "fully represented by the Data Import wizard artifacts. Regenerate the "
         "complete set with:\n\n"
         "```bash\n"
-        "QT_QPA_PLATFORM=offscreen poetry run python "
+        "QT_QPA_PLATFORM=offscreen poetry run -- python "
         "scripts/dev/capture_ui_polish_surfaces.py\n"
         "```\n\n"
         "Regenerate only the narrow assistant evidence with:\n\n"
         "```bash\n"
-        "QT_QPA_PLATFORM=offscreen poetry run python "
+        "QT_QPA_PLATFORM=offscreen poetry run -- python "
         "scripts/dev/capture_ui_polish_surfaces.py "
         "--only assistant-setup-required-narrow.png "
         "--only assistant-active-turn-narrow.png "

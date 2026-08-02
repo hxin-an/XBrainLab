@@ -331,16 +331,15 @@ def test_apply_smart_parse(controller, mock_study):
         "/path/sub-02.edf": ("02", "-"),  # Session unchanged
     }
 
-    with patch.object(controller, "update_metadata_batch", return_value=2) as update:
+    with patch.object(
+        controller._dataset_state,
+        "apply_smart_parse",
+        return_value=2,
+    ) as update:
         count = controller.apply_smart_parse(results)
 
     assert count == 2
-    update.assert_called_once_with(
-        [
-            (0, "01", "01"),
-            (1, "02", None),
-        ]
-    )
+    update.assert_called_once_with(results)
 
 
 def test_apply_channel_selection(controller, mock_study):
@@ -354,6 +353,23 @@ def test_apply_channel_selection(controller, mock_study):
 
         assert result is True
         instance.data_preprocess.assert_called_with(["C3", "C4"])
+
+
+def test_channel_selection_keeps_compatibility_observer_notifications(
+    controller,
+) -> None:
+    events: list[tuple[str, object | None]] = []
+    controller.subscribe("data_changed", lambda: events.append(("data_changed", None)))
+    controller.subscribe(
+        "dataset_locked",
+        lambda locked: events.append(("dataset_locked", locked)),
+    )
+    controller._dataset_state.apply_channel_selection = MagicMock(return_value=True)
+
+    result = controller.apply_channel_selection(["C3", "C4"])
+
+    assert result is True
+    assert events == [("data_changed", None), ("dataset_locked", True)]
 
 
 def test_reset_preprocess(controller, mock_study):
@@ -437,7 +453,7 @@ def test_get_runtime_diagnostics(controller, mock_study):
 
 def test_run_import_labels(controller, mock_study):
     controller.label_service = MagicMock()
-    controller.label_service.apply_labels_batch.return_value = 5  # 5 files updated
+    controller.label_service.apply_labels_batch_checked.return_value = 5
 
     # Mock observer
     mock_callback = MagicMock()
@@ -446,11 +462,11 @@ def test_run_import_labels(controller, mock_study):
     count = controller.run_import_labels(["files"], "map", "file_map", "mapping")
 
     assert count == 5
-    controller.label_service.apply_labels_batch.assert_called()
+    controller.label_service.apply_labels_batch_checked.assert_called()
     mock_callback.assert_called_once()  # data_changed
 
     # Test count 0 (no event)
-    controller.label_service.apply_labels_batch.return_value = 0
+    controller.label_service.apply_labels_batch_checked.return_value = 0
     mock_callback.reset_mock()
     count = controller.run_import_labels(["files"], "map", "file_map", "mapping")
     assert count == 0

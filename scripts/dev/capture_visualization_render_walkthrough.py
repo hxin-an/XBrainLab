@@ -25,7 +25,7 @@ configure_qt_platform_for_runtime()
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QColor, QPixmap
-from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox
+from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QWidget
 
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _clear_saved_main_window_geometry,
@@ -48,7 +48,7 @@ from XBrainLab.backend.application import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "visualization-render"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "visualization-render"
 TEMP_ROOT = Path(tempfile.gettempdir())
 TRAINING_OUTPUT_DIR = TEMP_ROOT / "xbrainlab-visualization-render-output"
 JSON_ARTIFACT = "visualization-render-walkthrough.json"
@@ -57,24 +57,19 @@ RENDER_TAB_SPECS: list[dict[str, str]] = [
     {
         "tab": "Saliency Map",
         "screenshot": "visualization-render-saliency-map.png",
-        "expected_context": (
-            "Grouped by true class label · Mean across evaluated epochs"
-        ),
+        "expected_context": "True class · Mean over EEG epochs",
     },
     {
         "tab": "Spectrogram",
         "screenshot": "visualization-render-spectrogram.png",
         "expected_context": (
-            "Grouped by true class label · Mean magnitude across evaluated "
-            "epochs and channels"
+            "True class · Mean magnitude over EEG epochs and channels"
         ),
     },
     {
         "tab": "Topographic Map",
         "screenshot": "visualization-render-topographic-map.png",
-        "expected_context": (
-            "Grouped by true class label · Mean across evaluated epochs and time"
-        ),
+        "expected_context": "True class · Mean over EEG epochs and time",
     },
 ]
 THREE_D_TAB_SPECS: list[dict[str, str]] = [
@@ -123,9 +118,7 @@ def _three_d_runtime_contract(
         "interactive_display": expected_outcome == "rendered",
         "expected_outcome": expected_outcome,
         "capture_method": (
-            "xcb_screen_grab"
-            if expected_outcome == "rendered" and active_platform == "xcb"
-            else "screen_grab"
+            "vtk_framebuffer_composite"
             if expected_outcome == "rendered"
             else "qt_widget_render"
         ),
@@ -256,7 +249,11 @@ def run_visualization_render_walkthrough(
     source_path = write_synthetic_training_raw_fif()
     study = Study()
     service = get_application_service(study)
-    dataset_preparation = prepare_training_dataset_ready_state(study, source_path)
+    dataset_preparation = prepare_training_dataset_ready_state(
+        study,
+        source_path,
+        training_output_dir,
+    )
     three_d_runtime = _three_d_runtime_contract()
     payload: dict[str, Any] = {
         "status": "running",
@@ -471,7 +468,12 @@ def _capture_render_tab(
     explanation_context = _explanation_context_from_panel(panel)
     expected_context = spec["expected_context"]
     screenshot_path = output_dir / spec["screenshot"]
-    capture_code = _capture_fully_rendered_window(window, screenshot_path)
+    capture_code = _capture_matplotlib_window(
+        window,
+        canvas,
+        screenshot_path,
+        canvas_geometry=evidence["canvas_geometry"],
+    )
     screenshot_sha256 = ""
     if capture_code == 0:
         screenshot_path, screenshot_sha256 = _content_addressed_screenshot_path(
@@ -505,7 +507,7 @@ def _capture_render_tab(
         and evidence["axes_count"] > 0
         and evidence["image_count"] > 0
         and screenshot_region["ok"]
-        and explanation_context == expected_context
+        and _provenance_context_matches(explanation_context, expected_context)
     )
     return {
         "tab": tab_name,
@@ -524,15 +526,35 @@ def _capture_render_tab(
 
 
 def _explanation_context_from_panel(panel: Any) -> str:
-    """Read aggregation semantics from the user-facing information control."""
-    info_control = getattr(panel, "explanation_info_button", None)
-    tooltip = getattr(info_control, "toolTip", None)
-    if not callable(tooltip):
+    """Read aggregation semantics from the visible compact provenance label."""
+    provenance = getattr(panel, "explanation_provenance_label", None)
+    text = getattr(provenance, "text", None)
+    if not callable(text):
         raise RuntimeError("Visualization aggregation information is unavailable.")
-    context = str(tooltip()).strip()
+    context = str(text()).strip()
     if not context:
         raise RuntimeError("Visualization aggregation information is empty.")
     return context
+
+
+def _provenance_context_matches(context: str, expected_aggregation: str) -> bool:
+    """Require dataset, fold/model and run identity before aggregation text."""
+    suffix = expected_aggregation.strip()
+    text = context.strip()
+    if not suffix or not text.endswith(suffix):
+        return False
+    identity_text = text[: -len(suffix)].rstrip(" ·")
+    identity = [part.strip() for part in identity_text.split(" · ") if part.strip()]
+    if len(identity) != 3:
+        return False
+    dataset_label, plan_label, run_label = identity
+    return (
+        bool(dataset_label)
+        and plan_label.startswith("Fold ")
+        and "(" in plan_label
+        and plan_label.endswith(")")
+        and bool(run_label)
+    )
 
 
 def _wait_for_saliency_render(
@@ -738,7 +760,11 @@ def _capture_blocked_tab(
     message_geometry = _visible_label_geometry(widget, window, expected_reason)
     plotter_created = bool(getattr(widget, "plotter_widget", None))
     screenshot_path = output_dir / spec["screenshot"]
-    capture_code = _capture_fully_rendered_window(window, screenshot_path)
+    capture_code = _capture_fully_rendered_window(
+        window,
+        screenshot_path,
+        capture_method="qt_widget_grab",
+    )
     screenshot_sha256 = ""
     if capture_code == 0:
         screenshot_path, screenshot_sha256 = _content_addressed_screenshot_path(
@@ -832,11 +858,19 @@ def _capture_interactive_tab(
     screenshot_path = output_dir / spec["interactive_screenshot"]
     runtime_contract = _three_d_runtime_contract()
     capture_method = str(runtime_contract["capture_method"])
-    capture_code = _capture_fully_rendered_window(
-        window,
-        screenshot_path,
-        capture_method=capture_method,
-    )
+    if capture_method == "vtk_framebuffer_composite":
+        capture_code = _capture_interactive_3d_window(
+            window,
+            plotter,
+            screenshot_path,
+            plotter_geometry=plotter_geometry,
+        )
+    else:
+        capture_code = _capture_fully_rendered_window(
+            window,
+            screenshot_path,
+            capture_method=capture_method,
+        )
     screenshot_sha256 = ""
     if capture_code == 0:
         screenshot_path, screenshot_sha256 = _content_addressed_screenshot_path(
@@ -1316,7 +1350,10 @@ def validate_visualization_render_payload(
             return False, f"{tab} showed an error instead of a render."
         if not render.get("canvas_visible"):
             return False, f"{tab} canvas was not visible."
-        if render.get("explanation_context") != spec["expected_context"]:
+        if not _provenance_context_matches(
+            str(render.get("explanation_context") or ""),
+            spec["expected_context"],
+        ):
             return False, f"{tab} scientific context is stale or incorrect."
         if int(render.get("image_count") or 0) < 1:
             return False, f"{tab} did not contain a rendered image artist."
@@ -1460,11 +1497,6 @@ def _validate_interactive_3d_evidence(
         expected_capture_method = str(runtime.get("capture_method") or "")
         if render.get("capture_method") != expected_capture_method:
             return False, f"{tab} did not capture the expected native framebuffer."
-        if (
-            runtime.get("qt_platform") == "xcb"
-            and render.get("capture_method") != "xcb_screen_grab"
-        ):
-            return False, f"{tab} did not capture the native XCB framebuffer."
         screenshot_region = render.get("screenshot_region") or {}
         if not screenshot_region.get("ok"):
             detail = screenshot_region.get("reason") or "framebuffer was not painted"
@@ -1527,6 +1559,7 @@ def _capture_fully_rendered_window(
     output_path: Path,
     *,
     capture_method: str = "qt_widget_render",
+    validate_complete: bool = True,
 ) -> int:
     """Capture the complete widget tree, including native OpenGL children."""
     window.ensurePolished()
@@ -1545,6 +1578,8 @@ def _capture_fully_rendered_window(
         window.activateWindow()
         QApplication.processEvents()
         pixmap = screen.grabWindow(window.winId())
+    elif capture_method == "qt_widget_grab":
+        pixmap = window.grab()
     else:
         ratio = max(float(window.devicePixelRatioF()), 1.0)
         pixel_width = max(1, round(window.width() * ratio))
@@ -1564,12 +1599,184 @@ def _capture_fully_rendered_window(
     except Exception as exc:
         print(f"Failed to normalize screenshot PNG: {exc}", file=sys.stderr)
         return 5
+    if validate_complete:
+        screenshot_ok, reason = _validate_screenshot(output_path, output_path.name)
+        if not screenshot_ok:
+            print(reason, file=sys.stderr)
+            return 2
+    print(f"Saved screenshot to {output_path}")
+    return 0
+
+
+def _capture_matplotlib_window(
+    window: Any,
+    canvas: Any,
+    output_path: Path,
+    *,
+    canvas_geometry: dict[str, Any],
+    validate_complete: bool = True,
+) -> int:
+    """Compose a real Matplotlib framebuffer into a complete Qt shell capture.
+
+    WSLg can return an all-black native-window framebuffer, while QTAgg child
+    painting can escape its widget geometry during recursive QWidget capture.
+    Replacing the canvas with a same-size placeholder prevents that child paint
+    from obscuring the surrounding application shell.
+    """
+    if canvas is None or canvas_geometry.get("ok") is False:
+        print("Matplotlib canvas geometry is unavailable.", file=sys.stderr)
+        return 3
+    draw = getattr(canvas, "draw", None)
+    buffer_rgba = getattr(canvas, "buffer_rgba", None)
+    if not callable(draw) or not callable(buffer_rgba):
+        print("Matplotlib canvas cannot provide its framebuffer.", file=sys.stderr)
+        return 3
+
+    try:
+        import numpy as np
+
+        draw()
+        framebuffer = np.asarray(buffer_rgba()).copy()
+    except Exception as exc:
+        print(f"Failed to read the Matplotlib framebuffer: {exc}", file=sys.stderr)
+        return 3
+
+    parent = canvas.parentWidget()
+    layout = parent.layout() if parent is not None else None
+    if parent is None or layout is None or layout.indexOf(canvas) < 0:
+        print("Matplotlib canvas is not owned by a visible Qt layout.", file=sys.stderr)
+        return 3
+
+    placeholder = QWidget(parent)
+    placeholder.setObjectName("VisualizationCaptureCanvasPlaceholder")
+    placeholder.setFixedSize(canvas.size())
+    placeholder.setStyleSheet("background: transparent; border: none;")
+    replaced_item = layout.replaceWidget(canvas, placeholder)
+    if replaced_item is None:
+        placeholder.deleteLater()
+        print("Failed to isolate the Matplotlib canvas for capture.", file=sys.stderr)
+        return 3
+
+    capture_code = 3
+    try:
+        canvas.hide()
+        placeholder.show()
+        layout.activate()
+        QApplication.sendPostedEvents()
+        QApplication.processEvents()
+        capture_code = _capture_fully_rendered_window(
+            window,
+            output_path,
+            capture_method="qt_widget_grab",
+            validate_complete=False,
+        )
+    finally:
+        layout.replaceWidget(placeholder, canvas)
+        placeholder.hide()
+        canvas.show()
+        layout.activate()
+        placeholder.deleteLater()
+        QApplication.sendPostedEvents()
+        QApplication.processEvents()
+
+    if capture_code != 0:
+        return capture_code
+    try:
+        _compose_native_framebuffer(
+            output_path,
+            framebuffer,
+            region_geometry=canvas_geometry,
+            window_size={"width": int(window.width()), "height": int(window.height())},
+        )
+        _normalize_png_artifact(output_path)
+    except Exception as exc:
+        print(f"Failed to compose the Matplotlib framebuffer: {exc}", file=sys.stderr)
+        return 3
+    if validate_complete:
+        screenshot_ok, reason = _validate_screenshot(output_path, output_path.name)
+        if not screenshot_ok:
+            print(reason, file=sys.stderr)
+            return 2
+    return 0
+
+
+def _capture_interactive_3d_window(
+    window: Any,
+    plotter: Any,
+    output_path: Path,
+    *,
+    plotter_geometry: dict[str, Any],
+) -> int:
+    """Compose the VTK framebuffer into a complete Qt window screenshot."""
+    capture_code = _capture_fully_rendered_window(
+        window,
+        output_path,
+        capture_method="qt_widget_grab",
+        validate_complete=False,
+    )
+    if capture_code != 0:
+        return capture_code
+    screenshot = getattr(plotter, "screenshot", None)
+    if not callable(screenshot):
+        print("The 3D plotter cannot capture its framebuffer.", file=sys.stderr)
+        return 3
+    try:
+        framebuffer = screenshot(return_img=True)
+        _compose_native_framebuffer(
+            output_path,
+            framebuffer,
+            region_geometry=plotter_geometry,
+            window_size={"width": int(window.width()), "height": int(window.height())},
+        )
+        _normalize_png_artifact(output_path)
+    except Exception as exc:
+        print(f"Failed to capture the VTK framebuffer: {exc}", file=sys.stderr)
+        return 3
     screenshot_ok, reason = _validate_screenshot(output_path, output_path.name)
     if not screenshot_ok:
         print(reason, file=sys.stderr)
         return 2
-    print(f"Saved screenshot to {output_path}")
     return 0
+
+
+def _compose_native_framebuffer(
+    output_path: Path,
+    framebuffer: Any,
+    *,
+    region_geometry: dict[str, Any],
+    window_size: dict[str, int],
+) -> None:
+    """Place one native RGB(A) framebuffer at its logical Qt geometry."""
+    import numpy as np
+    from PIL import Image
+
+    array = np.asarray(framebuffer)
+    if array.ndim != 3 or array.shape[2] not in {3, 4} or array.size == 0:
+        raise ValueError("VTK framebuffer does not contain an RGB image.")
+    if array.dtype != np.uint8:
+        array = np.clip(array, 0, 255).astype(np.uint8)
+
+    with Image.open(output_path) as source:
+        window_image = source.convert("RGB")
+    logical_width = int(window_size.get("width") or 0)
+    logical_height = int(window_size.get("height") or 0)
+    if logical_width <= 0 or logical_height <= 0:
+        raise ValueError("Qt window geometry is invalid.")
+    scale_x = window_image.width / logical_width
+    scale_y = window_image.height / logical_height
+    left = round(int(region_geometry["x"]) * scale_x)
+    top = round(int(region_geometry["y"]) * scale_y)
+    width = round(int(region_geometry["width"]) * scale_x)
+    height = round(int(region_geometry["height"]) * scale_y)
+    if left < 0 or top < 0 or width <= 0 or height <= 0:
+        raise ValueError("3D plotter geometry is invalid.")
+    if left + width > window_image.width or top + height > window_image.height:
+        raise ValueError("3D plotter geometry extends outside the Qt window.")
+
+    vtk_image = Image.fromarray(array).convert("RGB")
+    vtk_image = vtk_image.resize((width, height), Image.Resampling.LANCZOS)
+    window_image.paste(vtk_image, (left, top))
+    window_image.save(output_path, format="PNG", optimize=False, compress_level=6)
 
 
 def _normalize_png_artifact(path: Path) -> dict[str, Any]:

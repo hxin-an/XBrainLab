@@ -1,0 +1,331 @@
+from __future__ import annotations
+
+from dataclasses import FrozenInstanceError
+from types import SimpleNamespace
+from typing import Any
+
+import numpy as np
+import pytest
+
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.evaluation_render import (
+    EvaluationPlanIdentity,
+    EvaluationRenderPublisher,
+    EvaluationRenderRequest,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
+    evaluation_provenance_presentation,
+)
+from XBrainLab.backend.training_state_contract import (
+    TrainingReadBoundary,
+    TrainingStateToken,
+)
+
+
+def _boundary(generation: int = 7) -> TrainingReadBoundary:
+    return TrainingReadBoundary(
+        trainer_identity="trainer-evaluation",
+        token=TrainingStateToken(generation=generation, stable=True),
+    )
+
+
+class _EpochData:
+    def __init__(self) -> None:
+        self.label_map = {0: "Left", 1: "Right"}
+
+    @staticmethod
+    def get_model_args() -> dict[str, int]:
+        return {}
+
+
+class _Dataset:
+    def __init__(self) -> None:
+        self.epoch_data = _EpochData()
+
+    def get_epoch_data(self) -> _EpochData:
+        return self.epoch_data
+
+    @staticmethod
+    def get_training_data() -> tuple[np.ndarray, np.ndarray]:
+        return np.zeros((2, 1, 2, 4)), np.array([0, 1])
+
+
+class _EvalRecord:
+    def __init__(self, labels: np.ndarray, outputs: np.ndarray) -> None:
+        self.label = labels
+        self.output = outputs
+        self.evaluation_split = "test"
+        self.metrics = {
+            0: {
+                "precision": np.float64(1.0),
+                "recall": np.float64(0.5),
+                "f1-score": np.float64(2 / 3),
+                "support": np.int64(1),
+            },
+            "macro_avg": {
+                "precision": np.float64(0.75),
+                "recall": np.float64(0.75),
+                "f1-score": np.float64(0.75),
+                "support": np.int64(2),
+            },
+        }
+
+    def get_per_class_metrics(self) -> dict[Any, dict[str, Any]]:
+        return self.metrics
+
+
+class _Run:
+    def __init__(self, labels: np.ndarray, outputs: np.ndarray) -> None:
+        self.dataset = _Dataset()
+        self.eval_record = _EvalRecord(labels, outputs)
+
+    @staticmethod
+    def is_finished() -> bool:
+        return True
+
+    @staticmethod
+    def get_name() -> str:
+        return "Repeat-0"
+
+
+class _Plan:
+    def __init__(self, runs: list[_Run]) -> None:
+        self.dataset = _Dataset()
+        self._runs = runs
+
+    @staticmethod
+    def get_name() -> str:
+        return "EEGNet"
+
+    def get_plans(self) -> list[_Run]:
+        return self._runs
+
+
+class _Runtime:
+    def __init__(self, plans: list[_Plan]) -> None:
+        self.plans = plans
+
+    def training_plan_holders(self) -> tuple[Any, ...]:
+        return tuple(self.plans)
+
+    def resource_context(self) -> Any:
+        raise AssertionError(
+            "evaluation rendering must not read resource configuration"
+        )
+
+    def is_training(self) -> bool:
+        return False
+
+    def current_training_plan_index(self) -> int | None:
+        return None
+
+
+def _publisher(
+    runtime: _Runtime,
+    *,
+    publication_generation: int = 3,
+    boundaries: list[TrainingReadBoundary] | None = None,
+) -> EvaluationRenderPublisher:
+    boundary_values = iter(boundaries or [_boundary(), _boundary()])
+    publication = SimpleNamespace(
+        generation=publication_generation,
+        usable=True,
+        training_boundary=_boundary(),
+    )
+    return EvaluationRenderPublisher(
+        training_runtime=runtime,  # type: ignore[arg-type]
+        get_publication=lambda: publication,
+        capture_training_boundary=lambda: next(boundary_values),
+    )
+
+
+def test_run_publication_is_detached_immutable_and_identity_bound() -> None:
+    source_labels = np.array([0, 1])
+    source_outputs = np.array([[0.9, 0.1], [0.2, 0.8]])
+    run = _Run(source_labels, source_outputs)
+    publisher = _publisher(_Runtime([_Plan([run])]))
+    run_identity = EvaluationRunIdentity(
+        plan=EvaluationPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    request = EvaluationRenderRequest(
+        publication_generation=3,
+        selection=run_identity,
+    )
+
+    publication = publisher.publish(request)
+
+    assert publication.request == request
+    assert publication.generation == 3
+    assert publication.training_boundary == _boundary()
+    assert publication.data.summary_identity == EvaluationSummaryIdentity(
+        plan=run_identity.plan,
+        run=run_identity,
+    )
+    assert publication.data.evaluation_split == "test"
+    assert publication.data.class_labels == {0: "Left", 1: "Right"}
+    assert publication.data.labels.flags.writeable is False
+    assert publication.data.outputs.flags.writeable is False
+    assert publication.data.labels is not source_labels
+    assert publication.data.outputs is not source_outputs
+    assert publication.data.metrics[0]["precision"] == 1.0
+
+    source_labels[0] = 1
+    source_outputs[0, 0] = 0.0
+    run.eval_record.metrics[0]["precision"] = 0.0
+    run.dataset.get_epoch_data().label_map[0] = "Mutated"
+
+    assert publication.data.labels.tolist() == [0, 1]
+    assert publication.data.outputs[0, 0] == 0.9
+    assert publication.data.metrics[0]["precision"] == 1.0
+    assert publication.data.class_labels[0] == "Left"
+    with pytest.raises(ValueError):
+        publication.data.labels[0] = 1
+    with pytest.raises(ValueError):
+        publication.data.labels.setflags(write=True)
+    with pytest.raises(ValueError):
+        publication.data.outputs.setflags(write=True)
+    with pytest.raises(TypeError):
+        publication.data.metrics[0]["precision"] = 0.0
+    with pytest.raises(TypeError):
+        publication.data.class_labels[0] = "Changed"
+    with pytest.raises(FrozenInstanceError):
+        publication.generation = 4
+
+
+def test_plan_publication_pools_only_finished_evaluation_arrays() -> None:
+    first = _Run(np.array([0]), np.array([[0.8, 0.2]]))
+    second = _Run(np.array([1]), np.array([[0.1, 0.9]]))
+    publisher = _publisher(_Runtime([_Plan([first, second])]))
+    plan_identity = EvaluationPlanIdentity(plan_index=0)
+
+    publication = publisher.publish(
+        EvaluationRenderRequest(
+            publication_generation=3,
+            selection=plan_identity,
+        )
+    )
+
+    assert publication.data.summary_identity == EvaluationSummaryIdentity(
+        plan=plan_identity
+    )
+    assert publication.data.labels.tolist() == [0, 1]
+    assert publication.data.outputs.tolist() == [[0.8, 0.2], [0.1, 0.9]]
+    assert publication.data.metrics["macro_avg"]["support"] == 2
+
+
+@pytest.mark.parametrize("evaluation_split", ["training", "unknown", ""])
+def test_render_rejects_metrics_without_held_out_provenance(
+    evaluation_split: str,
+) -> None:
+    run = _Run(np.array([0]), np.array([[1.0, 0.0]]))
+    run.eval_record.evaluation_split = evaluation_split
+    publisher = _publisher(_Runtime([_Plan([run])]))
+
+    with pytest.raises(PreconditionError) as raised:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(plan_index=0),
+                    run_index=0,
+                ),
+            )
+        )
+
+    assert raised.value.diagnostics == {
+        "evaluation_final_unavailable": True,
+        "retryable": False,
+    }
+
+
+def test_evaluation_provenance_presentation_distinguishes_held_out_splits() -> None:
+    assert evaluation_provenance_presentation("test")[0] == "Final · Test split"
+    assert evaluation_provenance_presentation("validation")[0] == (
+        "Final · Validation split"
+    )
+    assert evaluation_provenance_presentation("test, validation")[0] == (
+        "Final · Held-out splits"
+    )
+
+
+@pytest.mark.parametrize(
+    "render_request",
+    [
+        EvaluationRenderRequest(
+            publication_generation=3,
+            selection=EvaluationPlanIdentity(plan_index=4),
+        ),
+        EvaluationRenderRequest(
+            publication_generation=3,
+            selection=EvaluationRunIdentity(
+                plan=EvaluationPlanIdentity(plan_index=0),
+                run_index=9,
+            ),
+        ),
+    ],
+)
+def test_invalid_render_identity_fails_closed(
+    render_request: EvaluationRenderRequest,
+) -> None:
+    publisher = _publisher(
+        _Runtime(
+            [
+                _Plan(
+                    [_Run(np.array([0]), np.array([[1.0, 0.0]]))],
+                )
+            ]
+        )
+    )
+
+    with pytest.raises(PreconditionError) as exc_info:
+        publisher.publish(render_request)
+
+    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
+    assert exc_info.value.diagnostics["retryable"] is True
+
+
+def test_stale_publication_generation_fails_before_domain_read() -> None:
+    runtime = _Runtime([_Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])])
+    publisher = _publisher(runtime, publication_generation=4)
+
+    with pytest.raises(PreconditionError) as exc_info:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(plan_index=0),
+            )
+        )
+
+    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
+    assert exc_info.value.diagnostics["publication_generation_after"] == 4
+
+
+def test_training_boundary_change_discards_copied_render_data() -> None:
+    runtime = _Runtime([_Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])])
+    publisher = _publisher(
+        runtime,
+        boundaries=[_boundary(), _boundary(generation=8)],
+    )
+
+    with pytest.raises(PreconditionError) as exc_info:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(plan_index=0),
+            )
+        )
+
+    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
+    assert exc_info.value.diagnostics["training_state_changed"] is True
+
+
+def test_summary_identity_rejects_a_run_from_another_plan() -> None:
+    first = EvaluationPlanIdentity(plan_index=0)
+    second = EvaluationPlanIdentity(plan_index=1)
+
+    with pytest.raises(ValueError, match="same plan"):
+        EvaluationSummaryIdentity(
+            plan=first,
+            run=EvaluationRunIdentity(plan=second, run_index=0),
+        )

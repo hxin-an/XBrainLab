@@ -28,6 +28,7 @@ class ExecutionSnapshot:
     next_continue_allowed_after_success: bool = True
     next_stop_after_success: bool = False
     recommended_next_step: str | None = None
+    blocked_command: str | None = None
     read_error: str | None = None
     publication: Any | None = None
 

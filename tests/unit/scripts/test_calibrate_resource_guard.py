@@ -76,7 +76,7 @@ def test_calibration_report_uses_resource_checker_and_exposes_thresholds(
         "vram_blocking_ratio": 0.90,
     }
     assert report["cuda_probe"] == {"status": "skipped", "reason": "disabled"}
-    assert report["schema_version"] == 2
+    assert report["schema_version"] == calibration.RESOURCE_CALIBRATION_SCHEMA_VERSION
     assert report["expected_models"] == ["EEGNet", "SCCNet", "ShallowConvNet"]
     assert report["source_identity"]["source_digest"] == "c" * 64
     assert report["command"][-1] == "scripts/dev/calibrate_resource_guard.py"
@@ -156,14 +156,17 @@ def test_write_calibration_report_creates_reproducible_json_artifact(tmp_path) -
 
 def _strict_report(*, probe_status: str = "measured") -> dict:
     return {
-        "schema_version": 2,
+        "schema_version": calibration.RESOURCE_CALIBRATION_SCHEMA_VERSION,
         "generated_at_utc": "2026-07-16T00:00:00+00:00",
         "source_identity": {
+            "branch": "feature/calibration",
             "commit_sha": "a" * 40,
             "tree_sha": "b" * 40,
+            "status_available": True,
             "dirty": False,
             "dirty_count": 0,
             "relevant_dirty_paths": [],
+            "protected_local_changes": [],
             "source_paths": list(calibration.CALIBRATION_SOURCE_PATHS),
             "source_digest": "c" * 64,
         },

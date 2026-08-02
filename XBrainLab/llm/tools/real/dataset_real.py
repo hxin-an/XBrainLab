@@ -4,6 +4,7 @@ These tools interact with the ApplicationService command spine to perform
 actual dataset operations (file listing, loading, label attachment, etc.).
 """
 
+import fnmatch
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any
 from XBrainLab.backend.utils.logger import logger
 
 from .. import execute_real_application_tool
+from ..authorized_paths import AuthorizedPathError, open_authorized_path
 from ..definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
@@ -27,7 +29,10 @@ from ..definitions.dataset_def import (
     BaseScanSourceTool,
     BaseValidateInterpretationTool,
 )
-from ..result_contract import ToolResult, redact_public_text, runtime_tool_failure
+from ..result_contract import ToolResult, runtime_tool_failure
+
+MAX_AGENT_LIST_RESULTS = 500
+MAX_AGENT_DIRECTORY_SCAN_ENTRIES = 2_000
 
 
 def _existing_env_realpath(name: str) -> str | None:
@@ -61,8 +66,8 @@ _SENSITIVE_DIRS: frozenset[str] = frozenset(
 class RealListFilesTool(BaseListFilesTool):
     """Real implementation of :class:`BaseListFilesTool`.
 
-    Lists files in a directory using ``os.listdir`` with optional
-    extension-based filtering.
+    Lists files through an identity-bound directory descriptor with optional
+    glob filtering.
     """
 
     def execute(
@@ -88,25 +93,6 @@ class RealListFilesTool(BaseListFilesTool):
         if not directory:
             return ToolResult(False, "A folder path is required.", error_type="input")
 
-        # Resolve to absolute path and guard against directory traversal
-        directory = os.path.realpath(directory)
-
-        # Security: block access to sensitive system directories
-        dir_path = Path(directory)
-        for sensitive in _SENSITIVE_DIRS:
-            sensitive_path = Path(sensitive)
-            if dir_path == sensitive_path or sensitive_path in dir_path.parents:
-                logger.warning(
-                    "RealListFilesTool blocked access to sensitive path: %s",
-                    redact_public_text(directory),
-                )
-                return ToolResult(
-                    False,
-                    "Protected system folders cannot be browsed.",
-                    error_type="permission",
-                    recoverable=False,
-                )
-
         if not os.path.isdir(directory):
             return ToolResult(
                 False,
@@ -115,16 +101,62 @@ class RealListFilesTool(BaseListFilesTool):
             )
 
         try:
-            files = []
-            for f in os.listdir(directory):
-                # Simple pattern logic (extension based)
-                if pattern and pattern.startswith("*") and not f.endswith(pattern[1:]):
-                    continue
-                files.append(f)
+            with open_authorized_path(
+                directory,
+                expected_kind="directory",
+            ) as authorized:
+                dir_path = Path(authorized.identity.final_path)
+                for sensitive in _SENSITIVE_DIRS:
+                    sensitive_path = Path(sensitive)
+                    if dir_path == sensitive_path or sensitive_path in dir_path.parents:
+                        logger.warning(
+                            "RealListFilesTool blocked access to a protected path."
+                        )
+                        return ToolResult(
+                            False,
+                            "Protected system folders cannot be browsed.",
+                            error_type="permission",
+                            recoverable=False,
+                        )
+
+                files: list[str] = []
+                scanned_entries = 0
+                truncated = False
+                entries = authorized.scandir()
+                try:
+                    for entry in entries:
+                        scanned_entries += 1
+                        if scanned_entries > MAX_AGENT_DIRECTORY_SCAN_ENTRIES:
+                            truncated = True
+                            break
+                        if pattern and not fnmatch.fnmatchcase(entry.name, pattern):
+                            continue
+                        if len(files) >= MAX_AGENT_LIST_RESULTS:
+                            truncated = True
+                            break
+                        files.append(entry.name)
+                finally:
+                    entries.close()
+            files.sort()
+            if truncated:
+                message = (
+                    f"Showing the first {len(files)} matching entries. "
+                    "Narrow the folder or file pattern to see a smaller result."
+                )
+            else:
+                message = f"Found {len(files)} file(s)."
             return ToolResult(
                 True,
-                f"Found {len(files)} file(s).",
+                message,
                 payload=files,
+            )
+        except AuthorizedPathError:
+            logger.warning("RealListFilesTool rejected an unverified filesystem path.")
+            return ToolResult(
+                False,
+                "The selected folder authorization could not be verified.",
+                error_type="permission",
+                recoverable=False,
             )
         except Exception as error:
             return runtime_tool_failure(
@@ -135,11 +167,7 @@ class RealListFilesTool(BaseListFilesTool):
 
 
 class RealLoadDataTool(BaseLoadDataTool):
-    """Real implementation of :class:`BaseLoadDataTool`.
-
-    Loads EEG data files through ApplicationService, automatically
-    expanding directory paths to individual files.
-    """
+    """Compatibility adapter for the disabled legacy direct-load tool."""
 
     def execute(
         self,
@@ -147,9 +175,7 @@ class RealLoadDataTool(BaseLoadDataTool):
         paths: list[str] | None = None,
         **kwargs,
     ) -> ToolResult:
-        """Load EEG data from the given file or directory paths.
-
-        Directories are auto-expanded to include all contained files.
+        """Return the canonical assistant-side direct-load denial.
 
         Args:
             study: The global ``Study`` instance.
@@ -157,8 +183,7 @@ class RealLoadDataTool(BaseLoadDataTool):
             **kwargs: Additional keyword arguments.
 
         Returns:
-            A success message with the count of loaded files, or an
-            error message on failure.
+            A failure directing the caller to Data Interpretation.
 
         """
         return execute_real_application_tool(
@@ -314,6 +339,7 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
         study: Any,
         mapping: dict | None = None,
         label_format: str | None = None,
+        selected_event_names: list[str] | None = None,
         **kwargs,
     ) -> ToolResult:
         """Attach label files to loaded data files.
@@ -322,6 +348,7 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
             study: The global ``Study`` instance.
             mapping: Dictionary mapping data filenames to label file paths.
             label_format: Optional label file format hint.
+            selected_event_names: Reviewed target EEG event names or codes.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -334,6 +361,7 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
             {
                 "mapping": mapping,
                 "label_format": label_format,
+                "selected_event_names": selected_event_names,
                 "resource_preflight_confirmed": kwargs.get(
                     "resource_preflight_confirmed",
                     False,

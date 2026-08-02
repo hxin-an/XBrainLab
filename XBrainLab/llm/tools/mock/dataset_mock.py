@@ -367,7 +367,7 @@ class MockGenerateDatasetTool(BaseGenerateDatasetTool):
         if not self._state.epochs_ready:
             return ToolResult(
                 ok=False,
-                message="Create epochs before generating a dataset.",
+                message="Create EEG epochs before generating a dataset.",
                 error_type="precondition",
             )
         self._state.dataset_generated = True

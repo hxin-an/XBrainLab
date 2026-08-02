@@ -1,6 +1,6 @@
 # Validation Architecture
 
-最後更新：`2026-07-15`
+最後更新：`2026-07-31`
 
 ## 範圍
 
@@ -97,6 +97,10 @@ dashboard clean 比 command exit 0 更嚴格。
 
 dashboard command 只有在 overall `fail` 時才會回傳 non-zero；overall `warn` 仍可能 exit 0。所以判斷 clean 時要讀 `artifacts/quality/latest.json`，不能只看 shell return code。
 
+dashboard 會在 checks 前後各收集一次 branch、full HEAD、dirty fingerprint 與 HEAD source-tree
+fingerprint。任一 identity 缺失或執行期間改變時，`source_stability` 必須 fail；report 同時保留
+`git_before` 與 `git_after`，不得把漂移後的結果當成同一份 exact-source evidence。
+
 ### Clean 定義
 
 fast dashboard clean 必須同時滿足：
@@ -104,18 +108,19 @@ fast dashboard clean 必須同時滿足：
 1. `artifacts/quality/latest.json` 的 `overall_status` 是 `pass`。
 2. `checks[*].status` 全部是 `pass`。
 3. `artifacts/quality/latest.md` summary table 沒有 `FAIL` 或 `WARN`。
-4. `workspace` 是目前唯一 active repo：`/mnt/d/workspace_v2/projects/lab/xbrainlab`。
+4. `workspace` 等於本次執行的 `git rev-parse --show-toplevel`，不依賴 canonical docs 內的本機 path。
 5. `generated_at` 是本次驗證時間，不是舊 artifact。
 
 這可以支撐日常工程健康判斷，但不能證明 model quality、scientific reproducibility 或 thesis claim。
 
 ## UI Baseline
 
-UI baseline validation 分成兩步：
+UI baseline validation 分成三步：
 
-1. `scripts/dev/capture_ui_baseline.py` 將目前畫面寫入 top-level `artifacts/ui/*.png`
-   transient captures。
-2. `scripts/dev/update_quality_dashboard.py` 將這些 live captures 和 `tests/baselines/ui/`
+1. `scripts/dev/capture_ui_baseline.py` 對每個核心畫面擷取兩張連續、完整 repaint 後的 frame；若兩張
+   之間超過 2% pixel 改變，視為尚未穩定並直接 fail，而不是拿半完成 frame 當證據。
+2. 穩定 frame 寫入 top-level `artifacts/ui/*.png` transient captures。
+3. `scripts/dev/update_quality_dashboard.py` 將這些 live captures 和 `tests/baselines/ui/`
    的 approved references 比對。
 
 dashboard 會用 `CAPTURE_STEPS` 宣告的檔名作為 expected live capture paths。這些 top-level
@@ -126,6 +131,7 @@ captures 是 generated output，已由 `artifacts/ui/.gitignore` 排除；approv
 
 - `artifacts/ui/` 缺 expected artifact。
 - capture 出來的圖片接近全黑。
+- 同一畫面的兩張連續 frame 未在穩定門檻內一致。
 - `tests/baselines/ui/` 缺 approved reference。
 - candidate 和 reference 尺寸不同。
 - pixel drift 超過門檻。
@@ -136,7 +142,17 @@ captures 是 generated output，已由 `artifacts/ui/.gitignore` 排除；approv
 - `MAX_UI_CHANGED_RATIO = 0.02`
 - `PIXEL_DIFF_THRESHOLD = 12`
 
-這份 evidence 能說明「核心 UI 畫面沒有明顯偏離 approved reference」。它不能取代完整 UX review、accessibility review、或完整 visual regression coverage。
+這份 evidence 能說明「核心 UI 畫面已完成 repaint，且沒有明顯偏離 approved reference」。它不能取代完整 UX review、accessibility review、Windows native DPI / multi-monitor acceptance，或所有互動狀態的 visual regression coverage。
+
+### DPI aggregate 尚未關閉的 integrity gap
+
+`scripts/dev/run_chatpanel_ui_dpi_gate.py` 目前的 aggregate 仍只保留各 scale 的
+`source_fingerprint` 與 screenshot filename；它尚未在 aggregate 內記錄 screenshot SHA-256、
+完整 exact-source identity，或驗證 100/125/150% records 的 cross-scale source fingerprint
+一致性。這一輪 dashboard/evidence worker 的 bounded write scope 不包含該 generator 與
+`tests/unit/scripts/test_run_chatpanel_ui_dpi_gate.py`，因此沒有跨界修改。完成前，DPI aggregate
+只能算 checkpoint evidence，不能宣稱 tamper-evident、exact-source aggregate 或 Windows native
+DPI acceptance。
 
 ## Pipeline Evidence
 
@@ -209,11 +225,11 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
 目前狀態：
 
 - local model catalog / preflight / health check 已建立。
-- exact primary 是 `ibm-granite/granite-3.3-2b-instruct`；Phi-4 Mini 與 Phi-3.5 Mini
-  只保留為使用者明確選取的 legacy compatibility choice，不是自動 fallback。
-- 目前 Granite inspect evidence 是 `classification: gpu-ready`，catalog cache 共
-  `12.77 GB / 20 GB`；prompt smoke、structured-output smoke 與真 GPU ChatPanel
-  boundary workflow 已通過。
+- product runtime 只接受 exact `ibm-granite/granite-3.3-2b-instruct` pinned revision；Phi-4
+  Mini、Phi-3.5 Mini 與其他 legacy model 不可選取，也不得作為 fallback。
+- Granite runtime、prompt smoke、structured-output smoke 和 GPU ChatPanel boundary 的 current
+  狀態只能從同一 exact-SHA generated evidence 判讀；canonical docs 不保存會隨本機 cache
+  變動的容量總數或 availability 結論。
 - Qwen cache 已刪除；中國公司或中國來源模型不列入 local validation 候選。
 - local agent runtime 是獨立的 candidate evidence，不塞進 fast dashboard 以免每次工程檢查都載入
   7B 級模型。
@@ -223,6 +239,18 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
   `legacy-remote-llm` dependency group。
 - 長時間 ChatPanel、Windows native DPI / multi-monitor 與真人 click-through 尚未跑；目前
   host-assisted Granite product workflow 不能取代 frozen benchmark 或完整 product acceptance。
+
+Strict local Granite walkthrough artifact 必須分開記錄 requested model 與 actually loaded model，
+並綁定 pinned revision、path-redacted cache snapshot manifest digest、commit/tree/dirty source
+identity、host assistance、screenshot hashes 與 terminal shutdown。Passed artifact 的 sealed field
+被改寫、current model/source identity 已 stale、screenshot bytes 被改寫，或 shutdown 未完成時，
+validator 必須 fail closed。這仍是 host-assisted product workflow evidence，不是 raw-model
+accuracy 或 thesis benchmark。
+
+新 `strict_evidence` identity block 不記錄 absolute checkout、model cache 或 screenshot path；
+但既有 Guided package base schema 仍用 canonical absolute local paths 做 artifact-root validation。
+該 package validator 不在這輪 bounded write scope，因此完整 Guided JSON 目前只能留作 local
+evidence，不可直接對外發布；要移除這個限制必須連同 Guided artifact schema / validator 一起改。
 
 後續 local-only validation 應該覆蓋：
 
@@ -235,81 +263,22 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
 已可重跑的 local runtime checks：
 
 ```bash
-poetry run python scripts/dev/plan_local_model_download.py --format markdown
-poetry run python scripts/dev/inspect_local_assistant_runtime.py \
+poetry run -- python scripts/dev/plan_local_model_download.py --format markdown
+poetry run -- python scripts/dev/inspect_local_assistant_runtime.py \
   --format markdown --prompt-smoke --structured-smoke
-poetry run python scripts/dev/inspect_local_assistant_runtime.py \
+poetry run -- python scripts/dev/inspect_local_assistant_runtime.py \
   --model ibm-granite/granite-3.3-2b-instruct \
   --format markdown --prompt-smoke --structured-smoke
 ```
 
 這些 checks 只能支撐 local runtime smoke，不等於 thesis-grade tool-call eval。
 
-## 2026-05-30 Historical Evidence
+## Historical Evidence
 
-以下保留當時 release-candidate worktree 的歷史紀錄，不是目前 active workspace 或 current
-handoff evidence：
-
-- latest fast dashboard artifact：local generated `artifacts/quality/latest.*`
-- generated at / exact commit：see local generated `artifacts/quality/latest.md`
-- workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
-- overall：`PASS`
-- UI baseline capture：`7 UI artifacts match approved references`
-- max UI mean diff：`0.353`
-- max UI changed ratio：`1.47%`
-
-同一輪 release-candidate follow-up validation：
-
-- UI unit validation：`1242 passed`。
-- Real-data IO integration：`31 passed, 8 warnings`。
-- pipeline smoke：`2 passed`。
-- Windows launcher walkthrough：`passed`，但這仍不是真人 desktop click-through 或 signed installer。
-- `poetry run basedpyright`：`0 errors, 0 warnings, 0 notes`。
-- `poetry run mkdocs build --strict`：通過。
-
-同一輪 chat product blocker 修復已記錄：
-
-- `poetry run mkdocs build --strict` 通過。
-- Real-data IO integration：`31 passed, 8 warnings`。
-- UI unit validation：`817 passed`。
-- LLM unit validation：`652 passed`。
-- targeted chat product-flow validation：`55 passed`。
-- targeted controller / worker validation：`75 passed`。
-
-2026-05-02 product delivery slice 新增的 product-oriented gates：
-
-- assistant click-through / layout smoke：
-  - `tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout`
-  - 覆蓋 header/status/control row 不重疊、raw command diagnostics 不污染主 UI、user bubble 不截字、
-    composer / Send button fit、五個主要 panel navigation。
-- synthetic EEG button-driven pipeline walkthrough：
-  - `tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions`
-  - 從 Dataset import button 開始，經 Preprocess filter、epoching、Training split/model/settings、
-    dry-run Start Training 到 Evaluation result-ready 狀態。
-- targeted validation：
-  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py -q`
-  - `62 passed`
-  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py tests/unit/llm/tools/test_application_surface.py tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py -q`
-  - `95 passed`
-  - `timeout 300s poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
-  - `31 passed, 8 warnings`
-  - selected pipeline smoke：`2 passed`
-
-2026-05-02 pipeline support protocol slice：
-
-- `docs/validation/thesis_protocol.md`
-- `docs/validation/split_artifact_schema.json`
-- `XBrainLab/backend/dataset/split_audit.py`
-- `scripts/dev/validate_split_artifact.py`
-- targeted tests：
-  - `tests/unit/backend/dataset/test_split_audit.py`
-  - `tests/unit/scripts/test_validate_split_artifact.py`
-
-這批 evidence 只證明 split artifact schema、index mutual exclusion、subject/session leakage
-audit 和 validator CLI 可用。它不能取代 local LLM tool-call accuracy run。
-
-這些是 `2026-05-02` 的工程 evidence。引用到論文時，還需要 thesis validation layer。
-dashboard `PASS` 仍不能取代真人 launcher click-through 或真 local model chat walkthrough。
+這份 architecture 文件不保存 dated pass counts、舊 branch 路徑或曾經的 dashboard verdict。
+歷史執行紀錄在 [worklog](../records/worklog.md)；目前是否通過只能讀取與候選 branch、full
+commit SHA、dirty state 和 profile 相符的 generated evidence。歷史 `PASS` 不能替代目前的
+handoff gate、真人 Windows click-through 或 thesis validation。
 
 ## 更新規則
 

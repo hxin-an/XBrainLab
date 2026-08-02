@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import platform
 from collections.abc import Mapping
@@ -23,8 +25,15 @@ class RAGConfig:
     )
     EMBEDDING_ESTIMATED_DOWNLOAD_GB = 0.10
 
-    # Changing the pinned embedding invalidates old vectors by construction.
-    COLLECTION_NAME = f"gold_set_examples_{EMBEDDING_REVISION[:12]}"
+    GOLD_SET_SHA256 = "b123eefe00fe99c9a026f3ee60d1924e73eeef6f0d1bf143d34a733c9b17efc3"
+    INDEX_SCHEMA_VERSION = 1
+    VECTOR_SIZE = 384
+
+    # Changing either the pinned embedding or bundled corpus invalidates old
+    # vectors by construction.
+    COLLECTION_NAME = (
+        f"gold_set_examples_{EMBEDDING_REVISION[:12]}_{GOLD_SET_SHA256[:12]}"
+    )
 
     SIMILARITY_THRESHOLD = 0.7
     TOP_K = 3
@@ -98,6 +107,51 @@ class RAGConfig:
         return str(path)
 
     @classmethod
+    def get_index_manifest_path(cls) -> Path:
+        """Return the local manifest that proves vector-index provenance."""
+        return cls.get_cache_root() / "vectors" / "index-manifest.json"
+
+    @staticmethod
+    def get_gold_set_path() -> Path:
+        """Return the bundled, reviewed tool-call example corpus."""
+        return Path(__file__).resolve().parent / "data" / "gold_set.json"
+
+    @classmethod
+    def gold_set_integrity_ok(cls) -> bool:
+        """Return whether the bundled corpus matches its reviewed digest."""
+        try:
+            digest = hashlib.sha256(cls.get_gold_set_path().read_bytes()).hexdigest()
+        except OSError:
+            return False
+        return digest == cls.GOLD_SET_SHA256
+
+    @classmethod
+    def expected_index_manifest(
+        cls,
+        document_count: int,
+        *,
+        point_ids: list[str],
+    ) -> dict[str, object]:
+        """Build the exact identity expected for one local vector index."""
+        point_ids_sha256 = hashlib.sha256(
+            json.dumps(
+                sorted(str(point_id) for point_id in point_ids),
+                ensure_ascii=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        return {
+            "schema_version": cls.INDEX_SCHEMA_VERSION,
+            "collection_name": cls.COLLECTION_NAME,
+            "embedding_model": cls.EMBEDDING_MODEL,
+            "embedding_revision": cls.EMBEDDING_REVISION,
+            "corpus_sha256": cls.GOLD_SET_SHA256,
+            "document_count": int(document_count),
+            "point_ids_sha256": point_ids_sha256,
+            "vector_size": cls.VECTOR_SIZE,
+        }
+
+    @classmethod
     def embedding_snapshot_path(
         cls,
         cache_dir: str | Path | None = None,
@@ -148,13 +202,17 @@ class RAGConfig:
 
     @classmethod
     def embedding_constructor_kwargs(cls) -> dict[str, object]:
-        """Return the immutable offline-only SentenceTransformer arguments."""
+        """Return arguments that load only the verified local snapshot.
+
+        The installed SentenceTransformer API does not accept
+        ``local_files_only``. Network resolution is avoided by passing the
+        contained, immutable snapshot directory rather than a repository ID.
+        """
+        cache_path = cls.get_embedding_cache_path()
         return {
-            "model_name": cls.EMBEDDING_MODEL,
-            "cache_folder": cls.get_embedding_cache_path(),
+            "model_name": str(cls.embedding_snapshot_path(cache_path)),
+            "cache_folder": cache_path,
             "model_kwargs": {
-                "revision": cls.EMBEDDING_REVISION,
-                "local_files_only": True,
                 "trust_remote_code": False,
             },
         }

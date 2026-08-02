@@ -76,7 +76,7 @@ def _allow_prompt_tools(ctrl):
         generation=1,
     )
     ctrl._tool_attempt_coordinator._context_source = source
-    ctrl._active_tool_publication = PromptToolPublication(
+    ctrl._turn_orchestrator.active_publication = PromptToolPublication(
         tool_names=frozenset(
             set(TOOL_TO_COMMAND) | set(READ_ONLY_TOOLS) | {"cmd", "first"}
         ),
@@ -109,7 +109,6 @@ def ctrl():
         patch("XBrainLab.llm.agent.controller.ToolRegistry"),
         patch("XBrainLab.llm.agent.controller.ContextAssembler"),
         patch("XBrainLab.llm.agent.controller.VerificationLayer"),
-        patch("XBrainLab.llm.agent.controller.RAGRetriever"),
         patch("XBrainLab.llm.agent.controller.QThread"),
         patch("XBrainLab.llm.agent.controller.AgentWorker"),
         patch("XBrainLab.llm.agent.controller.AVAILABLE_TOOLS", []),
@@ -150,8 +149,8 @@ def ctrl():
         c = LLMController(study)
         for name in signal_names:
             setattr(c, name, MagicMock())
-        c._active_tool_publication = MagicMock()
-        c._active_tool_publication.permits.return_value = True
+        c._turn_orchestrator.active_publication = MagicMock()
+        c._turn_orchestrator.active_publication.permits.return_value = True
         c._request_admission.evaluate = MagicMock(
             return_value=UserRequestAdmission(
                 UserRequestAdmissionAction.GENERATE,
@@ -225,7 +224,7 @@ class TestHandleUserInput:
 class TestOnChunkReceived:
     def test_buffers_short_response(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 11
+        ctrl._turn_orchestrator.active_generation_id = 11
         ctrl._on_chunk_received(11, "hi")
         assert ctrl.current_response == "hi"
         ctrl.generation_event.emit.assert_called_once_with(
@@ -238,36 +237,36 @@ class TestOnChunkReceived:
 
     def test_buffers_non_tool_until_generation_is_classified(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 12
+        ctrl._turn_orchestrator.active_generation_id = 12
         ctrl.current_response = "a" * 10
         ctrl._on_chunk_received(12, " more text")
         assert ctrl.current_response.endswith(" more text")
 
     def test_buffers_tool_json(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 13
+        ctrl._turn_orchestrator.active_generation_id = 13
         ctrl.current_response = '{"tool": "x"'
         ctrl._on_chunk_received(13, "}")
         assert ctrl.current_response == '{"tool": "x"}'
 
     def test_ignores_chunk_from_stale_generation(self, ctrl):
         ctrl.is_processing = True
-        ctrl._active_generation_id = 14
+        ctrl._turn_orchestrator.active_generation_id = 14
         ctrl._on_chunk_received(13, "stale")
         assert ctrl.current_response == ""
-        assert ctrl._active_generation_id == 14
+        assert ctrl._turn_orchestrator.active_generation_id == 14
         ctrl.generation_event.emit.assert_not_called()
 
 
 # --- _on_generation_finished ---
 class TestOnGenerationFinished:
     def test_no_command_finalizes(self, ctrl):
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
         ctrl.current_response = "Just a regular reply, nothing special"
         ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
         ctrl.is_processing = True
-        ctrl._active_generation_id = 21
+        ctrl._turn_orchestrator.active_generation_id = 21
         ctrl._on_generation_finished(21, [])
         assert not ctrl.is_processing
         ctrl.generation_event.emit.assert_called_once_with(
@@ -279,23 +278,23 @@ class TestOnGenerationFinished:
 
     def test_broken_json_retries(self, ctrl):
         ctrl.current_response = '```json\n{"broken'
-        ctrl._retry_count = 0
+        ctrl._tool_attempt_session.retry_count = 0
         ctrl.is_processing = True
-        ctrl._active_generation_id = 22
+        ctrl._turn_orchestrator.active_generation_id = 22
         ctrl._generate_response = MagicMock()
         ctrl._on_generation_finished(22, [])
         ctrl._generate_response.assert_called_once()
-        assert ctrl._retry_count == 1
+        assert ctrl._tool_attempt_session.retry_count == 1
 
     def test_stale_finish_does_not_close_active_generation(self, ctrl):
         ctrl.current_response = "active"
         ctrl.is_processing = True
-        ctrl._active_generation_id = 24
+        ctrl._turn_orchestrator.active_generation_id = 24
 
         ctrl._on_generation_finished(23, [])
 
         assert ctrl.current_response == "active"
-        assert ctrl._active_generation_id == 24
+        assert ctrl._turn_orchestrator.active_generation_id == 24
         assert ctrl.is_processing is True
         ctrl.generation_event.emit.assert_not_called()
 
@@ -305,13 +304,13 @@ class TestHandleLoopDetected:
     def test_increments_break_count(self, ctrl):
         ctrl._generate_response = MagicMock()
         ctrl._handle_loop_detected("test_tool")
-        assert ctrl._loop_break_count == 1
+        assert ctrl._tool_attempt_session.loop_break_count == 1
         ctrl._generate_response.assert_called_once()
 
     def test_aborts_after_max(self, ctrl):
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
-        ctrl._loop_break_count = 3
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._tool_attempt_session.loop_break_count = 3
         ctrl._handle_loop_detected("test_tool")
         assert not ctrl.is_processing
         ctrl.processing_finished.emit.assert_called()
@@ -393,7 +392,7 @@ class TestProcessToolCalls:
         from XBrainLab.llm.agent.turn import AssistantTurnScope
 
         _allow_prompt_tools(ctrl)
-        ctrl._active_turn_scope = AssistantTurnScope.GUIDED_WORKFLOW
+        ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=_tool_outcome(
                 "err",
@@ -411,7 +410,7 @@ class TestProcessToolCalls:
 
     def test_max_failures_stops(self, ctrl):
         _allow_prompt_tools(ctrl)
-        ctrl._tool_failure_count = 2
+        ctrl._tool_attempt_session.tool_failure_count = 2
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=_tool_outcome(
                 "err",
@@ -451,11 +450,11 @@ class TestClose:
 
     def test_close_rag_error_ignored(self, ctrl):
         worker = ctrl.worker
-        ctrl.rag_retriever.close.side_effect = RuntimeError("x")
+        ctrl._rag_lifecycle.close = MagicMock(side_effect=RuntimeError("x"))
         ctrl.worker_thread.isRunning.return_value = False
         ctrl.close()
 
-        ctrl.rag_retriever.close.assert_called_once()
+        ctrl._rag_lifecycle.close.assert_called_once()
         worker.shutdown.assert_called_once()
         ctrl.worker_thread.quit.assert_called_once()
         ctrl.worker_thread.wait.assert_not_called()
@@ -464,9 +463,9 @@ class TestClose:
 # --- stop_generation ---
 class TestStopGeneration:
     def test_stops_when_processing(self, ctrl):
-        ctrl._active_host_turn_id = 1
-        ctrl._active_host_turn_generation = 1
-        ctrl._active_generation_id = 1
+        ctrl._turn_orchestrator.host_turn_id = 1
+        ctrl._turn_orchestrator.host_turn_generation = 1
+        ctrl._turn_orchestrator.active_generation_id = 1
         ctrl.is_processing = True
         ctrl.stop_generation()
         assert ctrl.is_processing
@@ -504,10 +503,10 @@ class TestSetModel:
 class TestResetConversation:
     def test_clears_state(self, ctrl):
         ctrl.history = [{"role": "user", "content": "hi"}]
-        ctrl._retry_count = 5
+        ctrl._tool_attempt_session.retry_count = 5
         ctrl.reset_conversation()
         assert ctrl.history == []
-        assert ctrl._retry_count == 0
+        assert ctrl._tool_attempt_session.retry_count == 0
         ctrl.assembler.clear_context.assert_called()
 
 

@@ -283,6 +283,9 @@ def test_trainer_run(training_plan_holders, interact):
         trainer.run(interact=interact)
         job_mock.assert_called_once()
         thread = trainer.job_thread
+        if interact:
+            assert thread is not None
+            assert thread.daemon is True
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=1.0)
         assert trainer.is_running() is False
@@ -539,6 +542,26 @@ def test_trainer_does_not_infer_failure_from_display_status(training_plan_holder
         trainer.run(interact=False)
 
     assert trainer.get_terminal_outcome().state is TrainingOutcomeState.COMPLETED
+
+
+def test_new_run_preserves_terminal_error_on_prior_history_holder() -> None:
+    failed_holder = FakeTrainingPlanHolder(0)
+    failed_holder.error = "CUDA out of memory during training."
+    next_holder = FakeTrainingPlanHolder(1)
+    trainer = Trainer([failed_holder])
+    trainer.current_idx = 1
+    trainer.add_training_plan_holders([next_holder])
+
+    with (
+        patch.object(failed_holder, "clear_interrupt") as clear_failed,
+        patch.object(next_holder, "clear_interrupt") as clear_next,
+        patch.object(trainer, "job"),
+    ):
+        trainer.run(interact=False)
+
+    clear_failed.assert_not_called()
+    clear_next.assert_called_once_with()
+    assert failed_holder.error == "CUDA out of memory during training."
 
 
 def test_trainer_interrupt(training_plan_holders):

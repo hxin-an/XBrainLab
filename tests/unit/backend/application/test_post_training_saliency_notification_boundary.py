@@ -10,10 +10,10 @@ from XBrainLab.backend.application.post_training_saliency import (
     PostCommandSaliencyNotificationBoundary,
     SaliencyTerminalNotification,
 )
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingRunIdentity,
     TrainingStateToken,

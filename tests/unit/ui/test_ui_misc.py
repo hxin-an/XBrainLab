@@ -30,6 +30,7 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
 )
+from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
     RuntimeActivationStatus,
@@ -53,7 +54,9 @@ def _mock_interpretation_review_state(
     candidate: dict[str, Any],
     decision: dict[str, Any],
 ):
-    from XBrainLab.ui.panels.dataset.actions import _InterpretationReviewState
+    from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
+        _InterpretationReviewState,
+    )
 
     return _InterpretationReviewState(
         scan=scan,
@@ -220,7 +223,7 @@ class TestDatasetActionHandler:
         panel.table.rowCount.return_value = 3
         panel.table.mapToGlobal.return_value = MagicMock()
         h = DatasetActionHandler(panel)
-        h._review_state_from_parts = MagicMock(
+        h._data_interpretation._review_state_from_parts = MagicMock(
             side_effect=_mock_interpretation_review_state,
         )
         return h
@@ -261,7 +264,7 @@ class TestDatasetActionHandler:
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
 
         with patch.object(
-            handler,
+            handler._data_interpretation,
             "_run_data_interpretation_import",
             side_effect=RuntimeError("scan failed"),
         ):
@@ -322,7 +325,11 @@ class TestDatasetActionHandler:
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
 
         with (
-            patch.object(handler, "_run_data_interpretation_import", return_value=None),
+            patch.object(
+                handler._data_interpretation,
+                "_run_data_interpretation_import",
+                return_value=None,
+            ),
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=_command_result(success_count=1),
@@ -351,7 +358,11 @@ class TestDatasetActionHandler:
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
 
         with (
-            patch.object(handler, "_run_data_interpretation_import", return_value=None),
+            patch.object(
+                handler._data_interpretation,
+                "_run_data_interpretation_import",
+                return_value=None,
+            ),
             patch(
                 "XBrainLab.ui.panels.dataset.actions.get_command_capability",
                 return_value=None,
@@ -367,7 +378,9 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
-        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        assert mock_mb.warning.call_args.args[2] == (
+            "Data interpretation availability is unavailable right now."
+        )
         mock_mb.critical.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
@@ -386,7 +399,11 @@ class TestDatasetActionHandler:
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
 
         with (
-            patch.object(handler, "_run_data_interpretation_import", return_value=None),
+            patch.object(
+                handler._data_interpretation,
+                "_run_data_interpretation_import",
+                return_value=None,
+            ),
             patch(
                 "XBrainLab.ui.panels.dataset.actions.get_command_capability",
                 return_value=CommandCapability(
@@ -462,7 +479,7 @@ class TestDatasetActionHandler:
                 side_effect=fake_execute,
             ),
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_review_state_from_parts",
                 side_effect=_mock_interpretation_review_state,
             ),
@@ -535,7 +552,7 @@ class TestDatasetActionHandler:
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_run_data_interpretation_import",
                 return_value=InteractionOutcome.accepted(
                     "Data interpretation review started."
@@ -557,7 +574,7 @@ class TestDatasetActionHandler:
         )
         mock_mb.warning.assert_not_called()
 
-    def test_import_data_refuses_real_study_no_capability_lock_fallback(
+    def test_import_data_blocks_real_study_when_scan_capability_is_unavailable(
         self,
         handler,
     ):
@@ -578,11 +595,16 @@ class TestDatasetActionHandler:
             patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
         ):
             mock_fd.getOpenFileNames.return_value = ([], "")
-            handler.import_data()
+            outcome = handler.import_data()
 
         handler.panel.controller.is_locked.assert_not_called()
-        mock_fd.getOpenFileNames.assert_called_once()
-        mock_mb.warning.assert_not_called()
+        mock_fd.getOpenFileNames.assert_not_called()
+        assert outcome.status is InteractionStatus.BLOCKED
+        mock_mb.warning.assert_called_once_with(
+            handler.panel,
+            "Interpretation Blocked",
+            "Data interpretation availability is unavailable right now.",
+        )
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
@@ -709,7 +731,7 @@ class TestDatasetActionHandler:
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_run_data_interpretation_import",
                 return_value=True,
             ) as mock_interpret,
@@ -796,14 +818,14 @@ class TestDatasetActionHandler:
 
         with (
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_execute_interpretation_command_async",
                 side_effect=lambda command, on_result, **_kwargs: (
                     on_result(fake_execute(handler.panel, command)) or True
                 ),
             ),
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_review_state_from_parts",
                 side_effect=_mock_interpretation_review_state,
             ),
@@ -897,14 +919,14 @@ class TestDatasetActionHandler:
 
         with (
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_execute_interpretation_command_async",
                 side_effect=lambda command, on_result, **_kwargs: (
                     on_result(fake_execute(handler.panel, command)) or True
                 ),
             ),
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_review_state_from_parts",
                 side_effect=_mock_interpretation_review_state,
             ),
@@ -1001,14 +1023,14 @@ class TestDatasetActionHandler:
 
         with (
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_execute_interpretation_command_async",
                 side_effect=lambda command, on_result, **_kwargs: (
                     on_result(fake_execute(handler.panel, command)) or True
                 ),
             ),
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_review_state_from_parts",
                 side_effect=_mock_interpretation_review_state,
             ),
@@ -1108,7 +1130,7 @@ class TestDatasetActionHandler:
                 side_effect=fake_execute,
             ),
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_review_state_from_parts",
                 side_effect=_mock_interpretation_review_state,
             ),
@@ -1211,8 +1233,8 @@ class TestDatasetActionHandler:
         from XBrainLab.backend.study import Study
         from XBrainLab.ui import application_capabilities
         from XBrainLab.ui.panels.dataset import actions
-        from XBrainLab.ui.panels.dataset.actions import (
-            DatasetActionHandler,
+        from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
+        from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
             _InterpretationReviewState,
         )
 
@@ -1270,11 +1292,6 @@ class TestDatasetActionHandler:
             "application_ui_runtime",
             lambda _context: runtime,
         )
-        monkeypatch.setattr(
-            application_capabilities,
-            "refresh_after_command",
-            lambda *_args: None,
-        )
         review_state = _InterpretationReviewState(
             scan={},
             preview={},
@@ -1295,7 +1312,7 @@ class TestDatasetActionHandler:
                 side_effect=AssertionError("apply must not run on the GUI thread"),
             ),
         ):
-            handled = handler._continue_data_interpretation_import(
+            handled = handler._data_interpretation._continue_data_interpretation_import(
                 source_path="/tmp/sub-01_task-mi.fif",
                 source_hint="auto",
                 choices={},
@@ -1335,10 +1352,12 @@ class TestDatasetActionHandler:
             "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             side_effect=fake_sync,
         ):
-            started = handler._execute_interpretation_command_async(
-                ScanSourceCommand(source_path="/tmp/eeg"),
-                on_result=results.append,
-                error_title="Source scan failed",
+            started = (
+                handler._data_interpretation._execute_interpretation_command_async(
+                    ScanSourceCommand(source_path="/tmp/eeg"),
+                    on_result=results.append,
+                    error_title="Source scan failed",
+                )
             )
 
         assert started.status is InteractionStatus.COMPLETED
@@ -1361,10 +1380,12 @@ class TestDatasetActionHandler:
             "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             return_value=None,
         ) as mock_sync:
-            started = handler._execute_interpretation_command_async(
-                ScanSourceCommand(source_path="/tmp/eeg"),
-                on_result=MagicMock(),
-                error_title="Source scan failed",
+            started = (
+                handler._data_interpretation._execute_interpretation_command_async(
+                    ScanSourceCommand(source_path="/tmp/eeg"),
+                    on_result=MagicMock(),
+                    error_title="Source scan failed",
+                )
             )
 
         assert started is None
@@ -1669,7 +1690,7 @@ class TestDatasetActionHandler:
                 side_effect=fake_execute,
             ),
             patch.object(
-                handler,
+                handler._data_interpretation,
                 "_review_state_from_parts",
                 side_effect=_mock_interpretation_review_state,
             ),
@@ -1695,7 +1716,7 @@ class TestDatasetActionHandler:
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
             patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
         ):
-            handled = handler._save_interpretation_recipe(
+            handled = handler._data_interpretation._save_interpretation_recipe(
                 on_complete=completions.append,
             )
 
@@ -1847,8 +1868,10 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
 
     def test_interpretation_source_avoids_common_root_scan(self, handler):
-        source_path, choices = handler._interpretation_source_and_choices(
-            ["/mnt/a/sub-01.fif", "/tmp/b/sub-02.fif"],
+        source_path, choices = (
+            handler._data_interpretation._interpretation_source_and_choices(
+                ["/mnt/a/sub-01.fif", "/tmp/b/sub-02.fif"],
+            )
         )
 
         assert source_path == "/mnt/a/sub-01.fif"
@@ -2126,11 +2149,12 @@ class TestDatasetActionHandler:
 
         query_result = _command_result()
         query_result.diagnostics = {
-            "state": {
-                "raw": {
-                    "files": ["sub-01_task-mi_raw.fif"],
-                },
-            },
+            "raw_rows": [
+                {
+                    "filepath": "/tmp/sub-01_task-mi_raw.fif",
+                    "filename": "sub-01_task-mi_raw.fif",
+                }
+            ],
         }
         apply_result = _command_result(success_count=1)
 
@@ -2151,7 +2175,10 @@ class TestDatasetActionHandler:
             handler.open_smart_parser()
 
         handler.panel.controller.get_filenames.assert_not_called()
-        mock_dialog.assert_called_once_with(["sub-01_task-mi_raw.fif"], handler.panel)
+        mock_dialog.assert_called_once_with(
+            ["/tmp/sub-01_task-mi_raw.fif"],
+            handler.panel,
+        )
         assert mock_execute.call_count == 2
         handler.panel.controller.apply_smart_parse.assert_not_called()
         mock_mb.warning.assert_not_called()
@@ -2172,11 +2199,12 @@ class TestDatasetActionHandler:
 
         query_result = _command_result()
         query_result.diagnostics = {
-            "state": {
-                "raw": {
-                    "files": ["sub-01_task-mi_raw.fif"],
-                },
-            },
+            "raw_rows": [
+                {
+                    "filepath": "/tmp/sub-01_task-mi_raw.fif",
+                    "filename": "sub-01_task-mi_raw.fif",
+                }
+            ],
         }
 
         with (
@@ -2357,34 +2385,29 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
-    def test_import_label_uses_table_user_role_before_stale_controller_list(
+    def test_import_label_compatibility_path_uses_controller_without_product_runtime(
         self,
         mock_dlg,
         mock_mb,
         handler,
     ):
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtWidgets import QTableWidgetItem
-
         idx = MagicMock()
         idx.row.return_value = 0
         data_obj = MagicMock()
-        item = QTableWidgetItem("sub-01_task-mi_raw.fif")
-        item.setData(Qt.ItemDataRole.UserRole, data_obj)
 
         handler.panel.table.rowCount.return_value = 1
         handler.panel.table.selectedIndexes.return_value = [idx]
-        handler.panel.table.item.return_value = item
+        handler.panel.capture_table_selection = None
+        handler.panel.resolve_table_selection = None
         handler.panel.controller = MagicMock()
-        handler.panel.controller.get_loaded_data_list.side_effect = AssertionError(
-            "stale loaded list should not be read",
-        )
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
         mock_dlg.return_value.exec.return_value = False
 
         handler.import_label()
 
         mock_dlg.assert_called_once_with(handler.panel, target_files=[data_obj])
-        handler.panel.controller.get_loaded_data_list.assert_not_called()
+        handler.panel.controller.get_loaded_data_list.assert_called_once()
+        handler.panel.table.item.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_label_real_study_refuses_controller_target_fallback(
@@ -2507,7 +2530,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_labels_sequence.assert_not_called()
         handler.panel.controller.apply_labels_batch.assert_not_called()
         mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
+        assert mock_mb.warning.call_args.args[1] == "Add Labels Blocked"
         assert "could not safely complete" in mock_mb.warning.call_args.args[2]
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
@@ -2626,7 +2649,9 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_labels_batch.return_value = 1
 
         with patch.object(
-            handler, "_filter_events_for_import", return_value=None
+            handler._external_label_import,
+            "filter_events_for_import",
+            return_value=None,
         ) as mock_filter:
             handler.import_label()
 
@@ -2796,7 +2821,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.get_smart_filter_suggestions.side_effect = (
             AssertionError("stale smart-filter suggestions should not be read")
         )
-        handler._last_target_file_indices = [2]
+        handler._external_label_import._remember_target_file_indices([2])
         data = MagicMock()
         data.is_raw.return_value = True
         data.has_event.return_value = True
@@ -2933,7 +2958,7 @@ class TestDatasetActionHandler:
 
     def test_build_label_import_plan_carries_reviewed_preview_identity(self, handler):
         selection = _label_selection(["file1.txt"], target_count=4)
-        handler._last_target_file_indices = [2]
+        handler._external_label_import._remember_target_file_indices([2])
 
         plan = handler._build_label_import_plan(
             selection,
@@ -3150,8 +3175,15 @@ class TestAgentManagerDeep:
 
     def test_set_model(self, mgr):
         mgr.vram_checker = MagicMock()
-        mgr.set_model("Gemini")
-        mgr._assistant_runtime.switch_model.assert_called_with("Gemini")
+        model_id = LLMConfig.default_local_model_id()
+        mgr._assistant_runtime.switch_model.return_value = RuntimeActivationResult(
+            RuntimeActivationStatus.SWITCHING,
+            model_id=model_id,
+        )
+
+        mgr.set_model(model_id)
+
+        mgr._assistant_runtime.switch_model.assert_called_with(model_id)
         mgr.vram_checker.check.assert_called_once_with(switching_to_local=True)
 
     def test_on_processing_state_changed(self, mgr):
@@ -3240,7 +3272,7 @@ class TestAgentManagerDeep:
         callback(target)
 
         target.tabs.setCurrentIndex.assert_called_with(0)
-        status_bar.showMessage.assert_called_with("Visualization is open.")
+        status_bar.showMessage.assert_called_with("Opened Visualization panel.")
 
     def test_handle_panel_navigation_rejects_untyped_payload(self, mgr):
         mgr.chat_panel = MagicMock()
@@ -3422,53 +3454,3 @@ class TestSpectrogramView:
 
         with pytest.raises(RuntimeError, match="fail"):
             widget._render_plot(publication.data)
-
-
-# ====================================================================
-# PreprocessPlotter (partial - covers _get_chan_data and helpers)
-# ====================================================================
-
-
-class TestPreprocessPlotter:
-    @pytest.fixture
-    def plotter(self):
-        from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import (
-            PreprocessPlotter,
-        )
-
-        widget = MagicMock()
-        ctrl = MagicMock()
-        return PreprocessPlotter(widget, ctrl)
-
-    def test_get_chan_data_raw(self, plotter):
-        obj = MagicMock()
-        obj.is_raw.return_value = True
-        obj.get_sfreq.return_value = 256.0
-        mne_obj = MagicMock()
-        mne_obj.times = np.arange(0, 5 * 256) / 256
-        mne_obj.get_data.return_value = np.random.randn(1, 256 * 5)
-        obj.get_mne.return_value = mne_obj
-        x, y = plotter._get_chan_data(obj, 0, start_time=0, duration=5)
-        assert x is not None and y is not None
-        assert len(y) == 256 * 5
-
-    def test_get_chan_data_raw_out_of_range(self, plotter):
-        obj = MagicMock()
-        obj.is_raw.return_value = True
-        obj.get_sfreq.return_value = 256.0
-        mne_obj = MagicMock()
-        mne_obj.times = np.array([0.0])  # very short
-        obj.get_mne.return_value = mne_obj
-        x, y = plotter._get_chan_data(obj, 0, start_time=100, duration=5)
-        assert x is None and y is None
-
-    def test_get_chan_data_raw_empty(self, plotter):
-        obj = MagicMock()
-        obj.is_raw.return_value = True
-        obj.get_sfreq.return_value = 256.0
-        mne_obj = MagicMock()
-        mne_obj.times = np.arange(0, 256) / 256
-        mne_obj.get_data.return_value = np.array([])
-        obj.get_mne.return_value = mne_obj
-        x, y = plotter._get_chan_data(obj, 0, start_time=0, duration=5)
-        assert x is None and y is None

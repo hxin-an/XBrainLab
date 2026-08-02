@@ -261,9 +261,9 @@ def test_manager_queued_controller_slot_exception_releases_and_next_turn_succeed
     assert lifecycle.turn_in_flight is False
     assert manager._assistant_turn_state.lease is None
     assert manager.chat_controller.is_processing is False
-    assert controller._active_host_turn_id is None
-    assert controller._active_host_turn_generation is None
-    assert controller._active_generation_id is None
+    assert controller._turn_orchestrator.host_turn_id is None
+    assert controller._turn_orchestrator.host_turn_generation is None
+    assert controller._turn_orchestrator.active_generation_id is None
     assert len(visible_errors) == 1
     assert "could not receive this request" in visible_errors[0].lower()
     assert "retry" in visible_errors[0].lower()
@@ -319,13 +319,13 @@ def test_manager_queued_controller_rejection_shows_recoverable_error(
 
 
 @pytest.mark.parametrize("fault_mode", ["ack_lost", "ack_handler_exception"])
-def test_manager_delivery_watchdog_releases_lost_or_failed_ack_exactly_once(
+def test_manager_delivery_watchdog_fences_retry_until_terminal_exactly_once(
     manager_lifecycle_harness,
     qtbot,
     monkeypatch,
     fault_mode: str,
 ) -> None:
-    """The host lease cannot depend on one fallible queued Qt acknowledgement."""
+    """A lost delivery ack cannot expose Retry before the original turn stops."""
     manager, lifecycle, controller = manager_lifecycle_harness
     original_handler = controller.handle_user_turn
     dispatcher = lifecycle.dispatcher
@@ -379,8 +379,28 @@ def test_manager_delivery_watchdog_releases_lost_or_failed_ack_exactly_once(
     assert correlation is not None
     assert lifecycle.turn_in_flight is True
 
-    qtbot.waitUntil(lambda: len(terminals) == 1, timeout=2_000)
+    qtbot.waitUntil(
+        lambda: lifecycle._stop_requested_for == correlation,
+        timeout=2_000,
+    )
     qtbot.wait(100)
+
+    assert terminals == []
+    assert lifecycle.turn_in_flight is True
+    assert manager._assistant_turn_state.lease == correlation
+    assert visible_errors == []
+    duplicate = manager.handle_user_input("Do not execute this duplicate request.")
+    assert duplicate.accepted is False
+    assert lifecycle.turn_in_flight is True
+    assert manager._assistant_turn_state.lease == correlation
+
+    controller.turn_finished.emit(
+        AssistantTurnTerminal(
+            correlation=correlation,
+            outcome="cancelled",
+        )
+    )
+    qtbot.waitUntil(lambda: len(terminals) == 1, timeout=2_000)
 
     assert terminals == [
         AssistantTurnTerminal(
@@ -483,9 +503,9 @@ def test_manager_controller_turn_setup_exception_releases_and_retries(
     assert manager._assistant_turn_state.lease is None
     assert manager.chat_controller.is_processing is False
     assert controller.is_processing is False
-    assert controller._active_host_turn_id is None
-    assert controller._active_host_turn_generation is None
-    assert controller._active_generation_id is None
+    assert controller._turn_orchestrator.host_turn_id is None
+    assert controller._turn_orchestrator.host_turn_generation is None
+    assert controller._turn_orchestrator.active_generation_id is None
 
     manager.handle_user_input("Explain event-related potentials in one sentence.")
     second_correlation = manager._assistant_turn_state.lease
@@ -611,12 +631,12 @@ def test_prompt_assembly_failure_emits_one_terminal_and_releases_runtime_lease(
     assert runtime_terminals[0].outcome == "generation_request_failed"
     assert lifecycle.turn_in_flight is False
     assert controller.is_processing is False
-    assert controller._waiting_for_rag is False
-    assert controller._active_rag_turn_id is None
-    assert controller._stopping_generation_id is None
-    assert controller._active_generation_id is None
-    assert controller._active_host_turn_id is None
-    assert controller._active_host_turn_generation is None
+    assert controller._turn_orchestrator.waiting_for_rag is False
+    assert controller._turn_orchestrator.active_rag_turn_id is None
+    assert controller._turn_orchestrator.stopping_generation_id is None
+    assert controller._turn_orchestrator.active_generation_id is None
+    assert controller._turn_orchestrator.host_turn_id is None
+    assert controller._turn_orchestrator.host_turn_generation is None
     assert [
         event
         for event in generation_events
@@ -726,12 +746,12 @@ def test_post_rag_context_failure_releases_full_topology_leases_and_next_turn(
         assert manager._assistant_turn_state.lease is None
         assert manager.chat_controller.is_processing is False
         assert controller.is_processing is False
-        assert controller._waiting_for_rag is False
-        assert controller._active_rag_turn_id is None
-        assert controller._stopping_generation_id is None
-        assert controller._active_generation_id is None
-        assert controller._active_host_turn_id is None
-        assert controller._active_host_turn_generation is None
+        assert controller._turn_orchestrator.waiting_for_rag is False
+        assert controller._turn_orchestrator.active_rag_turn_id is None
+        assert controller._turn_orchestrator.stopping_generation_id is None
+        assert controller._turn_orchestrator.active_generation_id is None
+        assert controller._turn_orchestrator.host_turn_id is None
+        assert controller._turn_orchestrator.host_turn_generation is None
         assert generation_events == []
 
         manager.handle_user_input("Explain event-related potentials in one sentence.")
@@ -855,11 +875,11 @@ def test_worker_dispatch_setup_and_model_faults_release_manager_turns(
         assert manager._assistant_turn_state.lease is None
         assert manager.chat_controller.is_processing is False
         assert controller.is_processing is False
-        assert controller._active_generation_id is None
-        assert controller._active_generation_dispatch_phase is None
-        assert controller._stopping_generation_id is None
-        assert controller._active_host_turn_id is None
-        assert controller._active_host_turn_generation is None
+        assert controller._turn_orchestrator.active_generation_id is None
+        assert controller._turn_orchestrator.dispatch_phase is None
+        assert controller._turn_orchestrator.stopping_generation_id is None
+        assert controller._turn_orchestrator.host_turn_id is None
+        assert controller._turn_orchestrator.host_turn_generation is None
         assert worker._active_generation_id is None
         assert worker._generation_thread_id is None
 

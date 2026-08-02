@@ -145,7 +145,8 @@ class _Study:
 
 
 class _DatasetController:
-    def __init__(self) -> None:
+    def __init__(self, study: _Study) -> None:
+        self.study = study
         self.notifications: list[tuple[Any, ...]] = []
         self.cleaned = False
 
@@ -154,6 +155,9 @@ class _DatasetController:
 
     def clean_dataset(self) -> None:
         self.cleaned = True
+
+    def reset_preprocess(self) -> None:
+        self.study.reset_preprocess(force_update=True)
 
 
 class _PreprocessController:
@@ -230,7 +234,7 @@ def _service() -> tuple[
     _InterpretationCommands,
 ]:
     study = _Study()
-    dataset = _DatasetController()
+    dataset = _DatasetController(study)
     preprocess = _PreprocessController()
     training = _TrainingController(study)
     training_commands = _TrainingCommands()
@@ -271,11 +275,8 @@ def test_lifecycle_service_resets_preprocess_and_clears_downstream_state() -> No
     }
     assert training.cleaned is False
     assert study.training_manager.trainer is None
-    assert preprocess.notifications == ["preprocess_changed"]
-    assert dataset.notifications == [
-        ("data_changed",),
-        ("dataset_locked", False),
-    ]
+    assert preprocess.notifications == []
+    assert dataset.notifications == []
 
 
 def test_lifecycle_service_rolls_back_reset_preprocess_failure() -> None:

@@ -1,0 +1,251 @@
+"""Focused product presentation tests for assistant confirmation cards."""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+from PyQt6.QtCore import QPoint, QRect, Qt
+
+from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
+from XBrainLab.ui.chat.action_card import AssistantConfirmationCard
+
+
+def _visible_text(text: str) -> str:
+    return text.replace("\u200b", "")
+
+
+def _show_card(
+    card: AssistantConfirmationCard,
+    qtbot,
+    request: AgentConfirmationRequest,
+    *,
+    width: int,
+    current_values: dict[str, str] | None = None,
+) -> None:
+    card.setFixedWidth(width)
+    card.present(request, current_values=current_values)
+    card.show()
+    card.adjustSize()
+    qtbot.wait(20)
+
+
+def _row_by_label(card: AssistantConfirmationCard, label: str):
+    return next(
+        row for row in card.proposal_rows if _visible_text(row.label.text()) == label
+    )
+
+
+@pytest.fixture
+def confirmation_card(qtbot) -> AssistantConfirmationCard:
+    card = AssistantConfirmationCard()
+    qtbot.addWidget(card)
+    return card
+
+
+@pytest.mark.parametrize("width", [320, 420, 760])
+def test_setting_change_uses_human_labels_and_structured_values_at_target_widths(
+    confirmation_card,
+    qtbot,
+    width: int,
+) -> None:
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={
+            "evaluation_option": "val_auc",
+            "optimizer_settings": {
+                "amsgrad": False,
+                "beta_1": 0.9,
+            },
+            "recording_selection_strategy_for_cross_session_validation": (
+                "prefer_subject_balanced_recordings"
+            ),
+            "save_checkpoints_every": 5,
+        },
+        action_label=(
+            "Apply the complete reviewed training configuration and checkpoint policy"
+        ),
+        description="Use the reviewed settings for the next training run.",
+        destructive=False,
+        publication_generation=8,
+    )
+
+    _show_card(
+        confirmation_card,
+        qtbot,
+        request,
+        width=width,
+        current_values={"evaluation_option": "last_epoch"},
+    )
+
+    card = confirmation_card
+    assert card.details_title.text() == "Proposed settings"
+    assert card.reason_title.text() == "Reason"
+    assert card.reason_label.text() == request.description
+    assert card.proposal_scroll.horizontalScrollBar().maximum() == 0
+    assert card.proposal_scroll.verticalScrollBar().maximum() == 0
+
+    labels = [_visible_text(row.label.text()) for row in card.proposal_rows]
+    assert labels == [
+        "Model selection",
+        "Optimizer settings",
+        "Recording selection strategy for cross session validation",
+        "Checkpoint interval",
+    ]
+    assert all("_" not in label for label in labels)
+
+    evaluation = _row_by_label(card, "Model selection")
+    assert evaluation.current_caption.text() == "Current"
+    assert evaluation.proposed_caption.text() == "Proposed"
+    assert _visible_text(evaluation.current_value.text()) == "Last training epoch"
+    assert _visible_text(evaluation.proposed_value.text()) == "Validation AUC"
+
+    optimizer = _row_by_label(card, "Optimizer settings")
+    optimizer_text = _visible_text(optimizer.proposed_value.text())
+    assert optimizer_text == "AMSGrad: No\nBeta 1: 0.9"
+    assert not re.search(r"[{}\[\]\"]", optimizer_text)
+    assert optimizer.proposed_value.accessibleDescription() == optimizer_text
+
+    for row in card.proposal_rows:
+        assert row.width() <= card.proposal_scroll.viewport().width()
+        assert row.label.wordWrap()
+        for value_label in (row.current_value, row.proposed_value):
+            for segment in re.split(r"[\s\u200b]+", value_label.text()):
+                if segment:
+                    assert (
+                        value_label.fontMetrics().horizontalAdvance(segment)
+                        <= value_label.contentsRect().width()
+                    )
+
+
+@pytest.mark.parametrize("width", [320, 420, 760])
+def test_large_setting_proposal_delegates_vertical_scroll_and_keeps_every_value(
+    confirmation_card,
+    qtbot,
+    width: int,
+) -> None:
+    params = {
+        f"training_parameter_{index:02d}": (
+            f"subject_balanced_value_{index:02d}_" + ("W" * 80)
+        )
+        for index in range(14)
+    }
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params=params,
+        action_label="Apply reviewed settings",
+        description="Review every setting before applying the configuration.",
+        destructive=False,
+        publication_generation=11,
+    )
+
+    _show_card(confirmation_card, qtbot, request, width=width)
+
+    card = confirmation_card
+    scroll = card.proposal_scroll
+    assert len(card.proposal_rows) == len(params)
+    assert scroll.verticalScrollBar().maximum() == 0
+    assert scroll.horizontalScrollBar().maximum() == 0
+    assert (
+        card.proposal_rows[0].proposed_value.accessibleDescription()
+        == params["training_parameter_00"]
+    )
+    assert (
+        card.proposal_rows[-1].proposed_value.accessibleDescription()
+        == params["training_parameter_13"]
+    )
+    for row in card.proposal_rows:
+        for label in (row.label, row.current_value, row.proposed_value):
+            if not label.isVisible() or not label.text():
+                continue
+            needed = label.fontMetrics().boundingRect(
+                QRect(0, 0, max(label.contentsRect().width(), 1), 10_000),
+                int(
+                    Qt.AlignmentFlag.AlignLeft
+                    | Qt.AlignmentFlag.AlignTop
+                    | Qt.TextFlag.TextWordWrap
+                ),
+                label.text(),
+            )
+            assert needed.height() <= label.contentsRect().height() + 3
+    assert card.primary_button.text() == "Apply changes"
+    assert card.secondary_button.text() == "Keep current settings"
+
+    viewport = scroll.viewport()
+    last_row = card.proposal_rows[-1]
+    last_top = last_row.mapTo(viewport, QPoint(0, 0)).y()
+    assert last_top < viewport.height()
+    assert last_top + last_row.height() <= viewport.height() + 2
+
+
+@pytest.mark.parametrize("width", [320, 420, 760])
+def test_confirmation_buttons_use_compact_complete_labels_without_overflow(
+    confirmation_card,
+    qtbot,
+    width: int,
+) -> None:
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={"batch_size": 16},
+        action_label=(
+            "Apply every reviewed training parameter and checkpoint setting now"
+        ),
+        description="Use the reviewed training configuration.",
+        destructive=False,
+        publication_generation=4,
+    )
+
+    _show_card(confirmation_card, qtbot, request, width=width)
+
+    card = confirmation_card
+    assert card.primary_button.text() == "Apply change"
+    assert card.secondary_button.text() == "Keep current value"
+    for button in (card.secondary_button, card.primary_button):
+        assert button.accessibleName() == button.text()
+        assert (
+            button.fontMetrics().horizontalAdvance(button.text()) + 24
+            <= button.contentsRect().width()
+        )
+        assert button.mapTo(card, QPoint(0, 0)).x() >= 0
+        assert button.mapTo(card, button.rect().bottomRight()).x() < card.width()
+
+
+@pytest.mark.parametrize("width", [320, 420, 760])
+def test_high_risk_confirmation_stays_explicit_and_emits_the_exact_request(
+    confirmation_card,
+    qtbot,
+    width: int,
+) -> None:
+    request = AgentConfirmationRequest.for_action(
+        command_name="clear_dataset",
+        params={},
+        action_label=(
+            "Clear the loaded EEG dataset and all dependent workspace results"
+        ),
+        description="This removes the current dataset from the workspace.",
+        destructive=True,
+        publication_generation=12,
+    )
+    decisions: list[tuple[AgentConfirmationRequest, bool]] = []
+    confirmation_card.decision_requested.connect(
+        lambda pending, approved: decisions.append((pending, approved))
+    )
+
+    _show_card(confirmation_card, qtbot, request, width=width)
+
+    card = confirmation_card
+    assert card.title_label.text() == "High-risk confirmation"
+    assert card.description_label.text() == request.action_label
+    assert card.description_label.isVisibleTo(card)
+    assert card.reason_title.text() == "Reason"
+    assert card.secondary_button.text() == "Cancel"
+    assert card.primary_button.text() == "Clear dataset"
+    assert card.property("destructive") is True
+
+    card.primary_button.click()
+
+    assert decisions == [(request, True)]
+    assert card.primary_button.isEnabled() is False
+    assert card.secondary_button.isEnabled() is False
+    assert card.primary_button.text() == "Working..."
+    assert card.primary_button.accessibleName() == "Working..."

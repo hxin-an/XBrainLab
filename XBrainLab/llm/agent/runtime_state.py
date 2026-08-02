@@ -29,12 +29,18 @@ class AssistantRuntimeSnapshot:
     requested_model_id: str = ""
     selection_outcome: AssistantRuntimeSelectionOutcome | None = None
     selection_detail: str = ""
+    execution_device: str = ""
+    device_fallback_reason: str = ""
     error: str = ""
     activation_id: int = 0
 
     @property
     def fallback_used(self) -> bool:
         return self.selection_outcome is AssistantRuntimeSelectionOutcome.FALLBACK
+
+    @property
+    def device_fallback_used(self) -> bool:
+        return bool(self.device_fallback_reason)
 
     def validation_error(self) -> str:
         """Return why this snapshot cannot represent a runtime lifecycle state."""
@@ -103,6 +109,8 @@ class AssistantRuntimeSnapshot:
             requested_model_id=str(data.get("requested_model_id") or ""),
             selection_outcome=selection_outcome,
             selection_detail=str(data.get("selection_detail") or ""),
+            execution_device=str(data.get("execution_device") or ""),
+            device_fallback_reason=str(data.get("device_fallback_reason") or ""),
             error=str(data.get("error") or ""),
             activation_id=activation_id,
         )

@@ -15,6 +15,11 @@ _SERVICE_LOCK_INITIALIZATION_LOCK = RLock()
 _ServiceT = TypeVar("_ServiceT")
 
 
+def _application_service_is_open(service: object) -> bool:
+    """Read the service's public lifetime state without owning its internals."""
+    return getattr(service, "is_closed", True) is False
+
+
 def _service_lifecycle_lock(study: Study) -> RLock:
     """Return the lock that owns one Study's service-cache lifecycle."""
     lock = getattr(study, "_application_service_lock", None)
@@ -36,10 +41,8 @@ def resolve_application_service(
     """Return or atomically publish one open service for a Study."""
     with _service_lifecycle_lock(study):
         cached_service = getattr(study, "_application_service", None)
-        if isinstance(cached_service, service_type) and not getattr(
-            cached_service,
-            "_closed",
-            True,
+        if isinstance(cached_service, service_type) and _application_service_is_open(
+            cached_service
         ):
             return cached_service
         service = factory()
@@ -51,7 +54,18 @@ def application_service_initialized(study: Study) -> bool:
     """Return whether the runtime cache owns a fully initialized service."""
     with _service_lifecycle_lock(study):
         service = getattr(study, "_application_service", None)
-        return service is not None and not getattr(service, "_closed", True)
+        return service is not None and _application_service_is_open(service)
+
+
+def get_initialized_application_service(
+    study: Study,
+) -> ApplicationService | None:
+    """Return the existing open service without constructing a new runtime."""
+    with _service_lifecycle_lock(study):
+        service = getattr(study, "_application_service", None)
+        if service is None or not _application_service_is_open(service):
+            return None
+        return service
 
 
 def get_application_service(study: Study | None = None) -> ApplicationService:

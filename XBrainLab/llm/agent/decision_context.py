@@ -36,6 +36,7 @@ class WorkflowDecisionContext:
     workflow_stage: str
     latest_user_request: str
     recommended_next_step: str | None = None
+    blocked_command: str | None = None
     recommended_label: str | None = None
     can_auto_continue: bool = False
     decision_needed: list[str] = field(default_factory=list)
@@ -112,11 +113,15 @@ def build_workflow_decision_context(
 
     projection = build_workflow_projection(state, capabilities)
     recommended = projection.recommended_command
-    if recommended is None:
+    blocked_command = projection.blocked_command
+    decision_needed = list(projection.decision_fields)
+    context_command = recommended or (blocked_command if decision_needed else None)
+    if context_command is None:
         return WorkflowDecisionContext(
             mode=normalized_mode,
             workflow_stage=pipeline_stage_status_label(state.pipeline_stage),
             latest_user_request=latest_user_text.strip(),
+            blocked_command=blocked_command,
             evidence=list(projection.evidence),
             blocked_reasons=list(projection.blocked_reasons),
             stop_reason=(
@@ -126,11 +131,11 @@ def build_workflow_decision_context(
             ),
         )
 
-    capability = capabilities.get(recommended)
-    decision_needed = list(projection.decision_fields)
-    boundary_stop = _stop_reason_for(recommended, capability, decision_needed)
+    capability = capabilities.get(context_command)
+    boundary_stop = _stop_reason_for(context_command, capability, decision_needed)
     can_auto_continue = (
-        normalized_mode == CONTINUE_UNTIL_DECISION_MODE
+        recommended is not None
+        and normalized_mode == CONTINUE_UNTIL_DECISION_MODE
         and capability.enabled
         and capability.can_auto_execute
         and not decision_needed
@@ -144,14 +149,18 @@ def build_workflow_decision_context(
         workflow_stage=pipeline_stage_status_label(state.pipeline_stage),
         latest_user_request=latest_user_text.strip(),
         recommended_next_step=recommended,
-        recommended_label=workflow_command_label(recommended),
+        blocked_command=blocked_command,
+        recommended_label=(
+            workflow_command_label(recommended) if recommended is not None else None
+        ),
         can_auto_continue=can_auto_continue,
         decision_needed=decision_needed,
         evidence=list(projection.evidence),
         blocked_reasons=list(projection.blocked_reasons),
-        allowed_actions=_allowed_actions_for(
-            recommended,
-            capability,
+        allowed_actions=(
+            _allowed_actions_for(recommended, capability)
+            if recommended is not None
+            else []
         ),
         stop_reason=boundary_stop,
     )
@@ -189,6 +198,8 @@ def _allowed_actions_for(
     command_name: str,
     capability: Any,
 ) -> list[str]:
+    if not capability.enabled:
+        return []
     actions = [command_name]
     if capability.reasons:
         actions.append("explain_blocker")

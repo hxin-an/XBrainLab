@@ -991,7 +991,7 @@ def build_assistant_interaction_contract_review(
             findings.append(f"{phase_name} did not record {decision}")
         if request_kind == "production_confirmation_card" and (
             not bool(interaction.get("card_opened"))
-            or interaction.get("card_title") != "Confirmation required"
+            or interaction.get("card_title") != "High-risk confirmation"
             or not bool(interaction.get("request_correlated"))
             or not str(interaction.get("card_request_id") or "")
         ):

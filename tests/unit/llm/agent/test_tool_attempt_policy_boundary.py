@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from XBrainLab.llm.agent.assembler import PromptToolPublication
@@ -13,6 +13,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptCoordinator,
     ToolAttemptRequest,
 )
+from XBrainLab.llm.agent.turn_orchestrator import AssistantToolAttemptSession
 from XBrainLab.llm.agent.verifier import VerificationResult
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
@@ -31,7 +32,8 @@ class _Registry:
     def __init__(self, tool: _Tool | None = None) -> None:
         self.tool = tool or _Tool()
 
-    def get_tool(self, _name: str) -> _Tool:
+    def get_tool(self, name: str) -> Any:
+        del name
         return self.tool
 
 
@@ -42,11 +44,11 @@ class _Verifier:
 
     def verify_tool_call(
         self,
-        call: tuple[str, dict[str, Any]],
+        tool_call: tuple[str, dict[str, Any]],
         *,
         confidence: float,
     ) -> VerificationResult:
-        self.calls.append((call, confidence))
+        self.calls.append((tool_call, confidence))
         return VerificationResult(
             self.valid,
             None if self.valid else "schema mismatch",
@@ -145,6 +147,29 @@ def test_unpublished_tool_is_blocked_with_prompt_generation_before_context_read(
         "publication_generation": 47,
         "published_tool_count": 1,
     }
+    assert source.reads == []
+    assert verifier.calls == []
+
+
+def test_unpublished_legacy_attach_labels_is_rejected_before_verification() -> None:
+    coordinator, source, verifier = _coordinator(_context("attach_labels"))
+    publication = PromptToolPublication(
+        tool_names=frozenset({"scan_source", "preview_interpretation"}),
+        backend_generation=47,
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "attach_labels",
+            params={"mapping": {"A01T.gdf": "A01T.mat"}},
+            text="Attach these labels",
+            publication=publication,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.PUBLICATION_BLOCKED
+    assert decision.result is not None
+    assert decision.result.error_type == "tool_not_published"
     assert source.reads == []
     assert verifier.calls == []
 
@@ -378,13 +403,23 @@ def test_retry_policy_and_confirmation_fields_are_owned_by_coordinator() -> None
 
 def test_success_policy_uses_fresh_snapshot_and_loop_state_resets_per_turn() -> None:
     coordinator, _source, _verifier = _coordinator(_context("query_state"))
+    session = AssistantToolAttemptSession()
     request = _request("query_state", text="Show current workflow state")
 
-    first = coordinator.evaluate(request)
-    second = coordinator.evaluate(request)
-    third = coordinator.evaluate(request)
-    coordinator.reset_turn()
-    after_reset = coordinator.evaluate(request)
+    def observed() -> ToolAttemptRequest:
+        return replace(
+            request,
+            repeated=session.record_tool_proposal(
+                request.command_name,
+                request.params,
+            ),
+        )
+
+    first = coordinator.evaluate(observed())
+    second = coordinator.evaluate(observed())
+    third = coordinator.evaluate(observed())
+    session.reset_for_user_turn()
+    after_reset = coordinator.evaluate(observed())
 
     assert first.action is ToolAttemptAction.EXECUTE
     assert second.action is ToolAttemptAction.EXECUTE
@@ -410,6 +445,7 @@ def test_loop_policy_handles_non_json_serializable_parameters_deterministically(
     None
 ):
     coordinator, _source, _verifier = _coordinator(_context("query_state"))
+    session = AssistantToolAttemptSession()
     opaque_value = object()
     request = _request(
         "query_state",
@@ -417,9 +453,18 @@ def test_loop_policy_handles_non_json_serializable_parameters_deterministically(
         text="Show current workflow state",
     )
 
-    first = coordinator.evaluate(request)
-    second = coordinator.evaluate(request)
-    third = coordinator.evaluate(request)
+    def observed() -> ToolAttemptRequest:
+        return replace(
+            request,
+            repeated=session.record_tool_proposal(
+                request.command_name,
+                request.params,
+            ),
+        )
+
+    first = coordinator.evaluate(observed())
+    second = coordinator.evaluate(observed())
+    third = coordinator.evaluate(observed())
 
     assert first.action is ToolAttemptAction.EXECUTE
     assert second.action is ToolAttemptAction.EXECUTE

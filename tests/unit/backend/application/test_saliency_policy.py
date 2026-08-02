@@ -3,9 +3,13 @@
 import subprocess
 import sys
 
+import pytest
+
 from XBrainLab.backend.application.saliency_policy import (
     ADVANCED_SALIENCY_METHODS,
     ALL_SALIENCY_METHODS,
+    MAX_SALIENCY_NT_SAMPLES,
+    MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
     RECOMMENDED_SALIENCY_METHODS,
     baseline_saliency_params,
     normalize_saliency_params,
@@ -67,7 +71,7 @@ def test_advanced_profile_defaults_to_advanced_methods():
         assert params[method]["nt_samples"] == 5
 
 
-def test_flat_params_apply_to_advanced_methods_when_no_method_list_is_supplied():
+def test_flat_params_apply_only_to_requested_advanced_method():
     params, requested_method = normalize_saliency_params(
         "SmoothGrad",
         {"nt_samples": 2, "stdevs": 0.25},
@@ -76,7 +80,42 @@ def test_flat_params_apply_to_advanced_methods_when_no_method_list_is_supplied()
     assert requested_method == "SmoothGrad"
     assert params["_methods"] == ["SmoothGrad"]
     assert params["SmoothGrad"]["nt_samples"] == 2
-    assert params["SmoothGrad_Squared"]["stdevs"] == 0.25
+    assert params["SmoothGrad"]["stdevs"] == 0.25
+    assert params["SmoothGrad_Squared"]["nt_samples"] == 5
+    assert params["SmoothGrad_Squared"]["stdevs"] == 1.0
+
+
+@pytest.mark.parametrize(
+    ("method", "params", "message"),
+    [
+        ("IntegratedGradients", None, "Unsupported saliency method"),
+        ("Gradient", {"nt_samples": 2}, "does not accept noise parameters"),
+        ("SmoothGrad", {"nt_samples": 0}, "nt_samples must be a positive integer"),
+        ("SmoothGrad", {"target": 1}, "Unsupported saliency parameter"),
+    ],
+)
+def test_invalid_saliency_configuration_fails_closed(
+    method: str,
+    params: dict[str, object] | None,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        normalize_saliency_params(method, params)
+
+
+@pytest.mark.parametrize(
+    ("field", "maximum"),
+    [
+        ("nt_samples", MAX_SALIENCY_NT_SAMPLES),
+        ("nt_samples_batch_size", MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE),
+    ],
+)
+def test_noise_sample_amplification_limits_are_enforced(
+    field: str,
+    maximum: int,
+) -> None:
+    with pytest.raises(ValueError, match="must not exceed"):
+        normalize_saliency_params("SmoothGrad", {field: maximum + 1})
 
 
 def test_ui_payload_helpers_share_backend_method_policy():
@@ -91,3 +130,24 @@ def test_ui_payload_helpers_share_backend_method_policy():
     assert advanced["profile"] == "advanced"
     assert advanced["methods"] == ["VarGrad"]
     assert selected_saliency_methods_from_params(advanced) == {"VarGrad"}
+
+
+def test_ui_payload_helper_rejects_unknown_method_without_baseline_fallback():
+    with pytest.raises(ValueError, match="Unsupported saliency method"):
+        recommended_saliency_params_for_method("IntegratedGradients")
+
+
+@pytest.mark.parametrize(
+    ("method", "params"),
+    [
+        ("SmoothGrad", {"profile": "recommended"}),
+        (None, {"profile": "recommended", "methods": ["SmoothGrad"]}),
+        (None, {"profile": "advanced", "methods": ["Gradient"]}),
+    ],
+)
+def test_conflicting_saliency_method_profile_contract_fails_closed(
+    method: str | None,
+    params: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="conflict"):
+        normalize_saliency_params(method, params)

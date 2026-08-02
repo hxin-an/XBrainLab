@@ -92,6 +92,205 @@ def is_explicit_workflow_continuation(text: str) -> bool:
     )
 
 
+def is_unresolved_historical_action_reference(text: str) -> bool:
+    """Return whether an action points only to non-authoritative earlier prose."""
+    normalized = " ".join(text.casefold().strip().split()).strip(
+        " \t\r\n.,!?;:\u3002\uff0c\uff01\uff1f\uff1b\uff1a"
+    )
+    if not normalized:
+        return False
+    if _is_explanatory_no_tool_request(normalized) or is_explicit_workflow_continuation(
+        normalized
+    ):
+        return False
+
+    if _has_authoritative_current_surface_reference(normalized):
+        return False
+
+    explicit_numeric_condition = bool(
+        re.search(
+            r"\d(?:[\d.\s-]*\d)?\s*"
+            r"(?:hz|khz|ms|milliseconds?|seconds?|minutes?|%|percent)\b",
+            normalized,
+        )
+    )
+    if explicit_numeric_condition:
+        return False
+
+    english_action = bool(
+        re.match(
+            r"^(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?"
+            r"(?:use|do|choose|select|pick|run|open|take|execute|apply|follow|"
+            r"go\s+with)\b",
+            normalized,
+        )
+        or re.match(
+            r"^let(?:'s|\s+us)\s+"
+            r"(?:use|do|choose|select|pick|run|open|take|execute|apply|follow|"
+            r"go\s+with)\b",
+            normalized,
+        )
+    )
+    english_historical = bool(
+        re.search(
+            r"\b(?:earlier|before|previous|prior|above|last|formerly)\b",
+            normalized,
+        )
+    )
+    english_reference = bool(
+        re.search(
+            r"\b(?:option|choice|action|step|setting|model|configuration|"
+            r"parameter|selection|suggestion|recommendation|one|what)\b",
+            normalized,
+        )
+        or re.search(r"\b(?:mentioned|suggested|recommended|proposed)\b", normalized)
+    )
+    english_deictic = bool(
+        re.search(
+            r"\b(?:that|this)\s+"
+            r"(?:one|option|choice|action|step|suggestion|recommendation)\b",
+            normalized,
+        )
+    )
+    english_bare_deictic = bool(
+        re.fullmatch(
+            r"(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?"
+            r"(?:use|do|choose|select|pick|run|open|take|execute|apply|follow|"
+            r"go\s+with)\s+(?:it|that|this)",
+            normalized,
+        )
+        or re.fullmatch(
+            r"let(?:'s|\s+us)\s+"
+            r"(?:use|do|choose|select|pick|run|open|take|execute|apply|follow|"
+            r"go\s+with)\s+(?:it|that|this)",
+            normalized,
+        )
+    )
+    english_standalone_deictic = bool(
+        re.fullmatch(r"(?:it|this|that|this\s+one|that\s+one)", normalized)
+    )
+
+    chinese_action = bool(
+        re.match(
+            r"^(?:(?:可以|能否|能不能|可否)(?:請)?(?:幫我)?|"
+            r"(?:那)?就|請幫我|幫我|請)?"
+            r"(?:用|使用|套用|選|選擇|執行|開啟|採用|照|依照|做|跑)",
+            normalized,
+        )
+    )
+    chinese_historical = any(
+        marker in normalized
+        for marker in (
+            "剛剛",
+            "剛才",
+            "之前",
+            "先前",
+            "前面",
+            "上面",
+            "上次",
+            "前一個",
+        )
+    )
+    chinese_reference = any(
+        marker in normalized
+        for marker in (
+            "那個",
+            "選項",
+            "操作",
+            "步驟",
+            "設定",
+            "模型",
+            "建議",
+            "提到",
+            "提過",
+            "前一個",
+            "它",
+            "這個",
+        )
+    )
+    chinese_elliptical_reference = normalized.endswith(
+        ("剛剛的", "剛才的", "之前的", "先前的", "前面的", "上面的")
+    )
+    chinese_bare_deictic = bool(
+        re.fullmatch(
+            r"(?:(?:用|使用|套用|選|選擇|執行|開啟|採用|做))?"
+            r"(?:它|這個|那個)",
+            normalized,
+        )
+    )
+    return bool(
+        english_bare_deictic
+        or english_standalone_deictic
+        or (
+            english_action
+            and english_reference
+            and (english_historical or english_deictic)
+        )
+    ) or bool(
+        chinese_bare_deictic
+        or (
+            chinese_action
+            and (
+                (chinese_reference and (chinese_historical or "那個" in normalized))
+                or chinese_elliptical_reference
+            )
+        )
+    )
+
+
+def _has_authoritative_current_surface_reference(normalized: str) -> bool:
+    """Recognize a spatial locator on a current or explicitly named UI surface."""
+    surface = r"(?:dialog|wizard|panel|window|screen|menu|list|row|form)"
+
+    # An explicit current-surface locator is authoritative even when the user
+    # asks for a spatially previous row within that surface.
+    if re.search(
+        rf"\b(?:current|open|this)\s+(?:[\w-]+\s+){{0,4}}{surface}\b",
+        normalized,
+    ):
+        return True
+    if re.search(
+        r"(?:目前|當前|這個)(?:對話框|精靈|面板|視窗|畫面|選單|列表|表單)",
+        normalized,
+    ):
+        return True
+
+    # Temporal references remain unresolved regardless of whether the named
+    # surface appears before or after the marker. A dialog name identifies the
+    # workflow area, but not which earlier prose or recommendation was meant.
+    if re.search(
+        r"\b(?:earlier|before|previous|prior|last|former|formerly)\b",
+        normalized,
+    ):
+        return False
+    if any(
+        marker in normalized
+        for marker in ("剛剛", "剛才", "之前", "先前", "前面", "上次")
+    ):
+        return False
+
+    if re.search(
+        rf"\b{surface}\b.{{0,80}}\b"
+        r"(?:mentioned|suggested|recommended|proposed)\b",
+        normalized,
+    ):
+        return False
+    if re.search(
+        rf"\b(?:in|inside|within|on|from)\s+(?:the\s+)?"
+        rf"(?:[\w-]+\s+){{1,5}}{surface}\b",
+        normalized,
+    ):
+        return True
+    return bool(
+        re.search(
+            r"[\u4e00-\u9fffA-Za-z0-9_]{1,16}"
+            r"(?:對話框|精靈|面板|視窗|畫面|選單|列表|表單)"
+            r"(?:中|內|裡|上面|上方|下面|下方|的)",
+            normalized,
+        )
+    )
+
+
 def infer_user_intent(text: str) -> str:
     """Infer the next workflow intent from user-visible text."""
     normalized = text.lower()
@@ -99,6 +298,8 @@ def infer_user_intent(text: str) -> str:
     blocked_explanation = resolve_blocked_explanation_intent(text)
     if blocked_explanation is not None:
         return blocked_explanation.target_intent or "ask_clarification"
+    if is_unresolved_historical_action_reference(text):
+        return "ask_clarification"
     if _is_workflow_state_request(normalized):
         return "query_state"
     if _is_file_browse_request(normalized):
@@ -115,7 +316,7 @@ def infer_user_intent(text: str) -> str:
         return "reset_session"
     if "重設" in normalized or "清空" in normalized:
         return "reset_session"
-    if ("validate" in normalized or "validation" in normalized) and (
+    if re.search(r"\b(?:validate|validation)\b", normalized) and (
         "interpret" in normalized or "candidate" in normalized or has_it
     ):
         return "validate_interpretation"

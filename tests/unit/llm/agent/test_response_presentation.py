@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from XBrainLab.backend.application import CommandName
 from XBrainLab.chat_contract import (
     MAX_CHAT_ACTION_ID_LENGTH,
     MAX_CHAT_ACTION_LABEL_LENGTH,
@@ -25,6 +26,7 @@ from XBrainLab.llm.agent.response_presentation import (
     AssistantResponsePresentation,
     interaction_outcome_kind,
     interaction_outcome_message,
+    panel_target_for_blocked_command,
     panel_target_for_command,
     user_facing_generation_error,
 )
@@ -215,6 +217,59 @@ def test_montage_commands_share_visualization_surface_truth(command_name: str) -
     assert panel_target_for_command(command_name) is AssistantPanelTarget.VISUALIZATION
 
 
+def test_panel_routing_accepts_typed_canonical_command_identity() -> None:
+    assert (
+        panel_target_for_command(CommandName.CREATE_EPOCH)
+        is AssistantPanelTarget.PREPROCESS
+    )
+    assert (
+        panel_target_for_command(CommandName.APPLY_MONTAGE)
+        is AssistantPanelTarget.VISUALIZATION
+    )
+
+
+def test_interaction_label_accepts_typed_canonical_command_identity() -> None:
+    outcome = AgentInteractionOutcome(
+        status=AgentInteractionStatus.CONFIRMED,
+        command_name=CommandName.CREATE_EPOCH,
+    )
+
+    assert interaction_outcome_message(outcome) == (
+        "Approved: Create EEG epochs. XBrainLab is starting the action."
+    )
+
+
+@pytest.mark.parametrize(
+    ("command_name", "display_reason", "expected_target"),
+    [
+        (
+            CommandName.SCAN_SOURCE,
+            "Create epochs before continuing.",
+            AssistantPanelTarget.DATASET,
+        ),
+        (
+            CommandName.CREATE_EPOCH,
+            "Select a model before training.",
+            AssistantPanelTarget.PREPROCESS,
+        ),
+        (
+            CommandName.EVALUATE,
+            "Create epochs before evaluating results.",
+            AssistantPanelTarget.TRAINING,
+        ),
+    ],
+)
+def test_blocked_panel_routing_does_not_infer_identity_from_display_copy(
+    command_name: CommandName,
+    display_reason: str,
+    expected_target: AssistantPanelTarget,
+) -> None:
+    assert (
+        panel_target_for_blocked_command(command_name, display_reason)
+        is expected_target
+    )
+
+
 @pytest.mark.parametrize(
     "action",
     [
@@ -356,3 +411,48 @@ def test_agent_action_and_presentation_accept_exact_string_capacities() -> None:
 def test_agent_action_and_presentation_reject_each_string_overflow(build) -> None:
     with pytest.raises(ValueError, match=r"maximum|at most"):
         build()
+
+
+def test_assistant_response_and_actions_redact_private_diagnostic_context() -> None:
+    private_path = "/srv/clinical/subject-17/events.tsv"
+    private_subject = "Alice-Smith"
+    action = AssistantResponseAction.send_message(
+        f"Retry subject_id={private_subject}",
+        f"Retry import from {private_path}",
+    )
+
+    presentation = AssistantResponsePresentation(
+        text=(
+            f"Could not read {private_path}\r\n"
+            f"Review subject_id={private_subject} and retry."
+        ),
+        correlation=_CORRELATION,
+        actions=(action,),
+    )
+
+    serialized = repr(presentation)
+    assert private_path not in serialized
+    assert private_subject not in serialized
+    assert "events.tsv" in presentation.text
+    assert "Review" in presentation.text
+    assert "\r" not in presentation.text
+    assert "\x00" not in presentation.text
+    assert "[REDACTED_PATH]" in serialized
+    assert "[SUBJECT_REF:" in serialized
+
+
+def test_interaction_outcome_message_redacts_backend_failure_detail() -> None:
+    private_path = r"\\research-nas\patient-share\sub-P001\recording.gdf"
+    outcome = AgentInteractionOutcome(
+        status=AgentInteractionStatus.BLOCKED,
+        command_name="scan_source",
+        message=f"Could not inspect {private_path}; subject_id=Alice.",
+    )
+
+    visible = interaction_outcome_message(outcome)
+
+    assert private_path not in visible
+    assert "sub-P001" not in visible
+    assert "Alice" not in visible
+    assert ".gdf" in visible
+    assert "Could not inspect" in visible

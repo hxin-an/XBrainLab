@@ -17,6 +17,7 @@ from XBrainLab import Study
 from XBrainLab.backend.application import (
     ApplicationService,
     ConfigureTrainingCommand,
+    ErrorType,
     QueryStateCommand,
 )
 from XBrainLab.backend.model_base import SCCNet
@@ -192,7 +193,7 @@ class TestTrainingPanelRealUsage:
         assert cell_text(6) == "0.80%"
         assert cell_text(7) == "0.6000"
         assert cell_text(8) == "0.75%"
-        assert cell_text(9) == "0.001000"
+        assert cell_text(9) == "0.001"
 
 
 class TestEvaluationPanelIntegration:
@@ -212,16 +213,6 @@ class TestEvaluationPanelIntegration:
 
         # Verify panel state when no trainer
         panel.update_panel()
-        assert panel.last_application_query is not None
-        assert panel.last_application_query.failed
-        assert (
-            panel.last_application_query.message
-            == "Create a training plan before evaluating results."
-        )
-        assert (
-            panel.last_application_query.diagnostics.get("exception_type")
-            == "PreconditionError"
-        )
         assert panel.model_combo.count() == 0
         assert panel.model_combo.isEnabled() is False
         assert (
@@ -265,16 +256,6 @@ class TestEvaluationPanelIntegration:
         qtbot.addWidget(panel)
 
         panel.update_panel()
-        assert panel.last_application_query is not None
-        assert panel.last_application_query.failed
-        assert (
-            panel.last_application_query.message
-            == "Complete at least one training run before evaluating results."
-        )
-        assert (
-            panel.last_application_query.diagnostics.get("exception_type")
-            == "PreconditionError"
-        )
         assert panel.model_combo.count() == 0
         assert panel.model_combo.isEnabled() is False
         assert (
@@ -306,12 +287,13 @@ class TestVisualizationPanelIntegration:
         assert panel.last_application_query.failed
         assert (
             panel.last_application_query.message
-            == "Create epochs, complete training, or configure saliency before "
+            == "Create EEG epochs, complete training, or configure saliency before "
             "opening visualization views."
         )
+        assert panel.last_application_query.error_type is ErrorType.PRECONDITION
         assert (
             panel.last_application_query.diagnostics.get("exception_type")
-            == "PreconditionError"
+            != "PreconditionError"
         )
         assert panel.plan_combo.count() == 1
         assert panel.plan_combo.itemText(0) == "Select a plan"
@@ -320,7 +302,7 @@ class TestVisualizationPanelIntegration:
         assert current_widget.error_label.isHidden() is False
         assert (
             current_widget.error_label.text()
-            == "Create epochs, complete training, or configure saliency "
+            == "Create EEG epochs, complete training, or configure saliency "
             "before opening visualization views."
         )
 

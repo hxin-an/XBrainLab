@@ -7,7 +7,6 @@ from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 def test_epoching_content_owns_vertical_scroll_above_fixed_footer(qtbot):
     dialog = EpochingDialog(
         None,
-        [],
         epoch_context={
             "available_events": [
                 {"name": f"event_{index:02d}", "count": 20} for index in range(16)

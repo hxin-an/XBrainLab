@@ -36,6 +36,10 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command_async,
     is_stale_publication_result,
 )
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
@@ -288,8 +292,11 @@ class ImportLabelDialog(BaseDialog):
         def _handle_error(error: tuple[Any, ...]) -> None:
             self._set_preview_busy(False)
             self._clear_preview("Label preview failed.")
-            message = error[1] if len(error) > 1 else error
-            QMessageBox.critical(self, "Label Preview Failed", str(message))
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.LABEL_IMPORT_PREVIEW,
+                error_info=error,
+            )
 
         execute_kwargs: dict[str, Any] = {}
         if self._expected_publication_generation is not None:

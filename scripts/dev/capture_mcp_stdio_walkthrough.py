@@ -33,7 +33,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--output-dir",
-        default="artifacts/mcp",
+        default="build/dev-artifacts/mcp",
         help="Directory for walkthrough JSON and Markdown artifacts.",
     )
     parser.add_argument(

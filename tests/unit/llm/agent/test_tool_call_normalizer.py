@@ -913,9 +913,54 @@ def test_explicit_training_options_are_not_reduced_to_model_only():
 def test_saliency_readiness_query_drops_stale_configuration_params():
     tool_name, params = normalize_tool_call(
         "saliency",
-        {"method": "Gradient", "params": {"nt_samples": 2}},
+        {"method": "Gradient", "nt_samples": 2},
         latest_user_text="Query saliency readiness for the trained model.",
     )
 
     assert tool_name == "saliency"
     assert params == {}
+
+
+def test_saliency_configuration_uses_exact_values_from_latest_user_request():
+    tool_name, params = normalize_tool_call(
+        "saliency",
+        {
+            "method": "SmoothGrad",
+            "nt_samples": 5,
+            "stdevs": 0.5,
+        },
+        latest_user_text=(
+            "Configure SmoothGrad saliency with nt_samples 2, "
+            "nt_samples_batch_size 1, and stdevs 1.0."
+        ),
+    )
+
+    assert tool_name == "saliency"
+    assert params == {
+        "method": "SmoothGrad",
+        "nt_samples": 2,
+        "nt_samples_batch_size": 1,
+        "stdevs": 1.0,
+    }
+
+
+def test_saliency_configuration_preserves_unsupported_requested_method():
+    tool_name, params = normalize_tool_call(
+        "saliency",
+        {},
+        latest_user_text="Configure IntegratedGradients saliency.",
+    )
+
+    assert tool_name == "saliency"
+    assert params == {"method": "IntegratedGradients"}
+
+
+def test_saliency_configuration_does_not_round_fractional_integer_params():
+    tool_name, params = normalize_tool_call(
+        "saliency",
+        {"method": "SmoothGrad"},
+        latest_user_text="Configure SmoothGrad saliency with nt_samples 2.5.",
+    )
+
+    assert tool_name == "saliency"
+    assert params["nt_samples"] == 2.5

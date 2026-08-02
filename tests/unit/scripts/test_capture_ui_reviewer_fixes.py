@@ -1,0 +1,504 @@
+from __future__ import annotations
+
+import inspect
+import json
+from copy import deepcopy
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from PIL import Image
+from PyQt6.QtCore import QPoint, QRect
+from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QLabel
+
+import scripts.dev.capture_ui_reviewer_fixes as capture_script
+from XBrainLab.backend.application.preprocess_render import (
+    PreprocessRenderPublication,
+    PreprocessSignalState,
+)
+
+FIXTURE = Path("tests/fixtures/data/A01T.gdf").resolve()
+
+
+def _settle(qapp: QApplication, widget) -> None:
+    widget.show()
+    for _ in range(3):
+        layout = widget.layout()
+        if layout is not None:
+            layout.activate()
+        qapp.processEvents()
+
+
+def _dispose(qapp: QApplication, widget) -> None:
+    prepare_for_shutdown = getattr(widget, "prepare_for_shutdown", None)
+    if callable(prepare_for_shutdown):
+        prepare_for_shutdown()
+    widget.close()
+    widget.deleteLater()
+    qapp.processEvents()
+
+
+def _identity() -> dict[str, object]:
+    return {
+        "version": 3,
+        "repo_root": str(capture_script.ROOT),
+        "branch": "test-branch",
+        "commit_sha": "a" * 40,
+        "head_tree_sha": "b" * 40,
+        "dirty": True,
+        "dirty_digest": "c" * 64,
+        "source_content_digest": "d" * 64,
+        "source_digest": "e" * 64,
+        "untracked_source_count": 1,
+        "excluded_generated_prefixes": ["artifacts/"],
+        "excluded_local_paths": ["settings.json"],
+        "included_file_policy": "all-non-generated-tracked-and-untracked-files",
+        "error": "",
+    }
+
+
+def test_surface_inventory_preserves_existing_artifacts_and_adds_review_states() -> (
+    None
+):
+    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 25
+    assert capture_script.REVIEWER_FIX_SURFACES[:25] == (
+        capture_script.LEGACY_REVIEWER_FIX_SURFACES
+    )
+    assert capture_script.REVIEWER_FIX_SURFACES[25:] == (
+        "saliency-setting-empty.png",
+        "saliency-setting-single-method.png",
+        "saliency-setting-multi-method.png",
+        "data-splitting-step-2-ratio.png",
+        "data-splitting-step-2-cross-validation.png",
+    )
+
+
+@pytest.mark.parametrize(
+    ("selected_methods", "expected_title", "ok_enabled"),
+    [
+        ((), "Method parameters", False),
+        (("SmoothGrad",), "SmoothGrad parameters", True),
+        (
+            ("SmoothGrad", "SmoothGrad_Squared", "VarGrad"),
+            "Method parameters",
+            True,
+        ),
+    ],
+)
+def test_saliency_capture_factory_builds_requested_full_content_state(
+    qapp,
+    selected_methods,
+    expected_title,
+    ok_enabled,
+) -> None:
+    dialog = capture_script._saliency_setting_dialog(selected_methods)
+    try:
+        _settle(qapp, dialog)
+        selected = {
+            method
+            for method, checkbox in dialog.method_checks.items()
+            if checkbox.isChecked()
+        }
+        buttons = dialog.findChild(QDialogButtonBox)
+        assert buttons is not None
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        assert ok_button is not None
+        assert selected == set(selected_methods)
+        assert dialog.params_title.text() == expected_title
+        assert ok_button.isEnabled() is ok_enabled
+        assert dialog.rect().contains(
+            buttons.mapTo(dialog, buttons.rect().bottomRight())
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+
+@pytest.mark.parametrize(
+    ("cross_validation", "expected_rows", "expected_test_unit"),
+    [(False, 1, "Ratio"), (True, 5, "K Fold")],
+)
+def test_data_splitting_step_two_capture_factory_builds_representative_states(
+    qapp,
+    cross_validation,
+    expected_rows,
+    expected_test_unit,
+) -> None:
+    dialog = capture_script._data_splitting_step_two_dialog(
+        cross_validation=cross_validation
+    )
+    try:
+        _settle(qapp, dialog)
+        assert dialog.tree is not None
+        assert dialog.tree.topLevelItemCount() == expected_rows
+        assert dialog.test_widgets[0][0].currentText() == expected_test_unit
+        assert dialog.btn_confirm is not None and dialog.btn_confirm.isEnabled()
+        assert dialog.rect().contains(
+            dialog.btn_confirm.mapTo(
+                dialog,
+                dialog.btn_confirm.rect().bottomRight(),
+            )
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+
+def test_extended_review_capture_writes_all_full_content_frames(qapp, tmp_path) -> None:
+    original_stylesheet = qapp.styleSheet()
+    try:
+        qapp.setStyleSheet(capture_script.Stylesheets.MAIN_WINDOW)
+        capture_script._capture_extended_review_surfaces(qapp, tmp_path)
+    finally:
+        qapp.setStyleSheet(original_stylesheet)
+
+    for filename in capture_script.EXTENDED_REVIEW_SURFACES:
+        screenshot = tmp_path / filename
+        assert screenshot.is_file()
+        with Image.open(screenshot) as image:
+            assert image.width >= 400
+            assert image.height >= 200
+            assert image.getbbox() is not None
+
+
+def test_real_fixture_preview_populates_time_and_psd_curves(qapp) -> None:
+    preview, fixture_evidence = capture_script._real_fixture_preview(FIXTURE)
+    try:
+        checks = capture_script._observe_loaded_preview_plots(preview)
+    finally:
+        _dispose(qapp, preview)
+
+    assert fixture_evidence["path"] == "tests/fixtures/data/A01T.gdf"
+    assert (
+        fixture_evidence["sha256"]
+        == "74d900ce83a115509f663c0ac45bd36d56f05be528064743c49b0c2efb5088a3"
+    )
+    assert fixture_evidence["byte_size"] == FIXTURE.stat().st_size
+    assert fixture_evidence["sampling_rate_hz"] == 250.0
+    assert fixture_evidence["channel_count"] == 25
+    assert fixture_evidence["selected_channel"] == "EEG-C3"
+    assert {check["curve"] for check in checks} == {
+        "time_original",
+        "time_current",
+        "psd_original",
+        "psd_current",
+    }
+    assert all(check["passed"] for check in checks)
+    assert all(check["point_count"] > 2 for check in checks)
+    assert all(check["y_range"] > 0 for check in checks)
+    json.dumps({"fixture": fixture_evidence, "plot_checks": checks})
+
+
+def test_real_fixture_preview_passes_detached_publication_to_plotter(
+    qapp,
+    monkeypatch,
+) -> None:
+    observed: dict[str, object] = {}
+
+    class RecordingPlotter:
+        def __init__(self, widget) -> None:
+            observed["widget"] = widget
+
+        def plot_sample_data(
+            self,
+            publication: PreprocessRenderPublication,
+        ) -> None:
+            observed["publication"] = publication
+
+    monkeypatch.setattr(capture_script, "PreprocessPlotter", RecordingPlotter)
+
+    preview, _fixture_evidence = capture_script._real_fixture_preview(FIXTURE)
+    try:
+        publication = observed["publication"]
+        assert observed["widget"] is preview
+        assert isinstance(publication, PreprocessRenderPublication)
+        assert publication.generation == publication.request.publication_generation
+        assert publication.data.state is PreprocessSignalState.RAW
+        assert publication.data.selected_channel_name == "EEG-C3"
+        assert publication.data.selected_channel_index == (
+            publication.data.channels.index("EEG-C3")
+        )
+        assert publication.data.sampling_frequency == 250.0
+        assert publication.data.current is not None
+        assert publication.data.original is not None
+        assert publication.data.current.values_volts.flags.writeable is False
+        assert publication.data.original.values_volts.flags.writeable is False
+    finally:
+        _dispose(qapp, preview)
+
+
+def test_real_fixture_preview_uses_only_detached_plotter_api() -> None:
+    source = inspect.getsource(capture_script._real_fixture_preview)
+
+    for removed_api in ("controller=", "data_list=", "original_data_list="):
+        assert removed_api not in source
+
+
+def test_loaded_preview_plot_guard_rejects_a_blank_curve(qapp) -> None:
+    preview, _fixture_evidence = capture_script._real_fixture_preview(FIXTURE)
+    try:
+        preview.freq_current_curve.setData([], [])
+        with pytest.raises(RuntimeError, match=r"blank plot.*psd_current"):
+            capture_script._observe_loaded_preview_plots(preview)
+    finally:
+        _dispose(qapp, preview)
+
+
+def test_loaded_capture_path_has_no_synthetic_signal_fallback() -> None:
+    source = inspect.getsource(capture_script._capture_preprocess_states)
+
+    assert "_real_fixture_preview" in source
+    assert "preprocess-loaded-psd.png" in source
+    assert "np.sin" not in source
+    assert "np.linspace" not in source
+
+
+def test_preprocess_dialog_capture_uses_channel_name_rereference_api(
+    qapp,
+    tmp_path,
+) -> None:
+    original_stylesheet = qapp.styleSheet()
+    try:
+        qapp.setStyleSheet(capture_script.Stylesheets.MAIN_WINDOW)
+        capture_script._capture_preprocess_dialogs(qapp, tmp_path)
+    finally:
+        qapp.setStyleSheet(original_stylesheet)
+
+    for filename in (
+        "preprocess-rereference-average.png",
+        "preprocess-rereference-selected.png",
+        "preprocess-rereference-selection-required.png",
+    ):
+        screenshot = tmp_path / filename
+        assert screenshot.is_file()
+        with Image.open(screenshot) as image:
+            assert image.width > 0
+            assert image.height > 0
+            assert image.getbbox() is not None
+
+
+@pytest.mark.parametrize("font_scale", capture_script.TRAINING_FONT_SCALES)
+def test_training_setting_geometry_is_observed_at_supported_font_scales(
+    qapp,
+    font_scale: float,
+) -> None:
+    app = qapp
+    original_stylesheet = app.styleSheet()
+    dialog = None
+    try:
+        app.setStyleSheet(capture_script.Stylesheets.MAIN_WINDOW)
+        dialog = capture_script._training_setting_dialog()
+        capture_script._apply_training_setting_font_scale(dialog, font_scale)
+        _settle(app, dialog)
+
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=font_scale,
+        )
+    finally:
+        if dialog is not None:
+            _dispose(app, dialog)
+        app.setStyleSheet(original_stylesheet)
+
+    assert check["font_scale_percent"] == round(font_scale * 100)
+    assert check["passed"] is True
+    assert check["overlap_count"] == 0
+    assert check["clipped_text_count"] == 0
+    assert len(check["rows"]) == 9
+    assert check["font_point_size"] == pytest.approx(
+        check["base_font_point_size"] * font_scale
+    )
+    assert all(row["horizontal_gap_px"] >= 0 for row in check["rows"])
+    assert all(row["label_text_clipped"] is False for row in check["rows"])
+    assert all(row["overlap"] is False for row in check["rows"])
+
+
+def test_training_setting_geometry_guard_rejects_overlap(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        _settle(qapp, dialog)
+        checkpoint_label = next(
+            label
+            for label in dialog.findChildren(QLabel, "TrainingSettingLabel")
+            if label.text() == "Checkpoint interval (training epochs)"
+        )
+        input_top_left = dialog.checkpoint_entry.mapTo(dialog, QPoint(0, 0))
+        checkpoint_label.setGeometry(
+            QRect(
+                input_top_left.x() - 8,
+                input_top_left.y(),
+                24,
+                dialog.checkpoint_entry.height(),
+            )
+        )
+
+        with pytest.raises(RuntimeError, match=r"overlap.*Checkpoint interval"):
+            capture_script._observe_training_setting_geometry(
+                dialog,
+                font_scale=1.5,
+            )
+    finally:
+        _dispose(qapp, dialog)
+
+
+def test_training_setting_geometry_guard_rejects_clipped_label(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        _settle(qapp, dialog)
+        checkpoint_label = next(
+            label
+            for label in dialog.findChildren(QLabel, "TrainingSettingLabel")
+            if label.text() == "Checkpoint interval (training epochs)"
+        )
+        checkpoint_label.setWordWrap(False)
+        checkpoint_label.setFixedWidth(30)
+
+        with pytest.raises(RuntimeError, match=r"clipped text.*Checkpoint interval"):
+            capture_script._observe_training_setting_geometry(
+                dialog,
+                font_scale=1.0,
+            )
+    finally:
+        _dispose(qapp, dialog)
+
+
+def test_manifest_records_fixture_source_qt_and_observed_checks(tmp_path) -> None:
+    for filename in capture_script.REVIEWER_FIX_SURFACES:
+        Image.new("RGB", (80, 60), (35, 70, 105)).save(tmp_path / filename)
+    fixture_evidence = capture_script._fixture_evidence(FIXTURE)
+    geometry_checks = [
+        {
+            "font_scale_percent": percent,
+            "passed": True,
+            "overlap_count": 0,
+            "clipped_text_count": 0,
+            "rows": [],
+        }
+        for percent in (100, 125, 150)
+    ]
+    plot_checks = [
+        {
+            "surface": "preprocess-loaded.png",
+            "plot": "time",
+            "passed": True,
+            "curve_color_pixel_count": 20,
+        },
+        {
+            "surface": "preprocess-loaded-psd.png",
+            "plot": "psd",
+            "passed": True,
+            "curve_color_pixel_count": 20,
+        },
+    ]
+    started = _identity()
+    completed = deepcopy(started)
+    generated_at = datetime(2026, 7, 30, 10, 30, tzinfo=UTC)
+
+    capture_script._write_evidence_manifest(
+        output_dir=tmp_path,
+        source_identity_at_start=started,
+        source_identity_at_end=completed,
+        fixture_evidence=fixture_evidence,
+        geometry_checks=geometry_checks,
+        plot_checks=plot_checks,
+        generated_at=generated_at,
+        qt_platform="xcb",
+    )
+
+    payload = json.loads(
+        (tmp_path / capture_script.EVIDENCE_FILENAME).read_text(encoding="utf-8")
+    )
+    assert payload["generated_at"] == generated_at.isoformat()
+    assert payload["qt_platform"] == "xcb"
+    assert payload["source_capture"] == {
+        "source_digest_at_start": "e" * 64,
+        "source_digest_at_end": "e" * 64,
+        "commit_sha": "a" * 40,
+        "head_tree_sha": "b" * 40,
+    }
+    assert payload["fixture"] == fixture_evidence
+    assert payload["observed_geometry_checks"]["training_setting"] == geometry_checks
+    assert payload["observed_plot_checks"] == plot_checks
+    assert payload["passed"] is True
+
+
+def test_manifest_rejects_failed_geometry_or_changed_source(tmp_path) -> None:
+    for filename in capture_script.REVIEWER_FIX_SURFACES:
+        Image.new("RGB", (80, 60), (35, 70, 105)).save(tmp_path / filename)
+    started = _identity()
+    completed = deepcopy(started)
+    failed_geometry = [
+        {
+            "font_scale_percent": 150,
+            "passed": False,
+            "overlap_count": 1,
+            "clipped_text_count": 0,
+            "rows": [],
+        }
+    ]
+    kwargs = {
+        "output_dir": tmp_path,
+        "source_identity_at_start": started,
+        "source_identity_at_end": completed,
+        "fixture_evidence": capture_script._fixture_evidence(FIXTURE),
+        "geometry_checks": failed_geometry,
+        "plot_checks": [{"surface": "loaded", "passed": True}],
+        "generated_at": datetime(2026, 7, 30, 10, 30, tzinfo=UTC),
+        "qt_platform": "xcb",
+    }
+
+    with pytest.raises(RuntimeError, match="geometry check failed"):
+        capture_script._write_evidence_manifest(**kwargs)
+
+    kwargs["geometry_checks"] = [
+        {
+            "font_scale_percent": 150,
+            "passed": True,
+            "overlap_count": 0,
+            "clipped_text_count": 0,
+            "rows": [],
+        }
+    ]
+    changed = deepcopy(completed)
+    changed["source_digest"] = "f" * 64
+    kwargs["source_identity_at_end"] = changed
+    with pytest.raises(RuntimeError, match="source changed"):
+        capture_script._write_evidence_manifest(**kwargs)
+
+
+def test_manifest_rejects_failed_plot_check(tmp_path) -> None:
+    for filename in capture_script.REVIEWER_FIX_SURFACES:
+        Image.new("RGB", (80, 60), (35, 70, 105)).save(tmp_path / filename)
+    identity = _identity()
+
+    with pytest.raises(RuntimeError, match="plot check failed"):
+        capture_script._write_evidence_manifest(
+            output_dir=tmp_path,
+            source_identity_at_start=identity,
+            source_identity_at_end=deepcopy(identity),
+            fixture_evidence=capture_script._fixture_evidence(FIXTURE),
+            geometry_checks=[
+                {
+                    "font_scale_percent": percent,
+                    "passed": True,
+                    "overlap_count": 0,
+                    "clipped_text_count": 0,
+                    "rows": [],
+                }
+                for percent in (100, 125, 150)
+            ],
+            plot_checks=[
+                {
+                    "surface": "preprocess-loaded.png",
+                    "plot": "time",
+                    "passed": False,
+                    "curve_color_pixel_count": 0,
+                },
+                {
+                    "surface": "preprocess-loaded-psd.png",
+                    "plot": "psd",
+                    "passed": True,
+                    "curve_color_pixel_count": 20,
+                },
+            ],
+            generated_at=datetime(2026, 7, 30, 10, 30, tzinfo=UTC),
+            qt_platform="xcb",
+        )

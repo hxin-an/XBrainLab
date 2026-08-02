@@ -28,7 +28,7 @@ ASSISTANT_HANDOFF_REQUEST_ID = "walkthrough-evaluate-001"
 ASSISTANT_STOPPED_MESSAGE = ASSISTANT_CANCELLED_MESSAGE
 ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE = (
     "Tell me which step you want to do next: import data, preview labels and "
-    "metadata, preprocess, create epochs, build a dataset, train, evaluate, or "
+    "metadata, preprocess, create EEG epochs, build a dataset, train, evaluate, or "
     "inspect saliency."
 )
 ASSISTANT_CONFIRMED_TERMINAL_MESSAGE = "New session started."

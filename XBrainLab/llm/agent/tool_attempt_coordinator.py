@@ -8,9 +8,7 @@ loop limits.
 
 from __future__ import annotations
 
-import json
 import logging
-from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Generic, Protocol, TypeVar
@@ -59,6 +57,7 @@ _RECEIPT_BOUND_RESOURCE_COMMANDS = frozenset(
         "load_data",
         "preview_interpretation",
         "reload_interpretation_recipe",
+        "saliency",
         "start_training",
     }
 )
@@ -68,6 +67,7 @@ _FINGERPRINT_BOUND_RESOURCE_COMMANDS = frozenset(
         "load_data",
         "preview_interpretation",
         "reload_interpretation_recipe",
+        "saliency",
         "start_training",
     }
 )
@@ -133,6 +133,7 @@ class ToolAttemptRequest:
     confidence: float
     publication: PromptToolPublication
     latest_user_text: str
+    repeated: bool = False
 
 
 @dataclass(frozen=True)
@@ -222,20 +223,12 @@ class ToolAttemptCoordinator:
         context_source: ToolContextSource,
         execution_policy: HostExecutionPolicy | None = None,
         path_verifier: PathPolicyVerifier | None = None,
-        recent_call_limit: int = 10,
     ) -> None:
         self._registry = registry
         self._verifier = verifier
         self._context_source = context_source
         self._execution_policy = execution_policy or HostExecutionPolicy()
         self._path_verifier = path_verifier or PathProvenanceVerifier()
-        self._recent_tool_calls: deque[tuple[str, str]] = deque(
-            maxlen=recent_call_limit
-        )
-
-    def reset_turn(self) -> None:
-        """Clear proposal history scoped to one user-authored turn."""
-        self._recent_tool_calls.clear()
 
     def select_proposal(
         self,
@@ -268,9 +261,7 @@ class ToolAttemptCoordinator:
         """Evaluate one proposal against one immutable prompt publication."""
         command_name = request.command_name
         params = request.params
-        signature = (command_name, self._stable_params(params))
-        self._recent_tool_calls.append(signature)
-        if self._is_loop(signature):
+        if request.repeated:
             return ToolAttemptDecision(ToolAttemptAction.LOOP, command_name, params)
 
         publication_result = self._publication_result(
@@ -1021,13 +1012,3 @@ class ToolAttemptCoordinator:
                 for marker in ("dataset info", "dataset summary", "資料集資訊")
             )
         return False
-
-    def _is_loop(self, signature: tuple[str, str]) -> bool:
-        return sum(call == signature for call in self._recent_tool_calls) >= 3
-
-    @staticmethod
-    def _stable_params(params: dict[str, Any]) -> str:
-        try:
-            return json.dumps(params, sort_keys=True)
-        except (TypeError, ValueError):
-            return str(params)

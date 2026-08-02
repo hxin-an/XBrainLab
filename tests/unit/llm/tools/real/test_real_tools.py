@@ -7,6 +7,7 @@ import pytest
 
 from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.tool_call_normalizer import normalize_tool_call
 from XBrainLab.llm.tools import (
     bind_real_tool_execution_context,
     execute_real_application_tool,
@@ -15,6 +16,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolCommandResult,
     normalize_tool_result,
 )
+from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
 from XBrainLab.llm.tools.real import (
     analysis_real,
     dataset_real,
@@ -97,6 +99,7 @@ _MAPPED_TOOL_CASES = (
         {
             "mapping": {"session.gdf": "/data/session.mat"},
             "label_format": None,
+            "selected_event_names": None,
             "resource_preflight_confirmed": False,
             "resource_preflight_token": None,
         },
@@ -316,6 +319,44 @@ def test_direct_real_adapter_preserves_canonical_result_metadata() -> None:
     assert normalized.raw_result == direct_result.payload
 
 
+def test_saliency_request_reaches_authoritative_state_with_exact_parameters() -> None:
+    study = Study()
+    model_result = training_real.RealSetModelTool().execute(
+        study,
+        model_name="EEGNet",
+    )
+    training_result = training_real.RealConfigureTrainingTool().execute(
+        study,
+        epoch=1,
+        batch_size=2,
+        learning_rate=0.001,
+        device="cpu",
+    )
+    tool_name, params = normalize_tool_call(
+        "saliency",
+        {"method": "SmoothGrad"},
+        latest_user_text=(
+            "Configure SmoothGrad saliency with nt_samples 2, "
+            "nt_samples_batch_size 1, and stdevs 1.0."
+        ),
+    )
+
+    result = analysis_real.RealSaliencyTool().execute(study, **params)
+
+    assert model_result.ok is True
+    assert training_result.ok is True
+    assert tool_name == "saliency"
+    assert result.ok is True
+    assert result.state is not None
+    saliency_params = result.state["visualization"]["saliency_params"]
+    assert saliency_params["_methods"] == ["SmoothGrad"]
+    assert saliency_params["SmoothGrad"] == {
+        "nt_samples": 2,
+        "nt_samples_batch_size": 1,
+        "stdevs": 1.0,
+    }
+
+
 def test_direct_adapter_recovers_authoritative_publication_after_post_execute_failure(
     monkeypatch,
 ) -> None:
@@ -430,12 +471,36 @@ def test_list_files_remains_a_direct_read_only_tool(tmp_path: Path) -> None:
 
     result = dataset_real.RealListFilesTool().execute(
         object(),
-        directory=str(tmp_path),
+        directory=authorize_existing_path(
+            tmp_path,
+            authorized_root=tmp_path,
+            expected_kind="directory",
+        ),
         pattern="*.gdf",
     )
 
     assert result.ok is True
     assert result.payload == ["session.gdf"]
+
+
+def test_list_files_bounds_large_directory_enumeration(tmp_path: Path) -> None:
+    for index in range(dataset_real.MAX_AGENT_LIST_RESULTS + 5):
+        (tmp_path / f"session-{index:04d}.gdf").touch()
+
+    result = dataset_real.RealListFilesTool().execute(
+        object(),
+        directory=authorize_existing_path(
+            tmp_path,
+            authorized_root=tmp_path,
+            expected_kind="directory",
+        ),
+        pattern="*.gdf",
+    )
+
+    assert result.ok is True
+    assert len(result.payload) == dataset_real.MAX_AGENT_LIST_RESULTS
+    assert "first" in result.message.lower()
+    assert "narrow" in result.message.lower()
 
 
 def test_set_montage_remains_a_typed_ui_request(monkeypatch) -> None:

@@ -160,6 +160,41 @@ def test_bids_epoch_duration_stats_include_only_class_rows() -> None:
     }
 
 
+def test_sequence_label_plan_requires_eeg_event_placement_and_target() -> None:
+    plan = {
+        "format": "MAT labels",
+        "placement_method": "eeg_event",
+        "selected_label_field": "classlabel",
+        "selected_target_event_codes": ["768"],
+        "time_model": "trial_order",
+        "granularity": "trial",
+    }
+    class_map = {"1": "Left hand", "2": "Right hand"}
+
+    assert (
+        DataInterpretationApplyService._is_auto_applicable_sequence_label_plan(
+            plan,
+            class_map,
+        )
+        is True
+    )
+
+    assert (
+        DataInterpretationApplyService._is_auto_applicable_sequence_label_plan(
+            {**plan, "placement_method": "event_code"},
+            class_map,
+        )
+        is False
+    )
+    assert (
+        DataInterpretationApplyService._is_auto_applicable_sequence_label_plan(
+            {**plan, "selected_target_event_codes": []},
+            class_map,
+        )
+        is False
+    )
+
+
 def _decision(
     role: str,
     use_as_class: bool,

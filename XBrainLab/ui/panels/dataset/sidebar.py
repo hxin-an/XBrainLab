@@ -5,7 +5,6 @@ from typing import Any, Protocol, cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QBoxLayout,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -24,6 +23,7 @@ from XBrainLab.backend.application.commands import (
     QueryStateCommand,
     ResetSessionCommand,
 )
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     ControllerCompatibilityUnavailableError,
@@ -31,20 +31,39 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     get_application_view_publication,
     get_command_capability,
+    has_real_application_context,
     is_application_runtime_deferred,
     is_stale_publication_result,
-    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ChannelSelectionDialog: Any | None = None
 _SIDEBAR_WIDTH = 260
-_COMPACT_VERTICAL_MARGIN = 8
-_DEFAULT_VERTICAL_MARGIN = 20
-_QWIDGETSIZE_MAX = 16777215
+_DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
+    "Data interpretation availability is unavailable right now."
+)
+_RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE = (
+    "Recipe reload availability is unavailable right now."
+)
+_CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE = (
+    "Channel selection availability is unavailable right now."
+)
+_SMART_PARSE_AVAILABILITY_UNAVAILABLE = (
+    "Smart parse availability is unavailable right now."
+)
+_LABEL_IMPORT_AVAILABILITY_UNAVAILABLE = (
+    "Label import availability is unavailable right now."
+)
+_SESSION_RESET_AVAILABILITY_UNAVAILABLE = (
+    "Session reset availability is unavailable right now."
+)
 
 
 class _EpochStatePort(Protocol):
@@ -108,10 +127,6 @@ class DatasetSidebar(QWidget):
     def main_window(self):
         """QMainWindow: The application main window reference."""
         return self.panel.main_window
-
-    def _update_panel_after_command_result(self, result) -> None:
-        if result is None:
-            self.panel.update_panel()
 
     def _show_status(self, message: str) -> None:
         show_status_message(self.panel, message)
@@ -182,7 +197,7 @@ class DatasetSidebar(QWidget):
         )
         self.ops_layout.addWidget(self.import_folder_btn, 1, 0)
 
-        self.import_bids_btn = QPushButton("Import BIDS folder")
+        self.import_bids_btn = QPushButton("Import BIDS")
         self.import_bids_btn.setToolTip(
             "Choose a BIDS EEG folder and review detected metadata and events",
         )
@@ -192,7 +207,7 @@ class DatasetSidebar(QWidget):
         )
         self.ops_layout.addWidget(self.import_bids_btn, 2, 0)
 
-        self.reload_recipe_btn = QPushButton("Reload Import Recipe")
+        self.reload_recipe_btn = QPushButton("Reload recipe")
         self.reload_recipe_btn.setToolTip(
             "Review a saved import recipe before applying it",
         )
@@ -210,12 +225,6 @@ class DatasetSidebar(QWidget):
         )
         self.smart_parse_btn.setVisible(False)
 
-        self._import_buttons = (
-            self.import_btn,
-            self.import_folder_btn,
-            self.import_bids_btn,
-            self.reload_recipe_btn,
-        )
         layout.addWidget(self.ops_group)
         layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
@@ -233,7 +242,7 @@ class DatasetSidebar(QWidget):
         self.import_label_btn.setVisible(False)
         self.exec_layout.addWidget(self.import_label_btn)
 
-        self.chan_select_btn = QPushButton("Channel Selection")
+        self.chan_select_btn = QPushButton("Channels")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
         self.chan_select_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
@@ -250,97 +259,24 @@ class DatasetSidebar(QWidget):
         layout.addStretch()
         self._apply_startup_bootstrap_state()
 
-    def set_compact_mode(self, compact: bool) -> None:
-        """Reflow actions when the Dataset panel is stacked below a dock."""
-        if compact:
-            self.setMinimumWidth(0)
-            self.setMaximumWidth(_QWIDGETSIZE_MAX)
-            self.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Preferred,
-            )
-            self.scroll_area.content_layout.setContentsMargins(
-                10,
-                _COMPACT_VERTICAL_MARGIN,
-                10,
-                _COMPACT_VERTICAL_MARGIN,
-            )
-            self.ops_group.setMinimumHeight(0)
-            import_columns = 2
-            direction = QBoxLayout.Direction.LeftToRight
-        else:
-            self.setFixedWidth(_SIDEBAR_WIDTH)
-            self.setSizePolicy(
-                QSizePolicy.Policy.Fixed,
-                QSizePolicy.Policy.Expanding,
-            )
-            self.scroll_area.content_layout.setContentsMargins(
-                10,
-                _DEFAULT_VERTICAL_MARGIN,
-                10,
-                _DEFAULT_VERTICAL_MARGIN,
-            )
-            self.ops_group.setMinimumHeight(
-                Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT
-            )
-            import_columns = 1
-            direction = QBoxLayout.Direction.TopToBottom
-        available_wide_button_width = _SIDEBAR_WIDTH - 20
-        use_short_copy = compact or (
-            self.fontMetrics().horizontalAdvance("Reload Import Recipe") + 32
-            > available_wide_button_width
-        )
-        self.import_bids_btn.setText(
-            "Import BIDS" if use_short_copy else "Import BIDS folder"
-        )
-        self.reload_recipe_btn.setText(
-            "Reload Recipe" if use_short_copy else "Reload Import Recipe"
-        )
-        self.chan_select_btn.setText(
-            "Select Channels" if use_short_copy else "Channel Selection"
-        )
-        for button in self._import_buttons:
-            self.ops_layout.removeWidget(button)
-        for index, button in enumerate(self._import_buttons):
-            self.ops_layout.addWidget(
-                button,
-                index // import_columns,
-                index % import_columns,
-            )
-        for column in range(2):
-            self.ops_layout.setColumnStretch(
-                column,
-                1 if column < import_columns else 0,
-            )
-        if self.exec_layout.direction() != direction:
-            self.exec_layout.setDirection(direction)
-        self.ops_layout.invalidate()
-        self.exec_layout.invalidate()
-        self.scroll_area.content_layout.invalidate()
-        self.updateGeometry()
-
-    def set_summary_visible(self, visible: bool) -> None:
-        """Keep the summary separator tied to the summary it introduces."""
-        self.info_panel.setVisible(visible)
-        spacer_height = 10 if visible else 0
-        self.info_separator_before.changeSize(
-            0,
-            spacer_height,
-            QSizePolicy.Policy.Minimum,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.info_separator_after.changeSize(
-            0,
-            spacer_height,
-            QSizePolicy.Policy.Minimum,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.info_separator_line.setVisible(visible)
-        self.scroll_area.content_layout.invalidate()
-        self.updateGeometry()
-
     def _apply_startup_bootstrap_state(self) -> None:
         """Present the known empty-workspace actions before command runtime startup."""
+        if has_real_application_context(self):
+            unavailable_actions = {
+                self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
+                self.import_folder_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
+                self.import_bids_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
+                self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
+                self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
+                self.import_label_btn: _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
+                self.chan_select_btn: _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
+                self.clear_btn: _SESSION_RESET_AVAILABILITY_UNAVAILABLE,
+            }
+            for button, tooltip in unavailable_actions.items():
+                button.setEnabled(False)
+                button.setToolTip(tooltip)
+            return
+
         for button in (
             self.import_btn,
             self.import_folder_btn,
@@ -387,7 +323,7 @@ class DatasetSidebar(QWidget):
 
     def update_sidebar(self):
         """Update info panel and button states."""
-        if self.controller:
+        if self.controller is not None or has_real_application_context(self):
             if self._uses_startup_bootstrap_state():
                 self._apply_startup_bootstrap_state()
                 return
@@ -428,10 +364,11 @@ class DatasetSidebar(QWidget):
                 if capabilities is not None
                 else None
             )
-            compatibility_state_available = True
+            product_context = has_real_application_context(self)
+            compatibility_state_available = not product_context
             compatibility_is_locked = False
             compatibility_has_data = False
-            if any(
+            if not product_context and any(
                 capability is None
                 for capability in (
                     scan_capability,
@@ -475,13 +412,13 @@ class DatasetSidebar(QWidget):
                 self.import_folder_btn.setEnabled(False)
                 self.import_bids_btn.setEnabled(False)
                 self.import_btn.setToolTip(
-                    "Data interpretation availability is unavailable right now.",
+                    _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
                 )
                 self.import_folder_btn.setToolTip(
-                    "Data interpretation availability is unavailable right now.",
+                    _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
                 )
                 self.import_bids_btn.setToolTip(
-                    "Data interpretation availability is unavailable right now.",
+                    _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
                 )
             elif compatibility_is_locked:
                 self.import_btn.setEnabled(True)
@@ -523,7 +460,7 @@ class DatasetSidebar(QWidget):
             elif not compatibility_state_available:
                 self.reload_recipe_btn.setEnabled(False)
                 self.reload_recipe_btn.setToolTip(
-                    "Recipe reload availability is unavailable right now.",
+                    _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
                 )
             elif compatibility_is_locked:
                 self.reload_recipe_btn.setEnabled(True)
@@ -549,7 +486,7 @@ class DatasetSidebar(QWidget):
             elif not compatibility_state_available:
                 self.chan_select_btn.setEnabled(False)
                 self.chan_select_btn.setToolTip(
-                    "Channel selection availability is unavailable right now.",
+                    _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
                 )
             elif compatibility_is_locked:
                 self.chan_select_btn.setEnabled(True)
@@ -573,7 +510,7 @@ class DatasetSidebar(QWidget):
             elif not compatibility_state_available:
                 self.smart_parse_btn.setEnabled(False)
                 self.smart_parse_btn.setToolTip(
-                    "Smart parse availability is unavailable right now.",
+                    _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
                 )
             elif compatibility_is_locked:
                 self.smart_parse_btn.setEnabled(True)
@@ -599,7 +536,7 @@ class DatasetSidebar(QWidget):
             elif not compatibility_state_available:
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
-                    "Label import availability is unavailable right now.",
+                    _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
                 )
             elif compatibility_is_locked:
                 self.import_label_btn.setEnabled(False)
@@ -634,6 +571,8 @@ class DatasetSidebar(QWidget):
         reset_capability,
     ) -> tuple[bool, str]:
         if reset_capability is None:
+            if has_real_application_context(self):
+                return False, _SESSION_RESET_AVAILABILITY_UNAVAILABLE
             available, has_data = self._compatibility_controller_value(
                 self._compatibility_has_clearable_data,
             )
@@ -674,14 +613,24 @@ class DatasetSidebar(QWidget):
             return result if isinstance(result, bool) else False
         return False
 
-    def _compatibility_loaded_data_list_for_channel_selection(self) -> list[Any] | None:
+    def _compatibility_loaded_data_list_for_channel_selection(self) -> list[str] | None:
         available, data_list = self._compatibility_controller_value(
             self.controller.get_loaded_data_list,
             blocked_title="Channel Selection Blocked",
         )
         if not available:
             return None
-        return list(data_list or [])
+        values = list(data_list or [])
+        if not values:
+            return []
+        try:
+            return [str(channel) for channel in values[0].get_mne().ch_names]
+        except Exception:
+            logger.debug(
+                "Compatibility channel-name projection failed",
+                exc_info=True,
+            )
+            return []
 
     def open_channel_selection(self):
         """Open the channel selection dialog.
@@ -689,10 +638,17 @@ class DatasetSidebar(QWidget):
         Blocked if the dataset is locked or no data is loaded.
         Shows a confirmation prompt before applying.
         """
-        if not self.controller:
+        if self.controller is None and not has_real_application_context(self):
             return
 
         publication = get_application_view_publication(self)
+        if publication is None and has_real_application_context(self):
+            QMessageBox.warning(
+                self,
+                "Channel Selection Blocked",
+                _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
+            )
+            return
         preprocess_capability = (
             publication.effective_capabilities.get(CommandName.PREPROCESS)
             if publication is not None
@@ -710,6 +666,13 @@ class DatasetSidebar(QWidget):
             return
 
         if preprocess_capability is None:
+            if has_real_application_context(self):
+                QMessageBox.warning(
+                    self,
+                    "Channel Selection Blocked",
+                    _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
+                )
+                return
             available, has_data = self._compatibility_controller_value(
                 lambda: bool(self.controller.has_data()),
                 blocked_title="Channel Selection Blocked",
@@ -748,16 +711,16 @@ class DatasetSidebar(QWidget):
         if reply == QMessageBox.StandardButton.No:
             return
 
-        data_list = self._loaded_data_list_for_channel_selection(
+        channels = self._loaded_data_list_for_channel_selection(
             preprocess_capability,
             expected_publication_generation=(
                 publication.generation if publication is not None else None
             ),
         )
-        if data_list is None:
+        if channels is None:
             return
         dialog_class = _channel_selection_dialog_class()
-        dialog = dialog_class(self, data_list)
+        dialog = dialog_class(self, channels)
         if dialog.exec():
             result = dialog.get_result()
             if result:
@@ -793,13 +756,11 @@ class DatasetSidebar(QWidget):
                             f"Channel selection failed: {command_result.message}",
                         )
                         return
-                    self._update_panel_after_command_result(command_result)
                     self._show_status("Channel selection applied")
-                except Exception as e:
-                    QMessageBox.critical(
+                except Exception:
+                    present_unexpected_error(
                         self,
-                        "Error",
-                        f"Channel selection failed: {e}",
+                        UnexpectedErrorContext.DATASET_CHANNEL_SELECTION,
                     )
 
     def _loaded_data_list_for_channel_selection(
@@ -807,7 +768,7 @@ class DatasetSidebar(QWidget):
         preprocess_capability,
         *,
         expected_publication_generation: int | None = None,
-    ) -> list[Any] | None:
+    ) -> list[str] | None:
         command_kwargs: dict[str, Any] = {"refresh": False}
         if expected_publication_generation is not None:
             command_kwargs["expected_publication_generation"] = (
@@ -815,21 +776,32 @@ class DatasetSidebar(QWidget):
             )
         result = execute_application_command(
             self,
-            QueryStateCommand(query="data_lists", include_objects=True),
+            QueryStateCommand(query="data_lists"),
             **command_kwargs,
         )
         if result is None:
-            if preprocess_capability is None:
+            if preprocess_capability is None and not has_real_application_context(self):
                 return self._compatibility_loaded_data_list_for_channel_selection()
             return []
         if result.failed:
             return []
-        data_list = local_result_payload(result).get("loaded_data_list")
-        return list(data_list) if isinstance(data_list, list) else []
+        rows = result.diagnostics.get("raw_rows")
+        if not isinstance(rows, list) or not rows:
+            return []
+        first = rows[0]
+        if not isinstance(first, dict):
+            return []
+        channels = first.get("channels")
+        return (
+            [str(channel) for channel in channels] if isinstance(channels, list) else []
+        )
 
     def clear_dataset(self):
         """Prompt the user and reset the entire active EEG session."""
         publication = get_application_view_publication(self)
+        if publication is None and has_real_application_context(self):
+            self._show_status(_SESSION_RESET_AVAILABILITY_UNAVAILABLE)
+            return
         reset_capability = (
             publication.effective_capabilities.get(CommandName.RESET_SESSION)
             if publication is not None
@@ -896,7 +868,9 @@ class DatasetSidebar(QWidget):
                     f"Failed to reset session: {result.message}",
                 )
                 return
-            self._update_panel_after_command_result(result)
             self._show_status("Session reset")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to reset session: {e}")
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.DATASET_SESSION_RESET,
+            )

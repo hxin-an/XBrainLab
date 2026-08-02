@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,6 +33,8 @@ else:
 
 class InternalEventStepMixin(DataImportWizardStepHostProtocol):
     """Render and model helpers for labels stored inside EEG files."""
+
+    _NO_SOURCE_EVIDENCE = "No source evidence was provided by the import preview."
 
     def _build_internal_event_rules_view(self) -> None:
         self.event_group.setTitle("")
@@ -122,53 +124,64 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         table.setMinimumHeight(42 + max(len(rows), 1) * 38)
         grid = QGridLayout(table)
         grid.setContentsMargins(13, 12, 13, 13)
-        grid.setHorizontalSpacing(18)
+        grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(11)
         headers = [
             "Event",
             "Use as",
-            "Suggestion evidence",
-            "Count / coverage",
+            "Occurrences",
             "Class name",
-            "",
+            "Action",
+            "Source evidence",
         ]
         for column, header in enumerate(headers):
             label = QLabel(header)
             label.setObjectName("DataImportPairingHeaderLabel")
+            label.setWordWrap(column in {1, 5})
+            label.setMinimumWidth(0)
+            if label.wordWrap():
+                label.setSizePolicy(
+                    QSizePolicy.Policy.Ignored,
+                    QSizePolicy.Policy.Preferred,
+                )
             grid.addWidget(label, 0, column)
+            if column == 5:
+                self._register_match_advanced_widget(label)
 
         item_by_code = {code: item for item, code, _original in self._class_map_items}
         for row_index, row in enumerate(rows, start=1):
             code = str(row.get("code") or "").strip()
             self._grid_text(grid, row_index, 0, code, primary=True)
-            self._grid_text(grid, row_index, 1, str(row.get("use_as") or "Class label"))
-            self._grid_text(
-                grid,
-                row_index,
-                2,
-                str(row.get("evidence") or "Suggested by event pattern"),
-            )
-            self._grid_text(grid, row_index, 3, str(row.get("coverage") or ""))
+            self._grid_text(grid, row_index, 1, "Training class")
+            self._grid_text(grid, row_index, 2, str(row.get("coverage") or ""))
             item = item_by_code.get(code)
             if item is not None:
                 selector = self._clone_class_map_selector(item, table)
                 selector.setMinimumHeight(28)
-                grid.addWidget(selector, row_index, 4)
+                grid.addWidget(selector, row_index, 3)
             else:
-                self._grid_text(grid, row_index, 4, "")
+                self._grid_text(grid, row_index, 3, "")
             button = self._internal_event_action_button(
-                "Not a label",
+                "Exclude from training",
                 code,
                 "not a label",
                 table,
             )
-            grid.addWidget(button, row_index, 5)
+            grid.addWidget(button, row_index, 4)
+            evidence = self._grid_text(
+                grid,
+                row_index,
+                5,
+                str(row.get("evidence") or self._NO_SOURCE_EVIDENCE),
+                word_wrap=True,
+            )
+            self._register_match_advanced_widget(evidence)
         grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 4)
-        grid.setColumnStretch(3, 2)
-        grid.setColumnStretch(4, 3)
-        grid.setColumnStretch(5, 0)
+        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(2, 2)
+        grid.setColumnStretch(3, 3)
+        grid.setColumnStretch(4, 0)
+        grid.setColumnStretch(5, 4)
         return table
 
     def _internal_other_events_table(self, rows: list[dict[str, str]]) -> QWidget:
@@ -178,38 +191,54 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         table.setMinimumHeight(42 + max(len(rows), 1) * 36)
         grid = QGridLayout(table)
         grid.setContentsMargins(13, 12, 13, 13)
-        grid.setHorizontalSpacing(18)
+        grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(10)
         headers = [
             "Event",
-            "Suggested use",
-            "Suggestion evidence / reason",
-            "Count / coverage",
-            "",
+            "Use as",
+            "Occurrences",
+            "Action",
+            "Source evidence",
         ]
         for column, header in enumerate(headers):
             label = QLabel(header)
             label.setObjectName("DataImportPairingHeaderLabel")
+            label.setWordWrap(column in {1, 4})
+            label.setMinimumWidth(0)
+            if label.wordWrap():
+                label.setSizePolicy(
+                    QSizePolicy.Policy.Ignored,
+                    QSizePolicy.Policy.Preferred,
+                )
             grid.addWidget(label, 0, column)
+            if column == 4:
+                self._register_match_advanced_widget(label)
 
         for row_index, row in enumerate(rows, start=1):
             code = str(row.get("code") or "").strip()
             self._grid_text(grid, row_index, 0, code, primary=True)
-            self._grid_text(grid, row_index, 1, str(row.get("use_as") or "Ignore"))
-            self._grid_text(grid, row_index, 2, str(row.get("reason") or ""))
-            self._grid_text(grid, row_index, 3, str(row.get("coverage") or ""))
+            self._grid_text(grid, row_index, 1, "Not used for training")
+            self._grid_text(grid, row_index, 2, str(row.get("coverage") or ""))
             button = self._internal_event_action_button(
-                "Use as label",
+                "Use for training",
                 code,
                 "class label",
                 table,
             )
-            grid.addWidget(button, row_index, 4)
+            grid.addWidget(button, row_index, 3)
+            evidence = self._grid_text(
+                grid,
+                row_index,
+                4,
+                str(row.get("reason") or self._NO_SOURCE_EVIDENCE),
+                word_wrap=True,
+            )
+            self._register_match_advanced_widget(evidence)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 2)
-        grid.setColumnStretch(2, 4)
-        grid.setColumnStretch(3, 2)
-        grid.setColumnStretch(4, 0)
+        grid.setColumnStretch(2, 2)
+        grid.setColumnStretch(3, 0)
+        grid.setColumnStretch(4, 4)
         return table
 
     def _grid_text(
@@ -220,12 +249,20 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         text: str,
         *,
         primary: bool = False,
+        word_wrap: bool | None = None,
     ) -> QLabel:
         label = QLabel(text)
         label.setObjectName(
             "DataImportPairingFile" if primary else "DataImportSourceDetail"
         )
-        label.setWordWrap(column in {1, 2})
+        should_wrap = column in {1, 2} if word_wrap is None else word_wrap
+        label.setWordWrap(should_wrap)
+        label.setMinimumWidth(0)
+        if should_wrap:
+            label.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred,
+            )
         label.setMinimumHeight(24)
         grid.addWidget(label, row, column)
         return label
@@ -242,7 +279,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         button.setProperty("event_code", code)
         button.setFlat(True)
         button.setMinimumHeight(24)
-        button.setMinimumWidth(104)
+        button.setMinimumWidth(max(104, button.sizeHint().width()))
         button.setToolTip(
             "Move this EEG event into training labels."
             if role == "class label"
@@ -527,8 +564,8 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
 
     def _event_rules_table(
         self,
-        headers: list[str],
-        rows: list[tuple[str, ...]],
+        headers: Sequence[str],
+        rows: Sequence[Sequence[str]],
     ) -> QWidget:
         table = QFrame()
         table.setObjectName("DataImportEventRulesTable")
@@ -725,12 +762,12 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         if self._event_role_items or self._class_map_items:
             return (
                 "Detected event or class information inside the EEG import preview. "
-                "Use the confirmation rows below to keep the role and names explicit."
+                "Use the confirmation rows below to keep the choices and names clear."
             )
         return (
             "No internal event candidates are available in this preview yet. If the "
             "recording contains usable events, they can still be reviewed after load "
-            "before epoching."
+            "before creating EEG epochs."
         )
 
     def _internal_event_summary_text(self) -> str:
@@ -775,10 +812,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                         "use_as": str(raw.get("use_as") or "Class label"),
                         "coverage": self._event_coverage_text(raw),
                         "class_name": self._internal_event_class_name(raw, payload),
-                        "evidence": self._event_evidence_text(
-                            raw,
-                            "Suggested by event pattern",
-                        ),
+                        "evidence": self._event_evidence_text(raw),
                     }
                 )
         for row in self._base_not_used_event_rows():
@@ -1027,9 +1061,10 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             return ""
         return str(row.get("class_name") or row.get("name") or "").strip()
 
-    @staticmethod
-    def _event_evidence_text(row: dict[str, Any], fallback: str) -> str:
-        return str(row.get("evidence") or row.get("reason") or fallback).strip()
+    def _event_evidence_text(self, row: dict[str, Any]) -> str:
+        return str(
+            row.get("evidence") or row.get("reason") or self._NO_SOURCE_EVIDENCE
+        ).strip()
 
     def _ensure_class_name_items_from_event_rows(
         self,

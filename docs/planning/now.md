@@ -1,127 +1,84 @@
 # XBrainLab Now
 
-最後更新：`2026-07-30`
+最後更新：`2026-07-31`
 
-這頁只放下一輪施工焦點。
+這頁只保存 active delivery context、近期施工順序和 exit condition。Finding status 以
+[Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 為準，不在這裡複製
+第二份 queue。
 
 ## 目前焦點
 
-**Close the verified product-quality audit, then run Windows acceptance.**
+**Close product-quality findings on one integration line, rebuild exact-commit evidence, then
+decide whether a Windows handoff candidate exists.**
 
-`ux/assistant-product-v1` 是乾淨且已 push 的工程 checkpoint，但 2026-07-30 深度複盤發現
-publication acknowledgement、unsafe training artifact、輸出路徑、Stop/Start lifecycle、
-Agent timeout、RAG 供應鏈、Application/controller 邊界、真 workflow evidence 與 UI 響應式
-品質仍有 code-controllable blocker。因此舊的 handoff-ready 語意已撤銷；本輪以
-[Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 和
-[Product Quality Closure Goal](../agent_goals/product_quality_closure_goal.md) 為施工台帳。
-全部自動化 hard gate 通過後只形成 Windows handoff candidate；真人 acceptance 完成後才
-freeze benchmark 或考慮合併 `main`。
+目前不是 handoff-ready。`ux/assistant-product-v1@3869aaef` 只作 baseline；所有 closure work
+都在 `stabilize/product-quality-closure`。
 
-## 本輪 To-do
+## Active Delivery Context
 
-| 狀態 | 工作 | 完成判準 |
-| --- | --- | --- |
-| In progress | Product quality closure | Audit 中所有 code-controllable P0/P1 關閉；架構、安全、功能、Agent、UI、測試、文件六類 reviewer gate 及主 agent 複驗通過；同一 clean commit 完成 multi-dataset、Granite、UI artifact、MkDocs 與品質 dashboard。 |
-| Done | Current docs rebaseline | `docs/current.md`、`docs/planning/now.md`、`docs/planning/roadmap.md`、`docs/architecture/README.md`、`docs/validation/README.md` 對目前方向不矛盾。 |
-| Done | MCP 從 active plan 移除 | Roadmap、current truth、target / architecture docs 不再把 MCP 當 MVP、release、thesis 或 handoff gate。 |
-| Done | Roadmap 心智模型定型 | Roadmap 改成 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence；UI/UX blocker 放進 Desktop MVP，視覺一致性放進 Product Polish。 |
-| Done | Branch / worktree inventory | 目前正式 git worktree 只有本 repo；下一輪工程基底定為 `stabilize/desktop-mvp`，從 rebaseline checkpoint 建立。 |
-| Done | Known blocker reset | 最近手測提到的 UI / runtime blocker 已重新列在本頁與 `docs/records/product_feedback.md`。 |
-| Done | Handoff gate reset | 「可以手測」前必跑 happy path、edge case、多資料集、screenshot artifact 和 claim boundary；細節以 `docs/validation/README.md` 和 `.agents/workflows/handoff-candidate.md` 為準。 |
-| Done | Delivery flow unified | Branch 規則與 handoff 規則已統一為 Desktop MVP Delivery Flow：short task branch -> stabilization line -> handoff candidate -> user acceptance -> main。 |
-| Done | Desktop MVP audit | Architecture、UI、test/EEG reviewer 已盤點 command concurrency、Qt lifecycle、assistant policy、validation truth、窄螢幕 layout 與 artifact determinism。 |
-| Done | Desktop MVP blocker repair | ApplicationService serialization、assistant refresh/lifecycle、Data Import review truth、real GDF event/evaluation evidence、validation matrix truth、narrow UI artifacts 已修復。 |
-| Invalidated | Previous handoff candidate | 舊 dashboard、walkthrough 與 reviewer 結論未完整綁定目前 HEAD，已撤銷 handoff-ready claim；只保留為歷史 checkpoint。 |
-| Done | Validation truth reset | Windows launcher 已改指向唯一 active repo；walkthrough 要求 reload/reapply、training completion、evaluation、visualization 真成功，scripted assistant transcript 只算 layout evidence。 |
-| Done | Scientific training correctness | validation-only checkpoint、final test evaluation、split provenance、undefined AUC、BIDS bounds/run mapping、overlapping-window leakage 與 saliency atomicity都有 regression。 |
-| Done | Non-blocking application view / shutdown | 原子 publication、non-blocking query、recovery path、background snapshot generation、owner-bound Qt receiver 與 native teardown regression 已通過。 |
-| Done | Natural-language turn scope | 移除可見 `Single action` / `Guided workflow` selector；host 依單一 request 建立 immutable no-tool / single-step / continue-until-decision / terminal-endpoint scope。解釋型 prompt 不取得 mutation admission。 |
-| Done | Granite 3.3 2B exact runtime | IBM Granite 3.3 2B 是 product primary；runtime 不自動 fallback。catalog trust、dtype、context truncation、prompt / structured smoke 與真 GPU workflow 有 regression。Phi 只保留明確 legacy choice。 |
-| Done | Host continuation safety | 只有 parameter-free preview / validate 可由 host deterministic continuation；allowlist、schema、registry、capability、auto-execution 與 confirmation policy 全由 coordinator fail closed。非空參數會在讀 context / verifier / registry 前被拒絕。 |
-| Done | Teacher data-format gate | lifecycle `20/20`、required formats `14/14`、7 public cases / 5 source families、real five-step wizard / recovery `20 passed`、IO/BIDS/cross-source integration `39 passed`、strict cross-source `4/4`。 |
-| Done | Extended teacher dataset preflight | local-only `teacher-preflight` profile 共 277 MB / 10 hash-pinned groups；OpenNeuro ds003061 三 run BIDS P300 的 `2,245` 個來源 sample/class rows 與匯入結果逐筆一致並成功 epoch，CHB-MIT raw EDF、Sleep-EDF PSG 也完成 ApplicationService raw import，三個較大型 cases `3/3` PASS。OpenNeuro 另通過真 GUI label-field repreview、8 個 value controls、BIDS channel semantics 與三 run apply；臨床 seizure / hypnogram sidecar 仍明確標示為未自動套用。 |
-| Done | Review / preprocess / visualization repair | Step 5 recipe 與 Epoch 解耦且 optional；Smart Parser、preprocess dialogs、三態 preview、固定 History、Explanation Plots 與共用色階 spectrogram 已完成 focused `567`、product `7`、human-like `42/42` 與多資料集 gate。 |
-| Done | Assistant product presentation | Header、loading / empty / ready / working / waiting / error、suggestions、responsive composer、typed confirmation、Settings 與 narrow/full-window layout 已形成同一產品語彙；畫面不再要求使用者先選 execution mode。 |
-| Done | Publication delivery / terminal safety | Application view publication 以 revision acknowledgement 連接 backend 與 Qt view；deferred GUI queue 不再丟失 terminal training event，matching revision 可見後 exactly-once 投遞。Stop Training 是 explicit terminal endpoint，generic continuation 不會猜測執行。 |
-| Done | Candidate closure | Backend publication/application `231 passed`、UI/chat/product `571 passed`、agent/core/integration `2123 passed`、architecture/source guards `274 passed`；Ruff / full Basedpyright PASS。focused、human-like `42/42` / `45` screenshots、Granite 2B boundary artifacts 由主 agent檢視，architecture 與 clean-code reviewer re-gate PASS。required multi-dataset integration `36 passed, 3 skipped`，strict cross-source `4/4`。候選提交與 push 後只保留受保護的本機設定差異。 |
-| Next | Windows user acceptance | 從同一個已 push 候選做真人 click-through；通過前不合併 `main`。 |
-| Later | XBrainLab benchmark | working candidate 通過後，另外 freeze case suite、scorer、prompt condition、source fingerprint 與 repeats。產品 host-assisted score和 raw-model score分開。 |
-
-## 2026-07-04 Rebaseline 結論
-
-### Branch / worktree
-
-| 項目 | 結論 |
+| 項目 | Current value |
 | --- | --- |
-| Active repo | `/mnt/d/workspace_v2/projects/lab/xbrainlab` |
-| Registered git worktrees | 正式 repo 仍是上列 root；本輪唯一候選 worktree 是 `build/worktrees/assistant-product-v1`，用於形成可驗證 commit。Windows acceptance 只使用這一個候選，不再分散到多個 UI worktree。 |
-| Current rebaseline checkpoint | `docs/rebaseline-drop-mcp` 的 latest pushed checkpoint。 |
-| Current repair candidate | `ux/assistant-product-v1`；完成後 fast-forward `stabilize/desktop-mvp`，只保留一個手測入口。 |
-| Main branch | `main` / `origin/main` 都落後目前 integration line；不要在 Desktop MVP gate 前直接把現在狀態推回 main。 |
+| Worktree | `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1` |
+| Branch | `stabilize/product-quality-closure` |
+| Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，baseline only |
+| Goal | `docs/agent_goals/product_quality_closure_goal.md` |
+| Ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
+| Current classification | `checkpoint` / closure in progress |
 
-目前只有三個 local branches 沒有併入 rebaseline checkpoint：
+不要從舊文件推論 registered worktree 數量。需要 inventory 時執行
+`git worktree list --porcelain`；其他 worktree 不得被誤認成 active candidate，也不得覆寫其
+owner 的 dirty changes。
 
-| Branch | 判斷 | 下一步 |
+## 施工順序
+
+| 順序 | 工作 | Exit signal |
 | --- | --- | --- |
-| `docs/multi-gate-loop` | 舊 multi-gate 文件 / skill 線，和目前已整理的 `.agents` 文件有重疊，也帶有產品碼差異。 | 不整支 merge；若需要，只 cherry-pick 可用的 gate wording。 |
-| `docs/development-process-rules` | 舊 governance 線，差異很大，會倒退目前 docs / tests 的 current truth。 | 不整支 merge。 |
-| `wip/data-import-controller-dirty-checkpoint` | 舊大型 WIP，混合 Data Import、UI、backend、artifacts、tests，不能作為乾淨整合來源。 | 保留作歷史參考；不要整支 merge。 |
+| 1 | Close code-controllable P0/P1 findings | Ledger 中相關 row 有 implementation、focused regression、same-class sweep 和主 agent verification；不能只改 status。 |
+| 2 | Preserve architecture boundaries | Product path 維持 `ApplicationService / Command API`；`BackendFacade` 保持物理移除；UI、agent、headless 不建立第二套 capability/state truth。 |
+| 3 | Rebuild functional evidence | Real ApplicationService FIF-to-visualization smoke、deterministic oracle、strict fixture manifest 和 required multi-dataset gates 從 current source 通過。 |
+| 4 | Rebuild assistant and UI evidence | Exact Granite / secure offline RAG、error/retry/cancel/long-session，以及 full/narrow/DPI screenshots 綁定相同 source identity，並由主 agent 檢查。 |
+| 5 | Close docs/repository findings | Canonical current、planning、validation、handoff 和 skill truth 一致；stale baseline/historical totals 不再呈現成 current result。 |
+| 6 | Final exact-commit gate | 同一 clean pushed commit 跑 handoff dashboard、static checks、regression、MkDocs、reviewer re-gates；generated report identity 完整吻合。 |
+| 7 | Windows acceptance | 只有前一步成立後才能稱 Windows handoff candidate；真人 acceptance 完成前不合併 `main`、不稱 product complete。 |
 
-### Desktop MVP residual-risk board
+## Evidence Rule
 
-原 blocker 已由 regression、multi-dataset 與 walkthrough 重建；這裡只保留仍需真人或後續研究
-才能關閉的風險，不把已修問題繼續寫成 open blocker。
+Final totals 不能從本頁、聊天、checkpoint notes 或多次局部 pytest output 手動加總。
+唯一可用的 final totals 是同一 clean exact commit 產生的 handoff evidence，且至少要記錄：
 
-| Area | Remaining risk | Boundary / next gate |
-| --- | --- | --- |
-| Windows desktop UX | Xvfb screenshots不能證明實際 Windows DPI、遠端桌面、雙螢幕和長時間互動。 | 使用者在單一 stabilization branch 做真人 click-through。 |
-| Interactive 3D | headless gate只能驗證 unavailable / framing boundary，不能操作 OpenGL 視圖。 | Windows GPU 桌面手測。 |
-| Local agent accuracy | Granite 真實 boundary workflow 已通過，但尚未跑 frozen benchmark。 | working candidate 通過後才建立至少 50/100 cases、30% negative/recovery 與 3 repeats 的獨立 research protocol。 |
-| Architecture debt | Data Import dialog、LLM controller 等 orchestrator 仍偏大；目前有 focused helpers 和 source guards，但未宣稱 target architecture fully complete。 | 下一輪按責任切片，不在 handoff 前做純行數型重構。 |
+- profile；
+- worktree / branch；
+- full commit SHA；
+- dirty / protected-local state；
+- command、return status、skip / xfail / deselection policy；
+- artifact source identity 和 reviewer verdict。
 
-### Handoff gate reset
+`artifacts/quality/latest.md` 必須逐欄檢查 identity。若仍指向
+`ux/assistant-product-v1@3869aaef`、dirty tree 或不同 commit，它只能算 baseline /
+checkpoint evidence。
 
-以後任何回報「可以手測」都必須先達到 handoff candidate，不是只跑單一測試。
+## Handoff Exit Condition
 
-最低門檻：
+必須同時成立：
 
-1. focused regression：使用者指出的 bug 可重現或有可觀察 artifact。
-2. same-class sweep：同類 panel / dialog / command / data flow 已搜尋並處理。
-3. happy path：跑像使用者一樣的 workflow 或 UI walkthrough。
-4. edge / regression：資料、import、label、epoch、training、evaluation、visualization 相關要跑 required multi-dataset gate。
-5. artifact review：UI 可見改動要有 screenshot / walkthrough，主 agent 自己看過。
-6. branch hygiene：worktree clean；validated checkpoint commit 並 push。
-7. claim boundary：明確說仍不能宣稱什麼。
+1. Audit 中沒有 code-controllable P0/P1 open item。
+2. Focused regression、same-class/source guards、real happy path、deterministic oracle 和 strict
+   multi-dataset gate 均由 final commit 重跑。
+3. Granite/RAG 和 UI artifacts 是 exact-source output，必要畫面由主 agent 逐張檢視。
+4. Ruff、完整 configured product-source Basedpyright、architecture checks、relevant pytest、`mkdocs build --strict` 和
+   handoff dashboard 全部來自同一 commit。
+5. Branch 已 push；worktree clean，或只保留規則允許且未 stage 的 protected local settings。
+6. Final report 明確列出 Windows DPI/multi-monitor、interactive 3D、teacher datasets 和
+   long-session 等剩餘人工風險。
 
-## 為什麼文件更新會停掉
-
-文件不是沒價值，而是流程上沒有被強制放進每個 checkpoint gate。近期很多工作以 bugfix branch、
-artifact refresh、聊天中狀態回報為主，`worklog` 和 screenshots 有更新，但 `current / now /
-roadmap / architecture` 沒有每次同步，所以 canonical truth 慢慢落後。
-
-新規則：
-
-- 每個 handoff candidate 都要更新 canonical docs 或明確說「不需要更新，原因是什麼」。
-- artifact 更新不能取代 `docs/current.md`。
-- branch push / tests green 不能取代 `docs/planning/now.md`。
-- roadmap 決策變更要寫入 `docs/planning/roadmap.md` 和 `docs/decisions/README.md`。
+達成以上條件後，狀態只能提升為 **Windows handoff candidate**。真人 acceptance 之前仍不是
+product complete。
 
 ## 本輪不做
 
-- 不把本輪 Step 5 局部修復擴張成 Match Labels / Data Import 全流程重做。
-- 不做 MCP hardening、MCP client certification 或 MCP thesis evidence。
-- 不開始 thesis-grade agent benchmark 實驗；那需要獨立 research branch / goal。
-- 不把 automated dashboard PASS 當作 human Windows acceptance。
-- 不把舊 artifact 當成 current truth。
-
-## 本輪收尾條件
-
-本輪可以收尾的條件是：
-
-1. `ruff`、`basedpyright`、architecture guard、focused regression 和 full quality dashboard 通過。
-2. required multi-dataset / format matrix / cross-source training gate 通過。
-3. Data Import、assistant、Data Splitting、Saliency 等可見 artifact 由主 agent 實際看過。
-4. architecture / clean code、UI product、test / EEG 三個獨立 reviewer 在修復後全數通過；第一輪
-   reviewer 已退回具體問題，不能沿用修復前結論。
-5. canonical docs 與 current code / validation truth 一致，`mkdocs build --strict` 通過。
-6. branch clean commit 並 push；回報仍需 Windows 真人 acceptance，不誇大為 product complete。
+- 不把 baseline branch fast-forward 或重新命名成 current candidate。
+- 不新增 facade、silent compatibility fallback 或第二套 workflow truth。
+- 不做 MCP hardening、MCP client certification 或 MCP thesis evidence；除非使用者明確要求。
+- 不在產品 closure 完成前 freeze thesis benchmark 或宣稱 raw-model accuracy。
+- 不把 automated dashboard、offscreen screenshots 或 launcher smoke 當成人工 acceptance。
+- 不新增 planning 文件；新 current truth 回寫既有 canonical pages。

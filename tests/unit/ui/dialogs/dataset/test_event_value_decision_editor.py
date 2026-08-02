@@ -133,7 +133,7 @@ def test_editor_groups_identical_values_across_files_and_preserves_output(
     qtbot.addWidget(editor)
 
     assert editor.row_count() == 1
-    assert "7 rows" in editor.coverage_text("left")
+    assert "7 occurrences" in editor.coverage_text("left")
     assert "2/2 files" in editor.coverage_text("left")
     assert [
         label.text()
@@ -217,6 +217,42 @@ def test_editor_uses_editable_controls_without_nested_scroll(qtbot) -> None:
     assert editor.findChildren(QComboBox)
     assert editor.findChildren(QLineEdit)
     assert editor.findChildren(QScrollArea) == []
+
+
+def test_editor_hides_internal_role_and_evidence_until_advanced(qtbot) -> None:
+    editor = EventValueDecisionEditor(
+        [_carrier("/data/run-01_events.tsv", {"left": _unresolved("left")})]
+    )
+    qtbot.addWidget(editor)
+    editor.show()
+    qtbot.wait(0)
+
+    visible_headers = {
+        label.text()
+        for label in editor.findChildren(QLabel, "DataImportPairingHeaderLabel")
+        if not label.isHidden()
+    }
+    role_selector = editor.findChildren(QComboBox, "EventValueRoleSelector")[0]
+    assert visible_headers == {
+        "Label value",
+        "Use as",
+        "Class name",
+        "Occurrences",
+    }
+    assert not role_selector.isVisibleTo(editor)
+    assert "Role" not in visible_headers
+    assert "Evidence" not in visible_headers
+
+    editor.set_advanced_visible(True)
+
+    visible_headers = {
+        label.text()
+        for label in editor.findChildren(QLabel, "DataImportPairingHeaderLabel")
+        if not label.isHidden()
+    }
+    assert not role_selector.isHidden()
+    assert "Event role" in visible_headers
+    assert "Source evidence" in visible_headers
 
 
 def test_editor_fits_a_narrow_wizard_viewport_without_horizontal_clipping(

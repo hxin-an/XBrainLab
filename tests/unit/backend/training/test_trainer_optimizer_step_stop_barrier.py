@@ -60,7 +60,11 @@ def _real_holder(tmp_path: Path, name: str) -> TrainingPlanHolder:
     split_config = DataSplittingConfig(TrainingType.FULL, False, [], [])
     dataset = Dataset(epoch_data, split_config)
     dataset.set_name(name)
-    dataset.set_remaining_to_train()
+    dataset.train_mask[0] = True
+    dataset.val_mask[1] = True
+    dataset.remaining_mask[:] = False
+    assert set(dataset.get_training_indices()) == {0}
+    assert set(dataset.get_val_indices()) == {1}
 
     option = TrainingOption(
         output_dir=str(tmp_path / name),

@@ -349,9 +349,10 @@ class QtApplicationCommandRunner:
         try:
             busy_acquired = _ASYNC_BUSY_STATE.acquire(target)
 
-            suppression = suppress_observer_refresh_during_command(self.context)
-            suppression.__enter__()
-            suppression_entered = True
+            if self.refresh:
+                suppression = suppress_observer_refresh_during_command(self.context)
+                suppression.__enter__()
+                suppression_entered = True
 
             worker = self.worker_factory(self.execute)
             handle = AsyncCommandHandle(

@@ -113,13 +113,13 @@ _LABEL_CARRIER_CHOICE_SCHEMA: dict[str, Any] = {
             "enum": ["eeg_event", "time_field", "interval", "event_code"],
             "description": (
                 "How label rows are positioned on the EEG timeline for review "
-                "and downstream epoch setup."
+                "and downstream EEG epoch setup."
             ),
         },
         "duration_field": {
             "type": "string",
             "description": (
-                "Optional duration or end-time field preserved for epoch setup."
+                "Optional duration or end-time field preserved for EEG epoch setup."
             ),
         },
         "granularity": {

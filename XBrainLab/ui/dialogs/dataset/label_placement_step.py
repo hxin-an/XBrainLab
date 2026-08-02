@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 from PyQt6.QtCore import Qt
@@ -34,6 +35,11 @@ else:
 
 class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
     """Render and state helpers for external label placement rules."""
+
+    placement_method_buttons: dict[str, QRadioButton]
+    placement_method_option_frames: dict[str, QFrame]
+    target_event_buttons: dict[str, QCheckBox]
+    target_event_option_frames: dict[str, QFrame]
 
     def _sync_label_placement_after_label_sources_changed(self) -> None:
         """Refresh Match Labels state after Load Labels mutates label sources."""
@@ -81,7 +87,10 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             "Read labels from",
             self.rule_label_field_combo,
         )
-        carrier_use_control = self._rule_control("Use as", self.rule_use_as_combo)
+        carrier_use_control = self._rule_control(
+            "Use as",
+            self.rule_use_as_combo,
+        )
         has_value_decisions = any(
             isinstance(plan.get("value_decisions"), dict)
             and bool(plan.get("value_decisions"))
@@ -138,7 +147,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         self.rule_duration_field_combo = self._rule_combo(
             self._duration_field_choices(),
             self._common_carrier_value("selected_duration_field"),
-            "Choose a duration or end-time field to pass to epoch setup.",
+            "Choose a duration or end-time field for EEG epoch setup.",
         )
         self.rule_time_model_combo = self._rule_combo(
             self._time_model_choices(),
@@ -229,13 +238,24 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         text_layout.addWidget(self.label_table_fallback_reason_label)
         layout.addLayout(text_layout, 0, 0, 1, 2)
 
+        action_layout = QVBoxLayout()
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(6)
+        self.go_to_load_labels_btn = QPushButton("Go to Load Labels")
+        self.go_to_load_labels_btn.setObjectName("DataImportToolButton")
+        self.go_to_load_labels_btn.clicked.connect(
+            lambda: self._go_to_step(self._step_titles.index("Load Labels"))
+        )
+        action_layout.addWidget(self.go_to_load_labels_btn)
+
         self.view_label_table_format_btn = QPushButton("View required format")
-        self.view_label_table_format_btn.setObjectName("DataImportToolButton")
+        self.view_label_table_format_btn.setObjectName("DataImportTertiaryButton")
         self.view_label_table_format_btn.clicked.connect(
             self._show_converted_label_table_format
         )
-        layout.addWidget(
-            self.view_label_table_format_btn,
+        action_layout.addWidget(self.view_label_table_format_btn)
+        layout.addLayout(
+            action_layout,
             0,
             2,
             alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -276,12 +296,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
                 "The file was loaded, but XBrainLab cannot tell which column or "
                 "variable contains the labels."
             )
-        placement_method = ""
         alignment = ""
-        if hasattr(self, "rule_placement_method_combo"):
-            placement_method = self._combo_current_data(
-                self.rule_placement_method_combo
-            )
         if hasattr(self, "rule_alignment_combo"):
             alignment = self._combo_current_data(self.rule_alignment_combo)
         if not alignment:
@@ -289,19 +304,9 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
                 "The file was loaded, but XBrainLab cannot tell where each label "
                 "belongs in the EEG."
             )
-        blocked_reviews = [
-            review
-            for review in self._active_backend_placement_reviews(placement_method)
-            if str(review.get("status") or "").strip().lower() == "blocked"
-        ]
-        if blocked_reviews:
-            summary = str(blocked_reviews[0].get("summary") or "").strip().rstrip(".")
-            if summary:
-                return (
-                    "The file was loaded, but this placement rule is blocked: "
-                    f"{summary}."
-                )
-            return "The file was loaded, but XBrainLab cannot match it to EEG events."
+        # A blocked placement review is an editable matching decision, not an
+        # unreadable file format. Keep the placement controls visible so the
+        # user can select target events, timing, intervals, or event codes.
         return ""
 
     def _build_label_rule_card(self, layout: QVBoxLayout) -> None:
@@ -339,14 +344,16 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             "event_code": "Match label rows by event code values.",
         }
         current = self._combo_current_data(self.rule_placement_method_combo)
-        for column, (title, value) in enumerate(self._placement_method_choices()):
+        for column, (option_title, value) in enumerate(
+            self._placement_method_choices()
+        ):
             option = QFrame()
             option.setObjectName("DataImportPlacementOption")
             option.setProperty("selected", value == current)
             option_layout = QVBoxLayout(option)
             option_layout.setContentsMargins(10, 8, 10, 9)
             option_layout.setSpacing(4)
-            radio = QRadioButton(title)
+            radio = QRadioButton(option_title)
             radio.setObjectName("DataImportPlacementRadio")
             radio.setChecked(value == current)
             radio.toggled.connect(
@@ -425,18 +432,19 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setHorizontalSpacing(10)
         controls.setVerticalSpacing(8)
-        time_field_combo = self._rule_combo(
+        self.time_field_combo = self._rule_combo(
             self._alignment_rule_choices("time_field"),
             self._default_alignment_value("time_field"),
             "Choose the label-file time field.",
         )
-        time_field_combo.currentIndexChanged.connect(
-            lambda _index, selector=time_field_combo: (
+        self.time_field_combo.setObjectName("DataImportTimeFieldSelector")
+        self.time_field_combo.currentIndexChanged.connect(
+            lambda _index, selector=self.time_field_combo: (
                 self._handle_time_field_selector_change(selector)
             )
         )
         controls.addWidget(
-            self._rule_control("Time column", time_field_combo),
+            self._rule_control("Time column", self.time_field_combo),
             0,
             0,
         )
@@ -665,7 +673,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             layout.addWidget(unlabeled_title)
             layout.addWidget(
                 self._event_rules_table(
-                    ["Event", "Suggested use", "Count"],
+                    ["Event", "Use as", "Occurrences"],
                     unlabeled_rows,
                 )
             )
@@ -710,8 +718,10 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         layout.addWidget(self._pairing_header_label("Target", 64))
         layout.addWidget(self._pairing_header_label("Event", 58))
         layout.addWidget(self._pairing_header_label("Use as"), stretch=2)
-        layout.addWidget(self._pairing_header_label("Suggestion evidence"), stretch=3)
-        layout.addWidget(self._pairing_header_label("Count", 92))
+        evidence_header = self._pairing_header_label("Source evidence")
+        layout.addWidget(evidence_header, stretch=3)
+        self._register_match_advanced_widget(evidence_header)
+        layout.addWidget(self._pairing_header_label("Occurrences", 92))
         return header
 
     def _target_event_option_row(self, display: str, value: str) -> QFrame:
@@ -743,6 +753,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         evidence.setObjectName("DataImportSourceDetail")
         evidence.setWordWrap(True)
         layout.addWidget(evidence, stretch=3)
+        self._register_match_advanced_widget(evidence)
         count = QLabel(self._event_count_text(event) or "")
         count.setObjectName("DataImportPairingBadge")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -804,7 +815,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             if value_summary:
                 return (
                     f"{field}: {value_summary}. BIDS timing is saved for import "
-                    "and epoch setup."
+                    "and EEG epoch setup."
                 )
             return f"{field} values will be imported from BIDS events.tsv."
         if value_summary:
@@ -972,10 +983,15 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             combined["label_rows"] = sum(label_rows)
         if numeric_rows:
             combined["numeric_rows"] = sum(numeric_rows)
-        mins = [self._float_value(review.get("time_min")) for review in reviews]
-        maxes = [self._float_value(review.get("time_max")) for review in reviews]
-        mins = [value for value in mins if value is not None]
-        maxes = [value for value in maxes if value is not None]
+        mins: list[float] = []
+        maxes: list[float] = []
+        for review in reviews:
+            minimum = self._float_value(review.get("time_min"))
+            maximum = self._float_value(review.get("time_max"))
+            if minimum is not None:
+                mins.append(minimum)
+            if maximum is not None:
+                maxes.append(maximum)
         if mins:
             combined["time_min"] = min(mins)
         if maxes:
@@ -1012,6 +1028,10 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
                 combined[key] = sum(values)
         missing_codes: list[str] = []
         matched_codes: list[str] = []
+        seen_codes = {
+            "missing_codes": set(),
+            "matched_codes": set(),
+        }
         for review in reviews:
             for key, target in (
                 ("missing_codes", missing_codes),
@@ -1022,8 +1042,10 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
                     continue
                 for value in raw_values:
                     text = str(value).strip()
-                    if text and text not in target:
-                        target.append(text)
+                    if not text or text in seen_codes[key]:
+                        continue
+                    seen_codes[key].add(text)
+                    target.append(text)
         if missing_codes:
             combined["missing_codes"] = missing_codes
         if matched_codes:
@@ -1072,7 +1094,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         if summary:
             return (
                 f"{summary.rstrip('.')} · {status}. "
-                "Epoch setup will use this timing evidence."
+                "EEG epoch setup will use this timing information."
             )
         return "Review interval start and duration/end fields before import."
 
@@ -1112,7 +1134,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             ),
         ]
 
-    def _event_code_mapping_rows(self) -> list[tuple[str, ...]]:
+    def _event_code_mapping_rows(self) -> Sequence[tuple[str, ...]]:
         review = self._event_code_review()
         rows = review.get("code_mappings")
         if not isinstance(rows, list) or not rows:
@@ -1292,7 +1314,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             )
         else:
             parts.append("Range needs review.")
-        parts.append("Epoch window will be set later.")
+        parts.append("The EEG epoch window will be set later.")
         return " ".join(parts)
 
     def _time_field_unit_text(self) -> str:
@@ -1700,7 +1722,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         return [
             ("Trial", "trial"),
             ("Event", "event"),
-            ("Epoch", "epoch"),
+            ("EEG epoch", "epoch"),
             ("Segment", "segment"),
             ("Session", "session"),
             ("Subject", "subject"),
@@ -1747,6 +1769,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         self._label_rule_controls_changed = True
         if not self._label_carrier_items:
             self._refresh_label_rule_status()
+            self._sync_next_button_state()
             return
         for item, _original in self._label_carrier_items:
             self._apply_rule_combo_to_item(self.rule_label_field_combo, item, 2)
@@ -1754,6 +1777,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             self._apply_rule_combo_to_item(self.rule_label_unit_combo, item, 4)
             self._apply_rule_combo_to_item(self.rule_use_as_combo, item, 5)
         self._refresh_label_rule_status()
+        self._sync_next_button_state()
         self._fit_label_carrier_tree_height()
         self._fit_all_tree_columns_to_viewport()
 
@@ -1796,7 +1820,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             if self._event_role_items:
                 return (
                     f"Using labels inside EEG files · {len(self._event_role_items)} "
-                    "event role(s) available for review."
+                    "EEG event choice(s) available for review."
                 )
             return (
                 "Using labels inside EEG files · no event candidates in this preview."

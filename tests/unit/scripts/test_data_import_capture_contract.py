@@ -7,7 +7,10 @@ import pytest
 from PIL import Image
 
 import scripts.dev.capture_data_import_wizard_steps as capture_script
-from scripts.dev.app_polish_capture_contract import collect_source_identity
+from scripts.dev.app_polish_capture_contract import (
+    SCHEMA_VERSION,
+    collect_source_identity,
+)
 from scripts.dev.data_import_capture_contract import (
     MANIFEST_NAME,
     build_data_import_capture_manifest,
@@ -51,7 +54,7 @@ def test_data_import_manifest_binds_complete_capture_to_source_and_environment(
     )
 
     assert ok is True, reason
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == SCHEMA_VERSION
     assert payload["source_identity"]["branch"]
     assert payload["source_identity"]["commit_sha"]
     assert payload["source_identity"]["dirty_digest"]
@@ -176,7 +179,7 @@ def test_validate_only_returns_nonzero_for_stale_source_evidence(
     monkeypatch.setattr(
         capture_script,
         "load_data_import_capture_manifest",
-        lambda _output_dir: {"schema_version": 4},
+        lambda _output_dir: {"schema_version": SCHEMA_VERSION},
     )
     monkeypatch.setattr(
         capture_script,

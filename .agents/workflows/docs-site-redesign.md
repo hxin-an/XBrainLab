@@ -72,7 +72,7 @@
 至少跑：
 
 ```bash
-poetry run mkdocs build --strict
+poetry run -- mkdocs build --strict
 ```
 
 若有修改 CSS / 首頁 layout，還要產出 screenshot 或用瀏覽器檢查 built site。

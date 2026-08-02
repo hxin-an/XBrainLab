@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -31,6 +30,10 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend import model_base
 from XBrainLab.backend.training import ModelHolder
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
     configure_dark_table,
@@ -103,17 +106,17 @@ class ModelSelectionDialog(BaseDialog):
     ):
         self.controller = controller
 
-        self.pretrained_weight_path = None
-        self.model_holder = None
+        self.pretrained_weight_path: str | None = None
+        self.model_holder: ModelHolder | None = None
 
         # UI Elements
-        self.model_combo = None
-        self.params_table = None
-        self.params_group = None
-        self.confirm_btn = None
-        self.weight_label = None
-        self.weight_btn = None
-        self.content_scroll = None
+        self.model_combo: QComboBox | None = None
+        self.params_table: QTableWidget | None = None
+        self.params_group: QFrame | None = None
+        self.confirm_btn: QPushButton | None = None
+        self.weight_label: QLabel | None = None
+        self.weight_btn: QPushButton | None = None
+        self.content_scroll: QScrollArea | None = None
 
         # Fetch model list
         self.model_map = {
@@ -541,8 +544,11 @@ class ModelSelectionDialog(BaseDialog):
             )
             super().accept()
 
-        except Exception as e:
-            QMessageBox.warning(self, "Error", str(e))
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_MODEL_SETTINGS,
+            )
 
     def get_result(self):
         """Return the configured ModelHolder.

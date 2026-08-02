@@ -1,6 +1,6 @@
 # XBrainLab Agent Stack
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-31`
 
 這份文件只記錄「目前有效」的 agent 操作層。舊的 automation、role、skill、AQ queue 已整合到 canonical 文件或刪除。
 
@@ -11,9 +11,8 @@
 | `AGENTS.md` | repo 根層規則和最短閱讀入口。 |
 | `.agents/README.md` | repo-local agent 操作入口。 |
 | `.agents/stack.md` | 本文件；說明 agent 文件分工和有效能力。 |
-| `.agents/runbooks/setup.md` | 現行 setup、工作規則、驗證指令。 |
+| `.agents/runbooks/setup.md` | 現行 setup、工作規則、validation manifest routing。 |
 | `.agents/runbooks/autopilot.md` | 長時間工作時的保守工作循環。 |
-| `.agents/runbooks/active-queue.md` | 舊 AQ queue 的退役宣告和目前短 queue。 |
 | `.agents/runbooks/architecture-review.md` | 全盤架構複盤步驟。 |
 | `.agents/runbooks/refactor-gate.md` | 後端重構開工前 gate。 |
 | `.agents/skills/README.md` | repo-local reusable skills 入口。 |
@@ -39,23 +38,36 @@ active workflows 在 `.agents/workflows/`。workflow 是多步驟流程，skill 
 5. `docs/planning/roadmap.md`
 6. `docs/decisions/README.md`
 7. `docs/validation/README.md`
-8. `docs/records/implementation_log.md`
 
 架構細節以 `docs/architecture/` 為準。舊設計文件已整合後刪除，不能當 current truth。
 
 `.agents/context/` 只作導讀，不保存 current / target / architecture 的第二份 truth。
 
+## Active Dispatch Authority
+
+Agent 只能從以下三處取得目前施工順序和 completion contract：
+
+1. `docs/planning/now.md`
+2. `docs/agent_goals/product_quality_closure_goal.md`
+3. `docs/records/product_quality_audit_2026-07-30.md`
+
+`docs/current.md` 提供 current context；roadmap、records、worklog、artifact 和 Git history 提供
+背景或 evidence。它們都不是第二份 active queue。若三個 active 入口彼此不一致，先停止
+dispatch，依 source/runtime evidence 校準 canonical 文件。
+
 ## 目前階段
 
-目前工作已從文件整理與現況盤點，進入 product-delivery engineering。
+目前在 `stabilize/product-quality-closure` 進行 product-quality closure。這條線是
+checkpoint，尚未 handoff-ready。
 
 這代表：
 
 - legacy 文件已整合後刪除，不再保留 `docs/legacy/` 或 `.agents/legacy/` 閱讀面。
-- backend `ApplicationService / Command API` 第一版已落地，下一步是產品級收斂，不是停在 contract baseline。
-- agent 必須統一 UI 和 agent 使用 backend 的 command surface，避免兩套狀態判斷。
-- 可以推進 UI chat / agent panel、local LLM runtime、desktop launcher 和 product stabilization。
-- tool-call eval / thesis evidence 要等產品主線穩定後再開始。
+- backend `ApplicationService / Command API` 是唯一 product command spine；compatibility path
+  不得用作 product success evidence。
+- agent 必須依 active audit 收斂 UI/backend/assistant/validation findings，不得另建 queue。
+- 弱測試或 compatibility-only 測試不得在較強 replacement coverage 落地前刪除。
+- tool-call eval / thesis evidence 要等 active goal 關閉後再開始。
 - milestone 是最低交付門檻，不是工作上限；完成後仍要主動修 bug、補測試、校準文件。
 
 ## 能力政策
@@ -72,13 +84,15 @@ substantial work 前讀：
 
 1. `AGENTS.md`
 2. `docs/current.md`
-3. `docs/target/README.md`
-4. `docs/planning/now.md`
-5. `docs/validation/README.md`
-6. `.agents/runbooks/setup.md`
-7. `.agents/runbooks/autopilot.md`
-8. `.agents/skills/README.md`
-9. `.agents/workflows/README.md`
+3. `docs/planning/now.md`
+4. `docs/agent_goals/product_quality_closure_goal.md`
+5. `docs/records/product_quality_audit_2026-07-30.md`
+6. `docs/target/README.md`
+7. `docs/validation/README.md`
+8. `.agents/runbooks/setup.md`
+9. `.agents/runbooks/autopilot.md`
+10. `.agents/skills/README.md`
+11. `.agents/workflows/README.md`
 
 需要論文或 agent product framing 時，再讀：
 

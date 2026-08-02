@@ -198,6 +198,23 @@ class _FailingQueuedController(_QueuedController):
         )
 
 
+class _HostileExceptionMeta(type):
+    def __getattribute__(cls, name: str) -> object:
+        if name == "__name__":
+            raise AssertionError("hostile exception metaclass name access executed")
+        return super().__getattribute__(name)
+
+
+class _HostileDeliveryError(Exception, metaclass=_HostileExceptionMeta):
+    def __str__(self) -> str:
+        raise AssertionError("hostile exception string protocol executed")
+
+
+class _HostileFailingQueuedController(_QueuedController):
+    def handle_user_turn(self, _request: AssistantTurnRequest) -> None:
+        raise _HostileDeliveryError("/srv/Clinical Records/Mary Example")
+
+
 class _AsyncClosingQueuedController(_QueuedController):
     shutdown_finished = pyqtSignal(bool, str)
 
@@ -454,6 +471,33 @@ def test_queued_submit_exception_is_acknowledged_without_sys_excepthook(
         assert acknowledgements[1].correlation == second.correlation
         assert acknowledgements[1].phase is AssistantTurnDeliveryPhase.ACCEPTED
         assert controller.calls == ["submit"]
+    finally:
+        _finish_queued_close(qtbot, dispatcher)
+
+
+def test_queued_submit_contains_hostile_exception_at_public_boundary(
+    qtbot: Any,
+) -> None:
+    controller = _HostileFailingQueuedController()
+    dispatcher = AssistantCommandDispatcher()
+    acknowledgements: list[AssistantTurnDeliveryAcknowledgement] = []
+    dispatcher.turn_delivery_acknowledged.connect(acknowledgements.append)
+    dispatcher.bind(controller)
+    request = AssistantTurnRequest.single_action(
+        correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+        text="inspect state",
+    )
+
+    try:
+        assert dispatcher.submit(request) is True
+        qtbot.waitUntil(lambda: len(acknowledgements) == 1, timeout=2_000)
+
+        acknowledgement = acknowledgements[0]
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ERROR
+        assert acknowledgement.message == (
+            "Assistant controller could not complete the queued request."
+        )
+        assert "Mary Example" not in acknowledgement.message
     finally:
         _finish_queued_close(qtbot, dispatcher)
 

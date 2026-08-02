@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import math
+import os
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any
+from pathlib import PosixPath, PurePosixPath, PureWindowsPath, WindowsPath
+from typing import Any, cast
 
-from .serialization import serialize_json_value, split_runtime_fields
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+    public_diagnostic_text,
+    public_diagnostic_value,
+)
+
+from .state import ApplicationStateSnapshot
+
+_UNSAFE_VALUE = object()
+_SAFE_PATH_TYPES = (PosixPath, WindowsPath, PurePosixPath, PureWindowsPath)
 
 
 class CommandStatus(str, Enum):
@@ -61,7 +73,7 @@ class ChangedState:
 
 @dataclass(frozen=True)
 class CommandResult:
-    """Serializable command result with before/after state details."""
+    """Detached JSON-safe command result with before/after state details."""
 
     status: CommandStatus
     command_name: str
@@ -72,16 +84,38 @@ class CommandResult:
     recoverable: bool = True
     error_message: str | None = None
     diagnostics: dict[str, Any] = field(default_factory=dict)
-    runtime: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "state", deepcopy(self.state))
-        safe_diagnostics, extracted_runtime = split_runtime_fields(self.diagnostics)
-        object.__setattr__(self, "diagnostics", safe_diagnostics)
+        if type(self.status) is not CommandStatus:
+            object.__setattr__(self, "status", CommandStatus.FAILED)
+        if type(self.command_name) is not str:
+            object.__setattr__(
+                self,
+                "command_name",
+                PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+            )
+        object.__setattr__(self, "message", public_diagnostic_text(self.message))
+        if self.error_message is not None:
+            object.__setattr__(
+                self,
+                "error_message",
+                public_diagnostic_text(self.error_message),
+            )
+        if type(self.changed_state) is not ChangedState:
+            object.__setattr__(
+                self,
+                "changed_state",
+                ChangedState(error_changed=True, state_unknown=True),
+            )
+        if type(self.error_type) is not ErrorType:
+            object.__setattr__(self, "error_type", ErrorType.INTERNAL)
+        if type(self.recoverable) is not bool:
+            object.__setattr__(self, "recoverable", False)
+        object.__setattr__(self, "state", _copy_result_state(self.state))
         object.__setattr__(
             self,
-            "runtime",
-            {**extracted_runtime, **self.runtime},
+            "diagnostics",
+            _copy_json_diagnostic_fields(self.diagnostics),
         )
 
     @property
@@ -96,11 +130,6 @@ class CommandResult:
     def failed(self) -> bool:
         return self.status == CommandStatus.FAILED
 
-    @property
-    def local_payload(self) -> dict[str, Any]:
-        """Return diagnostics plus process-local UI references."""
-        return {**self.diagnostics, **self.runtime}
-
     @classmethod
     def success_result(
         cls,
@@ -109,7 +138,6 @@ class CommandResult:
         state: Any,
         changed_state: ChangedState,
         diagnostics: dict[str, Any] | None = None,
-        runtime: dict[str, Any] | None = None,
     ) -> CommandResult:
         return cls(
             status=CommandStatus.OK,
@@ -117,8 +145,7 @@ class CommandResult:
             message=message,
             state=state,
             changed_state=changed_state,
-            diagnostics=diagnostics or {},
-            runtime=runtime or {},
+            diagnostics=diagnostics if type(diagnostics) is dict else {},
         )
 
     @classmethod
@@ -132,7 +159,6 @@ class CommandResult:
         recoverable: bool,
         error_message: str | None = None,
         diagnostics: dict[str, Any] | None = None,
-        runtime: dict[str, Any] | None = None,
     ) -> CommandResult:
         return cls(
             status=CommandStatus.FAILED,
@@ -142,22 +168,142 @@ class CommandResult:
             changed_state=changed_state,
             error_type=error_type,
             recoverable=recoverable,
-            error_message=error_message or message,
-            diagnostics=diagnostics or {},
-            runtime=runtime or {},
+            error_message=error_message if type(error_message) is str else message,
+            diagnostics=diagnostics if type(diagnostics) is dict else {},
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return serialize_json_value(
-            {
-                "status": self.status,
-                "command_name": self.command_name,
-                "message": self.message,
-                "state": self.state,
-                "changed_state": self.changed_state,
-                "error_type": self.error_type,
-                "recoverable": self.recoverable,
-                "error_message": self.error_message,
-                "diagnostics": self.diagnostics,
-            },
-        )
+        """Return the public-safe JSON contract for compatibility callers."""
+        return self.to_public_dict()
+
+    def to_internal_dict(self) -> dict[str, Any]:
+        """Return the unredacted, detached JSON-safe result projection."""
+        return {
+            "status": self.status.value,
+            "command_name": self.command_name,
+            "message": self.message,
+            "state": _serialize_result_state(self.state),
+            "changed_state": self.changed_state.to_dict(),
+            "error_type": self.error_type.value,
+            "recoverable": self.recoverable,
+            "error_message": self.error_message,
+            "diagnostics": _clone_exact_json_value(self.diagnostics),
+        }
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """Serialize the fixed public-safe command-result projection."""
+        projected = public_diagnostic_value(self.to_internal_dict())
+        if type(projected) is dict and "status" in projected:
+            return projected
+        return {
+            "status": self.status.value,
+            "command_name": self.command_name,
+            "message": PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+            "state": {},
+            "changed_state": ChangedState(
+                error_changed=True,
+                state_unknown=True,
+            ).to_dict(),
+            "error_type": ErrorType.INTERNAL.value,
+            "recoverable": False,
+            "error_message": PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+            "diagnostics": {"truncated": True},
+        }
+
+
+def _copy_result_state(value: Any) -> Any:
+    if type(value) is ApplicationStateSnapshot:
+        return deepcopy(value)
+    cloned = _clone_exact_json_value(value)
+    return cloned if cloned is not _UNSAFE_VALUE else {}
+
+
+def _serialize_result_state(value: Any) -> Any:
+    if type(value) is ApplicationStateSnapshot:
+        return value.to_dict()
+    cloned = _clone_exact_json_value(value)
+    return cloned if cloned is not _UNSAFE_VALUE else {}
+
+
+def _copy_json_diagnostic_fields(values: Any) -> dict[str, Any]:
+    if type(values) is not dict:
+        return {}
+    diagnostics: dict[str, Any] = {}
+    for key, value in dict.items(values):
+        public_key = _exact_mapping_key(key)
+        if public_key is None:
+            continue
+        cloned = _clone_exact_json_value(value)
+        if cloned is not _UNSAFE_VALUE:
+            diagnostics[public_key] = cloned
+    return diagnostics
+
+
+def _clone_exact_json_value(
+    value: Any,
+    *,
+    _active: set[int] | None = None,
+    _depth: int = 0,
+) -> Any:
+    value_type = type(value)
+    if value_type is float:
+        numeric_value = cast(float, value)
+        return numeric_value if math.isfinite(numeric_value) else _UNSAFE_VALUE
+    if value is None or value_type in {str, bool, int}:
+        return value
+    if value_type in _SAFE_PATH_TYPES:
+        path = os.fspath(cast(os.PathLike[str] | os.PathLike[bytes], value))
+        return os.fsdecode(path)
+    if value_type not in {dict, list, tuple} or _depth >= 32:
+        return _UNSAFE_VALUE
+
+    container = cast(dict[Any, Any] | list[Any] | tuple[Any, ...], value)
+    active = _active if _active is not None else set()
+    identity = id(container)
+    if identity in active:
+        return _UNSAFE_VALUE
+    active.add(identity)
+    try:
+        if value_type is dict:
+            cloned_mapping: dict[str, Any] = {}
+            for key, item in dict.items(cast(dict[Any, Any], container)):
+                public_key = _exact_mapping_key(key)
+                if public_key is None:
+                    return _UNSAFE_VALUE
+                cloned_item = _clone_exact_json_value(
+                    item,
+                    _active=active,
+                    _depth=_depth + 1,
+                )
+                if cloned_item is _UNSAFE_VALUE:
+                    return _UNSAFE_VALUE
+                cloned_mapping[public_key] = cloned_item
+            return cloned_mapping
+
+        cloned_items: list[Any] = []
+        for item in cast(list[Any] | tuple[Any, ...], container):
+            cloned_item = _clone_exact_json_value(
+                item,
+                _active=active,
+                _depth=_depth + 1,
+            )
+            if cloned_item is _UNSAFE_VALUE:
+                return _UNSAFE_VALUE
+            cloned_items.append(cloned_item)
+        return cloned_items
+    finally:
+        active.remove(identity)
+
+
+def _exact_mapping_key(value: Any) -> str | None:
+    if type(value) is str:
+        return value
+    if type(value) is bool:
+        return "true" if value else "false"
+    if type(value) in {int, float}:
+        try:
+            rendered = str(value)
+        except (OverflowError, ValueError):
+            return None
+        return rendered if len(rendered) <= 4096 else None
+    return None

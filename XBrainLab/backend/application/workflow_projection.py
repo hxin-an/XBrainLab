@@ -227,7 +227,7 @@ def _evidence(
     if command_name == CommandName.CREATE_EPOCH.value:
         return (f"{state.preprocessed.count} preprocessed item(s) are available.",)
     if command_name == CommandName.GENERATE_DATASET.value:
-        return ("Epoch data is available.",)
+        return ("EEG epoch data is available.",)
     if command_name == CommandName.CONFIGURE_TRAINING.value:
         return ("A generated dataset is available.",)
     if command_name == CommandName.TRAIN.value:

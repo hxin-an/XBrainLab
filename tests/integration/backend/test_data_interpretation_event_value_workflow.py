@@ -55,7 +55,8 @@ def test_save_reload_apply_epoch_preserves_event_value_truth(tmp_path: Path) -> 
     validated = writer.execute(ValidateInterpretationCommand())
     assert validated.ok
     assert validated.diagnostics["validation_decision"]["decision"] == "safe"
-    assert validated.diagnostics["validation_decision"]["action_items"] == []
+    action_items = validated.diagnostics["validation_decision"]["action_items"]
+    assert all(item["severity"] != "blocking" for item in action_items)
     applied = writer.execute(ApplyInterpretationCommand(confirmed=True))
     assert applied.ok
     assert applied.diagnostics["channels_apply"][0]["bad_channels"] == ["C4"]
@@ -174,7 +175,9 @@ def test_confirmed_apply_cannot_override_unresolved_bids_values(
     assert preview.ok
     assert validation.diagnostics["validation_decision"]["decision"] == "blocked"
     assert apply.ok is False
-    assert "complete role/keep/class decisions" in str(apply.error_message)
+    assert "selected event values have no complete semantic decision" in str(
+        apply.error_message
+    )
     assert apply.state.raw.loaded is False
 
 

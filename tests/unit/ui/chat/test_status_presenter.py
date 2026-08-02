@@ -57,6 +57,10 @@ def test_no_data_stage_offers_three_contextual_prompts() -> None:
         "Explain the import workflow",
     ]
     assert presentation.suggestions[0].prompt == "Help me import EEG data"
+    assert all(
+        "guided" not in f"{suggestion.title} {suggestion.subtitle}".lower()
+        for suggestion in presentation.suggestions
+    )
 
 
 def test_no_data_stage_does_not_offer_import_when_backend_disables_scan() -> None:

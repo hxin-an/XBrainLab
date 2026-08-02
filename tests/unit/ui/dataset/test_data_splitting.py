@@ -1,210 +1,149 @@
-from unittest.mock import MagicMock, patch
+"""Dataset-splitting UI tests at the detached publication boundary."""
+
+from __future__ import annotations
+
+from unittest.mock import patch
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractItemView, QDialog
 
-from XBrainLab.backend.dataset.option import SplitByType, SplitUnit
+from tests.unit.ui.data_split_test_support import (
+    dialog_context_kwargs,
+    successful_preview,
+)
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitPreviewRow,
+)
+from XBrainLab.backend.dataset import (
+    DataSplittingConfig,
+    SplitByType,
+    SplitUnit,
+    TrainingType,
+)
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
     DataSplitterHolder,
-)
-from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-    DataSplittingPreviewDialog as DataSplittingWindow,
+    DataSplittingPreviewDialog,
 )
 
 
-def test_data_splitter_holder_validation():
-    """
-    Test that DataSplitterHolder correctly validates input
-    and returns the correct value.
-    """
-    # Instantiate Holder (is_option=True, split_type=SplitByType.TRIAL)
+def _split_config() -> DataSplittingConfig:
+    return DataSplittingConfig(
+        train_type=TrainingType.FULL,
+        is_cross_validation=False,
+        val_splitter_list=[],
+        test_splitter_list=[],
+    )
+
+
+def _window(qtbot) -> DataSplittingPreviewDialog:
+    window = DataSplittingPreviewDialog(
+        None,
+        "Test Window",
+        config=_split_config(),
+        **dialog_context_kwargs(preview_provider=successful_preview),
+    )
+    qtbot.addWidget(window)
+    if window.preview_worker is not None:
+        window.preview_worker.join(timeout=1)
+    window.update_table()
+    return window
+
+
+def test_data_splitter_holder_validation() -> None:
     holder = DataSplitterHolder(True, SplitByType.TRIAL)
-
-    # 1. Test Initial State (Empty)
     holder.set_entry_var("")
     holder.set_split_unit_var(None)
-
     assert not holder.is_valid()
 
-    # 2. Test Valid Ratio
-    holder.set_split_unit_var(SplitUnit.RATIO.value)  # "Ratio"
+    holder.set_split_unit_var(SplitUnit.RATIO.value)
     holder.set_entry_var("0.8")
-
     assert holder.is_valid()
     assert holder.get_value() == 0.8
 
-    # 3. Test Invalid Ratio (> 1)
     holder.set_entry_var("1.2")
     assert not holder.is_valid()
-
-    # 4. Test Invalid Ratio (Non-numeric)
     holder.set_entry_var("abc")
     assert not holder.is_valid()
 
-    # 5. Switch to Number mode
-    holder.set_split_unit_var(SplitUnit.NUMBER.value)  # "Number"
-
-    # 6. Test Valid Number
+    holder.set_split_unit_var(SplitUnit.NUMBER.value)
     holder.set_entry_var("10")
     assert holder.is_valid()
     assert holder.get_value() == 10.0
-
-    # 7. Test Invalid Number (Float string)
     holder.set_entry_var("10.5")
     assert not holder.is_valid()
-
-    # 8. Test Invalid Number (Negative)
     holder.set_entry_var("-5")
     assert not holder.is_valid()
 
 
-def test_data_splitting_window_init(qtbot):
-    """Test initialization of DataSplittingWindow."""
-    mock_epoch = MagicMock()
-    mock_epoch.subject_map = {}
-    mock_epoch.session_map = {}
-    mock_epoch.label_map = {}
-    mock_epoch.data = []
+def test_data_splitting_window_init_uses_detached_context(qtbot) -> None:
+    window = _window(qtbot)
 
-    mock_config = MagicMock()
-    mock_config.train_type.value = "TrainType"
-    mock_config.get_splitter_option.return_value = ([], [])
-    mock_config.is_cross_validation = False
+    assert window.windowTitle() == "Test Window"
+    assert window.tree.columnCount() == 4
+    assert [window.tree.headerItem().text(i) for i in range(4)] == [
+        "Split",
+        "Train",
+        "Validation",
+        "Test",
+    ]
+    assert window.tree.selectionMode() == QAbstractItemView.SelectionMode.NoSelection
+    assert window.tree.focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert "chevron-down.svg" in window.styleSheet()
+    assert not hasattr(window, "epoch_data")
+    assert not hasattr(window, "dataset_generator")
+    assert not hasattr(window, "datasets")
 
-    # Mock threading to prevent auto-preview
-    with (
-        patch("threading.Thread"),
-        patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+
+def test_data_splitting_window_preview_renders_typed_rows(qtbot) -> None:
+    window = _window(qtbot)
+
+    assert window._preview_status == "succeeded"
+    assert window.tree.topLevelItemCount() == 1
+    item = window.tree.topLevelItem(0)
+    assert [item.text(column) for column in range(4)] == [
+        "Fold_0",
+        "80",
+        "10",
+        "10",
+    ]
+    assert window.tree.selectedItems() == []
+    assert window.tree.currentIndex().isValid() is False
+    assert window.tree.height() <= 180
+
+
+def test_data_splitting_window_update_table_replaces_calculating_row(qtbot) -> None:
+    window = _window(qtbot)
+    window.tree.clear()
+    window._set_preview_state(
+        window._preview_generation_id,
+        "succeeded",
+        rows=(
+            DatasetSplitPreviewRow(
+                name="Dataset1",
+                train_count=100,
+                validation_count=20,
+                test_count=20,
+            ),
         ),
-    ):
-        window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
-        qtbot.addWidget(window)
+    )
 
-        assert window.windowTitle() == "Test Window"
-        assert window.tree.columnCount() == 4
-        assert [window.tree.headerItem().text(i) for i in range(4)] == [
-            "Dataset",
-            "Train",
-            "Validation",
-            "Test",
-        ]
-        assert (
-            window.tree.selectionMode() == QAbstractItemView.SelectionMode.NoSelection
-        )
-        assert window.tree.focusPolicy() == Qt.FocusPolicy.NoFocus
-        assert "chevron-down.svg" in window.styleSheet()
+    window.update_table()
+
+    assert window.tree.topLevelItemCount() == 1
+    item = window.tree.topLevelItem(0)
+    assert [item.text(column) for column in range(4)] == [
+        "Dataset1",
+        "100",
+        "20",
+        "20",
+    ]
 
 
-def test_data_splitting_window_preview(qtbot):
-    """Test preview logic."""
-    mock_epoch = MagicMock()
-    mock_epoch.subject_map = {}
-    mock_epoch.session_map = {}
-    mock_epoch.label_map = {}
-    mock_epoch.data = []
+def test_data_splitting_window_confirm_accepts_only_successful_preview(qtbot) -> None:
+    window = _window(qtbot)
+    window.preview_worker = None
 
-    mock_config = MagicMock()
-    mock_config.train_type.value = "TrainType"
-    mock_config.get_splitter_option.return_value = ([], [])
-    mock_config.is_cross_validation = False
+    with patch.object(QDialog, "accept") as accept:
+        window.confirm()
 
-    with (
-        patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-        ) as MockGen,
-        patch("threading.Thread") as MockThread,
-    ):
-        window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
-        qtbot.addWidget(window)
-
-        # Check if generator was created and thread started
-        MockGen.assert_called()
-        MockThread.return_value.start.assert_called()
-
-        # Check tree initial state
-        assert window.tree.topLevelItemCount() == 1
-        assert window.tree.topLevelItem(0).text(0) == "Calculating"
-        assert window.tree.height() <= 180
-
-
-def test_data_splitting_window_update_table(qtbot):
-    """Test table update from generated datasets."""
-    mock_epoch = MagicMock()
-    mock_epoch.subject_map = {}
-    mock_epoch.session_map = {}
-    mock_epoch.label_map = {}
-    mock_epoch.data = []
-
-    mock_config = MagicMock()
-    mock_config.train_type.value = "TrainType"
-    mock_config.get_splitter_option.return_value = ([], [])
-    mock_config.is_cross_validation = False
-
-    with (
-        patch("threading.Thread"),
-        patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-        ),
-    ):
-        window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
-        qtbot.addWidget(window)
-
-        # Simulate datasets generated
-        mock_dataset = MagicMock()
-        mock_dataset.get_treeview_row_info.return_value = [
-            "True",
-            "Dataset1",
-            "100",
-            "20",
-            "20",
-        ]
-        window.datasets = [mock_dataset]
-
-        # Ensure preview_failed is False
-        window.dataset_generator.preview_failed = False
-
-        window.update_table()
-
-        assert window.tree.topLevelItemCount() == 1
-        assert window.tree.topLevelItem(0).text(0) == "Dataset1"
-        assert window.tree.topLevelItem(0).text(1) == "100"
-        assert window.tree.selectedItems() == []
-        assert window.tree.currentIndex().isValid() is False
-        assert window.tree.height() <= 180
-
-
-def test_data_splitting_window_confirm(qtbot):
-    """Test confirm logic."""
-    mock_epoch = MagicMock()
-    mock_epoch.subject_map = {}
-    mock_epoch.session_map = {}
-    mock_epoch.label_map = {}
-    mock_epoch.data = []
-
-    mock_config = MagicMock()
-    mock_config.train_type.value = "TrainType"
-    mock_config.get_splitter_option.return_value = ([], [])
-    mock_config.is_cross_validation = False
-
-    with (
-        patch("threading.Thread"),
-        patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-        ),
-    ):
-        window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
-        qtbot.addWidget(window)
-
-        # Mock generator
-        window.dataset_generator = MagicMock()
-        window.preview_worker = MagicMock()
-        window.preview_worker.is_alive.return_value = False
-        window._preview_status = "succeeded"
-
-        with patch.object(QDialog, "accept") as mock_accept:
-            window.confirm()
-
-            # Fixed typo: prepare_result
-            window.dataset_generator.prepare_result.assert_called_once()
-            mock_accept.assert_called_once()
+    accept.assert_called_once()

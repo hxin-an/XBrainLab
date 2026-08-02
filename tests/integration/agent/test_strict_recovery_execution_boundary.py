@@ -128,8 +128,8 @@ class _NoopRag:
 class _ImmediateRagLifecycle:
     """Deliver an empty retrieval result through the controller callback."""
 
-    def __init__(self, retriever: _NoopRag) -> None:
-        self.retriever = retriever
+    def __init__(self, retriever: _NoopRag | None = None) -> None:
+        self.retriever = retriever or _NoopRag()
 
     def start(self) -> bool:
         self.retriever.initialize()
@@ -188,9 +188,8 @@ def _controller_with_script(
             "XBrainLab.llm.agent.controller.AgentWorker",
             new=lambda: worker,
         ),
-        patch("XBrainLab.llm.agent.controller.RAGRetriever", new=_NoopRag),
         patch(
-            "XBrainLab.llm.agent.controller.RAGRetrieverLifecycle",
+            "XBrainLab.llm.agent.controller.ProcessRAGRetrieverLifecycle",
             new=_ImmediateRagLifecycle,
         ),
     ):
@@ -225,8 +224,8 @@ def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(qtbot):
 
         assert worker.generation_count == 2
         assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
-        assert controller._retry_count == 1
-        assert controller._tool_execution_count == 0
+        assert controller._tool_attempt_session.retry_count == 1
+        assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
         assert statuses.count("Invalid assistant action, retrying...") == 1
         assert statuses[-1] == "Invalid assistant action"
@@ -235,9 +234,12 @@ def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(qtbot):
             "or describe one workflow step more specifically."
         ]
         assert all(
-            "exactly one JSON object" in messages[0]["content"]
+            "Return exactly one DECISION ENVELOPE" in messages[0]["content"]
+            and "Never use a Markdown code fence" in messages[0]["content"]
             for messages in worker.messages[1:]
         )
+        assert "FORMAT CORRECTION REQUIRED" in worker.messages[1][1]["content"]
+        assert "one JSON object" in worker.messages[1][1]["content"]
     finally:
         close_controller_and_wait(controller, qtbot)
 
@@ -253,7 +255,7 @@ def test_recovered_valid_envelope_reaches_real_execution_coordinator(qtbot):
 
         assert worker.generation_count == 2
         assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
-        assert controller._tool_execution_count == 1
+        assert controller._tool_attempt_session.execution_count == 1
         assert coordinator.commands == ["query_state"]
     finally:
         close_controller_and_wait(controller, qtbot)

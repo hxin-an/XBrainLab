@@ -30,16 +30,16 @@ class TestMonitorLoop:
         study.is_training.return_value = False
         events = []
         ctrl.subscribe("training_stopped", lambda: events.append("stopped"))
-        handoff = ctrl._reserve_terminal_handoff()
-        ctrl._monitor_loop(handoff.generation)
+        handoff = ctrl._training_state._reserve_terminal_handoff()
+        ctrl._training_state._monitor_loop(handoff.generation)
         assert "stopped" in events
 
     def test_loop_breaks_on_shutdown(self):
         ctrl, study = _make_ctrl()
         study.is_training.return_value = True
-        handoff = ctrl._reserve_terminal_handoff()
-        ctrl._shutdown_event.set()
-        ctrl._monitor_loop(handoff.generation)
+        handoff = ctrl._training_state._reserve_terminal_handoff()
+        ctrl._training_state._shutdown_event.set()
+        ctrl._training_state._monitor_loop(handoff.generation)
 
     def test_loop_emits_updated_then_stops(self):
         ctrl, study = _make_ctrl()
@@ -50,37 +50,37 @@ class TestMonitorLoop:
             return call_count[0] > 1
 
         study.is_training.side_effect = [True, False]
-        ctrl._shutdown_event = MagicMock(spec=threading.Event)
-        ctrl._shutdown_event.is_set.return_value = False
-        ctrl._shutdown_event.wait.return_value = False
+        ctrl._training_state._shutdown_event = MagicMock(spec=threading.Event)
+        ctrl._training_state._shutdown_event.is_set.return_value = False
+        ctrl._training_state._shutdown_event.wait.return_value = False
         events = []
         ctrl.subscribe("training_updated", lambda: events.append("updated"))
         ctrl.subscribe("training_stopped", lambda: events.append("stopped"))
-        handoff = ctrl._reserve_terminal_handoff()
-        ctrl._monitor_loop(handoff.generation)
+        handoff = ctrl._training_state._reserve_terminal_handoff()
+        ctrl._training_state._monitor_loop(handoff.generation)
         assert "updated" in events
 
 
 class TestStartMonitoring:
     def test_starts_new_thread(self):
         ctrl, _study = _make_ctrl()
-        handoff = ctrl._reserve_terminal_handoff()
-        ctrl._start_monitoring(handoff.generation)
-        assert ctrl._monitor_thread is not None
-        ctrl._shutdown_event.set()
-        ctrl._monitor_thread.join(timeout=2.0)
+        handoff = ctrl._training_state._reserve_terminal_handoff()
+        ctrl._training_state._start_monitoring(handoff.generation)
+        assert ctrl._training_state._monitor_thread is not None
+        ctrl._training_state._shutdown_event.set()
+        ctrl._training_state._monitor_thread.join(timeout=2.0)
 
     def test_rejects_live_previous_monitor(self):
         ctrl, _ = _make_ctrl()
         existing = MagicMock()
         existing.is_alive.return_value = True
-        ctrl._monitor_thread = existing
-        handoff = ctrl._reserve_terminal_handoff()
+        ctrl._training_state._monitor_thread = existing
+        handoff = ctrl._training_state._reserve_terminal_handoff()
 
         with pytest.raises(RuntimeError, match="previous training monitor"):
-            ctrl._start_monitoring(handoff.generation)
+            ctrl._training_state._start_monitoring(handoff.generation)
 
-        assert ctrl._monitor_thread is existing
+        assert ctrl._training_state._monitor_thread is existing
 
 
 class TestAccessorsAndConfig:

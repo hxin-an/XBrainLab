@@ -4,13 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from inspect import getattr_static
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
+from weakref import ReferenceType, ref
 
 from PyQt6.QtCore import QCoreApplication, QThread
 
 from XBrainLab.backend.application.capabilities import CommandCapability
-from XBrainLab.backend.application.commands import Command, CommandName
+from XBrainLab.backend.application.commands import (
+    Command,
+    CommandName,
+    QueryStateCommand,
+)
 from XBrainLab.backend.application.results import CommandResult
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.async_command_runner import (
@@ -20,20 +27,30 @@ from XBrainLab.ui.interaction_outcome import (
     InteractionOutcome,
     prepare_interaction_command_callbacks,
 )
-from XBrainLab.ui.refresh_coordinator import (
-    refresh_after_command,
-    suppress_observer_refresh_during_command,
-)
 
 if TYPE_CHECKING:
+    from XBrainLab.backend.application.dataset_split_preview import (
+        DatasetSplitContext,
+        DatasetSplitContextPublication,
+        DatasetSplitContextRequest,
+        DatasetSplitPreviewPublication,
+        DatasetSplitPreviewRequest,
+    )
     from XBrainLab.backend.application.epoch_context import EpochDialogContext
+    from XBrainLab.backend.application.evaluation_render import (
+        EvaluationRenderPublication,
+        EvaluationRenderRequest,
+    )
+    from XBrainLab.backend.application.preprocess_render import (
+        PreprocessRenderPublication,
+        PreprocessRenderRequest,
+    )
     from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
     from XBrainLab.backend.application.saliency_render import (
         SaliencyRenderPublication,
         SaliencyRenderRequest,
     )
     from XBrainLab.backend.application.view_publication import (
-        ApplicationViewPublication,
         InterpretationReviewIdentity,
     )
 
@@ -42,10 +59,187 @@ CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE = (
     "XBrainLab could not safely complete this action from the current window "
     "state. Refresh the workflow and try again."
 )
+TRAINING_PROGRESS_UPDATED_EVENT = "training_updated"
 
 
 class ControllerCompatibilityUnavailableError(RuntimeError):
     """Raised when product runtime attempts a controller compatibility mutation."""
+
+
+class DatasetSplitQueryPort(Protocol):
+    """Narrow detached read/cancellation port used by dataset splitting."""
+
+    def get_dataset_split_context(
+        self,
+        request: DatasetSplitContextRequest,
+    ) -> DatasetSplitContextPublication:
+        """Return detached split choices for one application generation."""
+        ...
+
+    def get_dataset_split_preview(
+        self,
+        request: DatasetSplitPreviewRequest,
+    ) -> DatasetSplitPreviewPublication:
+        """Return detached speculative split rows."""
+        ...
+
+    def cancel_dataset_split_preview(self, request_id: str) -> bool:
+        """Cancel one application-owned speculative preview."""
+        ...
+
+
+class EvaluationQueryPort(Protocol):
+    """Narrow read port used by the Evaluation panel."""
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        """Return one committed state/capability publication."""
+        ...
+
+    def get_evaluation_render(
+        self,
+        request: EvaluationRenderRequest,
+    ) -> EvaluationRenderPublication:
+        """Return a detached Evaluation render publication."""
+        ...
+
+
+class EvaluationActionPort(Protocol):
+    """Narrow command port used by the Evaluation panel."""
+
+    def execute(
+        self,
+        command: Command,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        """Execute one Evaluation query through ApplicationService."""
+        ...
+
+
+class PreprocessQueryPort(Protocol):
+    """Narrow detached read port used by the Preprocess panel."""
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        """Return one committed state/capability publication."""
+        ...
+
+    def get_preprocess_render(
+        self,
+        request: PreprocessRenderRequest,
+    ) -> PreprocessRenderPublication:
+        """Return one bounded detached signal publication."""
+        ...
+
+
+class ApplicationPublicationSubscriptionPort(Protocol):
+    """Narrow subscription port for revisioned application publications."""
+
+    def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        """Subscribe to the typed application publication event."""
+        ...
+
+    def unsubscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        """Unsubscribe from the typed application publication event."""
+        ...
+
+
+class ApplicationViewPublicationPort(
+    ApplicationPublicationSubscriptionPort,
+    Protocol,
+):
+    """Narrow query/subscription port for committed application publications."""
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        """Return one committed state/capability publication."""
+        ...
+
+
+class TrainingQueryPort(Protocol):
+    """Narrow detached query port used by the Training panel."""
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        """Return one committed state/capability publication."""
+        ...
+
+    def query_training_history(
+        self,
+        *,
+        expected_publication_generation: int,
+    ) -> CommandResult:
+        """Return detached Training history bound to one publication."""
+        ...
+
+    def query_training_state(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        """Return detached Training configuration state."""
+        ...
+
+
+class TrainingPublicationPort(ApplicationViewPublicationPort, Protocol):
+    """Committed state/capability publication port used by Training."""
+
+
+class TrainingActionPort(Protocol):
+    """Narrow command port used by Training actions."""
+
+    def execute(
+        self,
+        command: Command,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        """Execute one Training action through ApplicationService."""
+        ...
+
+
+class TrainingTransientProgressPort(Protocol):
+    """Notification-only port for non-authoritative live Training progress."""
+
+    def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        """Subscribe to the sole transient progress event."""
+        ...
+
+    def unsubscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        """Unsubscribe from the sole transient progress event."""
+        ...
+
+
+class VisualizationQueryPort(Protocol):
+    """Narrow read port used by the Visualization panel."""
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        """Return one committed state/capability publication."""
+        ...
+
+    def get_saliency_render(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication:
+        """Return one detached saliency render publication."""
+        ...
+
+
+class VisualizationPublicationPort(
+    ApplicationViewPublicationPort,
+    Protocol,
+):
+    """Narrow application publication port used by Visualization."""
+
+
+class VisualizationActionPort(Protocol):
+    """Narrow command port used by the Visualization panel."""
+
+    def execute(
+        self,
+        command: Command,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        """Execute one Visualization query or action through ApplicationService."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -56,21 +250,33 @@ class CommandReviewContext:
     publication_generation: int
 
 
-class ApplicationUiRuntime(Protocol):
+@dataclass(frozen=True)
+class DatasetSplitDialogBinding:
+    """Detached context and application callbacks required by the split dialog."""
+
+    split_context: DatasetSplitContext
+    publication_generation: int
+    preview_provider: Callable[
+        [DatasetSplitPreviewRequest],
+        DatasetSplitPreviewPublication,
+    ]
+    preview_canceller: Callable[[str], bool]
+
+
+class ApplicationUiRuntime(
+    DatasetSplitQueryPort,
+    EvaluationQueryPort,
+    EvaluationActionPort,
+    PreprocessQueryPort,
+    TrainingQueryPort,
+    TrainingPublicationPort,
+    TrainingActionPort,
+    VisualizationQueryPort,
+    VisualizationPublicationPort,
+    VisualizationActionPort,
+    Protocol,
+):
     """Application command boundary used by UI capability helpers."""
-
-    def get_view_publication(self) -> ApplicationViewPublication:
-        """Return one committed state/capability publication."""
-        ...
-
-    def execute(
-        self,
-        command: Command,
-        *,
-        expected_publication_generation: int | None = None,
-    ) -> CommandResult:
-        """Execute one command through ApplicationService."""
-        ...
 
     def get_interpretation_review(
         self,
@@ -78,6 +284,10 @@ class ApplicationUiRuntime(Protocol):
         expected_identity: InterpretationReviewIdentity | None = None,
     ) -> dict[str, Any]:
         """Return the exact pending Data Import review payload."""
+        ...
+
+    def get_epoch_dialog_context(self) -> EpochDialogContext:
+        """Return one detached epoch setup bound to application truth."""
         ...
 
     def get_saliency_render(
@@ -105,8 +315,31 @@ class _StudyApplicationUiRuntime:
     """Production adapter from a genuine Study to ApplicationService."""
 
     study: Study
+    desktop_host_ref: ReferenceType[Any] | None = None
 
     def _service(self):
+        host = self.desktop_host_ref() if self.desktop_host_ref is not None else None
+        ensure_renderer = getattr(
+            host,
+            "_ensure_application_publication_renderer",
+            None,
+        )
+        if callable(ensure_renderer):
+            renderer = ensure_renderer()
+            service = getattr(renderer, "service", None)
+            if service is not None:
+                return service
+        if bool(getattr(host, "_closing_in_progress", False)):
+            from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+                get_initialized_application_service,
+            )
+
+            service = get_initialized_application_service(self.study)
+            if service is not None:
+                return service
+            raise RuntimeError(
+                "Application runtime is unavailable while the desktop is closing."
+            )
         from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
             get_application_service,
         )
@@ -136,11 +369,95 @@ class _StudyApplicationUiRuntime:
             expected_identity=expected_identity,
         )
 
+    def get_epoch_dialog_context(self) -> EpochDialogContext:
+        return self._service().get_epoch_dialog_context()
+
+    def get_dataset_split_context(
+        self,
+        request: DatasetSplitContextRequest,
+    ) -> DatasetSplitContextPublication:
+        return self._service().get_dataset_split_context(request)
+
+    def get_dataset_split_preview(
+        self,
+        request: DatasetSplitPreviewRequest,
+    ) -> DatasetSplitPreviewPublication:
+        return self._service().get_dataset_split_preview(request)
+
+    def cancel_dataset_split_preview(self, request_id: str) -> bool:
+        return self._service().cancel_dataset_split_preview(request_id)
+
     def get_saliency_render(
         self,
         request: SaliencyRenderRequest,
     ) -> SaliencyRenderPublication:
         return self._service().get_saliency_render(request)
+
+    def get_evaluation_render(
+        self,
+        request: EvaluationRenderRequest,
+    ) -> EvaluationRenderPublication:
+        return self._service().get_evaluation_render(request)
+
+    def get_preprocess_render(
+        self,
+        request: PreprocessRenderRequest,
+    ) -> PreprocessRenderPublication:
+        return self._service().get_preprocess_render(request)
+
+    def query_training_history(
+        self,
+        *,
+        expected_publication_generation: int,
+    ) -> CommandResult:
+        return self.execute(
+            QueryStateCommand(query="training_history"),
+            expected_publication_generation=expected_publication_generation,
+        )
+
+    def query_training_state(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        return self.execute(
+            QueryStateCommand(query="state"),
+            expected_publication_generation=expected_publication_generation,
+        )
+
+    def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        from XBrainLab.backend.application.view_publication import (  # noqa: PLC0415
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        )
+
+        if event_name != APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT:
+            raise ValueError("UI runtime exposes only application publications.")
+        host = self.desktop_host_ref() if self.desktop_host_ref is not None else None
+        defer_subscription = getattr(
+            host,
+            "_defer_application_runtime_subscription",
+            None,
+        )
+        if callable(defer_subscription) and defer_subscription(event_name, callback):
+            return
+        self._service().subscribe(event_name, callback)
+
+    def unsubscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        from XBrainLab.backend.application.view_publication import (  # noqa: PLC0415
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        )
+
+        if event_name != APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT:
+            raise ValueError("UI runtime exposes only application publications.")
+        host = self.desktop_host_ref() if self.desktop_host_ref is not None else None
+        cancel_deferred = getattr(
+            host,
+            "_cancel_deferred_application_runtime_subscription",
+            None,
+        )
+        if callable(cancel_deferred) and cancel_deferred(event_name, callback):
+            return
+        self._service().unsubscribe(event_name, callback)
 
     def get_training_resource_preflight(self) -> ResourcePreflightResult | None:
         return self._service().get_training_resource_preflight()
@@ -155,6 +472,52 @@ class _StudyApplicationUiRuntime:
         return self._service().wait_for_background_tasks(timeout=timeout)
 
 
+@dataclass(frozen=True)
+class _StudyTrainingTransientUiPort:
+    """Production adapter exposing only Training's transient progress tick."""
+
+    study: Study
+
+    def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        if event_name != TRAINING_PROGRESS_UPDATED_EVENT:
+            raise ValueError("Training transient port exposes only progress updates.")
+        self.study.training_state_service.subscribe(event_name, callback)
+
+    def unsubscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        if event_name != TRAINING_PROGRESS_UPDATED_EVENT:
+            raise ValueError("Training transient port exposes only progress updates.")
+        self.study.training_state_service.unsubscribe(event_name, callback)
+
+
+def _declared_context_attribute(context: Any, name: str) -> Any | None:
+    """Read only attributes genuinely declared by a context or its type.
+
+    Dynamic proxies such as ``MagicMock`` manufacture arbitrary attributes and
+    parent chains on access. Treating those values as product ownership can
+    loop forever or silently bind the wrong runtime.
+    """
+    if context is None:
+        return None
+    try:
+        getattr_static(context, name)
+    except AttributeError:
+        return None
+    try:
+        return getattr(context, name)
+    except Exception:
+        return None
+
+
+def _declared_parent(context: Any) -> Any | None:
+    parent = _declared_context_attribute(context, "parent")
+    if not callable(parent):
+        return None
+    try:
+        return parent()
+    except Exception:
+        return None
+
+
 def find_study(context: Any) -> Any | None:
     """Find the nearest Study object from a widget/panel/manager context."""
     current = context
@@ -162,17 +525,17 @@ def find_study(context: Any) -> Any | None:
     while current is not None and id(current) not in visited:
         visited.add(id(current))
 
-        study = getattr(current, "study", None)
+        study = _declared_context_attribute(current, "study")
         if study is not None:
             return study
 
-        main_window = getattr(current, "main_window", None)
-        study = getattr(main_window, "study", None)
+        main_window = _declared_context_attribute(current, "main_window")
+        study = _declared_context_attribute(main_window, "study")
         if study is not None:
             return study
 
-        controller = getattr(current, "controller", None)
-        study = getattr(controller, "study", None)
+        controller = _declared_context_attribute(current, "controller")
+        study = _declared_context_attribute(controller, "study")
         if study is not None:
             return study
 
@@ -180,12 +543,11 @@ def find_study(context: Any) -> Any | None:
         for attr_name, maybe_controller in current_attrs.items():
             if attr_name == "controller" or not attr_name.endswith("_controller"):
                 continue
-            study = getattr(maybe_controller, "study", None)
+            study = _declared_context_attribute(maybe_controller, "study")
             if study is not None:
                 return study
 
-        parent = getattr(current, "parent", None)
-        current = parent() if callable(parent) else None
+        current = _declared_parent(current)
 
     return None
 
@@ -195,7 +557,50 @@ def application_ui_runtime(context: Any) -> ApplicationUiRuntime | None:
     study = find_study(context)
     if not issubclass(type(study), Study):
         return None
-    return _StudyApplicationUiRuntime(cast(Study, study))
+    desktop_host = _find_desktop_runtime_host(context)
+    return _StudyApplicationUiRuntime(
+        cast(Study, study),
+        ref(desktop_host) if desktop_host is not None else None,
+    )
+
+
+def _find_desktop_runtime_host(context: Any) -> Any | None:
+    """Find the MainWindow-like owner that binds visible publication delivery."""
+    current = context
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if _owns_desktop_publication_renderer(current):
+            return current
+        main_window = _declared_context_attribute(current, "main_window")
+        if _owns_desktop_publication_renderer(main_window):
+            return main_window
+        current = _declared_parent(current)
+    return None
+
+
+def _owns_desktop_publication_renderer(candidate: Any) -> bool:
+    """Reject dynamic mock attributes when locating the real desktop owner."""
+    if candidate is None:
+        return False
+    try:
+        ensure_renderer = getattr_static(
+            candidate,
+            "_ensure_application_publication_renderer",
+        )
+    except AttributeError:
+        return False
+    return callable(ensure_renderer)
+
+
+def training_transient_ui_port(
+    context: Any,
+) -> TrainingTransientProgressPort | None:
+    """Resolve the notification-only Training progress adapter."""
+    study = find_study(context)
+    if not issubclass(type(study), Study):
+        return None
+    return _StudyTrainingTransientUiPort(cast(Study, study))
 
 
 def _resolve_application_ui_runtime(
@@ -248,7 +653,25 @@ def get_application_view_publication(
     application_runtime = _resolve_application_ui_runtime(context, runtime)
     if application_runtime is None:
         return None
-    return application_runtime.get_view_publication()
+    try:
+        publication = application_runtime.get_view_publication()
+    except Exception:
+        logger.error("Application publication is unavailable.", exc_info=True)
+        return None
+    if not isinstance(publication, ApplicationViewPublication):
+        logger.error("Application runtime returned an invalid view publication.")
+        return None
+    if (
+        isinstance(publication.generation, bool)
+        or not isinstance(publication.generation, int)
+        or publication.generation < 1
+        or isinstance(publication.revision, bool)
+        or not isinstance(publication.revision, int)
+        or publication.revision < 1
+    ):
+        logger.error("Application runtime returned an invalid publication identity.")
+        return None
+    return publication
 
 
 def get_command_capability(
@@ -302,95 +725,23 @@ def get_epoch_dialog_context(
     *,
     runtime: ApplicationUiRuntime | None = None,
 ) -> EpochDialogContext:
-    """Read one typed epoch-dialog context from one application publication."""
+    """Read one typed, detached epoch-dialog context through ApplicationService."""
     from XBrainLab.backend.application.epoch_context import (  # noqa: PLC0415
-        EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE,
         EpochDialogContext,
-        validated_epoch_handoff,
-    )
-    from XBrainLab.backend.application.state import (  # noqa: PLC0415
-        ApplicationStateSnapshot,
-        InterpretationStateSnapshot,
-    )
-    from XBrainLab.backend.application.view_publication import (  # noqa: PLC0415
-        ApplicationViewPublication,
     )
 
     application_runtime = _resolve_application_ui_runtime(context, runtime)
     if application_runtime is None:
         return EpochDialogContext.unavailable()
     try:
-        publication = application_runtime.get_view_publication()
+        dialog_context = application_runtime.get_epoch_dialog_context()
     except Exception:
-        logger.error("Failed to read epoch dialog publication.", exc_info=True)
+        logger.error("Failed to read detached epoch dialog context.", exc_info=True)
         return EpochDialogContext.unavailable()
-
-    if not isinstance(publication, ApplicationViewPublication):
+    if not isinstance(dialog_context, EpochDialogContext):
+        logger.error("Application runtime returned an invalid epoch dialog context.")
         return EpochDialogContext.unavailable()
-    generation = publication.generation
-    if (
-        isinstance(generation, bool)
-        or not isinstance(generation, int)
-        or generation < 1
-    ):
-        return EpochDialogContext.unavailable()
-    if (
-        not isinstance(publication.verified, bool)
-        or not isinstance(publication.stale, bool)
-        or not (
-            publication.refresh_error is None
-            or isinstance(publication.refresh_error, str)
-        )
-    ):
-        return EpochDialogContext.unavailable(publication_generation=generation)
-
-    try:
-        capability = publication.effective_capabilities.get(CommandName.CREATE_EPOCH)
-    except Exception:
-        logger.error("Failed to read epoch capability publication.", exc_info=True)
-        return EpochDialogContext.unavailable(publication_generation=generation)
-    if not isinstance(capability, CommandCapability):
-        return EpochDialogContext.unavailable(publication_generation=generation)
-
-    state = publication.state
-    state_read_errors_valid = isinstance(state, ApplicationStateSnapshot) and (
-        isinstance(state.read_errors, list)
-        and all(isinstance(error, str) for error in state.read_errors)
-    )
-    publication_usable = (
-        publication.usable
-        and publication.refresh_error is None
-        and isinstance(state, ApplicationStateSnapshot)
-        and state_read_errors_valid
-        and state.state_reliable is True
-        and not state.read_errors
-        and isinstance(state.interpretation, InterpretationStateSnapshot)
-    )
-    if not publication_usable:
-        return EpochDialogContext.unavailable(
-            reason=(
-                publication.public_unavailable_reason
-                or EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE
-            ),
-            capability=capability,
-            publication_generation=generation,
-        )
-
-    try:
-        handoff = validated_epoch_handoff(state.interpretation.epoch_handoff)
-    except (TypeError, ValueError):
-        logger.error("Published epoch handoff payload is invalid.", exc_info=True)
-        return EpochDialogContext.unavailable(
-            capability=capability,
-            publication_generation=generation,
-        )
-    return EpochDialogContext(
-        capability=capability,
-        epoch_handoff=handoff,
-        publication_generation=generation,
-        usable=True,
-        unavailable_reason=None,
-    )
+    return dialog_context
 
 
 def get_training_resource_preflight(
@@ -438,6 +789,88 @@ def get_saliency_render_publication(
     if not isinstance(publication, SaliencyRenderPublication):
         raise TypeError("Application runtime returned an invalid saliency render")
     return publication
+
+
+def get_evaluation_render_publication(
+    context: Any,
+    request: EvaluationRenderRequest,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> EvaluationRenderPublication | None:
+    """Read one detached Evaluation payload through ApplicationService."""
+    from XBrainLab.backend.application.evaluation_render import (  # noqa: PLC0415
+        EvaluationRenderPublication,
+        EvaluationRenderRequest,
+    )
+
+    if not isinstance(request, EvaluationRenderRequest):
+        raise TypeError("request must be an EvaluationRenderRequest")
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    publication = application_runtime.get_evaluation_render(request)
+    if not isinstance(publication, EvaluationRenderPublication):
+        raise TypeError("Application runtime returned an invalid Evaluation render")
+    return publication
+
+
+def get_preprocess_render_publication(
+    context: Any,
+    request: PreprocessRenderRequest,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> PreprocessRenderPublication | None:
+    """Read one bounded detached signal payload through ApplicationService."""
+    from XBrainLab.backend.application.preprocess_render import (  # noqa: PLC0415
+        PreprocessRenderPublication,
+        PreprocessRenderRequest,
+    )
+
+    if not isinstance(request, PreprocessRenderRequest):
+        raise TypeError("request must be a PreprocessRenderRequest")
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    publication = application_runtime.get_preprocess_render(request)
+    if not isinstance(publication, PreprocessRenderPublication):
+        raise TypeError("Application runtime returned an invalid Preprocess render")
+    return publication
+
+
+def get_dataset_split_dialog_binding(
+    context: Any,
+    *,
+    publication_generation: int,
+    runtime: ApplicationUiRuntime | None = None,
+) -> DatasetSplitDialogBinding | None:
+    """Bind detached split context and preview callbacks to one generation."""
+    from XBrainLab.backend.application.dataset_split_preview import (  # noqa: PLC0415
+        DatasetSplitContextPublication,
+        DatasetSplitContextRequest,
+    )
+
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+
+    request = DatasetSplitContextRequest(
+        publication_generation=publication_generation,
+    )
+    publication = application_runtime.get_dataset_split_context(request)
+    if not isinstance(publication, DatasetSplitContextPublication):
+        raise TypeError("Application runtime returned an invalid dataset split context")
+    if (
+        publication.request != request
+        or publication.generation != publication_generation
+    ):
+        raise ValueError("Dataset split context does not match the reviewed generation")
+
+    return DatasetSplitDialogBinding(
+        split_context=publication.context,
+        publication_generation=publication.generation,
+        preview_provider=application_runtime.get_dataset_split_preview,
+        preview_canceller=application_runtime.cancel_dataset_split_preview,
+    )
 
 
 def blocked_reason(capability: CommandCapability | None, fallback: str) -> str:
@@ -488,15 +921,15 @@ def execute_application_command(
     application_runtime = _resolve_application_ui_runtime(context, runtime)
     if application_runtime is None:
         return None
-    with suppress_observer_refresh_during_command(context):
-        result = _execute_runtime_command(
-            application_runtime,
-            command,
-            expected_publication_generation=expected_publication_generation,
-        )
-    if refresh:
-        refresh_after_command(context, result)
-    return result
+    # State-changing UI render is owned by the revisioned application
+    # publication. Keep ``refresh`` as a compatibility call-site parameter, but
+    # never turn a command result into a second product refresh truth.
+    del refresh
+    return _execute_runtime_command(
+        application_runtime,
+        command,
+        expected_publication_generation=expected_publication_generation,
+    )
 
 
 def request_application_shutdown_fence(
@@ -595,7 +1028,9 @@ def execute_application_command_async(
         on_result=completion_callbacks.on_result,
         on_error=completion_callbacks.on_error,
         on_finished=completion_callbacks.on_finished,
-        refresh=refresh,
+        # Application publications own state-changing render. Command results
+        # are still delivered to the interaction callback for user feedback.
+        refresh=False,
         busy_target=busy_target,
         allow_during_shutdown=allow_during_shutdown,
     ).start()
@@ -626,9 +1061,9 @@ def get_controller_for_compatibility_context(
 ) -> Any | None:
     """Return a controller only for explicit compatibility UI contexts.
 
-    Product MainWindow wiring injects controllers into panels. This helper keeps
-    older tests and standalone contexts working without allowing real Study UI
-    components to walk back through the controller tree.
+    Migrated Product MainWindow wiring injects typed application ports. This
+    helper keeps older tests and standalone contexts working without allowing
+    real Study UI components to walk back through the controller tree.
     """
     getter = getattr(study, "get_controller", None)
     if not callable(getter):
@@ -641,12 +1076,3 @@ def get_controller_for_compatibility_context(
         )
     except ControllerCompatibilityUnavailableError:
         return None
-
-
-def local_result_payload(result) -> dict:
-    """Return serializable diagnostics plus process-local UI references."""
-    diagnostics = dict(getattr(result, "diagnostics", {}) or {})
-    runtime = getattr(result, "runtime", {}) or {}
-    if isinstance(runtime, dict):
-        diagnostics.update(runtime)
-    return diagnostics

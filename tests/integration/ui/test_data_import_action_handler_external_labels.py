@@ -703,7 +703,9 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     assert panel.data_surface.currentWidget() is panel.table
     assert panel.table.item(0, 0).text() == selected_gdf.name
     assert panel.table.item(0, 6).text() == "Labels (288)"
-    raw = panel.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
+    assert panel.table.item(0, 0).data(Qt.ItemDataRole.UserRole) is None
+    assert len(host.study.loaded_data_list) == 1
+    raw = host.study.loaded_data_list[0]
     events, label_map = raw.get_event_list()
     assert set(events[:, 2]) == {1, 2, 3, 4}
     assert label_map == {

@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
+    ApplySmartParseCommand,
     ChangedState,
     CommandResult,
     ErrorType,
@@ -37,6 +38,7 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
     InterpretationReviewIdentity,
 )
+from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.study import Study
 from XBrainLab.ui import application_capabilities, async_command_runner
 from XBrainLab.ui.application_capabilities import CommandReviewContext
@@ -49,8 +51,9 @@ from XBrainLab.ui.interaction_outcome import (
     bind_interaction_completion,
 )
 from XBrainLab.ui.panels.dataset import actions
-from XBrainLab.ui.panels.dataset.actions import (
-    DatasetActionHandler,
+from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
+from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
+    DataInterpretationActionCoordinator,
     _InterpretationReviewState,
 )
 
@@ -98,7 +101,7 @@ def test_label_configuration_merge_replaces_mutually_exclusive_source_state():
         "metadata_overrides": {"A01T.gdf": {"subject": "01"}},
     }
 
-    merged = DatasetActionHandler._merge_interpretation_choices(
+    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
         base,
         {"label_carrier_choices": {"/labels/A01T.mat": {"label_field": "classlabel"}}},
     )
@@ -137,7 +140,7 @@ def test_label_configuration_merge_preserves_reviewed_external_choices_when_unch
             },
         }
     }
-    merged = DatasetActionHandler._merge_interpretation_choices(
+    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
         {
             "selected_eeg_files": ["/bids/sub-01_task-p300_eeg.set"],
             "label_carrier_choices": reviewed_choices,
@@ -152,7 +155,7 @@ def test_label_configuration_merge_preserves_reviewed_external_choices_when_unch
 
 
 def test_label_configuration_merge_clears_external_state_for_embedded_events():
-    merged = DatasetActionHandler._merge_interpretation_choices(
+    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
         {
             "label_carrier_choices": {
                 "/labels/A01T.mat": {"label_field": "classlabel"}
@@ -174,7 +177,7 @@ def test_label_configuration_merge_clears_external_state_for_embedded_events():
 
 
 def test_label_source_change_invalidates_decisions_from_previous_carrier_set():
-    choices = DatasetActionHandler._choices_after_label_source_change(
+    choices = DataInterpretationActionCoordinator._choices_after_label_source_change(
         {
             "selected_eeg_files": ["/eeg/A01T.gdf"],
             "metadata_overrides": {"A01T.gdf": {"subject": "01"}},
@@ -243,7 +246,9 @@ def test_review_current_import_reopens_published_candidate_at_requested_step(
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: runtime)
     continue_review = MagicMock(return_value=InteractionOutcome.completed("Applied."))
     monkeypatch.setattr(
-        handler, "_continue_data_interpretation_import", continue_review
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_review,
     )
 
     outcome = handler.review_current_import(initial_step="Match Labels")
@@ -288,7 +293,9 @@ def test_review_current_import_opens_identity_checked_runtime_publication(
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: runtime)
     continue_review = MagicMock(return_value=InteractionOutcome.completed("Applied."))
     monkeypatch.setattr(
-        handler, "_continue_data_interpretation_import", continue_review
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_review,
     )
     identity = InterpretationReviewIdentity(
         publication_generation=9,
@@ -328,7 +335,9 @@ def test_review_current_import_identity_mismatch_fails_closed(
     monkeypatch.setattr(actions.QMessageBox, "warning", warning)
     continue_review = MagicMock()
     monkeypatch.setattr(
-        handler, "_continue_data_interpretation_import", continue_review
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_review,
     )
 
     outcome = handler.review_current_import(
@@ -371,7 +380,9 @@ def test_review_current_import_rejects_identity_change_during_read(
     monkeypatch.setattr(actions.QMessageBox, "warning", MagicMock())
     continue_review = MagicMock()
     monkeypatch.setattr(
-        handler, "_continue_data_interpretation_import", continue_review
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_review,
     )
 
     outcome = handler.review_current_import(
@@ -396,7 +407,9 @@ def test_review_current_import_without_runtime_fails_closed(monkeypatch) -> None
     monkeypatch.setattr(actions.QMessageBox, "warning", warning)
     continue_review = MagicMock()
     monkeypatch.setattr(
-        handler, "_continue_data_interpretation_import", continue_review
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_review,
     )
 
     outcome = handler.review_current_import(
@@ -574,15 +587,17 @@ def test_label_field_repreview_reopens_match_labels_instead_of_applying(
         return_value=InteractionOutcome.accepted("Preview refresh scheduled.")
     )
     apply_review = MagicMock()
-    monkeypatch.setattr(handler, "_repreview_interpretation_async", repreview)
     monkeypatch.setattr(
-        handler,
+        handler._data_interpretation, "_repreview_interpretation_async", repreview
+    )
+    monkeypatch.setattr(
+        handler._data_interpretation,
         "_review_interpretation_for_apply_async",
         apply_review,
     )
     review_state = _review_state()
 
-    outcome = handler._continue_data_interpretation_import(
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
         source_path="/data",
         source_hint="bids",
         choices={},
@@ -607,9 +622,11 @@ def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> 
     execute = MagicMock(
         return_value=InteractionOutcome.accepted("Preview refresh scheduled.")
     )
-    monkeypatch.setattr(handler, "_execute_interpretation_command_async", execute)
+    monkeypatch.setattr(
+        handler._data_interpretation, "_execute_interpretation_command_async", execute
+    )
 
-    outcome = handler._repreview_interpretation_async(
+    outcome = handler._data_interpretation._repreview_interpretation_async(
         source_path="/data",
         source_hint="bids",
         choices={"label_carrier_choices": {}},
@@ -654,13 +671,8 @@ def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
 
-    outcome = handler._apply_interpretation_async(
+    outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(publication_generation=17),
         {"confirmed": True, "save_recipe": False},
     )
@@ -673,7 +685,7 @@ def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
-    panel.controller = MagicMock()
+    panel.controller = None
     handler = DatasetActionHandler(panel)
     capability = CommandCapability(
         command_name="apply_smart_parse",
@@ -723,6 +735,130 @@ def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
     assert observed_apply_generations == [41]
 
 
+def test_smart_parse_reads_full_paths_from_generation_bound_data_lists(
+    monkeypatch,
+) -> None:
+    panel = MagicMock()
+    panel.controller = None
+    handler = DatasetActionHandler(panel)
+    observed_commands: list[tuple[object, int | None]] = []
+
+    def _execute(_panel, command, **kwargs):
+        observed_commands.append(
+            (command, kwargs.get("expected_publication_generation")),
+        )
+        return _success_result(
+            "query_state",
+            raw_rows=[
+                {
+                    "filepath": "/data/sub-01_task-mi_run-01_raw.fif",
+                    "filename": "sub-01_task-mi_run-01_raw.fif",
+                },
+                {
+                    "filepath": "/data/sub-02_task-mi_run-01_raw.fif",
+                    "filename": "sub-02_task-mi_run-01_raw.fif",
+                },
+            ],
+        )
+
+    monkeypatch.setattr(actions, "execute_application_command", _execute)
+
+    result = handler._smart_parse_filenames(
+        expected_publication_generation=43,
+    )
+
+    assert result == [
+        "/data/sub-01_task-mi_run-01_raw.fif",
+        "/data/sub-02_task-mi_run-01_raw.fif",
+    ]
+    assert len(observed_commands) == 1
+    command, generation = observed_commands[0]
+    assert isinstance(command, QueryStateCommand)
+    assert command.query == "data_lists"
+    assert generation == 43
+
+
+def test_smart_parse_distinguishes_same_basename_across_directories_through_apply(
+    monkeypatch,
+) -> None:
+    class MetadataRow:
+        def __init__(self, filepath: str) -> None:
+            self.filepath = filepath
+            self.subject = "old"
+            self.session = "old"
+
+        def get_filepath(self) -> str:
+            return self.filepath
+
+        def set_subject_name(self, value: str) -> None:
+            self.subject = value
+
+        def set_session_name(self, value: str) -> None:
+            self.session = value
+
+    class MetadataStudy:
+        def __init__(self, rows: list[MetadataRow]) -> None:
+            self.loaded_data_list = rows
+            self.preprocessed_data_list = list(rows)
+
+        def reset_preprocess(self, *, force_update: bool) -> None:
+            assert force_update is True
+            self.preprocessed_data_list = list(self.loaded_data_list)
+
+    paths = (
+        "/datasets/site-a/sub-01/eeg.edf",
+        "/datasets/site-b/sub-01/eeg.edf",
+    )
+    study = MetadataStudy([MetadataRow(path) for path in paths])
+    state = DatasetStateService(study)
+    panel = MagicMock()
+    panel.controller = None
+    handler = DatasetActionHandler(panel)
+    capability = CommandCapability(
+        command_name="apply_smart_parse",
+        enabled=True,
+    )
+    monkeypatch.setattr(
+        actions,
+        "get_command_review_context",
+        lambda *_args, **_kwargs: CommandReviewContext(
+            capability=capability,
+            publication_generation=47,
+        ),
+    )
+    dialog = MagicMock()
+    dialog.exec.return_value = True
+    dialog.get_result.return_value = {
+        paths[0]: ("site-a", "session-a"),
+        paths[1]: ("site-b", "session-b"),
+    }
+    dialog_factory = MagicMock(return_value=dialog)
+    monkeypatch.setattr(actions, "SmartParserDialog", dialog_factory)
+
+    def _execute(_panel, command, **kwargs):
+        assert kwargs.get("expected_publication_generation") == 47
+        if isinstance(command, QueryStateCommand):
+            return _success_result(
+                "query_state",
+                raw_rows=[{"filepath": path} for path in paths],
+            )
+        assert isinstance(command, ApplySmartParseCommand)
+        return _success_result(
+            "apply_smart_parse",
+            success_count=state.apply_smart_parse(command.results),
+        )
+
+    monkeypatch.setattr(actions, "execute_application_command", _execute)
+
+    handler.open_smart_parser()
+
+    dialog_factory.assert_called_once_with(list(paths), panel)
+    assert [(row.subject, row.session) for row in study.loaded_data_list] == [
+        ("site-a", "session-a"),
+        ("site-b", "session-b"),
+    ]
+
+
 def test_label_import_binds_the_generation_reviewed_before_the_dialog(
     monkeypatch,
 ) -> None:
@@ -750,8 +886,8 @@ def test_label_import_binds_the_generation_reviewed_before_the_dialog(
     target = MagicMock()
     target.get_filepath.return_value = "/data/sub-01_task-mi_eeg.edf"
     monkeypatch.setattr(
-        handler,
-        "_get_target_files_for_import",
+        handler._external_label_import,
+        "get_target_files_for_import",
         lambda: [target],
     )
     selection = MagicMock()
@@ -767,9 +903,17 @@ def test_label_import_binds_the_generation_reviewed_before_the_dialog(
         target_indices=[0],
         label_paths=["/labels/sub-01_events.tsv"],
     )
-    monkeypatch.setattr(handler, "_build_label_import_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(
+        handler._external_label_import,
+        "build_label_import_plan",
+        lambda *_a, **_k: plan,
+    )
     execute = MagicMock()
-    monkeypatch.setattr(handler, "_execute_label_import_async", execute)
+    monkeypatch.setattr(
+        handler._external_label_import,
+        "execute_label_import_async",
+        execute,
+    )
 
     handler.import_label()
 
@@ -854,7 +998,9 @@ def test_recipe_save_uses_generation_reviewed_before_question(
         return InteractionOutcome.accepted("Recipe save scheduled.")
 
     monkeypatch.setattr(actions, "get_command_review_context", review_context)
-    monkeypatch.setattr(handler, "_recipe_save_block_reason", lambda: None)
+    monkeypatch.setattr(
+        handler._data_interpretation, "_recipe_save_block_reason", lambda: None
+    )
     monkeypatch.setattr(actions.QMessageBox, "question", question)
     monkeypatch.setattr(
         actions.QMessageBox,
@@ -867,7 +1013,7 @@ def test_recipe_save_uses_generation_reviewed_before_question(
         lambda *_args, **_kwargs: ("/tmp/import_recipe.json", ""),
     )
     monkeypatch.setattr(
-        handler,
+        handler._data_interpretation,
         "_execute_interpretation_command_async",
         execute_async,
     )
@@ -912,14 +1058,9 @@ def test_real_study_command_returns_immediately_and_continues_on_result(
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
 
     started_at = time.monotonic()
-    started = handler._execute_interpretation_command_async(
+    started = handler._data_interpretation._execute_interpretation_command_async(
         QueryStateCommand(),
         on_result=results.append,
         error_title="Review failed",
@@ -957,7 +1098,7 @@ def test_compatibility_context_continues_synchronously(qtbot, monkeypatch):
         else None,
     )
 
-    started = handler._execute_interpretation_command_async(
+    started = handler._data_interpretation._execute_interpretation_command_async(
         QueryStateCommand(),
         on_result=results.append,
         error_title="Review failed",
@@ -990,7 +1131,7 @@ def test_worker_exception_cleans_up_and_reports_without_nested_wait(
     critical = MagicMock()
     monkeypatch.setattr(actions.QMessageBox, "critical", critical)
 
-    outcome = handler._execute_interpretation_command_async(
+    outcome = handler._data_interpretation._execute_interpretation_command_async(
         QueryStateCommand(),
         on_result=MagicMock(),
         error_title="Review failed",
@@ -1045,11 +1186,6 @@ def test_save_recipe_returns_before_worker_and_completes_via_callback(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
-    monkeypatch.setattr(
         actions,
         "get_command_review_context",
         lambda *_args, **_kwargs: CommandReviewContext(
@@ -1060,7 +1196,9 @@ def test_save_recipe_returns_before_worker_and_completes_via_callback(
             publication_generation=13,
         ),
     )
-    monkeypatch.setattr(handler, "_recipe_save_block_reason", lambda: None)
+    monkeypatch.setattr(
+        handler._data_interpretation, "_recipe_save_block_reason", lambda: None
+    )
     monkeypatch.setattr(
         actions.QFileDialog,
         "getSaveFileName",
@@ -1068,7 +1206,9 @@ def test_save_recipe_returns_before_worker_and_completes_via_callback(
     )
 
     started_at = time.monotonic()
-    started = handler._save_interpretation_recipe(on_complete=completions.append)
+    started = handler._data_interpretation._save_interpretation_recipe(
+        on_complete=completions.append
+    )
     elapsed = time.monotonic() - started_at
 
     assert started is True
@@ -1089,7 +1229,11 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     cast(Any, panel).set_busy = lambda _busy: None
     handler = DatasetActionHandler(panel)
     continue_flow = MagicMock()
-    monkeypatch.setattr(handler, "_continue_data_interpretation_import", continue_flow)
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
     worker_started = threading.Event()
     worker_release = threading.Event()
     heartbeat: list[bool] = []
@@ -1116,14 +1260,9 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
 
     started_at = time.monotonic()
-    started = handler._start_interpretation_review_async(
+    started = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
         "auto",
         {},
@@ -1152,7 +1291,11 @@ def test_review_warning_confirmation_retries_before_opening_preview(
     cast(Any, panel).set_busy = lambda _busy: None
     handler = DatasetActionHandler(panel)
     continue_flow = MagicMock()
-    monkeypatch.setattr(handler, "_continue_data_interpretation_import", continue_flow)
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
     commands: list[ReviewInterpretationCommand] = []
     expected_receipt = "review-receipt-1"
     success = _success_result(
@@ -1182,11 +1325,6 @@ def test_review_warning_confirmation_retries_before_opening_preview(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
-    monkeypatch.setattr(
         actions.QMessageBox,
         "question",
         lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
@@ -1194,7 +1332,7 @@ def test_review_warning_confirmation_retries_before_opening_preview(
     single_shot = MagicMock(side_effect=lambda _delay, callback: callback())
     monkeypatch.setattr(actions.QTimer, "singleShot", single_shot)
 
-    outcome = handler._start_interpretation_review_async(
+    outcome = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
         "auto",
         {},
@@ -1225,7 +1363,11 @@ def test_review_warning_without_typed_challenge_never_resubmits(
     handler = DatasetActionHandler(panel)
     commands: list[ReviewInterpretationCommand] = []
     continue_flow = MagicMock()
-    monkeypatch.setattr(handler, "_continue_data_interpretation_import", continue_flow)
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
 
     class _Service:
         def execute(self, command):
@@ -1240,17 +1382,12 @@ def test_review_warning_without_typed_challenge_never_resubmits(
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
     question = MagicMock()
     critical = MagicMock()
     monkeypatch.setattr(actions.QMessageBox, "question", question)
     monkeypatch.setattr(actions.QMessageBox, "critical", critical)
 
-    outcome = handler._start_interpretation_review_async(
+    outcome = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
         "auto",
         {},
@@ -1276,7 +1413,11 @@ def test_review_warning_with_mismatched_challenge_command_never_resubmits(
     handler = DatasetActionHandler(panel)
     commands: list[ReviewInterpretationCommand] = []
     continue_flow = MagicMock()
-    monkeypatch.setattr(handler, "_continue_data_interpretation_import", continue_flow)
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
 
     class _Service:
         def execute(self, command):
@@ -1291,17 +1432,12 @@ def test_review_warning_with_mismatched_challenge_command_never_resubmits(
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
     question = MagicMock()
     critical = MagicMock()
     monkeypatch.setattr(actions.QMessageBox, "question", question)
     monkeypatch.setattr(actions.QMessageBox, "critical", critical)
 
-    outcome = handler._start_interpretation_review_async(
+    outcome = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
         "auto",
         {},
@@ -1327,7 +1463,11 @@ def test_review_blocking_resource_result_never_resubmits(
     handler = DatasetActionHandler(panel)
     commands: list[ReviewInterpretationCommand] = []
     continue_flow = MagicMock()
-    monkeypatch.setattr(handler, "_continue_data_interpretation_import", continue_flow)
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
 
     class _Service:
         def execute(self, command):
@@ -1340,17 +1480,12 @@ def test_review_blocking_resource_result_never_resubmits(
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
     question = MagicMock()
     critical = MagicMock()
     monkeypatch.setattr(actions.QMessageBox, "question", question)
     monkeypatch.setattr(actions.QMessageBox, "critical", critical)
 
-    handler._start_interpretation_review_async(
+    handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
         "auto",
         {},
@@ -1374,12 +1509,14 @@ def test_reload_warning_confirmation_retries_with_receipt_and_same_continuation(
     handler = DatasetActionHandler(panel)
     continue_reload = MagicMock()
     monkeypatch.setattr(
-        handler,
+        handler._data_interpretation._recipe_reload,
         "_continue_reloaded_interpretation_recipe",
         continue_reload,
     )
     monkeypatch.setattr(
-        handler, "_can_start_interpretation", lambda *_args, **_kw: True
+        handler._data_interpretation,
+        "_can_start_interpretation",
+        lambda *_args, **_kw: True,
     )
     monkeypatch.setattr(
         actions.QFileDialog,
@@ -1413,11 +1550,6 @@ def test_reload_warning_confirmation_retries_with_receipt_and_same_continuation(
         application_capabilities,
         "application_ui_runtime",
         lambda _study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
     )
     monkeypatch.setattr(
         actions,
@@ -1461,7 +1593,7 @@ def test_reloaded_preview_warning_retries_with_receipt_and_same_continuation(
     success = _success_result("preview_interpretation")
     continue_preview = MagicMock()
     monkeypatch.setattr(
-        handler,
+        handler._data_interpretation._recipe_reload,
         "_continue_reloaded_recipe_preview",
         continue_preview,
     )
@@ -1507,12 +1639,7 @@ def test_reloaded_preview_warning_retries_with_receipt_and_same_continuation(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
-    monkeypatch.setattr(
-        handler,
+        handler._data_interpretation,
         "_review_state_from_parts",
         lambda **_kwargs: _review_state(publication_generation=22),
     )
@@ -1531,7 +1658,9 @@ def test_reloaded_preview_warning_retries_with_receipt_and_same_continuation(
         validation_decision={"decision": "safe"},
     )
 
-    handler._continue_reloaded_interpretation_recipe(reload_result)
+    handler._data_interpretation._recipe_reload._continue_reloaded_interpretation_recipe(
+        reload_result
+    )
 
     qtbot.waitUntil(lambda: len(commands) == 2, timeout=2000)
     qtbot.waitUntil(lambda: continue_preview.call_count == 1, timeout=2000)
@@ -1549,12 +1678,14 @@ def test_reload_recipe_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch)
     handler = DatasetActionHandler(panel)
     continue_reload = MagicMock()
     monkeypatch.setattr(
-        handler,
+        handler._data_interpretation._recipe_reload,
         "_continue_reloaded_interpretation_recipe",
         continue_reload,
     )
     monkeypatch.setattr(
-        handler, "_can_start_interpretation", lambda *_args, **_kw: True
+        handler._data_interpretation,
+        "_can_start_interpretation",
+        lambda *_args, **_kw: True,
     )
     monkeypatch.setattr(
         actions.QFileDialog,
@@ -1583,11 +1714,6 @@ def test_reload_recipe_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch)
         application_capabilities,
         "application_ui_runtime",
         lambda _study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
     )
     monkeypatch.setattr(
         actions,
@@ -1641,11 +1767,6 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda *_args: None,
-    )
-    monkeypatch.setattr(
         actions.QMessageBox,
         "question",
         lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
@@ -1653,7 +1774,7 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
     status = MagicMock()
     monkeypatch.setattr(handler, "_show_status", status)
 
-    outcome = handler._apply_interpretation_async(
+    outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(),
         {"confirmed": True, "save_recipe": False},
     )
@@ -1667,7 +1788,7 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
     assert commands[1].resource_preflight_token == expected_receipt
 
 
-def test_apply_warning_handoff_completes_once_after_confirmed_retry(
+def test_apply_warning_handoff_ack_completes_without_result_refresh(
     qtbot,
     monkeypatch,
 ):
@@ -1677,7 +1798,7 @@ def test_apply_warning_handoff_completes_once_after_confirmed_retry(
     cast(Any, panel).set_busy = lambda _busy: None
     handler = DatasetActionHandler(panel)
     commands: list[ApplyInterpretationCommand] = []
-    refreshes: list[CommandResult] = []
+    command_result_refresh = MagicMock()
     terminal = []
     applied = _success_result("apply_interpretation", applied_interpretation={})
 
@@ -1697,7 +1818,7 @@ def test_apply_warning_handoff_completes_once_after_confirmed_retry(
     monkeypatch.setattr(
         async_command_runner,
         "refresh_after_command",
-        lambda _context, result: refreshes.append(result),
+        command_result_refresh,
     )
     monkeypatch.setattr(
         actions.QMessageBox,
@@ -1713,7 +1834,7 @@ def test_apply_warning_handoff_completes_once_after_confirmed_retry(
     )
 
     with bind_interaction_completion(completion):
-        outcome = handler._apply_interpretation_async(
+        outcome = handler._data_interpretation._apply_interpretation_async(
             _review_state(),
             {"confirmed": True, "save_recipe": False},
         )
@@ -1725,10 +1846,7 @@ def test_apply_warning_handoff_completes_once_after_confirmed_retry(
     assert len(commands) == 2
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
     assert terminal[0].message == "ok"
-    assert refreshes == [
-        _resource_confirmation_result("handoff-receipt"),
-        applied,
-    ]
+    command_result_refresh.assert_not_called()
 
 
 def test_apply_warning_handoff_refusal_reports_only_cancelled(
@@ -1766,7 +1884,7 @@ def test_apply_warning_handoff_refusal_reports_only_cancelled(
     )
 
     with bind_interaction_completion(completion):
-        outcome = handler._apply_interpretation_async(
+        outcome = handler._data_interpretation._apply_interpretation_async(
             _review_state(),
             {"confirmed": True, "save_recipe": False},
         )
@@ -1828,7 +1946,7 @@ def test_apply_warning_handoff_retry_start_failure_reports_only_failed(
     )
 
     with bind_interaction_completion(completion):
-        outcome = handler._apply_interpretation_async(
+        outcome = handler._data_interpretation._apply_interpretation_async(
             _review_state(),
             {"confirmed": True, "save_recipe": False},
         )
@@ -1865,7 +1983,7 @@ def test_apply_resource_callback_is_dropped_after_owner_deletion(qtbot, monkeypa
     )
     monkeypatch.setattr(actions.QMessageBox, "question", question)
 
-    outcome = handler._apply_interpretation_async(
+    outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(),
         {"confirmed": True, "save_recipe": False},
     )
@@ -1909,7 +2027,7 @@ def test_apply_blocking_resource_result_is_presented_without_resubmit(
     monkeypatch.setattr(actions.QMessageBox, "critical", critical)
     monkeypatch.setattr(actions.QMessageBox, "question", question)
 
-    outcome = handler._apply_interpretation_async(
+    outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(),
         {"confirmed": True, "save_recipe": False},
     )
@@ -1919,3 +2037,139 @@ def test_apply_blocking_resource_result_is_presented_without_resubmit(
     assert len(commands) == 1
     assert question.call_count == 0
     assert critical.call_args.args[1] == "Dataset Resource Check"
+
+
+def _real_study_dataset_handler(qtbot) -> DatasetActionHandler:
+    panel = QWidget()
+    qtbot.addWidget(panel)
+    cast(Any, panel).study = Study()
+    cast(Any, panel).controller = MagicMock()
+    cast(Any, panel).set_busy = lambda _busy: None
+    return DatasetActionHandler(panel)
+
+
+def _missing_capability_review(generation: int = 31) -> SimpleNamespace:
+    return SimpleNamespace(
+        capability=None,
+        publication_generation=generation,
+    )
+
+
+def test_import_label_fails_before_target_or_dialog_when_review_capability_is_missing(
+    qtbot,
+    monkeypatch,
+):
+    handler = _real_study_dataset_handler(qtbot)
+    target_reader = MagicMock(return_value=[object()])
+    dialog = MagicMock()
+    warning = MagicMock()
+    monkeypatch.setattr(
+        actions,
+        "get_command_review_context",
+        lambda *_args: _missing_capability_review(),
+    )
+    monkeypatch.setattr(
+        handler._external_label_import,
+        "get_target_files_for_import",
+        target_reader,
+    )
+    monkeypatch.setattr(actions, "ImportLabelDialog", dialog)
+    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+
+    handler.import_label()
+
+    target_reader.assert_not_called()
+    dialog.assert_not_called()
+    warning.assert_called_once()
+
+
+def test_recipe_save_fails_before_chooser_when_review_capability_is_missing(
+    qtbot,
+    monkeypatch,
+):
+    handler = _real_study_dataset_handler(qtbot)
+    chooser = MagicMock(return_value=("", ""))
+    execute = MagicMock()
+    warning = MagicMock()
+    monkeypatch.setattr(
+        actions,
+        "get_command_review_context",
+        lambda *_args: _missing_capability_review(),
+    )
+    monkeypatch.setattr(actions.QFileDialog, "getSaveFileName", chooser)
+    monkeypatch.setattr(
+        handler._data_interpretation, "_execute_interpretation_command_async", execute
+    )
+    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+
+    started = handler._data_interpretation._save_interpretation_recipe()
+
+    assert started is True
+    chooser.assert_not_called()
+    execute.assert_not_called()
+    warning.assert_called_once()
+
+
+def test_recipe_offer_fails_before_confirmation_when_review_capability_is_missing(
+    qtbot,
+    monkeypatch,
+):
+    handler = _real_study_dataset_handler(qtbot)
+    question = MagicMock(return_value=actions.QMessageBox.StandardButton.No)
+    monkeypatch.setattr(
+        actions,
+        "get_command_review_context",
+        lambda *_args: _missing_capability_review(),
+    )
+    monkeypatch.setattr(actions.QMessageBox, "question", question)
+
+    message = handler._offer_label_recipe_save(
+        SimpleNamespace(diagnostics={"recipe_updated": True}),
+    )
+
+    question.assert_not_called()
+    assert message == "Interpretation recipe trace updated in this session."
+
+
+def test_recipe_reload_fails_before_chooser_when_product_review_disappears(
+    qtbot,
+    monkeypatch,
+):
+    handler = _real_study_dataset_handler(qtbot)
+    chooser = MagicMock(return_value=("", ""))
+    warning = MagicMock()
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_can_start_interpretation",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(actions, "get_command_review_context", lambda *_args: None)
+    monkeypatch.setattr(actions.QFileDialog, "getOpenFileName", chooser)
+    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+
+    handler.reload_interpretation_recipe()
+
+    chooser.assert_not_called()
+    warning.assert_called_once()
+
+
+def test_smart_parser_fails_before_query_when_product_review_disappears(
+    qtbot,
+    monkeypatch,
+):
+    handler = _real_study_dataset_handler(qtbot)
+    enabled = CommandCapability(command_name="apply_smart_parse", enabled=True)
+    query = MagicMock(return_value=["sub-01_raw.fif"])
+    dialog = MagicMock()
+    warning = MagicMock()
+    monkeypatch.setattr(actions, "get_command_review_context", lambda *_args: None)
+    monkeypatch.setattr(actions, "get_command_capability", lambda *_args: enabled)
+    monkeypatch.setattr(handler, "_smart_parse_filenames", query)
+    monkeypatch.setattr(actions, "SmartParserDialog", dialog)
+    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+
+    handler.open_smart_parser()
+
+    query.assert_not_called()
+    dialog.assert_not_called()
+    warning.assert_called_once()

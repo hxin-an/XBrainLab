@@ -19,7 +19,6 @@ from XBrainLab.backend.application import (
     LoadDataCommand,
     PreviewInterpretationCommand,
     PreviewLabelImportCommand,
-    QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     ResetSessionCommand,
     SaveInterpretationRecipeCommand,
@@ -34,6 +33,7 @@ MAT_PATH = (FIXTURE_DIR / "label" / "A01T.mat").resolve()
 A02_MAT_PATH = (FIXTURE_DIR / "label" / "A02T.mat").resolve()
 CLASS_MAP = {1: "left", 2: "right", 3: "feet", 4: "tongue"}
 EVENT_ID = {name: event_code for event_code, name in CLASS_MAP.items()}
+GRAZ_TARGET_EVENTS = ["769", "770", "771", "772"]
 
 
 def _real_interpreted_service() -> ApplicationService:
@@ -44,6 +44,7 @@ def _real_interpreted_service() -> ApplicationService:
             choices={
                 "selected_eeg_files": [str(GDF_PATH)],
                 "skip_labels": True,
+                "excluded_label_carriers": [str(MAT_PATH)],
             }
         ),
         ValidateInterpretationCommand(),
@@ -72,6 +73,7 @@ def _plan(preview_id: str, label_path: Path = MAT_PATH) -> LabelImportPlan:
         label_configs={str(label_path): {"label_field": "classlabel"}},
         file_mapping={str(GDF_PATH): str(label_path)},
         mapping=CLASS_MAP,
+        selected_event_names=GRAZ_TARGET_EVENTS,
         mode="sequence",
     )
 
@@ -84,11 +86,8 @@ def _link_or_copy(source: Path, target: Path) -> None:
 
 
 def _loaded_target(service: ApplicationService, index: int = 0):
-    result = service.execute(
-        QueryStateCommand(query="data_lists", include_objects=True)
-    )
-    assert result.ok is True, result.message
-    return result.runtime["loaded_data_list"][index]
+    """Read application-owned domain state for deep rollback verification only."""
+    return service.dataset.get_loaded_data_list()[index]
 
 
 def _event_signature(target) -> tuple[np.ndarray, dict[str, int], bool]:
@@ -126,11 +125,7 @@ def test_real_a01t_preview_commit_updates_exact_state_recipe_and_consumes_once(
 
     assert imported.ok is True
     assert imported.diagnostics["success_count"] == 1
-    target_query = service.execute(
-        QueryStateCommand(query="data_lists", include_objects=True)
-    )
-    assert target_query.ok is True
-    target = target_query.runtime["loaded_data_list"][0]
+    target = _loaded_target(service)
     events, event_id = target.get_event_list()
     assert event_id == EVENT_ID
     assert events.shape == (288, 3)
@@ -146,7 +141,7 @@ def test_real_a01t_preview_commit_updates_exact_state_recipe_and_consumes_once(
             "label_configs": {str(MAT_PATH): {"label_field": "classlabel"}},
             "target_files": [str(GDF_PATH)],
             "file_mapping": {str(GDF_PATH): str(MAT_PATH)},
-            "selected_event_names": [],
+            "selected_event_names": GRAZ_TARGET_EVENTS,
             "class_map": {
                 "1": "left",
                 "2": "right",
@@ -370,9 +365,7 @@ def test_real_shared_label_recipe_keeps_full_path_identity_for_duplicate_basenam
     assert imported.ok is True, imported.message
     assert imported.diagnostics["success_count"] == 2
 
-    targets = service.execute(
-        QueryStateCommand(query="data_lists", include_objects=True)
-    ).runtime["loaded_data_list"]
+    targets = service.dataset.get_loaded_data_list()
     assert len(targets) == 2
     for target in targets:
         events, event_id = target.get_event_list()
@@ -462,9 +455,7 @@ def test_real_shared_label_recipe_keeps_full_path_identity_for_duplicate_basenam
     assert applied.diagnostics["success_count"] == 2
     assert applied.diagnostics["label_apply"]["success_count"] == 2
 
-    replayed_targets = replay_service.execute(
-        QueryStateCommand(query="data_lists", include_objects=True)
-    ).runtime["loaded_data_list"]
+    replayed_targets = replay_service.dataset.get_loaded_data_list()
     assert len(replayed_targets) == 2
     for target in replayed_targets:
         events, event_id = target.get_event_list()
@@ -582,7 +573,7 @@ def test_post_load_label_recipe_binds_actual_carrier_identity_and_detects_change
     saved_recipe = saved.diagnostics["recipe"]
     assert saved_recipe["label_sources"] == [str(mutable_labels)]
     assert saved_recipe["label_carriers"] == [str(mutable_labels)]
-    assert str(MAT_PATH) in saved_recipe["excluded_label_carriers"]
+    assert saved_recipe["excluded_label_carriers"] == [str(MAT_PATH)]
     identity = saved_recipe["content_identity"]
     files_by_path = {row["path"]: row for row in identity["files"]}
     assert str(MAT_PATH) not in files_by_path
@@ -606,11 +597,9 @@ def test_post_load_label_recipe_binds_actual_carrier_identity_and_detects_change
     unchanged_rows = unchanged.diagnostics["preview"]["recipe_reload_summary"][
         "diff_rows"
     ]
-    assert {
-        "item": "Reviewed label content",
-        "status": "Matched",
-        "detail": "Label/event carrier content matches the saved recipe.",
-    } in unchanged_rows
+    unchanged_identity = unchanged.diagnostics["candidate"]["content_identity"]
+    assert unchanged_identity["content_sha256"] == identity["content_sha256"]
+    assert any(row["item"] == "Reviewed label content" for row in unchanged_rows)
 
     changed_values = label_values.copy()
     changed_values[0] = 2
@@ -619,6 +608,8 @@ def test_post_load_label_recipe_binds_actual_carrier_identity_and_detects_change
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path))
     )
     assert changed.ok is True, changed.message
+    changed_identity = changed.diagnostics["candidate"]["content_identity"]
+    assert changed_identity["content_sha256"] != identity["content_sha256"]
     changed_rows = changed.diagnostics["preview"]["recipe_reload_summary"]["diff_rows"]
     assert {
         "item": "Reviewed label content",
@@ -650,7 +641,8 @@ def test_real_a01t_corrupt_middle_preview_clears_cache_without_state_pollution(
 
     assert failed.failed is True
     assert failed.error_type is ErrorType.FILE_CORRUPTED
-    assert "corrupt-middle.mat" in failed.message
+    assert str(corrupt) not in failed.message
+    assert "[REDACTED_PATH]" in failed.message
     assert failed.state.interpretation.label_import_count == 0
     assert failed.state.raw.unique_events != ["feet", "left", "right", "tongue"]
 

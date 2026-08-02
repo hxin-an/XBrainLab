@@ -116,7 +116,7 @@ class TestLabelWrappers:
     def test_apply_labels_batch(self):
         ctrl, _study = _make_ctrl()
         ctrl.label_service = MagicMock()
-        ctrl.label_service.apply_labels_batch.return_value = 2
+        ctrl.label_service.apply_labels_batch_checked.return_value = 2
         count = ctrl.apply_labels_batch([], {}, {}, {}, None)
         assert count == 2
 

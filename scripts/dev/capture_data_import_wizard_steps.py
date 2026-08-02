@@ -11,9 +11,10 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -39,8 +40,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from scripts.dev.capture_data_import_match_label_placement_modes import (
+    build_dialog as build_placement_mode_dialog,
+)
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
+    inspect_screenshot_artifact,
 )
 from scripts.dev.data_import_capture_contract import (
     MANIFEST_NAME,
@@ -64,14 +69,18 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = Path(
+HISTORICAL_CHECKPOINT_OUTPUT_DIR = (
+    ROOT / "artifacts" / "ui" / "data-import-wizard-steps"
+)
+
+DEFAULT_OUTPUT_DIR = Path(
     os.environ.get(
         "XBRAINLAB_UI_CAPTURE_DIR",
-        str(ROOT / "artifacts" / "ui" / "data-import-wizard-steps"),
+        str(ROOT / "build" / "dev-artifacts" / "data-import-wizard-steps"),
     )
 )
 WINDOW_SIZE = QSize(1220, 1320)
-REVIEW_COMPACT_SIZE = (1220, 632)
+REVIEW_COMPACT_SIZE = (1220, 530)
 REVIEW_REPORT_SIZE = (1220, 926)
 WIZARD_STEP_TEXT = (
     "1. Choose EEG Data",
@@ -87,6 +96,20 @@ WIZARD_COMPACT_STEP_TEXT = (
     "4. Match",
     "5. Review",
 )
+PLACEMENT_MODE_SCREENSHOTS = {
+    "eeg_event": "match-label-placement-modes/eeg-event-order-full.png",
+    "time_field": "match-label-placement-modes/label-time-full.png",
+    "interval": "match-label-placement-modes/label-interval-full.png",
+    "event_code": "match-label-placement-modes/label-event-code-full.png",
+}
+GENERATOR_CLAIMS = (
+    "Automated xcb evidence covers the canonical Data Import wizard surfaces.",
+    "Loaded-label placement modes are hashed and bound in this root manifest.",
+)
+GENERATOR_LIMITATIONS = (
+    "This automated xcb capture is not human Windows desktop acceptance.",
+    "It does not establish arbitrary BIDS compliance or scientific label-semantic approval.",
+)
 
 
 @dataclass(frozen=True)
@@ -98,9 +121,11 @@ class CanonicalCaptureSpec:
     summary: str | None = None
     step_title: str | None = None
     expanded_report: bool = False
+    expanded_advanced_details: bool = False
     expected_size: tuple[int, int] = (1220, 1320)
     label_carrier_count: int = 0
     bids_events: bool = False
+    placement_mode: str | None = None
 
     @property
     def has_wizard_chrome(self) -> bool:
@@ -109,11 +134,12 @@ class CanonicalCaptureSpec:
 
 def main(argv: list[str] | None = None) -> int:
     specs = _canonical_capture_specs()
+    placement_specs = _placement_mode_capture_specs()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=OUTPUT_DIR,
+        default=DEFAULT_OUTPUT_DIR,
         help="Directory for canonical PNG evidence.",
     )
     parser.add_argument(
@@ -127,26 +153,45 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Validate the existing complete manifest without capturing.",
     )
+    parser.add_argument(
+        "--placement-mode",
+        choices=tuple(PLACEMENT_MODE_SCREENSHOTS),
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args(argv)
     expected_surfaces = [spec.filename for spec in specs]
     selected_set = set(args.only or expected_surfaces)
     output_dir = args.output_dir.expanduser().resolve()
+    if args.placement_mode:
+        if os.environ.get("XBRAINLAB_PLACEMENT_CAPTURE_CHILD") != "1":
+            parser.error("--placement-mode is reserved for isolated child capture")
+        selected = next(
+            spec
+            for spec in placement_specs
+            if spec.placement_mode == args.placement_mode
+        )
+        _capture_specs_in_process((selected,), output_dir)
+        return 0
     if args.validate_only:
         if args.only:
             parser.error("--validate-only cannot be combined with --only")
         payload = load_data_import_capture_manifest(output_dir)
-        ok, reason = validate_data_import_capture_manifest(
+        ok, reason = _validate_generator_manifest(
             payload,
             output_dir=output_dir,
-            expected_surfaces=expected_surfaces,
+            canonical_specs=specs,
+            placement_specs=placement_specs,
         )
         if not ok:
             print(f"Data Import capture rejected: {reason}", file=sys.stderr)
             return 1
         print(f"Validated {output_dir / MANIFEST_NAME}")
         return 0
-    if args.only and output_dir == OUTPUT_DIR:
-        parser.error("--only requires a non-canonical --output-dir")
+    if args.only and output_dir in {
+        HISTORICAL_CHECKPOINT_OUTPUT_DIR.resolve(),
+        DEFAULT_OUTPUT_DIR.resolve(),
+    }:
+        parser.error("--only requires an explicitly separate --output-dir")
 
     selected_specs = [spec for spec in specs if spec.filename in selected_set]
     capture_started_at = datetime.now(UTC)
@@ -162,6 +207,10 @@ def main(argv: list[str] | None = None) -> int:
             _capture_specs_in_process(selected_specs, staging_dir)
         else:
             _capture_specs_in_isolated_processes(selected_specs, staging_dir)
+            _capture_placement_specs_in_isolated_processes(
+                placement_specs,
+                staging_dir,
+            )
         source_identity_at_completion = collect_source_identity(ROOT, refresh=True)
         manifest = build_data_import_capture_manifest(
             staging_dir,
@@ -174,10 +223,18 @@ def main(argv: list[str] | None = None) -> int:
             qt_platform=QApplication.platformName() if args.only else "xcb",
             session_id=session_id,
         )
-        ok, reason = validate_data_import_capture_manifest(
+        _bind_generator_manifest(
             manifest,
             output_dir=staging_dir,
-            expected_surfaces=expected_surfaces,
+            canonical_specs=selected_specs,
+            placement_specs=placement_specs if not args.only else (),
+            qt_platform=QApplication.platformName() if args.only else "xcb",
+        )
+        ok, reason = _validate_generator_manifest(
+            manifest,
+            output_dir=staging_dir,
+            canonical_specs=specs,
+            placement_specs=placement_specs if not args.only else (),
             require_complete=not bool(args.only),
         )
         if not ok:
@@ -186,9 +243,139 @@ def main(argv: list[str] | None = None) -> int:
         _publish_capture(
             staging_dir,
             output_dir,
-            selected_surfaces=[spec.filename for spec in selected_specs],
+            selected_surfaces=[
+                *(spec.filename for spec in selected_specs),
+                *(spec.filename for spec in placement_specs if not args.only),
+            ],
+            replace_complete=not bool(args.only),
         )
     return 0
+
+
+def _bind_generator_manifest(
+    manifest: dict[str, Any],
+    *,
+    output_dir: Path,
+    canonical_specs: Sequence[CanonicalCaptureSpec],
+    placement_specs: Sequence[CanonicalCaptureSpec],
+    qt_platform: str,
+) -> None:
+    """Attach generator-specific viewport, claim, and placement evidence."""
+    scale_factor = os.environ.get("QT_SCALE_FACTOR", "1")
+    environment_value = manifest.get("capture_environment")
+    environment = environment_value if isinstance(environment_value, dict) else {}
+    environment.update(
+        {
+            "platform": sys.platform,
+            "qt_platform": qt_platform,
+            "virtual_screen": [1600, 1400],
+            "scale_factor": scale_factor,
+            "surface_viewports": {
+                spec.filename: list(spec.expected_size)
+                for spec in (*canonical_specs, *placement_specs)
+            },
+        }
+    )
+    manifest["capture_environment"] = environment
+    manifest["claims"] = list(GENERATOR_CLAIMS)
+    manifest["limitations"] = list(GENERATOR_LIMITATIONS)
+    placement_screenshots: dict[str, dict[str, Any]] = {}
+    for spec in placement_specs:
+        mode = str(spec.placement_mode or "")
+        metadata = inspect_screenshot_artifact(output_dir / spec.filename)
+        metadata.update(
+            {
+                "path": spec.filename,
+                "mode": mode,
+                "viewport": list(spec.expected_size),
+                "scale_factor": scale_factor,
+            }
+        )
+        placement_screenshots[mode] = metadata
+    manifest["placement_mode_screenshots"] = placement_screenshots
+
+
+def _validate_generator_manifest(
+    payload: Mapping[str, Any],
+    *,
+    output_dir: Path,
+    canonical_specs: Sequence[CanonicalCaptureSpec],
+    placement_specs: Sequence[CanonicalCaptureSpec],
+    require_complete: bool = True,
+    refresh_source_identity: bool = True,
+    current_source_identity: Mapping[str, Any] | None = None,
+) -> tuple[bool, str]:
+    """Validate the base integrity contract plus generator-owned evidence."""
+    expected_surfaces = [spec.filename for spec in canonical_specs]
+    ok, reason = validate_data_import_capture_manifest(
+        payload,
+        output_dir=output_dir,
+        expected_surfaces=expected_surfaces,
+        require_complete=require_complete,
+        refresh_source_identity=refresh_source_identity,
+        current_source_identity=current_source_identity,
+    )
+    if not ok:
+        return ok, reason
+    if payload.get("generator") != "scripts/dev/capture_data_import_wizard_steps.py":
+        return False, "Data Import generator binding is missing."
+    if payload.get("claims") != list(GENERATOR_CLAIMS):
+        return False, "Data Import claims are missing or unsupported."
+    if payload.get("limitations") != list(GENERATOR_LIMITATIONS):
+        return False, "Data Import limitations are missing or unsupported."
+
+    environment_value = payload.get("capture_environment")
+    environment = environment_value if isinstance(environment_value, Mapping) else {}
+    scope_value = payload.get("capture_scope")
+    scope = scope_value if isinstance(scope_value, Mapping) else {}
+    selected_value = scope.get("selected_surfaces")
+    selected = (
+        list(selected_value)
+        if isinstance(selected_value, list)
+        and all(isinstance(item, str) for item in selected_value)
+        else []
+    )
+    expected_viewports = {
+        spec.filename: list(spec.expected_size)
+        for spec in (*canonical_specs, *placement_specs)
+        if spec.filename in selected or spec.placement_mode
+    }
+    if (
+        environment.get("virtual_screen") != [1600, 1400]
+        or not str(environment.get("scale_factor") or "")
+        or environment.get("surface_viewports") != expected_viewports
+    ):
+        return False, "Data Import environment/viewport/scale binding is incomplete."
+
+    placement_value = payload.get("placement_mode_screenshots")
+    placement = placement_value if isinstance(placement_value, Mapping) else {}
+    expected_modes = {
+        str(spec.placement_mode): spec
+        for spec in placement_specs
+        if spec.placement_mode
+    }
+    if set(placement) != set(expected_modes):
+        return False, "Data Import placement screenshot manifest is incomplete."
+    root = output_dir.expanduser().resolve()
+    scale_factor = str(environment.get("scale_factor") or "")
+    for mode, spec in expected_modes.items():
+        recorded_value = placement.get(mode)
+        recorded = recorded_value if isinstance(recorded_value, Mapping) else {}
+        observed = inspect_screenshot_artifact(root / spec.filename)
+        observed.update(
+            {
+                "path": spec.filename,
+                "mode": mode,
+                "viewport": list(spec.expected_size),
+                "scale_factor": scale_factor,
+            }
+        )
+        if dict(recorded) != observed:
+            return (
+                False,
+                f"Data Import placement screenshot metadata/hash mismatch: {mode}.",
+            )
+    return True, ""
 
 
 def _new_capture_session_id() -> str:
@@ -200,11 +387,33 @@ def _publish_capture(
     output_dir: Path,
     *,
     selected_surfaces: list[str],
+    replace_complete: bool = False,
 ) -> None:
     """Publish settled PNGs first, then atomically replace the manifest last."""
+    if replace_complete:
+        publication_dir = output_dir.parent / f".{output_dir.name}-publish"
+        backup_dir = output_dir.parent / f".{output_dir.name}-backup"
+        for path in (publication_dir, backup_dir):
+            if path.exists():
+                shutil.rmtree(path)
+        shutil.copytree(staging_dir, publication_dir)
+        if output_dir.exists():
+            output_dir.replace(backup_dir)
+        try:
+            publication_dir.replace(output_dir)
+        except Exception:
+            if backup_dir.exists() and not output_dir.exists():
+                backup_dir.replace(output_dir)
+            raise
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+        return
+
     output_dir.mkdir(parents=True, exist_ok=True)
     for filename in selected_surfaces:
-        (staging_dir / filename).replace(output_dir / filename)
+        destination = output_dir / filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        (staging_dir / filename).replace(destination)
     (staging_dir / MANIFEST_NAME).replace(output_dir / MANIFEST_NAME)
 
 
@@ -246,6 +455,50 @@ def _capture_specs_in_isolated_processes(
         if not (staging_dir / spec.filename).is_file():
             raise RuntimeError(
                 f"Data Import child capture did not publish: {spec.filename}."
+            )
+
+
+def _capture_placement_specs_in_isolated_processes(
+    specs: Sequence[CanonicalCaptureSpec],
+    staging_dir: Path,
+) -> None:
+    """Capture placement modes in isolated xcb child processes."""
+    script = Path(__file__).resolve()
+    xvfb = shutil.which("Xvfb")
+    if xvfb is None:
+        raise RuntimeError("Complete Data Import capture requires Xvfb.")
+    child_environment = dict(os.environ)
+    child_environment["QT_QPA_PLATFORM"] = "xcb"
+    child_environment["XBRAINLAB_PLACEMENT_CAPTURE_CHILD"] = "1"
+    for spec in specs:
+        if not spec.placement_mode:
+            raise RuntimeError(f"Placement capture has no mode: {spec.filename}")
+        server, display = _start_xvfb(xvfb)
+        child_environment["DISPLAY"] = display
+        try:
+            completed = subprocess.run(  # noqa: S603 - current Python executable.
+                [
+                    sys.executable,
+                    str(script),
+                    "--output-dir",
+                    str(staging_dir),
+                    "--placement-mode",
+                    spec.placement_mode,
+                ],
+                cwd=ROOT,
+                check=False,
+                env=child_environment,
+            )
+        finally:
+            _stop_xvfb(server)
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"Data Import placement capture failed: {spec.placement_mode} "
+                f"(exit {completed.returncode})."
+            )
+        if not (staging_dir / spec.filename).is_file():
+            raise RuntimeError(
+                f"Data Import placement capture did not publish: {spec.filename}."
             )
 
 
@@ -315,7 +568,9 @@ def _capture_specs_in_process(
         dialog = spec.dialog_factory()
         try:
             _prepare_capture(dialog, spec, app)
-            _capture(dialog, staging_dir / spec.filename, spec)
+            destination = staging_dir / spec.filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            _capture(dialog, destination, spec)
         finally:
             dialog.close()
             dialog.deleteLater()
@@ -410,12 +665,14 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             label_carrier_count=1,
         ),
         CanonicalCaptureSpec(
-            filename="04-match-labels-internal-suggested-events-full.png",
+            filename="04-match-labels-internal-advanced-760px.png",
             dialog_factory=_internal_events_dialog,
             step_title="Match Labels",
             title="Match Labels",
             summary="Found 3 EEG file(s).",
             primary_action="Next: Review and Import",
+            expanded_advanced_details=True,
+            expected_size=(760, 900),
         ),
         CanonicalCaptureSpec(
             filename="05-review-and-import-report.png",
@@ -441,6 +698,22 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
     )
 
 
+def _placement_mode_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
+    return tuple(
+        CanonicalCaptureSpec(
+            filename=filename,
+            dialog_factory=partial(build_placement_mode_dialog, mode),
+            step_title="Match Labels",
+            title="Match Labels",
+            summary="Found 1 EEG file(s) and 1 label/event carrier(s).",
+            primary_action="Next: Review and Import",
+            label_carrier_count=1,
+            placement_mode=mode,
+        )
+        for mode, filename in PLACEMENT_MODE_SCREENSHOTS.items()
+    )
+
+
 def _prepare_capture(
     widget: QWidget,
     spec: CanonicalCaptureSpec,
@@ -452,6 +725,10 @@ def _prepare_capture(
         if spec.step_title is None:
             raise RuntimeError(f"Wizard capture has no step title: {spec.filename}")
         _show_step(widget, spec.step_title, spec, app)
+        if spec.expanded_advanced_details:
+            widget.match_advanced_toggle.click()
+            app.processEvents()
+            _settle_window_for_capture(widget)
         if spec.expanded_report:
             _expand_report_for_capture(widget, app)
             _assert_report_row_visible(widget)

@@ -21,7 +21,6 @@ from XBrainLab.backend.application import (
     SaliencyRunIdentity,
 )
 from XBrainLab.backend.application.errors import PreconditionError
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     ModelHolder,
@@ -42,6 +41,7 @@ from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyScheduleDisposition,
     PostTrainingSaliencyScheduleReason,
     PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingRunIdentity,
 )
@@ -1054,7 +1054,7 @@ def test_shutdown_release_retries_real_ui_adapter_handoff_before_reopening(
     ui_context = SimpleNamespace(study=service.study)
 
     assert release_application_shutdown_fence(ui_context) is False
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert service._pending_saliency_terminal() == terminal_status
     assert application_events == []
     assert saliency_events == []
@@ -1064,7 +1064,7 @@ def test_shutdown_release_retries_real_ui_adapter_handoff_before_reopening(
 
     assert release_application_shutdown_fence(ui_context) is False
     publication = service.get_view_publication()
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert service._pending_saliency_terminal() is None
     assert publication.state.visualization.post_training_saliency == terminal_status
     assert handoff_attempts == 2
@@ -1075,7 +1075,7 @@ def test_shutdown_release_retries_real_ui_adapter_handoff_before_reopening(
     manager._notify_post_training_saliency_terminal(terminal_status)
 
     assert release_application_shutdown_fence(ui_context) is True
-    assert service._shutdown_fenced is False
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
     assert handoff_attempts == 2
     assert len(application_events) == 1
     assert saliency_events == ["saliency_changed"]
@@ -1131,7 +1131,7 @@ def test_shutdown_release_waits_for_manager_terminal_ledger_commit(
     manager._notify_post_training_saliency_terminal(terminal_status)
 
     assert release_results == [False]
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert len(race_ledgers) == 1
     assert race_ledgers[0].pending_generations == (terminal_status.generation,)
     assert race_ledgers[0].active_generation == terminal_status.generation
@@ -1142,7 +1142,7 @@ def test_shutdown_release_waits_for_manager_terminal_ledger_commit(
     assert committed.active_generation is None
     assert committed.delivered_generation == terminal_status.generation
     assert service.release_shutdown_fence() is True
-    assert service._shutdown_fenced is False
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
 
 
 def test_shutdown_release_retries_unowned_manager_terminal_after_primitive_failure(
@@ -1209,7 +1209,7 @@ def test_shutdown_release_retries_unowned_manager_terminal_after_primitive_failu
     assert committed.pending_generations == ()
     assert committed.delivered_generation == terminal_status.generation
     assert committed.retry_unavailable is False
-    assert service._shutdown_fenced is False
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
     assert service._pending_saliency_terminal() is None
     assert len(application_events) == 1
     assert saliency_events == ["saliency_changed"]
@@ -1268,7 +1268,7 @@ def test_shutdown_release_stays_fenced_when_refresh_fails_before_pending_exists(
     service.request_shutdown_fence()
 
     assert service.release_shutdown_fence() is False
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert service._pending_saliency_terminal() == terminal_status
     assert application_events == []
     assert saliency_events == []
@@ -1278,7 +1278,7 @@ def test_shutdown_release_stays_fenced_when_refresh_fails_before_pending_exists(
 
     assert service.release_shutdown_fence() is False
     publication = service.get_view_publication()
-    assert service._shutdown_fenced is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert publication.state.visualization.post_training_saliency == terminal_status
     assert len(application_events) == 1
     assert application_events[0].publication_generation == publication.generation
@@ -1288,7 +1288,7 @@ def test_shutdown_release_stays_fenced_when_refresh_fails_before_pending_exists(
     manager._notify_post_training_saliency_terminal(terminal_status)
 
     assert service.release_shutdown_fence() is True
-    assert service._shutdown_fenced is False
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
 
 
 def test_close_discards_retryable_terminal_after_queue_handoff_failure(
@@ -1508,7 +1508,13 @@ def test_stale_automatic_command_preserves_current_application_publication(
     assert service.study.training_manager.get_post_training_saliency_status() == (
         current_status
     )
-    assert service.get_view_publication() == current
+    restored = service.get_view_publication()
+    assert restored.generation == current.generation
+    assert restored.revision > current.revision
+    assert restored.state == current.state
+    assert restored.capabilities == current.capabilities
+    assert restored.training_boundary == current.training_boundary
+    assert restored.usable is True
     assert observed_events == []
 
 

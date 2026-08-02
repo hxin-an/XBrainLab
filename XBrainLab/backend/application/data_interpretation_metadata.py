@@ -163,15 +163,32 @@ def bids_summary(
     *,
     materialize: bool = True,
     layout: list[dict[str, Any]] | None = None,
+    discovered_files: Iterable[str | Path] | None = None,
     admitted_metadata_files: Iterable[str] | None = None,
     metadata_read_budget: BidsMetadataReadBudget | None = None,
 ) -> dict[str, Any]:
     """Summarize BIDS entities discovered during source scan."""
-    bids_root = resolve_bids_root(scan_root)
+    discovered_values = None if discovered_files is None else list(discovered_files)
+    discovered = _canonical_path_keys(discovered_values)
+    admitted = _canonical_path_keys(admitted_metadata_files)
+    available_metadata = _intersect_path_scopes(discovered, admitted)
+    containment_root = scan_root.expanduser().resolve(strict=False)
+    if containment_root.is_file():
+        containment_root = containment_root.parent
+    bids_root = resolve_bids_root(
+        scan_root,
+        admitted_files=available_metadata,
+        containment_root=containment_root,
+    )
     events_files = [
         item for item in label_carriers if item.endswith(("_events.tsv", "events.tsv"))
     ]
-    dataset_description = bids_root / "dataset_description.json"
+    dataset_description_candidate = bids_root / "dataset_description.json"
+    dataset_description = _available_regular_file(
+        dataset_description_candidate,
+        available_metadata,
+        containment_root=containment_root,
+    )
     layout = (
         [dict(row) for row in layout]
         if layout is not None
@@ -179,32 +196,50 @@ def bids_summary(
             bids_root=bids_root,
             eeg_files=eeg_files,
             events_files=events_files,
+            admitted_files=discovered_values,
+            containment_root=containment_root,
         )
     )
-    participants_file = bids_root / "participants.tsv"
+    layout = _restrict_bids_layout_to_admitted_files(
+        layout,
+        events_files=events_files,
+        admitted_metadata=available_metadata,
+        containment_root=containment_root,
+    )
+    participants_file = _available_regular_file(
+        bids_root / "participants.tsv",
+        available_metadata,
+        containment_root=containment_root,
+    )
     channels_files = _unique_paths(
         row.get("channels_file") for row in layout if row.get("channels_file")
     )
-    admitted = (
-        None
-        if admitted_metadata_files is None
-        else {str(Path(item).resolve()) for item in admitted_metadata_files}
-    )
 
     def _is_admitted(path: Path) -> bool:
-        return admitted is None or str(path.resolve()) in admitted
+        return admitted is None or _canonical_path_key(path) in admitted
 
     participants = (
         _read_tsv_rows(participants_file)
-        if materialize and _is_admitted(participants_file)
+        if materialize
+        and participants_file is not None
+        and _is_admitted(participants_file)
         else []
     )
     admitted_channels = [item for item in channels_files if _is_admitted(Path(item))]
     read_budget = metadata_read_budget or BidsMetadataReadBudget()
-    if materialize and _is_admitted(dataset_description):
+    if (
+        materialize
+        and dataset_description is not None
+        and _is_admitted(dataset_description)
+    ):
         dataset, root_validation_issue = _read_bids_dataset_description(
             dataset_description,
             read_budget,
+        )
+    elif materialize:
+        dataset = {}
+        root_validation_issue = (
+            "dataset_description.json is missing from the selected BIDS root."
         )
     else:
         dataset = {}
@@ -221,9 +256,7 @@ def bids_summary(
         "eeg_file_count": len(eeg_files),
         "events_files": events_files,
         "channels_files": channels_files,
-        "participants_file": (
-            str(participants_file) if participants_file.exists() else None
-        ),
+        "participants_file": str(participants_file) if participants_file else None,
         "participant_count": len(participants),
         "participants": participants,
         "metadata_materialized": materialize,
@@ -234,9 +267,9 @@ def bids_summary(
         ),
         "layout": layout,
         "selected_scope": bids_scope_summary(eeg_files, layout),
-        "dataset_description": str(dataset_description)
-        if dataset_description.exists()
-        else None,
+        "dataset_description": (
+            str(dataset_description) if dataset_description is not None else None
+        ),
         "dataset": dataset,
         "root_validation_issue": root_validation_issue,
         "metadata_read_budget": read_budget.to_diagnostics(),
@@ -254,13 +287,25 @@ def bids_metadata_resource_paths(summary: dict[str, Any]) -> list[str]:
     )
 
 
-def resolve_bids_root(scan_root: Path) -> Path:
+def resolve_bids_root(
+    scan_root: Path,
+    *,
+    admitted_files: set[str] | None = None,
+    containment_root: Path | None = None,
+) -> Path:
     """Return the nearest ancestor that owns ``dataset_description.json``."""
     root = scan_root.resolve()
     if root.is_file():
         root = root.parent
     for candidate in [root, *root.parents]:
-        if (candidate / "dataset_description.json").exists():
+        if (
+            _available_regular_file(
+                candidate / "dataset_description.json",
+                admitted_files,
+                containment_root=containment_root,
+            )
+            is not None
+        ):
             return candidate
     return root
 
@@ -270,10 +315,15 @@ def bids_eeg_layout(
     bids_root: Path,
     eeg_files: list[str],
     events_files: list[str],
+    admitted_files: Iterable[str | Path] | None = None,
+    containment_root: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Return per-raw-file BIDS EEG layout rows with effective local sidecars."""
+    admitted = _canonical_path_keys(admitted_files)
     events_by_name = {
-        Path(item).name: str(Path(item).resolve()) for item in events_files
+        Path(item).name: str(Path(item).resolve())
+        for item in events_files
+        if admitted is None or _canonical_path_key(Path(item)) in admitted
     }
     rows: list[dict[str, Any]] = []
     for file_path in sorted(eeg_files):
@@ -284,8 +334,19 @@ def bids_eeg_layout(
         events_file = events_by_name.get(f"{stem}_events.tsv")
         if events_file is None:
             candidate = path.with_name(f"{stem}_events.tsv")
-            events_file = str(candidate) if candidate.exists() else ""
-        channels_file = path.with_name(f"{stem}_channels.tsv")
+            admitted_candidate = _available_regular_file(
+                candidate,
+                admitted,
+                containment_root=containment_root,
+            )
+            events_file = (
+                str(admitted_candidate) if admitted_candidate is not None else ""
+            )
+        channels_file = _available_regular_file(
+            path.with_name(f"{stem}_channels.tsv"),
+            admitted,
+            containment_root=containment_root,
+        )
         rows.append(
             {
                 "file": str(path),
@@ -297,7 +358,9 @@ def bids_eeg_layout(
                 "run": extract_bids_entity(rel, "run") or "",
                 "datatype": datatype,
                 "events_file": events_file,
-                "channels_file": str(channels_file) if channels_file.exists() else "",
+                "channels_file": (
+                    str(channels_file) if channels_file is not None else ""
+                ),
             }
         )
     return rows
@@ -429,6 +492,84 @@ def _channel_status_summary(channels_files: list[str]) -> dict[str, int]:
             else:
                 summary["other"] += 1
     return summary
+
+
+def _canonical_path_key(path: Path) -> str:
+    return os.path.normcase(str(path.expanduser().resolve(strict=False)))
+
+
+def _canonical_path_keys(
+    values: Iterable[str | Path] | None,
+) -> set[str] | None:
+    if values is None:
+        return None
+    return {_canonical_path_key(Path(value)) for value in values}
+
+
+def _intersect_path_scopes(*scopes: set[str] | None) -> set[str] | None:
+    active = [scope for scope in scopes if scope is not None]
+    if not active:
+        return None
+    result = set(active[0])
+    for scope in active[1:]:
+        result.intersection_update(scope)
+    return result
+
+
+def _available_regular_file(
+    path: Path,
+    admitted: set[str] | None,
+    *,
+    containment_root: Path | None = None,
+) -> Path | None:
+    if containment_root is not None:
+        try:
+            path.relative_to(containment_root)
+        except ValueError:
+            return None
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if containment_root is not None:
+        try:
+            resolved.relative_to(containment_root)
+        except ValueError:
+            return None
+    if admitted is not None and _canonical_path_key(resolved) not in admitted:
+        return None
+    return resolved if resolved.is_file() else None
+
+
+def _restrict_bids_layout_to_admitted_files(
+    layout: list[dict[str, Any]],
+    *,
+    events_files: list[str],
+    admitted_metadata: set[str] | None,
+    containment_root: Path,
+) -> list[dict[str, Any]]:
+    admitted_events = _canonical_path_keys(events_files) or set()
+    result: list[dict[str, Any]] = []
+    for source_row in layout:
+        row = dict(source_row)
+        events_file = str(row.get("events_file") or "")
+        if admitted_metadata is not None and (
+            events_file
+            and _canonical_path_key(Path(events_file)) not in admitted_events
+        ):
+            row["events_file"] = ""
+        channels_file = str(row.get("channels_file") or "")
+        if channels_file:
+            admitted_channel = _available_regular_file(
+                Path(channels_file),
+                admitted_metadata,
+                containment_root=containment_root,
+            )
+            row["channels_file"] = (
+                str(admitted_channel) if admitted_channel is not None else ""
+            )
+        result.append(row)
+    return result
 
 
 def _unique_paths(values: Iterable[Any]) -> list[str]:

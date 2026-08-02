@@ -115,7 +115,7 @@ class HistoryWidget(QWidget):
 
         if is_epoched:
             self.history_list.addItem(
-                "Epoching completed. Preprocessing is now locked."
+                "EEG epochs created. Preprocessing is now locked."
             )
 
     def show_no_data(self):

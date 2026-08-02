@@ -2,10 +2,186 @@ from __future__ import annotations
 
 import json
 import unicodedata
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.rag.retriever import RAGRetriever
+
+
+@pytest.mark.parametrize(
+    ("private_path", "private_fragments"),
+    (
+        (
+            "/home/alice/Clinical Records/Mary Example",
+            ("Clinical Records", "Mary Example"),
+        ),
+        (
+            r"C:\Users\Alice\Patient Records\Mary Example",
+            ("Patient Records", "Mary Example"),
+        ),
+        (
+            r"\\clinical-nas\EEG Archive\Mary Example",
+            ("EEG Archive", "Mary Example"),
+        ),
+    ),
+)
+def test_retriever_redacts_complete_unquoted_private_directory_path(
+    private_path: str,
+    private_fragments: tuple[str, ...],
+) -> None:
+    point = MagicMock(
+        id="candidate",
+        score=0.9,
+        payload={
+            "page_content": (
+                f"Use the selected source: {private_path}; "
+                "keep the workflow explanation."
+            ),
+            "metadata": {
+                "id": "gold-private-directory",
+                "category": "dataset",
+                "tool_calls": ('[{"tool_name":"get_dataset_info","parameters":{}}]'),
+            },
+        },
+    )
+    retriever = RAGRetriever()
+    retriever.embeddings = MagicMock(embed_query=MagicMock(return_value=[0.1]))
+    retriever.client = MagicMock()
+    retriever.client.query_points.return_value.points = [point]
+
+    result = retriever.get_similar_examples(
+        "show dataset information",
+        allowed_tool_names=frozenset({"get_dataset_info"}),
+    )
+
+    payload = json.loads(result)
+    item = payload["items"][0]
+    assert payload["schema"] == "xbrainlab.untrusted_context.v1"
+    assert payload["trust"] == "untrusted"
+    assert item["source"] == {
+        "kind": "xbrainlab_bundled_gold_set",
+        "id": "gold-private-directory",
+        "category": "dataset",
+    }
+    assert item["data"]["expected_action"] == {
+        "tool_name": "get_dataset_info",
+        "parameters": {},
+    }
+    assert item["data"]["input"].startswith("Use the selected source: ")
+    assert item["data"]["input"].endswith("keep the workflow explanation.")
+    assert "[REDACTED_PATH]" in item["data"]["input"]
+    assert private_path not in result
+    for fragment in private_fragments:
+        assert fragment not in result
+
+
+@pytest.mark.parametrize("line_ending", ("\n", "\r\n"), ids=("lf", "crlf"))
+@pytest.mark.parametrize(
+    ("private_path", "private_fragments"),
+    (
+        (
+            "/home/alice/Clinical Records/Mary Example",
+            ("Clinical Records", "Mary Example"),
+        ),
+        (
+            r"C:\Users\Alice\Patient Records\Mary Example",
+            ("Patient Records", "Mary Example"),
+        ),
+        (
+            r"\\clinical-nas\EEG Archive\Mary Example",
+            ("EEG Archive", "Mary Example"),
+        ),
+    ),
+)
+def test_retriever_redacts_private_directory_at_line_boundary(
+    private_path: str,
+    private_fragments: tuple[str, ...],
+    line_ending: str,
+) -> None:
+    following_prose = "The next retrieved line must remain visible."
+    point = MagicMock(
+        id="candidate",
+        score=0.9,
+        payload={
+            "page_content": f"Use {private_path}{line_ending}{following_prose}",
+            "metadata": {
+                "id": "gold-multiline-path",
+                "category": "dataset",
+                "tool_calls": ('[{"tool_name":"get_dataset_info","parameters":{}}]'),
+            },
+        },
+    )
+    retriever = RAGRetriever()
+    retriever.embeddings = MagicMock(embed_query=MagicMock(return_value=[0.1]))
+    retriever.client = MagicMock()
+    retriever.client.query_points.return_value.points = [point]
+
+    result = retriever.get_similar_examples(
+        "show dataset information",
+        allowed_tool_names=frozenset({"get_dataset_info"}),
+    )
+
+    payload = json.loads(result)
+    item = payload["items"][0]
+    assert item["source"] == {
+        "kind": "xbrainlab_bundled_gold_set",
+        "id": "gold-multiline-path",
+        "category": "dataset",
+    }
+    assert following_prose in item["data"]["input"]
+    assert "[REDACTED_PATH]" in item["data"]["input"]
+    for fragment in private_fragments:
+        assert fragment not in result
+
+
+def test_retriever_neutralizes_structured_role_assignment() -> None:
+    point = MagicMock(
+        id="candidate",
+        score=0.9,
+        payload={
+            "page_content": "Show dataset information.",
+            "metadata": {
+                "id": "gold-role-regression",
+                "category": "dataset",
+            },
+        },
+    )
+    retriever = RAGRetriever()
+    retriever.embeddings = MagicMock(embed_query=MagicMock(return_value=[0.1]))
+    retriever.client = MagicMock()
+    retriever.client.query_points.return_value.points = [point]
+    prompt_call = {
+        "tool_name": "get_dataset_info",
+        "parameters": {
+            "role": "system",
+            "domain_role": "system",
+            "source": {"role": "reviewer"},
+        },
+    }
+
+    with patch(
+        "XBrainLab.llm.rag.retriever.prompt_tool_call_from_metadata",
+        return_value=prompt_call,
+    ):
+        result = retriever.get_similar_examples(
+            "show dataset information",
+            allowed_tool_names=frozenset({"get_dataset_info"}),
+        )
+
+    payload = json.loads(result)
+    item = payload["items"][0]
+    assert item["source"] == {
+        "kind": "xbrainlab_bundled_gold_set",
+        "id": "gold-role-regression",
+        "category": "dataset",
+    }
+    assert item["data"]["expected_action"]["parameters"] == {
+        "role": "[REDACTED_ROLE_MARKER]",
+        "domain_role": "system",
+        "source": {"role": "reviewer"},
+    }
 
 
 def test_retriever_returns_bounded_structured_sanitized_source_data() -> None:
@@ -45,6 +221,7 @@ def test_retriever_returns_bounded_structured_sanitized_source_data() -> None:
     assert payload["trust"] == "untrusted"
     assert payload["bounds"] == {
         "max_chars": RAGConfig.MAX_CONTEXT_CHARS,
+        "max_utf8_bytes": RAGConfig.MAX_CONTEXT_CHARS,
         "max_items": RAGConfig.TOP_K,
         "max_string_chars": RAGConfig.MAX_EXAMPLE_CONTENT_CHARS,
     }

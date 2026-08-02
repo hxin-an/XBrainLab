@@ -10,13 +10,18 @@ from __future__ import annotations
 from dataclasses import MISSING, dataclass, fields, is_dataclass
 from enum import Enum
 from types import UnionType
-from typing import Any, Union, get_args, get_origin, get_type_hints
+from typing import Any, Union, cast, get_args, get_origin, get_type_hints
 
 from XBrainLab.backend.dataset.option import (
     SplitByType,
     SplitUnit,
     TrainingType,
     ValSplitByType,
+)
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+    public_diagnostic_text,
+    public_diagnostic_value,
 )
 
 from .capabilities import CommandCapability
@@ -79,7 +84,7 @@ class AutomationCommandSpec:
 
 @dataclass(frozen=True)
 class AutomationExecution:
-    """Result envelope for one automation payload."""
+    """Internal result envelope with an explicit public serializer."""
 
     accepted: bool
     command_name: str | None
@@ -90,7 +95,46 @@ class AutomationExecution:
     state: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
-        return serialize_json_value(self)
+        """Return the public-safe JSON contract for compatibility callers."""
+        return self.to_public_dict()
+
+    def to_internal_dict(self) -> dict[str, Any]:
+        """Return raw local state for deliberate in-process consumers."""
+        return {
+            "accepted": self.accepted if type(self.accepted) is bool else False,
+            "command_name": (
+                self.command_name if type(self.command_name) is str else None
+            ),
+            "verification": (
+                dict.copy(self.verification) if type(self.verification) is dict else {}
+            ),
+            "autonomy": (
+                dict.copy(self.autonomy) if type(self.autonomy) is dict else {}
+            ),
+            "capability": (
+                dict.copy(self.capability) if type(self.capability) is dict else None
+            ),
+            "result": (dict.copy(self.result) if type(self.result) is dict else None),
+            "state": dict.copy(self.state) if type(self.state) is dict else {},
+        }
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """Serialize the public-safe headless execution projection."""
+        projected = public_diagnostic_value(self.to_internal_dict())
+        if type(projected) is dict and "accepted" in projected:
+            return projected
+        return {
+            "accepted": False,
+            "command_name": None,
+            "verification": {
+                "schema_valid": False,
+                "error": PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+            },
+            "autonomy": {},
+            "capability": None,
+            "result": None,
+            "state": {},
+        }
 
 
 class AutomationPayloadError(ValueError):
@@ -268,11 +312,11 @@ def build_command_from_payload(
     allow_legacy_compatibility: bool = False,
 ) -> Command:
     """Build a typed command object from a JSON-shaped automation payload."""
-    if not isinstance(payload, dict):
+    if type(payload) is not dict:
         raise AutomationPayloadError("Payload must be an object.")
 
-    command_value = payload.get("command_name", payload.get("command"))
-    if not isinstance(command_value, str) or not command_value:
+    command_value = dict.get(payload, "command_name", dict.get(payload, "command"))
+    if type(command_value) is not str or not command_value:
         raise AutomationPayloadError("Payload must include command or command_name.")
 
     try:
@@ -287,8 +331,8 @@ def build_command_from_payload(
             f"explicit compatibility opt-in. Prefer: {preferred}."
         )
 
-    arguments = payload.get("arguments", {})
-    if not isinstance(arguments, dict):
+    arguments = dict.get(payload, "arguments", {})
+    if type(arguments) is not dict:
         raise AutomationPayloadError("Payload arguments must be an object.")
 
     return _construct_command(command_name, arguments)
@@ -322,7 +366,7 @@ def execute_automation_payload(
             allow_legacy_compatibility=allow_legacy_compatibility,
         )
     except AutomationPayloadError as exc:
-        verification["error"] = str(exc)
+        verification["error"] = _automation_payload_error_text(exc)
         return AutomationExecution(
             accepted=False,
             command_name=command_name.value if command_name else None,
@@ -341,12 +385,14 @@ def execute_automation_payload(
         verification=verification,
         autonomy=_autonomy_dict(capability),
         capability=capability.to_dict() if capability else None,
-        result=result.to_dict(),
+        result=result.to_internal_dict(),
         state=result.state.to_dict(),
     )
 
 
 def _construct_command(command_name: CommandName, arguments: dict[str, Any]) -> Command:
+    if any(type(key) is not str for key in dict.keys(arguments)):
+        raise AutomationPayloadError("Payload argument names must be strings.")
     command_type = COMMAND_TYPES[command_name]
     ui_only = _ui_only_command_fields(command_name)
     requested_ui_only = sorted(set(arguments) & ui_only)
@@ -406,11 +452,11 @@ def _is_confirmation_field(name: str) -> bool:
 
 
 def _coerce_value(name: str, value: Any) -> Any:
-    if name == "plan" and isinstance(value, dict):
+    if name == "plan" and type(value) is dict:
         return LabelImportPlan(**value)
-    if name == "updates" and isinstance(value, list):
+    if name == "updates" and type(value) is list:
         return [
-            MetadataUpdate(**item) if isinstance(item, dict) else item for item in value
+            MetadataUpdate(**item) if type(item) is dict else item for item in value
         ]
     return value
 
@@ -433,10 +479,9 @@ def _validate_training_argument_against_published_schema(
         )
 
     alternatives = schema.get("anyOf")
-    if isinstance(alternatives, list):
+    if type(alternatives) is list:
         if any(
-            isinstance(alternative, dict)
-            and _matches_training_schema(value, alternative)
+            type(alternative) is dict and _matches_training_schema(value, alternative)
             for alternative in alternatives
         ):
             return
@@ -446,14 +491,14 @@ def _validate_training_argument_against_published_schema(
         )
 
     expected_type = schema.get("type")
-    if isinstance(expected_type, str) and not _matches_json_type(
+    if type(expected_type) is str and not _matches_json_type(
         value,
         expected_type,
     ):
         _raise_schema_type_error(command_name, field_name, expected_type, value)
 
     enum_values = schema.get("enum")
-    if isinstance(enum_values, list) and value not in enum_values:
+    if type(enum_values) is list and value not in enum_values:
         allowed = ", ".join(repr(item) for item in enum_values)
         raise AutomationPayloadError(
             f"{command_name.value} argument {field_name} must be one of: {allowed}."
@@ -471,10 +516,10 @@ def _matches_training_schema(value: Any, schema: dict[str, Any]) -> bool:
     if value is None:
         return schema.get("nullable") is True or schema.get("type") == "null"
     expected_type = schema.get("type")
-    if isinstance(expected_type, str) and not _matches_json_type(value, expected_type):
+    if type(expected_type) is str and not _matches_json_type(value, expected_type):
         return False
     enum_values = schema.get("enum")
-    return not isinstance(enum_values, list) or value in enum_values
+    return type(enum_values) is not list or value in enum_values
 
 
 def _validate_numeric_bounds(
@@ -484,15 +529,15 @@ def _validate_numeric_bounds(
     *,
     field_name: str,
 ) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if type(value) not in {int, float}:
         return
     minimum = schema.get("minimum")
-    if isinstance(minimum, (int, float)) and value < minimum:
+    if type(minimum) in {int, float} and value < minimum:
         raise AutomationPayloadError(
             f"{command_name.value} argument {field_name} must be at least {minimum}."
         )
     exclusive_minimum = schema.get("exclusiveMinimum")
-    if isinstance(exclusive_minimum, (int, float)) and value <= exclusive_minimum:
+    if type(exclusive_minimum) in {int, float} and value <= exclusive_minimum:
         raise AutomationPayloadError(
             f"{command_name.value} argument {field_name} must be greater than "
             f"{exclusive_minimum}."
@@ -505,13 +550,13 @@ def _matches_json_type(value: Any, expected_type: str) -> bool:
     if expected_type == "integer":
         return type(value) is int
     if expected_type == "number":
-        return not isinstance(value, bool) and isinstance(value, (int, float))
+        return type(value) in {int, float}
     if expected_type == "string":
-        return isinstance(value, str)
+        return type(value) is str
     if expected_type == "array":
-        return isinstance(value, list)
+        return type(value) is list
     if expected_type == "object":
-        return isinstance(value, dict)
+        return type(value) is dict
     if expected_type == "null":
         return value is None
     return True
@@ -541,7 +586,12 @@ def _raise_schema_type_error(
 def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
-    type_hints = get_type_hints(command_type)
+    localns: dict[str, Any] = {}
+    if command_type is EvaluateCommand:
+        from .evaluation_render import EvaluationSummaryIdentity  # noqa: PLC0415
+
+        localns["EvaluationSummaryIdentity"] = EvaluationSummaryIdentity
+    type_hints = get_type_hints(command_type, localns=localns)
     for field_info in fields(command_type):
         if _field_hidden_from_automation(command_type, field_info.name):
             continue
@@ -565,26 +615,13 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
 
 def _ui_only_command_fields(command_name: CommandName) -> frozenset[str]:
     if command_name == CommandName.EVALUATE:
-        return frozenset(
-            {
-                "include_objects",
-                "include_metrics",
-                "include_pooled_results",
-                "include_model_summaries",
-                "model_summary_plan_index",
-                "model_summary_run_index",
-            }
-        )
-    if command_name == CommandName.VISUALIZE:
-        return frozenset({"include_objects", "include_averaged_records"})
+        return frozenset({"summary_identity"})
     return frozenset()
 
 
 def _field_hidden_from_automation(command_type: type[Any], field_name: str) -> bool:
     if command_type is EvaluateCommand:
         return field_name in _ui_only_command_fields(CommandName.EVALUATE)
-    if command_type is VisualizeCommand:
-        return field_name in _ui_only_command_fields(CommandName.VISUALIZE)
     return (
         command_type is GenerateDatasetCommand
         and field_name
@@ -752,13 +789,22 @@ def _automation_execution_output_schema() -> dict[str, Any]:
 
 
 def _payload_command_name(payload: dict[str, Any]) -> CommandName | None:
-    value = payload.get("command_name", payload.get("command"))
-    if not isinstance(value, str) or not value:
+    if type(payload) is not dict:
+        return None
+    value = dict.get(payload, "command_name", dict.get(payload, "command"))
+    if type(value) is not str or not value:
         return None
     try:
         return CommandName(value)
     except ValueError:
         return None
+
+
+def _automation_payload_error_text(exc: AutomationPayloadError) -> str:
+    args = cast(Any, BaseException.args).__get__(exc, AutomationPayloadError)
+    if type(args) is tuple and len(args) == 1 and type(args[0]) is str:
+        return public_diagnostic_text(args[0])
+    return PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER
 
 
 def _confirmation_required(capability: CommandCapability | None) -> bool:

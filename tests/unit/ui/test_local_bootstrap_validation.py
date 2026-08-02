@@ -266,8 +266,11 @@ class TestLocalBootstrapValidation:
 
         engine_config = MockEngine.call_args.args[0]
         assert engine_config.model_name == config.model_name
-        assert engine_config.device == config.device
-        assert engine_config.load_in_4bit == config.load_in_4bit
+        assert resolution.launch_spec is not None
+        assert engine_config.device == resolution.launch_spec.execution_device == "cpu"
+        assert engine_config.load_in_4bit is False
+        assert config.device == "cuda"
+        assert config.load_in_4bit is True
         assert "fall back to CPU" in dialog.local_runtime_label.text()
         assert any(
             "fall back to CPU" in call.args[0]

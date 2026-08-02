@@ -297,6 +297,45 @@ def test_cleanup_defers_finished_during_reentrant_outcome_delivery(qtbot) -> Non
     assert events == ["result-start", "result-end", "finished"]
 
 
+def test_refresh_false_runner_never_enters_observer_suppression(
+    qtbot,
+    monkeypatch,
+) -> None:
+    context = QWidget()
+    cast(Any, context).main_window = SimpleNamespace()
+    qtbot.addWidget(context)
+    cast(Any, context).set_busy = lambda _busy: None
+    registry = AsyncCommandRegistry()
+
+    def fail_suppression(_context):
+        raise AssertionError("refresh=False must not suppress publication delivery")
+
+    monkeypatch.setattr(
+        async_command_runner,
+        "suppress_observer_refresh_during_command",
+        fail_suppression,
+    )
+
+    runner = QtApplicationCommandRunner(
+        context=context,
+        command=QueryStateCommand(),
+        execute=_result,
+        on_result=lambda _result: None,
+        on_error=None,
+        refresh=False,
+        busy_target=context,
+        allow_during_shutdown=False,
+        worker_factory=lambda _execute: _FinishedOnlyWorker(),
+        registry=registry,
+    )
+
+    assert runner.start() is True
+    qtbot.waitUntil(lambda: registry.active_count(context) == 0, timeout=2_000)
+    assert id(cast(Any, context).main_window) not in (
+        refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
+    )
+
+
 def test_finished_only_worker_fails_interaction_session_and_releases_ownership(
     qtbot,
 ) -> None:

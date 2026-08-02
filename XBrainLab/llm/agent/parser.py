@@ -10,7 +10,6 @@ from typing import Any, TypeAlias, cast
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.tools.result_contract import (
-    redact_public_text,
     safe_unexpected_failure,
 )
 
@@ -160,10 +159,14 @@ class CommandParser:
                 object_pairs_hook=_unique_object,
                 parse_constant=_reject_non_standard_json,
             )
-        except _DuplicateKeyError as exc:
-            return ToolEnvelopeParseResult.format_error(redact_public_text(exc))
-        except _NonStandardJsonValueError as exc:
-            return ToolEnvelopeParseResult.format_error(redact_public_text(exc))
+        except _DuplicateKeyError:
+            return ToolEnvelopeParseResult.format_error(
+                "A tool proposal must not contain duplicate JSON keys.",
+            )
+        except _NonStandardJsonValueError:
+            return ToolEnvelopeParseResult.format_error(
+                "A tool proposal must not contain non-standard JSON values.",
+            )
         except json.JSONDecodeError as exc:
             if not CommandParser._looks_like_tool_attempt(stripped):
                 return ToolEnvelopeParseResult.format_error(

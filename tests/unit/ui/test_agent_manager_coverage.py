@@ -21,6 +21,10 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
 )
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.assistant_activity import (
+    AssistantTurnActivity,
+    AssistantTurnActivityPhase,
+)
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
     AgentConfirmationResolution,
@@ -34,6 +38,7 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
 )
+from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeLifecycle,
     RuntimeCommandAdmissionResult,
@@ -102,6 +107,23 @@ def _make_manager() -> Any:
 
 def _empty_workflow_state():
     return ApplicationStateSnapshot.empty()
+
+
+def _own_confirmation(m: Any, request: AgentConfirmationRequest) -> None:
+    """Bind one synthetic confirmation to the manager's exact active turn."""
+    submission = m._assistant_turn_state.begin_submission()
+    correlation = AssistantTurnCorrelation(
+        generation=submission.generation,
+        turn_id=1,
+    )
+    assert m._assistant_turn_state.accept_admission(submission, correlation)
+    m._last_assistant_activity = AssistantTurnActivity(
+        AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+        command_name=request.command_name,
+        request_id=request.request_id,
+        turn_id=correlation.turn_id,
+        generation=correlation.generation,
+    )
 
 
 def test_agent_manager_does_not_fetch_preprocess_controller_from_real_study(qtbot):
@@ -339,6 +361,7 @@ class TestShowActionConfirmation:
             command_name="confirm",
             status=RuntimeCommandAdmissionStatus.ACCEPTED,
         )
+        _own_confirmation(m, request)
 
         m._show_action_confirmation(request)
 
@@ -375,6 +398,7 @@ class TestShowActionConfirmation:
             command_name="confirm",
             status=RuntimeCommandAdmissionStatus.ACCEPTED,
         )
+        _own_confirmation(m, request)
 
         m._show_action_confirmation(request)
 

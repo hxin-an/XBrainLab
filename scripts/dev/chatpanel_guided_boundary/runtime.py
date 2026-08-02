@@ -58,11 +58,16 @@ from scripts.dev.chatpanel_guided_boundary.validation import (
     validate_guided_boundary_artifact_root,
 )
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
-from XBrainLab.llm.core.config import LLMConfig
+from scripts.dev.local_assistant_capture_runtime import (
+    prepare_capture_config as _prepare_capture_config,
+)
+from scripts.dev.local_assistant_capture_runtime import (
+    restore_capture_config_env as _restore_capture_config_env,
+)
 from XBrainLab.llm.core.config_paths import CONFIG_DIR_ENV
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-guided-boundary"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-guided-boundary"
 JSON_ARTIFACT = "chatpanel-local-guided-boundary-walkthrough.json"
 MARKDOWN_ARTIFACT = "chatpanel-local-guided-boundary-walkthrough.md"
 
@@ -164,32 +169,6 @@ def cli_main(argv: list[str] | None = None) -> int:
     print(f"Wrote {published_dir / JSON_ARTIFACT}")
     print(f"Wrote {published_dir / MARKDOWN_ARTIFACT}")
     return return_code
-
-
-def _prepare_capture_config(model_id: str, config_dir: Path) -> LLMConfig:
-    """Persist one capture-only runtime selection outside the repo settings."""
-    isolated_dir = config_dir.expanduser().resolve()
-    os.environ[CONFIG_DIR_ENV] = str(isolated_dir)
-    config = LLMConfig()
-    config.apply_runtime_selection(
-        "local",
-        model_id=model_id,
-        ui_active_mode="local",
-    )
-    config.local_runtime_notice_acknowledged = True
-    if not config.save_to_file():
-        raise RuntimeError(
-            f"Could not persist isolated assistant config under {isolated_dir}."
-        )
-    return config
-
-
-def _restore_capture_config_env(previous_config_dir: str | None) -> None:
-    """Restore the caller's config boundary without touching either file."""
-    if previous_config_dir is None:
-        os.environ.pop(CONFIG_DIR_ENV, None)
-    else:
-        os.environ[CONFIG_DIR_ENV] = previous_config_dir
 
 
 def _record_guided_source_stability(

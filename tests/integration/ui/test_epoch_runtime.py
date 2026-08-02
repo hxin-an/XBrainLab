@@ -58,11 +58,14 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
 
     preprocess_panel = _switch_and_wait_for_panel(window, 1, qtbot)
     query_result = service.execute(
-        QueryStateCommand(query="data_lists", include_objects=True),
+        QueryStateCommand(query="data_lists"),
     )
-    data_list = query_result.runtime.get("preprocessed_data_list") or []
+    assert query_result.ok, query_result.message
+    data_rows = query_result.diagnostics.get("preprocessed_rows") or []
     available_events = {
-        str(event_name) for data in data_list for event_name in data.get_event_list()[1]
+        str(event_name)
+        for row in data_rows
+        for event_name in row.get("event", {}).get("labels", [])
     }
     selected_events = sorted(
         {
@@ -74,8 +77,8 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
     assert selected_events == ["769", "770", "771", "772"]
 
     class FakeEpochingDialog:
-        def __init__(self, _parent, _data_list):
-            pass
+        def __init__(self, _parent, **kwargs):
+            assert isinstance(kwargs["epoch_context"], dict)
 
         def exec(self):
             return True
@@ -114,7 +117,7 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
         epoch_status_bar = cast(Any, window.statusBar())
         assert epoch_status_bar is not None
         qtbot.waitUntil(
-            lambda: "Epoching applied" in epoch_status_bar.currentMessage(),
+            lambda: "EEG epochs created" in epoch_status_bar.currentMessage(),
             timeout=2_000,
         )
 
@@ -127,7 +130,7 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
     error_dialog.assert_not_called()
     status_bar = cast(Any, window.statusBar())
     assert status_bar is not None
-    assert "Epoching applied" in status_bar.currentMessage()
+    assert "EEG epochs created" in status_bar.currentMessage()
 
     window.close()
 
@@ -154,8 +157,8 @@ def test_epoch_ram_block_is_shown_without_copy_or_materialization(
     preprocess_panel = _switch_and_wait_for_panel(window, 1, qtbot)
 
     class FakeEpochingDialog:
-        def __init__(self, _parent, _data_list):
-            pass
+        def __init__(self, _parent, **kwargs):
+            assert isinstance(kwargs["epoch_context"], dict)
 
         def exec(self):
             return True
@@ -172,7 +175,7 @@ def test_epoch_ram_block_is_shown_without_copy_or_materialization(
         total_memory_bytes=2_000,
         used_memory_bytes=1_000,
         risk_level=resource_guard.RISK_BLOCKING,
-        message="Epoch materialization is too large for available RAM.",
+        message="EEG epoch data is too large for available RAM.",
     )
     copy_spy = MagicMock(side_effect=AssertionError("Raw.copy must not run"))
     monkeypatch.setattr(raw, "copy", copy_spy)

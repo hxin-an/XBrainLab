@@ -8,6 +8,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QTableWidget, QWidget
 
+from tests.unit.ui.data_split_test_support import dialog_context_kwargs
+from XBrainLab.backend.application.dataset_split_preview import DatasetSplitPreviewRow
+
 # ============ DataSplittingPreviewDialog ============
 
 
@@ -35,18 +38,17 @@ class TestDataSplittingPreviewDialog:
         return cfg
 
     def test_creates(self, qtbot, epoch_data, config):
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-            ) as MockGen,
-            patch("threading.Thread"),
-        ):
-            MockGen.return_value.preview_failed = None
+        with patch("threading.Thread"):
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplittingPreviewDialog,
             )
 
-            dlg = DataSplittingPreviewDialog(None, "Preview", epoch_data, config)
+            dlg = DataSplittingPreviewDialog(
+                None,
+                "Preview",
+                config=config,
+                **dialog_context_kwargs(),
+            )
             qtbot.addWidget(dlg)
             # Stop timer
             if hasattr(dlg, "timer"):
@@ -54,22 +56,33 @@ class TestDataSplittingPreviewDialog:
             assert dlg.windowTitle() == "Preview"
 
     def test_get_result_default(self, qtbot, epoch_data, config):
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
-            ) as MockGen,
-            patch("threading.Thread"),
-        ):
-            MockGen.return_value.preview_failed = None
+        with patch("threading.Thread"):
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplittingPreviewDialog,
             )
 
-            dlg = DataSplittingPreviewDialog(None, "Preview", epoch_data, config)
+            dlg = DataSplittingPreviewDialog(
+                None,
+                "Preview",
+                config=config,
+                **dialog_context_kwargs(),
+            )
             qtbot.addWidget(dlg)
             if hasattr(dlg, "timer"):
                 dlg.timer.stop()
 
+            dlg._set_preview_state(
+                dlg._preview_generation_id,
+                "succeeded",
+                rows=(
+                    DatasetSplitPreviewRow(
+                        name="Fold_0",
+                        train_count=80,
+                        validation_count=10,
+                        test_count=10,
+                    ),
+                ),
+            )
             result = dlg.get_result()
             assert result == {
                 "train_type": "Full Data",
@@ -184,10 +197,7 @@ class TestVisualizationPanel:
         ):
             from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
-            ctrl = MagicMock()
-            ctrl.get_trainers.return_value = []
-            train_ctrl = MagicMock()
-            p = VisualizationPanel(controller=ctrl, training_controller=train_ctrl)
+            p = VisualizationPanel()
             qtbot.addWidget(p)
             yield p
 
@@ -197,7 +207,7 @@ class TestVisualizationPanel:
     def test_refresh_combos_does_not_read_live_trainers(self, panel):
         panel.refresh_combos()
 
-        panel.controller.get_trainers.assert_not_called()
+        assert panel.controller is None
 
     def test_refresh_combos(self, panel):
         panel.refresh_combos()
@@ -229,6 +239,7 @@ class TestEvaluationPanel:
                 w.update_plot = MagicMock()
                 w.clear = MagicMock()
                 w.fit_plot_to_canvas = MagicMock()
+                w.cleanup = MagicMock()
                 return w
 
             return factory
@@ -246,10 +257,7 @@ class TestEvaluationPanel:
         ):
             from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 
-            ctrl = MagicMock()
-            ctrl.get_plans.return_value = []
-            train_ctrl = MagicMock()
-            p = EvaluationPanel(controller=ctrl, training_controller=train_ctrl)
+            p = EvaluationPanel()
             qtbot.addWidget(p)
             yield p
 
@@ -261,6 +269,12 @@ class TestEvaluationPanel:
 
     def test_on_model_changed(self, panel):
         panel.on_model_changed(0)
+
+    def test_cleanup_delegates_to_plot_widgets(self, panel):
+        panel.cleanup()
+
+        panel.matrix_widget.cleanup.assert_called_once_with()
+        panel.bar_chart.cleanup.assert_called_once_with()
 
     def test_update_info(self, panel):
         panel.update_info()

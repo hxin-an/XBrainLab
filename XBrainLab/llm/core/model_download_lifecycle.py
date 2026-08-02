@@ -50,6 +50,7 @@ class ModelCacheCleanupReason(str, Enum):
     """Why one model cache target is being removed."""
 
     CANCELLED_DOWNLOAD = "cancelled_download"
+    FAILED_DOWNLOAD = "failed_download"
     USER_DELETE = "user_delete"
 
 
@@ -416,12 +417,11 @@ class ModelDownloadLifecycle(QObject):
         """Start one download unless cleanup or application shutdown is active."""
         if self._shutdown_requested or not self.is_idle():
             return False
-        target = ModelDownloadTarget.create(repo_id, cache_dir)
-        started = bool(
-            self._downloader.start_download(target.repo_id, target.cache_dir)
-        )
+        started = bool(self._downloader.start_download(repo_id, cache_dir))
         if started:
-            self._active_target = self._downloader.active_target or target
+            self._active_target = self._downloader.active_target or (
+                ModelDownloadTarget.create(repo_id, cache_dir)
+            )
         return started
 
     def request_cancel(self) -> bool:
@@ -477,11 +477,19 @@ class ModelDownloadLifecycle(QObject):
         if not isinstance(outcome, ModelDownloadOutcome):
             return
         self._active_target = outcome.target
-        if outcome.cancelled:
+        if (
+            not outcome.ok
+            and not outcome.target.complete_cache_at_start
+            and self._target_cache_may_need_cleanup(outcome.target)
+        ):
             self._pending_download_outcome = outcome
             request = ModelCacheCleanupRequest(
                 target=outcome.target,
-                reason=ModelCacheCleanupReason.CANCELLED_DOWNLOAD,
+                reason=(
+                    ModelCacheCleanupReason.CANCELLED_DOWNLOAD
+                    if outcome.cancelled
+                    else ModelCacheCleanupReason.FAILED_DOWNLOAD
+                ),
             )
             if self._start_cache_cleanup(request):
                 return
@@ -494,6 +502,19 @@ class ModelDownloadLifecycle(QObject):
                 ),
             )
         self._publish_download_outcome(outcome)
+
+    @staticmethod
+    def _target_cache_may_need_cleanup(target: ModelDownloadTarget) -> bool:
+        """Return whether an automatic target-only cleanup has work to do."""
+        for raw_path in target.cache_candidates:
+            try:
+                Path(raw_path).lstat()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return True
+            return True
+        return False
 
     def _start_cache_cleanup(self, request: ModelCacheCleanupRequest) -> bool:
         if self._cleanup_thread is not None:

@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-07-18`
+最後更新：`2026-07-31`
 
 ## 範圍
 
@@ -8,19 +8,19 @@
 `MainWindow`、五個主要 workflow panel、observer refresh、assistant 接線，以及
 aggregate info 更新方式。
 
-本文不把未驗證的理想分層寫成既有事實。現況上，UI 仍直接使用 backend
-controllers 的中間狀態，還不是一個完整由 Application Service 包住的形狀。
-但 user-facing readiness / blocked reason 已開始讀 ApplicationService capability policy；
-多數 high-value action execution 也已經透過 service-backed command adapter。
+本文不把未驗證的理想分層寫成既有事實。現況上，五個 product panels 都由
+ApplicationService-backed typed ports 建立；Training 的 live progress 由 narrow transient port
+傳遞，不再由 MainWindow 注入 controller bundle。Controllers 仍存在於 standalone/test
+compatibility constructors，不能把這些殘留誤寫成 repo-wide zero-controller。
 
 ## 快速結論
 
 | 問題 | 目前答案 |
 | --- | --- |
-| UI 是否統一走 command？ | 高價值 action 和 readiness 已優先走 `ApplicationService / Command API`；panel constructor 和 observer bridge 還保留 injected controller adapters。 |
-| UI refresh 是否統一？ | UI 與 assistant command 都在執行期間抑制 observer duplicate refresh，完成後依 serialized `changed_state` 進同一個 refresh coordinator；mock / compatibility fallback 仍可做 local refresh。 |
+| UI 是否統一走 command？ | Product action、readiness 與 state render 走 `ApplicationService / Command API` 和 typed ports；Training progress tick 走獨立 transient port。 |
+| UI refresh 是否統一？ | Product state-changing repaint 只認 revisioned `ApplicationViewPublication`；navigation refresh 和 Training transient progress 分開，mock / compatibility context 才保留 observer/local refresh。 |
 | 產品路徑還能偷走 legacy mutation 嗎？ | 已被 architecture guard 大幅限制；product UI method 不能直接呼叫 controller compatibility helper，也不能用 controller echo 判定 service success。 |
-| 是否 full zero-controller UI？ | 還不是。現況是 controller adapter quarantine，不是 controller 全退場。 |
+| 是否 full zero-controller UI？ | Product MainWindow wiring 已不使用 controller bundle；但 standalone/test compatibility constructors 與 outer controller adapters 尚未物理移除。 |
 | 讀者應看哪裡？ | 先看本頁的例外地圖，再看 [validation](../validation/README.md) 的 checkpoint 摘要；不要從長串歷史紀錄倒推現況。 |
 
 閱讀順序建議：先用「剩餘 UI controller 例外地圖」判斷某個 controller hit 是否仍是
@@ -31,10 +31,10 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 
 | 類型 | 代表位置 | 目前判斷 | 不能宣稱 |
 | --- | --- | --- | --- |
-| Panel bootstrap / observer bridge | `controller_compatibility_bootstrap.py`、`BasePanel`、`QtObserverBridge` | observer bridge adapter，支撐現有 backend `Observable` event 到 Qt slot。 | 不能宣稱 UI 已完全不依賴 controllers。 |
+| Standalone Training compatibility | `TrainingPanel` / sidebar compatibility constructor parameters | Typed-port product mode 會丟棄 compatibility controllers；standalone/mock tests 仍可明確注入。 | 不能宣稱 repo 已物理移除所有 controller compatibility code。 |
 | Command fallback compatibility | sidebar / panel `_compatibility_*` helpers、`run_controller_compatibility_call()` | mock / compatibility non-`Study` only；real `Study` product path 若 command helper 不可用應 blocked/error，而不是 silent fallback。 | 不能把 fallback test 當 product success。 |
 | Human request orchestration | montage picker、label import target selection、dialog-local validation | UI request path；confirmed action 才送進 command，例如 montage apply、smart parse、label import。 | 不能把 dialog orchestration 誤寫成 backend source-of-truth。 |
-| Readonly display fallback | Evaluation / Preprocess / Dataset panel display helpers | real `Study` 已優先用 typed command/query gate；no-service mock context 才讀 controller lists/plans/trainers。Visualization saliency render 已改讀 immutable publication，不再保留 live Trainer/Plan/EvalRecord/Dataset UI path。 | 不能宣稱所有其他 lower-level integration tests 都已改成 query truth。 |
+| Readonly display fallback | Preprocess / Dataset panel display helpers | real `Study` 已優先用 typed command/query gate；no-service mock context 才讀 controller lists。Evaluation catalog、metrics 與 chart render 已完全改讀 ApplicationService 的 generation-bound detached publication；Visualization saliency render 也讀 immutable publication，不再保留 live Trainer/Plan/EvalRecord/Dataset UI path。 | 不能宣稱其他 lower-level integration tests 都已改成 query truth。 |
 | Assistant UI wiring | `AgentManager` | status / montage channel defaults 走 state query；compatibility montage apply/channel fallback 只給 mock / compatibility context。 | 不能宣稱 local LLM 長時間桌面 session 已人工驗收。 |
 | Aggregate info | `InfoPanelService` | product runtime 不自行訂閱 controller events，資料列表透過 `QueryStateCommand(data_lists)`。 | 這不代表其他 panel observer adapters 已全部消失。 |
 
@@ -45,27 +45,26 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 
 | Source hit | 目前分類 | 為什麼目前可接受或仍有 gap | 下一個可移除方向 |
 | --- | --- | --- | --- |
-| `controller_compatibility_bootstrap.get_compatibility_workflow_controllers_for_panel_bootstrap(...)` | panel constructor adapter | `MainWindow.init_panels()` 仍要把五個 workflow controllers 傳給既有 panel constructor。這不是 action / readiness / refresh truth；Evaluation / Visualization training-event bridges 現在只接受 injected training controller，不再從 `controller.study` 回頭 lookup。 | panel constructor 改吃 view model、service adapter 或 observer subscription token 後，移除 bootstrap controller bundle。 |
+| Training typed-port constructor | Product port boundary | `MainWindow` 注入 query、publication、action、transient-progress ports；typed-port mode 丟棄 compatibility controllers。 | 將 standalone/mock tests 改成 typed fixtures 後再縮窄 compatibility signature。 |
 | `application_capabilities.run_controller_compatibility_call(...)` | mock / compatibility gate | real `Study` 會丟 `ControllerCompatibilityUnavailableError`，所以 product runtime 不會 silent fallback 到 controller mutation。 | 保留到 mock-heavy UI tests 和 standalone legacy contexts 改成 service-backed fixture。 |
 | Dataset / Preprocess / Training `_compatibility_*` helpers | compatibility helper | helper 名稱讓 fallback 和 product command path 可讀性分開；architecture guard 阻擋 product method 直接呼叫 fallback gate 或直接 controller mutation。 | 將剩餘 mock-heavy tests 改成 command/state evidence，再逐步刪 helper。 |
-| Dataset / Preprocess / Evaluation / Visualization display getters | readonly render fallback | real `Study` 先走 `QueryStateCommand`、`EvaluateCommand`、`VisualizeCommand` 或 `SaliencyCommand`；controller getter 只在 command helper 回傳 `None` 的 mock / no-service context 使用。 | 把 lower-level UI/component tests 的資料來源改成 typed command result 或 view model。 |
-| `refresh_coordinator.refresh_after_*()` 呼叫 `update_panel()` / `update_info_panel()` / `refresh_backend_status()` | refresh surface | 這些 call 是 UI repaint entry，不是 backend truth。post-command refresh 由 `CommandResult.changed_state` 決定範圍，known observer event 由 owner panel 進 coordinator。 | 讓 panel `update_panel()` 內部完全讀 query/view-model，不再需要 controller render fallback。 |
+| Dataset / Preprocess / Visualization display getters | readonly render fallback | real `Study` 先走 `QueryStateCommand`、`VisualizeCommand` 或 `SaliencyCommand`；controller getter 只在 command helper 回傳 `None` 的 mock / no-service context 使用。Evaluation 不在這個 fallback 類別：catalog 走 `EvaluateCommand`，chart data 走 generation-bound `EvaluationRenderPublication`，沒有 controller display fallback。 | 把其餘 lower-level UI/component tests 的資料來源改成 typed command result 或 view model。 |
+| `ApplicationViewPublication` panel subscriptions；`refresh_coordinator.refresh_after_*()` | refresh surface | Product state-changing repaint 由 monotonic application revision 觸發；`refresh_coordinator` 只保留 navigation、transient progress 和 non-`Study` compatibility routing，不得從 product `CommandResult.changed_state` 建立第二套 state truth。 | 讓每個 product panel 只提交成功 render 的 revision，並逐步移除 controller render fallback。 |
 | `InfoPanelService` controller reads | aggregate mock fallback | real `Study` 資料列表透過 `QueryStateCommand(data_lists)`；controller reads 只在 mock / compatibility context。 | 測試改注入 query result 後，可移除 direct controller fallback。 |
 | `AgentManager` montage fallback / status reads | assistant UI adapter | product status 讀 `ApplicationService.get_state()` / capabilities；montage channels 讀 `QueryStateCommand(state)`，legacy montage apply 只給 mock / compatibility context。 | assistant montage flow 改成完整 command-backed dialog service 後，移除 fallback channel/apply helper。 |
 | `plot_figure_window.py` 的 plan / record reads | lower-level domain object presentation | 這是在通用 figure window 已取得 domain object 後讀圖表資料；Visualization 的隱藏 export dialog 與未引用 Model Summary dialog 已移除。 | 通用 figure window 後續可再改吃 typed plot publication；不可把 live object path接回 Visualization UI。 |
 | `product_language.py` 的 `has_datasets` / `has_model` / `has_training_option` | state snapshot language | 這些是 `ApplicationState` 欄位，不是 controller readiness method。 | 保持只吃 state snapshot，避免未來直接接回 controller。 |
 
-目前判斷：UI refresh / readiness 的 product truth 已經靠 command result、capability policy 和
-query state 收斂，但還不是 target 的 full zero-controller UI。剩下的主要差距是 panel
-constructor 還需要 controller adapter、部分 display fallback 為了 mock / compatibility tests 保留、
-以及人工 Windows desktop acceptance 尚未補上。
+目前判斷：UI refresh / readiness 的 product truth 已經靠 application publication、capability
+policy 和 query state 收斂；五個 product panel constructors 也已使用 typed ports。剩下的主要
+差距是 mock / no-runtime compatibility signatures、refresh exact-commit evidence，以及人工
+Windows desktop acceptance。
 
 ## 主要位置
 
 | 路徑 | 責任 |
 | --- | --- |
 | `XBrainLab/ui/main_window.py` | 主視窗、top navigation、五個 panel 建立、assistant dock 入口。 |
-| `XBrainLab/ui/controller_compatibility_bootstrap.py` | 目前 panel constructor 仍需要 controller adapter 時的 named compatibility quarantine；product refresh / action truth 不在這裡。 |
 | `XBrainLab/ui/panels/` | Dataset、Preprocess、Training、Evaluation、Visualization workflow UI。 |
 | `XBrainLab/ui/core/base_panel.py` | panel 共同基底，保存 controller、main_window、observer bridges。 |
 | `XBrainLab/ui/core/observer_bridge.py` | 將 backend `Observable` event 轉成 Qt signal。 |
@@ -83,56 +82,39 @@ constructor 還需要 controller adapter、部分 display fallback 為了 mock /
 1. 建立 top bar，加入五個 navigation buttons：Dataset、Preprocess、Training、Evaluation、Visualization。
 2. 建立 `InfoPanelService(self.study, observe_controller_events=False)`，讓後續 sidebar 中的 aggregate info panel 可以註冊更新。
 3. 建立 `QStackedWidget`。
-4. 呼叫 `init_panels()` 建立五個主要 panel；目前 controller adapter lookup 只透過 named compatibility bootstrap helper。
+4. 呼叫 `init_panels()` 建立五個 lazy placeholders；panel 在第一次開啟時才 materialize。
 5. 呼叫 `init_agent()` 建立 assistant dock 與相關 signal wiring。
 
-`init_panels()` 透過 `XBrainLab.ui.controller_compatibility_bootstrap.get_compatibility_workflow_controllers_for_panel_bootstrap(...)`
-取得目前 panel constructor 相容所需的 controllers：
+Product materialization 的順序就是 navigation index：
 
-- `dataset`
-- `preprocess`
-- `training`
-- `evaluation`
-- `visualization`
-
-接著建立並加入五個 panel，順序也就是 navigation index：
-
-| index | panel | controller 傳入 |
+| index | panel | product constructor wiring |
 | --- | --- | --- |
-| 0 | `DatasetPanel` | `DatasetController` |
-| 1 | `PreprocessPanel` | `PreprocessController` + `DatasetController` |
-| 2 | `TrainingPanel` | `TrainingController` + `DatasetController` |
-| 3 | `EvaluationPanel` | `EvaluationController` + `TrainingController` |
-| 4 | `VisualizationPanel` | `VisualizationController` + `TrainingController` |
+| 0 | `DatasetPanel` | `parent` + `ApplicationViewPublicationPort` |
+| 1 | `PreprocessPanel` | `parent` + `ApplicationViewPublicationPort`；render query 從 real Study parent 解析 `ApplicationUiRuntime` |
+| 2 | `TrainingPanel` | explicit query/publication/action ports + `TrainingTransientProgressPort` |
+| 3 | `EvaluationPanel` | explicit `EvaluationQueryPort` + publication subscription port + `EvaluationActionPort` |
+| 4 | `VisualizationPanel` | explicit query/publication/action ports |
+
+Dataset / Preprocess 的 standalone、mock 或 no-runtime constructor 仍可在沒有
+`publication_port` 時使用 `get_controller_for_compatibility_context()`。這是 test/compatibility
+邊界，不是 product wiring。
 
 `switch_page(index)` 切換 `QStackedWidget` 後，會委派
 `XBrainLab.ui.refresh_coordinator.refresh_after_navigation()` 依 navigation index 刷新目標
 panel、aggregate info panel 和 assistant backend status。因此 tab-switch refresh 的 panel mapping
 與 shared status refresh 不再散在 `MainWindow` 內。Navigation refresh 現在也有 same-main-window
-re-entrancy guard，避免 nested tab-switch refresh 對同一個 main window 重複刷新。command
-正在執行時也不觸發 object-bearing panel/shared refresh；status hint 讀 non-blocking
-`QueryStateCommand(state)` publication。Refresh 來源仍有兩種：使用者切換頁面，以及 backend
-event 經 observer bridge 觸發。
+re-entrancy guard，避免 nested tab-switch refresh 對同一個 main window 重複刷新。Product command
+result 只負責 structured feedback，不會建立第二套 state repaint；state-changing render 由
+revisioned `ApplicationViewPublication` 提交。Training 的 live progress/event 和 non-`Study`
+compatibility observer 是明確例外，不可成為 readiness 或完成狀態 truth。
 頁面切換完成後，`MainWindow` 會立即並在下一個 Qt event-loop turn 重繪 nav 與 current panel，
 避免 XCB / WSLg 下 stacked-page transition 留下 partial backing store；human-like walkthrough 會以
 main-nav 與 visible `RightPanel` 像素 guard 保護這個可見 regression。
-後續 observer cleanup 已把單純的 `event -> update_panel()` bridge 先收斂到
-`BasePanel._create_refresh_bridge()`；該 helper 統一接到 `refresh_from_observer()`，再委派
-`refresh_coordinator.refresh_after_observer()`。這保留 backend observer event 語意，但把 safe
-no-arg panel refresh、aggregate info refresh 和 assistant backend status refresh 放進同一個
-coordinator 邊界。2026-05-12 follow-up 又讓 `execute_application_command()` 在
-`ApplicationService.execute(...)` 執行期間暫停同一個 MainWindow 的 observer-driven refresh；
-command handler 內同步發出的 controller observer event 不會先刷新 UI，成功或失敗後由
-`CommandResult.changed_state` 進入 `refresh_after_command()`。Async command 的 `on_result`
-callback 也只能處理 result message、status 或錯誤顯示；不可在 callback 裡呼叫
-`update_panel()`、`update_info()`、`mark_refresh_dirty()` 等本地 render refresh。最新 cleanup 又讓 known observer
-events 使用 coordinator refresh scope：
-`data_changed` 只由 `DatasetPanel` owner bridge 觸發 Dataset / Preprocess / Training refresh，
-`preprocess_changed` 只由 `PreprocessPanel` owner bridge 觸發 Preprocess / Training /
-Visualization refresh，training lifecycle events 只由 `TrainingPanel` owner callbacks 觸發
-Training / Evaluation / Visualization refresh，`montage_changed` / `saliency_changed` 只由
-`VisualizationPanel` owner bridge 觸發 Visualization refresh；其他同事件 subscriber 不再重複
-刷新同一組 panels。`MainWindow.update_info_panel()` 現在委派到 `InfoPanelService.notify_all()`，
+`BasePanel._create_refresh_bridge()` 只保留給 non-`Study` compatibility；Training product progress
+由 transient port、五個 product panels 的 state subscription則直接接 application publication
+port。Async command 的 `on_result` callback 只能處理 result message、
+status 或錯誤顯示；不可在 callback 裡呼叫 `update_panel()`、`update_info()`、
+`mark_refresh_dirty()` 等本地 state render refresh。`MainWindow.update_info_panel()` 現在委派到 `InfoPanelService.notify_all()`，
 所以 coordinator 的 shared info refresh 會更新所有已註冊 sidebar aggregate panels；只在沒有
 `info_service` 的 injected / compatibility context 下才 fallback 到 direct `info_panel.update_info()`。
 
@@ -141,15 +123,12 @@ Training / Evaluation / Visualization refresh，`montage_changed` / `saliency_ch
 `Study.get_controller()` 在 `XBrainLab/backend/study.py` 中實作 controller cache。
 第一次要求某類 controller 時建立 instance，之後回傳 cached instance。
 
-目前 `XBrainLab/ui/controller_compatibility_bootstrap.py` 是 product runtime 取得五個 workflow
-controller adapters 的 named quarantine。它只支撐 panel constructor / observer bridge /
-controller compatibility adapter，不是 action、readiness 或 refresh truth。
+Product `MainWindow` 不呼叫 `Study.get_controller()`，也不建立 controller bootstrap bundle。
 部分 panel constructor 的舊 `parent.study.get_controller(...)` fallback 已改成
 `get_controller_for_compatibility_context()`，只在 mock / compatibility non-`Study` context 回傳 controller；
-real `Study` panel 若缺少 MainWindow 注入 controller，不再自行走回 controller tree。UI 仍不是
-完整 Application Service-only 分層，因為 panels 仍以 injected controllers 作為 observer bridge /
-compatibility adapter，但直接 controller lookup 已被收進 explicit compatibility helper，且 architecture guard
-不再允許 `main_window.py` 作為 blanket exception。
+real `Study` panel 若缺少 typed product port，不會自行走回 controller tree。Training product
+progress 來自 narrow transient port；直接 controller lookup 被限制在 outer compatibility
+adapters，architecture guards 不允許 MainWindow product bootstrap 回流。
 2026-05-14 後，`EvaluationPanel` 和 `VisualizationPanel` 的 training observer bridge 也不再從
 `controller.study.get_controller("training")` 取得 fallback controller；沒有 injected training
 controller 的 standalone context 只是不建立 training lifecycle bridge。
@@ -199,8 +178,8 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
   `Study` readiness。
 - service success path 不可再讀 `TrainingController.get_model_holder()` 這類 controller echo
   重新判定 command success。
-- `main_window.py` 不再是 direct `study.get_controller(...)` 例外；panel bootstrap lookup 只能待在
-  `controller_compatibility_bootstrap.py`。
+- `main_window.py` 不得 direct `study.get_controller(...)` 或重新建立 controller bootstrap
+  bundle；product panel materialization 只允許 typed ports。
 - product-success integration tests 不可用 `BackendFacade`、controller compatibility helper、direct
   mutable `Study` state、positive `study.get_controller()` assertion、no-crash / generic string
   當成功證據。
@@ -255,17 +234,19 @@ signal 寫進 backend controller。
 
 | panel | 主要監聽事件 | refresh / handler |
 | --- | --- | --- |
-| `DatasetPanel` | `data_changed`、`import_finished` | simple refresh bridge owns success refresh; `DatasetActionHandler.on_import_finished()` only surfaces import warnings |
-| `PreprocessPanel` | `preprocess_changed`、dataset `data_changed` | simple refresh bridge |
-| `TrainingPanel` | `training_started`、`training_stopped`、`config_changed`、`training_updated`、`history_cleared`、dataset `data_changed`、preprocess events | start/stop/config/history handlers do event-specific side effects and delegate render refresh to coordinator; `training_updated` uses live `update_loop()` without downstream fan-out; simple refresh bridge handles dataset/preprocess events |
-| `EvaluationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed` | simple refresh bridge |
-| `VisualizationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed`、visualization `montage_changed`、`saliency_changed` | simple refresh bridge |
+| `DatasetPanel` | revisioned application publication | publication owns loaded-data rows、capability 與 workflow state；import result只顯示 acknowledgement / warning |
+| `PreprocessPanel` | revisioned application publication | publication owns loaded/preprocessed render state與 readiness |
+| `TrainingPanel` | revisioned application publication；transient `training_updated` progress | publication owns Start/Stop、terminal outcome、history 與 readiness；`training_updated` 只更新 live progress，不改 application revision 或 state controls |
+| `EvaluationPanel` | revisioned application publication | publication owns available result identities、controls 與 render readiness |
+| `VisualizationPanel` | revisioned application publication | publication owns saliency provenance、available plots、montage 與 render readiness |
 
-各 panel 的 `update_panel()` 目前混合兩種資料來源：real `Study` product path 優先讀
-ApplicationService query / typed readonly command result；mock / compatibility fallback path 才讀
-controller getter，例如 lists、plans、trainers 或 history。這是目前 UI refresh truth 最重要的
-判讀規則：**controller getter 可以存在於 compatibility path，但不能再成為 real product
-success truth。**
+Real `Study` product path 的五個 panel 都以 typed query/publication/action ports 接到
+ApplicationService；state-changing render 只認 revisioned application publication。
+command-result callback 只顯示 acknowledgement、error 或 in-flight feedback，不得直接
+refresh workflow state，也不得改 Start/Stop、readiness、terminal outcome 或 history。
+mock / standalone compatibility path 仍可讀 controller getter，但不能成為 real product
+success truth。Training 的 `training_updated` 是唯一分離的 transient progress channel，
+不會改 application revision 或 publication-owned controls。
 
 ## Assistant 接線層
 
@@ -366,28 +347,29 @@ mock / compatibility fallback boundary 和 refresh policy。
 - dataset controller 的 `data_changed`
 - preprocess controller 的 `preprocess_changed`
 
-事件發生後，service 會透過
-`QueryStateCommand(query="data_lists", include_objects=True)` 取得 loaded /
-preprocessed data list，並呼叫已註冊 info panel 的 `update_info(...)`。real `Study`
-query 失敗時會回空 summary 並記 log，不會 fallback 到 controller list reads；mock /
-compatibility non-`Study` context 才保留 controller-list compatibility fallback。listeners 使用
-`weakref.WeakSet` 保存，以降低已刪除 widget 被長期持有的風險。
+事件發生後，service 會透過 `QueryStateCommand(query="data_lists")` 取得 detached
+`raw_rows` / `preprocessed_rows`，並呼叫已註冊 info panel 的 `update_info(...)`。
+Product command 不提供 `include_objects` opt-in。real `Study` query 失敗時會回空 summary
+並記 log，不會 fallback 到 controller list reads；mock / compatibility non-`Study`
+context 才保留 controller-list compatibility fallback。listeners 使用 `weakref.WeakSet`
+保存，以降低已刪除 widget 被長期持有的風險。
 
 ## 現況邊界
 
 目前 UI 架構可以交接為：
 
 - `MainWindow` 是 shell，負責 top navigation、stack、五個主要 panel、assistant 入口。
-- `controller_compatibility_bootstrap.py` 是 panel constructor controller adapter 的 named quarantine。
-- panels 經由 `BasePanel` / `QtObserverBridge` 監聽 backend `Observable` events，但 action /
-  readiness / product-success truth 應回到 command / query。
+- 五個 product panels 由 typed query/publication/action/transient ports 建立；Training transient
+  progress 不代表 workflow state truth。
+- `BasePanel` / `QtObserverBridge` 仍服務 compatibility context 與 publication delivery，但
+  action / readiness / product-success truth 必須回到 command / query。
 - `AgentManager` 是 assistant 與 UI 的接線層，不是 backend truth owner。
 - `InfoPanelService` 集中處理 aggregate info 的跨 panel 更新；real `Study` data-list summary
   走 `QueryStateCommand(data_lists)`。
 
-需要注意的是，這不是理想化的 Application Service 分層。UI 目前仍透過 MainWindow-injected
-controllers 建立 observer bridge，且 mock / compatibility adapter 仍可使用 explicit controller fallback。
+需要注意的是，這不是 repo-wide zero-controller。Mock / compatibility adapters 仍可使用
+explicit controller fallback，部分 constructor signatures 也尚未縮窄。
 `InfoPanelService` 在 real `Study` runtime 已不再建立 direct controller bridge，但這只是
 aggregate-info lookup cleanup，並不代表 UI controller observer 已全部退出。因此後續
-如果要整理 backend / service layer，需要先盤點哪些 controller method 已經被 UI 直接依賴，再
-決定是否抽出更穩定的 UI-facing application API。
+cleanup 應先把 standalone tests 改成 typed fixtures，再移除不再需要的 compatibility
+parameters/helpers；不可讓它們回流為 product path。

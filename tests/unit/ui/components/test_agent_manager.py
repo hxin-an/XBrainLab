@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from threading import Thread
 from types import SimpleNamespace
@@ -11,11 +12,16 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 from PyQt6.QtCore import QEvent, QObject, QPointF, Qt, pyqtSignal
 from PyQt6.QtGui import QMouseEvent
-from PyQt6.QtWidgets import QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QToolButton
 
+from XBrainLab.backend.application import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    CommandName,
+)
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
+    ActiveTrainingSnapshot,
     ApplicationStateSnapshot,
     InterpretationStateSnapshot,
     TrainingStateSnapshot,
@@ -27,8 +33,16 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatPanelTarget,
     ChatResponseAction,
     ChatResponseActionKind,
+    ChatResponseActionResolution,
     ChatResponseActionSelection,
 )
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingRunIdentity,
+    TrainingTerminalOutcome,
+)
+from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
+from XBrainLab.chat_contract import CHAT_HISTORY_LIVE_WINDOW_ROWS
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
     AssistantTurnActivity,
@@ -55,6 +69,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantDebugToolRequest,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
+    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -67,6 +82,7 @@ from XBrainLab.llm.core.runtime_selection import (
     AssistantRuntimeSelectionFailure,
     AssistantRuntimeSelectionFailureCode,
 )
+from XBrainLab.llm.tools.application_surface import ToolCommandResult
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
     ChatResponseActionSelectionView,
@@ -115,6 +131,19 @@ def _admit_ui_turn(agent_mgr: Any, *, turn_id: int = 1) -> AssistantTurnCorrelat
     return correlation
 
 
+def _action_resolution(
+    action: ChatResponseAction,
+    presentation_id: str,
+) -> ChatResponseActionResolution:
+    controller = ChatController()
+    record = controller.add_agent_message(
+        "Choose a next step.",
+        presentation_id=presentation_id,
+        actions=(action,),
+    )
+    return ChatResponseActionResolution(action=action, source_record=record)
+
+
 class _ReadyTestRuntime(QObject):
     """Deterministic lifecycle harness for real-panel product-flow tests."""
 
@@ -122,7 +151,7 @@ class _ReadyTestRuntime(QObject):
     runtime_snapshot_changed = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
 
-    def __init__(self, controller: object):
+    def __init__(self, controller: Any):
         super().__init__()
         self.controller = controller
         self.initialized = True
@@ -400,7 +429,7 @@ class TestAgentManagerMethods:
         assert projection.publication_revision == 8
         assert agent_mgr._render_assistant_status_projection.call_count == 2
 
-    def test_false_publication_render_retries_are_bounded_without_acknowledgement(
+    def test_false_publication_render_retries_are_bounded_and_local(
         self,
         agent_mgr,
         qtbot,
@@ -431,10 +460,7 @@ class TestAgentManagerMethods:
         (
             agent_mgr.application_service.acknowledge_view_publication_delivery
         ).assert_not_called()
-        assert (
-            agent_mgr.application_service.reject_view_publication_delivery.call_count
-            == 4
-        )
+        agent_mgr.application_service.reject_view_publication_delivery.assert_not_called()
 
     def test_publication_recovers_after_fast_retry_window_is_exhausted(
         self,
@@ -467,10 +493,12 @@ class TestAgentManagerMethods:
         assert projection is not None
         assert projection.publication_revision == publication.revision
         assert agent_mgr._render_assistant_status_projection.call_count == 5
-        agent_mgr.application_service.acknowledge_view_publication_delivery.assert_called_once_with(
-            publication.revision
+        agent_mgr.application_service.acknowledge_view_publication_delivery.assert_not_called()
+        agent_mgr.application_service.reject_view_publication_delivery.assert_not_called()
+        assert (
+            agent_mgr._application_publication_coordinator.snapshot().pending_publication
+            is None
         )
-        assert agent_mgr._pending_application_view_publication is None
 
     def test_publication_retry_coalesces_to_latest_pending_revision(
         self,
@@ -507,9 +535,8 @@ class TestAgentManagerMethods:
 
         assert rendered_revisions == [8, 9, 9]
         assert agent_mgr.assistant_status_projection.publication_revision == 9
-        agent_mgr.application_service.acknowledge_view_publication_delivery.assert_called_once_with(
-            9
-        )
+        agent_mgr.application_service.acknowledge_view_publication_delivery.assert_not_called()
+        agent_mgr.application_service.reject_view_publication_delivery.assert_not_called()
 
     def test_close_cancels_pending_publication_retry(self, agent_mgr, qtbot):
         agent_mgr.chat_panel = MagicMock()
@@ -540,7 +567,10 @@ class TestAgentManagerMethods:
         ).assert_not_called()
 
     def test_handle_user_input(self, agent_mgr):
-        agent_mgr.handle_user_input("hello")
+        result = agent_mgr.handle_user_input("hello")
+
+        assert result.accepted is True
+        assert result.correlation == AssistantTurnCorrelation(generation=1, turn_id=1)
         agent_mgr._assistant_runtime.submit.assert_called_once_with(
             "hello",
             generation=1,
@@ -574,8 +604,9 @@ class TestAgentManagerMethods:
 
         agent_mgr.chat_controller.set_processing.assert_not_called()
         agent_mgr.chat_controller.add_user_message.assert_not_called()
-        agent_mgr.chat_panel.show_notice.assert_called_once_with(
-            "Assistant runtime is shutting down."
+        agent_mgr.chat_panel.reject_composer_submission.assert_called_once_with(
+            "hello",
+            "Assistant runtime is shutting down.",
         )
 
     def test_runtime_phase_rejection_is_owned_by_lifecycle(self, agent_mgr):
@@ -599,8 +630,9 @@ class TestAgentManagerMethods:
             generation=1,
         )
         agent_mgr.chat_controller.add_user_message.assert_not_called()
-        agent_mgr.chat_panel.show_notice.assert_called_once_with(
-            "Assistant runtime is loading."
+        agent_mgr.chat_panel.reject_composer_submission.assert_called_once_with(
+            "request during loading",
+            "Assistant runtime is loading.",
         )
 
     def test_busy_admission_uses_runtime_truth_without_orphan_user_turn(
@@ -624,8 +656,9 @@ class TestAgentManagerMethods:
             generation=1,
         )
         agent_mgr.chat_controller.add_user_message.assert_not_called()
-        agent_mgr.chat_panel.show_notice.assert_called_once_with(
-            "The assistant is still processing the previous request."
+        agent_mgr.chat_panel.reject_composer_submission.assert_called_once_with(
+            "second request",
+            "The assistant is still processing the previous request.",
         )
 
     def test_stale_chat_processing_projection_cannot_reject_admitted_turn(
@@ -643,6 +676,43 @@ class TestAgentManagerMethods:
         )
         agent_mgr.chat_controller.add_user_message.assert_called_once_with(
             "runtime-owned admission"
+        )
+        agent_mgr.chat_panel.accept_composer_submission.assert_called_once_with(
+            "runtime-owned admission"
+        )
+
+    def test_admitted_guided_scope_is_visible_in_progress_before_execution(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._assistant_runtime.submit.return_value = (
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+                turn_id=44,
+                generation=1,
+                scope=AssistantTurnScope.GUIDED_WORKFLOW,
+                terminal_command=CommandName.CREATE_EPOCH.value,
+                excluded_commands=(CommandName.TRAIN,),
+            )
+        )
+
+        agent_mgr.handle_user_input(
+            "Load the data and create epochs, but do not train it."
+        )
+        agent_mgr.on_assistant_activity_changed(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.THINKING,
+                turn_id=44,
+                generation=1,
+            )
+        )
+
+        presentation = agent_mgr.chat_panel.set_turn_activity.call_args.args[0]
+        assert presentation.scope_summary == (
+            "Scope: Continue through Create EEG epochs; stop for decisions. "
+            "Excluded: Start training."
         )
 
     def test_controller_wiring_fails_fast_when_core_signals_are_missing(
@@ -688,9 +758,85 @@ class TestAgentManagerMethods:
         agent_mgr.handle_user_input("hello")
 
         agent_mgr.chat_controller.add_user_message.assert_not_called()
-        agent_mgr.chat_panel.show_notice.assert_called_once_with(
-            "The assistant could not accept this request. Try again."
+        agent_mgr.chat_panel.reject_composer_submission.assert_called_once_with(
+            "hello",
+            "The assistant could not accept this request. Try again.",
         )
+
+    @pytest.mark.parametrize(
+        "admission",
+        (
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.REJECTED,
+                message="Assistant runtime is shutting down.",
+            ),
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.BUSY,
+                message="The assistant is still processing.",
+            ),
+            None,
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            ),
+        ),
+        ids=("rejected", "busy", "invalid", "missing-correlation"),
+    )
+    def test_unadmitted_full_history_is_byte_stable_and_does_not_rebuild_ui(
+        self,
+        agent_mgr,
+        admission: RuntimeCommandAdmissionResult | None,
+    ) -> None:
+        controller = ChatController()
+        for index in range(499):
+            controller.add_user_message(f"History row {index}")
+        controller.add_agent_message(
+            "Keep this active choice.",
+            presentation_id="active-before-rejection",
+            actions=(
+                ChatResponseAction(
+                    action_id="open-dataset-before-rejection",
+                    label="Open Dataset",
+                    kind=ChatResponseActionKind.OPEN_PANEL,
+                    panel=ChatPanelTarget.DATASET,
+                ),
+            ),
+        )
+        agent_mgr.chat_controller = controller
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._assistant_runtime.submit.return_value = admission
+        serialized_before = json.dumps(
+            controller.get_history(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        records_before = controller.get_typed_history()
+        ui_events: list[str] = []
+        controller.conversation_cleared.connect(lambda: ui_events.append("clear"))
+        controller.message_record_added.connect(lambda _record: ui_events.append("add"))
+        controller.message_record_updated.connect(
+            lambda _record: ui_events.append("update")
+        )
+
+        result = agent_mgr.handle_user_input("This turn must not be admitted.")
+
+        assert result.accepted is False
+        assert result.correlation is None
+        assert (
+            json.dumps(
+                controller.get_history(),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            == serialized_before
+        )
+        assert controller.get_typed_history() == records_before
+        assert controller.get_typed_history()[-1].has_active_actions is True
+        assert controller.pruned_row_count == 0
+        assert ui_events == []
+        agent_mgr.chat_panel.clear_response_actions.assert_not_called()
 
     def test_typed_response_presentation_renders_message_and_actions(
         self,
@@ -955,7 +1101,7 @@ class TestAgentManagerMethods:
         agent_mgr._on_active_response_presentation_changed(presentation_id)
         agent_mgr.main_window.switch_page = MagicMock()
         agent_mgr.chat_controller.resolve_and_consume_response_action.return_value = (
-            action
+            _action_resolution(action, presentation_id)
         )
 
         agent_mgr._handle_response_action_selection(
@@ -1025,7 +1171,7 @@ class TestAgentManagerMethods:
             return_value=publication_when_clicked
         )
         agent_mgr.chat_controller.resolve_and_consume_response_action.return_value = (
-            action
+            _action_resolution(action, presentation_id)
         )
 
         agent_mgr._handle_response_action_selection(
@@ -1061,7 +1207,7 @@ class TestAgentManagerMethods:
             side_effect=RuntimeError("application service is closed")
         )
         agent_mgr.chat_controller.resolve_and_consume_response_action.return_value = (
-            action
+            _action_resolution(action, presentation_id)
         )
 
         agent_mgr._handle_response_action_selection(
@@ -1109,7 +1255,7 @@ class TestAgentManagerMethods:
 
         agent_mgr._switch_sub_view.assert_called_once_with(4, "3d_plot")
         assert agent_mgr.main_window.statusBar().currentMessage() == (
-            "Visualization is open."
+            "Opened Visualization panel."
         )
 
     def test_send_message_response_action_reenters_normal_input_path(self, agent_mgr):
@@ -1121,9 +1267,11 @@ class TestAgentManagerMethods:
         )
         presentation_id = "response-check-workflow"
         agent_mgr._on_active_response_presentation_changed(presentation_id)
-        agent_mgr.handle_user_input = MagicMock()
+        agent_mgr.handle_user_input = MagicMock(
+            return_value=SimpleNamespace(accepted=True)
+        )
         agent_mgr.chat_controller.resolve_and_consume_response_action.return_value = (
-            action
+            _action_resolution(action, presentation_id)
         )
 
         agent_mgr._handle_response_action_selection(
@@ -1139,6 +1287,169 @@ class TestAgentManagerMethods:
         )
 
         agent_mgr.handle_user_input.assert_called_once_with(action.prompt)
+
+    @pytest.mark.parametrize(
+        "first_admission",
+        (
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.REJECTED,
+                message="Assistant runtime is shutting down.",
+            ),
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.BUSY,
+                message="The assistant is still processing.",
+            ),
+            None,
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            ),
+        ),
+        ids=("rejected", "busy", "invalid", "missing-correlation"),
+    )
+    def test_send_message_action_is_retryable_until_exact_runtime_admission(
+        self,
+        agent_mgr,
+        first_admission: RuntimeCommandAdmissionResult | None,
+    ) -> None:
+        controller = ChatController()
+        action = ChatResponseAction(
+            action_id="retry-correlated-action",
+            label="Check workflow",
+            kind=ChatResponseActionKind.SEND_MESSAGE,
+            prompt="Check what is ready now.",
+        )
+        presentation_id = "retry-correlated-presentation"
+        controller.add_agent_message(
+            "Choose a next step.",
+            presentation_id=presentation_id,
+            actions=(action,),
+        )
+        agent_mgr.chat_controller = controller
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._on_active_response_presentation_changed(presentation_id)
+        attempts = 0
+
+        def submit(
+            _text: str,
+            *,
+            generation: int,
+        ) -> RuntimeCommandAdmissionResult | None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                return first_admission
+            return RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+                turn_id=91,
+                generation=generation,
+            )
+
+        agent_mgr._assistant_runtime.submit.side_effect = submit
+        selection = ChatResponseActionSelectionView(
+            presentation_id=presentation_id,
+            action=ChatResponseActionView(
+                action_id=action.action_id,
+                label=action.label,
+                kind=ChatResponseActionViewKind.SEND_MESSAGE,
+                prompt=action.prompt,
+            ),
+        )
+        serialized_before = json.dumps(
+            controller.get_history(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        records_before = controller.get_typed_history()
+
+        agent_mgr._handle_response_action_selection(selection)
+
+        assert (
+            json.dumps(
+                controller.get_history(),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            == serialized_before
+        )
+        assert controller.get_typed_history() == records_before
+        assert controller.get_typed_history()[-1].has_active_actions is True
+        assert (
+            controller.active_response_record(
+                message_id=records_before[-1].message_id,
+                presentation_id=presentation_id,
+            )
+            == records_before[-1]
+        )
+        assert agent_mgr._active_response_presentation_id == presentation_id
+
+        agent_mgr._handle_response_action_selection(selection)
+
+        records = controller.get_typed_history()
+        assert [record.content for record in records] == [
+            "Choose a next step.",
+            action.prompt,
+        ]
+        assert records[0].has_active_actions is False
+        assert agent_mgr._active_response_presentation_id is None
+        assert attempts == 2
+
+    def test_rejected_action_retry_rechecks_canonical_history_before_restoring(
+        self,
+        agent_mgr,
+    ) -> None:
+        controller = ChatController()
+        action = ChatResponseAction(
+            action_id="stale-retry-action",
+            label="Check workflow",
+            kind=ChatResponseActionKind.SEND_MESSAGE,
+            prompt="Check what is ready now.",
+        )
+        presentation_id = "stale-retry-presentation"
+        controller.add_agent_message(
+            "Choose a next step.",
+            presentation_id=presentation_id,
+            actions=(action,),
+        )
+        agent_mgr.chat_controller = controller
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._on_active_response_presentation_changed(presentation_id)
+        agent_mgr._assistant_runtime.submit.return_value = (
+            RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.BUSY,
+                message="The assistant is still processing.",
+            )
+        )
+        callbacks: list[Any] = []
+
+        with patch(
+            "XBrainLab.ui.components.agent_manager.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callbacks.append(callback),
+        ):
+            agent_mgr._handle_response_action_selection(
+                ChatResponseActionSelectionView(
+                    presentation_id=presentation_id,
+                    action=ChatResponseActionView(
+                        action_id=action.action_id,
+                        label=action.label,
+                        kind=ChatResponseActionViewKind.SEND_MESSAGE,
+                        prompt=action.prompt,
+                    ),
+                )
+            )
+
+        assert len(callbacks) == 1
+        controller.add_user_message("A newer admitted turn consumed the action.")
+        agent_mgr._on_active_response_presentation_changed(None)
+
+        callbacks[0]()
+
+        assert controller.get_typed_history()[0].has_active_actions is False
+        agent_mgr.chat_panel.show_response_actions.assert_not_called()
 
     def test_manager_never_executes_forged_payload_even_with_valid_action_id(
         self,
@@ -1249,14 +1560,13 @@ class TestAgentManagerMethods:
         assert [record.content for record in records] == ["Choose a next step."]
 
     @pytest.mark.parametrize(
-        ("existing_rows", "accepted"),
-        [(498, True), (499, False), (500, False)],
+        "existing_rows",
+        [497, 498, 499, 500],
     )
-    def test_turn_admission_reserves_user_and_terminal_history_rows_before_runtime(
+    def test_turn_admission_prunes_old_rows_before_runtime_capacity_blocks(
         self,
         agent_mgr,
         existing_rows: int,
-        accepted: bool,
     ) -> None:
         controller = ChatController()
         for index in range(existing_rows):
@@ -1264,33 +1574,174 @@ class TestAgentManagerMethods:
         agent_mgr.chat_controller = controller
         agent_mgr.chat_panel = MagicMock()
         agent_mgr._assistant_runtime.submit.reset_mock()
+        history_seen_during_admission: list[tuple[int, int]] = []
+
+        def admit_after_snapshot(
+            _text: str,
+            *,
+            generation: int,
+        ) -> RuntimeCommandAdmissionResult:
+            history_seen_during_admission.append(
+                (len(controller.get_typed_history()), controller.pruned_row_count)
+            )
+            return RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+                turn_id=1,
+                generation=generation,
+            )
+
+        agent_mgr._assistant_runtime.submit.side_effect = admit_after_snapshot
 
         agent_mgr.handle_user_input("Run the next safe step")
-
-        if not accepted:
-            agent_mgr._assistant_runtime.submit.assert_not_called()
-            assert agent_mgr._assistant_turn_state.lease is None
-            assert agent_mgr._assistant_turn_state.submission is None
-            assert len(controller.get_typed_history()) == existing_rows
-            agent_mgr.chat_panel.show_notice.assert_called_once_with(
-                "Chat history is full. Clear the conversation before sending "
-                "another request."
-            )
-            return
 
         agent_mgr._assistant_runtime.submit.assert_called_once_with(
             "Run the next safe step",
             generation=1,
         )
+        assert history_seen_during_admission == [(existing_rows, 0)]
         correlation = agent_mgr._assistant_turn_state.lease
         assert correlation is not None
+        agent_mgr._handle_response_presentation(
+            AssistantResponsePresentation(
+                correlation=correlation,
+                text="The current workflow state is ready.",
+            )
+        )
         agent_mgr._handle_response_presentation(
             AssistantResponsePresentation(
                 correlation=correlation,
                 text="The next safe step is ready.",
             )
         )
-        assert len(controller.get_typed_history()) == 500
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(correlation=correlation)
+        )
+        assert len(controller.get_typed_history()) <= 500
+        assert [record.content for record in controller.get_typed_history()[-3:]] == [
+            "Run the next safe step",
+            "The current workflow state is ready.",
+            "The next safe step is ready.",
+        ]
+        assert controller.pruned_row_count == (
+            0 if existing_rows <= 497 else existing_rows - CHAT_HISTORY_LIVE_WINDOW_ROWS
+        )
+        prune_notice = call(
+            "Older messages were removed from this view to keep the conversation "
+            "responsive."
+        )
+        if existing_rows <= 497:
+            assert prune_notice not in agent_mgr.chat_panel.show_notice.call_args_list
+        else:
+            assert prune_notice in agent_mgr.chat_panel.show_notice.call_args_list
+            assert agent_mgr.chat_panel.show_notice.call_args_list[-1] == prune_notice
+        assert (
+            call(
+                "Chat history is full. Clear the conversation before sending "
+                "another request."
+            )
+            not in agent_mgr.chat_panel.show_notice.call_args_list
+        )
+
+    def test_excess_presentation_fails_closed_without_mutating_product_history(
+        self,
+        agent_mgr,
+    ) -> None:
+        controller = ChatController()
+        agent_mgr.chat_controller = controller
+        agent_mgr.chat_panel = MagicMock()
+
+        admission = agent_mgr.handle_user_input("Inspect the current workflow.")
+        assert admission.correlation is not None
+        for text in ("Intermediate workflow result.", "Terminal workflow result."):
+            agent_mgr._handle_response_presentation(
+                AssistantResponsePresentation(
+                    correlation=admission.correlation,
+                    text=text,
+                )
+            )
+        history_after_contract = controller.get_history()
+
+        agent_mgr._handle_response_presentation(
+            AssistantResponsePresentation(
+                correlation=admission.correlation,
+                text="Unexpected third presentation.",
+            )
+        )
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(correlation=admission.correlation)
+        )
+
+        assert controller.get_history() == history_after_contract
+        assert agent_mgr._assistant_turn_state.lease is None
+
+    @pytest.mark.parametrize(
+        "outcome",
+        ("delivery_error", "delivery_rejected", "delivery_timeout"),
+    )
+    def test_delivery_terminal_overflow_never_escapes_or_adds_a_third_row(
+        self,
+        agent_mgr,
+        outcome: str,
+    ) -> None:
+        controller = ChatController()
+        agent_mgr.chat_controller = controller
+        agent_mgr.chat_panel = MagicMock()
+        admission = agent_mgr.handle_user_input("Inspect the current workflow.")
+        assert admission.correlation is not None
+        for text in ("Intermediate workflow result.", "Terminal workflow result."):
+            agent_mgr._handle_response_presentation(
+                AssistantResponsePresentation(
+                    correlation=admission.correlation,
+                    text=text,
+                )
+            )
+
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(
+                correlation=admission.correlation,
+                outcome=outcome,
+            )
+        )
+
+        assert [record.content for record in controller.get_typed_history()] == [
+            "Inspect the current workflow.",
+            "Intermediate workflow result.",
+            "Terminal workflow result.",
+        ]
+        assert agent_mgr._assistant_turn_state.lease is None
+
+    def test_debug_admission_establishes_the_same_two_row_presentation_budget(
+        self,
+        agent_mgr,
+    ) -> None:
+        controller = ChatController()
+        agent_mgr.chat_controller = controller
+        agent_mgr.chat_panel = MagicMock()
+
+        agent_mgr._handle_debug_tool_requested("list_files", {})
+
+        correlation = agent_mgr._assistant_turn_state.lease
+        assert correlation is not None
+        for text in (
+            "First diagnostic result.",
+            "Second diagnostic result.",
+            "Unexpected third diagnostic result.",
+        ):
+            agent_mgr._handle_response_presentation(
+                AssistantResponsePresentation(
+                    correlation=correlation,
+                    text=text,
+                )
+            )
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(correlation=correlation)
+        )
+
+        assert [record.content for record in controller.get_typed_history()] == [
+            "First diagnostic result.",
+            "Second diagnostic result.",
+        ]
 
     @pytest.mark.parametrize("attempt", range(10))
     def test_stopping_turn_rejects_late_action_response_and_clears_existing_actions(
@@ -1559,6 +2010,107 @@ class TestAgentManagerMethods:
             call(False),
         ]
 
+    def test_synchronous_confirmation_replays_after_turn_admission(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        request = AgentConfirmationRequest.for_action(
+            command_name="new_session",
+            params={},
+            action_label="Start new session",
+            description="Start a new session and clear the current one.",
+            destructive=True,
+            publication_generation=1,
+        )
+
+        def request_confirmation_during_submit(_text: str, *, generation: int):
+            correlation = AssistantTurnCorrelation(generation=generation, turn_id=73)
+            agent_mgr.on_assistant_activity_changed(
+                AssistantTurnActivity(
+                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                    command_name=request.command_name,
+                    request_id=request.request_id,
+                    turn_id=correlation.turn_id,
+                    generation=correlation.generation,
+                )
+            )
+            agent_mgr._show_action_confirmation(request)
+            return RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+            )
+
+        agent_mgr._assistant_runtime.submit.side_effect = (
+            request_confirmation_during_submit
+        )
+
+        result = agent_mgr.handle_user_input("start a new session")
+
+        assert result.accepted is True
+        agent_mgr.chat_controller.add_user_message.assert_called_once_with(
+            "start a new session"
+        )
+        agent_mgr.chat_panel.show_confirmation_request.assert_called_once()
+        shown_request = agent_mgr.chat_panel.show_confirmation_request.call_args.args[0]
+        assert shown_request is request
+
+    def test_synchronous_workflow_handoff_opens_after_turn_admission(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        request = WorkflowUiHandoffRequest.for_decision("evaluate")
+        resolution = _handoff_resolution(
+            request,
+            WorkflowUiHandoffResolutionStatus.NAVIGATED,
+        )
+
+        def open_after_transcript(*_args, **_kwargs):
+            assert agent_mgr.chat_controller.add_user_message.called
+            return resolution
+
+        agent_mgr._workflow_ui_handoff_host.open = MagicMock(
+            side_effect=open_after_transcript
+        )
+        agent_mgr._assistant_runtime.resolve_ui_handoff.return_value = (
+            RuntimeCommandAdmissionResult(
+                command_name="resolve_ui_handoff",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            )
+        )
+
+        def request_handoff_during_submit(_text: str, *, generation: int):
+            correlation = AssistantTurnCorrelation(generation=generation, turn_id=74)
+            agent_mgr.on_assistant_activity_changed(
+                AssistantTurnActivity(
+                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                    command_name=request.command_name,
+                    request_id=request.request_id,
+                    turn_id=correlation.turn_id,
+                    generation=correlation.generation,
+                )
+            )
+            agent_mgr.handle_workflow_ui_handoff(request)
+            return RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+            )
+
+        agent_mgr._assistant_runtime.submit.side_effect = request_handoff_during_submit
+
+        result = agent_mgr.handle_user_input("show evaluation results")
+
+        assert result.accepted is True
+        agent_mgr._workflow_ui_handoff_host.open.assert_called_once()
+        agent_mgr._assistant_runtime.resolve_ui_handoff.assert_called_once_with(
+            resolution
+        )
+
     def test_superseded_admission_preserves_newer_submission_without_transcript(
         self,
         agent_mgr,
@@ -1583,8 +2135,9 @@ class TestAgentManagerMethods:
         assert agent_mgr._assistant_turn_state.submission == newer_submission
         assert agent_mgr._assistant_turn_state.lease is None
         agent_mgr.chat_controller.add_user_message.assert_not_called()
-        agent_mgr.chat_panel.show_notice.assert_called_once_with(
-            "The assistant could not correlate this request. Try again."
+        agent_mgr.chat_panel.reject_composer_submission.assert_called_once_with(
+            "stale accepted admission",
+            "The assistant could not correlate this request. Try again.",
         )
 
     def test_double_stop_is_idempotent_at_manager_boundary(self, agent_mgr) -> None:
@@ -1661,10 +2214,7 @@ class TestAgentManagerMethods:
     ):
         agent_mgr.chat_panel = MagicMock()
         agent_mgr._workflow_ui_handoff_host.abandon_active = MagicMock()
-        with patch(
-            "XBrainLab.ui.components.agent_manager.begin_command_refresh_suppression"
-        ):
-            agent_mgr._on_application_command_started()
+        agent_mgr._on_application_command_started()
 
         agent_mgr.stop_generation()
 
@@ -1679,21 +2229,473 @@ class TestAgentManagerMethods:
         self,
         agent_mgr,
     ):
-        with (
-            patch(
-                "XBrainLab.ui.components.agent_manager.begin_command_refresh_suppression"
-            ),
-            patch(
-                "XBrainLab.ui.components.agent_manager."
-                "complete_command_refresh_suppression"
-            ),
-        ):
-            agent_mgr._on_application_command_started()
-            agent_mgr._on_application_command_completed(MagicMock())
+        agent_mgr._on_application_command_started()
+        agent_mgr._on_application_command_completed(MagicMock())
 
         agent_mgr.stop_generation()
 
         agent_mgr._assistant_runtime.stop_generation.assert_called_once()
+
+    def test_agent_started_training_reports_verified_completion_once_after_turn(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        correlation = _admit_ui_turn(agent_mgr, turn_id=31)
+        run = TrainingRunIdentity(trainer_id="trainer-1", run_id=1)
+        running = replace(
+            ApplicationStateSnapshot.empty(),
+            pipeline_stage="training",
+            training=TrainingStateSnapshot(
+                has_trainer=True,
+                is_running=True,
+                finished_run_count=0,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.RUNNING,
+                    run=run,
+                ),
+            ),
+            active_training=ActiveTrainingSnapshot(
+                has_trainer=True,
+                is_running=True,
+                finished_run_count=0,
+            ),
+        )
+        completed = replace(
+            running,
+            pipeline_stage="trained",
+            training=replace(
+                running.training,
+                is_running=False,
+                finished_run_count=1,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.COMPLETED,
+                    run=run,
+                ),
+            ),
+            active_training=replace(
+                running.active_training,
+                is_running=False,
+                finished_run_count=1,
+            ),
+        )
+        result = ToolCommandResult(
+            ok=True,
+            tool_name="start_training",
+            command_name="train",
+            message="Training started.",
+            state=running.to_dict(),
+            diagnostics={"training_handoff_generation": 7},
+            changed_state={"training_changed": True},
+        )
+
+        agent_mgr._on_application_command_completed(result)
+        publication = ApplicationViewPublication(
+            generation=8,
+            revision=80,
+            state=completed,
+            capabilities=build_capability_policy(completed),
+        )
+
+        assert agent_mgr._render_backend_publication(publication) is True
+        agent_mgr.chat_controller.add_agent_message.assert_not_called()
+
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(correlation=correlation)
+        )
+
+        terminal_call = agent_mgr.chat_controller.add_agent_message.call_args
+        assert terminal_call.args == (
+            "Training completed. Results are ready in Evaluation.",
+        )
+        assert (
+            terminal_call.kwargs["presentation_kind"]
+            is ChatMessagePresentationKind.TOOL_RESULT
+        )
+        assert isinstance(terminal_call.kwargs["presentation_id"], str)
+        assert terminal_call.kwargs["actions"] == ()
+
+        newer = replace(publication, generation=9, revision=81)
+        assert agent_mgr._render_backend_publication(newer) is True
+        assert agent_mgr.chat_controller.add_agent_message.call_count == 1
+
+    @pytest.mark.parametrize(
+        ("outcome", "message", "presentation_kind"),
+        (
+            (
+                TrainingOutcomeState.FAILED,
+                "Training failed. Review the Training panel, adjust the "
+                "configuration, and try again.",
+                ChatMessagePresentationKind.ERROR,
+            ),
+            (
+                TrainingOutcomeState.CANCELLED,
+                "Training was cancelled.",
+                ChatMessagePresentationKind.CANCELLED,
+            ),
+        ),
+    )
+    def test_agent_started_training_reports_current_non_success_terminal_outcome(
+        self,
+        agent_mgr,
+        outcome: TrainingOutcomeState,
+        message: str,
+        presentation_kind: ChatMessagePresentationKind,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        correlation = _admit_ui_turn(agent_mgr, turn_id=32)
+        run = TrainingRunIdentity(trainer_id="trainer-1", run_id=2)
+        running = replace(
+            ApplicationStateSnapshot.empty(),
+            pipeline_stage="training",
+            training=TrainingStateSnapshot(
+                has_trainer=True,
+                is_running=True,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.RUNNING,
+                    run=run,
+                ),
+            ),
+            active_training=ActiveTrainingSnapshot(
+                has_trainer=True,
+                is_running=True,
+            ),
+        )
+        terminal = replace(
+            running,
+            pipeline_stage="dataset_ready",
+            training=replace(
+                running.training,
+                is_running=False,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=outcome,
+                    run=run,
+                ),
+            ),
+            active_training=replace(running.active_training, is_running=False),
+        )
+        result = ToolCommandResult(
+            ok=True,
+            tool_name="start_training",
+            command_name="train",
+            message="Training started.",
+            state=running.to_dict(),
+            diagnostics={"training_handoff_generation": 8},
+            changed_state={"training_changed": True},
+        )
+
+        agent_mgr._on_application_command_completed(result)
+        publication = ApplicationViewPublication(
+            generation=9,
+            revision=90,
+            state=terminal,
+            capabilities=build_capability_policy(terminal),
+        )
+
+        assert agent_mgr._render_backend_publication(publication) is True
+        coordinator_state = agent_mgr._application_publication_coordinator.snapshot()
+        assert coordinator_state.training_watch is None
+        assert coordinator_state.pending_training_terminal is not None
+        agent_mgr.chat_controller.add_agent_message.assert_not_called()
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(correlation=correlation)
+        )
+
+        terminal_call = agent_mgr.chat_controller.add_agent_message.call_args
+        assert terminal_call.args == (message,)
+        assert terminal_call.kwargs["presentation_kind"] is presentation_kind
+        assert isinstance(terminal_call.kwargs["presentation_id"], str)
+        assert terminal_call.kwargs["actions"] == ()
+
+    @pytest.mark.parametrize(
+        "outcome",
+        (TrainingOutcomeState.FAILED, TrainingOutcomeState.CANCELLED),
+    )
+    @pytest.mark.parametrize(
+        ("published_run", "identity_case"),
+        (
+            (None, "missing"),
+            (
+                TrainingRunIdentity(trainer_id="trainer-1", run_id=3),
+                "stale",
+            ),
+        ),
+        ids=("missing-identity", "stale-identity"),
+    )
+    def test_agent_started_training_rejects_non_success_terminal_without_current_identity(
+        self,
+        agent_mgr,
+        outcome: TrainingOutcomeState,
+        published_run: TrainingRunIdentity | None,
+        identity_case: str,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        correlation = _admit_ui_turn(agent_mgr, turn_id=35)
+        current_run = TrainingRunIdentity(trainer_id="trainer-1", run_id=4)
+        running = replace(
+            ApplicationStateSnapshot.empty(),
+            pipeline_stage="training",
+            training=TrainingStateSnapshot(
+                has_trainer=True,
+                is_running=True,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.RUNNING,
+                    run=current_run,
+                ),
+            ),
+            active_training=ActiveTrainingSnapshot(
+                has_trainer=True,
+                is_running=True,
+            ),
+        )
+        terminal = replace(
+            running,
+            pipeline_stage="dataset_ready",
+            training=replace(
+                running.training,
+                is_running=False,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=outcome,
+                    run=published_run,
+                ),
+            ),
+            active_training=replace(running.active_training, is_running=False),
+        )
+        result = ToolCommandResult(
+            ok=True,
+            tool_name="start_training",
+            command_name="train",
+            message="Training started.",
+            state=running.to_dict(),
+            diagnostics={"training_handoff_generation": 9},
+            changed_state={"training_changed": True},
+        )
+
+        agent_mgr._on_application_command_completed(result)
+        watch_before = (
+            agent_mgr._application_publication_coordinator.snapshot().training_watch
+        )
+        assert watch_before is not None
+        publication = ApplicationViewPublication(
+            generation=10,
+            revision=100,
+            state=terminal,
+            capabilities=build_capability_policy(terminal),
+        )
+
+        assert agent_mgr._render_backend_publication(publication) is True
+
+        coordinator_state = agent_mgr._application_publication_coordinator.snapshot()
+        assert coordinator_state.training_watch == watch_before, identity_case
+        assert coordinator_state.pending_training_terminal is None, identity_case
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(correlation=correlation)
+        )
+        agent_mgr.chat_controller.add_agent_message.assert_not_called()
+
+    def test_fast_training_terminal_is_reconciled_after_command_result(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        correlation = _admit_ui_turn(agent_mgr, turn_id=33)
+        run = TrainingRunIdentity(trainer_id="trainer-fast", run_id=1)
+        running = replace(
+            ApplicationStateSnapshot.empty(),
+            pipeline_stage="training",
+            training=TrainingStateSnapshot(
+                has_trainer=True,
+                is_running=True,
+                finished_run_count=0,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.RUNNING,
+                    run=run,
+                ),
+            ),
+            active_training=ActiveTrainingSnapshot(
+                has_trainer=True,
+                is_running=True,
+                finished_run_count=0,
+            ),
+        )
+        completed = replace(
+            running,
+            pipeline_stage="trained",
+            training=replace(
+                running.training,
+                is_running=False,
+                finished_run_count=1,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.COMPLETED,
+                    run=run,
+                ),
+            ),
+            active_training=replace(
+                running.active_training,
+                is_running=False,
+                finished_run_count=1,
+            ),
+        )
+        terminal_publication = ApplicationViewPublication(
+            generation=10,
+            revision=100,
+            state=completed,
+            capabilities=build_capability_policy(completed),
+        )
+        agent_mgr.application_service = MagicMock()
+        agent_mgr.application_service.get_view_publication.return_value = (
+            terminal_publication
+        )
+
+        assert agent_mgr._render_backend_publication(terminal_publication) is True
+        result = ToolCommandResult(
+            ok=True,
+            tool_name="start_training",
+            command_name="train",
+            message="Training accepted.",
+            state=running.to_dict(),
+            diagnostics={"training_handoff_generation": 9},
+            changed_state={"training_changed": True},
+        )
+        agent_mgr._on_application_command_completed(result)
+
+        coordinator_state = agent_mgr._application_publication_coordinator.snapshot()
+        assert coordinator_state.training_watch is None
+        assert coordinator_state.pending_training_terminal is not None
+        agent_mgr.chat_controller.add_agent_message.assert_not_called()
+
+        agent_mgr._on_assistant_turn_finished(
+            AssistantTurnTerminal(correlation=correlation)
+        )
+
+        assert agent_mgr.chat_controller.add_agent_message.call_count == 1
+        assert agent_mgr.chat_controller.add_agent_message.call_args.args == (
+            "Training completed. Results are ready in Evaluation.",
+        )
+
+    def test_training_watch_requires_typed_handoff_identity(
+        self,
+        agent_mgr,
+    ) -> None:
+        _admit_ui_turn(agent_mgr, turn_id=34)
+        result = ToolCommandResult(
+            ok=True,
+            tool_name="start_training",
+            command_name="train",
+            message="Training started.",
+            state={
+                "training": {
+                    "is_running": True,
+                    "finished_run_count": 0,
+                }
+            },
+        )
+
+        agent_mgr._on_application_command_completed(result)
+
+        assert (
+            agent_mgr._application_publication_coordinator.snapshot().training_watch
+            is None
+        )
+
+    def test_training_terminal_typed_renderer_prunes_capacity_before_retry(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        presentation = AssistantResponsePresentation(
+            text="Training completed. Results are ready in Evaluation.",
+            correlation=AssistantTurnCorrelation(generation=4, turn_id=8),
+            kind=AssistantResponseKind.TOOL_RESULT,
+        )
+        agent_mgr.chat_controller.add_agent_message.side_effect = [
+            ValueError("Chat history is full."),
+            None,
+        ]
+        agent_mgr.chat_controller.prepare_for_turn.return_value = [object()]
+
+        assert agent_mgr._try_render_visible_assistant_response(
+            presentation,
+            recover_capacity=True,
+        )
+
+        assert agent_mgr.chat_controller.add_agent_message.call_count == 2
+        agent_mgr.chat_controller.prepare_for_turn.assert_called_once_with()
+        agent_mgr.chat_panel.clear_response_actions.assert_not_called()
+        assert (
+            call(
+                "Older messages were removed from this view to keep the conversation "
+                "responsive."
+            )
+            in agent_mgr.chat_panel.show_notice.call_args_list
+        )
+
+    def test_training_terminal_notice_is_retained_until_visible_render_succeeds(
+        self,
+        agent_mgr,
+        monkeypatch,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        notice = SimpleNamespace(
+            outcome=TrainingOutcomeState.COMPLETED,
+            correlation=AssistantTurnCorrelation(generation=7, turn_id=3),
+        )
+        coordinator = agent_mgr._application_publication_coordinator
+        terminal_notice_if_idle = MagicMock(return_value=notice)
+        complete_terminal_notice = MagicMock(return_value=True)
+        monkeypatch.setattr(
+            coordinator,
+            "terminal_notice_if_idle",
+            terminal_notice_if_idle,
+        )
+        monkeypatch.setattr(
+            coordinator,
+            "complete_terminal_notice",
+            complete_terminal_notice,
+        )
+        agent_mgr.chat_controller.add_agent_message.side_effect = TypeError(
+            "transient presentation failure"
+        )
+
+        assert agent_mgr._flush_assistant_training_terminal() is False
+        complete_terminal_notice.assert_not_called()
+
+        agent_mgr.chat_controller.add_agent_message.side_effect = None
+        assert agent_mgr._flush_assistant_training_terminal() is True
+        complete_terminal_notice.assert_called_once_with(notice)
+
+    def test_manual_training_terminal_does_not_create_assistant_transcript_claim(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        run = TrainingRunIdentity(trainer_id="manual-trainer", run_id=1)
+        state = replace(
+            ApplicationStateSnapshot.empty(),
+            pipeline_stage="trained",
+            training=TrainingStateSnapshot(
+                has_trainer=True,
+                finished_run_count=1,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.COMPLETED,
+                    run=run,
+                ),
+            ),
+            active_training=ActiveTrainingSnapshot(
+                has_trainer=True,
+                finished_run_count=1,
+            ),
+        )
+        publication = ApplicationViewPublication(
+            generation=10,
+            revision=100,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+
+        assert agent_mgr._render_backend_publication(publication) is True
+
+        agent_mgr.chat_controller.add_agent_message.assert_not_called()
 
     def test_set_model(self, agent_mgr):
         model_id = LLMConfig.default_local_model_id()
@@ -2062,6 +3064,7 @@ class TestAgentManagerMethods:
         agent_mgr,
     ):
         agent_mgr.chat_panel = MagicMock()
+        correlation = _admit_ui_turn(agent_mgr)
         request = AgentConfirmationRequest.for_action(
             command_name="clear_dataset",
             params={},
@@ -2070,6 +3073,16 @@ class TestAgentManagerMethods:
             destructive=True,
             publication_generation=1,
         )
+        agent_mgr.on_assistant_activity_changed(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name=request.command_name,
+                request_id=request.request_id,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+            )
+        )
+        agent_mgr.chat_panel.show_notice.reset_mock()
         agent_mgr._assistant_runtime.confirm.return_value = (
             RuntimeCommandAdmissionResult(
                 command_name="confirm",
@@ -2098,6 +3111,48 @@ class TestAgentManagerMethods:
         agent_mgr.chat_panel.show_notice.assert_called_once_with(
             "Assistant runtime closed before confirmation returned."
         )
+
+    def test_confirmation_card_requires_matching_active_turn_activity(
+        self,
+        agent_mgr,
+    ) -> None:
+        agent_mgr.chat_panel = MagicMock()
+        correlation = _admit_ui_turn(agent_mgr)
+        request = AgentConfirmationRequest.for_action(
+            command_name="start_training",
+            params={},
+            action_label="Start training",
+            description="Start the configured training run.",
+            destructive=False,
+            publication_generation=1,
+        )
+
+        agent_mgr._show_action_confirmation(request)
+        agent_mgr.chat_panel.show_confirmation_request.assert_not_called()
+
+        agent_mgr.on_assistant_activity_changed(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name=request.command_name,
+                request_id="stale-request",
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+            )
+        )
+        agent_mgr._show_action_confirmation(request)
+        agent_mgr.chat_panel.show_confirmation_request.assert_not_called()
+
+        agent_mgr.on_assistant_activity_changed(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name=request.command_name,
+                request_id=request.request_id,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+            )
+        )
+        agent_mgr._show_action_confirmation(request)
+        agent_mgr.chat_panel.show_confirmation_request.assert_called_once()
 
     def test_confirmation_current_values_require_matching_reliable_publication(
         self,
@@ -2254,6 +3309,26 @@ class TestAgentManagerMethods:
         assert (
             agent_mgr.chat_panel.set_product_status.call_args.kwargs["model_status"]
             == "Ready"
+        )
+
+    def test_runtime_publication_exposes_cpu_execution_to_the_panel(self, agent_mgr):
+        agent_mgr.chat_panel = MagicMock()
+
+        agent_mgr._render_assistant_runtime(
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.READY,
+                initialized=True,
+                backend_mode="local",
+                model_id="test-model",
+                execution_device="cpu",
+                device_fallback_reason="CUDA is not available",
+            )
+        )
+
+        agent_mgr.chat_panel.set_runtime_state.assert_called_once_with(
+            "ready",
+            "",
+            execution_device="cpu",
         )
 
     def test_prepare_model_deletion_no_controller(self, agent_mgr):
@@ -2552,8 +3627,13 @@ class TestAgentManagerMethods:
             "XBrainLab Assistant"
         )
         assert title.text() == "XBrainLab Assistant"
-        assert manager.assistant_header.status_badge is not None
-        assert manager.assistant_header.status_badge.text().startswith("Local ·")
+        assert manager.assistant_header.status_badge is None
+        assert manager.assistant_header.status_indicator is None
+        assert manager.assistant_header.status_dot is None
+        manager.assistant_header.set_assistant_status("Local · Ready")
+        assert title.toolTip() == "Local · Ready"
+        assert title.accessibleDescription() == "Assistant status: Local · Ready"
+        assert manager.assistant_header.property("assistantState") == "ready"
         manager.chat_panel.retry_local_assistant_requested.emit()
         manager.retry_local_assistant.assert_called_once_with()
         for control in (
@@ -2562,16 +3642,19 @@ class TestAgentManagerMethods:
             manager.settings_btn,
             manager.close_btn,
         ):
-            assert control.width() >= 28
-            assert control.height() >= 28
+            assert control.width() >= 30
+            assert control.height() >= 30
             assert control.focusPolicy() == Qt.FocusPolicy.StrongFocus
         assert not hasattr(manager, "float_btn")
-        assert manager.close_btn.text() == "⌃"
-        assert manager.close_btn.icon().isNull()
+        assert manager.close_btn.text() == ""
+        assert not manager.close_btn.icon().isNull()
         assert manager.close_btn.accessibleName() == "Hide assistant"
+        assert manager.new_conv_title_btn.text() == ""
+        assert not manager.new_conv_title_btn.icon().isNull()
         assert manager.new_conv_title_btn.toolTip() == "New chat"
         assert manager.new_conv_title_btn.accessibleName() == "New chat"
-        assert manager.settings_btn.text() == "⋮"
+        assert manager.settings_btn.text() == ""
+        assert not manager.settings_btn.icon().isNull()
         assert manager.settings_btn.toolTip() == "Assistant options"
         assert manager.settings_btn.accessibleName() == "Assistant options"
         assert manager.settings_btn.isCheckable() is False
@@ -2727,8 +3810,8 @@ class TestAgentManagerMethods:
                     submission,
                     correlation,
                 )
-                manager.agent_controller._active_host_turn_generation = None
-                manager.agent_controller._active_host_turn_id = None
+                manager.agent_controller._turn_orchestrator.host_turn_generation = None
+                manager.agent_controller._turn_orchestrator.host_turn_id = None
                 manager.agent_controller.execute_debug_tool(
                     AssistantDebugToolRequest.from_params(
                         correlation=correlation,
@@ -2931,24 +4014,146 @@ def _make_real_manager_with_fake_controller(
 
 
 class TestAgentManagerProductChatFlow:
+    def test_assistant_publication_projection_does_not_acknowledge_desktop_delivery(
+        self,
+        qtbot,
+    ) -> None:
+        manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+        service = manager.application_service
+        publication = service.get_view_publication()
+        service.acknowledge_view_publication_delivery = MagicMock()
+        service.reject_view_publication_delivery = MagicMock()
+
+        delivery = service.notify_delivery(
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+            publication,
+        )
+
+        assert delivery is ObserverDeliveryStatus.UNACKNOWLEDGED
+        service.acknowledge_view_publication_delivery.assert_not_called()
+        service.reject_view_publication_delivery.assert_not_called()
+        assert manager.assistant_status_projection is not None
+        assert (
+            manager.assistant_status_projection.publication_revision
+            == publication.revision
+        )
+        manager.close()
+
+    def test_rejected_send_message_action_remains_visible_and_retryable(
+        self,
+        qtbot,
+    ) -> None:
+        manager, fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+        assert manager.chat_panel is not None
+        action = ChatResponseAction(
+            action_id="visible-retry-action",
+            label="Check workflow",
+            kind=ChatResponseActionKind.SEND_MESSAGE,
+            prompt="Check what is ready now.",
+        )
+        presentation_id = "visible-retry-presentation"
+        manager.chat_controller.add_agent_message(
+            "Choose a next step.",
+            presentation_id=presentation_id,
+            actions=(action,),
+        )
+        QApplication.processEvents()
+        serialized_before = json.dumps(
+            manager.chat_controller.get_history(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        labels_before = [
+            button.text()
+            for button in manager.chat_panel.response_actions_widget.findChildren(
+                QToolButton
+            )
+        ]
+        runtime = cast(Any, manager._assistant_runtime)
+        accepted_submit = runtime.submit
+        runtime.submit = lambda _text, *, generation: RuntimeCommandAdmissionResult(
+            command_name="submit",
+            status=RuntimeCommandAdmissionStatus.BUSY,
+            message="The assistant is still processing.",
+            generation=generation,
+        )
+
+        try:
+            button = manager.chat_panel.response_actions_widget.findChild(QToolButton)
+            assert button is not None
+            button.click()
+            qtbot.waitUntil(
+                lambda: (
+                    manager._active_response_presentation_id == presentation_id
+                    and not manager.chat_panel.response_actions_widget.isHidden()
+                ),
+                timeout=1_000,
+            )
+
+            assert (
+                json.dumps(
+                    manager.chat_controller.get_history(),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                == serialized_before
+            )
+            assert fake.received_inputs == []
+            assert [
+                candidate.text()
+                for candidate in (
+                    manager.chat_panel.response_actions_widget.findChildren(QToolButton)
+                )
+            ] == labels_before
+
+            runtime.submit = accepted_submit
+            retry_button = manager.chat_panel.response_actions_widget.findChild(
+                QToolButton
+            )
+            assert retry_button is not None
+            retry_button.click()
+            QApplication.processEvents()
+
+            assert fake.received_inputs == [action.prompt]
+            assert manager.chat_controller.get_typed_history()[
+                0
+            ].has_active_actions is (False)
+            assert manager._active_response_presentation_id is None
+        finally:
+            manager.close()
+
     def test_background_queued_render_failure_retries_and_delivers_terminal_once(
         self,
         qtbot,
     ):
         from XBrainLab.backend.training import Trainer
+        from XBrainLab.ui.application_publication_renderer import (
+            DesktopApplicationPublicationRenderer,
+        )
 
         manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
         service = manager.application_service
         render_projection = manager._render_assistant_status_projection
-        render_results: list[bool] = []
+        assistant_render_results: list[bool] = []
+        desktop_render_results: list[bool] = []
 
         def render_after_one_failure(projection):
-            rendered = bool(render_results)
-            render_results.append(rendered)
+            rendered = bool(assistant_render_results)
+            assistant_render_results.append(rendered)
             if not rendered:
                 return False
             return render_projection(projection)
 
+        def render_desktop_after_one_failure(_publication):
+            rendered = bool(desktop_render_results)
+            desktop_render_results.append(rendered)
+            return rendered
+
+        desktop_renderer = DesktopApplicationPublicationRenderer(
+            service=service,
+            render_publication=render_desktop_after_one_failure,
+            parent=manager,
+        )
         manager._render_assistant_status_projection = render_after_one_failure
         trainer = Trainer([])
         service.study.training_manager.trainer = trainer
@@ -2977,7 +4182,8 @@ class TestAgentManagerProductChatFlow:
 
         publication = service.get_view_publication()
         delivery = service.training_publications.training_delivery_state()
-        assert render_results == [False, True]
+        assert assistant_render_results == [False, True]
+        assert desktop_render_results == [False, True]
         assert manager.assistant_status_projection.publication_revision == (
             publication.revision
         )
@@ -2994,6 +4200,8 @@ class TestAgentManagerProductChatFlow:
         assert (
             service.training_publications.training_delivery_state().delivered_count == 1
         )
+        desktop_renderer.cleanup()
+        manager.close()
 
     def test_product_next_steps_use_data_interpretation_in_empty_state(self):
         from XBrainLab.backend.application import ApplicationService

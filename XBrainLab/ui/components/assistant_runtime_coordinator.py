@@ -73,6 +73,8 @@ class AssistantRuntimeCoordinator:
                 requested_model_id=launch_spec.requested_model_id,
                 selection_outcome=launch_spec.outcome,
                 selection_detail=launch_spec.selection_detail,
+                execution_device=launch_spec.execution_device,
+                device_fallback_reason=launch_spec.device_fallback_reason,
                 activation_id=request_id or 0,
             )
         )
@@ -151,6 +153,8 @@ class AssistantRuntimeCoordinator:
                 requested_model_id=expected.requested_model_id,
                 selection_outcome=expected.outcome,
                 selection_detail=expected.selection_detail,
+                execution_device=expected.execution_device,
+                device_fallback_reason=expected.device_fallback_reason,
             )
         terminal = snapshot.phase in {
             AssistantRuntimePhase.READY,
@@ -247,6 +251,8 @@ class AssistantRuntimeCoordinator:
                     requested_model_id=request_context.requested_model_id,
                     selection_outcome=request_context.selection_outcome,
                     selection_detail=request_context.selection_detail,
+                    execution_device=request_context.execution_device,
+                    device_fallback_reason=request_context.device_fallback_reason,
                 )
             return failed
         failed = AssistantRuntimeSnapshot(
@@ -262,6 +268,8 @@ class AssistantRuntimeCoordinator:
                 requested_model_id=request_context.requested_model_id,
                 selection_outcome=request_context.selection_outcome,
                 selection_detail=request_context.selection_detail,
+                execution_device=request_context.execution_device,
+                device_fallback_reason=request_context.device_fallback_reason,
             )
         return failed
 

@@ -4,6 +4,12 @@ from typing import Any
 
 import pytest
 
+from XBrainLab.backend.application.saliency_policy import (
+    MAX_SALIENCY_NT_SAMPLES,
+    MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+    MIN_SALIENCY_NT_SAMPLES,
+    MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+)
 from XBrainLab.llm.tools.definitions.analysis_def import (
     BaseEvaluateTool,
     BaseSaliencyTool,
@@ -140,7 +146,7 @@ EXPECTED_TOOL_CONTRACTS = {
     BaseAttachLabelsTool: {
         "name": "attach_labels",
         "description_markers": ("Legacy compatibility", "labels/events"),
-        "properties": ("mapping", "label_format"),
+        "properties": ("mapping", "label_format", "selected_event_names"),
         "required": ("mapping",),
     },
     BaseClearDatasetTool: {
@@ -163,7 +169,7 @@ EXPECTED_TOOL_CONTRACTS = {
     },
     BaseGenerateDatasetTool: {
         "name": "generate_dataset",
-        "description_markers": ("Generate training dataset", "epochs"),
+        "description_markers": ("Generate a training dataset", "EEG epochs"),
         "properties": (
             "test_ratio",
             "val_ratio",
@@ -187,7 +193,12 @@ EXPECTED_TOOL_CONTRACTS = {
     BaseSaliencyTool: {
         "name": "saliency",
         "description_markers": ("saliency readiness", "trained EEG models"),
-        "properties": ("method", "params"),
+        "properties": (
+            "method",
+            "nt_samples",
+            "nt_samples_batch_size",
+            "stdevs",
+        ),
         "required": (),
     },
     BaseStandardPreprocessTool: {
@@ -253,7 +264,7 @@ EXPECTED_TOOL_CONTRACTS = {
     },
     BaseEpochDataTool: {
         "name": "epoch_data",
-        "description_markers": ("Epoch continuous data", "events"),
+        "description_markers": ("Create EEG epochs", "event markers"),
         "properties": ("t_min", "t_max", "event_id", "baseline"),
         "required": ("t_min", "t_max"),
     },
@@ -424,8 +435,32 @@ class TestAnalysisDefinitions:
     def test_saliency_can_query_or_configure_method(self):
         params = _property_value(BaseSaliencyTool.parameters)
         assert "method" in params["properties"]
-        assert "params" in params["properties"]
-        assert params["properties"]["params"]["type"] == "object"
+        assert params["properties"]["method"]["enum"] == [
+            "Gradient",
+            "Gradient * Input",
+            "SmoothGrad",
+            "SmoothGrad_Squared",
+            "VarGrad",
+        ]
+        assert params["properties"]["nt_samples"]["type"] == "integer"
+        assert params["properties"]["nt_samples"]["minimum"] == (
+            MIN_SALIENCY_NT_SAMPLES
+        )
+        assert params["properties"]["nt_samples"]["maximum"] == (
+            MAX_SALIENCY_NT_SAMPLES
+        )
+        assert params["properties"]["nt_samples_batch_size"]["type"] == [
+            "integer",
+            "null",
+        ]
+        assert params["properties"]["nt_samples_batch_size"]["minimum"] == (
+            MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE
+        )
+        assert params["properties"]["nt_samples_batch_size"]["maximum"] == (
+            MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE
+        )
+        assert params["properties"]["stdevs"]["type"] == "number"
+        assert "params" not in params["properties"]
 
 
 class TestDataInterpretationDefinitions:

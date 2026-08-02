@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from threading import RLock
+from collections.abc import Callable
+from threading import Lock, RLock
 from typing import TYPE_CHECKING, Any
 
 from .data_manager import DataManager
+from .services.dataset_state_service import DatasetStateService
+from .services.preprocess_state_service import PreprocessStateService
+from .services.training_state_service import TrainingStateService
+from .services.visualization_state_service import VisualizationStateService
 from .training_manager import TrainingManager
 from .utils.check import validate_type
 from .utils.logger import logger
@@ -45,14 +50,26 @@ class Study:
     """
 
     def __init__(self) -> None:
+        self._application_command_lock = RLock()
+        self._synchronous_training_lifecycle_lock = Lock()
         self.data_manager = DataManager()
         self.training_manager = TrainingManager()
+        self.dataset_state_service = DatasetStateService(self)
+        self.training_state_service = TrainingStateService(self)
+        self.preprocess_state_service = PreprocessStateService(self)
+        self.visualization_state_service = VisualizationStateService(
+            self.training_manager
+        )
 
         # Controller cache for singleton-like access
-        self._controllers: dict = {}
+        self._controllers: dict[str, Any] = {}
+        self._controller_lock = RLock()
+        self._controller_event_subscriptions: dict[
+            str,
+            list[tuple[str, Callable[..., Any]]],
+        ] = {}
         self._application_service: Any | None = None
         self._application_service_lock = RLock()
-        self._application_command_lock = RLock()
 
         logger.info("Study initialized (with DataManager + TrainingManager)")
 
@@ -145,6 +162,46 @@ class Study:
         self.training_manager.saliency_params = value
 
     # --- Controller Access ---
+    def subscribe_controller_event(
+        self,
+        controller_type: str,
+        event_name: str,
+        callback: Callable[..., Any],
+    ) -> None:
+        """Subscribe now or bind before a lazily created controller is returned."""
+        with self._controller_lock:
+            controller = self._controllers.get(controller_type)
+            if controller is not None:
+                controller.subscribe(event_name, callback)
+                return
+            subscription = (event_name, callback)
+            pending = self._controller_event_subscriptions.setdefault(
+                controller_type,
+                [],
+            )
+            if subscription not in pending:
+                pending.append(subscription)
+
+    def unsubscribe_controller_event(
+        self,
+        controller_type: str,
+        event_name: str,
+        callback: Callable[..., Any],
+    ) -> None:
+        """Remove a bound or still-pending lazy controller subscription."""
+        with self._controller_lock:
+            controller = self._controllers.get(controller_type)
+            if controller is not None:
+                controller.unsubscribe(event_name, callback)
+                return
+            pending = self._controller_event_subscriptions.get(controller_type)
+            subscription = (event_name, callback)
+            if pending is None or subscription not in pending:
+                return
+            pending.remove(subscription)
+            if not pending:
+                self._controller_event_subscriptions.pop(controller_type, None)
+
     def get_controller(self, controller_type: str):
         """Get or create a cached controller instance.
 
@@ -159,40 +216,51 @@ class Study:
             ValueError: If the controller type is unknown.
 
         """
-        if controller_type not in self._controllers:
-            if controller_type == "dataset":
-                from .controller.dataset_controller import (  # noqa: PLC0415
-                    DatasetController,
-                )
+        with self._controller_lock:
+            if controller_type not in self._controllers:
+                controller: Any
+                if controller_type == "dataset":
+                    from .controller.dataset_controller import (  # noqa: PLC0415
+                        DatasetController,
+                    )
 
-                self._controllers[controller_type] = DatasetController(self)
-            elif controller_type == "preprocess":
-                from .controller.preprocess_controller import (  # noqa: PLC0415
-                    PreprocessController,
-                )
+                    controller = DatasetController(
+                        self,
+                        dataset_state=self.dataset_state_service,
+                    )
+                elif controller_type == "preprocess":
+                    from .controller.preprocess_controller import (  # noqa: PLC0415
+                        PreprocessController,
+                    )
 
-                self._controllers[controller_type] = PreprocessController(self)
-            elif controller_type == "training":
-                from .controller.training_controller import (  # noqa: PLC0415
-                    TrainingController,
-                )
+                    controller = PreprocessController(self)
+                elif controller_type == "training":
+                    from .controller.training_controller import (  # noqa: PLC0415
+                        TrainingController,
+                    )
 
-                self._controllers[controller_type] = TrainingController(self)
-            elif controller_type == "evaluation":
-                from .controller.evaluation_controller import (  # noqa: PLC0415
-                    EvaluationController,
-                )
+                    controller = TrainingController(self)
+                elif controller_type == "evaluation":
+                    from .controller.evaluation_controller import (  # noqa: PLC0415
+                        EvaluationController,
+                    )
 
-                self._controllers[controller_type] = EvaluationController(self)
-            elif controller_type == "visualization":
-                from .controller.visualization_controller import (  # noqa: PLC0415
-                    VisualizationController,
-                )
+                    controller = EvaluationController(self)
+                elif controller_type == "visualization":
+                    from .controller.visualization_controller import (  # noqa: PLC0415
+                        VisualizationController,
+                    )
 
-                self._controllers[controller_type] = VisualizationController(self)
-            else:
-                raise ValueError(f"Unknown controller type: {controller_type}")
-        return self._controllers[controller_type]
+                    controller = VisualizationController(self)
+                else:
+                    raise ValueError(f"Unknown controller type: {controller_type}")
+                self._controllers[controller_type] = controller
+                for event_name, callback in self._controller_event_subscriptions.pop(
+                    controller_type,
+                    (),
+                ):
+                    controller.subscribe(event_name, callback)
+            return self._controllers[controller_type]
 
     # step 1 - load data
     def get_raw_data_loader(self) -> RawDataLoader:

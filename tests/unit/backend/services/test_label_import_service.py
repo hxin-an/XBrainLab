@@ -11,54 +11,11 @@ import numpy as np
 import pytest
 
 from XBrainLab.backend.load_data.raw import Raw
-from XBrainLab.backend.services.label_import_service import (
-    LabelImportService,
-    infer_event_ids_for_label_count,
-)
+from XBrainLab.backend.services.label_import_service import LabelImportService
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def test_infer_event_ids_prefers_balanced_class_group_over_trial_marker() -> None:
-    event_ids = {"trial": 1, "left": 2, "right": 3, "feet": 4, "tongue": 5}
-    events = np.asarray(
-        [[index, 0, 1] for index in range(288)]
-        + [
-            [1000 + index, 0, event_id]
-            for event_id in (2, 3, 4, 5)
-            for index in range(72)
-        ],
-    )
-
-    assert infer_event_ids_for_label_count(events, event_ids, 288) == [2, 3, 4, 5]
-
-
-def test_infer_event_ids_uses_unique_single_event_when_no_group_matches() -> None:
-    events = np.asarray(
-        [[index, 0, 10] for index in range(20)]
-        + [[100 + index, 0, 20] for index in range(4)],
-    )
-
-    assert infer_event_ids_for_label_count(
-        events, {"target": 10, "artifact": 20}, 20
-    ) == [10]
-
-
-def test_infer_event_ids_returns_none_for_ambiguous_balanced_groups() -> None:
-    events = np.asarray(
-        [[index, 0, event_id] for event_id in (1, 2, 3, 4) for index in range(5)],
-    )
-
-    assert (
-        infer_event_ids_for_label_count(
-            events,
-            {"a": 1, "b": 2, "c": 3, "d": 4},
-            10,
-        )
-        is None
-    )
 
 
 def _make_data_mock(filepath="/data/sub01.set", is_raw=True, epoch_length=0):
@@ -130,23 +87,44 @@ class TestGetEpochCountForFile:
 
 
 class TestApplyLabelsToSingleFile:
-    def test_sequence_mode_no_filter(self, service):
+    def test_sequence_mode_blocks_ambiguous_balanced_groups_without_target(
+        self,
+        service,
+    ):
         data = _make_data_mock()
-        labels = [1, 2, 3]
-        mapping = {1: "A", 2: "B", 3: "C"}
+        data.get_event_list.return_value = (
+            np.asarray(
+                [[index, 0, event_id] for event_id in (1, 2) for index in range(5)]
+                + [
+                    [100 + index, 0, event_id]
+                    for event_id in (3, 4, 5, 6, 7)
+                    for index in range(2)
+                ],
+            ),
+            {
+                "trial/start-a": 1,
+                "trial/start-b": 2,
+                "cue/a": 3,
+                "cue/b": 4,
+                "cue/c": 5,
+                "cue/d": 6,
+                "cue/e": 7,
+            },
+        )
+        labels = [1, 2] * 5
+        mapping = {1: "A", 2: "B"}
 
         with patch(
             "XBrainLab.backend.services.label_import_service.EventLoader"
         ) as MockLoader:
             mock_loader = MockLoader.return_value
-            service.apply_labels_to_single_file(data, labels, mapping)
+            with pytest.raises(ValueError, match="explicit target EEG event"):
+                service.apply_labels_to_single_file(data, labels, mapping)
 
-            MockLoader.assert_called_once_with(data)
-            mock_loader.create_event.assert_called_once_with(
-                mapping, selected_event_ids=None
-            )
-            mock_loader.apply.assert_called_once()
-            data.set_labels_imported.assert_called_once_with(True)
+            MockLoader.assert_not_called()
+            mock_loader.create_event.assert_not_called()
+            mock_loader.apply.assert_not_called()
+            data.set_labels_imported.assert_not_called()
 
     def test_sequence_mode_with_filter(self, service):
         data = _make_data_mock()
@@ -181,6 +159,46 @@ class TestApplyLabelsToSingleFile:
 
             call_kwargs = mock_loader.create_event.call_args[1]
             assert call_kwargs["selected_event_ids"] == [1]
+
+    def test_sequence_mode_rejects_partially_unresolved_target_scope(self, service):
+        data = _make_data_mock()
+        labels = [1, 2, 3]
+        mapping = {1: "A", 2: "B", 3: "C"}
+
+        with patch(
+            "XBrainLab.backend.services.label_import_service.EventLoader"
+        ) as MockLoader:
+            with pytest.raises(ValueError, match=r"not found.*MissingEvent"):
+                service.apply_labels_to_single_file(
+                    data,
+                    labels,
+                    mapping,
+                    {"EventA", "MissingEvent"},
+                )
+
+            MockLoader.assert_not_called()
+            data.set_labels_imported.assert_not_called()
+
+    def test_sequence_mode_rejects_ambiguous_target_alias(self, service):
+        data = _make_data_mock()
+        data.get_event_list.return_value = (
+            np.array([[0, 0, 1], [1, 0, 2]]),
+            {"Stimulus/S 769": 1, "769": 2},
+        )
+
+        with patch(
+            "XBrainLab.backend.services.label_import_service.EventLoader"
+        ) as MockLoader:
+            with pytest.raises(ValueError, match=r"ambiguous.*769"):
+                service.apply_labels_to_single_file(
+                    data,
+                    [1, 2],
+                    {1: "A", 2: "B"},
+                    {"769"},
+                )
+
+            MockLoader.assert_not_called()
+            data.set_labels_imported.assert_not_called()
 
     def test_timestamp_mode(self, service):
         data = _make_data_mock()
@@ -585,7 +603,7 @@ class TestApplyLabelsSequence:
 
 
 class TestForceApplySingle:
-    def test_basic(self, service):
+    def test_raw_requires_explicit_target(self, service):
         data = _make_data_mock()
         labels = [1, 2, 3]
         mapping = {1: "A", 2: "B", 3: "C"}
@@ -594,11 +612,13 @@ class TestForceApplySingle:
             "XBrainLab.backend.services.label_import_service.EventLoader"
         ) as MockLoader:
             mock_loader = MockLoader.return_value
-            service._force_apply_single(data, labels, mapping)
+            with pytest.raises(ValueError, match="explicit target EEG event"):
+                service._force_apply_single(data, labels, mapping)
 
-            mock_loader.create_event.assert_called_once()
-            mock_loader.apply.assert_called_once()
-            data.set_labels_imported.assert_called_once_with(True)
+            MockLoader.assert_not_called()
+            mock_loader.create_event.assert_not_called()
+            mock_loader.apply.assert_not_called()
+            data.set_labels_imported.assert_not_called()
 
     def test_with_filter(self, service):
         data = _make_data_mock()

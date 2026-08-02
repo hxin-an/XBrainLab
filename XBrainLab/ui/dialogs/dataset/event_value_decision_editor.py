@@ -32,9 +32,9 @@ _ROLE_CHOICES = (
 
 _USE_CHOICES = (
     ("Choose use", ""),
-    ("Class", "class"),
-    ("Keep event", "event"),
-    ("Ignore", "ignore"),
+    ("Training class", "class"),
+    ("Keep as EEG event", "event"),
+    ("Do not use", "ignore"),
 )
 
 
@@ -53,6 +53,7 @@ class _DecisionRow:
     use_selector: QComboBox
     class_name_editor: QLineEdit
     coverage_label: QLabel
+    evidence_label: QLabel
 
     @property
     def raw_value(self) -> str:
@@ -74,6 +75,8 @@ class EventValueDecisionEditor(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._carrier_count = 0
         self._rows: list[_DecisionRow] = []
+        self._advanced_visible = False
+        self._advanced_widgets: list[QWidget] = []
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 2, 0, 0)
         self._layout.setSpacing(7)
@@ -82,6 +85,7 @@ class EventValueDecisionEditor(QWidget):
     def set_carrier_plans(self, carrier_plans: list[dict[str, Any]]) -> None:
         """Replace the observed values while preserving only backend-owned truth."""
         self._rows.clear()
+        self._advanced_widgets.clear()
         self._clear_layout()
         occurrences = self._occurrences(carrier_plans)
         self._carrier_count = len(
@@ -109,11 +113,20 @@ class EventValueDecisionEditor(QWidget):
         grid.setContentsMargins(10, 8, 10, 9)
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(7)
-        headers = ("Label value", "Role", "Use as", "Class name", "Rows / coverage")
+        headers = (
+            "Label value",
+            "Use as",
+            "Class name",
+            "Occurrences",
+            "Event role",
+            "Source evidence",
+        )
         for column, header in enumerate(headers):
             label = QLabel(header)
             label.setObjectName("DataImportPairingHeaderLabel")
             grid.addWidget(label, 0, column)
+            if column >= 4:
+                self._advanced_widgets.append(label)
 
         grouped_occurrences = self._group_occurrences(occurrences)
         grouped_value_counts = Counter(
@@ -127,17 +140,21 @@ class EventValueDecisionEditor(QWidget):
                 show_source=grouped_value_counts[grouped[0].raw_value] > 1,
             )
             grid.addWidget(value_cell, row_index, 0)
-            grid.addWidget(row.role_selector, row_index, 1)
-            grid.addWidget(row.use_selector, row_index, 2)
-            grid.addWidget(row.class_name_editor, row_index, 3)
-            grid.addWidget(row.coverage_label, row_index, 4)
+            grid.addWidget(row.use_selector, row_index, 1)
+            grid.addWidget(row.class_name_editor, row_index, 2)
+            grid.addWidget(row.coverage_label, row_index, 3)
+            grid.addWidget(row.role_selector, row_index, 4)
+            grid.addWidget(row.evidence_label, row_index, 5)
+            self._advanced_widgets.extend((row.role_selector, row.evidence_label))
 
         grid.setColumnStretch(0, 5)
         grid.setColumnStretch(1, 3)
-        grid.setColumnStretch(2, 2)
+        grid.setColumnStretch(2, 3)
         grid.setColumnStretch(3, 2)
-        grid.setColumnStretch(4, 2)
+        grid.setColumnStretch(4, 3)
+        grid.setColumnStretch(5, 4)
         self._layout.addWidget(table)
+        self.set_advanced_visible(self._advanced_visible)
         self.updateGeometry()
 
     def has_rows(self) -> bool:
@@ -165,6 +182,13 @@ class EventValueDecisionEditor(QWidget):
             if row.raw_value == str(raw_value)
         ]
         return " · ".join(matching)
+
+    def set_advanced_visible(self, visible: bool) -> None:
+        """Show backend role and source evidence only on explicit request."""
+        self._advanced_visible = bool(visible)
+        for widget in self._advanced_widgets:
+            widget.setVisible(self._advanced_visible)
+        self.updateGeometry()
 
     def set_value_decision(
         self,
@@ -253,13 +277,27 @@ class EventValueDecisionEditor(QWidget):
         )
         file_count = len({item.carrier_key for item in occurrences})
         total_files = max(self._carrier_count, 1)
-        full_coverage_text = f"{count} rows · {file_count}/{total_files} files"
-        coverage_label = QLabel(f"{count} rows · {file_count}/{total_files}")
+        full_coverage_text = f"{count} occurrences · {file_count}/{total_files} files"
+        coverage_label = QLabel(f"{count} · {file_count}/{total_files}")
         coverage_label.setObjectName("DataImportValueDecisionCoverage")
         coverage_label.setProperty("fullCoverageText", full_coverage_text)
         coverage_label.setToolTip(full_coverage_text)
         coverage_label.setWordWrap(True)
         coverage_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
+
+        evidence = str(
+            representative.get("provenance")
+            or representative.get("decision_source")
+            or "No source evidence"
+        ).strip()
+        evidence_label = QLabel(evidence)
+        evidence_label.setObjectName("DataImportValueDecisionEvidence")
+        evidence_label.setWordWrap(True)
+        evidence_label.setToolTip(evidence)
+        evidence_label.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
@@ -270,6 +308,7 @@ class EventValueDecisionEditor(QWidget):
             use_selector=use_selector,
             class_name_editor=class_name_editor,
             coverage_label=coverage_label,
+            evidence_label=evidence_label,
         )
         self._sync_class_name_editor(row)
         role_selector.currentIndexChanged.connect(self._emit_change)
@@ -284,6 +323,14 @@ class EventValueDecisionEditor(QWidget):
         return row
 
     def _use_changed(self, row: _DecisionRow) -> None:
+        if not row.role_selector.currentData():
+            default_role = {
+                "class": "stimulus",
+                "event": "annotation",
+                "ignore": "unknown",
+            }.get(str(row.use_selector.currentData() or ""))
+            if default_role:
+                self._set_combo_data(row.role_selector, default_role)
         self._sync_class_name_editor(row)
         self._emit_change()
 
@@ -465,6 +512,9 @@ class EventValueDecisionEditor(QWidget):
         value_label.setObjectName("DataImportValueDecisionValue")
         value_label.setToolTip(tooltip)
         value_label.setWordWrap(True)
+        value_label.setMinimumWidth(
+            min(value_label.fontMetrics().horizontalAdvance(raw_value) + 4, 180)
+        )
         value_label.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import stat
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
@@ -38,6 +39,11 @@ from .data_interpretation_resource_reader import AdmittedResourceReader
 
 _MAX_SCAN_DEPTH = 8
 _MAX_SCAN_FILES = 5000
+_WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT = getattr(
+    stat,
+    "FILE_ATTRIBUTE_REPARSE_POINT",
+    0x0400,
+)
 
 
 @dataclass(frozen=True)
@@ -250,22 +256,41 @@ def scan_source_path(
     normalized_hint = str(scope.source_hint or source_hint or "auto").strip().lower()
     scan_root = Path(scope.scan_root)
     eeg_files = list(scope.eeg_files)
+    label_carriers = list(scope.label_carriers)
+    metadata_files = list(scope.metadata_files)
+    all_files = [Path(item) for item in scope.all_files]
     if resource_reader is not None:
         eeg_files = [
             file_path
             for file_path in eeg_files
+            if resource_reader.admits(file_path)
             if not is_edf_annotation_sidecar(
                 Path(file_path),
                 resource_reader=resource_reader,
             )
         ]
-    label_carriers = list(scope.label_carriers)
+        label_carriers = [
+            file_path
+            for file_path in label_carriers
+            if resource_reader.admits(file_path)
+        ]
+        metadata_files = [
+            file_path
+            for file_path in metadata_files
+            if resource_reader.admits(file_path)
+        ]
+        if materialize_metadata:
+            all_files = [
+                file_path
+                for file_path in all_files
+                if resource_reader.admits(file_path)
+            ]
     metadata_guard = (
         resource_reader.guard(
-            scope.metadata_files,
+            metadata_files,
             purpose="BIDS metadata materialization",
         )
-        if materialize_metadata and resource_reader is not None and scope.metadata_files
+        if materialize_metadata and resource_reader is not None and metadata_files
         else contextlib.nullcontext()
     )
     with metadata_guard:
@@ -280,9 +305,7 @@ def scan_source_path(
                 if isinstance(row, dict)
             ],
             materialize=materialize_metadata,
-            admitted_metadata_files=(
-                scope.metadata_files if materialize_metadata else ()
-            ),
+            admitted_metadata_files=metadata_files,
         )
     scope_issue = str(scope.bids.get("root_validation_issue") or "")
     materialized_issue = str(bids.get("root_validation_issue") or "")
@@ -314,7 +337,6 @@ def scan_source_path(
         _metadata_for_file(Path(file_path), scan_root, source_kind)
         for file_path in eeg_files
     ]
-    all_files = [Path(item) for item in scope.all_files]
     format_capabilities = _format_capabilities(
         all_files,
         resource_reader=resource_reader,
@@ -375,6 +397,7 @@ def discover_source_preflight_scope(
     looks_like_bids, bids_root_issue = _provisional_bids_root(
         scan_root,
         scan_budget,
+        scan_root=scan_root,
     )
     source_kind = _source_kind(
         resolved,
@@ -428,6 +451,7 @@ def discover_source_preflight_scope(
         eeg_files,
         label_carriers,
         materialize=False,
+        discovered_files=files,
     )
     bids["looks_like_bids"] = looks_like_bids
     bids["is_bids"] = source_kind == "bids" and looks_like_bids
@@ -435,7 +459,7 @@ def discover_source_preflight_scope(
         bids_root_issue
         if source_kind == "bids"
         or bids_structure_detected
-        or (scan_root / "dataset_description.json").exists()
+        or _path_entry_exists(scan_root / "dataset_description.json")
         else ""
     )
     bids["metadata_discovery"] = scan_budget.metadata_discovery_diagnostics()
@@ -534,6 +558,11 @@ def discover_explicit_file_preflight_scope(
         eeg_files,
         label_carriers,
         materialize=False,
+        discovered_files=[
+            *selected_paths,
+            *auto_label_carriers,
+            *source_label_files,
+        ],
     )
     bids.update(
         {
@@ -583,6 +612,110 @@ def _source_kind(
     return "folder"
 
 
+def _path_substitution_kind(path: Path) -> str | None:
+    """Return the unsafe link-like kind without requiring Python 3.12 APIs."""
+    try:
+        if path.is_symlink():
+            return "symbolic link"
+    except OSError:
+        return "uninspectable filesystem entry"
+
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction):
+        try:
+            if is_junction():
+                return "directory junction or reparse point"
+        except OSError:
+            return "uninspectable filesystem entry"
+
+    try:
+        status = path.lstat()
+    except OSError:
+        return "uninspectable filesystem entry"
+    file_attributes = int(getattr(status, "st_file_attributes", 0) or 0)
+    if (
+        stat.S_ISDIR(status.st_mode)
+        and file_attributes & _WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT
+    ):
+        return "directory junction or reparse point"
+    return None
+
+
+def _path_entry_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+    except OSError:
+        return False
+    return True
+
+
+def _warn_skipped_substitution(
+    path: Path,
+    kind: str,
+    budget: _ScanBudget,
+) -> None:
+    if kind == "symbolic link":
+        message = f"Skipped symbolic link during source scan: {path}."
+    elif kind == "directory junction or reparse point":
+        message = (
+            f"Skipped directory junction or reparse point during source scan: {path}."
+        )
+    else:
+        message = (
+            "Skipped path that could not be safely inspected for filesystem "
+            f"substitutions during source scan: {path}."
+        )
+    budget.warn_once(f"substitution:{path}", message)
+
+
+def _admit_discovered_child(
+    path: Path,
+    *,
+    scan_root: Path,
+    budget: _ScanBudget,
+) -> Path | None:
+    """Resolve one enumerated child only when it remains inside the scan root."""
+    try:
+        path.relative_to(scan_root)
+    except ValueError:
+        budget.warn_once(
+            f"enumerated-outside-root:{path}",
+            (
+                "Skipped path outside the selected source root after directory "
+                f"enumeration: {path}."
+            ),
+        )
+        return None
+
+    substitution_kind = _path_substitution_kind(path)
+    if substitution_kind is not None:
+        _warn_skipped_substitution(path, substitution_kind, budget)
+        return None
+
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        budget.warn_once(
+            f"resolve:{path}",
+            f"Source scan could not safely resolve path {path}: {exc}.",
+        )
+        return None
+    try:
+        resolved.relative_to(scan_root)
+    except ValueError:
+        budget.warn_once(
+            f"resolved-outside-root:{path}",
+            (f"Skipped path that resolved outside the selected source root: {path}."),
+        )
+        return None
+
+    substitution_kind = _path_substitution_kind(path)
+    if substitution_kind is not None:
+        _warn_skipped_substitution(path, substitution_kind, budget)
+        return None
+    return resolved
+
+
 def _candidate_files(
     path: Path,
     *,
@@ -590,14 +723,15 @@ def _candidate_files(
     skipped_bids_roots: list[Path] | None = None,
     budget: _ScanBudget | None = None,
     depth: int = 0,
+    scan_root: Path | None = None,
 ) -> list[Path]:
     budget = budget or _ScanBudget()
+    if scan_root is None:
+        scan_root = (path.parent if path.is_file() else path).resolve(strict=True)
     if path.is_file():
-        if path.is_symlink():
-            budget.warn_once(
-                f"symlink:{path}",
-                f"Skipped symbolic link during source scan: {path}.",
-            )
+        substitution_kind = _path_substitution_kind(path)
+        if substitution_kind is not None:
+            _warn_skipped_substitution(path, substitution_kind, budget)
             return []
         if not budget.claim_file(path):
             return []
@@ -613,30 +747,39 @@ def _candidate_files(
         return []
     result: list[Path] = []
     for item in budget.directory_entries(path):
-        if item.is_symlink():
-            budget.warn_once(
-                f"symlink:{item}",
-                f"Skipped symbolic link during source scan: {item}.",
-            )
+        admitted_item = _admit_discovered_child(
+            item,
+            scan_root=scan_root,
+            budget=budget,
+        )
+        if admitted_item is None:
             continue
-        if item.is_file():
-            if not budget.claim_file(item):
+        if admitted_item.is_file():
+            if not budget.claim_file(admitted_item):
                 break
-            result.append(item.resolve())
+            result.append(admitted_item)
             continue
-        if not item.is_dir():
+        if not admitted_item.is_dir():
             continue
-        if skip_nested_bids_roots and _provisional_bids_root(item, budget)[0]:
+        if (
+            skip_nested_bids_roots
+            and _provisional_bids_root(
+                admitted_item,
+                budget,
+                scan_root=scan_root,
+            )[0]
+        ):
             if skipped_bids_roots is not None:
-                skipped_bids_roots.append(item.resolve())
+                skipped_bids_roots.append(admitted_item)
             continue
         result.extend(
             _candidate_files(
-                item,
+                admitted_item,
                 skip_nested_bids_roots=skip_nested_bids_roots,
                 skipped_bids_roots=skipped_bids_roots,
                 budget=budget,
                 depth=depth + 1,
+                scan_root=scan_root,
             )
         )
     return result
@@ -672,38 +815,39 @@ def _nearby_label_candidates_for_file(
 ) -> list[Path]:
     candidates: list[Path] = []
     seen: set[str] = set()
+    scan_root = source_path.parent.resolve(strict=True)
 
     def _append_file(path: Path) -> None:
-        if path.is_symlink():
-            budget.warn_once(
-                f"symlink:{path}",
-                f"Skipped symbolic link during source scan: {path}.",
-            )
-            return
         if not path.is_file() or not budget.claim_file(path):
             return
-        resolved = path.resolve()
-        key = str(resolved)
+        key = str(path)
         if key not in seen:
             seen.add(key)
-            candidates.append(resolved)
+            candidates.append(path)
 
-    for item in budget.directory_entries(source_path.parent):
-        if item.is_symlink():
-            budget.warn_once(
-                f"symlink:{item}",
-                f"Skipped symbolic link during source scan: {item}.",
+    for item in budget.directory_entries(scan_root):
+        admitted_item = _admit_discovered_child(
+            item,
+            scan_root=scan_root,
+            budget=budget,
+        )
+        if admitted_item is None:
+            continue
+        if admitted_item.is_file():
+            _append_file(admitted_item)
+            continue
+        if not admitted_item.is_dir():
+            continue
+        if admitted_item.name.lower() not in {"label", "labels", "event", "events"}:
+            continue
+        for child in budget.directory_entries(admitted_item):
+            admitted_child = _admit_discovered_child(
+                child,
+                scan_root=scan_root,
+                budget=budget,
             )
-            continue
-        if item.is_file():
-            _append_file(item)
-            continue
-        if not item.is_dir():
-            continue
-        if item.name.lower() not in {"label", "labels", "event", "events"}:
-            continue
-        for child in budget.directory_entries(item):
-            _append_file(child)
+            if admitted_child is not None:
+                _append_file(admitted_child)
     return candidates
 
 
@@ -809,16 +953,35 @@ def _is_bids_events_file(path: Path) -> bool:
 def _provisional_bids_root(
     path: Path,
     budget: _ScanBudget,
+    *,
+    scan_root: Path | None = None,
 ) -> tuple[bool, str]:
     """Identify a possible BIDS root using stat and directory structure only."""
     if not path.is_dir():
         return False, "The selected BIDS source is not a folder."
+    containment_root = scan_root or path.resolve(strict=True)
     description_path = path / "dataset_description.json"
-    if not description_path.is_file():
+    try:
+        description_path.lstat()
+    except FileNotFoundError:
         return (
             False,
             "dataset_description.json is missing from the selected BIDS root.",
         )
+    except OSError:
+        pass
+    admitted_description = _admit_discovered_child(
+        description_path,
+        scan_root=containment_root,
+        budget=budget,
+    )
+    if admitted_description is None or not admitted_description.is_file():
+        return (
+            False,
+            "dataset_description.json is not safely contained in the selected "
+            "BIDS root.",
+        )
+    description_path = admitted_description
     description_bytes = budget.observe_metadata_file(description_path)
     if description_bytes > DATASET_DESCRIPTION_DISCOVERY_MAX_BYTES:
         return False, (
@@ -826,7 +989,11 @@ def _provisional_bids_root(
             f"{DATASET_DESCRIPTION_DISCOVERY_MAX_BYTES} bytes (the shared BIDS "
             "metadata byte budget)."
         )
-    if not _has_bids_subject_structure_on_disk(path, budget):
+    if not _has_bids_subject_structure_on_disk(
+        path,
+        budget,
+        scan_root=containment_root,
+    ):
         return (
             False,
             "No BIDS subject/datatype structure was found under the selected root.",
@@ -837,24 +1004,64 @@ def _provisional_bids_root(
 def _has_bids_subject_structure_on_disk(
     path: Path,
     budget: _ScanBudget,
+    *,
+    scan_root: Path,
 ) -> bool:
     bids_datatype_dirs = {"eeg", "ieeg", "meg", "beh"}
-    for subject_dir in budget.directory_entries(path):
-        if (
-            subject_dir.is_symlink()
-            or not subject_dir.is_dir()
-            or not subject_dir.name.startswith("sub-")
-        ):
+    for subject_entry in budget.directory_entries(path):
+        subject_dir = _admit_discovered_child(
+            subject_entry,
+            scan_root=scan_root,
+            budget=budget,
+        )
+        if subject_dir is None or not subject_dir.is_dir():
             continue
-        if any((subject_dir / datatype).is_dir() for datatype in bids_datatype_dirs):
+        if not subject_dir.name.startswith("sub-"):
+            continue
+        if _has_admitted_bids_datatype_directory(
+            subject_dir,
+            bids_datatype_dirs=bids_datatype_dirs,
+            scan_root=scan_root,
+            budget=budget,
+        ):
             return True
-        for session_dir in budget.directory_entries(subject_dir):
-            if session_dir.is_symlink() or not session_dir.is_dir():
+        for session_entry in budget.directory_entries(subject_dir):
+            session_dir = _admit_discovered_child(
+                session_entry,
+                scan_root=scan_root,
+                budget=budget,
+            )
+            if session_dir is None or not session_dir.is_dir():
                 continue
-            if any(
-                (session_dir / datatype).is_dir() for datatype in bids_datatype_dirs
+            if _has_admitted_bids_datatype_directory(
+                session_dir,
+                bids_datatype_dirs=bids_datatype_dirs,
+                scan_root=scan_root,
+                budget=budget,
             ):
                 return True
+    return False
+
+
+def _has_admitted_bids_datatype_directory(
+    parent: Path,
+    *,
+    bids_datatype_dirs: set[str],
+    scan_root: Path,
+    budget: _ScanBudget,
+) -> bool:
+    for datatype_entry in budget.directory_entries(parent):
+        datatype_dir = _admit_discovered_child(
+            datatype_entry,
+            scan_root=scan_root,
+            budget=budget,
+        )
+        if (
+            datatype_dir is not None
+            and datatype_dir.is_dir()
+            and datatype_dir.name in bids_datatype_dirs
+        ):
+            return True
     return False
 
 
@@ -891,7 +1098,7 @@ def _scan_warnings(
     if source_kind == "folder" and bids.get("looks_like_bids"):
         warnings.append(
             "BIDS folder detected during regular folder import. Use Import BIDS "
-            "folder for BIDS-guided labels, metadata, and epoch setup."
+            "folder for BIDS-guided labels, metadata, and EEG epoch setup."
         )
     root_issue = str(bids.get("root_validation_issue") or "").strip()
     if source_kind != "bids" and root_issue:

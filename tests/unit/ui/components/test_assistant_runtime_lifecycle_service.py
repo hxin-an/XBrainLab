@@ -384,6 +384,8 @@ def test_lifecycle_owns_start_snapshot_dispatch_and_shutdown(qtbot) -> None:
         requested_model_id=launch_spec.requested_model_id,
         selection_outcome=launch_spec.outcome,
         selection_detail=launch_spec.selection_detail,
+        execution_device=launch_spec.execution_device,
+        device_fallback_reason=launch_spec.device_fallback_reason,
         activation_id=getattr(launch_spec, "activation_id", 0),
     )
     controller.runtime_state_changed.emit(ready)

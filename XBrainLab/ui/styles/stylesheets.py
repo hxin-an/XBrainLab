@@ -254,7 +254,7 @@ class Stylesheets:
             border: 1px solid {Theme.BACKGROUND_MID};
         }}
         QTableWidget::item:selected {{
-            background-color: {Theme.BLUE_PRESSED};
+            background-color: {Theme.TABLE_SELECTION};
             color: {Theme.TEXT_PRIMARY};
         }}
         QDockWidget::title {{
@@ -415,7 +415,7 @@ class Stylesheets:
             border-bottom: 1px solid {Theme.HISTORY_TABLE_ROW_BORDER};
         }}
         QTableWidget::item:selected {{
-            background-color: {Theme.HISTORY_TABLE_SELECTION};
+            background-color: {Theme.TABLE_SELECTION};
             color: {Theme.TEXT_PRIMARY};
         }}
     """
@@ -459,7 +459,7 @@ class Stylesheets:
         QTableWidget {{
             background-color: {Theme.METRICS_TABLE_BG};
             alternate-background-color: {Theme.METRICS_TABLE_ALT_BG};
-            selection-background-color: {Theme.METRICS_TABLE_SELECTION};
+            selection-background-color: {Theme.TABLE_SELECTION};
             selection-color: {Theme.TEXT_PRIMARY};
             gridline-color: {Theme.METRICS_TABLE_GRID};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
@@ -478,98 +478,73 @@ class Stylesheets:
         QTableView::item:selected,
         QTableView::item:selected:active,
         QTableView::item:selected:!active {{
-            background-color: {Theme.METRICS_TABLE_SELECTION};
+            background-color: {Theme.TABLE_SELECTION};
             color: {Theme.TEXT_PRIMARY};
         }}
     """
 
     # --- Agent Assistant Panel ---
-    AGENT_TITLE_BAR = """
-        background: #181c20;
-        border-bottom: 1px solid #303941;
+    AGENT_TITLE_BAR = f"""
+        background: {Theme.BACKGROUND_DARK};
+        border-bottom: 1px solid {Theme.METRICS_TABLE_GRID};
         padding: 0px;
     """
 
-    AGENT_TITLE_LABEL = """
-        color: #edf3f8;
+    AGENT_TITLE_LABEL = f"""
+        color: {Theme.TEXT_PRIMARY};
         background: transparent;
         border: none;
         font-size: 13px;
         font-weight: 700;
     """
 
-    AGENT_STATUS_BADGE = """
-        QLabel#AssistantDockStatus {
-            color: #b8c4ce;
-            background-color: #252d34;
-            border: 1px solid #3f4b55;
-            border-radius: 7px;
-            padding: 2px 7px;
-            font-size: 10px;
-            font-weight: 600;
-        }
-        QLabel#AssistantDockStatus[assistantState="ready"] {
-            color: #a9d2c2;
-            border-color: #416557;
-        }
-        QLabel#AssistantDockStatus[assistantState="working"],
-        QLabel#AssistantDockStatus[assistantState="loading"] {
-            color: #b7cde0;
-            border-color: #49677e;
-        }
-        QLabel#AssistantDockStatus[assistantState="error"] {
-            color: #e2a3a6;
-            border-color: #795154;
-        }
-    """
-
-    AGENT_TITLE_BTN = """
-        QPushButton {
+    AGENT_TITLE_BTN = f"""
+        QPushButton {{
             background: transparent;
-            color: #aebac5;
+            color: {Theme.TEXT_SECONDARY};
             border: 1px solid transparent;
             border-radius: 4px;
             font-size: 18px;
             font-weight: 600;
-        }
-        QPushButton:hover {
-            color: #edf3f8;
-            background-color: #222a31;
-            border-color: #343f48;
-        }
-        QPushButton:focus {
-            color: #edf3f8;
-            background-color: #222a31;
-            border-color: #4b5c69;
-        }
-        QPushButton:disabled {
-            color: #68737d;
+        }}
+        QPushButton:hover {{
+            color: {Theme.TEXT_PRIMARY};
+            background-color: {Theme.BACKGROUND_MID};
+            border-color: {Theme.METRICS_TABLE_GRID};
+        }}
+        QPushButton:focus {{
+            color: {Theme.TEXT_PRIMARY};
+            background-color: {Theme.BACKGROUND_MID};
+            border-color: {Theme.BLUE_FOCUS_BORDER};
+        }}
+        QPushButton:disabled {{
+            color: {Theme.BTN_DISABLED_TEXT};
             background: transparent;
             border-color: transparent;
-        }
-        QPushButton::menu-indicator {
+        }}
+        QPushButton::menu-indicator {{
             image: none;
             width: 0px;
-        }
+        }}
     """
 
-    AGENT_NEW_CONV_BTN = """
-        QPushButton {
+    AGENT_NEW_CONV_BTN = f"""
+        QPushButton {{
             background: transparent;
-            color: #aebac5;
+            color: {Theme.TEXT_SECONDARY};
             border: 1px solid transparent;
             border-radius: 4px;
             font-size: 19px;
             font-weight: 500;
-        }
-        QPushButton:hover {
-            color: #edf3f8;
-            background-color: #222a31;
-            border-color: #343f48;
-        }
-        QPushButton:focus {
-            color: #edf3f8;
-            background-color: #222a31;
-            border-color: #4b5c69;
-        }
+        }}
+        QPushButton:hover {{
+            color: {Theme.TEXT_PRIMARY};
+            background-color: {Theme.BACKGROUND_MID};
+            border-color: {Theme.METRICS_TABLE_GRID};
+        }}
+        QPushButton:focus {{
+            color: {Theme.TEXT_PRIMARY};
+            background-color: {Theme.BACKGROUND_MID};
+            border-color: {Theme.BLUE_FOCUS_BORDER};
+        }}
     """

@@ -9,8 +9,10 @@ from enum import Enum
 from threading import Condition, Lock, Thread, current_thread
 from time import monotonic
 
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
-from XBrainLab.backend.training_state_contract import PostTrainingSaliencyStatus
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
+)
 from XBrainLab.backend.utils.logger import logger
 
 from .post_training_saliency import (

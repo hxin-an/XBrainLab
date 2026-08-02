@@ -10,6 +10,8 @@ from XBrainLab.backend.preprocessor.normalize import (
     NORMALIZATION_RUNTIME_KEY,
     NORMALIZATION_SCOPE,
 )
+from XBrainLab.backend.services.dataset_state_service import DatasetChannelSelectionPort
+from XBrainLab.backend.services.preprocess_state_service import PreprocessProductPort
 
 from .commands import (
     ApplyMontageCommand,
@@ -36,8 +38,8 @@ class PreprocessCommandService:
     def __init__(
         self,
         *,
-        preprocess: Any,
-        dataset: Any,
+        preprocess: PreprocessProductPort,
+        dataset: DatasetChannelSelectionPort,
         get_state: Callable[[], ApplicationStateSnapshot],
     ) -> None:
         self.preprocess = preprocess
@@ -154,7 +156,7 @@ class PreprocessCommandService:
             command.t_min,
             command.t_max,
         )
-        message = f"Created epochs from {command.t_min}s to {command.t_max}s."
+        message = f"Created EEG epochs from {command.t_min}s to {command.t_max}s."
         applied = self._applied_deferred_normalization_count()
         if not applied:
             return message
@@ -199,7 +201,7 @@ class PreprocessCommandService:
             missing = [item for item in explicit_targets if item not in allowed]
             if missing and bool(handoff.get("supervised_ready")):
                 raise PreconditionError(
-                    "Epoch target is not in the reviewed import labels: "
+                    "EEG epoch target is not in the reviewed import labels: "
                     + ", ".join(str(item) for item in missing)
                     + ".",
                 )
@@ -272,7 +274,8 @@ class PreprocessCommandService:
     @staticmethod
     def _epoch_handoff_precondition(reason: str) -> PreconditionError:
         return PreconditionError(
-            "Epoching is unavailable because workflow state could not be verified.",
+            "Creating EEG epochs is unavailable because workflow state could not "
+            "be verified.",
             diagnostics={"epoch_handoff_error": reason},
         )
 
@@ -338,11 +341,13 @@ class PreprocessCommandService:
             )
         elif raw_count:
             message = (
-                f"Normalization using {method} is queued for per-epoch "
-                "application during epoch creation."
+                f"Normalization using {method} is queued for per-EEG-epoch "
+                "application during EEG epoch creation."
             )
         else:
-            message = f"Normalized data using {method} independently within each epoch."
+            message = (
+                f"Normalized data using {method} independently within each EEG epoch."
+            )
         return (
             message,
             {

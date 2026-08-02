@@ -189,7 +189,10 @@ def test_controller_prompt_generation(controller: LLMController) -> None:
 
     msgs = controller.assembler.get_messages(controller.history)
     assert len(msgs) == 3
-    assert "Available Action Contracts (exhaustive JSON array):" in msgs[0]["content"]
+    assert (
+        "Action Contract Catalog (input definitions, never an output array):"
+        in msgs[0]["content"]
+    )
     context = json.loads(msgs[1]["content"])
     assert context["schema"] == "xbrainlab.untrusted_context.v1"
     assert context["trust"] == "untrusted"
@@ -210,10 +213,10 @@ def test_direct_uncorrelated_user_input_fails_closed(
     qtbot.wait(25)
 
     assert controller.history == history_before
-    assert controller._active_host_turn_id is None
-    assert controller._active_host_turn_generation is None
-    assert controller._active_generation_id is None
-    assert controller._active_rag_turn_id is None
+    assert controller._turn_orchestrator.host_turn_id is None
+    assert controller._turn_orchestrator.host_turn_generation is None
+    assert controller._turn_orchestrator.active_generation_id is None
+    assert controller._turn_orchestrator.active_rag_turn_id is None
     assert controller.is_processing is False
     assert generation_requests == []
     assert controller.worker is worker
@@ -224,8 +227,8 @@ def test_generation_diagnostic_observer_cannot_reenter_dispatch(
 ) -> None:
     """A diagnostic callback cannot create a second generation for one turn."""
     controller._sig_dispatch_generation.disconnect()
-    controller._active_host_turn_generation = 1
-    controller._active_host_turn_id = 1
+    controller._turn_orchestrator.host_turn_generation = 1
+    controller._turn_orchestrator.host_turn_id = 1
     controller.is_processing = True
     controller.metrics.start_turn()
     dispatched = []
@@ -247,8 +250,8 @@ def test_generation_diagnostic_observer_cannot_reenter_dispatch(
     assert [request.generation_id for request in dispatched] == [1]
     assert diagnostic_generations == [1]
     assert reentry_results == [False]
-    assert controller._generation_id == 1
-    assert controller._active_generation_id == 1
+    assert controller._turn_orchestrator.generation_sequence == 1
+    assert controller._turn_orchestrator.active_generation_id == 1
 
 
 def test_delivery_setup_fault_unwinds_all_controller_turn_state(
@@ -267,10 +270,10 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
             controller._begin_rag_turn()
             controller.assembler.add_context("stale RAG context")
             controller.assembler.set_turn_authorized_command("load_data")
-            controller._admitted_command_name = "load_data"
-            controller._admitted_publication_generation = 12
-            controller._active_generation_id = 91
-            controller._active_generation_dispatch_phase = MagicMock()
+            controller._turn_orchestrator.admitted_command_name = "load_data"
+            controller._turn_orchestrator.admitted_publication_generation = 12
+            controller._turn_orchestrator.active_generation_id = 91
+            controller._turn_orchestrator.dispatch_phase = MagicMock()
             controller.pending_interactions._workflow_handoff = MagicMock()
             raise RuntimeError("fault injection after setup side effects")
         controller._emit_processing_finished()
@@ -290,18 +293,18 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
     assert acknowledgement.phase is AssistantTurnDeliveryPhase.ERROR
     assert controller.metrics.current_turn is None
     assert controller.pending_interactions.has_pending is False
-    assert controller._waiting_for_rag is False
-    assert controller._active_rag_turn_id is None
+    assert controller._turn_orchestrator.waiting_for_rag is False
+    assert controller._turn_orchestrator.active_rag_turn_id is None
     assert controller.assembler.context_notes == []
     assert controller.assembler._turn_authorized_command is None
-    assert controller._admitted_command_name is None
-    assert controller._admitted_publication_generation is None
-    assert controller._active_generation_id is None
-    assert controller._active_generation_dispatch_phase is None
-    assert controller._active_host_turn_id is None
-    assert controller._active_host_turn_generation is None
-    assert controller._active_turn_scope is None
-    assert controller._active_turn_terminal_command is None
+    assert controller._turn_orchestrator.admitted_command_name is None
+    assert controller._turn_orchestrator.admitted_publication_generation is None
+    assert controller._turn_orchestrator.active_generation_id is None
+    assert controller._turn_orchestrator.dispatch_phase is None
+    assert controller._turn_orchestrator.host_turn_id is None
+    assert controller._turn_orchestrator.host_turn_generation is None
+    assert controller._turn_orchestrator.scope is None
+    assert controller._turn_orchestrator.terminal_command is None
     assert controller.is_processing is False
 
     second = controller.handle_user_turn(
@@ -313,8 +316,8 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
 
     assert second.phase is AssistantTurnDeliveryPhase.ACCEPTED
     assert attempts == 2
-    assert controller._active_host_turn_id is None
-    assert controller._active_host_turn_generation is None
+    assert controller._turn_orchestrator.host_turn_id is None
+    assert controller._turn_orchestrator.host_turn_generation is None
 
 
 def test_internal_setup_fault_unwinds_pending_metrics_and_rag_context(
@@ -347,14 +350,14 @@ def test_internal_setup_fault_unwinds_pending_metrics_and_rag_context(
     assert [terminal.outcome for terminal in terminals] == ["failed_to_start"]
     assert controller.metrics.current_turn is None
     assert controller.pending_interactions.has_pending is False
-    assert controller._waiting_for_rag is False
-    assert controller._active_rag_turn_id is None
+    assert controller._turn_orchestrator.waiting_for_rag is False
+    assert controller._turn_orchestrator.active_rag_turn_id is None
     assert controller.assembler.context_notes == []
     assert controller.assembler._turn_authorized_command is None
-    assert controller._active_host_turn_id is None
-    assert controller._active_host_turn_generation is None
-    assert controller._active_turn_scope is None
-    assert controller._active_turn_terminal_command is None
+    assert controller._turn_orchestrator.host_turn_id is None
+    assert controller._turn_orchestrator.host_turn_generation is None
+    assert controller._turn_orchestrator.scope is None
+    assert controller._turn_orchestrator.terminal_command is None
     assert controller.is_processing is False
 
 
@@ -368,7 +371,7 @@ def test_guided_turn_scope_is_owned_by_the_admitted_request(
         observed.append(
             (
                 controller._active_policy_mode(),
-                controller._active_turn_terminal_command,
+                controller._turn_orchestrator.terminal_command,
             )
         )
         assert not hasattr(controller, "set_execution_mode")
@@ -390,22 +393,22 @@ def test_guided_turn_scope_is_owned_by_the_admitted_request(
 
     assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
     assert observed == [("multi", "create_epoch")]
-    assert controller._active_turn_scope is None
-    assert controller._active_turn_terminal_command is None
+    assert controller._turn_orchestrator.scope is None
+    assert controller._turn_orchestrator.terminal_command is None
 
 
 def test_controller_verification_flow_rejection(controller: LLMController) -> None:
     """Test that if Verifier rejects, the tool is not executed and error is logged."""
     status_mock = MagicMock()
     controller.status_update.connect(status_mock)
-    controller._active_host_turn_generation = 1
-    controller._active_host_turn_id = 1
+    controller._turn_orchestrator.host_turn_generation = 1
+    controller._turn_orchestrator.host_turn_id = 1
 
     mock_result = MagicMock()
     mock_result.is_valid = False
     mock_result.error_message = "Safety Violation"
     controller.verifier.verify_tool_call = MagicMock(return_value=mock_result)
-    controller._active_tool_publication = PromptToolPublication(
+    controller._turn_orchestrator.active_publication = PromptToolPublication(
         tool_names=frozenset({"SomeTool"}),
         backend_generation=1,
     )
@@ -479,7 +482,7 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
 
         before_buffer = controller.current_response
         before_history = deepcopy(controller.history)
-        before_tool_count = controller._tool_execution_count
+        before_tool_count = controller._tool_attempt_session.execution_count
 
         release_late_a.set()
         qtbot.waitUntil(lambda: not emitter.isRunning(), timeout=2_000)
@@ -487,11 +490,11 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
 
         assert controller.current_response == before_buffer
         assert controller.history == before_history
-        assert controller._tool_execution_count == before_tool_count
+        assert controller._tool_attempt_session.execution_count == before_tool_count
         assert controller.pending_interactions.has_pending is False
         assert controller.is_processing is True
-        assert controller._active_host_turn_id == 2
-        assert controller._active_generation_id == generation_b
+        assert controller._turn_orchestrator.host_turn_id == 2
+        assert controller._turn_orchestrator.active_generation_id == generation_b
         assert [(item.turn_id, item.outcome) for item in terminals] == [
             (1, "cancelled")
         ]
@@ -563,8 +566,8 @@ def test_delayed_duplicate_stop_ack_for_a_cannot_affect_active_or_stopping_b(
         qtbot.wait(25)
 
         assert controller.is_processing is True
-        assert controller._active_host_turn_id == 2
-        assert controller._active_generation_id == generation_b
+        assert controller._turn_orchestrator.host_turn_id == 2
+        assert controller._turn_orchestrator.active_generation_id == generation_b
         assert len(terminals) == 1
 
         controller.stop_generation()
@@ -596,8 +599,8 @@ def test_delayed_duplicate_stop_ack_for_a_cannot_affect_active_or_stopping_b(
         qtbot.wait(25)
 
         assert controller.is_processing is True
-        assert controller._active_host_turn_id == 2
-        assert controller._active_generation_id == generation_b
+        assert controller._turn_orchestrator.host_turn_id == 2
+        assert controller._turn_orchestrator.active_generation_id == generation_b
         assert [(item.turn_id, item.outcome) for item in terminals] == [
             (1, "cancelled")
         ]

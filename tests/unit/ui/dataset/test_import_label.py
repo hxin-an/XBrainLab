@@ -157,6 +157,49 @@ def test_import_label_dialog_binds_preview_to_reviewed_generation(
     assert dialog.preview_summary["preview_id"] == "label-preview-test"
 
 
+def test_import_label_dialog_worker_failure_does_not_expose_private_path(
+    qtbot,
+    tmp_path,
+    monkeypatch,
+):
+    private_path = r"C:\Users\Alice Smith\Clinical Data\sub-P001.edf"
+
+    def _execute(_context, _command, *, on_error, **_kwargs):
+        on_error(
+            (
+                RuntimeError,
+                RuntimeError(f"Could not inspect {private_path}"),
+                f"Traceback:\nRuntimeError: Could not inspect {private_path}",
+            )
+        )
+        return True
+
+    label_path = tmp_path / "labels.txt"
+    label_path.write_text("1 2 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.import_label_dialog."
+        "execute_application_command_async",
+        _execute,
+    )
+    dialog = ImportLabelDialog()
+    qtbot.addWidget(dialog)
+
+    with patch(
+        "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.critical"
+    ) as critical:
+        dialog.load_file(str(label_path))
+
+    critical.assert_called_once_with(
+        dialog,
+        "Label preview failed",
+        (
+            "XBrainLab could not inspect the selected label files. "
+            "Review the files and try again."
+        ),
+    )
+    assert private_path not in critical.call_args.args[2]
+
+
 def test_import_label_dialog_presents_stale_preview_as_review_again(
     qtbot,
     tmp_path,

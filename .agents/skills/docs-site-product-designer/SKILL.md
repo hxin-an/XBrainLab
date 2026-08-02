@@ -33,15 +33,20 @@ landing page，也不是炫技網頁。
 4. `docs/planning/now.md`
 5. `docs/validation/README.md`
 6. `mkdocs.yml`
-7. `artifacts/ui/human-like-walkthrough-runs/current/human-like-walkthrough.md`
-8. `.agents/skills/docs-curator/SKILL.md`
-9. `.agents/skills/ui-product-reviewer/SKILL.md`
+7. `docs/records/product_quality_audit_2026-07-30.md`
+8. `artifacts/README.md`
+9. `.agents/skills/docs-curator/SKILL.md`
+10. `.agents/skills/ui-product-reviewer/SKILL.md`
 
 ## 核心原則
 
 - Markdown 仍是 canonical content；HTML / CSS 只作 presentation layer。
 - `site/` 是 MkDocs build output，不手改、不提交、不當 source。
 - 首頁要像 project control room：一眼知道目前狀態、主要缺口、下一步、evidence 在哪。
+- 首頁不能把 baseline、dirty-worktree checkpoint 或舊 branch evidence 呈現成目前
+  handoff candidate。
+- 測試 totals 不手動複製到首頁；final totals 只讀同一 clean exact commit 產生的 handoff
+  evidence，並顯示 branch / commit / dirty-state identity。
 - 使用者不應被 records / worklog / artifact raw list 淹沒。
 - 不新增 `docs/site/` 或新的 truth layer，除非使用者明確要求。
 - 不把所有 `.md` 轉成 `.html`。
@@ -64,7 +69,7 @@ landing page，也不是炫技網頁。
 - Product Readiness
 - Architecture Health
 - Data Interpretation
-- Agent Tool-call Evidence
+- Assistant Product Boundary
 - UI Walkthrough Gallery
 - Open Blockers
 - Next Goal
@@ -110,15 +115,17 @@ markdown_extensions:
 
 site 應只展示高價值 artifact 入口：
 
-- quality dashboard
-- human-like UI walkthrough
-- tool-call eval dashboard
-- MCP walkthrough
-- Data Interpretation format matrix
-- launcher / packaging evidence
+- exact-commit handoff quality dashboard
+- exact-source human-like UI walkthrough
+- current Data Interpretation format / dataset matrix
+- current launcher / packaging evidence
+- frozen tool-call eval dashboard，僅限產品 closure 後的 thesis scope
 
 需要新增時，優先新增 `artifacts/README.md` 或 validation artifact index，而不是把所有 artifact
 都塞進首頁。
+
+MCP artifact 只屬歷史或使用者明確要求的專項 scope，不列入 current portal、
+release-candidate 或 thesis prerequisite。
 
 ## 打回條件
 

@@ -1,16 +1,19 @@
 """Label import service for applying external labels to loaded EEG data files."""
 
 import re
-from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Any, Literal, TypeAlias
+from typing import Any, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
 
 from XBrainLab.backend.event_semantics import mark_gdf_rejected_trials
 from XBrainLab.backend.load_data import EventLoader, Raw
+from XBrainLab.backend.services.label_import_errors import (
+    AtomicLabelApplyError,
+    AtomicLabelRollbackFailure,
+    AtomicLabelStateUnknownError,
+)
 from XBrainLab.backend.utils.logger import logger
 
 LabelPayload: TypeAlias = Sequence[Any] | NDArray[Any]
@@ -22,69 +25,6 @@ LabelOperation: TypeAlias = tuple[
     bool,
 ]
 TimestampLabelOperation: TypeAlias = tuple[Raw, LabelPayload, dict[Any, str]]
-AtomicLabelFailurePhase: TypeAlias = Literal["preparation", "commit"]
-
-
-@dataclass(frozen=True)
-class AtomicLabelRollbackFailure:
-    """One failed compensation after an atomic label commit error."""
-
-    target_path: str
-    exception_type: str
-    message: str
-
-
-class AtomicLabelStateUnknownError(RuntimeError):
-    """Raised when a failed label commit cannot restore every live target."""
-
-    state_unknown = True
-    recoverable = False
-
-    def __init__(
-        self,
-        *,
-        operation_name: str,
-        commit_error: Exception,
-        rollback_failures: list[AtomicLabelRollbackFailure],
-    ) -> None:
-        self.operation_name = operation_name
-        self.commit_error = commit_error
-        self.rollback_failures = tuple(rollback_failures)
-        rollback_summary = "; ".join(
-            f"{failure.target_path}: {failure.message}" for failure in rollback_failures
-        )
-        super().__init__(
-            f"Atomic {operation_name} commit failed ({commit_error}) and rollback "
-            f"was incomplete ({rollback_summary}). Active label state is unknown; "
-            "do not retry automatically."
-        )
-
-
-class AtomicLabelApplyError(RuntimeError):
-    """Recoverable atomic failure with a bounded user-facing explanation."""
-
-    state_unknown = False
-    recoverable = True
-
-    def __init__(
-        self,
-        *,
-        operation_name: str,
-        phase: AtomicLabelFailurePhase,
-        cause: Exception,
-    ) -> None:
-        self.operation_name = operation_name
-        self.phase = phase
-        self.cause = cause
-        if isinstance(cause, ValueError) and str(cause).strip():
-            self.error_code = "label_validation_failed"
-            self.user_message = str(cause).strip()
-        else:
-            self.error_code = "label_application_failed"
-            self.user_message = (
-                "Reviewed labels could not be applied safely; no labels were changed."
-            )
-        super().__init__(f"Atomic label {phase} failed.")
 
 
 class LabelImportService:
@@ -120,13 +60,39 @@ class LabelImportService:
             Number of files successfully updated.
 
         """
+        try:
+            return self.apply_labels_batch_checked(
+                target_files,
+                label_map,
+                file_mapping,
+                mapping,
+                selected_event_names,
+            )
+        except AtomicLabelApplyError:
+            return 0
+
+    def apply_labels_batch_checked(
+        self,
+        target_files: list[Any],
+        label_map: dict[str, LabelPayload],
+        file_mapping: dict[str, str],
+        mapping: dict[Any, str],
+        selected_event_names: set[str] | None = None,
+    ) -> int:
+        """Apply one atomic batch and preserve its validation failure contract."""
         matched = self._mapped_label_targets(target_files, label_map, file_mapping)
         if len(matched) != len(target_files):
             logger.error(
                 "Atomic label batches require one valid label mapping for every "
                 "target; no labels were applied."
             )
-            return 0
+            raise AtomicLabelApplyError(
+                operation_name="label batch",
+                phase="preparation",
+                cause=ValueError(
+                    "Each selected EEG file requires exactly one loaded label source."
+                ),
+            )
         timestamp_matches = [
             item for item in matched if self._is_timestamp_labels(item[2])
         ]
@@ -138,20 +104,23 @@ class LabelImportService:
                 "Timestamp label batches cannot mix placement modes or non-Raw "
                 "targets; no labels were applied."
             )
-            return 0
+            raise AtomicLabelApplyError(
+                operation_name="label batch",
+                phase="preparation",
+                cause=ValueError(
+                    "A label batch cannot mix timestamp and sequence placement modes."
+                ),
+            )
         mode = "timestamp" if timestamp_matches else "sequence"
         operations = [
             (target, labels, mapping, selected_event_names, False)
             for target, _label_name, labels in matched
         ]
-        try:
-            return self._apply_label_operations_atomically(
-                operations,
-                operation_name=f"{mode} label batch",
-                success_count=len(matched),
-            )
-        except AtomicLabelApplyError:
-            return 0
+        return self._apply_label_operations_atomically(
+            operations,
+            operation_name=f"{mode} label batch",
+            success_count=len(matched),
+        )
 
     @staticmethod
     def _mapped_label_targets(
@@ -479,44 +448,31 @@ class LabelImportService:
             f"Applying labels to {data.get_filename()}. Label count: {len(labels)}",
         )
 
-        loader = EventLoader(data)
-        loader.label_list = list(labels)  # type: ignore[assignment]
-
         # Check Mode
         is_timestamp_mode = (
             isinstance(labels, list) and len(labels) > 0 and isinstance(labels[0], dict)
         )
 
+        selected_ids = None
+        if not is_timestamp_mode and data.is_raw():
+            # Row counts cannot distinguish trial starts, cues, and responses.
+            # Raw sequence labels therefore require the reviewed target scope.
+            selected_ids = self._resolve_raw_sequence_event_ids(
+                data,
+                selected_event_names,
+            )
+            logger.info(
+                "Filtered IDs for %s: %s (from selected names: %s)",
+                data.get_filename(),
+                selected_ids,
+                selected_event_names,
+            )
+
+        loader = EventLoader(data)
+        loader.label_list = list(labels)
         if is_timestamp_mode:
-            # Timestamp Mode: No filtering needed, just create events
             loader.create_event(mapping)
         else:
-            # Sequence Mode: Handle filtering if names provided
-            selected_ids = None
-            if data.is_raw():
-                events, event_id_map = data.get_event_list()
-                if event_id_map:
-                    if selected_event_names is not None:
-                        selected_ids = _selected_event_ids(
-                            event_id_map,
-                            selected_event_names,
-                        )
-                        evidence = f"selected names: {selected_event_names}"
-                    else:
-                        selected_ids = infer_event_ids_for_label_count(
-                            events,
-                            event_id_map,
-                            len(labels),
-                        )
-                        evidence = f"label row count: {len(labels)}"
-                    if selected_ids is not None:
-                        logger.info(
-                            "Filtered IDs for %s: %s (from %s)",
-                            data.get_filename(),
-                            selected_ids,
-                            evidence,
-                        )
-
             loader.create_event(mapping, selected_event_ids=selected_ids)
 
         mark_gdf_rejected_trials(data)
@@ -540,27 +496,81 @@ class LabelImportService:
             selected_event_names: Optional set of event names to filter by.
 
         """
-        loader = EventLoader(data)
-        loader.label_list = list(labels)  # type: ignore[assignment]
-
-        # Handle filtering if names provided
         selected_ids = None
-        if selected_event_names is not None and data.is_raw():
-            _, event_id_map = data.get_event_list()
-            if event_id_map:
-                selected_ids = _selected_event_ids(
-                    event_id_map,
-                    selected_event_names,
-                )
-                logger.info(
-                    f"Force Import: Filtered IDs for {data.get_filename()}: "
-                    f"{selected_ids}",
-                )
+        if data.is_raw():
+            selected_ids = self._resolve_raw_sequence_event_ids(
+                data,
+                selected_event_names,
+            )
+            logger.info(
+                "Force Import: Filtered IDs for %s: %s",
+                data.get_filename(),
+                selected_ids,
+            )
 
+        loader = EventLoader(data)
+        loader.label_list = list(labels)
         loader.create_event(mapping, selected_event_ids=selected_ids)
         loader.apply()
 
         data.set_labels_imported(True)
+
+    @staticmethod
+    def _resolve_raw_sequence_event_ids(
+        data: Any,
+        selected_event_names: set[str] | None,
+    ) -> list[int]:
+        if not selected_event_names:
+            raise ValueError(
+                "Sequence labels require an explicit target EEG event set."
+            )
+        _events, event_id_map = data.get_event_list()
+        if not event_id_map:
+            raise ValueError(
+                "Sequence label target EEG events cannot be resolved because "
+                "the recording has no event-code mapping."
+            )
+        display_by_target: dict[str, str] = {}
+        for display_value in sorted(
+            {
+                " ".join(str(item).strip().split())
+                for item in selected_event_names
+                if str(item).strip()
+            },
+            key=lambda value: (value.casefold(), value),
+        ):
+            display_by_target.setdefault(display_value.casefold(), display_value)
+        normalized_targets = list(display_by_target)
+        matches_by_target: dict[str, set[int]] = {
+            target: set() for target in normalized_targets
+        }
+        for name, event_id in event_id_map.items():
+            aliases = _event_selection_aliases(name, event_id)
+            for target in normalized_targets:
+                if target in aliases:
+                    matches_by_target[target].add(event_id)
+
+        missing = [
+            target for target, event_ids in matches_by_target.items() if not event_ids
+        ]
+        if missing:
+            raise ValueError(
+                "Selected target EEG events were not found in the recording: "
+                f"{', '.join(display_by_target[target] for target in missing)}."
+            )
+        ambiguous = [
+            target
+            for target, event_ids in matches_by_target.items()
+            if len(event_ids) > 1
+        ]
+        if ambiguous:
+            raise ValueError(
+                "Selected target EEG events are ambiguous in the recording: "
+                f"{', '.join(display_by_target[target] for target in ambiguous)}."
+            )
+        return sorted(
+            {next(iter(event_ids)) for event_ids in matches_by_target.values()}
+        )
 
     def get_epoch_count_for_file(
         self,
@@ -597,11 +607,7 @@ def _selected_event_ids(
     event_id_map: dict[str, int],
     selected_event_names: set[str],
 ) -> list[int]:
-    selected = {
-        " ".join(str(item).strip().split()).casefold()
-        for item in selected_event_names
-        if str(item).strip()
-    }
+    selected = set(_normalized_event_selection_tokens(selected_event_names))
     if not selected:
         return []
 
@@ -616,6 +622,16 @@ def _selected_event_ids(
         ids.append(event_id)
         seen.add(event_id)
     return ids
+
+
+def _normalized_event_selection_tokens(values: set[str]) -> list[str]:
+    return sorted(
+        {
+            " ".join(str(item).strip().split()).casefold()
+            for item in values
+            if str(item).strip()
+        }
+    )
 
 
 def _event_selection_aliases(name: str, event_id: int) -> set[str]:
@@ -637,34 +653,3 @@ def _event_selection_aliases(name: str, event_id: int) -> set[str]:
         if match:
             aliases.add(str(int(match.group(0))).casefold())
     return aliases
-
-
-def infer_event_ids_for_label_count(
-    events: Any,
-    event_id_map: dict[str, int],
-    label_count: int,
-) -> list[int] | None:
-    """Infer an unambiguous event group from label-row count evidence."""
-    if label_count <= 0:
-        return None
-    counts = Counter(int(value) for value in np.asarray(events)[:, -1])
-    ids_by_frequency: dict[int, list[int]] = {}
-    for event_id in set(event_id_map.values()):
-        count = counts.get(int(event_id), 0)
-        if count > 0:
-            ids_by_frequency.setdefault(count, []).append(int(event_id))
-
-    balanced_groups = [
-        sorted(ids_)
-        for frequency, ids_ in ids_by_frequency.items()
-        if 2 <= len(ids_) <= 12 and frequency * len(ids_) == label_count
-    ]
-    if len(balanced_groups) == 1:
-        return balanced_groups[0]
-    if balanced_groups:
-        return None
-
-    exact_single_ids = sorted(
-        event_id for event_id, count in counts.items() if count == label_count
-    )
-    return exact_single_ids if len(exact_single_ids) == 1 else None

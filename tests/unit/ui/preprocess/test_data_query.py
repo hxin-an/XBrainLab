@@ -1,8 +1,16 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.preprocess_render import (
+    PreprocessRenderData,
+    PreprocessRenderPublication,
+    PreprocessRenderRequest,
+    PreprocessSignalState,
+)
 from XBrainLab.backend.application.results import (
     ChangedState,
     CommandResult,
@@ -10,22 +18,110 @@ from XBrainLab.backend.application.results import (
 )
 from XBrainLab.ui.panels.preprocess.data_query import (
     PreprocessRenderDataUnavailableError,
-    query_preprocess_render_lists,
+    query_preprocess_data_rows,
+    query_preprocess_render,
 )
 
 
-def test_query_preprocess_render_lists_uses_application_query() -> None:
-    current = object()
-    original = object()
+def _no_data_publication(
+    request: PreprocessRenderRequest,
+) -> PreprocessRenderPublication:
+    return PreprocessRenderPublication(
+        request=request,
+        generation=request.publication_generation,
+        data=PreprocessRenderData(state=PreprocessSignalState.NO_DATA),
+    )
+
+
+def test_query_preprocess_render_uses_exact_view_generation() -> None:
     context = object()
+    captured: list[PreprocessRenderRequest] = []
+
+    def publish(_context, request):
+        captured.append(request)
+        return _no_data_publication(request)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.data_query.get_application_view_publication",
+            return_value=SimpleNamespace(generation=7, usable=True),
+        ),
+        patch(
+            "XBrainLab.ui.panels.preprocess.data_query.get_preprocess_render_publication",
+            side_effect=publish,
+        ),
+    ):
+        publication = query_preprocess_render(
+            context,
+            channel_index=2,
+            start_seconds=3.5,
+        )
+
+    assert publication is not None
+    assert captured == [
+        PreprocessRenderRequest(
+            publication_generation=7,
+            channel_index=2,
+            start_seconds=3.5,
+        )
+    ]
+
+
+def test_query_preprocess_render_preserves_missing_runtime_boundary() -> None:
+    with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.data_query.get_application_view_publication",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.preprocess.data_query.get_preprocess_render_publication"
+        ) as publish,
+    ):
+        assert (
+            query_preprocess_render(
+                object(),
+                channel_index=0,
+                start_seconds=0.0,
+            )
+            is None
+        )
+
+    publish.assert_not_called()
+
+
+def test_query_preprocess_render_surfaces_safe_application_failure() -> None:
+    with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.data_query.get_application_view_publication",
+            return_value=SimpleNamespace(generation=7, usable=True),
+        ),
+        patch(
+            "XBrainLab.ui.panels.preprocess.data_query.get_preprocess_render_publication",
+            side_effect=PreconditionError("Signal preview is busy."),
+        ),
+        pytest.raises(
+            PreprocessRenderDataUnavailableError,
+            match="Signal preview is busy",
+        ),
+    ):
+        query_preprocess_render(
+            object(),
+            channel_index=0,
+            start_seconds=0.0,
+        )
+
+
+def test_query_preprocess_data_rows_uses_detached_application_query() -> None:
+    current = {"sampling_frequency": 128.0, "channels": ["C3"]}
+    original = {"sampling_frequency": 256.0, "channels": ["C3"]}
     result = CommandResult.success_result(
         "query_state",
-        "Data lists ready.",
+        "Data rows ready.",
         state={},
         changed_state=ChangedState(),
         diagnostics={
-            "preprocessed_data_list": [current],
-            "loaded_data_list": [original],
+            "preprocessed_rows": [current],
+            "raw_rows": [original],
         },
     )
 
@@ -33,51 +129,24 @@ def test_query_preprocess_render_lists_uses_application_query() -> None:
         "XBrainLab.ui.panels.preprocess.data_query.execute_application_command",
         return_value=result,
     ) as execute:
-        data_lists = query_preprocess_render_lists(context)
+        rows = query_preprocess_data_rows(object())
 
-    assert data_lists == ([current], [original])
-    execute.assert_called_once()
+    assert rows == ([current], [original])
+    assert rows is not None
+    assert rows[0][0] is not current
     command = execute.call_args.args[1]
     assert isinstance(command, QueryStateCommand)
     assert command.query == "data_lists"
-    assert command.include_objects is True
     assert execute.call_args.kwargs["refresh"] is False
 
 
-def test_query_preprocess_render_lists_preserves_legacy_fallback_boundary() -> None:
-    context = object()
-
-    with patch(
-        "XBrainLab.ui.panels.preprocess.data_query.execute_application_command",
-        return_value=None,
-    ):
-        assert query_preprocess_render_lists(context) is None
-
-
-def test_query_preprocess_render_lists_strict_mode_rejects_missing_runtime() -> None:
-    context = object()
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.preprocess.data_query.execute_application_command",
-            return_value=None,
-        ),
-        pytest.raises(
-            PreprocessRenderDataUnavailableError,
-            match="application state could not be read",
-        ),
-    ):
-        query_preprocess_render_lists(context, require_available=True)
-
-
-def test_query_preprocess_render_lists_failed_query_returns_empty_lists() -> None:
-    context = object()
+def test_query_preprocess_data_rows_failed_query_returns_empty_rows() -> None:
     result = CommandResult.failure_result(
         "query_state",
         "Query failed.",
         state={},
         changed_state=ChangedState(error_changed=True),
-        error_type=ErrorType.PRECONDITION,
+        error_type=ErrorType.PREPROCESSING,
         recoverable=True,
     )
 
@@ -85,52 +154,4 @@ def test_query_preprocess_render_lists_failed_query_returns_empty_lists() -> Non
         "XBrainLab.ui.panels.preprocess.data_query.execute_application_command",
         return_value=result,
     ):
-        assert query_preprocess_render_lists(context) == ([], [])
-
-
-def test_query_preprocess_render_lists_strict_mode_surfaces_query_failure() -> None:
-    context = object()
-    result = CommandResult.failure_result(
-        "query_state",
-        "Query failed.",
-        state={},
-        changed_state=ChangedState(error_changed=True),
-        error_type=ErrorType.PRECONDITION,
-        recoverable=True,
-        error_message="Published preprocess objects are stale.",
-    )
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.preprocess.data_query.execute_application_command",
-            return_value=result,
-        ),
-        pytest.raises(
-            PreprocessRenderDataUnavailableError,
-            match="Published preprocess objects are stale",
-        ),
-    ):
-        query_preprocess_render_lists(context, require_available=True)
-
-
-def test_query_preprocess_render_lists_strict_mode_rejects_incomplete_payload() -> None:
-    context = object()
-    result = CommandResult.success_result(
-        "query_state",
-        "Incomplete data lists.",
-        state={},
-        changed_state=ChangedState(),
-        diagnostics={"preprocessed_data_list": []},
-    )
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.preprocess.data_query.execute_application_command",
-            return_value=result,
-        ),
-        pytest.raises(
-            PreprocessRenderDataUnavailableError,
-            match="did not publish both data lists",
-        ),
-    ):
-        query_preprocess_render_lists(context, require_available=True)
+        assert query_preprocess_data_rows(object()) == ([], [])

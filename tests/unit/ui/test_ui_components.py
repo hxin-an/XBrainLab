@@ -145,33 +145,38 @@ class TestConfusionMatrix:
         assert w.fig is None
         assert w.canvas is None
 
-    @pytest.mark.parametrize("canvas_width", [270, 390])
+    @pytest.mark.parametrize(
+        ("canvas_width", "class_labels"),
+        [
+            (175, {0: "left", 1: "right"}),
+            (270, {0: "Left hand", 1: "Right hand"}),
+            (390, {0: "Left hand", 1: "Right hand"}),
+        ],
+    )
     def test_narrow_canvas_keeps_class_labels_inside_figure(
         self,
         qtbot,
         canvas_width,
+        class_labels,
     ):
-        from matplotlib.figure import Figure
-
+        from XBrainLab.backend.application import (
+            EvaluationPlanIdentity,
+            EvaluationRenderData,
+            EvaluationSummaryIdentity,
+        )
         from XBrainLab.ui.panels.evaluation.confusion_matrix import (
             ConfusionMatrixWidget,
         )
 
-        class NarrowPlotRecord:
-            @staticmethod
-            def get_confusion_figure(show_percentage=False):
-                del show_percentage
-                figure = Figure(figsize=(6.4, 4.8), dpi=100)
-                axes = figure.add_subplot(111)
-                image = axes.imshow(np.array([[1, 0], [0, 1]]), cmap="magma")
-                figure.colorbar(image)
-                axes.set_xlabel("Predicted Label", labelpad=10)
-                axes.set_ylabel("True Label", labelpad=10)
-                labels = ["Left hand", "Right hand"]
-                axes.set_xticks(range(2), labels)
-                axes.set_yticks(range(2), labels)
-                figure.tight_layout()
-                return figure
+        plan = EvaluationPlanIdentity(plan_index=0)
+        render_data = EvaluationRenderData(
+            labels=np.array([0, 1]),
+            outputs=np.array([[1.0, 0.0], [0.0, 1.0]]),
+            metrics={},
+            class_labels=class_labels,
+            summary_identity=EvaluationSummaryIdentity(plan=plan),
+            evaluation_split="test",
+        )
 
         widget = ConfusionMatrixWidget()
         qtbot.addWidget(widget)
@@ -179,7 +184,7 @@ class TestConfusionMatrix:
         widget.show()
         qtbot.wait(20)
 
-        widget.update_plot(NarrowPlotRecord())
+        widget.update_plot(render_data)
         qtbot.wait(20)
         assert widget.canvas is not None
         assert widget.fig is not None
@@ -426,7 +431,7 @@ class TestHistoryTable:
         qtbot.addWidget(w)
         w.clear_history()
         assert w.rowCount() == 0
-        assert w.row_map == {}
+        assert w.row_identity_by_index == {}
 
 
 # ============ FilteringDialog ============

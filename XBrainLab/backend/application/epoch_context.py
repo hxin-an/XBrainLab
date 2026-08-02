@@ -42,6 +42,7 @@ class EpochDialogContext:
 
     capability: CommandCapability | None
     epoch_handoff: dict[str, Any] | None
+    epoch_setup: dict[str, Any] | None
     publication_generation: int | None
     usable: bool
     unavailable_reason: str | None
@@ -55,9 +56,14 @@ class EpochDialogContext:
         ):
             raise ValueError("publication_generation must be a positive integer")
         if self.usable:
-            if self.capability is None or self.epoch_handoff is None:
+            if (
+                self.capability is None
+                or self.epoch_handoff is None
+                or self.epoch_setup is None
+            ):
                 raise ValueError(
-                    "A usable epoch dialog context requires capability and handoff data"
+                    "A usable epoch dialog context requires capability, handoff, "
+                    "and setup data"
                 )
             if generation is None:
                 raise ValueError(
@@ -68,9 +74,9 @@ class EpochDialogContext:
                     "A usable epoch dialog context cannot have an unavailable reason"
                 )
             return
-        if self.epoch_handoff is not None:
+        if self.epoch_handoff is not None or self.epoch_setup is not None:
             raise ValueError(
-                "An unavailable epoch dialog context cannot expose handoff data"
+                "An unavailable epoch dialog context cannot expose workflow data"
             )
         if not str(self.unavailable_reason or "").strip():
             raise ValueError("An unavailable epoch dialog context requires a reason")
@@ -87,6 +93,7 @@ class EpochDialogContext:
         return cls(
             capability=capability,
             epoch_handoff=None,
+            epoch_setup=None,
             publication_generation=publication_generation,
             usable=False,
             unavailable_reason=reason,
@@ -158,7 +165,7 @@ def build_epoching_context(
         confirmation_message,
     ) = _suggested_window(hint, sampling_frequencies_hz=sampling_frequencies)
     placement_method = str(hint.get("placement_method") or "").strip()
-    source = str(hint.get("source") or "").strip() or "Manual epoch setup"
+    source = str(hint.get("source") or "").strip() or "Manual EEG epoch setup"
     handoff = validated_epoch_handoff(epoch_handoff or {})
     context = {
         "source": source,
@@ -525,7 +532,7 @@ def _suggested_window(
             if multi_run_bids:
                 evidence = (
                     f"Suggested from imported {duration_field} field across all "
-                    f"{hint_count} selected runs; fixed epochs use the longest "
+                    f"{hint_count} selected runs; fixed EEG epochs use the longest "
                     "observed duration."
                 )
             suggested_t_max = max_duration
@@ -587,7 +594,7 @@ def _sampling_frequency_warning(sampling_frequencies_hz: list[float]) -> str:
     )
     return (
         "Selected EEG files use different sampling frequencies "
-        f"({frequencies}). Resample them to one shared rate before creating epochs."
+        f"({frequencies}). Resample them to one shared rate before creating EEG epochs."
     )
 
 
@@ -686,7 +693,7 @@ def _duration_policy_warning(
     if max_duration > 10:
         return (
             "Some BIDS event durations are longer than 10 seconds; review the "
-            "epoch window before training."
+            "EEG epoch window before training."
         )
     if (
         min_duration is not None
@@ -694,7 +701,7 @@ def _duration_policy_warning(
         and max_duration / min_duration > 3
     ):
         return (
-            "BIDS event durations vary by more than 3x; review the epoch window "
+            "BIDS event durations vary by more than 3x; review the EEG epoch window "
             "before training."
         )
     return ""
@@ -715,7 +722,7 @@ def _combined_duration_policy_warning(
         }
         if len(unique_ranges) > 1:
             messages.append(
-                "Selected BIDS runs have different duration ranges; fixed epochs "
+                "Selected BIDS runs have different duration ranges; fixed EEG epochs "
                 "use the longest observed duration across all selected runs."
             )
     generic_warning = _duration_policy_warning(min_duration, max_duration)

@@ -5,14 +5,11 @@ EEG data files, as well as label management and channel selection.
 """
 
 from collections.abc import Sequence
-from copy import copy
 from importlib import import_module
 from typing import Any
 
-from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
-from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.utils.observer import Observable
-from XBrainLab.backend.utils.runtime_diagnostics import collect_runtime_diagnostics
 
 
 class _LazyPreprocessorProxy:
@@ -91,21 +88,35 @@ class DatasetController(Observable):
 
     """
 
-    def __init__(self, study):
+    def __init__(
+        self,
+        study,
+        dataset_state: DatasetStateService | None = None,
+    ):
         super().__init__()
         self.study = study
-        self._label_service: Any | None = None
+        shared_state = dataset_state or vars(study).get("dataset_state_service")
+        self._dataset_state = (
+            shared_state
+            if isinstance(shared_state, DatasetStateService)
+            else DatasetStateService(
+                study,
+                raw_loader_provider=_raw_data_loader_class,
+                raw_factory_provider=_raw_data_loader_factory,
+                label_service_provider=_label_import_service_class,
+                channel_selection_provider=lambda: preprocessor.ChannelSelection,
+                event_loader_provider=_event_loader_class,
+            )
+        )
 
     @property
     def label_service(self) -> Any:
         """Label import service, materialized only when label import is used."""
-        if self._label_service is None:
-            self._label_service = _label_import_service_class()()
-        return self._label_service
+        return self._dataset_state.label_service
 
     @label_service.setter
     def label_service(self, value: Any) -> None:
-        self._label_service = value
+        self._dataset_state.label_service = value
 
     def get_loaded_data_list(self):
         """Return the list of currently loaded raw data objects.
@@ -114,7 +125,7 @@ class DatasetController(Observable):
             The list of raw data objects held by the study.
 
         """
-        return self.study.loaded_data_list
+        return self._dataset_state.get_loaded_data_list()
 
     def is_locked(self):
         """Check if the dataset is locked.
@@ -126,7 +137,7 @@ class DatasetController(Observable):
             ``True`` if the dataset is locked, ``False`` otherwise.
 
         """
-        return self.study.is_locked()
+        return self._dataset_state.is_locked()
 
     def has_data(self):
         """Check whether any data has been loaded.
@@ -135,7 +146,7 @@ class DatasetController(Observable):
             ``True`` if the loaded data list is non-empty.
 
         """
-        return bool(self.study.loaded_data_list)
+        return self._dataset_state.has_data()
 
     def import_files(self, filepaths):
         """Import EEG data files into the dataset.
@@ -158,56 +169,15 @@ class DatasetController(Observable):
                 state and cannot initialise a new loader.
 
         """
-        existing_data = []
-        if self.study.loaded_data_list:
-            existing_data = list(self.study.loaded_data_list)
-
-        try:
-            loader = _raw_data_loader_class()(existing_data)
-        except Exception as e:
-            # If existing dataset inconsistent
-            raise ValueError(f"Existing dataset inconsistent: {e}") from e
-
-        success_count = 0
-        errors = []
-
-        for path in filepaths:
-            # Check duplicates
-            if any(d.get_filepath() == path for d in loader):
-                logger.info("Skipping duplicate: %s", path)
-                continue
-
-            try:
-                logger.info("Loading file: %s", path)
-                raw = _raw_data_loader_factory().load(path)
-
-                if raw:
-                    loader.append(raw)
-                    success_count += 1
-                else:
-                    errors.append(f"{path}: Loader returned None.")
-
-            except UnsupportedFormatError:
-                logger.error("Unsupported format: %s", path)
-                errors.append(f"{path}: Unsupported format.")
-            except FileCorruptedError:
-                logger.error("File corrupted: %s", path)
-                errors.append(f"{path}: File corrupted.")
-            except Exception as e:
-                logger.error("Error loading %s: %s", path, e)
-                errors.append(f"{path}: {e!s}")
-
+        success_count, errors = self._dataset_state.import_files(filepaths)
         if success_count > 0:
-            loader.apply(self.study, force_update=True)
             self.notify("data_changed")
-
         self.notify("import_finished", success_count, errors)
-
         return success_count, errors
 
     def clean_dataset(self):
         """Clear all loaded data and notify observers."""
-        self.study.clean_raw_data(force_update=True)
+        self._dataset_state.clean_dataset()
         self.notify("data_changed")
 
     def remove_files(self, indices):
@@ -222,23 +192,7 @@ class DatasetController(Observable):
                 the files to remove.
 
         """
-        current_list = self.study.loaded_data_list
-        if not current_list:
-            return
-
-        # Sort indices in descending order to avoid shifting issues
-        indices = sorted(indices, reverse=True)
-        new_list = list(current_list)
-
-        changed = False
-        for idx in indices:
-            if 0 <= idx < len(new_list):
-                del new_list[idx]
-                changed = True
-
-        if changed:
-            # Directly update study state
-            self.study.set_loaded_data_list(new_list, force_update=True)
+        if self._dataset_state.remove_files(list(indices)):
             self.notify("data_changed")
 
     def run_import_labels(
@@ -262,7 +216,7 @@ class DatasetController(Observable):
             The number of files that were successfully updated.
 
         """
-        count = self.label_service.apply_labels_batch(
+        count = self._dataset_state.run_import_labels(
             target_files,
             label_map,
             file_mapping,
@@ -288,24 +242,11 @@ class DatasetController(Observable):
               event label strings.
 
         """
-        total_events = 0
-        unique_events = set()
-
-        for data in self.study.loaded_data_list:
-            mne_data = data.get_mne()
-            if hasattr(mne_data, "annotations") and mne_data.annotations:
-                total_events += len(mne_data.annotations)
-                unique_events.update(set(mne_data.annotations.description))
-
-        return {
-            "total": total_events,
-            "unique_count": len(unique_events),
-            "unique_labels": sorted(unique_events),
-        }
+        return self._dataset_state.get_event_info()
 
     def get_runtime_diagnostics(self) -> dict[str, Any]:
         """Return aggregated runtime diagnostics for currently loaded data."""
-        return collect_runtime_diagnostics(self.study.loaded_data_list)
+        return self._dataset_state.get_runtime_diagnostics()
 
     def update_metadata(self, index, subject=None, session=None):
         """Update subject and/or session metadata for a specific file.
@@ -331,57 +272,7 @@ class DatasetController(Observable):
         reference untouched because no Study-owned state is changed until all
         requested row updates have succeeded.
         """
-        changes = list(updates)
-        if not changes:
-            return 0
-
-        current_list = self.study.loaded_data_list
-        invalid = [
-            index
-            for index, _subject, _session in changes
-            if not 0 <= index < len(current_list)
-        ]
-        if invalid:
-            raise IndexError(f"Metadata row index out of range: {invalid[0]}")
-
-        working_list = [copy(data) for data in current_list]
-        for index, subject, session in changes:
-            data = working_list[index]
-            if subject is not None:
-                data.set_subject_name(subject)
-            if session is not None:
-                data.set_session_name(session)
-
-        self._commit_metadata_rows(working_list)
-        return len(changes)
-
-    def _commit_metadata_rows(self, working_list: list[Any]) -> None:
-        original_loaded = self.study.loaded_data_list
-        original_preprocessed = self.study.preprocessed_data_list
-        manager = vars(self.study).get("data_manager")
-        manager_state = None
-        if manager is not None:
-            manager_state = {
-                "loaded_data_list": manager.loaded_data_list,
-                "backup_loaded_data_list": manager.backup_loaded_data_list,
-                "preprocessed_data_list": manager.preprocessed_data_list,
-                "epoch_data": manager.epoch_data,
-                "datasets": manager.datasets,
-                "dataset_generator": manager.dataset_generator,
-                "dataset_locked": manager.dataset_locked,
-            }
-
-        try:
-            self.study.loaded_data_list = working_list
-            self.study.reset_preprocess(force_update=True)
-        except Exception:
-            if manager_state is None:
-                self.study.loaded_data_list = original_loaded
-                self.study.preprocessed_data_list = original_preprocessed
-            else:
-                for name, value in manager_state.items():
-                    setattr(manager, name, value)
-            raise
+        return self._dataset_state.update_metadata_batch(list(updates))
 
     def apply_smart_parse(self, results):
         """Apply smart-parser results to the dataset.
@@ -398,29 +289,9 @@ class DatasetController(Observable):
             The number of files whose metadata was updated.
 
         """
-        data_list = self.study.loaded_data_list
-        updates: list[tuple[int, str | None, str | None]] = []
-        for index, data in enumerate(data_list):
-            path = data.get_filepath()
-            if path in results:
-                value = results[path]
-                if isinstance(value, dict):
-                    sub = str(value.get("subject") or "-")
-                    sess = str(value.get("session") or "-")
-                else:
-                    sub, sess = value[:2]
-                updates.append(
-                    (
-                        index,
-                        None if sub == "-" else str(sub),
-                        None if sess == "-" else str(sess),
-                    )
-                )
-
-        if not updates:
+        count = self._dataset_state.apply_smart_parse(results)
+        if count == 0:
             return 0
-
-        count = self.update_metadata_batch(updates)
         self.notify("data_changed")
         self.notify("dataset_locked", False)
         return count
@@ -444,23 +315,10 @@ class DatasetController(Observable):
                 channel selection fails.
 
         """
-        data_list = self.study.loaded_data_list
-        process = preprocessor.ChannelSelection(data_list)
-
-        try:
-            # Performs processing
-            result = process.data_preprocess(selected_channels)
-        except Exception as e:
-            logger.error("Channel selection failed: %s", e)
-            raise
-
-        # Apply changes
-        self.study.backup_loaded_data()
-        self.study.set_loaded_data_list(result, force_update=True)
-        self.study.lock_dataset()
+        result = self._dataset_state.apply_channel_selection(selected_channels)
         self.notify("data_changed")
         self.notify("dataset_locked", True)
-        return True
+        return result
 
     def get_filenames(self):
         """Return a list of file paths for all loaded data.
@@ -469,11 +327,11 @@ class DatasetController(Observable):
             List of file path strings.
 
         """
-        return [d.get_filepath() for d in self.study.loaded_data_list]
+        return self._dataset_state.get_filenames()
 
     def reset_preprocess(self):
         """Reset downstream preprocessing and unlock the dataset."""
-        self.study.reset_preprocess(force_update=True)
+        self._dataset_state.reset_preprocess()
         self.notify("data_changed")
         self.notify("dataset_locked", False)
 
@@ -488,8 +346,7 @@ class DatasetController(Observable):
             List of data objects corresponding to the valid indices.
 
         """
-        data_list = self.study.loaded_data_list
-        return [data_list[i] for i in indices if 0 <= i < len(data_list)]
+        return self._dataset_state.get_data_at_assignments(indices)
 
     def apply_labels_batch(
         self,
@@ -512,7 +369,7 @@ class DatasetController(Observable):
             The number of files successfully updated.
 
         """
-        count = self.label_service.apply_labels_batch(
+        count = self._dataset_state.apply_labels_batch(
             target_files,
             label_map,
             file_mapping,
@@ -520,7 +377,8 @@ class DatasetController(Observable):
             selected_event_names,
         )
         if count > 0:
-            self.reset_preprocess()
+            self.notify("data_changed")
+            self.notify("dataset_locked", False)
         return count
 
     def apply_labels_sequence(
@@ -544,7 +402,7 @@ class DatasetController(Observable):
             The number of files successfully updated.
 
         """
-        count = self.label_service.apply_labels_sequence(
+        count = self._dataset_state.apply_labels_sequence(
             target_files,
             labels,
             mapping,
@@ -552,7 +410,8 @@ class DatasetController(Observable):
             force_import=force_import,
         )
         if count > 0:
-            self.reset_preprocess()
+            self.notify("data_changed")
+            self.notify("dataset_locked", False)
         return count
 
     def get_epoch_count(self, data, event_names):
@@ -566,7 +425,7 @@ class DatasetController(Observable):
             The number of epochs that would be produced.
 
         """
-        return self.label_service.get_epoch_count_for_file(data, event_names)
+        return self._dataset_state.get_epoch_count(data, event_names)
 
     def get_smart_filter_suggestions(self, data, target_count):
         """Return suggested event IDs for filtering based on a target count.
@@ -579,5 +438,4 @@ class DatasetController(Observable):
             Suggested event IDs suitable for reaching *target_count*.
 
         """
-        loader = _event_loader_class()(data)
-        return loader.smart_filter(target_count)
+        return self._dataset_state.get_smart_filter_suggestions(data, target_count)

@@ -1,22 +1,25 @@
 # Handoff Candidate Workflow
 
-最後更新：`2026-07-04`
+最後更新：`2026-07-30`
 
 這份 workflow 用於任何準備交給使用者手測的修復、功能或整合 branch。
 
 目標不是消滅所有人工驗收，而是避免使用者成為第一層 QA。agent 必須先用自動化、
 artifact 和同類掃描抓掉明顯 bug，再請使用者做 acceptance。
 
-## Desktop MVP Delivery Flow
+## Current Delivery Flow
 
-Desktop MVP 期間，branch flow 和 handoff flow 是同一條交付線：
+目前 product-quality closure 的 integration 與 handoff 只走這條交付線：
 
 ```text
-stabilize/desktop-mvp
-  -> fix/<one-blocker> | test/<one-gap> | refactor/<one-boundary>
-      task-branch gate
-  -> merge back into stabilize/desktop-mvp
-      stabilization handoff gate
+ux/assistant-product-v1@3869aaef
+  baseline only
+  -> build/worktrees/assistant-product-v1
+      stabilize/product-quality-closure
+      audit slices + checkpoint validation
+  -> one clean exact commit
+      generated handoff evidence + main-agent review
+  -> Windows handoff candidate
   -> user manual acceptance
       main merge gate
   -> main
@@ -24,11 +27,17 @@ stabilize/desktop-mvp
 
 含義：
 
-- task branch 只能證明單一修復可合回 stabilization line。
-- task branch 合回 `stabilize/desktop-mvp` 不等於可以請使用者手測。
+- `ux/assistant-product-v1@3869aaef` 是 provenance baseline，不是目前 candidate，也不能拿它的
+  dashboard totals 代表 closure 結果。
+- active integration worktree 是
+  `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1`，branch 是
+  `stabilize/product-quality-closure`。
+- audit slice 或 task branch 只能證明局部修復可整合；不等於可以請使用者手測。
 - 使用者回報的 bug 是 audit trigger，不是唯一 symptom；agent 要主動找產品 bug、
   code quality issue、test gap、architecture drift 和可見 UI regression。
-- `handoff-ready` 只能從 stabilization line 宣稱，且必須完成本 workflow。
+- product-quality closure 尚未完成，目前分類固定是 `checkpoint`。
+- `handoff-ready` 只能從 active integration branch 的 clean exact commit 宣稱，且必須完成
+  本 workflow。
 - `main` merge 要等使用者 acceptance，或明確同意的 release-candidate gate。
 
 ## 0. Classification
@@ -41,10 +50,12 @@ stabilize/desktop-mvp
 
 未完成必要 gate 時，不可把 checkpoint 說成 handoff-ready。
 
-## 0.1 Desktop MVP Audit Gate
+## 0.1 Product-Quality Audit Gate
 
 在開始第一個修復分支前，或使用者要求「全面盤點」、「不要讓我一個一個回報 bug」時，
-必須先從 `stabilize/desktop-mvp` 做 Desktop MVP audit。
+必須從 active integration branch 讀
+`docs/records/product_quality_audit_2026-07-30.md` 和
+`docs/agent_goals/product_quality_closure_goal.md`，再做 product-quality audit。
 
 這不是只找同類 bug，而是找會阻礙 Desktop MVP handoff 的問題：
 
@@ -71,9 +82,9 @@ stabilize/desktop-mvp
 
 若 audit 發現 blocking issue，不能直接回報 handoff-ready。必須依 queue 修完，或明確回報 blocked。
 
-## 0.5 Task-Branch Gate
+## 0.5 Slice / Task-Branch Gate
 
-任何修復分支合回 `stabilize/desktop-mvp` 前，至少要有：
+任何修復 slice 或 task branch 整合回 `stabilize/product-quality-closure` 前，至少要有：
 
 - focused regression：重現或保護本分支要修的問題。
 - same-class sweep：搜尋同類 call sites、screens、state flow 或 data flow。
@@ -88,6 +99,8 @@ stabilize/desktop-mvp
 
 - current branch。
 - `git status --short --branch`。
+- `git rev-parse HEAD`。
+- `git worktree list --porcelain`；不要從文件中的舊 worktree 數量推論目前 inventory。
 - intended scope。
 - intentionally not touched。
 - dirty files 是否屬於本輪；不屬於本輪則保留且不可覆蓋。
@@ -146,7 +159,7 @@ happy path 要保存或引用 artifact / command output，不能只說「看起�
 - async / performance / resource：
   lifecycle tests、stale callback tests、figure/thread cleanup tests。
 - docs-only：
-  `git diff --check` 和 `poetry run mkdocs build --strict`。
+  `git diff --check` 和 `poetry run -- mkdocs build --strict`。
 
 如果 gate 太慢，可先回報 checkpoint；不能省略 gate 後仍說 handoff-ready。
 
@@ -170,6 +183,7 @@ subagents 可作為 gate reviewer，但不能替主 agent 判定完成。
 handoff-ready 回報必須包含：
 
 - branch name and commit hash。
+- generated worktree inventory。
 - pushed status。
 - scope and non-goals。
 - focused regression result。
@@ -180,4 +194,9 @@ handoff-ready 回報必須包含：
 - remaining risks and claim boundaries。
 - explicit statement: `handoff-ready` 或 `checkpoint` 或 `blocked`。
 
-如果沒有 commit / push，或 worktree 有未解釋 dirty files，不可說 handoff-ready。
+final totals 不得從 checkpoint notes、聊天回報或舊 branch 手動相加。它們只能取自同一個
+clean exact commit 產生的 handoff evidence；report 必須顯示 profile、branch、完整 commit、
+dirty state、commands 和各 gate 結果。
+
+如果沒有 commit / push、evidence identity 不吻合，或 worktree 有未解釋 dirty files，不可說
+handoff-ready。

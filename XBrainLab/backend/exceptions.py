@@ -1,8 +1,33 @@
 """Custom exception classes for the XBrainLab backend."""
 
+import os
+from pathlib import PosixPath, PurePosixPath, PureWindowsPath, WindowsPath
+from typing import cast
+
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+)
+
+_SAFE_PATH_TYPES = (PosixPath, WindowsPath, PurePosixPath, PureWindowsPath)
+
 
 class XBrainLabError(Exception):
     """Base class for exceptions in XBrainLab."""
+
+    def __init__(self, message: object = "") -> None:
+        self.message = _safe_exception_component(message)
+        super().__init__(self.message)
+
+    def __str__(self) -> str:
+        return public_diagnostic_text(
+            self.message,
+            layout=DiagnosticTextLayout.SINGLE_LINE,
+        )
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({str(self)!r})"
 
 
 class FileCorruptedError(XBrainLabError):
@@ -14,9 +39,16 @@ class FileCorruptedError(XBrainLabError):
 
     """
 
-    def __init__(self, filepath, message="File is corrupted or unreadable"):
+    def __init__(
+        self,
+        filepath: object,
+        message: object = "File is corrupted or unreadable",
+    ):
         self.filepath = filepath
-        self.message = f"{message}: {filepath}"
+        self.message = (
+            f"{_safe_exception_component(message)}: "
+            f"{_safe_exception_component(filepath)}"
+        )
         super().__init__(self.message)
 
 
@@ -29,9 +61,16 @@ class UnsupportedFormatError(XBrainLabError):
 
     """
 
-    def __init__(self, file_extension, message="Unsupported file format"):
+    def __init__(
+        self,
+        file_extension: object,
+        message: object = "Unsupported file format",
+    ):
         self.file_extension = file_extension
-        self.message = f"{message}: {file_extension}"
+        self.message = (
+            f"{_safe_exception_component(message)}: "
+            f"{_safe_exception_component(file_extension)}"
+        )
         super().__init__(self.message)
 
 
@@ -43,9 +82,21 @@ class DataMismatchError(XBrainLabError):
 
     """
 
-    def __init__(self, message="Data parameters mismatch"):
-        self.message = message
+    def __init__(self, message: object = "Data parameters mismatch"):
+        self.message = _safe_exception_component(message)
         super().__init__(self.message)
+
+
+def _safe_exception_component(value: object) -> str:
+    if type(value) is str:
+        return value
+    if type(value) in _SAFE_PATH_TYPES:
+        path = os.fspath(cast(os.PathLike[str] | os.PathLike[bytes], value))
+        if type(path) is str:
+            return path
+        if type(path) is bytes:
+            return path.decode("utf-8", errors="replace")
+    return PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER
 
 
 class StaleSaliencyUpdateError(XBrainLabError):

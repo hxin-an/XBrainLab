@@ -23,7 +23,13 @@ class TrainingInputContractError(ValueError):
         *,
         missing_fields: tuple[str, ...] = (),
     ) -> None:
-        super().__init__(message)
+        public_message = (
+            message
+            if type(message) is str
+            else "The training configuration is invalid."
+        )
+        self.public_message = public_message
+        super().__init__(public_message)
         self.missing_fields = missing_fields
 
 

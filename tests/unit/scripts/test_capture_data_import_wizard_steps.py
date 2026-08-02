@@ -1,12 +1,107 @@
 from __future__ import annotations
 
 import inspect
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint, QSize, Qt
 
 import scripts.dev.capture_data_import_wizard_steps as capture_script
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    collect_source_identity,
+)
+from scripts.dev.data_import_capture_contract import (
+    build_data_import_capture_manifest,
+)
+
+
+def test_default_data_import_evidence_uses_dev_artifact_namespace() -> None:
+    expected = (
+        capture_script.ROOT / "build" / "dev-artifacts" / "data-import-wizard-steps"
+    )
+
+    assert expected == capture_script.DEFAULT_OUTPUT_DIR
+    assert capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR == (
+        capture_script.ROOT / "artifacts" / "ui" / "data-import-wizard-steps"
+    )
+
+
+def test_placement_mode_states_are_bound_in_the_root_manifest(tmp_path: Path) -> None:
+    specs = capture_script._canonical_capture_specs()
+    placement_specs = capture_script._placement_mode_capture_specs()
+    for index, spec in enumerate((*specs, *placement_specs)):
+        path = tmp_path / spec.filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (80 + index, 60), (35, 70, 105)).save(path)
+    identity = collect_source_identity(capture_script.ROOT)
+    captured_at = datetime(2026, 8, 2, 4, 0, tzinfo=UTC)
+    manifest = build_data_import_capture_manifest(
+        tmp_path,
+        expected_surfaces=[spec.filename for spec in specs],
+        selected_surfaces=[spec.filename for spec in specs],
+        source_identity=identity,
+        source_identity_at_start=identity,
+        capture_started_at=captured_at,
+        generated_at=captured_at,
+        qt_platform="xcb",
+        session_id="placement-contract",
+    )
+
+    capture_script._bind_generator_manifest(
+        manifest,
+        output_dir=tmp_path,
+        canonical_specs=specs,
+        placement_specs=placement_specs,
+        qt_platform="xcb",
+    )
+
+    assert manifest["generator"] == ("scripts/dev/capture_data_import_wizard_steps.py")
+    assert manifest["source_identity"]["commit_sha"]
+    assert manifest["source_identity"]["head_tree_sha"]
+    assert manifest["source_identity"]["source_digest"]
+    assert isinstance(manifest["source_identity"]["dirty"], bool)
+    assert manifest["claims"]
+    assert manifest["limitations"]
+    assert manifest["capture_environment"]["virtual_screen"] == [1600, 1400]
+    assert manifest["capture_environment"]["scale_factor"]
+    assert set(manifest["placement_mode_screenshots"]) == {
+        "eeg_event",
+        "time_field",
+        "interval",
+        "event_code",
+    }
+    assert all(
+        item["path"].startswith("match-label-placement-modes/")
+        for item in manifest["placement_mode_screenshots"].values()
+    )
+    assert all(
+        item["sha256"] for item in manifest["placement_mode_screenshots"].values()
+    )
+
+    ok, reason = capture_script._validate_generator_manifest(
+        manifest,
+        output_dir=tmp_path,
+        canonical_specs=specs,
+        placement_specs=placement_specs,
+        refresh_source_identity=False,
+        current_source_identity=identity,
+    )
+    assert ok is True, reason
+
+    placement_path = tmp_path / placement_specs[0].filename
+    placement_path.write_bytes(b"tampered")
+    ok, reason = capture_script._validate_generator_manifest(
+        manifest,
+        output_dir=tmp_path,
+        canonical_specs=specs,
+        placement_specs=placement_specs,
+        refresh_source_identity=False,
+        current_source_identity=identity,
+    )
+    assert ok is False
+    assert "placement screenshot metadata/hash mismatch" in reason
 
 
 @pytest.mark.parametrize(
@@ -15,7 +110,7 @@ import scripts.dev.capture_data_import_wizard_steps as capture_script
     ids=lambda spec: spec.filename,
 )
 def test_every_canonical_artifact_renders_required_text(spec):
-    screenshot = capture_script.OUTPUT_DIR / spec.filename
+    screenshot = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
     assert screenshot.is_file()
     capture_script._assert_canonical_png_artifact(screenshot, spec)
 
@@ -23,7 +118,10 @@ def test_every_canonical_artifact_renders_required_text(spec):
 def test_canonical_capture_specs_cover_the_complete_png_inventory():
     specs = capture_script._canonical_capture_specs()
     specified_names = {spec.filename for spec in specs}
-    artifact_names = {path.name for path in capture_script.OUTPUT_DIR.glob("*.png")}
+    artifact_names = {
+        path.name
+        for path in capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR.glob("*.png")
+    }
 
     assert len(specs) == len(specified_names)
     assert specified_names == artifact_names
@@ -40,6 +138,10 @@ def test_capture_specs_cover_responsive_and_semantic_review_evidence():
     assert any(spec.label_carrier_count >= 12 for spec in wizard_specs)
     assert any(spec.bids_events for spec in wizard_specs)
     assert any(spec.expanded_report for spec in wizard_specs)
+    advanced = [spec for spec in wizard_specs if spec.expanded_advanced_details]
+    assert [(spec.filename, spec.expected_size) for spec in advanced] == [
+        ("04-match-labels-internal-advanced-760px.png", (760, 900))
+    ]
     assert {
         spec.filename: spec.expected_size
         for spec in wizard_specs
@@ -135,7 +237,9 @@ def test_many_labels_artifact_guard_rejects_missing_required_text(
         if spec.filename == "02-load-labels-many.png"
     )
     damaged = tmp_path / spec.filename
-    with Image.open(capture_script.OUTPUT_DIR / spec.filename) as source:
+    with Image.open(
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
+    ) as source:
         image = source.convert("RGB")
     ImageDraw.Draw(image).rectangle(bounds, fill="#1e1e1e")
     image.save(damaged)
@@ -304,7 +408,7 @@ def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
     assert horizontal.value() == horizontal.minimum()
     capture_script._assert_step_navigation_visible(
         dialog,
-        capture_script.OUTPUT_DIR / "test-review.png",
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / "test-review.png",
     )
 
 
@@ -390,7 +494,7 @@ def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
 
     capture_script._assert_text_controls_rendered(
         dialog,
-        capture_script.OUTPUT_DIR / spec.filename,
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename,
         [dialog.apply_button],
         surface_name="Review primary action",
     )
@@ -454,13 +558,16 @@ def test_expanded_report_guard_rejects_blank_review_header(qtbot, tmp_path):
     ],
 )
 def test_canonical_review_artifacts_have_full_review_header(filename):
-    screenshot = capture_script.OUTPUT_DIR / filename
+    screenshot = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / filename
     assert screenshot.is_file()
     capture_script._assert_canonical_review_artifact(screenshot)
 
 
 def test_review_artifact_guard_rejects_qt_dpi_metadata(tmp_path):
-    source = capture_script.OUTPUT_DIR / "05-review-and-import-report.png"
+    source = (
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR
+        / "05-review-and-import-report.png"
+    )
     screenshot = tmp_path / "qt-encoded-report.png"
     with Image.open(source) as captured:
         captured.convert("RGB").save(screenshot, dpi=(96, 96))

@@ -37,8 +37,8 @@ from XBrainLab.ui.interaction_outcome import (
     InteractionStatus,
     bind_interaction_completion,
 )
-from XBrainLab.ui.panels.dataset.actions import (
-    DatasetActionHandler,
+from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
+from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
     _InterpretationReviewState,
 )
 
@@ -73,6 +73,7 @@ class _RuntimeHost(QWidget):
         self.study = study
         self.stack = object()
         self.info_refresh_count = 0
+        self.dataset_panel: _DatasetRefreshProbe | None = None
         self.preprocess_panel = _PassiveRefreshProbe()
         self.training_panel = _PassiveRefreshProbe()
         self.evaluation_panel = _PassiveRefreshProbe()
@@ -170,7 +171,9 @@ def _build_runtime(qtbot) -> _ImportRuntime:
     panel = _DatasetRefreshProbe(parent=host, controller=controller)
     host.dataset_panel = panel
     handler = DatasetActionHandler(panel)
-    review_state = handler._review_state_from_review_result(review_result)
+    review_state = handler._data_interpretation._review_state_from_review_result(
+        review_result
+    )
     candidate_id = review_state.candidate_id
     assert candidate_id
 
@@ -296,7 +299,7 @@ def _start_apply(
         on_terminal=terminal.append,
     )
     with bind_interaction_completion(completion):
-        outcome = runtime.handler._apply_interpretation_async(
+        outcome = runtime.handler._data_interpretation._apply_interpretation_async(
             runtime.review_state,
             {"confirmed": True, "save_recipe": False},
         )
@@ -318,6 +321,7 @@ def test_warning_confirmation_retries_exact_receipt_and_mutates_once(
     runtime = _build_runtime(qtbot)
     _force_warning_preflight(monkeypatch, runtime.review_state)
     challenge = _issue_apply_challenge(runtime)
+    publication_before = runtime.service.get_view_publication()
     answer = _answer_next_message_box(QMessageBox.StandardButton.Yes)
     terminal: list[InteractionCompletionEvent] = []
 
@@ -332,17 +336,22 @@ def test_warning_confirmation_retries_exact_receipt_and_mutates_once(
     assert answer.observed[0][0] == "Dataset Resource Check"
     assert "Continue importing this dataset?" in answer.observed[0][1]
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
-    assert runtime.import_events == [(1, [])]
-    assert runtime.panel.refresh_count == 1
-    assert runtime.panel.dirty_count == 1
+    publication_after = runtime.service.get_view_publication()
+    assert publication_after.generation == publication_before.generation + 1
+    assert publication_after.state.active_dataset.has_raw_data is True
+    # Product imports publish application truth once; legacy controller events
+    # must not create a second state-changing refresh path.
+    assert runtime.import_events == []
+    assert runtime.panel.refresh_count == 0
+    assert runtime.panel.dirty_count == 0
     assert Path(runtime.study.loaded_data_list[0].get_filepath()).resolve() == (
         MNE_BIDS_EEG.resolve()
     )
     assert _pending_receipt(runtime, challenge) is None
-    assert runtime.import_events == [(1, [])]
+    assert runtime.import_events == []
     assert len(runtime.study.loaded_data_list) == 1
     assert len(terminal) == 1
-    assert runtime.panel.refresh_count == 1
+    assert runtime.panel.refresh_count == 0
 
 
 def test_warning_refusal_has_no_mutation_and_one_cancelled_terminal(

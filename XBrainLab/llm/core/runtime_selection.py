@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from XBrainLab.llm.core.config import LLMConfig
@@ -101,6 +101,7 @@ class AssistantRuntimeLaunchSpec:
     outcome: AssistantRuntimeSelectionOutcome
     selection_detail: str
     settings: AssistantRuntimeSettingsSnapshot
+    device_fallback_reason: str = field(default="", kw_only=True)
 
     @property
     def backend_mode(self) -> str:
@@ -109,6 +110,11 @@ class AssistantRuntimeLaunchSpec:
     @property
     def fallback_used(self) -> bool:
         return self.outcome is AssistantRuntimeSelectionOutcome.FALLBACK
+
+    @property
+    def execution_device(self) -> str:
+        """Return the effective device frozen into this exact launch."""
+        return self.settings.device
 
     def build_config(self) -> LLMConfig:
         """Build an engine config fixed to this resolved model selection."""
@@ -185,6 +191,9 @@ class AssistantRuntimeLaunchResolver:
         try:
             ready = bool(config.local_backend_ready(model_id))
             detail = config.local_backend_status_message(model_id)
+            device_fallback_reason = (
+                config.local_backend_cpu_fallback_reason() if ready else None
+            )
         except Exception as exc:
             return self._failure(
                 AssistantRuntimeSelectionFailureCode.RUNTIME_UNAVAILABLE,
@@ -208,6 +217,15 @@ class AssistantRuntimeLaunchResolver:
                 model_id=model_id,
             )
 
+        settings = AssistantRuntimeSettingsSnapshot.from_config(config)
+        normalized_fallback_reason = " ".join(str(device_fallback_reason or "").split())
+        if normalized_fallback_reason:
+            settings = replace(
+                settings,
+                device="cpu",
+                load_in_4bit=False,
+            )
+
         return AssistantRuntimeLaunchResolution(
             launch_spec=AssistantRuntimeLaunchSpec(
                 backend=AssistantRuntimeBackend.LOCAL,
@@ -216,7 +234,8 @@ class AssistantRuntimeLaunchResolver:
                 model_id=model_id,
                 outcome=AssistantRuntimeSelectionOutcome.EXACT,
                 selection_detail=" ".join(str(detail or "").split()),
-                settings=AssistantRuntimeSettingsSnapshot.from_config(config),
+                settings=settings,
+                device_fallback_reason=normalized_fallback_reason,
             )
         )
 

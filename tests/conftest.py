@@ -15,8 +15,10 @@ This conftest module provides:
 # Global mocks have been disabled as the environment has all dependencies installed.
 # Previously, this file mocked mne, captum, and torch, which caused import errors.
 
+import logging
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -187,3 +189,24 @@ def test_app(qtbot):
 
     # 5. Cleanup
     window.close()
+
+
+@pytest.fixture
+def capture_product_logs(caplog):
+    """Capture records after the central XBrainLab disclosure filter ran."""
+
+    @contextmanager
+    def capture(
+        level: int = logging.INFO,
+        *,
+        logger_name: str = "XBrainLab",
+    ):
+        product_logger = logging.getLogger("XBrainLab")
+        product_logger.addHandler(caplog.handler)
+        try:
+            with caplog.at_level(level, logger=logger_name):
+                yield caplog
+        finally:
+            product_logger.removeHandler(caplog.handler)
+
+    return capture

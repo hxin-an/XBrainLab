@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from XBrainLab.backend.services.dataset_state_service import DatasetTablePort
+
 from .commands import (
     ApplySmartParseCommand,
     Command,
@@ -22,7 +24,7 @@ class DataTableCommandService:
     def __init__(
         self,
         *,
-        dataset: Any,
+        dataset: DatasetTablePort,
     ) -> None:
         self.dataset = dataset
 

@@ -13,9 +13,9 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
 
 from .commands import (
     ApplyInterpretationCommand,
@@ -48,6 +48,7 @@ from .data_interpretation_content_identity import (
     assert_review_content_unchanged,
     identity_paths,
 )
+from .data_interpretation_placement import placement_blocked_reasons
 from .data_interpretation_recipe import (
     IMPORT_RECIPE_MAX_BYTES,
     ImportRecipeTooLargeError,
@@ -116,7 +117,7 @@ class DataInterpretationCommandService:
 
     def __init__(
         self,
-        dataset_controller: Any,
+        dataset_controller: DatasetInterpretationPort,
         *,
         data_filename: Callable[[Any], str],
         data_filepath: Callable[[Any], str],
@@ -244,7 +245,21 @@ class DataInterpretationCommandService:
             raise TypeError("Invalid command for preview_interpretation")
         scan = self.state.resolve_scan(command.scan_id)
         replace_scan = False
-        if not bool(scan.bids.get("metadata_materialized")):
+        preserve_discovery_scan = False
+        selected_eeg_files = self._explicit_selected_eeg_files(command.choices)
+        scanned_eeg_files = {
+            str(Path(path).expanduser().resolve(strict=False))
+            for path in list(getattr(scan, "eeg_files", []) or [])
+        }
+        selected_scope_changed = any(
+            str(Path(path).expanduser().resolve(strict=False)) not in scanned_eeg_files
+            for path in selected_eeg_files
+        )
+        if not bool(scan.bids.get("metadata_materialized")) or selected_scope_changed:
+            preserve_discovery_scan = self._preview_narrows_discovered_scope(
+                scan,
+                command.choices,
+            )
             scan, admission = self._scan_after_resource_preflight(
                 scan_id=scan.scan_id,
                 source_path=scan.source_path,
@@ -282,7 +297,7 @@ class DataInterpretationCommandService:
             scan=scan,
             resource_preflight=admission.to_diagnostics(),
         )
-        if replace_scan:
+        if replace_scan and not preserve_discovery_scan:
             self.state.record_scan(scan)
         self.state.record_preview(candidate, preview)
         return (
@@ -318,7 +333,7 @@ class DataInterpretationCommandService:
         decision = self.state.resolve_validation_decision(candidate.candidate_id)
         if decision is None:
             raise PreconditionError("Validate an interpretation before applying it.")
-        self._ensure_candidate_can_apply(command, decision)
+        self._ensure_candidate_can_apply(command, candidate, decision)
         preflight, _preflight_receipt, receipt_reused = (
             self._resolve_apply_resource_preflight(
                 command=command,
@@ -684,6 +699,26 @@ class DataInterpretationCommandService:
                 selected.append(target)
         return selected
 
+    @classmethod
+    def _preview_narrows_discovered_scope(
+        cls,
+        scan: Any,
+        choices: dict[str, Any],
+    ) -> bool:
+        """Keep the full discovery scope available when a preview selects a subset."""
+        if not cls._explicit_selected_eeg_files(choices):
+            return False
+        selected_scope = resolve_interpretation_resource_scope(scan, choices)
+        discovered_files = {
+            str(Path(path).expanduser().resolve(strict=False))
+            for path in list(getattr(scan, "eeg_files", []) or [])
+        }
+        selected_files = {
+            str(Path(path).expanduser().resolve(strict=False))
+            for path in selected_scope.materializable_eeg_files
+        }
+        return bool(discovered_files and selected_files != discovered_files)
+
     @staticmethod
     def _candidate_resource_paths(candidate: InterpretationCandidate) -> list[str]:
         """Return the deduplicated EEG and external-label apply scope."""
@@ -874,9 +909,16 @@ class DataInterpretationCommandService:
     def _ensure_candidate_can_apply(
         self,
         command: ApplyInterpretationCommand,
+        candidate: InterpretationCandidate,
         decision: ValidationDecision,
     ) -> None:
         """Enforce the target candidate's own validation decision."""
+        if not bool(candidate.choices.get("skip_labels")):
+            placement_reasons = placement_blocked_reasons(
+                candidate.label_carrier_plan,
+            )
+            if placement_reasons:
+                raise PreconditionError("; ".join(placement_reasons))
         if decision.decision == InterpretationDecision.BLOCKED.value:
             blocked = (
                 "; ".join(decision.blocked_reasons) or "Interpretation is blocked."
@@ -985,19 +1027,11 @@ class DataInterpretationCommandService:
                 raise RuntimeError("Pipeline transaction is unavailable for restore.")
             self._pipeline_transaction.restore(snapshot)
         elif snapshot.get("kind") == "generic":
-            if hasattr(self.dataset, "loaded"):
-                self.dataset.loaded = list(snapshot["loaded"])
-            if hasattr(self.dataset, "imported_paths"):
-                self.dataset.imported_paths = list(snapshot["imported_paths"])
-        notify = getattr(self.dataset, "notify", None)
-        if callable(notify):
-            try:
-                notify("data_changed")
-            except Exception:
-                logger.warning(
-                    "Failed to notify observers after restoring EEG data.",
-                    exc_info=True,
-                )
+            compatibility_dataset = cast(Any, self.dataset)
+            if hasattr(compatibility_dataset, "loaded"):
+                compatibility_dataset.loaded = list(snapshot["loaded"])
+            if hasattr(compatibility_dataset, "imported_paths"):
+                compatibility_dataset.imported_paths = list(snapshot["imported_paths"])
 
     @staticmethod
     def _build_applied_interpretation(

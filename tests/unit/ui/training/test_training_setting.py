@@ -2,7 +2,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-from PyQt6.QtWidgets import QDialogButtonBox, QWidget
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QLabel, QWidget
 
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.dialogs.training import (
@@ -49,6 +50,7 @@ class TestTrainingSetting:
         assert window.repeat_entry.text() == "1"
         assert window.output_dir == "./output"
         assert window.optim == torch.optim.Adam  # Real Adam class
+        assert window.opt_label.text() == "Adam"
         assert window.use_cpu is True
         assert window.evaluation_combo.currentText() == "Best validation loss"
         assert all(
@@ -66,6 +68,95 @@ class TestTrainingSetting:
             button = buttons.button(standard)
             assert button is not None
             assert button.icon().isNull()
+
+    @pytest.mark.parametrize("font_scale", [1.0, 1.25, 1.5])
+    def test_training_setting_labels_fit_at_supported_font_scales(
+        self,
+        window,
+        qtbot,
+        font_scale,
+    ):
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        original_font = QFont(app.font())
+        scaled_font = QFont(original_font)
+        scaled_font.setPointSizeF(original_font.pointSizeF() * font_scale)
+        app.setFont(scaled_font)
+        try:
+            window.adjustSize()
+            window.show()
+            qtbot.wait(0)
+            checkpoint_label = next(
+                label
+                for label in window.findChildren(QLabel)
+                if label.text() == "Checkpoint interval (training epochs)"
+            )
+
+            if (
+                checkpoint_label.fontMetrics().horizontalAdvance(
+                    checkpoint_label.text()
+                )
+                > checkpoint_label.width()
+            ):
+                assert checkpoint_label.wordWrap()
+                assert checkpoint_label.height() >= (
+                    checkpoint_label.fontMetrics().lineSpacing() * 2
+                )
+            assert window.contentsRect().contains(checkpoint_label.geometry())
+        finally:
+            app.setFont(original_font)
+
+    def test_training_setting_constructed_at_150_percent_keeps_labels_visible(
+        self,
+        qtbot,
+    ):
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        original_font = QFont(app.font())
+        scaled_font = QFont(original_font)
+        scaled_font.setPointSizeF(original_font.pointSizeF() * 1.5)
+        app.setFont(scaled_font)
+        controller = MagicMock()
+        controller.get_training_option.return_value = None
+        try:
+            with (
+                patch(
+                    "XBrainLab.ui.dialogs.training.training_setting_dialog."
+                    "get_optimizer_classes",
+                    return_value={"Adam": torch.optim.Adam},
+                ),
+                patch(
+                    "XBrainLab.ui.dialogs.training.training_setting_dialog."
+                    "get_device_count",
+                    return_value=0,
+                ),
+            ):
+                dialog = TrainingSettingDialog(None, controller)
+                qtbot.addWidget(dialog)
+                dialog.show()
+                qtbot.wait(0)
+
+            checkpoint_label = next(
+                label
+                for label in dialog.findChildren(QLabel)
+                if label.text() == "Checkpoint interval (training epochs)"
+            )
+            if (
+                checkpoint_label.fontMetrics().horizontalAdvance(
+                    checkpoint_label.text()
+                )
+                > checkpoint_label.width()
+            ):
+                assert checkpoint_label.wordWrap()
+                assert checkpoint_label.height() >= (
+                    checkpoint_label.fontMetrics().lineSpacing() * 2
+                )
+            assert dialog.contentsRect().contains(checkpoint_label.geometry())
+            assert checkpoint_label.geometry().right() < (
+                dialog.checkpoint_entry.geometry().left()
+            )
+        finally:
+            app.setFont(original_font)
 
     def test_set_values_and_confirm(self, window):
         # Set simple values

@@ -36,6 +36,9 @@ from .data_interpretation_placement import (
     annotate_label_carrier_placements as _annotate_label_carrier_placements,
 )
 from .data_interpretation_placement import (
+    placement_blocked_reasons as _blocked_placement_reasons,
+)
+from .data_interpretation_placement import (
     placement_confirmation_items as _placement_confirmation_items,
 )
 from .data_interpretation_resource_reader import AdmittedResourceReader
@@ -776,26 +779,6 @@ def _label_carrier_plan_warnings(
             if text and text not in warnings:
                 warnings.append(text)
     return warnings
-
-
-def _blocked_placement_reasons(
-    label_carrier_plan: list[dict[str, Any]],
-) -> list[str]:
-    reasons: list[str] = []
-    for carrier in label_carrier_plan:
-        review = carrier.get("placement_review")
-        if not isinstance(review, dict):
-            continue
-        if str(review.get("status") or "").strip() != "blocked":
-            continue
-        carrier_name = str(
-            carrier.get("name") or Path(str(carrier.get("path") or "")).name
-        ).strip()
-        summary = str(review.get("summary") or "Label placement is blocked.").strip()
-        reason = f"{carrier_name}: {summary}" if carrier_name else summary
-        if reason not in reasons:
-            reasons.append(reason)
-    return reasons
 
 
 def _override_field(

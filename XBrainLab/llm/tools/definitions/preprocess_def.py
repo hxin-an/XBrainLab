@@ -238,7 +238,7 @@ class BaseSetMontageTool(BaseTool):
 
 
 class BaseEpochDataTool(BaseTool):
-    """Epoch continuous EEG data based on event markers."""
+    """Create EEG epochs from continuous data and event markers."""
 
     @property
     def name(self) -> str:
@@ -246,7 +246,7 @@ class BaseEpochDataTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Epoch continuous data based on events."
+        return "Create EEG epochs from continuous data and event markers."
 
     @property
     def parameters(self) -> dict[str, Any]:

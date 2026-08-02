@@ -681,6 +681,80 @@ def _normalize_saliency_args(params: dict[str, Any], latest_user_text: str) -> N
     )
     if asks_for_readiness and not asks_to_configure:
         params.clear()
+        return
+
+    requested_method = _extract_saliency_method(latest_user_text)
+    if requested_method is not None:
+        params["method"] = requested_method
+
+    for key in ("nt_samples", "nt_samples_batch_size"):
+        value = _extract_named_saliency_number(latest_user_text, key)
+        if value is not None:
+            params[key] = int(value) if value.is_integer() else value
+        elif _mentions_saliency_param(latest_user_text, key):
+            params[key] = "__invalid__"
+    stdevs = _extract_named_saliency_number(latest_user_text, "stdevs")
+    if stdevs is not None:
+        params["stdevs"] = float(stdevs)
+    elif _mentions_saliency_param(latest_user_text, "stdevs"):
+        params["stdevs"] = "__invalid__"
+
+
+def _extract_saliency_method(text: str) -> str | None:
+    explicit = re.search(
+        r"\b(?:configure|set|compute|generate|use)\s+"
+        r"([A-Za-z][A-Za-z0-9_+*.-]*(?:\s+[A-Za-z0-9_+*.-]+){0,3})"
+        r"\s+saliency\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if explicit:
+        requested = explicit.group(1).strip()
+        return _canonical_saliency_method(requested) or requested
+
+    method_patterns = (
+        ("Gradient * Input", r"\bgradient\s*(?:\*|times)\s*input\b"),
+        ("SmoothGrad_Squared", r"\bsmoothgrad(?:_|\s+)squared\b"),
+        ("SmoothGrad", r"\bsmoothgrad\b"),
+        ("VarGrad", r"\bvargrad\b"),
+        ("Gradient", r"\bgradient\b"),
+    )
+    for method, pattern in method_patterns:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return method
+    return None
+
+
+def _canonical_saliency_method(value: str) -> str | None:
+    compact = re.sub(r"[\s_]+", "", value).lower()
+    return {
+        "gradient": "Gradient",
+        "gradient*input": "Gradient * Input",
+        "gradienttimesinput": "Gradient * Input",
+        "smoothgrad": "SmoothGrad",
+        "smoothgradsquared": "SmoothGrad_Squared",
+        "vargrad": "VarGrad",
+    }.get(compact)
+
+
+def _extract_named_saliency_number(text: str, key: str) -> float | None:
+    match = re.search(
+        rf"(?<![A-Za-z0-9_]){re.escape(key)}\s*(?:=|:)?\s*"
+        r"(-?\d+(?:\.\d+)?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return float(match.group(1)) if match else None
+
+
+def _mentions_saliency_param(text: str, key: str) -> bool:
+    return bool(
+        re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(key)}(?![A-Za-z0-9_])",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def _extract_path(text: str) -> str | None:

@@ -68,7 +68,10 @@ def placement_blocked_reasons(
         review = carrier.get("placement_review")
         if not isinstance(review, dict):
             continue
-        if str(review.get("status") or "").strip() != "blocked":
+        status = str(review.get("status") or "").strip()
+        if status != "blocked" and not (
+            status == "needs_review" and _is_trial_order_placement(carrier)
+        ):
             continue
         name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
         summary = str(review.get("summary") or "Label placement is blocked.").strip()
@@ -76,6 +79,20 @@ def placement_blocked_reasons(
         if reason not in reasons:
             reasons.append(reason)
     return reasons
+
+
+def _is_trial_order_placement(carrier: dict[str, Any]) -> bool:
+    placement_method = (
+        str(
+            carrier.get("placement_method") or "",
+        )
+        .strip()
+        .lower()
+    )
+    return (
+        placement_method in {"", "eeg_event"}
+        and str(carrier.get("time_model") or "").strip().lower() == "trial_order"
+    )
 
 
 def _eeg_event_order_review(
@@ -188,9 +205,15 @@ def _eeg_event_order_review(
     if not target_codes:
         review.update(
             {
-                "status": "needs_review",
-                "summary": "Choose the EEG events that label rows follow in order.",
-                "next_action": "Select one or more target EEG events.",
+                "status": "blocked",
+                "decision_code": "sequence_target_events_required",
+                "summary": (
+                    "Trial-order label placement requires an explicit target EEG "
+                    "event set. Confirmation alone cannot resolve the event anchor."
+                ),
+                "next_action": (
+                    "Select one or more target EEG events before applying labels."
+                ),
             }
         )
         return review
@@ -368,7 +391,7 @@ def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
         {
             "status": status,
             "summary": _numeric_field_summary(field, numeric_rows, label_rows, stats),
-            "next_action": "Confirm the time base before epoch setup.",
+            "next_action": "Confirm the time base before EEG epoch setup.",
         }
     )
     return review
@@ -435,7 +458,7 @@ def _interval_review(carrier: dict[str, Any]) -> dict[str, Any]:
             "summary": (
                 f"{duration_numeric} interval rows using {start} and {duration}."
             ),
-            "next_action": "Confirm interval semantics before epoch setup.",
+            "next_action": "Confirm interval semantics before EEG epoch setup.",
         }
     )
     return review
@@ -552,7 +575,7 @@ def _event_code_review(
         {
             "status": "ready",
             "summary": f"All {len(value_counts)} label event codes match EEG events.",
-            "next_action": "Confirm code meanings before epoch setup.",
+            "next_action": "Confirm code meanings before EEG epoch setup.",
         }
     )
     return review

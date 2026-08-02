@@ -130,6 +130,7 @@ def test_legacy_raw_mutation_invalidates_interpretation_recipe_and_epoch_handoff
         command = AttachLabelsCommand(
             mapping={original.get_filepath(): str(label_path)},
             label_paths=[str(label_path)],
+            selected_event_names=["cue"],
         )
 
     result = service.execute(command)
@@ -157,7 +158,6 @@ def test_sequence_label_batch_failure_rolls_back_and_does_not_update_recipe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service, raws = _service_with_applied_interpretation(tmp_path, file_count=2)
-    dataset_controller = service.study.get_controller("dataset")
 
     def fail_second_target(
         target: Raw,
@@ -171,7 +171,7 @@ def test_sequence_label_batch_failure_rolls_back_and_does_not_update_recipe(
             raise RuntimeError("second target failed")
 
     monkeypatch.setattr(
-        dataset_controller.label_service,
+        service.dataset.label_service,
         "apply_labels_to_single_file",
         fail_second_target,
     )
@@ -234,7 +234,7 @@ def test_legacy_raw_handler_failure_invalidates_interpretation_fail_closed(
     tmp_path: Path,
 ) -> None:
     service, _raws = _service_with_applied_interpretation(tmp_path)
-    service.dataset.update_metadata_batch = MagicMock(
+    service.dataset_state.update_metadata_batch = MagicMock(
         side_effect=RuntimeError("metadata outcome is unknown")
     )
 

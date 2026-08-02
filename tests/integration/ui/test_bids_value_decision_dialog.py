@@ -50,9 +50,15 @@ def test_public_bids_value_decisions_recheck_and_apply(qtbot) -> None:
         role="system",
         use="event",
     )
+    assert dialog.next_button.isEnabled()
+    assert dialog.next_button.text() == "Next: Review and Import"
+
+    dialog.next_button.click()
+    qtbot.wait(0)
     review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
 
     assert dialog.apply_button.isEnabled()
+    assert dialog.apply_button.isVisibleTo(dialog)
     assert dialog.decision_label.text() == "Ready to recheck and import."
     assert not dialog.review_actions_panel.isVisible()
     assert review_rows["Recipe"]["status"] == "Not saved"

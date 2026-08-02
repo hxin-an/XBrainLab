@@ -51,7 +51,7 @@ class ElidingComboBox(QComboBox):
             max(text_rect.width() - 4, 0),
         )
 
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent | None) -> None:  # noqa: N802
         if self.isEditable():
             super().paintEvent(event)
             return
@@ -62,7 +62,7 @@ class ElidingComboBox(QComboBox):
         painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, option)
         painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, option)
 
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+    def resizeEvent(self, event: QResizeEvent | None) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._sync_selection_tooltip(self.currentText())
 
@@ -92,11 +92,16 @@ class ResponsiveControlsBar(QWidget):
         self._trailing_widgets = list(trailing_widgets)
         self._wrap_width = wrap_width
         self._wrapped: bool | None = None
+        self._layout_mode: str | None = None
         self._layout = QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 8)
         self._layout.setHorizontalSpacing(10)
         self._layout.setVerticalSpacing(8)
-        self._apply_layout(self.width() < self._wrap_width)
+        # Start from the smallest valid geometry. QWidget's constructor width
+        # is a desktop-sized placeholder; building the wide row first lets its
+        # layout minimum prevent a narrow parent from ever reaching the stacked
+        # breakpoint.
+        self._apply_layout(0)
 
     def is_wrapped(self) -> bool:
         """Return whether controls currently use the compact two-row layout."""
@@ -105,11 +110,13 @@ class ResponsiveControlsBar(QWidget):
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         """Allow the parent to cross the wrap threshold before reflow occurs."""
         hint = super().minimumSizeHint()
-        return QSize(min(hint.width(), self._wrap_width - 1), hint.height())
+        compact_width = min(240, max(self._wrap_width - 1, 1))
+        return QSize(min(hint.width(), compact_width), hint.height())
 
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+    def resizeEvent(self, event: QResizeEvent | None) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self._apply_layout(event.size().width() < self._wrap_width)
+        width = event.size().width() if event is not None else self.width()
+        self._apply_layout(width)
 
     @staticmethod
     def _make_label(text: str) -> QLabel:
@@ -117,9 +124,13 @@ class ResponsiveControlsBar(QWidget):
         label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         return label
 
-    def _apply_layout(self, wrapped: bool) -> None:
-        if self._wrapped is wrapped:
+    def _apply_layout(self, width: int) -> None:
+        wrapped = width < self._wrap_width
+        stacked_trailing = wrapped and width < 360 and bool(self._trailing_widgets)
+        layout_mode = "stacked" if stacked_trailing else "wrapped" if wrapped else "row"
+        if self._layout_mode == layout_mode:
             return
+        self._layout_mode = layout_mode
         self._wrapped = wrapped
         widgets = [widget for pair in self._fields for widget in pair]
         widgets.extend(self._trailing_widgets)
@@ -133,17 +144,32 @@ class ResponsiveControlsBar(QWidget):
             trailing_span = max(len(self._trailing_widgets), 1)
             for row, (label, control) in enumerate(self._fields):
                 self._layout.addWidget(label, row, 0)
-                span = trailing_span + 1 if row < last_row else 1
+                span = trailing_span + 1 if row < last_row or stacked_trailing else 1
                 self._layout.addWidget(control, row, 1, 1, span)
-            for column, widget in enumerate(self._trailing_widgets, start=2):
-                self._layout.addWidget(
-                    widget,
-                    last_row,
-                    column,
-                    alignment=Qt.AlignmentFlag.AlignLeft
-                    | Qt.AlignmentFlag.AlignVCenter,
-                )
+            if stacked_trailing:
+                trailing_row = len(self._fields)
+                for offset, widget in enumerate(self._trailing_widgets):
+                    self._layout.addWidget(
+                        widget,
+                        trailing_row + offset,
+                        0,
+                        1,
+                        trailing_span + 2,
+                        alignment=Qt.AlignmentFlag.AlignLeft
+                        | Qt.AlignmentFlag.AlignVCenter,
+                    )
+            else:
+                for column, widget in enumerate(self._trailing_widgets, start=2):
+                    self._layout.addWidget(
+                        widget,
+                        last_row,
+                        column,
+                        alignment=Qt.AlignmentFlag.AlignLeft
+                        | Qt.AlignmentFlag.AlignVCenter,
+                    )
             self._layout.setColumnStretch(1, 1)
+            self._layout.invalidate()
+            self.updateGeometry()
             return
 
         column = 0
@@ -161,6 +187,8 @@ class ResponsiveControlsBar(QWidget):
             )
             column += 1
         self._layout.setColumnStretch(column, 1)
+        self._layout.invalidate()
+        self.updateGeometry()
 
 
 def fit_table_to_all_rows(table: QTableWidget, *, minimum_height: int = 116) -> int:

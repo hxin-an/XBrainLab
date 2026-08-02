@@ -16,6 +16,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.epoch_context import build_epoching_context
+
 # ============ EventFilterDialog ============
 
 
@@ -168,8 +170,7 @@ class TestChannelSelectionDialog:
             ChannelSelectionDialog,
         )
 
-        data_obj = MagicMock()
-        data_obj.get_mne.return_value.ch_names = [
+        channels = [
             "C3",
             "C4",
             "Cz",
@@ -178,8 +179,7 @@ class TestChannelSelectionDialog:
             "O1",
             "O2",
         ]
-        data_list = [data_obj]
-        d = ChannelSelectionDialog(None, data_list)
+        d = ChannelSelectionDialog(None, channels)
         qtbot.addWidget(d)
         return d
 
@@ -251,7 +251,14 @@ class TestEpochingDialog:
             {"left": 1, "right": 2},
             [],
         )
-        d = EpochingDialog(None, data_list)
+        data_list[0].get_event_list.return_value = (
+            None,
+            {"left": 1, "right": 2},
+        )
+        d = EpochingDialog(
+            None,
+            epoch_context=build_epoching_context(data_list),
+        )
         qtbot.addWidget(d)
         return d
 
@@ -283,7 +290,6 @@ class TestEpochingDialog:
 
         dialog = EpochingDialog(
             None,
-            [],
             epoch_context={
                 "available_events": [
                     {"name": f"event_{index:02d}", "count": 20} for index in range(16)
@@ -327,7 +333,7 @@ class TestEpochingDialog:
         )
         dialog = EpochingDialog(
             None,
-            [data],
+            epoch_context=build_epoching_context([data]),
             epoch_handoff={
                 "ready": True,
                 "default_epoch_events": ["Left hand", "Right hand"],
@@ -359,7 +365,7 @@ class TestEpochingDialog:
         )
         dialog = EpochingDialog(
             None,
-            [data],
+            epoch_context=build_epoching_context([data]),
             assistant_suggestions={
                 "target_event": "769",
                 "t_min": "-0.2",
@@ -395,7 +401,10 @@ class TestEpochingDialog:
             "class_map": {"left": "left", "right": "right"},
         }
 
-        dialog = EpochingDialog(None, [data])
+        dialog = EpochingDialog(
+            None,
+            epoch_context=build_epoching_context([data]),
+        )
         qtbot.addWidget(dialog)
         dialog.show()
         qtbot.wait(0)
@@ -409,7 +418,7 @@ class TestEpochingDialog:
         assert "BIDS events from import" in labels_text
         assert "BIDS events confirmed in Match Labels" in labels_text
         assert "Use event duration" in labels_text
-        assert "review the epoch window" in labels_text
+        assert "review the EEG epoch window" in labels_text
         assert dialog.tmin_spin.value() == 0.0
         assert dialog.tmax_spin.value() == 12.0
         assert not dialog.baseline_check.isChecked()
@@ -424,7 +433,7 @@ class TestEpochingDialog:
         )
         dialog = EpochingDialog(
             None,
-            [data],
+            epoch_context=build_epoching_context([data]),
             epoch_handoff={
                 "ready": True,
                 "default_epoch_events": ["Left hand", "Right hand"],
@@ -454,7 +463,10 @@ class TestEpochingDialog:
             None,
             {"Left hand": 1},
         )
-        dialog = EpochingDialog(None, [data])
+        dialog = EpochingDialog(
+            None,
+            epoch_context=build_epoching_context([data]),
+        )
         qtbot.addWidget(dialog)
 
         assert dialog.event_list is not None
@@ -483,7 +495,7 @@ class TestEpochingDialog:
         )
         dialog = EpochingDialog(
             None,
-            [data],
+            epoch_context=build_epoching_context([data]),
             epoch_handoff={
                 "ready": False,
                 "default_epoch_events": ["Left hand", "Right hand"],

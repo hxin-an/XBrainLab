@@ -78,6 +78,21 @@ class TestNotify:
 
         assert obs.notify_delivery("evt") is ObserverDeliveryStatus.FAILED
 
+    def test_notify_delivery_does_not_acknowledge_zero_subscribers(self, obs):
+        assert obs.notify_delivery("evt") is ObserverDeliveryStatus.NO_SUBSCRIBERS
+
+    def test_notify_delivery_requires_an_explicit_acknowledgement(self, obs):
+        obs.subscribe("evt", lambda: None)
+
+        assert obs.notify_delivery("evt") is ObserverDeliveryStatus.UNACKNOWLEDGED
+
+    def test_notify_delivery_keeps_deferred_owner_pending_despite_other_ack(self, obs):
+        obs.subscribe("evt", lambda: None)
+        obs.subscribe("evt", lambda: ObserverDeliveryStatus.DEFERRED)
+        obs.subscribe("evt", lambda: True)
+
+        assert obs.notify_delivery("evt") is ObserverDeliveryStatus.DEFERRED
+
 
 class TestSafeCall:
     def test_error_in_subscriber_does_not_propagate(self, obs):

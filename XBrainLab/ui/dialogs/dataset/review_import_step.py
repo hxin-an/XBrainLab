@@ -138,6 +138,30 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         if parent is not None:
             parent.updateGeometry()
 
+    def _sync_review_import_row_heights(self) -> None:
+        """Fit wrapped review summaries without inflating compact final steps."""
+        layout = getattr(self, "_review_import_rows_layout", None)
+        if layout is None:
+            return
+        layout.activate()
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            if item is None:
+                continue
+            row, column, _row_span, _column_span = layout.getItemPosition(index)
+            if column != 2:
+                continue
+            summary = item.widget()
+            if not isinstance(summary, QLabel) or summary.width() <= 0:
+                continue
+            required_height = summary.heightForWidth(summary.width())
+            if required_height > 0:
+                layout.setRowMinimumHeight(
+                    row,
+                    max(layout.rowMinimumHeight(row), required_height),
+                )
+        layout.activate()
+
     @staticmethod
     def _review_status_object_name(status: str) -> str:
         return {
@@ -297,7 +321,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 "summary": label_placement_summary,
                 "target_step": "Match Labels",
                 "action": (
-                    "Go to Label Placement"
+                    "Go to Match Labels"
                     if label_placement_status in {"Needs review", "Action required"}
                     else ""
                 ),
@@ -899,7 +923,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             if "alignment" in lowered or "pair" in lowered or "carrier" in lowered:
                 return "Label alignment is unresolved"
             if "event role" in lowered or "event mapping" in lowered:
-                return "Event role mapping is incomplete"
+                return "EEG event mapping is incomplete"
             if "placement" in lowered or "class" in lowered or "event" in lowered:
                 return "Label placement is ambiguous"
             return "Label matching is incomplete"
@@ -915,13 +939,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         issue: str = "",
         next_action: str = "",
     ) -> str:
-        lowered = " ".join((issue, next_action)).lower()
         if target_step == "Match Labels":
-            if "alignment" in lowered or "pair" in lowered or "carrier" in lowered:
-                return "Go to Label Alignment"
-            if "event role" in lowered or "event mapping" in lowered:
-                return "Go to Event Mapping"
-            return "Go to Label Placement"
+            return "Go to Match Labels"
         return {
             "Choose EEG Data": "Go to EEG Data",
             "Load Labels": "Go to Labels",

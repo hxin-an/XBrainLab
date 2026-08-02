@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture canonical Create Epochs dialog screenshots."""
+"""Capture canonical Create EEG Epochs dialog screenshots."""
 
 from __future__ import annotations
 
@@ -11,11 +11,14 @@ from PIL import Image
 from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from XBrainLab.backend.application.epoch_context import EPOCH_HINT_KEY
+from XBrainLab.backend.application.epoch_context import (
+    EPOCH_HINT_KEY,
+    build_epoching_context,
+)
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 
 ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = ROOT / "artifacts" / "ui" / "epoching-dialog"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "epoching-dialog"
 
 
 class _EpochData:
@@ -33,24 +36,28 @@ class _EpochData:
 def main() -> int:
     instance = QApplication.instance()
     app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     captures = [
         (
             "epoching-interval-import.png",
-            EpochingDialog(None, [_interval_epoch_data()]),
+            _interval_epoch_data,
         ),
         (
             "epoching-internal-events.png",
-            EpochingDialog(None, [_internal_event_epoch_data()]),
+            _internal_event_epoch_data,
         ),
     ]
-    for filename, dialog in captures:
+    for filename, data_factory in captures:
+        dialog = EpochingDialog(
+            None,
+            epoch_context=build_epoching_context([data_factory()]),
+        )
         dialog.resize(QSize(640, 720))
         dialog.show()
         app.processEvents()
         dialog.repaint()
         app.processEvents()
-        _capture(dialog, OUTPUT_DIR / filename)
+        _capture(dialog, DEFAULT_OUTPUT_DIR / filename)
         dialog.close()
     return 0
 

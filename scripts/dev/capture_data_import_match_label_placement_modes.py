@@ -14,10 +14,10 @@ from PyQt6.QtWidgets import QApplication, QWidget
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 
 ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = (
+DEFAULT_OUTPUT_DIR = (
     ROOT
-    / "artifacts"
-    / "ui"
+    / "build"
+    / "dev-artifacts"
     / "data-import-wizard-steps"
     / "match-label-placement-modes"
 )
@@ -34,9 +34,9 @@ MODE_OUTPUTS = {
 
 def main() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for method, filename in MODE_OUTPUTS.items():
-        path = OUTPUT_DIR / filename
+        path = DEFAULT_OUTPUT_DIR / filename
         dialog = build_dialog(method)
         dialog.resize(WINDOW_SIZE)
         dialog.show()

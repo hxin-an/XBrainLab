@@ -11,6 +11,7 @@ from typing import Any, Protocol, cast
 
 from PyQt6.QtCore import QCoreApplication, QObject, QTimer, pyqtSignal, pyqtSlot
 
+from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.chat_contract import (
     MAX_CHAT_MESSAGE_CONTENT_LENGTH,
@@ -27,6 +28,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
+    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
@@ -129,6 +131,22 @@ class RuntimeCommandAdmissionResult:
     message: str = ""
     turn_id: int | None = None
     generation: int | None = None
+    scope: AssistantTurnScope | None = None
+    terminal_command: str | None = None
+    excluded_commands: tuple[CommandName, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.scope is not None and not isinstance(self.scope, AssistantTurnScope):
+            raise TypeError("Runtime admission scope must be typed.")
+        if self.terminal_command is not None and not isinstance(
+            self.terminal_command,
+            str,
+        ):
+            raise TypeError("Runtime admission terminal command must be a string.")
+        if not isinstance(self.excluded_commands, tuple) or any(
+            not isinstance(command, CommandName) for command in self.excluded_commands
+        ):
+            raise TypeError("Runtime admission excluded commands must be typed.")
 
     @property
     def accepted(self) -> bool:
@@ -165,6 +183,7 @@ class AssistantRuntimeActivationRequest(AssistantRuntimeLaunchSpec):
             outcome=launch_spec.outcome,
             selection_detail=launch_spec.selection_detail,
             settings=launch_spec.settings,
+            device_fallback_reason=launch_spec.device_fallback_reason,
             activation_id=activation_id,
         )
 
@@ -266,6 +285,7 @@ class AssistantRuntimeLifecycle(QObject):
         self._dispatcher_factory: Callable[[], _RuntimeDispatcher] | None = None
         self._dispatcher_cleanup_signal: Any | None = None
         self._dispatcher_delivery_signal: Any | None = None
+        self._dispatcher: _RuntimeDispatcher
         if dispatcher is None:
             self._dispatcher_factory = lambda: AssistantCommandDispatcher(self)
             self._dispatcher = self._dispatcher_factory()
@@ -293,7 +313,9 @@ class AssistantRuntimeLifecycle(QObject):
         self._delivery_watchdog_correlation: AssistantTurnCorrelation | None = None
         self._last_activation_request: AssistantRuntimeActivationRequest | None = None
         self._active_turn: AssistantTurnCorrelation | None = None
+        self._last_released_turn: AssistantTurnCorrelation | None = None
         self._stop_requested_for: AssistantTurnCorrelation | None = None
+        self._delivery_timeout_for: AssistantTurnCorrelation | None = None
         self._close_requested = False
         self._controller_lifecycle_connections: tuple[tuple[Any, Any], ...] = ()
         self._terminal_handoff_fallback_bound = False
@@ -733,10 +755,21 @@ class AssistantRuntimeLifecycle(QObject):
                 self._active_turn,
             )
             return
+        terminal = payload
+        if (
+            self._delivery_timeout_for == payload.correlation
+            and payload.outcome == "cancelled"
+        ):
+            terminal = AssistantTurnTerminal(
+                correlation=payload.correlation,
+                outcome="delivery_timeout",
+            )
         self._stop_turn_delivery_watchdog(payload.correlation)
+        self._last_released_turn = payload.correlation
         self._active_turn = None
         self._stop_requested_for = None
-        self.turn_finished.emit(payload)
+        self._delivery_timeout_for = None
+        self.turn_finished.emit(terminal)
 
     @pyqtSlot(object)
     def _on_turn_delivery_acknowledged(self, payload: object) -> None:
@@ -745,6 +778,8 @@ class AssistantRuntimeLifecycle(QObject):
             logger.error("Ignored untyped assistant turn delivery acknowledgement.")
             return
         if payload.correlation != self._active_turn:
+            if payload.correlation == self._last_released_turn:
+                return
             logger.warning(
                 "Ignored stale assistant turn delivery for %s; active turn is %s",
                 redact_public_text(payload.correlation),
@@ -805,7 +840,7 @@ class AssistantRuntimeLifecycle(QObject):
         self,
         correlation: AssistantTurnCorrelation,
     ) -> None:
-        """Fail closed when queued delivery never reaches its typed ack path."""
+        """Fence retries until the unacknowledged turn reaches a typed terminal."""
         if (
             correlation != self._active_turn
             or correlation != self._delivery_watchdog_correlation
@@ -816,14 +851,9 @@ class AssistantRuntimeLifecycle(QObject):
             "Assistant turn %s delivery acknowledgement timed out",
             correlation.turn_id,
         )
-        self._release_turn(
-            AssistantTurnTerminal(
-                correlation=correlation,
-                outcome="delivery_timeout",
-            )
-        )
+        self._delivery_timeout_for = correlation
         try:
-            stopped = self._dispatcher.stop()
+            admission = self.stop_generation()
         except Exception as exc:
             safe_unexpected_failure(
                 logger,
@@ -832,7 +862,7 @@ class AssistantRuntimeLifecycle(QObject):
                 operation="stop_after_delivery_timeout",
             )
         else:
-            if stopped is not True:
+            if not admission.accepted:
                 logger.error(
                     "Assistant controller did not accept stop after delivery timeout "
                     "for turn %s",
@@ -848,6 +878,7 @@ class AssistantRuntimeLifecycle(QObject):
             self._stop_turn_delivery_watchdog(correlation)
             self._active_turn = None
             self._stop_requested_for = None
+            self._delivery_timeout_for = None
 
     def _new_activation_request(
         self,
@@ -1123,6 +1154,9 @@ class AssistantRuntimeLifecycle(QObject):
             message=admission.message,
             turn_id=request.turn_id,
             generation=request.generation,
+            scope=request.scope,
+            terminal_command=request.terminal_command,
+            excluded_commands=request.excluded_commands,
         )
 
     def stop_generation(self) -> RuntimeCommandAdmissionResult:
@@ -1344,6 +1378,7 @@ class AssistantRuntimeLifecycle(QObject):
         self._state = AssistantRuntimeLifecycleState.CLOSING
         self._initialized = False
         self._stop_activation_watchdog()
+        self._stop_turn_delivery_watchdog()
         self._coordinator.mark_unavailable(self._SHUTTING_DOWN_MESSAGE)
         try:
             if self._startup_cleanup_via_dispatcher is False:

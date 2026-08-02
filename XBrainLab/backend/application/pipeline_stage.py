@@ -67,11 +67,11 @@ _PIPELINE_STAGE_CONTRACTS: dict[PipelineStage, PipelineStageContract] = {
     ),
     PipelineStage.PREPROCESSED: PipelineStageContract(
         prompt_label="Preprocessed",
-        status_label="Ready for epoching",
+        status_label="Ready for EEG epoching",
         next_command=CommandName.CREATE_EPOCH.value,
     ),
     PipelineStage.EPOCH_READY: PipelineStageContract(
-        prompt_label="Epochs Ready",
+        prompt_label="EEG epochs ready",
         status_label="Ready to build dataset",
         next_command=CommandName.GENERATE_DATASET.value,
     ),
@@ -104,7 +104,7 @@ WORKFLOW_COMMAND_LABELS: dict[str, str] = {
     CommandName.LOAD_DATA.value: "Import data",
     CommandName.ATTACH_LABELS.value: "Add labels to loaded data",
     CommandName.PREPROCESS.value: "Preprocess data",
-    CommandName.CREATE_EPOCH.value: "Create epochs",
+    CommandName.CREATE_EPOCH.value: "Create EEG epochs",
     CommandName.GENERATE_DATASET.value: "Build training dataset",
     CommandName.CONFIGURE_TRAINING.value: "Configure training",
     CommandName.TRAIN.value: "Start training",

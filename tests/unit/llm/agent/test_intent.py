@@ -7,6 +7,7 @@ from XBrainLab.llm.agent.intent import (
     command_for_intent,
     infer_user_intent,
     is_explicit_workflow_continuation,
+    is_unresolved_historical_action_reference,
     path_label_for_intent,
     resolve_blocked_explanation_intent,
 )
@@ -128,6 +129,99 @@ def test_unresolved_equal_rank_endpoint_choice_requires_clarification(
     text: str,
 ) -> None:
     assert infer_user_intent(text) == "ask_clarification"
+
+
+def test_apply_validated_interpretation_is_not_misclassified_as_validation() -> None:
+    assert (
+        infer_user_intent("Apply the validated interpretation.")
+        == "apply_interpretation"
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Use the first option mentioned earlier.",
+        "Do the one above.",
+        "Use the option you mentioned earlier.",
+        "Do what you suggested before.",
+        "Pick the previous recommendation.",
+        "Use that earlier step.",
+        "Go with your earlier suggestion.",
+        "Run the action from before.",
+        "Can you do the one you suggested before?",
+        "Let's use that one.",
+        "Could you apply that recommendation?",
+        "Let us run the previous action.",
+        "Apply it.",
+        "Use it.",
+        "Use that.",
+        "This.",
+        "That.",
+        "Use the first option in the previous dialog.",
+        "Use the option in the Data Import dialog mentioned earlier.",
+        "Use the option mentioned earlier in the Data Import dialog.",
+        "Apply the setting suggested before in the preprocessing dialog.",
+        "Apply the setting in the preprocessing dialog from before.",
+        "就用剛剛那個",
+        "套用它",
+        "使用它",
+        "這個",
+        "用前面提到的第一個選項",
+        "執行你之前建議的操作",
+        "選先前的建議",
+        "就照前面那個做",
+        "用你剛才提到的選項",
+        "使用資料匯入對話框裡剛才提到的選項",
+        "套用剛才資料匯入對話框裡提到的選項",
+        "使用先前在前處理對話框中建議的設定",
+        "選擇之前訓練對話框裡提過的模型",
+        "套用前處理對話框中先前建議的設定",
+        "選擇訓練對話框裡之前提過的模型",
+        "那就用剛才那個選項",
+        "可以幫我執行剛剛那個嗎",
+        "能不能幫我做之前那個步驟",
+        "就照剛才的",
+        "採用前一個",
+    ),
+)
+def test_unresolved_historical_action_reference_requires_clarification(
+    text: str,
+) -> None:
+    assert is_unresolved_historical_action_reference(text) is True
+    assert infer_user_intent(text) == "ask_clarification"
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Why is that useful?",
+        "Why did you suggest the earlier option?",
+        "Continue the workflow.",
+        "Continue with the reviewed recording.",
+        "Open the option above 30 Hz.",
+        "Use the earlier 1-30 Hz bandpass.",
+        "Use the first option in the current dialog.",
+        "Choose the previous row in the current dialog.",
+        "Select the first option above in the Data Import dialog",
+        "Use the previous option in the current import wizard.",
+        "Select the first option above in the Data Import wizard.",
+        "Choose the previous row in the preprocessing panel.",
+        "Apply the 1-30 Hz setting in the current preprocessing dialog.",
+        "為什麼你剛才建議那個選項?",
+        "繼續目前流程",
+        "使用目前對話框的第一個選項",
+        "選擇資料匯入對話框上面的第一個選項",
+        "選擇目前匯入精靈上面的前一個選項",
+        "選擇資料匯入精靈上面的第一個選項",
+        "選擇前處理面板上方的第二個選項",
+        "套用目前前處理對話框中的 1-30 Hz 設定",
+    ),
+)
+def test_immediate_information_and_current_workflow_are_not_historical_references(
+    text: str,
+) -> None:
+    assert is_unresolved_historical_action_reference(text) is False
 
 
 @pytest.mark.parametrize(

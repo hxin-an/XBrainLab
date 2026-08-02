@@ -16,7 +16,11 @@ from XBrainLab.backend.application.workflow_projection import (
 )
 from XBrainLab.llm.tools.result_contract import safe_unexpected_failure
 
-from .intent import infer_user_intent, resolve_blocked_explanation_intent
+from .intent import (
+    infer_user_intent,
+    is_unresolved_historical_action_reference,
+    resolve_blocked_explanation_intent,
+)
 from .tool_feedback import clean_reason
 
 if TYPE_CHECKING:
@@ -26,19 +30,24 @@ logger = logging.getLogger(__name__)
 
 _GREETING_COPY = (
     "Hello. I can help you move through the EEG workflow: import raw data, "
-    "prepare preprocessing, create epochs, build a training dataset, configure "
+    "prepare preprocessing, create EEG epochs, build a training dataset, configure "
     "training, and explain why a step is blocked. To begin, choose EEG files or "
     "ask what is ready now."
 )
 _CLARIFICATION_COPY = (
     "Tell me which step you want to do next: import data, preview labels and "
-    "metadata, preprocess, create epochs, build a dataset, train, evaluate, or "
+    "metadata, preprocess, create EEG epochs, build a dataset, train, evaluate, or "
     "inspect saliency."
 )
 _BLOCKED_EXPLANATION_AMBIGUOUS_COPY = (
     "Which XBrainLab workflow step do you mean: import data, preprocess, "
-    "create epochs, build a dataset, configure training, train, evaluate, "
+    "create EEG epochs, build a dataset, configure training, train, evaluate, "
     "visualize, or inspect saliency?"
+)
+_HISTORICAL_REFERENCE_CLARIFICATION_COPY = (
+    "I cannot safely tell which earlier option you mean. Name the workflow step "
+    "you want, such as preprocess, create EEG epochs, build a dataset, train, "
+    "evaluate, or inspect saliency."
 )
 _GREETINGS = frozenset({"hello", "hi", "hey", "嗨", "你好", "您好"})
 _COMMAND_SUBJECTS: dict[CommandName, str] = {
@@ -51,7 +60,7 @@ _COMMAND_SUBJECTS: dict[CommandName, str] = {
     CommandName.LOAD_DATA: "Data import",
     CommandName.PREPROCESS: "Preprocessing",
     CommandName.RESET_PREPROCESS: "Resetting preprocessing",
-    CommandName.CREATE_EPOCH: "Epoch creation",
+    CommandName.CREATE_EPOCH: "EEG epoch creation",
     CommandName.GENERATE_DATASET: "Dataset generation",
     CommandName.CONFIGURE_TRAINING: "Training configuration",
     CommandName.TRAIN: "Training",
@@ -100,6 +109,12 @@ class ProductTurnPolicy:
         """Return a deterministic product response or defer to normal generation."""
         if self._is_greeting(text):
             return ProductTurnDecision(ProductTurnKind.GREETING, _GREETING_COPY)
+
+        if is_unresolved_historical_action_reference(text):
+            return ProductTurnDecision(
+                ProductTurnKind.CLARIFICATION,
+                _HISTORICAL_REFERENCE_CLARIFICATION_COPY,
+            )
 
         blocked_explanation = resolve_blocked_explanation_intent(text)
         if blocked_explanation is not None:

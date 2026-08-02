@@ -1,14 +1,12 @@
 """Sidebar widget for the training panel with configuration and execution controls."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QGroupBox,
-    QLabel,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -16,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
+    ApplicationError,
     ClearTrainingHistoryCommand,
     CommandCapability,
     CommandName,
@@ -40,16 +39,18 @@ from XBrainLab.backend.application.resource_preflight import (
 )
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ApplicationUiRuntime,
     ControllerCompatibilityUnavailableError,
+    DatasetSplitDialogBinding,
     blocked_reason,
     execute_application_command,
     execute_application_command_async,
     get_application_view_publication,
     get_command_capability,
     get_command_review_context,
+    get_dataset_split_dialog_binding,
     has_real_application_context,
     is_stale_publication_result,
-    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
@@ -67,7 +68,6 @@ from XBrainLab.ui.dialogs.training import ModelSelectionDialog, TrainingSettingD
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
-from XBrainLab.ui.styles.theme import Theme
 
 _TRAINING_SETTING_SUGGESTION_KEYS = frozenset(
     {
@@ -79,6 +79,7 @@ _TRAINING_SETTING_SUGGESTION_KEYS = frozenset(
         "device",
     }
 )
+_PUBLICATION_UNSET = object()
 
 
 class TrainingSidebar(QWidget):
@@ -128,6 +129,103 @@ class TrainingSidebar(QWidget):
         """QMainWindow: The application main window reference."""
         return self.panel.main_window
 
+    def _has_typed_product_context(self) -> bool:
+        return getattr(self.panel, "_typed_port_mode", False) is True
+
+    def _panel_port(self, name: str):
+        panel_state = getattr(self.panel, "__dict__", {})
+        return panel_state.get(name) if isinstance(panel_state, dict) else None
+
+    def _application_publication(self):
+        publication_port = self._panel_port("_publication_port")
+        if self._has_typed_product_context() and publication_port is None:
+            return None
+        return get_application_view_publication(
+            self,
+            runtime=(
+                cast(ApplicationUiRuntime, publication_port)
+                if publication_port is not None
+                else None
+            ),
+        )
+
+    def _command_capability(self, command_name: CommandName | str):
+        publication_port = self._panel_port("_publication_port")
+        if self._has_typed_product_context() and publication_port is None:
+            return None
+        return get_command_capability(
+            self,
+            command_name,
+            runtime=(
+                cast(ApplicationUiRuntime, publication_port)
+                if publication_port is not None
+                else None
+            ),
+        )
+
+    def _command_review_context(self, command_name: CommandName | str):
+        publication_port = self._panel_port("_publication_port")
+        if self._has_typed_product_context() and publication_port is None:
+            return None
+        return get_command_review_context(
+            self,
+            command_name,
+            runtime=(
+                cast(ApplicationUiRuntime, publication_port)
+                if publication_port is not None
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _published_capability(
+        publication: Any,
+        command_name: CommandName,
+    ) -> CommandCapability | None:
+        """Read an optional capability without trusting a partial policy."""
+        capabilities = getattr(publication, "effective_capabilities", None)
+        lookup = getattr(capabilities, "get", None)
+        if not callable(lookup):
+            return None
+        for key in (command_name, command_name.value):
+            try:
+                candidate = lookup(key)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if isinstance(candidate, CommandCapability):
+                return candidate
+        return None
+
+    def _execute_action(self, command, **kwargs):
+        action_port = self._panel_port("_action_port")
+        if self._has_typed_product_context() and action_port is None:
+            return None
+        return execute_application_command(
+            self,
+            command,
+            runtime=(
+                cast(ApplicationUiRuntime, action_port)
+                if action_port is not None
+                else None
+            ),
+            **kwargs,
+        )
+
+    def _execute_action_async(self, command, **kwargs) -> bool:
+        action_port = self._panel_port("_action_port")
+        if self._has_typed_product_context() and action_port is None:
+            return False
+        return execute_application_command_async(
+            self,
+            command,
+            runtime=(
+                cast(ApplicationUiRuntime, action_port)
+                if action_port is not None
+                else None
+            ),
+            **kwargs,
+        )
+
     def init_ui(self):
         """Build the sidebar layout with info, configuration, and execution groups."""
         self.setFixedWidth(260)
@@ -141,9 +239,18 @@ class TrainingSidebar(QWidget):
         root_layout.addWidget(self.scroll_area)
         layout = self.scroll_area.content_layout
 
-        self.readiness_group = self._create_readiness_group()
-        layout.addWidget(self.readiness_group)
-        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
+        self.info_panel = AggregateInfoPanel(self.main_window)
+        self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        layout.addWidget(self.info_panel)
+
+        layout.addSpacing(10)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet(Stylesheets.SEPARATOR_HORIZONTAL)
+        line.setFixedHeight(1)
+        layout.addWidget(line)
+        layout.addSpacing(10)
 
         # Group 1: Configuration
         config_group = QGroupBox("CONFIGURATION")
@@ -196,57 +303,10 @@ class TrainingSidebar(QWidget):
         exec_layout.addWidget(self.btn_clear)
 
         layout.addWidget(exec_group)
-
-        layout.addSpacing(10)
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet(Stylesheets.SEPARATOR_HORIZONTAL)
-        line.setFixedHeight(1)
-        layout.addWidget(line)
-        layout.addSpacing(10)
-
-        self.info_panel = AggregateInfoPanel(self.main_window)
-        self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        layout.addWidget(self.info_panel)
         layout.addStretch()
 
         # Initial check
         self.check_ready_to_train()
-
-    def _create_readiness_group(self) -> QGroupBox:
-        group = QGroupBox("READINESS")
-        group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        group.setObjectName("TrainingReadiness")
-        layout = QGridLayout(group)
-        layout.setContentsMargins(0, 10, 0, 0)
-        layout.setHorizontalSpacing(8)
-        layout.setVerticalSpacing(3)
-
-        self.readiness_status_labels: dict[str, QLabel] = {}
-        for row, label_text in enumerate(
-            ("EEG epochs", "Training datasets", "Model", "Training settings")
-        ):
-            label = QLabel(label_text)
-            status = QLabel("Needed")
-            status.setAlignment(Qt.AlignmentFlag.AlignRight)
-            status.setObjectName(f"TrainingReadinessStatus{row}")
-            self.readiness_status_labels[label_text] = status
-            layout.addWidget(label, row, 0)
-            layout.addWidget(status, row, 1)
-
-        self.readiness_blocker = QLabel()
-        self.readiness_blocker.setObjectName("TrainingReadinessBlocker")
-        self.readiness_blocker.setWordWrap(True)
-        layout.addWidget(self.readiness_blocker, 4, 0, 1, 2)
-
-        self.readiness_next_button = QPushButton()
-        self.readiness_next_button.setObjectName("TrainingReadinessNextAction")
-        self.readiness_next_button.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.readiness_next_button.clicked.connect(self._run_readiness_next_action)
-        layout.addWidget(self.readiness_next_button, 5, 0, 1, 2)
-        self._readiness_next_action: str | None = None
-        return group
 
     def _compatibility_controller_value(
         self,
@@ -255,7 +315,7 @@ class TrainingSidebar(QWidget):
         blocked_title: str | None = None,
     ) -> tuple[bool, Any]:
         """Read controller compatibility state only for mock UI contexts."""
-        if has_real_application_context(self):
+        if self._has_product_publication_context():
             if blocked_title is not None:
                 QMessageBox.warning(
                     self,
@@ -270,27 +330,27 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(self, blocked_title, str(exc))
             return False, None
 
-    def check_ready_to_train(self, *args):
+    def check_ready_to_train(
+        self,
+        *args,
+        publication: Any = _PUBLICATION_UNSET,
+    ):
         """Check if all configurations are set and enable/disable start button."""
-        publication = get_application_view_publication(self)
-        real_application_context = has_real_application_context(self)
+        if publication is _PUBLICATION_UNSET:
+            publication = self._application_publication()
+        self._sync_clear_history_presentation(publication)
+        real_application_context = self._has_product_publication_context()
         train_capability: CommandCapability | None = None
         if publication is not None and bool(getattr(publication, "usable", False)):
-            capabilities = getattr(publication, "effective_capabilities", {})
-            capability_lookup = getattr(capabilities, "get", None)
-            candidate: object | None = (
-                capability_lookup(CommandName.TRAIN)
-                if callable(capability_lookup)
-                else None
+            train_capability = self._published_capability(
+                publication,
+                CommandName.TRAIN,
             )
-            if isinstance(candidate, CommandCapability):
-                train_capability = candidate
         elif not real_application_context:
-            train_capability = get_command_capability(self, CommandName.TRAIN)
+            train_capability = self._command_capability(CommandName.TRAIN)
         if train_capability is None and real_application_context:
             self.btn_start.setEnabled(False)
             self.btn_start.setToolTip("Training state is unavailable right now.")
-            self._update_readiness_presentation(None, None)
             return
         if train_capability is None:
             available, ready_value = self._compatibility_controller_value(
@@ -327,141 +387,45 @@ class TrainingSidebar(QWidget):
                 )
         else:
             self.btn_start.setToolTip("Start Training")
-        self._update_readiness_presentation(publication, train_capability)
 
-    def _update_readiness_presentation(self, publication, train_capability) -> None:
-        state = getattr(publication, "state", None)
-        active_dataset = getattr(state, "active_dataset", None)
-        active_training = getattr(state, "active_training", None)
-        state_unavailable = False
-        if getattr(publication, "usable", False) and active_dataset is not None:
-            readiness = {
-                "EEG epochs": bool(active_dataset.has_epoch_data),
-                "Training datasets": bool(active_dataset.has_datasets),
-                "Model": bool(getattr(active_training, "has_model", False)),
-                "Training settings": bool(
-                    getattr(active_training, "has_training_option", False)
-                ),
-            }
-            route = self._publication_readiness_route(active_dataset, readiness)
-        elif has_real_application_context(self):
-            readiness = {
-                "EEG epochs": False,
-                "Training datasets": False,
-                "Model": False,
-                "Training settings": False,
-            }
-            route = None
-            state_unavailable = True
-        else:
-            readiness = self._compatibility_readiness()
-            route = self._configured_readiness_route(readiness)
-
-        for label, is_ready in readiness.items():
-            status = self.readiness_status_labels[label]
-            status.setText("Ready" if is_ready else "Needed")
-            status.setStyleSheet(
-                f"color: {Theme.LOG_INFO};"
-                if is_ready
-                else f"color: {Theme.LOG_WARNING};"
-            )
-
-        if state_unavailable:
-            self.readiness_blocker.setText(
-                "Training state is unavailable. Reopen Training or reload the workflow."
-            )
-            self.readiness_next_button.hide()
-            self._readiness_next_action = None
+    def _sync_clear_history_presentation(self, publication: Any) -> None:
+        """Project the published clear-history capability onto its button."""
+        if publication is None:
             return
-
-        capability_reason = ""
-        if train_capability is not None and not train_capability.enabled:
-            reasons = list(getattr(train_capability, "reasons", []) or [])
-            capability_reason = reasons[0] if reasons else ""
-
-        if route is None and train_capability is not None and train_capability.enabled:
-            self.readiness_blocker.setText("Ready to start training.")
-            self.readiness_next_button.hide()
-            self._readiness_next_action = None
+        if not bool(getattr(publication, "usable", False)):
+            self.btn_clear.setEnabled(False)
+            self.btn_clear.setToolTip("Training state is unavailable right now.")
             return
-
-        if route is None:
-            route = (
-                "training_settings",
-                "Review training settings",
-                capability_reason or "Review training configuration before starting.",
-            )
-        action, label, fallback_reason = route
-        self._readiness_next_action = action
-        self.readiness_blocker.setText(capability_reason or fallback_reason)
-        self.readiness_next_button.setText(f"Next: {label}")
-        self.readiness_next_button.show()
-
-    def _compatibility_readiness(self) -> dict[str, bool]:
-        def ready(fallback: Callable[[], Any]) -> bool:
-            available, value = self._compatibility_controller_value(fallback)
-            return bool(value) if available else False
-
-        has_datasets = ready(self.controller.has_datasets)
-        return {
-            "EEG epochs": has_datasets,
-            "Training datasets": has_datasets,
-            "Model": ready(self.controller.has_model),
-            "Training settings": ready(self.controller.has_training_option),
-        }
-
-    @staticmethod
-    def _publication_readiness_route(active_dataset, readiness):
-        if not active_dataset.has_raw_data:
-            return ("dataset", "Import EEG data", "Import EEG data before training.")
-        if not active_dataset.has_preprocessed_data:
-            return (
-                "preprocess",
-                "Preprocess EEG",
-                "Preprocess the imported EEG data before training.",
-            )
-        if not readiness["EEG epochs"]:
-            return (
-                "preprocess",
-                "Create EEG epochs",
-                "Create EEG epochs before configuring training datasets.",
-            )
-        return TrainingSidebar._configured_readiness_route(readiness)
-
-    @staticmethod
-    def _configured_readiness_route(readiness):
-        routes = (
-            (
-                "Training datasets",
-                "dataset_split",
-                "Configure dataset split",
-                "Generate training datasets before training.",
-            ),
-            ("Model", "model", "Select model", "Select a model before training."),
-            (
-                "Training settings",
-                "training_settings",
-                "Set training options",
-                "Set training options before training.",
-            ),
+        clear_capability = self._published_capability(
+            publication,
+            CommandName.CLEAR_TRAINING_HISTORY,
         )
-        for key, action, label, reason in routes:
-            if not readiness[key]:
-                return (action, label, reason)
-        return None
+        if clear_capability is None:
+            self.btn_clear.setEnabled(False)
+            self.btn_clear.setToolTip("Training history state is unavailable.")
+            return
+        self.btn_clear.setEnabled(clear_capability.enabled)
+        self.btn_clear.setToolTip(
+            "Clear training history"
+            if clear_capability.enabled
+            else blocked_reason(
+                clear_capability,
+                "Training history cannot be cleared right now.",
+            )
+        )
 
-    def _run_readiness_next_action(self) -> None:
-        action = self._readiness_next_action
-        if action == "dataset_split":
-            self.split_data()
-        elif action == "model":
-            self.select_model()
-        elif action == "training_settings":
-            self.training_setting()
-        elif action in {"dataset", "preprocess"}:
-            switch_page = getattr(self.main_window, "switch_page", None)
-            if callable(switch_page):
-                switch_page(0 if action == "dataset" else 1)
+    def _has_product_publication_context(self) -> bool:
+        panel_state = getattr(self.panel, "__dict__", {})
+        publication_port = (
+            panel_state.get("_publication_port")
+            if isinstance(panel_state, dict)
+            else None
+        )
+        return (
+            self._has_typed_product_context()
+            or has_real_application_context(self)
+            or publication_port is not None
+        )
 
     def _compatibility_missing_training_config(self) -> list[str]:
         missing = []
@@ -639,10 +603,7 @@ class TrainingSidebar(QWidget):
         configure_capability = (
             getattr(review_context, "capability", None)
             if context_resolved
-            else get_command_capability(
-                self,
-                CommandName.CONFIGURE_TRAINING,
-            )
+            else self._command_capability(CommandName.CONFIGURE_TRAINING)
         )
         if configure_capability is not None and not configure_capability.enabled:
             QMessageBox.warning(
@@ -678,9 +639,9 @@ class TrainingSidebar(QWidget):
         Validates that epoched data exists and training is not running.
         Warns if existing datasets/history will be cleared.
         """
-        publication = get_application_view_publication(self)
+        publication = self._application_publication()
         generate_capability = (
-            publication.effective_capabilities.get(CommandName.GENERATE_DATASET)
+            self._published_capability(publication, CommandName.GENERATE_DATASET)
             if publication is not None
             else None
         )
@@ -698,20 +659,24 @@ class TrainingSidebar(QWidget):
                 "Data splitting prerequisites could not be verified."
             )
 
-        dialog_context = self._data_splitting_dialog_context(
+        dialog_binding = self._data_splitting_dialog_context(
             expected_publication_generation=(
                 publication.generation if publication is not None else None
             ),
         )
-        if dialog_context is None:
+        if dialog_binding is None:
             return InteractionOutcome.blocked(
                 "EEG epochs are unavailable for data splitting."
             )
 
-        dialog_kwargs = dict(dialog_context)
-        if suggested_values:
-            dialog_kwargs["initial_values"] = dict(suggested_values)
-        win = DataSplittingDialog(self, self.controller, **dialog_kwargs)
+        win = DataSplittingDialog(
+            self,
+            split_context=dialog_binding.split_context,
+            publication_generation=dialog_binding.publication_generation,
+            preview_provider=dialog_binding.preview_provider,
+            preview_canceller=dialog_binding.preview_canceller,
+            initial_values=dict(suggested_values or {}),
+        )
         if not win.exec():
             return InteractionOutcome.cancelled("Data splitting was cancelled.")
 
@@ -763,7 +728,6 @@ class TrainingSidebar(QWidget):
                 )
                 return self._interaction_failure_outcome(result)
             self._show_status("Data splitting configuration saved")
-            self._check_ready_after_command_result(result)
             return InteractionOutcome.completed(result.message)
 
         def _handle_generate_error(error: tuple) -> None:
@@ -774,8 +738,7 @@ class TrainingSidebar(QWidget):
                 message_box=QMessageBox,
             )
 
-        if execute_application_command_async(
-            self,
+        if self._execute_action_async(
             command,
             on_result=_handle_generate_result,
             on_error=_handle_generate_error,
@@ -786,7 +749,7 @@ class TrainingSidebar(QWidget):
         ):
             return InteractionOutcome.accepted("Dataset generation was scheduled.")
 
-        if has_real_application_context(self):
+        if self._has_product_publication_context():
             QMessageBox.warning(
                 self,
                 "Data Splitting Blocked",
@@ -796,8 +759,7 @@ class TrainingSidebar(QWidget):
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
 
-        result = execute_application_command(
-            self,
+        result = self._execute_action(
             command,
             expected_publication_generation=(
                 publication.generation if publication is not None else None
@@ -882,10 +844,7 @@ class TrainingSidebar(QWidget):
         capability_resolved: bool = False,
     ) -> bool:
         if not capability_resolved:
-            generate_capability = get_command_capability(
-                self,
-                CommandName.GENERATE_DATASET,
-            )
+            generate_capability = self._command_capability(CommandName.GENERATE_DATASET)
         if generate_capability is None or generate_capability.enabled:
             return False
 
@@ -903,49 +862,64 @@ class TrainingSidebar(QWidget):
         self,
         *,
         expected_publication_generation: int | None = None,
-    ) -> dict | None:
-        command_kwargs: dict[str, Any] = {"refresh": False}
-        if expected_publication_generation is not None:
-            command_kwargs["expected_publication_generation"] = (
-                expected_publication_generation
+    ) -> DatasetSplitDialogBinding | None:
+        if expected_publication_generation is None:
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
-        result = execute_application_command(
-            self,
-            QueryStateCommand(
-                query="dataset_generation_context",
-                include_objects=True,
-            ),
-            **command_kwargs,
-        )
-        if result is None:
-            if get_command_capability(self, CommandName.GENERATE_DATASET) is not None:
-                QMessageBox.warning(
-                    self,
-                    "Data Splitting Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
+            return None
+        try:
+            query_port = self._panel_port("_query_port")
+            if self._has_typed_product_context() and query_port is None:
                 return None
-            return {}
-        if result.failed:
-            title = (
-                "Review Data Splitting Again"
-                if is_stale_publication_result(result)
-                else "Data Splitting Blocked"
+            if query_port is None:
+                binding = get_dataset_split_dialog_binding(
+                    self,
+                    publication_generation=expected_publication_generation,
+                )
+            else:
+                binding = get_dataset_split_dialog_binding(
+                    self,
+                    publication_generation=expected_publication_generation,
+                    runtime=cast(ApplicationUiRuntime, query_port),
+                )
+        except ApplicationError as exc:
+            diagnostics = getattr(exc, "diagnostics", {}) or {}
+            stale_context = "requested_generation" in diagnostics and any(
+                key in diagnostics
+                for key in (
+                    "current_generation",
+                    "before_generation",
+                    "after_generation",
+                )
             )
             QMessageBox.warning(
                 self,
-                title,
-                result.message,
+                (
+                    "Review Data Splitting Again"
+                    if stale_context
+                    else "Data Splitting Blocked"
+                ),
+                str(exc),
             )
             return None
-        diagnostics = getattr(result, "diagnostics", {}) or {}
-        if diagnostics.get("payload_type") != "dataset_generation_context":
-            return {}
-        payload = local_result_payload(result)
-        return {
-            "epoch_data": payload.get("epoch_data"),
-            "dataset_generator": payload.get("dataset_generator"),
-        }
+        except (TypeError, ValueError):
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return None
+        if binding is None or not binding.split_context.epoch_available:
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return None
+        return binding
 
     def _requires_dataset_replacement_confirmation(
         self,
@@ -953,10 +927,7 @@ class TrainingSidebar(QWidget):
     ) -> bool:
         """Read replacement intent from capability policy, never display text."""
         if generate_capability is None:
-            generate_capability = get_command_capability(
-                self,
-                CommandName.GENERATE_DATASET,
-            )
+            generate_capability = self._command_capability(CommandName.GENERATE_DATASET)
         if generate_capability is None:
             available, should_clear = self._compatibility_controller_value(
                 lambda: self.controller.has_datasets() or self.controller.get_trainer(),
@@ -966,11 +937,6 @@ class TrainingSidebar(QWidget):
             generate_capability.enabled
             and getattr(generate_capability, "requires_confirmation", False)
         )
-
-    def _check_ready_after_command_result(self, result) -> None:
-        """Reconcile the Start button from authoritative post-command state."""
-        if result is None:
-            self.check_ready_to_train()
 
     def select_model(
         self,
@@ -982,10 +948,7 @@ class TrainingSidebar(QWidget):
         """
         if not isinstance(suggested_model, str):
             suggested_model = None
-        review_context = get_command_review_context(
-            self,
-            CommandName.CONFIGURE_TRAINING,
-        )
+        review_context = self._command_review_context(CommandName.CONFIGURE_TRAINING)
         if self._configuration_blocked(
             "Cannot change model while training is running.",
             review_context=review_context,
@@ -1022,10 +985,7 @@ class TrainingSidebar(QWidget):
             suggested_model = None
         if not isinstance(suggested_values, dict):
             suggested_values = None
-        review_context = get_command_review_context(
-            self,
-            CommandName.CONFIGURE_TRAINING,
-        )
+        review_context = self._command_review_context(CommandName.CONFIGURE_TRAINING)
         expected_generation = (
             review_context.publication_generation
             if review_context is not None
@@ -1093,10 +1053,7 @@ class TrainingSidebar(QWidget):
         """
         if not isinstance(suggested_values, dict):
             suggested_values = None
-        review_context = get_command_review_context(
-            self,
-            CommandName.CONFIGURE_TRAINING,
-        )
+        review_context = self._command_review_context(CommandName.CONFIGURE_TRAINING)
         expected_generation = (
             review_context.publication_generation
             if review_context is not None
@@ -1227,8 +1184,7 @@ class TrainingSidebar(QWidget):
             command_kwargs["expected_publication_generation"] = (
                 expected_publication_generation
             )
-        result = execute_application_command(
-            self,
+        result = self._execute_action(
             command,
             **command_kwargs,
         )
@@ -1256,7 +1212,6 @@ class TrainingSidebar(QWidget):
             )
             return self._interaction_failure_outcome(result)
         self._show_status(success_status)
-        self._check_ready_after_command_result(result)
         return InteractionOutcome.completed(result.message)
 
     @staticmethod
@@ -1275,11 +1230,20 @@ class TrainingSidebar(QWidget):
             command_kwargs["expected_publication_generation"] = (
                 expected_publication_generation
             )
-        result = execute_application_command(
-            self,
-            QueryStateCommand(query="state"),
-            **command_kwargs,
-        )
+        query_port = self._panel_port("_query_port")
+        if self._has_typed_product_context():
+            if query_port is None:
+                result = None
+            else:
+                result = query_port.query_training_state(
+                    expected_publication_generation=expected_publication_generation,
+                )
+        else:
+            result = execute_application_command(
+                self,
+                QueryStateCommand(query="state"),
+                **command_kwargs,
+            )
         if result is None:
             QMessageBox.warning(
                 self,
@@ -1317,15 +1281,26 @@ class TrainingSidebar(QWidget):
     def start_training_ui_action(self):
         """Schedule resource validation and plan construction off the GUI thread."""
         try:
-            review_context = get_command_review_context(
-                self,
-                CommandName.TRAIN,
-            )
+            review_context = self._command_review_context(CommandName.TRAIN)
+            if review_context is None and self._has_product_publication_context():
+                QMessageBox.warning(
+                    self,
+                    "Start Training Blocked",
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                )
+                return
             train_capability = (
-                review_context.capability
+                getattr(review_context, "capability", None)
                 if review_context is not None
-                else get_command_capability(self, CommandName.TRAIN)
+                else self._command_capability(CommandName.TRAIN)
             )
+            if review_context is not None and train_capability is None:
+                QMessageBox.warning(
+                    self,
+                    "Start Training Blocked",
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                )
+                return
             if train_capability is not None and not train_capability.enabled:
                 QMessageBox.warning(
                     self,
@@ -1384,16 +1359,14 @@ class TrainingSidebar(QWidget):
 
         self._show_status("Checking resources and preparing training...")
         if expected_publication_generation is None:
-            started = execute_application_command_async(
-                self,
+            started = self._execute_action_async(
                 command,
                 on_result=_handle_result,
                 on_error=_handle_error,
                 busy_target=self.panel,
             )
         else:
-            started = execute_application_command_async(
-                self,
+            started = self._execute_action_async(
                 command,
                 on_result=_handle_result,
                 on_error=_handle_error,
@@ -1418,17 +1391,7 @@ class TrainingSidebar(QWidget):
     ) -> None:
         """Resolve backend resource outcomes on the GUI thread."""
         if not result.failed:
-            reconcile = getattr(
-                self.panel,
-                "reconcile_training_terminal_outcome",
-                None,
-            )
-            if callable(reconcile) and reconcile() is True:
-                self._check_ready_after_command_result(result)
-                return
-            self.btn_stop.setEnabled(True)
             self._show_status("Training started")
-            self._check_ready_after_command_result(result)
             return
 
         if is_stale_publication_result(result):
@@ -1510,7 +1473,7 @@ class TrainingSidebar(QWidget):
 
     def stop_training(self):
         """Request ApplicationService to stop the current training run."""
-        stop_capability = get_command_capability(self, CommandName.STOP_TRAINING)
+        stop_capability = self._command_capability(CommandName.STOP_TRAINING)
         if stop_capability is not None and not stop_capability.enabled:
             QMessageBox.warning(
                 self,
@@ -1527,7 +1490,7 @@ class TrainingSidebar(QWidget):
             if not available or not is_training:
                 return
 
-        result = execute_application_command(self, StopTrainingCommand())
+        result = self._execute_action(StopTrainingCommand())
         if result is None:
             QMessageBox.warning(
                 self,
@@ -1542,9 +1505,7 @@ class TrainingSidebar(QWidget):
                 f"Failed to stop training: {result.message}",
             )
             return
-        self.btn_stop.setEnabled(False)
         self._show_status("Training stop requested")
-        # The publication/observer path reconciles the terminal panel state.
 
     def clear_history(self):
         """Clear all training history records.
@@ -1552,17 +1513,29 @@ class TrainingSidebar(QWidget):
         Blocked while training is running.
         """
         try:
-            publication = get_application_view_publication(self)
+            publication = self._application_publication()
+            if publication is None and self._has_product_publication_context():
+                QMessageBox.warning(
+                    self,
+                    "Clear History Blocked",
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                )
+                return
             clear_capability = (
-                publication.effective_capabilities.get(
+                self._published_capability(
+                    publication,
                     CommandName.CLEAR_TRAINING_HISTORY,
                 )
                 if publication is not None
-                else get_command_capability(
-                    self,
-                    CommandName.CLEAR_TRAINING_HISTORY,
-                )
+                else self._command_capability(CommandName.CLEAR_TRAINING_HISTORY)
             )
+            if clear_capability is None and self._has_product_publication_context():
+                QMessageBox.warning(
+                    self,
+                    "Clear History Blocked",
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                )
+                return
             if clear_capability is not None and not clear_capability.enabled:
                 QMessageBox.warning(
                     self,
@@ -1596,8 +1569,7 @@ class TrainingSidebar(QWidget):
             )
             if reply == QMessageBox.StandardButton.No:
                 return
-            result = execute_application_command(
-                self,
+            result = self._execute_action(
                 ClearTrainingHistoryCommand(confirmed=True),
                 expected_publication_generation=(
                     publication.generation if publication is not None else None
@@ -1621,7 +1593,6 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(self, "Warning", result.message)
                 return
 
-            self._check_ready_after_command_result(result)
             self._show_status("Training history cleared")
         except Exception:
             present_unexpected_error(

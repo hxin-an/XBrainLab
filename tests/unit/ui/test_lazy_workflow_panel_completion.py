@@ -41,7 +41,7 @@ def lazy_window(qtbot) -> MainWindow:
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=controllers,
         ),
     ):
@@ -58,7 +58,7 @@ def test_prepare_failure_settles_callbacks_before_manual_retry(
     failures: list[PanelPreparationFailure] = []
 
     class RetryPanel(QWidget):
-        def __init__(self, *_args: Any) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             super().__init__()
 
     with patch.object(lazy_window, "_request_panel_prepare"):
@@ -97,7 +97,7 @@ def test_failed_handoff_cannot_open_dialog_after_manual_panel_retry(
     qtbot,
 ) -> None:
     class RetryPanel(QWidget):
-        def __init__(self, *_args: Any) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             super().__init__()
             self.sidebar = SimpleNamespace(
                 open_epoching=MagicMock(
@@ -146,12 +146,12 @@ def test_rapid_switch_does_not_activate_or_construct_stale_panel(
     training_ready: list[QWidget] = []
 
     class PreprocessPanel(QWidget):
-        def __init__(self, *_args: Any) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             super().__init__()
             construction_threads.append((1, _current_thread()))
 
     class TrainingPanel(QWidget):
-        def __init__(self, *_args: Any) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             super().__init__()
             construction_threads.append((2, _current_thread()))
 
@@ -235,7 +235,7 @@ def test_matplotlib_panel_prepare_and_construction_stay_on_gui_thread(
     ready_panels: list[QWidget] = []
 
     class MatplotlibPanel(QWidget):
-        def __init__(self, *_args: Any) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             super().__init__()
             construction_threads.append(_current_thread())
 

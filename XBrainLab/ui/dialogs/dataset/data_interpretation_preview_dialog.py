@@ -33,6 +33,9 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application.data_interpretation_pairing import (
     resolve_label_file_pairing,
 )
+from XBrainLab.backend.application.data_interpretation_path_identity import (
+    normalized_path_identity,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import icon_path
 from XBrainLab.ui.dialogs.dataset.event_value_decision_editor import (
@@ -68,7 +71,10 @@ class _CurrentStepStackedWidget(QStackedWidget):
 class _StepScrollArea(QScrollArea):
     """Scroll area that ignores wheel input when the current step fits."""
 
-    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+    def wheelEvent(self, event: QWheelEvent | None) -> None:  # noqa: N802
+        if event is None:
+            super().wheelEvent(event)
+            return
         if self.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff:
             scrollbar = self.verticalScrollBar()
             if scrollbar is not None:
@@ -344,6 +350,7 @@ class DataInterpretationPreviewDialog(
         self.placement_card: QWidget
         self.label_table_fallback_card: QFrame
         self.label_table_fallback_reason_label: QLabel
+        self.go_to_load_labels_btn: QPushButton
         self.view_label_table_format_btn: QPushButton
         self.match_check_card: QFrame
         self.pairing_status_label: QLabel
@@ -423,6 +430,8 @@ class DataInterpretationPreviewDialog(
         self._target_event_selection_touched = False
         self._time_model_rule_touched = False
         self._event_detail_widgets: list[QWidget] = []
+        self._match_advanced_visible = False
+        self._match_advanced_widgets: list[QWidget] = []
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
         self._label_rule_controls_changed = False
@@ -717,10 +726,17 @@ class DataInterpretationPreviewDialog(
         self.step_stack.addWidget(metadata_panel)
 
         label_panel, label_panel_layout = self._step_panel()
+        self.match_advanced_toggle = QPushButton("Advanced details")
+        self.match_advanced_toggle.setObjectName("DataImportTertiaryButton")
+        self.match_advanced_toggle.setCheckable(True)
+        self.match_advanced_toggle.setChecked(False)
+        self.match_advanced_toggle.setToolTip("Show event roles and source evidence.")
+        self.match_advanced_toggle.toggled.connect(self._set_match_advanced_visible)
         label_panel_layout.addWidget(
             self._panel_header(
                 "Match Labels",
                 "Choose the label source, then map label values onto the EEG.",
+                action=self.match_advanced_toggle,
             )
         )
         self.label_carrier_tree = QTreeWidget()
@@ -803,7 +819,7 @@ class DataInterpretationPreviewDialog(
         self.event_layout.setContentsMargins(12, 10, 12, 12)
         self.event_layout.setSpacing(6)
         self.event_tree = QTreeWidget()
-        self.event_tree.setHeaderLabels(["Label / event", "Use as", "Name / meaning"])
+        self.event_tree.setHeaderLabels(["Label or EEG event", "Use as", "Class name"])
         self.event_tree.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.EditKeyPressed,
@@ -817,6 +833,7 @@ class DataInterpretationPreviewDialog(
         self._build_match_check_card(match_check_layout)
         label_panel_layout.addWidget(self.match_check_card)
         self._refresh_label_source_mode()
+        self._set_match_advanced_visible(False)
         label_panel_layout.addStretch()
         self.step_stack.addWidget(label_panel)
 
@@ -964,6 +981,24 @@ class DataInterpretationPreviewDialog(
         self._sync_step_state()
         self._fit_all_tree_columns_to_viewport()
 
+    def _register_match_advanced_widget(self, widget: QWidget) -> None:
+        self._match_advanced_widgets.append(widget)
+        widget.setVisible(self._match_advanced_visible)
+
+    def _set_match_advanced_visible(self, visible: bool) -> None:
+        self._match_advanced_visible = bool(visible)
+        live_widgets: list[QWidget] = []
+        for widget in self._match_advanced_widgets:
+            try:
+                widget.setVisible(self._match_advanced_visible)
+            except RuntimeError:
+                continue
+            live_widgets.append(widget)
+        self._match_advanced_widgets = live_widgets
+        if self.event_value_editor is not None:
+            self.event_value_editor.set_advanced_visible(self._match_advanced_visible)
+        self._sync_scroll_policy()
+
     def _apply_initial_step(self) -> None:
         if not self._initial_step or not hasattr(self, "step_stack"):
             return
@@ -973,19 +1008,32 @@ class DataInterpretationPreviewDialog(
             return
         self.step_stack.setCurrentIndex(index)
 
-    def _panel_header(self, title: str, detail: str) -> QFrame:
+    def _panel_header(
+        self,
+        title: str,
+        detail: str,
+        *,
+        action: QWidget | None = None,
+    ) -> QFrame:
         header = QFrame()
         header.setObjectName("DataImportPanelHeader")
-        layout = QVBoxLayout(header)
+        layout = QHBoxLayout(header)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(12)
+        text = QWidget(header)
+        text_layout = QVBoxLayout(text)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(4)
         title_label = QLabel(title)
         title_label.setObjectName("DataImportPanelTitle")
         detail_label = QLabel(detail)
         detail_label.setObjectName("DataImportPanelSubtitle")
         detail_label.setWordWrap(True)
-        layout.addWidget(title_label)
-        layout.addWidget(detail_label)
+        text_layout.addWidget(title_label)
+        text_layout.addWidget(detail_label)
+        layout.addWidget(text, 1)
+        if action is not None:
+            layout.addWidget(action, 0, Qt.AlignmentFlag.AlignTop)
         return header
 
     @staticmethod
@@ -1643,6 +1691,9 @@ class DataInterpretationPreviewDialog(
         """
 
     def _go_next_step(self) -> None:
+        self._sync_next_button_state()
+        if not self.next_button.isEnabled():
+            return
         if self._label_sources_need_rescan_before_matching():
             self._resume_step_after_accept = "Review Metadata"
             self.accept()
@@ -1702,6 +1753,7 @@ class DataInterpretationPreviewDialog(
         self.next_button.setVisible(not final_step)
         if not final_step and current + 1 < total:
             self.next_button.setText(f"Next: {self._step_titles[current + 1]}")
+        self._sync_next_button_state()
         self.apply_button.setVisible(final_step)
         self.confirmation_label.setVisible(
             final_step and bool(self.confirmation_label.text())
@@ -1746,15 +1798,36 @@ class DataInterpretationPreviewDialog(
         page_layout = current_page.layout()
         if page_layout is not None:
             page_layout.activate()
-        content_height = max(
-            current_page.sizeHint().height(),
-            current_page.minimumSizeHint().height(),
-        )
+        content_height = self._step_content_height(current_page)
         chrome_height = max(self.height() - viewport.height(), 150)
-        desired_height = max(content_height + chrome_height + 8, 560)
+        desired_height = max(content_height + chrome_height + 8, 520)
         target_height = min(desired_height, self._review_restore_size.height())
         if target_height != self.height():
             self.resize_preserving_center(QSize(self.width(), target_height))
+
+    def _step_content_height(self, current_page: QWidget) -> int:
+        """Return the settled content height for scroll and window sizing."""
+        final_page = (
+            hasattr(self, "step_stack")
+            and self.step_stack.count() > 0
+            and current_page is self.step_stack.widget(self.step_stack.count() - 1)
+        )
+        if final_page:
+            self._sync_review_import_row_heights()
+            page_layout = current_page.layout()
+            if page_layout is not None:
+                page_layout.activate()
+        report_collapsed = (
+            final_page
+            and hasattr(self, "import_report_card")
+            and self.import_report_card.isHidden()
+        )
+        if report_collapsed:
+            return current_page.minimumSizeHint().height()
+        return max(
+            current_page.sizeHint().height(),
+            current_page.minimumSizeHint().height(),
+        )
 
     def _sync_step_labels(self, current: int) -> None:
         if not hasattr(self, "step_labels"):
@@ -1812,11 +1885,13 @@ class DataInterpretationPreviewDialog(
 
     def showEvent(self, event):  # noqa: N802
         super().showEvent(event)
+        self._sync_review_dialog_geometry()
         QTimer.singleShot(0, self._fit_metadata_tree_height)
         QTimer.singleShot(0, self._fit_label_carrier_tree_height)
         QTimer.singleShot(0, self._fit_all_tree_columns_to_viewport)
         QTimer.singleShot(0, self._fit_event_tree_height)
         QTimer.singleShot(0, self._fit_review_tree_height)
+        QTimer.singleShot(0, self._sync_review_dialog_geometry)
         QTimer.singleShot(0, self._sync_scroll_policy)
 
     def _sync_scroll_policy(self) -> None:
@@ -1831,7 +1906,7 @@ class DataInterpretationPreviewDialog(
         viewport_height = viewport.height()
         if viewport_height <= 0:
             return
-        content_height = current.sizeHint().height()
+        content_height = self._step_content_height(current)
         needs_scroll = content_height > viewport_height + 4
         target_height = content_height if needs_scroll else viewport_height
         if self.step_stack.minimumHeight() != target_height:
@@ -1940,13 +2015,7 @@ class DataInterpretationPreviewDialog(
 
     @staticmethod
     def _normalized_label_source_key(path: str) -> str:
-        text = str(path).strip()
-        if not text:
-            return ""
-        try:
-            return Path(text).expanduser().resolve(strict=False).as_posix().rstrip("/")
-        except (OSError, RuntimeError, ValueError):
-            return Path(text).as_posix().rstrip("/")
+        return normalized_path_identity(path).rstrip("/")
 
     def _auto_label_source_keys(self) -> tuple[set[str], set[str]]:
         file_keys: set[str] = set()
@@ -2982,7 +3051,7 @@ class DataInterpretationPreviewDialog(
                 color: {Theme.TEXT_MUTED};
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
                 border-radius: 4px;
-                selection-background-color: {Theme.BLUE_PRESSED};
+                selection-background-color: {Theme.TABLE_SELECTION};
                 selection-color: {Theme.TEXT_MUTED};
             }}
             QTreeWidget#InterpretationReviewSummary {{
@@ -3245,7 +3314,7 @@ class DataInterpretationPreviewDialog(
         palette.setColor(QPalette.ColorRole.Window, base)
         palette.setColor(QPalette.ColorRole.Button, base)
         palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_MUTED))
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.TABLE_SELECTION))
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor(Theme.TEXT_MUTED))
         tree.setPalette(palette)
         viewport = tree.viewport()
@@ -4101,6 +4170,7 @@ class DataInterpretationPreviewDialog(
         return choice_count == option_count
 
     def _sync_apply_state(self, *_args: Any) -> None:
+        self._sync_next_button_state()
         if not hasattr(self, "apply_button"):
             return
         can_submit = self.can_submit_for_backend_review()
@@ -4113,6 +4183,35 @@ class DataInterpretationPreviewDialog(
             self.save_recipe_check.setChecked(checked)
             self.save_recipe_check.blockSignals(was_blocked)
             self.save_recipe_check.setText(self._pending_recipe_action_text(checked))
+
+    def _sync_next_button_state(self) -> None:
+        if not hasattr(self, "next_button") or not hasattr(self, "step_stack"):
+            return
+        current = self.step_stack.currentIndex()
+        current_title = (
+            self._step_titles[current] if 0 <= current < len(self._step_titles) else ""
+        )
+        if current_title != "Match Labels":
+            self.next_button.setEnabled(True)
+            self.next_button.setToolTip("")
+            return
+
+        needs_backend_refresh = self._label_field_requires_backend_refresh()
+        needs_review = self._label_placement_needs_review()
+        self.next_button.setEnabled(not needs_review or needs_backend_refresh)
+        if needs_backend_refresh:
+            self.next_button.setText("Refresh label preview")
+            self.next_button.setToolTip(
+                "Refresh the label preview using the selected label field."
+            )
+        elif needs_review:
+            self.next_button.setText("Next: Review and Import")
+            self.next_button.setToolTip(
+                "Resolve label matching before continuing to Review and Import."
+            )
+        else:
+            self.next_button.setText("Next: Review and Import")
+            self.next_button.setToolTip("")
 
     def _remember_save_recipe_preference(self, checked: bool) -> None:
         self._save_recipe_preference = bool(checked)

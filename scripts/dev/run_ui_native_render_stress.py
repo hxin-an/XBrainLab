@@ -188,10 +188,11 @@ def _native_stress_render_publication(sequence: int) -> SaliencyRenderPublicatio
     )
 
 
-class _NativeStressApplicationRuntime:
+class _NativeStressApplicationRuntime(Observable):
     """Minimal typed application publication fixture for product render stress."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._state = _native_stress_saliency_state()
         self._store = ApplicationViewStore(
             self._state,
@@ -413,9 +414,10 @@ def _replace_visualization_panel_with_publication_fixture(
         _pump_until(app, lambda: bool(finalize()), timeout_seconds=8.0)
 
     panel = VisualizationPanel(
-        controller=Observable(),
         parent=window,
-        application_runtime=runtime,
+        query_port=runtime,
+        publication_port=runtime,
+        action_port=runtime,
     )
     panel.resize(1100, 700)
     window.stack.removeWidget(previous_panel)
@@ -1060,11 +1062,48 @@ def _exercise_active_render_close(
         raise RuntimeError("MainWindow did not fence the active product render.")
 
     try:
-        _pump_until(
-            app,
-            lambda: not window.isVisible(),
-            timeout_seconds=15.0,
-        )
+        try:
+            _pump_until(
+                app,
+                lambda: not window.isVisible(),
+                timeout_seconds=15.0,
+            )
+        except RuntimeError as exc:
+            view_diagnostics = {}
+            for name in ("tab_map", "tab_spectro", "tab_topo", "tab_3d"):
+                view = getattr(visualization_panel, name, None)
+                idle = getattr(view, "native_render_work_idle", None)
+                owner = getattr(view, "_render_cleanup_owner", None)
+                if owner is None:
+                    owner = getattr(view, "_worker_pool_owner", None)
+                view_diagnostics[name] = {
+                    "idle": bool(idle()) if callable(idle) else None,
+                    "active_workers": getattr(owner, "active_worker_count", None),
+                    "shutdown_requested": getattr(
+                        view,
+                        "_render_shutdown_requested",
+                        getattr(view, "_shutdown_requested", None),
+                    ),
+                }
+            diagnostics = {
+                "window_visible": window.isVisible(),
+                "closing_in_progress": window._closing_in_progress,
+                "shutdown_fence_active": window._shutdown_fence_active,
+                "training_close_ready": window._training_close_ready,
+                "training_close_check_in_flight": (
+                    window._training_close_check_in_flight
+                ),
+                "close_retry_pending": window._close_retry_pending,
+                "owned_ui_background_idle": window._owned_ui_background_work_idle(),
+                "visualization_native_idle": (
+                    visualization_panel.native_render_work_idle()
+                ),
+                "views": view_diagnostics,
+            }
+            raise RuntimeError(
+                "Timed out waiting for active-render close: "
+                f"{json.dumps(diagnostics, sort_keys=True)}"
+            ) from exc
     finally:
         unrelated_release.set()
     _pump_until(app, unrelated_finished.is_set, timeout_seconds=3.0)

@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-07-23`
+最後更新：`2026-08-02`
 
 ## 這份文件的用途
 
@@ -34,6 +34,62 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-08-02
+
+### 08:25 Manifest, calibration and script-quality closure
+
+- Registered the isolated complete regression, exact-Granite recovery and bounded long-session evidence in the canonical handoff manifest.
+- Added exact-SHA ignored resource calibration before the final dashboard; the dashboard preserves and validates that same artifact instead of trusting the tracked checkpoint.
+- Made mandatory dashboard pytest checks fail on missing summaries, skips, xfail/xpass, deselection, errors or failures.
+- Aligned resource source identity with the protected repo-root `settings.json` policy while keeping every unprotected dirty path blocking.
+- Removed current Basedpyright errors from the active RAG indexer, selected development capture scripts and agent benchmark scripts without changing product/model behavior.
+- Main-agent focused validation: 150 manifest/evidence tests, 91 dashboard/resource tests, scoped Basedpyright `0 errors`, and scoped Ruff/format checks pass.
+- Exact Granite execution, CUDA calibration, full regression, UI artifact review and Windows acceptance remain pending; this is not yet a handoff candidate.
+
+### 07:58 Exact-evidence and repository-hygiene re-audit
+
+- 做了什麼：
+  - 補齊 application publication 在同步 subscription callback 下的 construction order，並將
+    shutdown private-state guard 擴到 service/runtime；四個 ownership slices 經獨立重審 PASS。
+  - 將 `XBrainLab/llm/rag` 納入 Basedpyright product-source scope，修正 optional dependency /
+    runtime type alias boundary。
+  - 重新審查 canonical handoff manifest，登錄 complete regression、exact Granite recovery /
+    long-session、dashboard pytest outcome 與 resource calibration exact-source 缺口。
+  - 將 dirty/failed untracked closure captures 移到 ignored `build/quarantine/`；移除三個
+    identity-free tracked validation JSON 的 current-evidence 地位，並重寫 artifact index。
+- 結果：
+  - Application/runtime/publication/architecture regression `491 passed`；ApplicationService
+    suite `174 passed`；RAG unit suite `93 passed`。
+  - 完整 configured product-source Basedpyright `0 errors`，Ruff focused PASS，
+    `git diff --check` 與 `mkdocs build --strict` PASS。
+  - Worktree status entries 從 `1,255` 收斂到約 `600`；repo-root `settings.json` 與
+    `.vscode/settings.json` 保持未修改。
+- 接續 / 本輪剩餘：
+  - exact Granite long-session capture、resource calibration clean-SHA 路徑、full regression、
+    final UI artifact review、commit/push 與 exact-SHA dossier 尚未關閉；目前仍是 checkpoint。
+
+### 03:06 Product-quality architecture and UI re-gate
+
+- 做了什麼：
+  - 讓 `QueryStateCommand.expected_publication_generation` 對 state、data lists 與 training
+    history 真的 fail closed；mutable detached query 在同一 command lock 內先驗證 generation。
+  - 將 Smart Parse、batch metadata 與 external-label target 改為 generation-bound detached
+    query；補同 basename、不同目錄的 full-path parse-to-apply regression。
+  - 擴大 Dataset `Qt.UserRole` architecture guard 到完整 `DatasetPanel` class，避免只掃 wrapper
+    method 而漏掉真正 render path。
+  - 補 Dataset 空頁主 import action、Agent action 中間省略、明確 panel navigation status、
+    Assistant Settings destructive Delete 層級與不重複的 Data Summary empty copy。
+- 結果：
+  - 架構 reviewer 無 P0/P1；其兩個 P2 guard/evidence 缺口已補。
+  - architecture unit `280 passed`，repository compliance `Architecture compliant`。
+  - Dataset / Model Settings / Info panel `120 passed`；Agent chat/navigation/handoff
+    `302 passed`；Dataset state / Smart Parse focused `48 passed`。
+  - touched product Ruff 與 BasedPyright 均 clean；Dataset 36-scenario narrow/DPI capture PASS，
+    主 agent 已檢查 760px、150% 最窄畫面。
+- 接續 / 本輪剩餘：
+  - canonical docs、exact-commit Granite/RAG、完整 UI artifact、handoff manifest、commit/push
+    尚未關閉；目前仍是 validated checkpoint，不是 Windows handoff candidate。
 
 ## 2026-07-23
 
@@ -16600,3 +16656,50 @@
 - claim boundary：
   - The Granite walkthrough proves one bounded host-assisted product path, not benchmark accuracy.
     Windows acceptance and a frozen candidate are required before thesis benchmark work begins.
+
+### 2026-08-01 Lifecycle ownership and evidence privacy closure
+
+- completed：
+  - Extracted host/RAG/generation/cancellation state into `AssistantTurnOrchestrator` and
+    request-scoped counters/repeated proposals into `AssistantToolAttemptSession`; removed all
+    writable controller compatibility aliases and coordinator-owned turn history.
+  - Added an AST architecture guard that scans production and controller-like test fixtures, then
+    migrated all 108 stale test alias accesses to the explicit owners.
+  - Bounded synchronous training completion and terminal reconciliation without holding the shared
+    command lifecycle lock; added concurrent service handoff isolation and close-fencing coverage.
+  - Centralized evidence cache-path redaction across POSIX, Windows drive, JSON-escaped and WSL UNC
+    aliases before logs, artifacts and dossiers are persisted.
+- validation：
+  - Agent lifecycle migration -> `334` unit/architecture and `208` integration/UI tests passed;
+    focused rerun -> `28 passed`; Ruff and scoped BasedPyright -> PASS.
+  - Training lifecycle slice -> `163 passed`; evidence redaction/inspector slice -> `50 passed`.
+  - Independent training, privacy and agent-ownership reviewers -> PASS.
+  - Repository architecture runner -> PASS after aligning the label atomicity guard with the public
+    wrapper -> checked atomic helper delegation chain.
+- claim boundary：
+  - This remains a working checkpoint. Exact clean-SHA Granite/RAG, multi-dataset and visible UI
+    artifacts, full static/regression gates, commit/push and Windows human acceptance are still
+    required.
+
+### 2026-08-03 Product-quality dirty-checkpoint re-gate
+
+- completed：
+  - Closed the last reproduced Data Import navigation/state regressions, native close lifecycle
+    race, compact Evaluation sidebar overflow, confusion-matrix label clipping and high-risk
+    confirmation evidence mismatch found by the final working-tree walkthrough.
+  - Re-ran the complete isolated unit, integration and regression runner after the repairs.
+  - Revalidated the fixed public-fixture denominator, Data Interpretation lifecycle/placement
+    matrix and cross-source training/epoch boundary before freezing the candidate source.
+- validation：
+  - Complete isolated regression runner -> PASS; UI integration shard -> `112 passed`; regression
+    shard -> `5 passed`.
+  - Required dataset matrix -> `20/20` lifecycle cases, `14/14` formats, `7/7` external placement
+    contracts and 5 public source families.
+  - Mandatory IO/BIDS/cross-source pytest gate -> `39 passed`; strict public runner -> `4/4`.
+  - Ruff check/format, full configured Basedpyright, architecture compliance and `git diff --check`
+    -> PASS.
+- claim boundary：
+  - These results still describe the dirty checkpoint. The complete Data Import capture was
+    intentionally deferred after its per-surface source-identity refresh exceeded the bounded
+    timeout on the large dirty tree. Final screenshots, Granite/RAG evidence and the canonical
+    handoff dossier must be regenerated from the clean pushed exact commit.

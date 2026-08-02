@@ -16,7 +16,7 @@ class AssistantComposer(QPlainTextEdit):
 
     submit_requested = pyqtSignal()
 
-    _MIN_HEIGHT = 58
+    _MIN_HEIGHT = 56
     _MAX_HEIGHT = 144
 
     def __init__(self, parent=None) -> None:
@@ -30,8 +30,11 @@ class AssistantComposer(QPlainTextEdit):
             document.contentsChanged.connect(self._enforce_character_limit)
         self._fit_to_content()
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+    def keyPressEvent(self, event: QKeyEvent | None) -> None:  # noqa: N802
         """Submit on Enter and preserve Shift+Enter for a new line."""
+        if event is None:
+            super().keyPressEvent(event)
+            return
         is_enter = event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
         if is_enter and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
             self.submit_requested.emit()
@@ -39,19 +42,19 @@ class AssistantComposer(QPlainTextEdit):
             return
         super().keyPressEvent(event)
 
-    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+    def showEvent(self, event: QShowEvent | None) -> None:  # noqa: N802
         """Fit text entered before the composer had its final viewport width."""
         super().showEvent(event)
         self._fit_to_content()
 
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+    def resizeEvent(self, event: QResizeEvent | None) -> None:  # noqa: N802
         """Re-fit wrapped text when the assistant dock changes width."""
         super().resizeEvent(event)
         self._fit_to_content()
 
-    def insertFromMimeData(self, source: QMimeData) -> None:  # noqa: N802
+    def insertFromMimeData(self, source: QMimeData | None) -> None:  # noqa: N802
         """Paste only the bounded plain-text portion of external content."""
-        if not source.hasText():
+        if source is None or not source.hasText():
             return
         cursor = self.textCursor()
         selected_length = len(cursor.selectedText())
@@ -71,9 +74,10 @@ class AssistantComposer(QPlainTextEdit):
         """Provide the former QLineEdit write API during the UI migration."""
         self.setPlainText(text)
 
-    def setPlainText(self, text: str) -> None:  # noqa: N802
+    def setPlainText(self, text: str | None) -> None:  # noqa: N802
         """Mirror QLineEdit maxLength behavior for programmatic input."""
-        super().setPlainText(text[:MAX_CHAT_MESSAGE_CONTENT_LENGTH])
+        normalized = "" if text is None else text
+        super().setPlainText(normalized[:MAX_CHAT_MESSAGE_CONTENT_LENGTH])
 
     def _enforce_character_limit(self) -> None:
         if self._enforcing_character_limit:

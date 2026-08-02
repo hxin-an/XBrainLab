@@ -89,6 +89,10 @@ class Theme:
     BLUE_PRESSED = "#094771"
     BLUE_FOCUS_BORDER = "#007acc"
 
+    # Shared low-key selection treatment for tables and trees. Button press
+    # feedback remains intentionally stronger through ``BLUE_PRESSED``.
+    TABLE_SELECTION = "#2f4f66"
+
     # Scrollbar
     SCROLLBAR_BG = "#424242"
     SCROLLBAR_HANDLE = "#4f4f4f"
@@ -103,7 +107,6 @@ class Theme:
     # History Table
     HISTORY_TABLE_BORDER = "#333"
     HISTORY_TABLE_ROW_BORDER = "#2a2a2a"
-    HISTORY_TABLE_SELECTION = "#2f4f66"
 
     # Charts
     CHART_PRIMARY = "#2196F3"  # Blue
@@ -117,7 +120,6 @@ class Theme:
     METRICS_TABLE_GRID = "#3e3e42"
     METRICS_TABLE_HEADER_BG = BACKGROUND_MID
     METRICS_TABLE_BORDER = "#3e3e42"
-    METRICS_TABLE_SELECTION = "#3e3e42"
 
     @staticmethod
     def apply_matplotlib_dark_theme(fig, ax=None, axes=None):

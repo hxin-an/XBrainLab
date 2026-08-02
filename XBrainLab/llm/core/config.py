@@ -29,6 +29,7 @@ from XBrainLab.llm.core.model_catalog import (
     model_cache_candidates,
     model_cache_complete,
 )
+from XBrainLab.platform_paths import user_model_cache_dir
 
 
 def _cuda_available() -> bool:
@@ -89,10 +90,7 @@ class LLMConfig:
     load_in_4bit: bool = False
 
     # Paths
-    # Store models inside the project directory: XBrainLab/llm/models
-    cache_dir: str = field(
-        default_factory=lambda: os.path.join(os.path.dirname(__file__), "models"),
-    )
+    cache_dir: str = field(default_factory=lambda: str(user_model_cache_dir()))
 
     # Runtime selection. Legacy values from env/settings are migrated by
     # ``__post_init__`` and ``load_from_file``.

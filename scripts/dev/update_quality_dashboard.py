@@ -10,7 +10,6 @@ import os
 import re
 import shlex
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -22,6 +21,13 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageStat
 
 from scripts.dev.capture_ui_baseline import CAPTURE_STEPS, is_nearly_black
+from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
+from scripts.dev.pytest_completion_attestation import (
+    REQUIRED_PYTEST_RUNNER_ID,
+    SHARDED_PYTEST_RUNNER_ID,
+    validate_attestation,
+)
+from scripts.dev.pytest_terminal_summary import last_terminal_summary
 from scripts.dev.resource_calibration_contract import (
     strict_calibration_failure_reasons,
 )
@@ -35,6 +41,8 @@ EXPECTED_UI_ARTIFACTS = [filename for filename, _ in CAPTURE_STEPS]
 REFERENCE_UI_DIR = ROOT / "tests" / "baselines" / "ui"
 HEADLESS_CACHE_DIR = Path(tempfile.gettempdir()) / "matplotlib-codex"
 POETRY = "/home/administrator/.local/bin/poetry"
+POETRY_RUN = f"{POETRY} run --"
+POETRY_PYTHON = f"{POETRY_RUN} python"
 UI_WRAPPER = str(ROOT / "scripts" / "dev" / "run_ui_pytest.sh")
 DEFAULT_FRESH_MINUTES = 60
 MAX_UI_MEAN_DIFF = 1.5
@@ -44,7 +52,31 @@ DEFAULT_CHECK_TIMEOUT_SECONDS = 300
 UI_UNIT_SUITE_TIMEOUT_SECONDS = 900
 CHECK_TERMINATION_GRACE_SECONDS = 5
 RESOURCE_CALIBRATION_PATH = ROOT / "artifacts" / "resource_guard" / "calibration.json"
+EXPECTED_HANDOFF_BRANCH = "stabilize/product-quality-closure"
 PROTECTED_LOCAL_CONFIG_PATHS = frozenset({"settings.json"})
+REQUIRED_PUBLIC_IO_TEST_NODES = (
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_load_gdf_file_success",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_load_gdf_file_restores_known_graz_channel_names",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_load_supported_real_formats",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_application_service_import_supported_real_formats",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration"
+    "::test_application_service_summary_excludes_resolved_gdf_channel_normalization",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_load_public_real_formats",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_application_service_import_public_real_formats",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_load_non_existent_file",
+    "tests/integration/io/test_io_integration.py"
+    "::TestIOIntegration::test_load_invalid_extension",
+)
+HANDOFF_EXTERNAL_MANIFEST_SECTIONS = (3, 4, 5, 6)
+EMPTY_STATUS_FINGERPRINT = hashlib.sha256(b"").hexdigest()
 
 
 @dataclass
@@ -72,8 +104,16 @@ class GitState:
     status_summary: list[str]
     dirty_count: int = 0
     status_truncated: bool = False
+    status_available: bool = True
+    status_fingerprint: str = EMPTY_STATUS_FINGERPRINT
     worktree_fingerprint: str = "unavailable"
+    source_tree_fingerprint: str = "unavailable"
+    upstream: str = "unknown"
+    upstream_commit: str = "unknown"
+    ahead_count: int | None = None
+    behind_count: int | None = None
     protected_local_changes: tuple[str, ...] = ()
+    staged_protected_local_changes: tuple[str, ...] = ()
 
     @property
     def unprotected_dirty_count(self) -> int:
@@ -88,8 +128,17 @@ class GitState:
             "status_summary": self.status_summary,
             "dirty_count": self.dirty_count,
             "status_truncated": self.status_truncated,
+            "status_available": self.status_available,
+            "status_fingerprint": self.status_fingerprint,
             "worktree_fingerprint": self.worktree_fingerprint,
+            "dirty_fingerprint": self.worktree_fingerprint,
+            "source_tree_fingerprint": self.source_tree_fingerprint,
+            "upstream": self.upstream,
+            "upstream_commit": self.upstream_commit,
+            "ahead_count": self.ahead_count,
+            "behind_count": self.behind_count,
             "protected_local_changes": list(self.protected_local_changes),
+            "staged_protected_local_changes": list(self.staged_protected_local_changes),
             "unprotected_dirty_count": self.unprotected_dirty_count,
         }
 
@@ -111,14 +160,7 @@ def configure_headless_env(*, ui: bool) -> dict[str, str]:
 
 def extract_pytest_summary(output: str) -> str:
     """Return the most useful pytest summary line available."""
-    summary_pattern = re.compile(
-        r"(passed|failed|error|skipped|warnings?)", re.IGNORECASE
-    )
-    for line in reversed(output.splitlines()):
-        stripped = line.strip()
-        if stripped and summary_pattern.search(stripped):
-            return stripped
-    return "No pytest summary line found."
+    return last_terminal_summary(output) or "No pytest summary line found."
 
 
 def summarize_output(output: str, *, max_lines: int = 12) -> str:
@@ -139,7 +181,7 @@ def summarize_tail(output: str, fallback: str) -> str:
     return fallback
 
 
-def _git_output(args: list[str]) -> str:
+def _git_output(args: list[str], *, allow_empty: bool = False) -> str:
     git_executable = shutil.which("git")
     if git_executable is None:
         return "unknown"
@@ -152,19 +194,45 @@ def _git_output(args: list[str]) -> str:
     )
     if completed.returncode != 0:
         return "unknown"
-    return completed.stdout.rstrip("\r\n") or "unknown"
+    output = completed.stdout.rstrip("\r\n")
+    return output if output or allow_empty else "unknown"
 
 
 def collect_git_state() -> GitState:
     """Return branch/commit/dirty metadata for the generated dashboard."""
     branch = _git_output(["branch", "--show-current"])
-    commit = _git_output(["rev-parse", "--short=12", "HEAD"])
-    status_output = _git_output(["status", "--short"])
-    full_status = [] if status_output == "unknown" else status_output.splitlines()
+    commit = _git_output(["rev-parse", "HEAD"])
+    upstream = _git_output(
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]
+    )
+    upstream_commit = _git_output(["rev-parse", "@{upstream}"])
+    divergence = _git_output(
+        ["rev-list", "--left-right", "--count", "HEAD...@{upstream}"]
+    )
+    ahead_count, behind_count = _parse_git_divergence(divergence)
+    status_output = _git_output(
+        ["status", "--short", "--untracked-files=all"],
+        allow_empty=True,
+    )
+    status_available = status_output != "unknown"
+    full_status = status_output.splitlines() if status_available else []
+    status_fingerprint = (
+        hashlib.sha256(
+            status_output.encode("utf-8", errors="surrogateescape")
+        ).hexdigest()
+        if status_available
+        else "unavailable"
+    )
     protected_local_changes = tuple(
         path
         for entry in full_status
         if (path := _status_entry_path(entry)) in PROTECTED_LOCAL_CONFIG_PATHS
+    )
+    staged_protected_local_changes = tuple(
+        path
+        for entry in full_status
+        if (path := _status_entry_path(entry)) in PROTECTED_LOCAL_CONFIG_PATHS
+        and _status_entry_is_staged(entry)
     )
     return GitState(
         branch=branch,
@@ -173,8 +241,116 @@ def collect_git_state() -> GitState:
         status_summary=full_status[:40],
         dirty_count=len(full_status),
         status_truncated=len(full_status) > 40,
+        status_available=status_available,
+        status_fingerprint=status_fingerprint,
         worktree_fingerprint=_worktree_fingerprint(ROOT),
+        source_tree_fingerprint=_git_output(["rev-parse", "HEAD^{tree}"]),
+        upstream=upstream,
+        upstream_commit=upstream_commit,
+        ahead_count=ahead_count,
+        behind_count=behind_count,
         protected_local_changes=protected_local_changes,
+        staged_protected_local_changes=staged_protected_local_changes,
+    )
+
+
+def _parse_git_divergence(value: str) -> tuple[int | None, int | None]:
+    """Parse git's HEAD/upstream left-right counts without guessing failures."""
+    fields = value.split()
+    if len(fields) != 2:
+        return None, None
+    try:
+        return int(fields[0]), int(fields[1])
+    except ValueError:
+        return None, None
+
+
+def source_stability_check(before: GitState, after: GitState) -> CheckResult:
+    """Fail closed unless source identity is unchanged across dashboard checks."""
+    compared = {
+        "branch": (before.branch, after.branch),
+        "commit": (before.commit, after.commit),
+        "status availability": (before.status_available, after.status_available),
+        "status entries": (before.status_summary, after.status_summary),
+        "status fingerprint": (
+            before.status_fingerprint,
+            after.status_fingerprint,
+        ),
+        "dirty count": (before.dirty_count, after.dirty_count),
+        "status truncation": (before.status_truncated, after.status_truncated),
+        "dirty state": (before.dirty, after.dirty),
+        "dirty fingerprint": (
+            before.worktree_fingerprint,
+            after.worktree_fingerprint,
+        ),
+        "source-tree fingerprint": (
+            before.source_tree_fingerprint,
+            after.source_tree_fingerprint,
+        ),
+        "upstream": (before.upstream, after.upstream),
+        "upstream commit": (before.upstream_commit, after.upstream_commit),
+        "ahead count": (before.ahead_count, after.ahead_count),
+        "behind count": (before.behind_count, after.behind_count),
+        "protected local settings": (
+            before.protected_local_changes,
+            after.protected_local_changes,
+        ),
+        "staged protected local settings": (
+            before.staged_protected_local_changes,
+            after.staged_protected_local_changes,
+        ),
+    }
+    required_identity_labels = {
+        "branch",
+        "commit",
+        "dirty state",
+        "dirty fingerprint",
+        "status fingerprint",
+        "source-tree fingerprint",
+    }
+    unavailable = [
+        label
+        for label, values in compared.items()
+        if label in required_identity_labels
+        and any(value in {"", "unknown", "unavailable", None} for value in values)
+    ]
+    if not before.status_available or not after.status_available:
+        unavailable.append("status availability")
+    changed = [
+        label
+        for label, (started, completed) in compared.items()
+        if started != completed
+    ]
+    if unavailable:
+        status = "fail"
+        summary = (
+            "Source identity was unavailable after checks: "
+            + ", ".join(unavailable)
+            + "."
+        )
+    elif changed:
+        status = "fail"
+        summary = (
+            "Source identity changed during dashboard execution: "
+            + ", ".join(changed)
+            + ". Discard this report and rerun from stable source."
+        )
+    else:
+        status = "pass"
+        summary = (
+            "Branch, commit, complete status metadata, upstream divergence, dirty "
+            "fingerprint, and source-tree fingerprint remained stable across all checks."
+        )
+    return CheckResult(
+        key="source_stability",
+        label="Source Stability",
+        category="quality",
+        command="git identity before and after dashboard checks",
+        status=status,
+        duration_seconds=0.0,
+        returncode=1 if status == "fail" else 0,
+        summary=summary,
+        output_excerpt="",
     )
 
 
@@ -184,6 +360,11 @@ def _status_entry_path(entry: str) -> str:
     if " -> " in payload:
         payload = payload.rsplit(" -> ", maxsplit=1)[1]
     return payload.strip().strip('"')
+
+
+def _status_entry_is_staged(entry: str) -> bool:
+    """Return whether a porcelain-v1 entry has an index-side change."""
+    return bool(entry) and entry[0] not in {" ", "?"}
 
 
 def _worktree_fingerprint(repo_root: Path) -> str:
@@ -200,7 +381,10 @@ def _worktree_fingerprint(repo_root: Path) -> str:
         "HEAD",
         "--",
         ".",
-        ":(exclude,literal)settings.json",
+        *(
+            f":(exclude,literal){relative_path}"
+            for relative_path in sorted(PROTECTED_LOCAL_CONFIG_PATHS)
+        ),
     )
     untracked = _run_git_bytes(
         git_executable,
@@ -259,11 +443,69 @@ def _run_git_bytes(
     return completed.stdout if completed.returncode == 0 else None
 
 
-def workspace_traceability_check(git_state: GitState) -> CheckResult:
-    """Return a non-command check that marks dirty release evidence as not clean."""
-    if not git_state.dirty:
+def workspace_traceability_check(
+    git_state: GitState,
+    *,
+    fail_on_unprotected_dirty: bool = False,
+    expected_branch: str | None = None,
+    require_upstream_sync: bool = False,
+) -> CheckResult:
+    """Validate source identity and protected local-setting hygiene."""
+    exact_sha_available = re.fullmatch(r"[0-9a-f]{40}", git_state.commit) is not None
+    if not git_state.status_available:
+        status = "fail" if fail_on_unprotected_dirty else "warn"
+        summary = "git status was unavailable; source cleanliness is unverified."
+    elif git_state.staged_protected_local_changes:
+        status = "fail"
+        paths = ", ".join(git_state.staged_protected_local_changes)
+        summary = (
+            "Protected local configuration must never be staged; unstage before "
+            f"continuing: {paths}."
+        )
+    elif fail_on_unprotected_dirty and not exact_sha_available:
+        status = "fail"
+        summary = (
+            "Handoff evidence requires the full 40-character commit SHA; "
+            f"observed {git_state.commit!r}."
+        )
+    elif expected_branch is not None and git_state.branch != expected_branch:
+        status = "fail"
+        summary = (
+            f"Handoff evidence requires expected branch {expected_branch!r}; "
+            f"observed {git_state.branch!r}."
+        )
+    elif require_upstream_sync and git_state.upstream in {"", "unknown", "unavailable"}:
+        status = "fail"
+        summary = "Handoff evidence requires a configured upstream branch."
+    elif require_upstream_sync and not re.fullmatch(
+        r"[0-9a-f]{40}", git_state.upstream_commit
+    ):
+        status = "fail"
+        summary = "Handoff evidence could not resolve the configured upstream commit."
+    elif require_upstream_sync and git_state.commit != git_state.upstream_commit:
+        status = "fail"
+        summary = (
+            f"HEAD {git_state.commit} does not equal upstream "
+            f"{git_state.upstream_commit}."
+        )
+    elif require_upstream_sync and (
+        git_state.ahead_count is None or git_state.behind_count is None
+    ):
+        status = "fail"
+        summary = "Handoff evidence could not determine ahead/behind divergence."
+    elif require_upstream_sync and (
+        git_state.ahead_count != 0 or git_state.behind_count != 0
+    ):
+        status = "fail"
+        summary = (
+            "Handoff branch is not synchronized with its upstream: "
+            f"{git_state.ahead_count} ahead / {git_state.behind_count} behind."
+        )
+    elif not git_state.dirty:
         status = "pass"
         summary = f"Clean worktree at {git_state.commit}."
+        if require_upstream_sync:
+            summary += f" Upstream {git_state.upstream}: 0 ahead / 0 behind."
     elif git_state.unprotected_dirty_count == 0:
         status = "pass"
         paths = ", ".join(git_state.protected_local_changes)
@@ -272,7 +514,7 @@ def workspace_traceability_check(git_state: GitState) -> CheckResult:
             f"visible and unstaged: {paths}."
         )
     else:
-        status = "warn"
+        status = "fail" if fail_on_unprotected_dirty else "warn"
         summary = (
             f"Dirty worktree has {git_state.unprotected_dirty_count} unprotected "
             f"changed path(s) ({git_state.dirty_count} total); commit source changes "
@@ -285,38 +527,135 @@ def workspace_traceability_check(git_state: GitState) -> CheckResult:
         command="git status --short",
         status=status,
         duration_seconds=0.0,
-        returncode=0,
+        returncode=1 if status == "fail" else 0,
         summary=summary,
         output_excerpt="\n".join(git_state.status_summary),
     )
 
 
-def resource_calibration_evidence_check() -> CheckResult:
-    """Require current, complete strict CUDA calibration evidence."""
-    command = (
-        "poetry run python scripts/dev/calibrate_resource_guard.py --strict "
-        "--output artifacts/resource_guard/calibration.json"
-    )
-    if not RESOURCE_CALIBRATION_PATH.is_file():
-        failures = ["resource calibration artifact is missing"]
+def handoff_output_contract_check(
+    output_dir: Path | None,
+    *,
+    commit: str,
+) -> CheckResult:
+    """Require final reports to use a SHA-scoped non-source destination."""
+    resolved = output_dir.expanduser().resolve() if output_dir is not None else None
+    if resolved is None:
+        failure = "Handoff evidence requires an explicit --output-dir."
+    elif commit not in resolved.parts:
+        failure = f"Handoff output directory must contain the exact SHA {commit}."
+    elif _is_path_inside(resolved, ROOT) and not _git_ignores_path(
+        resolved / ".gitignore-probe"
+    ):
+        failure = "Handoff output inside the worktree must be git-ignored."
     else:
-        try:
-            payload = json.loads(RESOURCE_CALIBRATION_PATH.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            failures = [f"resource calibration artifact is unreadable: {exc}"]
-        else:
-            failures = strict_calibration_failure_reasons(
-                payload,
-                repo_root=ROOT,
-                validate_source=True,
-                validate_freshness=True,
-            )
-    status = "fail" if failures else "pass"
+        failure = ""
+
+    status = "fail" if failure else "pass"
     summary = (
-        "; ".join(failures[:3])
-        if failures
-        else "Resource guard strict calibration evidence is current."
+        failure or f"SHA-scoped handoff output is outside tracked source: {resolved}."
     )
+    return CheckResult(
+        key="handoff_output_contract",
+        label="Handoff Output Contract",
+        category="quality",
+        command="git check-ignore <handoff-output>/.gitignore-probe",
+        status=status,
+        duration_seconds=0.0,
+        returncode=1 if failure else 0,
+        summary=summary,
+        output_excerpt="",
+    )
+
+
+def _is_path_inside(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _git_ignores_path(path: Path) -> bool:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return False
+    completed = subprocess.run(  # noqa: S603 - resolved git binary, no shell.
+        [git_executable, "check-ignore", "-q", str(path)],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        timeout=30,
+    )
+    return completed.returncode == 0
+
+
+def resource_calibration_evidence_check(
+    *,
+    artifact_path: Path | None = None,
+    require_exact_source: bool = False,
+    commit: str | None = None,
+) -> CheckResult:
+    """Validate checkpoint or exact-source CUDA calibration evidence."""
+    selected_path = artifact_path or RESOURCE_CALIBRATION_PATH
+    if not selected_path.is_absolute():
+        selected_path = ROOT / selected_path
+    selected_path = selected_path.expanduser().resolve()
+    command = (
+        f"{POETRY_PYTHON} scripts/dev/calibrate_resource_guard.py --strict "
+        f"--output {shlex.quote(str(selected_path))}"
+    )
+
+    failures: list[str] = []
+    if require_exact_source:
+        default_path = RESOURCE_CALIBRATION_PATH.expanduser().resolve()
+        if artifact_path is None:
+            failures.append(
+                "handoff calibration requires an explicit --resource-calibration-path"
+            )
+        elif selected_path == default_path:
+            failures.append(
+                "tracked default calibration is checkpoint-only and cannot "
+                "certify handoff"
+            )
+        elif commit is None or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+            failures.append(
+                "handoff calibration requires the current full 40-character commit SHA"
+            )
+        elif commit not in selected_path.parts:
+            failures.append(
+                f"handoff calibration path must contain the exact SHA {commit}"
+            )
+        elif not _git_ignores_path(selected_path):
+            failures.append("handoff calibration artifact path must be Git-ignored")
+
+    if not failures:
+        if not selected_path.is_file():
+            failures = ["resource calibration artifact is missing"]
+        else:
+            try:
+                payload = json.loads(selected_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                failures = [f"resource calibration artifact is unreadable: {exc}"]
+            else:
+                failures = strict_calibration_failure_reasons(
+                    payload,
+                    repo_root=ROOT,
+                    validate_source=require_exact_source,
+                    validate_freshness=True,
+                )
+    if failures:
+        status = "fail"
+        summary = "; ".join(failures[:3])
+    elif require_exact_source:
+        status = "pass"
+        summary = "Resource guard strict exact-source calibration evidence is current."
+    else:
+        status = "warn"
+        summary = (
+            "Resource guard calibration is checkpoint-only; exact source identity "
+            "is not certified."
+        )
     return CheckResult(
         key="resource_calibration_evidence",
         label="Resource Calibration Evidence",
@@ -456,8 +795,26 @@ def run_check(
     """Run a command and normalize the result into dashboard format."""
     started = time.monotonic()
     env = configure_headless_env(ui=ui)
+    command_args = shlex.split(command)
+    pytest_contract = (
+        _dashboard_pytest_attestation_contract(command_args)
+        if validator is validate_required_pytest_matrix
+        else None
+    )
+    attestation_path: Path | None = None
+    if validator is validate_required_pytest_matrix:
+        runtime_dir = ROOT / "build" / "tmp" / "quality-dashboard"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            dir=runtime_dir,
+            prefix=f"{key}-",
+            suffix=".json",
+            delete=True,
+        ) as handle:
+            attestation_path = Path(handle.name)
+        env["XBL_PYTEST_RESULT_JSON"] = str(attestation_path)
     completed, timed_out = _run_bounded_command(
-        shlex.split(command),
+        command_args,
         env=env,
         timeout_seconds=timeout_seconds,
     )
@@ -469,7 +826,20 @@ def run_check(
         status = "fail"
         summary = f"Timed out after {timeout_seconds} seconds."
     elif validator is not None:
-        status, summary = validator(completed.returncode, output)
+        if validator is validate_required_pytest_matrix:
+            if pytest_contract is None:
+                status, summary = "fail", "Required pytest runner is not attesting."
+            else:
+                expected_runner, expected_args = pytest_contract
+                status, summary = validate_required_pytest_matrix(
+                    completed.returncode,
+                    output,
+                    attestation_path=attestation_path,
+                    expected_runner=expected_runner,
+                    expected_args=expected_args,
+                )
+        else:
+            status, summary = validator(completed.returncode, output)
     elif completed.returncode == 0:
         summary = (
             extract_pytest_summary(output) if "pytest" in command else "Command passed."
@@ -483,6 +853,8 @@ def run_check(
         )
         status = "fail"
 
+    if attestation_path is not None:
+        attestation_path.unlink(missing_ok=True)
     return CheckResult(
         key=key,
         label=label,
@@ -503,43 +875,35 @@ def _run_bounded_command(
     timeout_seconds: int,
 ) -> tuple[subprocess.CompletedProcess[str], bool]:
     """Run one check and terminate its process group when the bound expires."""
-    process = subprocess.Popen(  # noqa: S603
+    process, owner = spawn_owned_process(
         args,
         cwd=ROOT,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        start_new_session=os.name == "posix",
     )
+    timed_out = False
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
-        return (
-            subprocess.CompletedProcess(args, process.returncode, stdout, stderr),
-            False,
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        stdout, stderr = terminate_and_collect(
+            process,
+            owner,
+            grace_seconds=CHECK_TERMINATION_GRACE_SECONDS,
         )
-    except subprocess.TimeoutExpired:
-        _terminate_check_process(process)
-        stdout, stderr = process.communicate()
-        return subprocess.CompletedProcess(args, 124, stdout, stderr), True
-
-
-def _terminate_check_process(process: subprocess.Popen[str]) -> None:
-    """Terminate only the timed-out check and descendants started with it."""
-    if process.poll() is not None:
-        return
-    if os.name == "posix":
-        os.killpg(process.pid, signal.SIGTERM)
-    else:
-        process.terminate()
-    try:
-        process.wait(timeout=CHECK_TERMINATION_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        if os.name == "posix":
-            os.killpg(process.pid, signal.SIGKILL)
-        else:
-            process.kill()
-        process.wait()
+    finally:
+        owner.close(grace_seconds=CHECK_TERMINATION_GRACE_SECONDS)
+    return (
+        subprocess.CompletedProcess(
+            args,
+            124 if timed_out else process.returncode,
+            stdout,
+            stderr,
+        ),
+        timed_out,
+    )
 
 
 def validate_startup(returncode: int, output: str) -> tuple[str, str]:
@@ -567,21 +931,92 @@ def validate_pytest_like(returncode: int, output: str) -> tuple[str, str]:
     return ("pass", summary) if returncode == 0 else ("fail", summary)
 
 
-def validate_required_pytest_matrix(returncode: int, output: str) -> tuple[str, str]:
+def validate_required_pytest_matrix(
+    returncode: int,
+    output: str,
+    *,
+    attestation_path: Path | None = None,
+    expected_runner: str = REQUIRED_PYTEST_RUNNER_ID,
+    expected_args: tuple[str, ...] = (),
+) -> tuple[str, str]:
     """Require every case in a mandatory pytest matrix to execute and pass."""
-    status, summary = validate_pytest_like(returncode, output)
-    if status != "pass":
-        return status, summary
-    incomplete = re.search(
-        r"\b\d+\s+(?:skipped|deselected|xfailed|xpassed)\b",
-        output,
-        flags=re.IGNORECASE,
+    exception_summary = extract_unhandled_exception_summary(output)
+    if exception_summary:
+        return "fail", exception_summary
+    if attestation_path is None:
+        return "fail", "Required pytest completion attestation was not provided."
+    attestation, failure = validate_attestation(
+        attestation_path,
+        expected_runner=expected_runner,
+        expected_args=expected_args,
+        expected_exit_code=returncode,
     )
-    if incomplete:
-        return "fail", f"Required pytest matrix was incomplete: {summary}"
-    if not re.search(r"\b\d+\s+passed\b", output, flags=re.IGNORECASE):
-        return "fail", "Required pytest matrix reported no passing cases."
+    if failure is not None or attestation is None:
+        return "fail", failure or "Required pytest completion attestation failed."
+    outcomes = dict(attestation["counts"])
+    summary = f"{outcomes.get('passed', 0)} passed (attested)."
+    if returncode != 0:
+        return "fail", f"Required pytest runner exited with status {returncode}."
+
+    disallowed = {
+        label: outcomes.get(label, 0)
+        for label in (
+            "failed",
+            "errors",
+            "skipped",
+            "xfailed",
+            "xpassed",
+            "deselected",
+        )
+        if outcomes.get(label, 0) > 0
+    }
+    if disallowed:
+        details = ", ".join(
+            f"{label}={count}" for label, count in sorted(disallowed.items())
+        )
+        return (
+            "fail",
+            f"Required pytest matrix was incomplete ({details}): {summary}",
+        )
+    if outcomes.get("passed", 0) <= 0:
+        return "fail", "Required pytest attestation reported no passing cases."
     return "pass", summary
+
+
+def _dashboard_pytest_attestation_contract(
+    args: list[str],
+) -> tuple[str, tuple[str, ...]] | None:
+    if not args:
+        return None
+    executable = Path(args[0]).name.casefold()
+    if executable == "run_ui_pytest.sh":
+        return REQUIRED_PYTEST_RUNNER_ID, ("--capture=sys", *args[1:])
+    tokens = list(args)
+    if tokens[:2] == [POETRY, "run"]:
+        tokens = tokens[2:]
+        if tokens[:1] == ["--"]:
+            tokens = tokens[1:]
+    if len(tokens) < 3 or not Path(tokens[0]).name.casefold().startswith("python"):
+        return None
+    if tokens[1:2] == ["-m"]:
+        runner = tokens[2].casefold()
+        runner_args = tokens[3:]
+    else:
+        runner = Path(tokens[1]).name.casefold()
+        runner_args = tokens[2:]
+    if (
+        runner
+        in {
+            "run_required_pytest_gate.py",
+            "scripts.dev.run_required_pytest_gate",
+        }
+        and "--" in runner_args
+    ):
+        separator = runner_args.index("--")
+        return REQUIRED_PYTEST_RUNNER_ID, tuple(runner_args[separator + 1 :])
+    if runner in {"run_tests.py", "scripts.dev.run_tests"} and runner_args:
+        return SHARDED_PYTEST_RUNNER_ID, (runner_args[0],)
+    return None
 
 
 def extract_unhandled_exception_summary(output: str) -> str | None:
@@ -656,17 +1091,42 @@ def latest_is_fresh(
         return False
     if payload_git.get("commit") != current_git.commit:
         return False
+    if payload_git.get("upstream") != current_git.upstream:
+        return False
+    if payload_git.get("upstream_commit") != current_git.upstream_commit:
+        return False
+    if payload_git.get("ahead_count") != current_git.ahead_count:
+        return False
+    if payload_git.get("behind_count") != current_git.behind_count:
+        return False
     if bool(payload_git.get("dirty")) != current_git.dirty:
         return False
     if int(payload_git.get("dirty_count") or 0) != current_git.dirty_count:
         return False
     if bool(payload_git.get("status_truncated")) != current_git.status_truncated:
         return False
+    if bool(payload_git.get("status_available", True)) != current_git.status_available:
+        return False
+    if payload_git.get("protected_local_changes", []) != list(
+        current_git.protected_local_changes
+    ):
+        return False
+    if payload_git.get("staged_protected_local_changes", []) != list(
+        current_git.staged_protected_local_changes
+    ):
+        return False
     payload_fingerprint = str(payload_git.get("worktree_fingerprint") or "")
     if (
         payload_fingerprint in {"", "unavailable"}
         or current_git.worktree_fingerprint in {"", "unavailable"}
         or payload_fingerprint != current_git.worktree_fingerprint
+    ):
+        return False
+    payload_source_tree = str(payload_git.get("source_tree_fingerprint") or "")
+    if (
+        payload_source_tree in {"", "unknown", "unavailable"}
+        or current_git.source_tree_fingerprint in {"", "unknown", "unavailable"}
+        or payload_source_tree != current_git.source_tree_fingerprint
     ):
         return False
     payload_status = payload_git.get("status_summary")
@@ -697,18 +1157,26 @@ def render_markdown(report: dict) -> str:
         "",
         f"- Generated at: `{generated_at_display}`",
         f"- Profile: `{profile}`",
-        f"- Overall status: `{report['overall_status'].upper()}`",
+        f"- Overall dashboard status: `{report['overall_status'].upper()}`",
         f"- Workspace: `{report['workspace']}`",
     ]
-    git = report.get("git")
+    git = report.get("git_after") or report.get("git")
     if isinstance(git, dict):
         lines.extend(
             [
                 f"- Git branch: `{git.get('branch', 'unknown')}`",
                 f"- Git commit: `{git.get('commit', 'unknown')}`",
+                f"- Git upstream: `{git.get('upstream', 'unknown')}`",
+                f"- Upstream commit: `{git.get('upstream_commit', 'unknown')}`",
+                f"- Upstream divergence: `{git.get('ahead_count', 'unknown')} ahead / "
+                f"{git.get('behind_count', 'unknown')} behind`",
                 f"- Dirty worktree: `{'yes' if git.get('dirty') else 'no'}`",
+                f"- Git status available: "
+                f"`{'yes' if git.get('status_available', True) else 'no'}`",
                 f"- Worktree fingerprint: "
                 f"`{git.get('worktree_fingerprint', 'unavailable')}`",
+                f"- Source-tree fingerprint: "
+                f"`{git.get('source_tree_fingerprint', 'unavailable')}`",
             ]
         )
         status_summary = git.get("status_summary") or []
@@ -724,6 +1192,31 @@ def render_markdown(report: dict) -> str:
                 "- Protected local configuration (visible, never staged): "
                 + ", ".join(f"`{path}`" for path in protected_local_changes)
             )
+        staged_protected_local_changes = git.get("staged_protected_local_changes") or []
+        if staged_protected_local_changes:
+            lines.append(
+                "- Invalid staged protected configuration: "
+                + ", ".join(f"`{path}`" for path in staged_protected_local_changes)
+            )
+    handoff_manifest = report.get("handoff_manifest")
+    if isinstance(handoff_manifest, dict):
+        external_sections = handoff_manifest.get("externally_required_sections") or []
+        first_section = external_sections[0] if external_sections else "?"
+        last_section = external_sections[-1] if external_sections else "?"
+        lines.extend(
+            [
+                "",
+                "## Handoff Evidence Boundary",
+                "",
+                "- Certifies full handoff manifest: `no`",
+                "- External manifest evidence required: "
+                + ", ".join(f"`{section}`" for section in external_sections),
+                "",
+                "Dashboard summary only: this command does not run or certify "
+                f"manifest sections `{first_section}`-`{last_section}`. Their exact "
+                "command logs and artifacts remain required external evidence.",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -785,14 +1278,23 @@ def render_markdown(report: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def write_report(report: dict) -> None:
+def write_report(report: dict, *, output_dir: Path | None = None) -> None:
     """Write the latest dashboard files and append to history."""
-    ensure_quality_dir()
-    LATEST_JSON.write_text(
+    if output_dir is None:
+        ensure_quality_dir()
+        latest_json = LATEST_JSON
+        latest_md = LATEST_MD
+        history_jsonl = HISTORY_JSONL
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        latest_json = output_dir / "latest.json"
+        latest_md = output_dir / "latest.md"
+        history_jsonl = output_dir / "history.jsonl"
+    latest_json.write_text(
         json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    LATEST_MD.write_text(render_markdown(report), encoding="utf-8")
-    with HISTORY_JSONL.open("a", encoding="utf-8") as handle:
+    latest_md.write_text(render_markdown(report), encoding="utf-8")
+    with history_jsonl.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(report, ensure_ascii=False) + "\n")
 
 
@@ -808,15 +1310,21 @@ def build_checks_for_mode(
     *,
     include_slow_checks: bool,
     include_handoff_checks: bool = False,
+    resource_calibration_path: Path | None = None,
+    calibration_commit: str | None = None,
 ) -> list[CheckResult]:
     """Run the dashboard checks for the requested speed profile."""
     checks = [
-        resource_calibration_evidence_check(),
+        resource_calibration_evidence_check(
+            artifact_path=resource_calibration_path,
+            require_exact_source=include_handoff_checks,
+            commit=calibration_commit,
+        ),
         run_check(
             key="ruff_lint",
             label="Ruff Lint",
             category="quality",
-            command=f"{POETRY} run ruff check .",
+            command=f"{POETRY_RUN} ruff check .",
             ui=False,
             validator=lambda code, output: validate_text_command(
                 code,
@@ -828,7 +1336,7 @@ def build_checks_for_mode(
             key="basedpyright_type_check",
             label="Basedpyright Type Check",
             category="quality",
-            command=f"{POETRY} run basedpyright",
+            command=f"{POETRY_RUN} basedpyright",
             ui=False,
             validator=lambda code, output: validate_text_command(
                 code,
@@ -840,7 +1348,7 @@ def build_checks_for_mode(
             key="architecture_compliance",
             label="Architecture Compliance",
             category="quality",
-            command=f"{POETRY} run python tests/architecture_compliance.py",
+            command=f"{POETRY_PYTHON} tests/architecture_compliance.py",
             ui=False,
             validator=lambda code, output: validate_text_command(
                 code,
@@ -854,7 +1362,7 @@ def build_checks_for_mode(
             category="runtime",
             command=(
                 "timeout 25s xvfb-run -a env QT_QPA_PLATFORM=xcb "
-                f"{POETRY} run python run.py"
+                f"{POETRY_PYTHON} run.py"
             ),
             ui=True,
             validator=validate_startup,
@@ -865,7 +1373,7 @@ def build_checks_for_mode(
             category="ui",
             command=(
                 "xvfb-run -a env QT_QPA_PLATFORM=xcb "
-                f"{POETRY} run python scripts/dev/capture_ui_baseline.py"
+                f"{POETRY_PYTHON} scripts/dev/capture_ui_baseline.py"
             ),
             ui=True,
             validator=validate_ui_baseline,
@@ -876,6 +1384,7 @@ def build_checks_for_mode(
             category="ui",
             command=f"{UI_WRAPPER} tests/integration/ui/test_dialog_acceptance.py -q",
             ui=True,
+            validator=validate_required_pytest_matrix,
         ),
         run_check(
             key="ui_product_walkthrough",
@@ -887,14 +1396,15 @@ def build_checks_for_mode(
                 "tests/integration/ui/test_data_import_wizard_runtime.py -q"
             ),
             ui=True,
-            validator=validate_pytest_like,
+            validator=validate_required_pytest_matrix,
         ),
         run_check(
             key="public_bids_visible_ui_wizard_format_matrix",
             label="Public BIDS Visible UI Wizard Format Matrix",
             category="ui",
             command=(
-                f"{POETRY} run pytest --capture=sys "
+                f"{POETRY_PYTHON} -m scripts.dev.run_required_pytest_gate -- "
+                "--capture=sys "
                 "tests/integration/ui/test_data_import_wizard_format_matrix.py -q"
             ),
             ui=True,
@@ -904,9 +1414,9 @@ def build_checks_for_mode(
             key="ui_unit_suite",
             label="UI Unit Suite",
             category="ui",
-            command=f"{POETRY} run python scripts/dev/run_tests.py ui",
+            command=f"{POETRY_PYTHON} scripts/dev/run_tests.py ui",
             ui=True,
-            validator=validate_pytest_like,
+            validator=validate_required_pytest_matrix,
             timeout_seconds=UI_UNIT_SUITE_TIMEOUT_SECONDS,
         ),
         run_check(
@@ -914,10 +1424,11 @@ def build_checks_for_mode(
             label="Real-Data IO Integration",
             category="io",
             command=(
-                f"{POETRY} run pytest --capture=sys "
+                f"{POETRY_RUN} pytest --capture=sys "
                 "tests/integration/io/test_io_integration.py -q"
             ),
             ui=False,
+            validator=validate_pytest_like,
         ),
     ]
     if include_slow_checks:
@@ -927,7 +1438,7 @@ def build_checks_for_mode(
                 key="mypy_type_check",
                 label="Mypy Type Check",
                 category="quality",
-                command=f"{POETRY} run mypy XBrainLab/",
+                command=f"{POETRY_RUN} mypy XBrainLab/",
                 ui=False,
                 validator=lambda code, output: validate_text_command(
                     code,
@@ -949,7 +1460,7 @@ def _build_handoff_dataset_checks() -> list[CheckResult]:
             label="Required Public Fixture Manifest",
             category="io",
             command=(
-                f"{POETRY} run python scripts/dev/fetch_public_eeg_fixtures.py "
+                f"{POETRY_PYTHON} scripts/dev/fetch_public_eeg_fixtures.py "
                 "--profile required-ci --verify-only"
             ),
             ui=False,
@@ -964,7 +1475,7 @@ def _build_handoff_dataset_checks() -> list[CheckResult]:
             label="Required Dataset Validation Matrix",
             category="io",
             command=(
-                f"{POETRY} run python "
+                f"{POETRY_PYTHON} "
                 "scripts/dev/report_dataset_validation_matrix.py "
                 "--strict --format json"
             ),
@@ -981,7 +1492,7 @@ def _build_handoff_dataset_checks() -> list[CheckResult]:
             label="Required Data Interpretation Matrix",
             category="io",
             command=(
-                f"{POETRY} run python "
+                f"{POETRY_PYTHON} "
                 "scripts/dev/report_data_interpretation_format_matrix.py "
                 "--strict --format json --write-artifacts"
             ),
@@ -998,8 +1509,9 @@ def _build_handoff_dataset_checks() -> list[CheckResult]:
             label="Required Public Dataset Integration",
             category="io",
             command=(
-                f"{POETRY} run pytest --capture=sys "
-                "tests/integration/io/test_io_integration.py "
+                f"{POETRY_PYTHON} -m scripts.dev.run_required_pytest_gate -- "
+                "--capture=sys "
+                f"{' '.join(REQUIRED_PUBLIC_IO_TEST_NODES)} "
                 "tests/integration/io/test_public_bids_fixture.py "
                 "tests/integration/pipeline/"
                 "test_public_cross_source_training_smoke.py -q"
@@ -1013,7 +1525,7 @@ def _build_handoff_dataset_checks() -> list[CheckResult]:
             label="Required Public Cross-Source Smoke",
             category="io",
             command=(
-                f"{POETRY} run python "
+                f"{POETRY_PYTHON} "
                 "scripts/dev/run_public_cross_source_training_smoke.py "
                 "--format json --strict"
             ),
@@ -1048,8 +1560,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--handoff",
         action="store_true",
         help=(
-            "Run the full handoff profile, including strict hash-pinned "
-            "multi-dataset gates that reject skipped mandatory cases."
+            "Run the handoff dashboard summary, including strict hash-pinned "
+            "multi-dataset gates. Manifest sections 3-6 require separate evidence."
+        ),
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Write latest.json, latest.md, and history.jsonl to this directory. "
+            "The handoff profile requires a git-ignored or external path scoped "
+            "by the exact commit SHA."
+        ),
+    )
+    parser.add_argument(
+        "--resource-calibration-path",
+        type=Path,
+        default=None,
+        help=(
+            "Calibration artifact to validate. Handoff requires an explicit "
+            "Git-ignored path scoped by the current full commit SHA."
         ),
     )
     return parser.parse_args(argv)
@@ -1057,11 +1588,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     """Refresh the dashboard unless it is still fresh enough."""
-    args = parse_args(argv or sys.argv[1:])
+    args = parse_args(sys.argv[1:] if argv is None else argv)
     include_slow_checks = bool(args.include_slow_checks or args.handoff)
     profile = "handoff" if args.handoff else ("full" if include_slow_checks else "fast")
     git_state = collect_git_state()
-    if latest_is_fresh(
+    traceability = workspace_traceability_check(
+        git_state,
+        fail_on_unprotected_dirty=bool(args.handoff),
+        expected_branch=EXPECTED_HANDOFF_BRANCH if args.handoff else None,
+        require_upstream_sync=bool(args.handoff),
+    )
+    if not args.handoff and latest_is_fresh(
         args.skip_if_fresh_minutes,
         profile=profile,
         git_state=git_state,
@@ -1071,23 +1608,66 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    checks = build_checks_for_mode(
-        include_slow_checks=include_slow_checks,
-        include_handoff_checks=bool(args.handoff),
+    preflight_checks = [traceability]
+    output_contract = (
+        handoff_output_contract_check(args.output_dir, commit=git_state.commit)
+        if args.handoff
+        else None
     )
-    checks.insert(0, workspace_traceability_check(git_state))
+    report_output_dir = args.output_dir
+    if output_contract is not None and output_contract.status == "fail":
+        report_output_dir = None
+    if output_contract is not None and traceability.status != "fail":
+        preflight_checks.append(output_contract)
+
+    if args.handoff and any(check.status == "fail" for check in preflight_checks):
+        checks = preflight_checks
+        git_state_after = collect_git_state()
+    else:
+        checks = build_checks_for_mode(
+            include_slow_checks=include_slow_checks,
+            include_handoff_checks=bool(args.handoff),
+            resource_calibration_path=args.resource_calibration_path,
+            calibration_commit=git_state.commit,
+        )
+        checks[0:0] = preflight_checks
+        git_state_after = collect_git_state()
+        checks.append(source_stability_check(git_state, git_state_after))
     generated_at = datetime.now(UTC).isoformat()
     report = {
         "generated_at": generated_at,
         "profile": profile,
         "workspace": str(ROOT),
         "git": git_state.as_report_dict(),
+        "git_before": git_state.as_report_dict(),
+        "git_after": git_state_after.as_report_dict(),
+        "evidence_output_dir": (
+            str(report_output_dir.expanduser().resolve())
+            if report_output_dir is not None
+            else str(QUALITY_DIR)
+        ),
         "overall_status": compute_overall_status(checks),
         "checks": [asdict(check) for check in checks],
     }
-    write_report(report)
-    print(f"Updated quality dashboard at {LATEST_MD}")
-    print(f"Overall status: {report['overall_status'].upper()}")
+    if args.handoff:
+        report["handoff_manifest"] = {
+            "schema_version": 1,
+            "role": "dashboard_summary",
+            "certifies_full_manifest": False,
+            "externally_required_sections": list(HANDOFF_EXTERNAL_MANIFEST_SECTIONS),
+            "ordered_sections": list(range(1, 9)),
+            "dashboard_clean_last": True,
+            "expected_branch": EXPECTED_HANDOFF_BRANCH,
+            "requires_upstream_sync": True,
+        }
+    if report_output_dir is None:
+        write_report(report)
+        report_path = LATEST_MD
+    else:
+        write_report(report, output_dir=report_output_dir)
+        report_path = report_output_dir / "latest.md"
+    print(f"Updated quality dashboard at {report_path}")
+    print(f"Overall dashboard status: {report['overall_status'].upper()}")
     return 0 if report["overall_status"] != "fail" else 1
 
 

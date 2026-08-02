@@ -56,7 +56,7 @@ from XBrainLab.ui.components.workflow_surface_router import (
                 AssistantTurnActivityPhase.RUNNING_COMMAND,
                 command_name="create_epoch",
             ),
-            "Running: Create epochs",
+            "Running: Create EEG epochs",
         ),
         (
             AssistantTurnActivity(AssistantTurnActivityPhase.RUNNING_COMMAND),
@@ -107,7 +107,7 @@ def test_raw_status_diagnostic_normalizes_without_classifying_activity() -> None
 
     assert diagnostic == "Executing: create_epoch... failed while waiting"
     assert diagnostic not in {
-        "Running: Create epochs",
+        "Running: Create EEG epochs",
         "Waiting for decision",
         "Needs attention",
     }
@@ -352,6 +352,10 @@ def test_status_projection_preserves_atomic_backend_workflow_truth(
     assert projection.decision_fields == backend_projection.decision_fields
     assert projection.existing_ui_surface is surface
     assert projection.available_commands == (command_name,)
+
+
+def test_epoch_settings_surface_uses_eeg_domain_language() -> None:
+    assert AssistantWorkflowSurface.EPOCH_SETTINGS.value == "EEG epoch settings"
 
 
 def test_status_projection_uses_recommended_command_blocker_not_train_blocker() -> None:

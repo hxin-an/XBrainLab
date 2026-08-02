@@ -7,6 +7,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import Any, cast
 
+from XBrainLab.backend.services.dataset_state_service import DatasetStateReadPort
+from XBrainLab.backend.services.preprocess_state_service import PreprocessStateReadPort
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyStatus,
     TrainingReadBoundary,
@@ -39,6 +41,7 @@ from .state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from .training_history import project_training_history_rows
 from .training_runtime import TrainingStateReadPort
 
 __all__ = [
@@ -60,8 +63,8 @@ class StateSnapshotService:
         self,
         *,
         study: Any,
-        dataset: Any,
-        preprocess: Any,
+        dataset: DatasetStateReadPort,
+        preprocess: PreprocessStateReadPort,
         training: Any,
         training_runtime: TrainingStateReadPort,
         evaluation: Any,
@@ -439,30 +442,11 @@ class StateSnapshotService:
             )
         ]
 
-    def training_history(
-        self,
-        *,
-        include_objects: bool = False,
-    ) -> list[dict[str, Any]]:
-        """Return formatted training-history rows for UI or headless queries."""
+    def training_history(self) -> list[dict[str, Any]]:
+        """Return detached training-history rows for UI or headless queries."""
         getter = getattr(self.training_state, "get_formatted_history", None)
         rows = list(cast(Callable[[], Any], getter)() or []) if callable(getter) else []
-        result: list[dict[str, Any]] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            summary = {
-                "group_name": str(row.get("group_name", "")),
-                "run_name": str(row.get("run_name", "")),
-                "model_name": str(row.get("model_name", "")),
-                "is_active": bool(row.get("is_active", False)),
-                "is_current_run": bool(row.get("is_current_run", False)),
-            }
-            if include_objects:
-                summary["plan"] = row.get("plan")
-                summary["record"] = row.get("record")
-            result.append(summary)
-        return result
+        return project_training_history_rows(rows)
 
     def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
         return self.interpretation.snapshot()
@@ -819,6 +803,7 @@ class StateSnapshotService:
         if epoch_data is None:
             return []
         positions = getattr(epoch_data, "channel_position", None)
+        values: Iterable[Any]
         if isinstance(positions, dict):
             values = positions.values()
         elif isinstance(positions, (list, tuple)):

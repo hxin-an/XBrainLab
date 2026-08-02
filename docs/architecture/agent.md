@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-07-30`
+最後更新：`2026-08-01`
 
 ## 範圍
 
@@ -18,19 +18,21 @@
 ChatPanel
   |
   v
-AgentManager
+AgentManager (Qt composition / presentation adapter)
   |
-  v
-AssistantCommandDispatcher / AssistantCommandThread
-  |
-  v
-LLMController
-  |
-  +--> AgentWorker / LLMEngine
-  |
-  +--> Parser / VerificationLayer / ToolRegistry
-  |
-  +--> ToolExecutionCoordinator
+  +--> AssistantRuntimeLifecycle / RuntimeCoordinator
+  +--> AssistantCommandDispatcher / AssistantCommandThread
+  +--> AssistantApplicationPublicationCoordinator
+           |
+           v
+       LLMController
+           |
+           +--> AssistantTurnOrchestrator
+           +--> AssistantToolAttemptSession
+           +--> ProcessRAGRetrieverLifecycle
+           +--> AgentWorker / LLMEngine
+           +--> Parser / VerificationLayer / ToolAttemptCoordinator
+           +--> ToolExecutionCoordinator
   |
   v
 Real Tools
@@ -40,10 +42,10 @@ Real Tools
   v
 ApplicationService / Command API
   |
-  +--> Study-scoped reentrant command/state lock
+  +--> Study-scoped command/state lifecycle and focused services
   |
   v
-Study / cached controllers
+Study / managers / domain state
 ```
 
 這是一個可工作的中間狀態，但還不是最終理想架構。
@@ -53,9 +55,13 @@ Study / cached controllers
 | 區域 | 目前責任 |
 | --- | --- |
 | `XBrainLab/ui/chat/` | chat panel、使用者輸入、模型 / 執行模式 UI。 |
-| `XBrainLab/ui/components/agent_manager.py` | UI 和 assistant 的接線層，負責啟動 controller、轉送訊息、處理既有 UI request、command refresh suppression。 |
+| `XBrainLab/ui/components/agent_manager.py` | UI 和 assistant 的 composition/presentation adapter；組合窄 lifecycle、dispatcher、publication 與既有 UI handoff owners。 |
 | `XBrainLab/ui/components/assistant_command_dispatcher.py` | assistant controller thread ownership、queued shutdown、timeout retry 與 lifecycle cleanup。 |
-| `XBrainLab/llm/agent/controller.py` | agent orchestration：context、parser、verification、confirmation 與 bounded tool loop。 |
+| `XBrainLab/ui/components/assistant_runtime_lifecycle.py` | local runtime activation、terminal close、recoverable error 與 immutable runtime state。 |
+| `XBrainLab/ui/components/assistant_application_publication_coordinator.py` | 將 revisioned application publication 與 training terminal notice 投影到 Assistant。 |
+| `XBrainLab/llm/agent/controller.py` | 組合 agent turn：context、parser、verification、confirmation 與 bounded tool execution；不再保存 writable lifecycle aliases。 |
+| `XBrainLab/llm/agent/turn_orchestrator.py` | `AssistantTurnOrchestrator` 擁有 host/RAG/generation/cancellation correlation；`AssistantToolAttemptSession` 擁有 request-scoped counters、visible feedback 與 repeated proposal history。 |
+| `XBrainLab/llm/agent/rag_process_lifecycle.py` | RAG retriever subprocess 的啟動、timeout、終止與結果 ownership。 |
 | `XBrainLab/llm/agent/tool_execution_coordinator.py` | 執行單一已驗證 tool、套用 capability gate、正規化 command result、記錄 metrics 與發出 command lifecycle signal。 |
 | `XBrainLab/llm/agent/worker.py` | 背景 thread 中的 LLM 初始化、生成、timeout、model switch；只用 immutable runtime snapshot 對 UI 發布狀態。 |
 | `XBrainLab/llm/core/` | local-only backend selection、local backend、runtime config、local model catalog。 |
@@ -79,14 +85,13 @@ Study / cached controllers
 
 ### 2. AgentManager
 
-`AgentManager` 是目前 UI 和 agent runtime 的整合點。
+`AgentManager` 是 UI 和 agent runtime 的 composition/presentation adapter。
 
 它負責：
 
-- 在 `start_system()` 時建立 `LLMController(self.study)`。
-- 將 chat panel 的輸入轉給 `LLMController.handle_user_input()`。
-- 將 assistant 回覆、streaming chunk、錯誤狀態送回 UI。
-- 處理需要 UI 介入的 request，例如 switch panel、confirm montage、confirm action。
+- 透過 runtime lifecycle 與 command dispatcher 建立、啟動及關閉 `LLMController`，而不是直接擁有 worker process 細節。
+- 將 chat panel 的 typed turn 交給 dispatcher，並將 assistant presentation、activity 與錯誤狀態送回 UI。
+- 透過既有 UI handoff host 處理 switch panel、montage、設定與 confirmation，不在 chat 裡建立第二套 workflow form。
 - 透過 `LLMConfig.normalize_backend_mode()` 把 UI label 對齊 runtime key。
 - 以 `ApplicationViewPublication.revision` 確認 GUI 已套用哪一份 backend state；只有 matching
   revision acknowledgement 後，才接收該 publication 保留的 terminal lifecycle event。
@@ -96,7 +101,7 @@ request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測
 
 ### 3. LLMController
 
-`LLMController` 是目前 agent 行為的核心。
+`LLMController` 是 agent turn 的組合層；mutable lifecycle 已有明確 owner。
 
 它負責：
 
@@ -110,11 +115,18 @@ request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測
 - 將已驗證的單一 tool 交給 `ToolExecutionCoordinator`；mapped workflow tool 透過
   `execute_application_tool_command(...)` 執行 ApplicationService command，直接取得
   `CommandResult` payload。
-- tool command 開始時通知 `AgentManager` 抑制 observer duplicate refresh；完成後使用
-  serialized `changed_state` 走 UI 共用 refresh coordinator，再重讀 ApplicationService state /
-  capability snapshot。
+- tool command lifecycle signal 只更新 Assistant 的 working / terminal presentation。Product
+  workflow panels 由 revisioned `ApplicationViewPublication` 更新，不以 serialized
+  `changed_state` 另做一次 repaint；command 完成後 agent 會重讀同一份 ApplicationService
+  state / capability publication。
 - 處理 destructive / long-running tool 的 human confirmation。
 - 防止明顯 tool loop，並限制 multi-step execution 次數。
+
+Controller 不再透過 `_active_generation_id`、`_retry_count` 等 writable compatibility alias 保存
+第二份狀態。Host/RAG/generation/cancellation correlation 只在 `AssistantTurnOrchestrator`；format
+retry、tool failure/execution、visible response 與 repeated proposal history 只在
+`AssistantToolAttemptSession`。Architecture gate 會以 AST 同時掃 production controller 與測試
+fixture，避免測試寫入無效 instance attribute 後產生假通過。
 
 UI 不可直接讀 `AgentWorker.engine` 或 generation thread。worker 只發出 model id、backend mode
 與 initialized 狀態的 snapshot；`AgentManager`、VRAM conflict check 和 model deletion preflight
@@ -141,7 +153,10 @@ command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 
 
 2026-05-31 bounded Copilot slice 後，LLM prompt 不再把長 conversation history 當成
 workflow truth。`ContextAssembler` 會先從 `ApplicationService.get_state()` 和
-`get_capabilities()` 產生一份 compact `WorkflowDecisionContext`，再把它放進 system prompt。
+`get_capabilities()` 產生一份 compact `WorkflowDecisionContext`。Host policy 和本 turn
+可執行的 action contracts 留在 system message；workflow state、blocked reason、tool recovery
+和 request-scoped RAG examples 則放在另一個 user-role、來源標記為 untrusted 的 bounded JSON
+envelope。動態資料不會被插入 policy 或 action-contract 欄位。
 
 目前 decision context 會明確列出：
 
@@ -158,6 +173,11 @@ workflow truth。`ContextAssembler` 會先從 `ApplicationService.get_state()` �
 conversation history 仍保留作語境，但送進 LLM 的 history 只保留最近少量 user-visible
 turns，並過濾 `Tool Output:`、`Request:` 和內部 system payload。這避免舊 tool result
 或長聊天紀錄覆蓋目前 backend state。
+
+Untrusted context 使用 `xbrainlab.untrusted_context.v1` schema，保留每個 item 的來源種類與
+必要識別，並限制總字元、item 數、單一字串、collection 和 nesting depth。模型可把內容當作
+事實參考，但不能從中取得 command permission；私有路徑、secret、控制字元和 role delimiter
+在送進模型前會被移除或替換。RAG 例子也會先依本次 request-scoped tool set 篩選。
 
 Data Import lifecycle 也是 decision context 的一級狀態：
 
@@ -186,26 +206,34 @@ applied         -> loaded raw data / preprocess
 - Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 product / legacy 選型。
 - 優先考慮非中國來源、授權清楚、可本地部署的模型。
 
-2026-07-29 local runtime truth：
+2026-08-01 local runtime truth：
 
 | role | model | provider | estimated download | cache status | smoke |
 | --- | --- | --- | ---: | --- | --- |
 | primary | `ibm-granite/granite-3.3-2b-instruct` | IBM | 5.08 GB | cached | prompt / structured / real GPU boundary workflow PASS |
-| legacy explicit choice | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | cached | older ChatPanel evidence only |
-| legacy explicit choice | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | not required by current candidate | no current full ChatPanel run |
+| historical cache/evidence only | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | root checkout cache only | not selectable; older ChatPanel evidence only |
+| historical evidence only | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | not required by current candidate | not selectable; no current full ChatPanel run |
 
-cache 位置：
+每個 checkout 的已下載模型相容 cache 預設位於：
 
 ```text
 XBrainLab/llm/core/models
 ```
 
-`scripts/dev/inspect_local_assistant_runtime.py --model
-ibm-granite/granite-3.3-2b-instruct --format json` reports `classification: gpu-ready`,
-`has_local_cache: true`, and cache usage `12.77 GB` against the 20 GB product limit. Granite is the
-exact product primary. The real boundary artifact covers one model-owned scan, host-owned
+產品 launcher 不依賴 Python 的 WSL-home default。它在啟動前明確設定模型與 RAG cache：
+既有 canonical cache 可直接沿用，新安裝則使用 repo 所在 Windows 磁碟的
+`XBrainLabCache/models` 與 `XBrainLabCache/rag`。這是 deployment/runtime policy；模型選擇、
+quota 與 snapshot 驗證仍由 application-side catalog contract 決定。
+
+Model cache facts are path-scoped. The closure worktree currently contains only exact Granite and
+uses about `5.07 GB`; the root checkout used by the installed Desktop launcher contains about
+`12.77 GB` because retired Phi content is still present there. Runtime evidence must record the
+selected cache path, branch, full SHA, dirty state and model revision before either number is used.
+Granite is the exact product primary. The real boundary artifact covers one model-owned scan, host-owned
 parameter-free preview / validate continuation, typed Data Import review handoff, cancellation and
 shutdown; it is not a long-session or raw-model accuracy claim.
+Phi entries above document historical cache/evidence only. The product catalog accepts exact
+Granite 3.3 2B; Phi cannot be selected and never becomes a fallback.
 舊 Qwen cache 已刪除，catalog / architecture guards 會阻止被禁用來源重新進入 product path。
 
 新增 runtime policy：
@@ -282,8 +310,9 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 
 `ChatPanel` 只呈現 typed runtime / turn / response state，不自行推測 backend readiness：
 
-- `AgentManager` header 將 runtime 與 turn state投影成 `Local · Loading / Ready / Working / Error`；
-  窄 dock 先保留產品標題、New chat、Settings、Close，再隱藏非必要 badge / action。
+- `AgentManager` header 將 runtime 與 turn state投影成 accessibility description、tooltip 與
+  typed panel state；header 不顯示額外綠色／橘色 status badge。窄 dock 固定保留產品標題、
+  New chat、Settings、Close。
 - message area 擁有 loading、empty、transcript、activity、response action 與 confirmation card；
   composer 固定在底部 layout，不用 absolute positioning。Panel 不顯示 execution-mode selector。
 - setting change 與高風險 action 使用 transient `AssistantConfirmationCard`。Card 持有原始
@@ -299,6 +328,12 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 - action 完成後，GUI 同步仍由 `application_command_completed -> changed_state -> shared refresh`
   處理；card 不直接寫 Training / Dataset widget。
 - transcript 只有接近尾端時自動跟隨；使用者向上閱讀後，新訊息不可強制拉到底部。
+- user / assistant bubble 使用同一個 content-aware 寬度契約，最大寬度受 viewport 限制；
+  panel resize、streaming 和 100/125/150% scale 都要重新計算換行與高度。長 path / URL 可在
+  word boundary 之外斷行，code block 自己水平捲動，不讓整個 transcript 產生 horizontal overflow。
+- composer 是固定於底部的兩欄 layout：可增高的多行輸入使用剩餘寬度，Send / Stop action
+  使用穩定 geometry。空輸入、loading、waiting 和 running state 只改 action semantics／enabled
+  state，不讓按鈕與輸入框跳位。
 - empty state 與 durable transcript 必須互斥；判斷依 message ownership，而不是 Qt
   `isVisible()`。即使 dock 暫時隱藏、背景收到 runtime refresh 或 confirmation cleanup，
   重新開啟後也不可把 suggestion empty state 插回既有對話。
@@ -355,7 +390,7 @@ ApplicationService command name 的對映層。`ContextAssembler` 用它決定�
 - mapped workflow tools 會直接把 `CommandResult` 轉成 `ToolCommandResult`，目前包含
   Data Interpretation tools（`scan_source`、`preview_interpretation`、
   `validate_interpretation`、`apply_interpretation`、`save_interpretation_recipe`、
-  `reload_interpretation_recipe`）、`load_data`、`attach_labels`、preprocess tools、
+  `reload_interpretation_recipe`）、`attach_labels`、preprocess tools、
   `epoch_data`、`generate_dataset`、`set_model`、`configure_training`、`start_training`、
   `evaluate`、`visualize`、`saliency`、`clear_dataset`。
 - Data Interpretation tools 仍只透過 `ApplicationService.execute()` 進入 backend；實際
@@ -383,8 +418,10 @@ ApplicationService command name 的對映層。`ContextAssembler` 用它決定�
   `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
   `raw_result` JSON payload。
 - `set_montage` 仍走 UI confirmation request；`switch_panel` 仍是 UI routing request；
-  `list_files` / `get_dataset_info` 仍是 read-only / inspection path。舊 `load_data` /
-  `attach_labels` 保留為 compatibility surface，但不再是 Empty / Data Loaded /
+  `list_files` / `get_dataset_info` 仍是 read-only / inspection path。舊 `load_data`
+  definition 僅保留 compatibility identity，產品 policy 與 executor 會明確拒絕 direct
+  load 並導向 Data Interpretation；`attach_labels` 保留為 compatibility surface，但兩者
+  都不再是 Empty / Data Loaded /
   Preprocessed stage prompt 的 primary tool language；Goal 1 新資料入口主線以 Data
   Interpretation taxonomy 為主。
 
@@ -436,7 +473,8 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 已在本輪 runtime 驗證的部分：
 
 - local model catalog、download preflight 和 health-check script 存在。
-- runtime inspection 回報 Granite 3.3 2B `gpu-ready`，catalog cache 共 `12.77 GB / 20 GB`。
+- closure-worktree runtime inspection 回報 Granite 3.3 2B `gpu-ready`，其 path-scoped cache 約
+  `5.07 GB / 20 GB`；root launcher cache 的 `12.77 GB` 不是同一個 checkout。
 - 真 Granite ChatPanel boundary workflow 已完成 model-owned scan、host-owned preview / validate、
   typed review handoff、取消後 state 不變與正常 shutdown。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
@@ -454,6 +492,11 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
 - 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
+
+Historical Phi evaluation artifacts are not current product or thesis evidence. The strict raw slice
+recorded `50.00%`, the anti-overfit slice `14.29%`, and a host-assisted safety workflow `100.00%`;
+superseded `121/121` reports must not be quoted as current accuracy. No frozen Granite raw tool-call
+accuracy percentage exists yet.
 
 ## 架構評斷
 

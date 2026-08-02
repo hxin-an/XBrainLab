@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path, PureWindowsPath
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import QModelIndex, Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor
@@ -21,20 +21,28 @@ from PyQt6.QtWidgets import (
     QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.application.commands import (
     CommandName,
     QueryStateCommand,
     UpdateMetadataCommand,
 )
+from XBrainLab.backend.application.view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationViewPublication,
+)
+from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ApplicationViewPublicationPort,
     ControllerCompatibilityUnavailableError,
+    application_ui_runtime,
     blocked_reason,
     execute_application_command,
     get_application_view_publication,
@@ -43,10 +51,15 @@ from XBrainLab.ui.application_capabilities import (
     has_real_application_context,
     is_application_runtime_deferred,
     is_stale_publication_result,
-    local_result_payload,
     run_controller_compatibility_call,
 )
-from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.application_publication_renderer import (
+    ApplicationPublicationRenderLedger,
+)
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -60,6 +73,10 @@ from .actions import (
 )
 from .sidebar import DatasetSidebar
 
+_METADATA_AVAILABILITY_UNAVAILABLE = (
+    "Metadata editing availability is unavailable right now."
+)
+
 
 class _DatasetMetadataEditDelegate(QStyledItemDelegate):
     """Capture the rendered row identity before Qt opens an inline editor."""
@@ -70,7 +87,7 @@ class _DatasetMetadataEditDelegate(QStyledItemDelegate):
 
     def createEditor(  # noqa: N802
         self,
-        parent: QWidget,
+        parent: QWidget | None,
         option: QStyleOptionViewItem,
         index: QModelIndex,
     ) -> QWidget | None:
@@ -101,9 +118,15 @@ class DatasetPanel(BasePanel):
     _FILE_ONLY_TABLE_WIDTH = 240
     _COMPACT_COLUMNS = (0, 3, 6)
     _ROW_IDENTITY_ROLE = int(Qt.ItemDataRole.UserRole) + 1
-    _SUMMARY_TAB_BREAKPOINT = 760
+    _COMPACT_ACTION_BREAKPOINT = 760
 
-    def __init__(self, controller=None, parent=None):
+    def __init__(
+        self,
+        controller=None,
+        parent=None,
+        *,
+        publication_port: ApplicationViewPublicationPort | None = None,
+    ):
         """Initialize the dataset panel.
 
         Args:
@@ -113,7 +136,12 @@ class DatasetPanel(BasePanel):
 
         """
         # 1. Controller Resolution (Compatibility/Test support)
-        if controller is None and parent and hasattr(parent, "study"):
+        if (
+            controller is None
+            and publication_port is None
+            and parent
+            and hasattr(parent, "study")
+        ):
             controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
@@ -123,12 +151,25 @@ class DatasetPanel(BasePanel):
         # 2. Base Init (sets self.controller, self.main_window)
         super().__init__(parent=parent, controller=controller)
 
+        runtime = application_ui_runtime(self)
+        self._publication_port = (
+            publication_port if publication_port is not None else runtime
+        )
+        self._application_view_publication: ApplicationViewPublication | None = None
+        self._last_application_revision = 0
+        self._application_render_ledger = ApplicationPublicationRenderLedger(
+            panel_name="Dataset",
+            render_publication=self._render_application_publication,
+            commit_publication=self._commit_application_publication,
+            parent=self,
+        )
+        self._application_refresh_timer = self._application_render_ledger.timer
+
         # 3. Helpers
         self.action_handler = DatasetActionHandler(self)
         self._table_fit_pending = False
-        self._summary_layout_refresh_pending = False
         self._table_publication_generation: int | None = None
-        self._table_metadata_capability = None
+        self._table_metadata_capability: CommandCapability | None = None
         self._metadata_edit_selections: dict[int, DatasetTableSelection] = {}
 
         # 4. Bridge & UI Setup (Explicit call required by new BasePanel contract)
@@ -137,6 +178,13 @@ class DatasetPanel(BasePanel):
 
     def _setup_bridges(self):
         """Register Qt observer bridges for controller events."""
+        if self._publication_port is not None:
+            self._create_bridge(
+                cast(Observable, self._publication_port),
+                APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+                self._on_application_view_publication_changed,
+            )
+            return
         if self.controller:
             self._create_refresh_bridge(self.controller, "data_changed")
             self._create_bridge(
@@ -144,6 +192,76 @@ class DatasetPanel(BasePanel):
                 "import_finished",
                 self.action_handler.on_import_finished,
             )
+
+    def _on_application_view_publication_changed(
+        self,
+        publication: object,
+    ) -> bool:
+        """Queue one Dataset render for each monotonic application revision."""
+        if not self._valid_application_publication(publication):
+            logger.error("Ignored malformed Dataset application publication.")
+            return False
+        typed_publication = cast(ApplicationViewPublication, publication)
+        return self._application_render_ledger.queue(typed_publication)
+
+    def _render_application_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._application_view_publication = publication
+        if self.update_panel() is False:
+            raise RuntimeError(
+                "Dataset publication could not read its detached table rows."
+            )
+
+    def _commit_application_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self._last_application_revision = publication.revision
+
+    @staticmethod
+    def _valid_application_publication(publication: object) -> bool:
+        return (
+            isinstance(publication, ApplicationViewPublication)
+            and not isinstance(publication.revision, bool)
+            and isinstance(publication.revision, int)
+            and publication.revision >= 1
+        )
+
+    def _read_application_publication(self) -> ApplicationViewPublication | None:
+        pending = self._application_render_ledger.pending_publication
+        if pending is not None and pending.revision > self._last_application_revision:
+            self._application_view_publication = pending
+            return pending
+        port = self._publication_port
+        if port is None:
+            return get_application_view_publication(self)
+        try:
+            publication = port.get_view_publication()
+        except Exception:
+            logger.error(
+                "Dataset application publication is unavailable.",
+                exc_info=True,
+            )
+            self._application_view_publication = None
+            return None
+        if not self._valid_application_publication(publication):
+            self._application_view_publication = None
+            return None
+        typed_publication = cast(ApplicationViewPublication, publication)
+        if typed_publication.revision >= self._last_application_revision:
+            self._application_view_publication = typed_publication
+        return self._application_view_publication
+
+    def cleanup(self) -> None:
+        """Cancel queued publication work before releasing observer bridges."""
+        self._application_render_ledger.cleanup()
+        super().cleanup()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self.cleanup()
+        super().closeEvent(event)
 
     def init_ui(self):
         """Build the panel layout with a file table and sidebar."""
@@ -206,7 +324,7 @@ class DatasetPanel(BasePanel):
         self.table = QTableWidget()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
-            ["File", "Subject", "Session", "Chan", "Hz", "Epochs", "Events"],
+            ["File", "Subject", "Session", "Chan", "Hz", "EEG epochs", "Events"],
         )
         header = self.table.horizontalHeader()
         if header:
@@ -233,12 +351,13 @@ class DatasetPanel(BasePanel):
         self.empty_state = QWidget()
         self.empty_state.setObjectName("DatasetEmptyState")
         empty_layout = QVBoxLayout(self.empty_state)
-        empty_layout.setContentsMargins(32, 32, 32, 32)
+        empty_layout.setContentsMargins(20, 32, 20, 32)
         empty_layout.setSpacing(8)
         empty_layout.addStretch()
         self.empty_state_title = QLabel("No EEG data loaded")
         self.empty_state_title.setObjectName("DatasetEmptyStateTitle")
         self.empty_state_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_title.setWordWrap(True)
         self.empty_state_title.setStyleSheet(
             f"color: {Theme.TEXT_MUTED}; font-size: 16px; font-weight: 600;"
         )
@@ -253,6 +372,19 @@ class DatasetPanel(BasePanel):
             f"color: {Theme.TEXT_SECONDARY}; font-size: 13px;"
         )
         empty_layout.addWidget(self.empty_state_detail)
+        self.empty_state_import_btn = QPushButton("Import EEG Data")
+        self.empty_state_import_btn.setObjectName("DatasetEmptyStatePrimaryAction")
+        self.empty_state_import_btn.setStyleSheet(Stylesheets.BTN_PRIMARY)
+        self.empty_state_import_btn.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.empty_state_import_btn.clicked.connect(self.action_handler.import_data)
+        empty_layout.addSpacing(8)
+        empty_layout.addWidget(
+            self.empty_state_import_btn,
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
         empty_layout.addStretch()
 
         self.data_surface = QStackedWidget()
@@ -261,100 +393,21 @@ class DatasetPanel(BasePanel):
         self.data_surface.addWidget(self.empty_state)
         self.data_surface.setCurrentWidget(self.empty_state)
 
-        self.content_tabs = QTabWidget()
-        self.content_tabs.setObjectName("DatasetContentTabs")
-        self.content_tabs.setStyleSheet(Stylesheets.TAB_WIDGET_CLEAN)
-        self.content_tabs.addTab(self.data_surface, "EEG Files")
-        self.summary_page = SidebarScrollArea()
-        self.summary_page.setObjectName("DatasetDataSummaryPage")
-        self.summary_layout = self.summary_page.content_layout
-        self.summary_layout.setContentsMargins(16, 16, 16, 16)
-        self.summary_layout.setSpacing(0)
-        self.summary_info_panel = AggregateInfoPanel(self.main_window)
-        self.summary_layout.addWidget(
-            self.summary_info_panel,
-            alignment=Qt.AlignmentFlag.AlignTop,
-        )
-        self.summary_layout.addStretch()
-        self.content_tabs.addTab(self.summary_page, "Data Summary")
-        content_layout.addWidget(self.content_tabs, stretch=1)
+        content_layout.addWidget(self.data_surface, stretch=1)
         self.main_layout.addWidget(self.content_column, stretch=2)
 
         # --- Right Side: Sidebar ---
         self.sidebar = DatasetSidebar(self, self)
         self.main_layout.addWidget(self.sidebar, stretch=0)
-        self.summary_info_panel.presentation_changed.connect(
-            self._schedule_responsive_summary_layout,
-        )
-        self.sidebar.info_panel.presentation_changed.connect(
-            self._schedule_responsive_summary_layout,
-        )
-        self._update_responsive_summary_layout()
         self._fit_table_columns_to_viewport()
         self._schedule_table_column_fit()
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
         if hasattr(self, "table"):
-            self._update_responsive_summary_layout()
             self._update_post_import_action_layout()
             self._fit_table_columns_to_viewport()
             self._schedule_table_column_fit()
-
-    def _update_responsive_summary_layout(self) -> None:
-        """Move aggregate details out of the action rail when content is narrow."""
-        if not hasattr(self, "content_tabs") or not hasattr(self, "sidebar"):
-            return
-        compact = self.width() < self._SUMMARY_TAB_BREAKPOINT
-        direction = (
-            QBoxLayout.Direction.TopToBottom
-            if compact
-            else QBoxLayout.Direction.LeftToRight
-        )
-        if self.main_layout.direction() != direction:
-            self.main_layout.setDirection(direction)
-        self.main_layout.setStretch(0, 1 if compact else 2)
-        self.main_layout.setStretch(1, 0)
-        self.sidebar.set_compact_mode(compact)
-        margin = 10 if compact else 16
-        self.summary_layout.setContentsMargins(margin, margin, margin, margin)
-        sidebar_table_width = max(
-            self.sidebar.width()
-            - self.sidebar.scroll_area.content_layout.contentsMargins().left()
-            - self.sidebar.scroll_area.content_layout.contentsMargins().right()
-            - 2,
-            0,
-        )
-        has_summary = (
-            self.sidebar.info_panel.has_data or self.summary_info_panel.has_data
-        )
-        summary_in_tabs = has_summary and (
-            compact
-            or self.sidebar.info_panel.minimum_readable_table_width()
-            > sidebar_table_width
-        )
-        self.content_tabs.setTabVisible(1, has_summary)
-        tab_bar = self.content_tabs.tabBar()
-        if tab_bar is not None:
-            tab_bar.setVisible(summary_in_tabs)
-        self.sidebar.set_summary_visible(has_summary and not summary_in_tabs)
-        if (not summary_in_tabs or not has_summary) and (
-            self.content_tabs.currentIndex() != 0
-        ):
-            self.content_tabs.setCurrentIndex(0)
-        self.main_layout.invalidate()
-
-    def _schedule_responsive_summary_layout(self) -> None:
-        """Reflow after summary content or font metrics change."""
-        if self._summary_layout_refresh_pending:
-            return
-        self._summary_layout_refresh_pending = True
-        QTimer.singleShot(0, self._run_responsive_summary_layout)
-
-    def _run_responsive_summary_layout(self) -> None:
-        self._summary_layout_refresh_pending = False
-        self._update_responsive_summary_layout()
-        self._fit_table_columns_to_viewport()
 
     def show_post_import_next_action(self) -> None:
         """Expose one workflow action after a successful reviewed import."""
@@ -373,7 +426,7 @@ class DatasetPanel(BasePanel):
         if active.has_epoch_data or active.has_datasets:
             button_text, target_index = "Configure Training", 2
         elif active.has_preprocessed_data:
-            button_text, target_index = "Create EEG epochs", 1
+            button_text, target_index = "Create EEG Epochs", 1
         elif active.has_raw_data:
             button_text, target_index = "Continue to Preprocess", 1
         else:
@@ -383,6 +436,7 @@ class DatasetPanel(BasePanel):
         self.post_import_action_button.setText(button_text)
         self.post_import_action_bar.show()
         self._update_post_import_action_layout()
+        self._schedule_table_column_fit()
 
     def _open_post_import_destination(self) -> None:
         target = self._post_import_target_index
@@ -408,7 +462,7 @@ class DatasetPanel(BasePanel):
             available_width = self.content_column.width()
         self.post_import_action_label.setText(
             "Imported"
-            if self.width() < self._SUMMARY_TAB_BREAKPOINT
+            if self.width() < self._COMPACT_ACTION_BREAKPOINT
             else "Import complete"
         )
         margins = self.post_import_layout.contentsMargins()
@@ -461,7 +515,6 @@ class DatasetPanel(BasePanel):
 
     def _fit_table_columns_to_viewport(self) -> None:
         """Use the full table panel while keeping columns manually resizable."""
-        self._update_responsive_summary_layout()
         panel_layout = self.layout()
         if panel_layout is not None:
             panel_layout.invalidate()
@@ -470,11 +523,6 @@ class DatasetPanel(BasePanel):
         if content_layout is not None:
             content_layout.invalidate()
             content_layout.activate()
-        if self.data_surface.width() != self.content_tabs.contentsRect().width():
-            self.data_surface.resize(
-                self.content_tabs.contentsRect().width(),
-                self.data_surface.height(),
-            )
         for _ in range(3):
             surface_size = self.data_surface.contentsRect().size()
             if surface_size.isValid():
@@ -525,9 +573,11 @@ class DatasetPanel(BasePanel):
         """
         try:
             total_files = self._compatibility_apply_loader(loader)
-        except Exception as exc:
-            logger.error("Failed to apply data", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Failed to apply data: {exc}")
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.DATASET_LOADER_APPLY,
+            )
             return
         if total_files is None:
             return
@@ -561,10 +611,22 @@ class DatasetPanel(BasePanel):
         self.update_panel()
         return len(loader)
 
-    def update_panel(self):
-        """Refresh the sidebar and table contents from the controller."""
+    def update_panel(self, *args: Any, **kwargs: Any) -> Any:
+        """Refresh Dataset and commit a direct render only after success."""
+        del args, kwargs
+        if self._update_panel_content() is False:
+            return False
+        if self._application_render_ledger.render_in_progress:
+            return True
+        publication = self._application_view_publication
+        if publication is not None:
+            return self._application_render_ledger.record_rendered(publication)
+        return True
+
+    def _update_panel_content(self) -> bool:
+        """Refresh the sidebar and table from committed application truth."""
         if not hasattr(self, "controller"):
-            return
+            return True
 
         # Update Sidebar
         if hasattr(self, "sidebar"):
@@ -578,7 +640,42 @@ class DatasetPanel(BasePanel):
             self._show_dataset_empty_state()
             self._fit_table_columns_to_viewport()
             self._schedule_table_column_fit()
-            return
+            return True
+
+        publication = self._read_application_publication()
+        product_context = (
+            self._publication_port is not None or has_real_application_context(self)
+        )
+        if product_context and (publication is None or not publication.usable):
+            self._clear_post_import_action()
+            self._clear_table_render_identity()
+            self.table.clearContents()
+            self.table.setRowCount(0)
+            self._show_dataset_empty_state()
+            self._fit_table_columns_to_viewport()
+            self._schedule_table_column_fit()
+            return True
+
+        render_generation = (
+            int(publication.generation) if publication is not None else None
+        )
+        queried_rows = self._query_loaded_data_list_for_render(
+            expected_publication_generation=render_generation,
+        )
+        if queried_rows is None and product_context:
+            logger.error(
+                "Dataset table rows are unavailable for application generation %s; "
+                "the publication remains pending.",
+                render_generation,
+            )
+            self._show_dataset_empty_state(
+                title="Dataset view unavailable",
+                detail=(
+                    "Dataset details could not be read. "
+                    "XBrainLab will retry automatically."
+                ),
+            )
+            return False
 
         # Update Table
         self._metadata_edit_selections.clear()
@@ -586,42 +683,50 @@ class DatasetPanel(BasePanel):
         self.table.blockSignals(True)  # Prevent itemChanged triggering during update
         self.table.setRowCount(0)
 
-        publication = get_application_view_publication(self)
         self._sync_post_import_action(publication)
-        render_generation = (
-            int(publication.generation) if publication is not None else None
-        )
         self._table_publication_generation = render_generation
-        queried_data_list = self._query_loaded_data_list_for_render(
-            expected_publication_generation=render_generation,
-        )
         controller = self.controller
-        if controller is None:
-            data_list = []
-        elif queried_data_list is None:
-            data_list = self._compatibility_loaded_data_list_for_render(controller)
+        if queried_rows is not None:
+            data_rows: list[dict[str, Any]] = queried_rows
+        elif controller is not None and not product_context:
+            data_rows = [
+                DatasetStateService.project_data_row(data)
+                for data in self._compatibility_loaded_data_list_for_render(controller)
+            ]
         else:
-            data_list = queried_data_list
-        metadata_capability = (
-            publication.effective_capabilities.get(CommandName.UPDATE_METADATA)
-            if publication is not None
-            else get_command_capability(self, CommandName.UPDATE_METADATA)
-        )
+            data_rows = []
+        if publication is not None:
+            metadata_capability = publication.effective_capabilities.get(
+                CommandName.UPDATE_METADATA
+            )
+        elif product_context:
+            metadata_capability = None
+        else:
+            metadata_capability = get_command_capability(
+                self,
+                CommandName.UPDATE_METADATA,
+            )
         self._table_metadata_capability = metadata_capability
         metadata_editable = (
-            metadata_capability.enabled if metadata_capability is not None else True
+            metadata_capability.enabled
+            if metadata_capability is not None
+            else not product_context
         )
         metadata_block_reason = blocked_reason(
             metadata_capability,
-            "Metadata editing is not available right now.",
+            (
+                _METADATA_AVAILABILITY_UNAVAILABLE
+                if product_context
+                else "Metadata editing is not available right now."
+            ),
         )
 
-        if data_list:
-            self.table.setRowCount(len(data_list))
-            for row, data in enumerate(data_list):
+        if data_rows:
+            self.table.setRowCount(len(data_rows))
+            for row, data in enumerate(data_rows):
                 row_identity = self._row_identity_for_render(data, row)
                 # Filename (Read-only)
-                item_name = QTableWidgetItem(data.get_filename())
+                item_name = QTableWidgetItem(str(data.get("filename", "")))
                 item_name.setFlags(item_name.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 0, item_name)
 
@@ -630,7 +735,7 @@ class DatasetPanel(BasePanel):
                     row,
                     1,
                     self._metadata_item(
-                        data.get_subject_name(),
+                        str(data.get("subject", "")),
                         editable=metadata_editable and row_identity is not None,
                         blocked_tooltip=metadata_block_reason,
                     ),
@@ -641,32 +746,38 @@ class DatasetPanel(BasePanel):
                     row,
                     2,
                     self._metadata_item(
-                        data.get_session_name(),
+                        str(data.get("session", "")),
                         editable=metadata_editable and row_identity is not None,
                         blocked_tooltip=metadata_block_reason,
                     ),
                 )
 
                 # Channels (Read-only)
-                item_ch = QTableWidgetItem(str(data.get_nchan()))
+                item_ch = QTableWidgetItem(self._display_row_value(data, "n_channels"))
                 item_ch.setFlags(item_ch.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 3, item_ch)
 
                 # Sfreq (Read-only)
-                item_sf = QTableWidgetItem(str(data.get_sfreq()))
+                item_sf = QTableWidgetItem(
+                    self._display_row_value(data, "sampling_frequency")
+                )
                 item_sf.setFlags(item_sf.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 4, item_sf)
 
                 # Epochs (Read-only)
-                item_ep = QTableWidgetItem(str(data.get_epochs_length()))
+                item_ep = QTableWidgetItem(
+                    self._display_row_value(data, "epochs_length")
+                )
                 item_ep.setFlags(item_ep.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 5, item_ep)
 
-                event_summary = self._event_summary_for_render(data)
+                event_summary = data.get("event", {})
+                if not isinstance(event_summary, dict):
+                    event_summary = {}
                 if event_summary.get("available"):
                     count = event_summary.get("count")
                     count_str = "?" if count is None else str(count)
-                    if data.is_labels_imported():
+                    if data.get("labels_imported") is True:
                         item_ev = QTableWidgetItem(f"Labels ({count_str})")
                         item_ev.setForeground(QBrush(QColor(Theme.TEXT_MUTED)))
                         item_ev.setToolTip(
@@ -689,18 +800,17 @@ class DatasetPanel(BasePanel):
                 item_ev.setFlags(item_ev.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 6, item_ev)
 
-                # Store raw object reference in first item
-                item_name.setData(Qt.ItemDataRole.UserRole, data)
                 if row_identity is not None:
                     item_name.setData(self._ROW_IDENTITY_ROLE, row_identity)
 
         self.table.blockSignals(False)
-        if data_list:
+        if data_rows:
             self.data_surface.setCurrentWidget(self.table)
         else:
             self._show_dataset_empty_state()
         self._fit_table_columns_to_viewport()
         self._schedule_table_column_fit()
+        return True
 
     def _show_dataset_empty_state(
         self,
@@ -711,6 +821,7 @@ class DatasetPanel(BasePanel):
         """Present an intentional zero-data surface without a blank table viewport."""
         self.empty_state_title.setText(title)
         self.empty_state_detail.setText(detail)
+        self.empty_state_import_btn.setVisible(title == "No EEG data loaded")
         self.data_surface.setCurrentWidget(self.empty_state)
 
     @staticmethod
@@ -766,19 +877,26 @@ class DatasetPanel(BasePanel):
         self,
         *,
         expected_publication_generation: int | None = None,
-    ) -> list[Any] | None:
+    ) -> list[dict[str, Any]] | None:
         result = execute_application_command(
             self,
-            QueryStateCommand(query="data_lists", include_objects=True),
+            QueryStateCommand(query="data_lists"),
             refresh=False,
             expected_publication_generation=expected_publication_generation,
         )
         if result is None:
             return None
         if result.failed:
-            return []
-        data_list = local_result_payload(result).get("loaded_data_list")
-        return list(data_list) if isinstance(data_list, list) else []
+            logger.error(
+                "Dataset data-list query failed: %s",
+                result.message,
+            )
+            return None
+        data_rows = result.diagnostics.get("raw_rows")
+        if not isinstance(data_rows, list):
+            logger.error("Dataset data-list query returned no detached row list.")
+            return None
+        return [dict(row) for row in data_rows if isinstance(row, dict)]
 
     def _clear_table_render_identity(self) -> None:
         self._table_publication_generation = None
@@ -811,10 +929,10 @@ class DatasetPanel(BasePanel):
 
     def _row_identity_for_render(
         self,
-        data: Any,
+        data: dict[str, Any],
         row: int,
     ) -> DatasetTableRowIdentity | None:
-        canonical_filepath = self._canonical_filepath(data)
+        canonical_filepath = self._canonical_path_text(data.get("filepath"))
         if canonical_filepath is None:
             return None
         return DatasetTableRowIdentity(
@@ -845,6 +963,11 @@ class DatasetPanel(BasePanel):
             publication_generation=self._table_publication_generation,
             rows=tuple(identities),
         )
+
+    @staticmethod
+    def _display_row_value(data: dict[str, Any], key: str) -> str:
+        value = data.get(key)
+        return "" if value is None else str(value)
 
     def resolve_table_selection(
         self,
@@ -988,7 +1111,13 @@ class DatasetPanel(BasePanel):
         col = item.column()
 
         name_item = self.table.item(row, 0)
-        if not (name_item and name_item.data(Qt.ItemDataRole.UserRole)):
+        if not (
+            name_item
+            and isinstance(
+                name_item.data(self._ROW_IDENTITY_ROLE),
+                DatasetTableRowIdentity,
+            )
+        ):
             return
         if col not in (1, 2):
             return
@@ -1005,11 +1134,29 @@ class DatasetPanel(BasePanel):
             )
             return
 
+        if selection.publication_generation is None and has_real_application_context(
+            self
+        ):
+            QMessageBox.warning(
+                self,
+                "Metadata blocked",
+                _METADATA_AVAILABILITY_UNAVAILABLE,
+            )
+            self.update_panel()
+            return
         metadata_capability = (
             self._table_metadata_capability
             if selection.publication_generation is not None
             else get_command_capability(self, CommandName.UPDATE_METADATA)
         )
+        if metadata_capability is None and has_real_application_context(self):
+            QMessageBox.warning(
+                self,
+                "Metadata blocked",
+                _METADATA_AVAILABILITY_UNAVAILABLE,
+            )
+            self.update_panel()
+            return
         if metadata_capability is not None and not metadata_capability.enabled:
             QMessageBox.warning(
                 self,

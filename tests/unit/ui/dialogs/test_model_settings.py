@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import (
+    MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE,
+    ModelDownloadFailureCode,
     ModelDownloadOutcome,
     ModelDownloadStatus,
     ModelDownloadTarget,
@@ -92,6 +94,7 @@ class _FakeDownloadLifecycle(QObject):
         preflight_ok: bool = True,
         preflight_message: str = "Ready",
         cleanup_candidates: tuple[str, ...] = (),
+        resolved_config: LLMConfig | None = None,
     ) -> ModelStatusInspectionResult:
         request = self.inspection_requests[-1]
         result = ModelStatusInspectionResult(
@@ -106,6 +109,7 @@ class _FakeDownloadLifecycle(QObject):
             preflight_ok=preflight_ok,
             preflight_message=preflight_message,
             cleanup_candidates=cleanup_candidates,
+            resolved_config=resolved_config,
         )
         self.inspection_finished.emit(result)
         return result
@@ -216,9 +220,12 @@ class TestModelSettingsInit:
 
         assert model_ids == LLMConfig.allowed_local_model_ids()
         assert model_ids == ["ibm-granite/granite-3.3-2b-instruct"]
-        assert model_labels == [
-            local_model_spec(model_id).label for model_id in model_ids
-        ]
+        expected_labels: list[str] = []
+        for model_id in model_ids:
+            spec = local_model_spec(model_id)
+            assert spec is not None
+            expected_labels.append(spec.label)
+        assert model_labels == expected_labels
         assert all("/" not in label for label in model_labels)
         assert all("Qwen" not in str(model_id) for model_id in model_ids)
         assert dialog.model_section_label.buddy() is dialog.local_model_combo
@@ -432,6 +439,8 @@ class TestLocalModelSection:
 
         assert dialog.local_downloaded is True
         assert dialog.local_status_label.text() == "Model: Installed"
+        assert dialog.local_action_btn.text() == "Delete"
+        assert dialog.local_action_btn.property("destructive") is True
 
     def test_status_runtime_and_cache_are_rendered_from_one_snapshot(self, dialog):
         dialog.check_local_model_status()
@@ -603,6 +612,33 @@ class TestLocalModelSection:
         rendered = " ".join(str(value) for value in critical.call_args.args)
         assert sensitive not in rendered
         assert "Check the application log" in rendered
+
+    def test_download_timeout_explains_retry_without_exposing_diagnostics(
+        self,
+        dialog,
+    ):
+        target = ModelDownloadTarget.create(
+            dialog.local_model_combo.currentData(),
+            dialog.config.cache_dir,
+        )
+        outcome = ModelDownloadOutcome(
+            target=target,
+            status=ModelDownloadStatus.FAILED,
+            message=MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE,
+            failure_code=ModelDownloadFailureCode.TIMEOUT,
+            diagnostic_message="/private/cache token=hf_super_secret deadline exceeded",
+        )
+        dialog.download_lifecycle.idle = True
+
+        with patch("PyQt6.QtWidgets.QMessageBox.critical") as critical:
+            dialog.on_download_failed(outcome)
+
+        rendered = " ".join(str(value) for value in critical.call_args.args)
+        assert MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE in rendered
+        assert "/private/cache" not in rendered
+        assert "hf_super_secret" not in rendered
+        assert dialog.local_status_label.text() == "Download timed out"
+        assert dialog.local_action_btn.text() == "Retry"
 
     @pytest.mark.parametrize(
         "sensitive",
@@ -801,13 +837,70 @@ class TestActivateAndSave:
             runtime_ready=True,
             runtime_message="Local runtime ready.",
         )
-        with patch.object(LLMConfig, "save_to_file") as save:
+        with patch.object(LLMConfig, "save_to_file", return_value=True) as save:
             dialog.on_activate_clicked()
 
         save.assert_called_once()
         assert dialog.config.inference_mode == "local"
         assert dialog.config.active_mode == "local"
         assert not hasattr(dialog.config, "gemini_enabled")
+
+    def test_save_failure_stays_open_and_shows_actionable_inline_error(self, dialog):
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+        accepted = MagicMock()
+        dialog.accepted.connect(accepted)
+        dialog.show()
+
+        with patch.object(LLMConfig, "save_to_file", return_value=False) as save:
+            dialog.on_activate_clicked()
+
+        save.assert_called_once_with()
+        accepted.assert_not_called()
+        assert dialog.isVisible()
+        assert dialog.save_error_label.isVisible()
+        assert "could not be saved" in dialog.save_error_label.text().lower()
+        assert "writable" in dialog.save_error_label.text().lower()
+
+    def test_first_run_save_failure_uses_same_non_accepting_error_boundary(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+        lifecycle = _FakeDownloadLifecycle()
+        first_run_config = LLMConfig(device="cpu")
+        first_run_config.local_model_enabled = False
+        created = ModelSettingsDialog(
+            parent=None,
+            config=None,
+            download_lifecycle=lifecycle,
+        )
+        qtbot.addWidget(created)
+        qtbot.waitUntil(lambda: len(lifecycle.inspection_requests) == 1, timeout=1000)
+        lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+            resolved_config=first_run_config,
+        )
+        accepted = MagicMock()
+        created.accepted.connect(accepted)
+        created.show()
+
+        with patch.object(LLMConfig, "save_to_file", return_value=False) as save:
+            created.on_activate_clicked()
+
+        save.assert_called_once_with()
+        accepted.assert_not_called()
+        assert created.config is first_run_config
+        assert created.isVisible()
+        assert created.save_error_label.isVisible()
+        assert "could not be saved" in created.save_error_label.text().lower()
 
     def test_on_activate_clicked_blocks_local_runtime_gap(self, dialog):
         dialog.check_local_model_status()

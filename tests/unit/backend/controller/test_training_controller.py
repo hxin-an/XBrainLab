@@ -7,11 +7,11 @@ import torch
 
 from XBrainLab.backend.controller.training_controller import (
     TrainingController,
-    TrainingLifecycleEvent,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training_state_contract import (
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingRunIdentity,
     TrainingStateToken,
@@ -85,7 +85,7 @@ class TestTrainingController:
         mock_study.train.side_effect = lambda **_kwargs: lifecycle.append("train")
 
         with patch.object(
-            controller,
+            controller._training_state,
             "_start_monitoring",
             side_effect=lambda _generation: lifecycle.append("monitor"),
         ):
@@ -126,7 +126,7 @@ class TestTrainingController:
         mock_study.is_training.return_value = True
         mock_callback = MagicMock()
         controller.subscribe("training_started", mock_callback)
-        existing = controller._reserve_terminal_handoff()
+        existing = controller._training_state._reserve_terminal_handoff()
 
         with pytest.raises(RuntimeError, match="already running"):
             controller.start_training()
@@ -144,7 +144,7 @@ class TestTrainingController:
         mock_study,
     ):
         mock_study.is_training.side_effect = RuntimeError("monitor read failed")
-        handoff = controller._reserve_terminal_handoff()
+        handoff = controller._training_state._reserve_terminal_handoff()
         waiting = Event()
         results: list[bool] = []
 
@@ -161,7 +161,7 @@ class TestTrainingController:
         waiter.start()
         assert waiting.wait(timeout=1.0)
 
-        controller._monitor_loop(handoff.generation)
+        controller._training_state._monitor_loop(handoff.generation)
         waiter.join(timeout=1.0)
 
         assert not waiter.is_alive()
@@ -171,7 +171,7 @@ class TestTrainingController:
         self,
         controller,
     ):
-        handoff = controller._reserve_terminal_handoff()
+        handoff = controller._training_state._reserve_terminal_handoff()
         waiting = Event()
         results: list[bool] = []
 
@@ -198,9 +198,9 @@ class TestTrainingController:
         self,
         controller,
     ):
-        first = controller._reserve_terminal_handoff()
-        controller._publish_training_stopped(first.generation)
-        second = controller._reserve_terminal_handoff()
+        first = controller._training_state._reserve_terminal_handoff()
+        controller._training_state._publish_training_stopped(first.generation)
+        second = controller._training_state._reserve_terminal_handoff()
 
         assert controller.wait_for_terminal_notification(
             first.generation,
@@ -219,7 +219,7 @@ class TestTrainingController:
         mock_study.is_training.return_value = False
         callback_entered = Event()
         release_callback = Event()
-        handoff = controller._reserve_terminal_handoff()
+        handoff = controller._training_state._reserve_terminal_handoff()
 
         def publish_terminal() -> None:
             callback_entered.set()
@@ -227,11 +227,11 @@ class TestTrainingController:
 
         controller.subscribe("training_stopped", publish_terminal)
         monitor = Thread(
-            target=controller._monitor_loop,
+            target=controller._training_state._monitor_loop,
             args=(handoff.generation,),
             name="training-monitor-under-test",
         )
-        controller._monitor_thread = monitor
+        controller._training_state._monitor_thread = monitor
         monitor.start()
         assert callback_entered.wait(timeout=1.0)
 
@@ -250,7 +250,7 @@ class TestTrainingController:
         assert safe == [True]
         assert not waiter.is_alive()
         assert not monitor.is_alive()
-        assert controller._monitor_thread is None
+        assert controller._training_state._monitor_thread is None
 
     def test_stop_training(self, controller, mock_study):
         mock_study.is_training.return_value = True

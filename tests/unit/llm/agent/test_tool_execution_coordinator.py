@@ -151,6 +151,32 @@ def _enabled_context(tool_name: str) -> ToolAvailabilityContext:
     )
 
 
+def test_unknown_tool_name_is_redacted_from_status_metrics_and_payload() -> None:
+    private_tool_name = "/srv/private/patient-Jane/session.edf"
+    host = _Host()
+    host.registry.get_tool = MagicMock(return_value=None)
+    current_turn = SimpleNamespace(record_tool=MagicMock())
+    host.metrics.current_turn = current_turn
+    coordinator = ToolExecutionCoordinator(host, block_policy=_BlockPolicy())
+
+    outcome = coordinator.execute(
+        private_tool_name,
+        {},
+        context=_enabled_context("list_files"),
+    )
+
+    assert outcome.success is False
+    assert isinstance(outcome.result, ToolCommandResult)
+    status = host.status_update.emit.call_args.args[0]
+    payload = repr(outcome.result.to_payload())
+    metrics = repr(current_turn.record_tool.call_args)
+    for public_output in (status, payload, metrics):
+        assert private_tool_name not in public_output
+        assert "patient-Jane" not in public_output
+    assert "[REDACTED_PATH]" in status
+    assert "[REDACTED_PATH]" in payload
+
+
 def test_normalization_failure_still_completes_application_command(
     monkeypatch,
 ) -> None:
@@ -360,12 +386,12 @@ def test_read_only_backend_adapter_uses_injected_runtime_on_non_study_host() -> 
     assert outcome.result.raw_result["status"] == "ok"
     assert outcome.result.raw_result["command_name"] == "query_state"
     assert outcome.result.raw_result["changed_state"]["state_unknown"] is False
-    assert outcome.result.raw_result["diagnostics"] == {
-        "count": 1,
-        "files": ["runtime-only.edf"],
-        "total": 12,
-        "unique_count": 2,
-    }
+    diagnostics = outcome.result.raw_result["diagnostics"]
+    assert diagnostics["count"] == 1
+    assert diagnostics["total"] == 12
+    assert diagnostics["unique_count"] == 2
+    assert diagnostics["files"][0].startswith("file (.edf) [REDACTED_PATH]")
+    assert "runtime-only.edf" not in diagnostics["files"][0]
     assert outcome.result.state == context.state
     assert len(runtime.commands) == 1
     assert isinstance(runtime.commands[0], QueryStateCommand)

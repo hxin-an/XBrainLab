@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from XBrainLab.llm.agent.tool_feedback import (
+    ToolRecoveryFeedback,
     build_recovery_feedback,
     compact_state_summary,
     format_tool_output,
@@ -205,6 +208,51 @@ def test_summary_names_concrete_import_decisions_and_target_surface() -> None:
     assert "No external labels" not in summary
 
 
+def test_summary_keeps_typed_import_decisions_when_state_payload_is_large() -> None:
+    decision = {
+        "decision": "needs_confirmation",
+        "action_items": [
+            {
+                "issue": "Confirm which events are class labels.",
+                "severity": "needs_confirmation",
+            },
+        ],
+    }
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="validate_interpretation",
+        command_name="validate_interpretation",
+        message="Interpretation validation: needs_confirmation.",
+        raw_result={
+            "state": {
+                "metadata": [
+                    {"subject": index, "session": index} for index in range(1_000)
+                ],
+            },
+        },
+        state={
+            "raw": {
+                "metadata": [
+                    {"subject": index, "session": index} for index in range(1_000)
+                ],
+            },
+        },
+        diagnostics={
+            "payload_type": "validation_decision",
+            "validation_decision": decision,
+        },
+    )
+
+    summary = summarize_tool_result("validate_interpretation", True, result)
+
+    assert summary == (
+        "Import review needs your input:\n"
+        "- Confirm which events are class labels.\n"
+        "Use the open Import EEG Data window to review these choices."
+    )
+    assert "needs_confirmation" not in summary
+
+
 def test_ui_request_feedback_is_typed_for_model_and_user() -> None:
     request = UiRequest(
         kind=UiRequestKind.SWITCH_PANEL,
@@ -246,3 +294,27 @@ def test_recovery_feedback_is_compact_and_sanitizes_control_text() -> None:
     assert payload["guidance"] == (
         "Correct only the named input, or ask the user for that input."
     )
+
+
+def test_recovery_feedback_rejects_hostile_command_name_without_protocols() -> None:
+    class HostileCommandName(str):
+        def __bool__(self) -> bool:
+            raise AssertionError("hostile command_name.__bool__ executed")
+
+        def __str__(self) -> str:
+            raise AssertionError("hostile command_name.__str__ executed")
+
+        def __iter__(self):
+            raise AssertionError("hostile command_name.__iter__ executed")
+
+    feedback = ToolRecoveryFeedback(
+        tool_name="scan_source",
+        command_name=HostileCommandName("scan_source"),
+        error_type="input",
+        message="Select a source.",
+        blocked_reason=None,
+        guidance="Ask for a source.",
+    )
+
+    with pytest.raises(TypeError, match="exact string"):
+        feedback.to_prompt_payload()

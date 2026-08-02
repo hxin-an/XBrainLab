@@ -58,13 +58,13 @@ class BaseDialog(QDialog):
         self._normalize_dialog_buttons()
         self._fit_to_available_screen()
 
-    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+    def showEvent(self, event: QShowEvent | None) -> None:  # noqa: N802
         """Keep top-level dialogs usable on the screen where they open."""
         self._fit_to_available_screen()
         super().showEvent(event)
         self._content_anchor_center = QPoint(self.geometry().center())
 
-    def moveEvent(self, event: QMoveEvent) -> None:  # noqa: N802
+    def moveEvent(self, event: QMoveEvent | None) -> None:  # noqa: N802
         """Treat an explicit window move as the new dynamic-content anchor."""
         super().moveEvent(event)
         if self.isVisible() and not self._setting_stable_geometry:
@@ -185,9 +185,9 @@ class BaseDialog(QDialog):
                 QDialogButtonBox.StandardButton.Ok,
                 QDialogButtonBox.StandardButton.Cancel,
             ):
-                button = button_box.button(standard_button)
-                if button is not None:
-                    button.setIcon(QIcon())
+                standard_widget = button_box.button(standard_button)
+                if standard_widget is not None:
+                    standard_widget.setIcon(QIcon())
 
     def init_ui(self) -> None:
         """Initialize dialog UI components.

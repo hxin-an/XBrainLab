@@ -3,7 +3,7 @@
 import contextlib
 from collections.abc import Callable
 from threading import Lock
-from typing import Any
+from typing import Any, Protocol, cast
 from weakref import finalize, ref
 
 from PyQt6 import sip
@@ -11,6 +11,10 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable, ObserverDeliveryStatus
+
+
+class _FinalizerWithAtexit(Protocol):
+    atexit: bool
 
 
 class _ObserverSubscription:
@@ -76,7 +80,7 @@ class QtObserverBridge(QObject):
         self._slot: Callable[..., Any] | None = None
         self._active = True
         self._require_slot_acknowledgement = bool(require_slot_acknowledgement)
-        self._synchronous_dispatch_result: bool | None = None
+        self._synchronous_dispatch_result: bool | ObserverDeliveryStatus | None = None
         # Qt AutoConnection invokes same-thread events directly and queues
         # background-thread emissions onto this QObject's GUI thread.
         self.triggered.connect(self._dispatch)
@@ -107,7 +111,7 @@ class QtObserverBridge(QObject):
         )
         # Product owners call cleanup explicitly. The finalizer is a safety net
         # for Python wrapper collection, not an interpreter-shutdown callback.
-        self._observer_finalizer.atexit = False
+        cast(_FinalizerWithAtexit, self._observer_finalizer).atexit = False
         self.destroyed.connect(self._observer_subscription.close)
 
     def _on_event(
@@ -137,6 +141,8 @@ class QtObserverBridge(QObject):
             if not self._require_slot_acknowledgement:
                 return True
             if synchronous:
+                if self._synchronous_dispatch_result is ObserverDeliveryStatus.DEFERRED:
+                    return ObserverDeliveryStatus.DEFERRED
                 return self._synchronous_dispatch_result is True
             # The GUI slot will explicitly acknowledge after queued delivery.
             return ObserverDeliveryStatus.DEFERRED
@@ -156,7 +162,11 @@ class QtObserverBridge(QObject):
             raise TypeError("Observer bridge slots must be callable.")
         self._slot = slot
 
-    def _dispatch(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool:
+    def _dispatch(
+        self,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> bool | ObserverDeliveryStatus:
         """Invoke the registered slot on this bridge's Qt thread."""
         if not self._active or sip.isdeleted(self):
             return False
@@ -174,6 +184,12 @@ class QtObserverBridge(QObject):
                 self.event_name,
             )
             return False
+        if (
+            self._require_slot_acknowledgement
+            and result is ObserverDeliveryStatus.DEFERRED
+        ):
+            self._synchronous_dispatch_result = ObserverDeliveryStatus.DEFERRED
+            return ObserverDeliveryStatus.DEFERRED
         acknowledged = not self._require_slot_acknowledgement or result is True
         self._synchronous_dispatch_result = acknowledged
         return acknowledged

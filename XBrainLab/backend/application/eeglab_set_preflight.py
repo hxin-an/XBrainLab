@@ -601,14 +601,14 @@ def _inspection_if_complete(
     reference = accumulator.reference
     if reference and (accumulator.external_shape_complete or final):
         external_path, path_reason = _resolve_external_reference(set_path, reference)
-        shape: tuple[int, ...] | None = accumulator.external_shape
+        external_shape = accumulator.external_shape
         if external_path is None:
             return _unknown(
                 set_path,
                 reason_code="eeglab_external_reference_unsafe",
                 reason=path_reason,
                 storage_mode="external",
-                source_shape=shape,
+                source_shape=external_shape,
                 source_dtype=EEGLAB_EXTERNAL_DTYPE,
                 data_reference=reference,
                 channels=accumulator.channels,
@@ -629,7 +629,7 @@ def _inspection_if_complete(
                 reason_code="eeglab_external_data_unavailable",
                 reason="The external EEGLAB data file could not be inspected.",
                 storage_mode="external",
-                source_shape=shape,
+                source_shape=external_shape,
                 source_dtype=EEGLAB_EXTERNAL_DTYPE,
                 data_reference=reference,
                 external_data_file=str(external_path),
@@ -642,8 +642,8 @@ def _inspection_if_complete(
                 decoded_header_bytes=decoded_header_bytes,
             )
         expected_bytes = (
-            _element_count(shape) * EEGLAB_EXTERNAL_DTYPE_BYTES
-            if shape is not None
+            _element_count(external_shape) * EEGLAB_EXTERNAL_DTYPE_BYTES
+            if external_shape is not None
             else None
         )
         if expected_bytes is not None and external_bytes != expected_bytes:
@@ -655,7 +655,7 @@ def _inspection_if_complete(
                     "nbchan/pnts/trials header shape."
                 ),
                 storage_mode="external",
-                source_shape=shape,
+                source_shape=external_shape,
                 source_dtype=EEGLAB_EXTERNAL_DTYPE,
                 data_reference=reference,
                 external_data_file=str(external_path),
@@ -694,7 +694,7 @@ def _inspection_if_complete(
                 "External EEGLAB signal reference, dtype, and shape/size were "
                 "bounded from MAT metadata and the referenced data file."
             ),
-            source_shape=shape,
+            source_shape=external_shape,
             source_dtype=EEGLAB_EXTERNAL_DTYPE,
             data_reference=reference,
             external_data_file=str(external_path),

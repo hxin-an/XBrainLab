@@ -163,7 +163,6 @@ exclude = [
 include = ["XBrainLab"]
 exclude = [
     "XBrainLab/llm/core/models",
-    "XBrainLab/llm/rag",
 ]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"

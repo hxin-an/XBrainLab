@@ -16,7 +16,7 @@ from XBrainLab.product_language import tool_action_label as shared_tool_action_l
 COMMAND_LABELS = WORKFLOW_COMMAND_LABELS
 
 DECISION_FIELD_LABELS: dict[str, str] = {
-    "epoch_window": "epoch window",
+    "epoch_window": "EEG epoch window",
     "target_event": "target events",
     "event_mapping": "event mapping",
     "label_alignment": "label alignment",

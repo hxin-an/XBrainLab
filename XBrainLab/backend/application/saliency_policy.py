@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any
 
@@ -16,9 +17,25 @@ DEFAULT_ADVANCED_SALIENCY_PARAMS: dict[str, Any] = {
     "nt_samples_batch_size": None,
     "stdevs": 1.0,
 }
+# This bounds request amplification independently of runtime telemetry. The
+# shape- and device-aware resource admission applies the tighter effective cap.
+MIN_SALIENCY_NT_SAMPLES = 1
+MAX_SALIENCY_NT_SAMPLES = 1_024
+MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE = 1
+MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE = MAX_SALIENCY_NT_SAMPLES
 ADVANCED_SALIENCY_METHODS = tuple(supported_saliency_methods)
 RECOMMENDED_SALIENCY_METHODS = tuple(recommended_saliency_methods)
 ALL_SALIENCY_METHODS = tuple(all_saliency_methods)
+_SALIENCY_NOISE_PARAM_NAMES = frozenset(DEFAULT_ADVANCED_SALIENCY_PARAMS)
+_SALIENCY_TOP_LEVEL_NAMES = frozenset(
+    {
+        "method",
+        "profile",
+        "methods",
+        *_SALIENCY_NOISE_PARAM_NAMES,
+        *ADVANCED_SALIENCY_METHODS,
+    }
+)
 
 
 def baseline_saliency_params() -> dict[str, object]:
@@ -39,7 +56,7 @@ def recommended_saliency_params_for_method(method_name: str) -> dict[str, object
             "methods": [method_name],
             method_name: dict(DEFAULT_ADVANCED_SALIENCY_PARAMS),
         }
-    return baseline_saliency_params()
+    raise ValueError(f"Unsupported saliency method: {method_name}")
 
 
 def is_recommended_saliency_method(method_name: str) -> bool:
@@ -69,34 +86,161 @@ def normalize_saliency_params(
 ) -> tuple[dict[str, Any], str | None]:
     """Normalize agent/UI-friendly saliency args to evaluator-required keys."""
     raw = dict(params or {})
-    requested_method = str(raw.pop("method", method or "") or "").strip() or None
-    profile = str(raw.pop("profile", "") or "").strip().lower()
-    explicit_methods = normalize_saliency_methods(raw.pop("methods", None))
-    configured_method_keys = [
-        key for key in ADVANCED_SALIENCY_METHODS if isinstance(raw.get(key), dict)
-    ]
-    flat_params: dict[str, Any] = {}
+    unknown_names = sorted(set(raw).difference(_SALIENCY_TOP_LEVEL_NAMES))
+    if unknown_names:
+        raise ValueError(
+            f"Unsupported saliency parameter: {unknown_names[0]}",
+        )
+
+    embedded_method = raw.pop("method", None)
+    if method is not None and embedded_method is not None and method != embedded_method:
+        raise ValueError("Conflicting saliency methods were requested.")
+    requested_method = _optional_method(embedded_method if embedded_method else method)
+    if requested_method is not None and requested_method not in ALL_SALIENCY_METHODS:
+        raise ValueError(f"Unsupported saliency method: {requested_method}")
+
+    profile_value = raw.pop("profile", "")
+    if profile_value is not None and not isinstance(profile_value, str):
+        raise ValueError("Saliency profile must be a string.")
+    profile = str(profile_value or "").strip().lower()
+    if profile not in {"", "recommended", "advanced"}:
+        raise ValueError(f"Unsupported saliency profile: {profile}")
+
+    explicit_methods = _validated_saliency_methods(raw.pop("methods", None))
+    configured_method_keys = [key for key in ADVANCED_SALIENCY_METHODS if key in raw]
+    configured_params: dict[str, dict[str, Any]] = {}
+    for key in configured_method_keys:
+        value = raw.pop(key)
+        if not isinstance(value, Mapping):
+            raise ValueError(f"Saliency parameters for {key} must be an object.")
+        configured_params[key] = _validated_noise_params(value)
+
+    flat_params = {
+        key: raw.pop(key) for key in tuple(raw) if key in _SALIENCY_NOISE_PARAM_NAMES
+    }
+    flat_params = _validated_noise_params(flat_params)
     normalized: dict[str, Any] = {
         key: dict(DEFAULT_ADVANCED_SALIENCY_PARAMS) for key in ADVANCED_SALIENCY_METHODS
     }
-    for key, value in raw.items():
-        if key in ADVANCED_SALIENCY_METHODS and isinstance(value, dict):
-            normalized[key].update(value)
-        elif key not in ADVANCED_SALIENCY_METHODS:
-            flat_params[key] = value
-    if flat_params:
-        for key in ADVANCED_SALIENCY_METHODS:
-            normalized[key].update(flat_params)
+    for key, values in configured_params.items():
+        normalized[key].update(values)
 
-    normalized["_methods"] = select_saliency_methods(
+    selected_methods = select_saliency_methods(
         requested_method=requested_method,
         profile=profile,
         explicit_methods=explicit_methods,
         configured_method_keys=configured_method_keys,
     )
+    if requested_method is not None and requested_method not in selected_methods:
+        raise ValueError("Saliency method/profile conflict.")
+    if profile == "recommended" and selected_methods != list(
+        RECOMMENDED_SALIENCY_METHODS
+    ):
+        raise ValueError("Saliency method/profile conflict.")
+    if profile == "advanced" and any(
+        method not in ADVANCED_SALIENCY_METHODS for method in selected_methods
+    ):
+        raise ValueError("Saliency method/profile conflict.")
+    if flat_params:
+        flat_targets = [
+            selected
+            for selected in selected_methods
+            if selected in ADVANCED_SALIENCY_METHODS
+        ]
+        if len(flat_targets) != 1 or len(selected_methods) != 1:
+            if requested_method in RECOMMENDED_SALIENCY_METHODS:
+                raise ValueError(
+                    f"{requested_method} does not accept noise parameters.",
+                )
+            raise ValueError(
+                "Noise parameters require exactly one advanced saliency method.",
+            )
+        normalized[flat_targets[0]].update(flat_params)
+
+    unselected_configurations = set(configured_method_keys).difference(
+        selected_methods,
+    )
+    if unselected_configurations:
+        name = sorted(unselected_configurations)[0]
+        raise ValueError(
+            f"Saliency parameters were provided for unselected method {name}."
+        )
+
+    normalized["_methods"] = selected_methods
     if profile:
         normalized["_profile"] = profile
     return normalized, requested_method
+
+
+def _optional_method(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("Saliency method must be a string.")
+    return value.strip() or None
+
+
+def _validated_saliency_methods(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        items = [value]
+    elif isinstance(value, (list, tuple, set)):
+        items = list(value)
+    else:
+        raise ValueError("Saliency methods must be a string or list of strings.")
+
+    methods: list[str] = []
+    for item in items:
+        method = _optional_method(item)
+        if method is None or method not in ALL_SALIENCY_METHODS:
+            raise ValueError(f"Unsupported saliency method: {method or item}")
+        if method not in methods:
+            methods.append(method)
+    if not methods:
+        raise ValueError("Select at least one saliency method.")
+    return methods
+
+
+def _validated_noise_params(params: Mapping[str, Any]) -> dict[str, Any]:
+    unknown_names = sorted(set(params).difference(_SALIENCY_NOISE_PARAM_NAMES))
+    if unknown_names:
+        raise ValueError(
+            f"Unsupported saliency parameter: {unknown_names[0]}",
+        )
+
+    validated: dict[str, Any] = {}
+    for key, value in params.items():
+        normalized_value = value
+        if key == "nt_samples":
+            if type(value) is not int or value < MIN_SALIENCY_NT_SAMPLES:
+                raise ValueError("nt_samples must be a positive integer.")
+            if value > MAX_SALIENCY_NT_SAMPLES:
+                raise ValueError(
+                    f"nt_samples must not exceed {MAX_SALIENCY_NT_SAMPLES}.",
+                )
+        elif key == "nt_samples_batch_size":
+            if value is not None and (
+                type(value) is not int or value < MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE
+            ):
+                raise ValueError(
+                    "nt_samples_batch_size must be a positive integer or null.",
+                )
+            if value is not None and value > MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE:
+                raise ValueError(
+                    "nt_samples_batch_size must not exceed "
+                    f"{MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE}.",
+                )
+        elif key == "stdevs":
+            if (
+                type(value) not in {int, float}
+                or not math.isfinite(float(value))
+                or value < 0
+            ):
+                raise ValueError("stdevs must be a finite non-negative number.")
+            normalized_value = float(value)
+        validated[key] = normalized_value
+    return validated
 
 
 def normalize_saliency_methods(value: Any) -> list[str]:

@@ -1,6 +1,6 @@
 # XBrainLab 目前架構
 
-最後更新：`2026-07-30`
+最後更新：`2026-07-31`
 
 這裡描述目前實作，不描述理想終局。目標態請看 [target/architecture.md](../target/architecture.md)。
 
@@ -16,8 +16,9 @@ UI / assistant / scripts
 ```
 
 這個方向已經有實作基礎。Backend command spine 和 `BackendFacade` removal 已經落地；
-剩餘距離主要在 UI controller adapter、human desktop acceptance、以及 product evidence
-claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進 `ui.md` 的例外地圖；不要從
+剩餘距離主要在 compatibility cleanup、refresh exact evidence、human desktop acceptance，以及
+product evidence claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進 `ui.md`
+的例外地圖；不要從
 歷史 checkpoint 數量推論目前架構乾淨度。
 
 ## 目前距離目標多遠
@@ -26,15 +27,15 @@ claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進
 | --- | --- | --- |
 | Backend command spine | `ApplicationService / Command API` 是 product runtime 主入口；`BackendFacade` 已物理移除。同一 Study 的 service instance 共用 command/state lock。 | 還要防止新 wrapper / direct manager mutation 回流。 |
 | Assistant boundary | mapped tool exposure 由 backend capability policy 決定；每回合先由 host 將自然語言解析為 immutable scope，單次 tool execution 再交給 coordinator。UI 只讀 worker runtime snapshot，不持有另一份 execution-mode truth。 | 還缺長時間 session、Windows 真人 assistant acceptance 與 frozen benchmark。 |
-| UI refresh | command-result、navigation、known observer event 已集中到 refresh coordinator。`ApplicationViewPublication` 以 revision acknowledgement 連接 backend 與 Qt view；terminal event 在 matching revision 可見前會保留，確認後 exactly-once 投遞。 | panel constructor / observer bridge 還依賴 injected controllers，不是 full zero-controller UI。 |
+| UI refresh | Product state-changing render 由 revisioned `ApplicationViewPublication` 連接 backend 與 Qt view；五個 product panels 使用 typed ports，Training progress 另由 narrow transient port 傳遞。Terminal event 在 matching revision 可見前會保留，確認後 exactly-once 投遞。 | Standalone/test constructors 仍保留 controller compatibility；refresh single-truth 仍需 exact-commit source guard 與 product workflow evidence。 |
 | Product evidence | guarded product smokes、real-tools evidence、real GDF full-pipeline smoke 已轉向 command/query truth；product-success tests 也開始阻擋 no-crash / generic panel assertion 形狀。 | lower-level integration tests 仍有 setup/domain 目的的 direct `Study` access，不能全部當 product smoke。 |
-| Desktop acceptance | startup、UI baseline、dialog/unit、real-data IO dashboard PASS。 | 還缺人手 Windows desktop click-through 和長時間 local-model session。 |
+| Desktop acceptance | startup、UI baseline、dialog/unit 與 real-data IO 已有 checkpoint evidence。 | Closure branch 尚無 clean exact-commit dashboard PASS；還缺人手 Windows desktop click-through 和長時間 local-model session。 |
 
 ## 目前不要誤讀
 
 | 看到的訊號 | 正確解讀 | 不能推論 |
 | --- | --- | --- |
-| `BackendFacade` 已刪除 | product runtime 不應再從 facade 進 backend。 | UI 已 full zero-controller。 |
+| `BackendFacade` 已刪除 | product runtime 不應再從 facade 進 backend。 | Repo 已完全沒有 controller compatibility code。 |
 | `ApplicationService` tests / smokes 綠 | command spine 和 state/query truth 有保護。 | 每個 panel display path 都已完全不讀 controller。 |
 | product-success weak evidence guard 綠 | facade、legacy fallback、direct `Study` state、controller lookup、no-crash / generic panel assertion 等回歸會被擋。 | 所有 mock-heavy 或 lower-level tests 都已重寫。 |
 | artifacts current tree 已 prune | current evidence 入口比較少、比較好讀。 | screenshot freshness 或 human Windows acceptance 已完成。 |
@@ -65,8 +66,8 @@ claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進
 
 | Risk | 為什麼重要 | 處理方向 |
 | --- | --- | --- |
-| controller adapter remains | UI still needs injected controllers for panel constructors and observer bridges. | Treat these as adapter / observer boundary; do not use them as action, readiness, or product-success truth. |
-| UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh；command 執行期間的 observer refresh 會被暫停，避免先用 stale controller state 重刷。 |
+| Compatibility constructor residue | Product MainWindow 不再注入 controller bundle，但 Training、sidebar 和部分 standalone dialogs 仍保留 compatibility-era parameters/helpers。 | 視為 P2 cleanup；不得讓它們重新成為 product action、readiness 或 render truth。 |
+| UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | Product state-changing render 只認 revisioned publication；navigation 與 transient progress 保持非 state-truth，並用 guards 防止 command-result/controller refresh 回流。 |
 | deferred terminal delivery | GUI queue 尚未套用 publication 時，training terminal event 若先送出會讓 assistant 留在 Working。 | `ApplicationViewEventPublisher` 保留 revision-bound terminal event；Qt bridge acknowledgement 後重試，只允許 matching revision exactly-once delivery。 |
 | `BackendFacade` reintroduction | 這是 guarded regression，不是 current implementation。若 wrapper 回來，就會和 UI / assistant 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant packages and tests. |
 | evidence overclaim | dashboard PASS 或 offscreen smoke 被誤解成 product complete。 | Validation docs must keep human desktop acceptance and long local-model sessions as separate claims. |

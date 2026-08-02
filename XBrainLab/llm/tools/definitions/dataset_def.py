@@ -321,6 +321,14 @@ class BaseAttachLabelsTool(BaseTool):
                     "type": "string",
                     "description": "Format of label file (optional).",
                 },
+                "selected_event_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Reviewed EEG event names or codes that sequence-label rows "
+                        "align to. Required for sequence labels on raw EEG."
+                    ),
+                },
             },
             "required": ["mapping"],
         }
@@ -422,7 +430,7 @@ class BaseGenerateDatasetTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Generate training dataset from epochs."
+        return "Generate a training dataset from EEG epochs."
 
     @property
     def parameters(self) -> dict[str, Any]:

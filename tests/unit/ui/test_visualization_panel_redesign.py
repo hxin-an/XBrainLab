@@ -6,7 +6,13 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QGridLayout, QGroupBox, QMainWindow, QWidget
+from PyQt6.QtWidgets import (
+    QGridLayout,
+    QGroupBox,
+    QMainWindow,
+    QMessageBox,
+    QWidget,
+)
 
 from XBrainLab.backend.application import (
     SaliencyCommand,
@@ -53,10 +59,16 @@ def _info_panel_factory(*args, **kwargs):
 
 
 def _make_panel(qtbot, training_controller=None, parent=None, controller=None):
+    del training_controller
     mock_ctrl = controller if controller is not None else MagicMock()
     if controller is None:
         mock_ctrl.get_trainers.return_value = []
         mock_ctrl.get_averaged_record.return_value = MagicMock()
+    fallback_port = Observable()
+    fallback_runtime = cast(Any, fallback_port)
+    fallback_runtime.get_view_publication = MagicMock(return_value=None)
+    fallback_runtime.execute = MagicMock(return_value=None)
+    fallback_runtime.get_saliency_render = MagicMock(return_value=None)
 
     with (
         patch(
@@ -80,12 +92,21 @@ def _make_panel(qtbot, training_controller=None, parent=None, controller=None):
             side_effect=_widget_factory,
         ),
     ):
-        from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
+        from XBrainLab.ui.panels.visualization.panel import (
+            VisualizationPanel,
+            application_ui_runtime,
+        )
 
+        runtime_port = cast(Any, application_ui_runtime(parent) or fallback_runtime)
+        publication_port = cast(
+            Any,
+            runtime_port if isinstance(runtime_port, Observable) else fallback_runtime,
+        )
         panel = VisualizationPanel(
-            controller=mock_ctrl,
-            training_controller=training_controller,
             parent=parent,
+            query_port=cast(Any, runtime_port),
+            publication_port=publication_port,
+            action_port=cast(Any, runtime_port),
         )
         qtbot.addWidget(panel)
 
@@ -256,9 +277,17 @@ def _render_publication_for_request(_panel, request, **_kwargs):
 
 def _result_with_run_coverages(
     *coverages: SaliencyRunCoverageSnapshot,
+    raw_files: tuple[str, ...] = (),
 ) -> CommandResult:
+    empty_state = ApplicationStateSnapshot.empty()
     state = replace(
-        ApplicationStateSnapshot.empty(),
+        empty_state,
+        raw=replace(
+            empty_state.raw,
+            loaded=bool(raw_files),
+            count=len(raw_files),
+            files=list(raw_files),
+        ),
         visualization=VisualizationStateSnapshot(
             saliency_available=True,
             saliency_coverage=list(coverages),
@@ -269,6 +298,50 @@ def _result_with_run_coverages(
         "Visualization ready",
         state,
         ChangedState(),
+    )
+
+
+def _saliency_resource_failure(
+    risk_level: str,
+    *,
+    receipt_id: str | None = None,
+    challenge_command: str = "saliency",
+    message: str | None = None,
+) -> CommandResult:
+    resource_message = message or f"Saliency resource risk: {risk_level}."
+    requires_confirmation = risk_level in {"warning", "unknown"}
+    resource_preflight: dict[str, Any] = {
+        "schema_version": 1,
+        "payload_type": "saliency_resource_preflight",
+        "risk_level": risk_level,
+        "requires_confirmation": requires_confirmation,
+        "issues": [resource_message] if risk_level == "blocking" else [],
+        "warnings": [resource_message] if risk_level == "warning" else [],
+        "unknowns": [resource_message] if risk_level == "unknown" else [],
+        "message": resource_message,
+    }
+    if receipt_id is not None:
+        resource_preflight["confirmation_challenge"] = {
+            "schema_version": 1,
+            "challenge_id": receipt_id,
+            "command_name": challenge_command,
+            "scope_fingerprint": f"scope-{receipt_id}",
+            "configuration_fingerprint": f"configuration-{receipt_id}",
+            "preflight_fingerprint": f"preflight-{receipt_id}",
+            "ttl_seconds": 120.0,
+        }
+    return CommandResult.failure_result(
+        command_name="saliency",
+        message=resource_message,
+        state=ApplicationStateSnapshot.empty(),
+        changed_state=ChangedState(),
+        error_type=(
+            ErrorType.CONFIRMATION_REQUIRED
+            if requires_confirmation
+            else ErrorType.PRECONDITION
+        ),
+        recoverable=requires_confirmation,
+        diagnostics={"resource_preflight": resource_preflight},
     )
 
 
@@ -307,28 +380,165 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
 
 
-def test_visualization_panel_keeps_aggregation_detail_out_of_the_plot_layout(qtbot):
+def test_visualization_panel_shows_compact_aggregation_provenance(qtbot):
     panel, _ctrl = _make_panel(qtbot)
 
     assert not hasattr(panel, "explanation_context")
     assert not panel.explanation_info_button.isHidden()
     assert panel.explanation_info_button.accessibleName() == "Plot aggregation details"
-    assert panel.tabs.toolTip() == (
-        "Grouped by true class label · Mean across evaluated epochs"
+    assert panel.explanation_provenance_label.text() == (
+        "True class · Mean over EEG epochs"
     )
+    assert panel.tabs.toolTip() == "True class · Mean over EEG epochs"
     assert panel.explanation_info_button.toolTip() == panel.tabs.toolTip()
 
     panel.tabs.setCurrentIndex(1)
     assert panel.tabs.toolTip() == (
-        "Grouped by true class label · Mean magnitude across evaluated epochs "
-        "and channels"
+        "True class · Mean magnitude over EEG epochs and channels"
     )
     assert panel.explanation_info_button.toolTip() == panel.tabs.toolTip()
 
     panel.tabs.setCurrentIndex(2)
-    assert panel.tabs.toolTip() == (
-        "Grouped by true class label · Mean across evaluated epochs and time"
+    assert panel.tabs.toolTip() == "True class · Mean over EEG epochs and time"
+
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                plan_name="motor-imagery",
+                model_name="EEGNet",
+                run_name="Run 1",
+                methods=[_complete_coverage()],
+            ),
+            raw_files=("A01T.gdf", "A02T.gdf", "A03T.gdf"),
+        ),
     )
+    with patch.object(panel, "on_update"):
+        panel.tabs.setCurrentIndex(0)
+
+    assert panel.explanation_provenance_label.text() == (
+        "motor-imagery · Fold 1 (EEGNet) · Run 1 · True class · Mean over EEG epochs"
+    )
+    assert panel.explanation_provenance_label.wordWrap()
+
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                plan_name="motor-imagery",
+                model_name="EEGNet",
+                run_name="Run 1",
+                methods=[_complete_coverage()],
+            ),
+            raw_files=("new-current-file.edf",),
+        ),
+    )
+
+    assert panel.explanation_provenance_label.text().startswith(
+        "motor-imagery · Fold 1 (EEGNet) · Run 1"
+    )
+    assert "new-current-file.edf" not in panel.explanation_provenance_label.text()
+
+
+def test_visualization_panel_clears_result_identity_after_publication_rejection(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                plan_name="motor-imagery",
+                model_name="EEGNet",
+                run_name="Run 1",
+                methods=[_complete_coverage()],
+            ),
+        ),
+    )
+    panel._refresh_explanation_context()
+    publication = panel._application_view_publication
+    assert publication is not None
+    assert "motor-imagery" in panel.explanation_provenance_label.text()
+
+    assert (
+        panel._accept_application_publication(replace(publication, stale=True)) is False
+    )
+
+    assert panel.explanation_provenance_label.text() == (
+        "True class · Mean over EEG epochs"
+    )
+    assert "motor-imagery" not in panel.tabs.toolTip()
+
+
+def test_visualization_panel_invalidates_rendered_views_when_runtime_disappears(
+    qtbot,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                plan_name="motor-imagery",
+                model_name="EEGNet",
+                run_name="Run 1",
+                methods=[_complete_coverage()],
+            ),
+        ),
+    )
+    invalidations: list[MagicMock] = []
+    for attribute in ("tab_map", "tab_spectro", "tab_topo", "tab_3d"):
+        invalidate = MagicMock()
+        view = cast(Any, getattr(panel, attribute))
+        view.invalidate_render_publication = invalidate
+        invalidations.append(invalidate)
+    panel._query_port = None
+
+    with patch(
+        "XBrainLab.ui.panels.visualization.panel.application_ui_runtime",
+        return_value=None,
+    ):
+        assert panel._refresh_application_publication() is False
+
+    assert panel._application_view_publication is None
+    for invalidate in invalidations:
+        invalidate.assert_called_once_with()
+
+
+def test_visualization_panel_invalidates_rendered_views_when_publication_read_fails(
+    qtbot,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                methods=[_complete_coverage()],
+            ),
+        ),
+    )
+    invalidations: list[MagicMock] = []
+    for attribute in ("tab_map", "tab_spectro", "tab_topo", "tab_3d"):
+        invalidate = MagicMock()
+        view = cast(Any, getattr(panel, attribute))
+        view.invalidate_render_publication = invalidate
+        invalidations.append(invalidate)
+    runtime = MagicMock()
+    runtime.get_view_publication.side_effect = RuntimeError("publication failed")
+    panel._query_port = runtime
+
+    assert panel._refresh_application_publication() is False
+
+    assert panel._application_view_publication is None
+    for invalidate in invalidations:
+        invalidate.assert_called_once_with()
 
 
 def test_visualization_panel_disables_absolute_when_view_is_already_nonnegative(
@@ -460,7 +670,7 @@ def test_visualization_panel_defers_service_queries_until_opened(
         VisualizeCommand,
     ]
     assert all(
-        not command.include_objects and not command.include_averaged_records
+        set(vars(command)) == {"view"}
         for command in calls
         if isinstance(command, VisualizeCommand)
     )
@@ -475,7 +685,7 @@ def test_visualization_panel_defers_service_queries_until_opened(
         VisualizeCommand,
     ]
     assert all(
-        not command.include_objects and not command.include_averaged_records
+        set(vars(command)) == {"view"}
         for command in calls
         if isinstance(command, VisualizeCommand)
     )
@@ -822,43 +1032,6 @@ def test_visualization_panel_reports_terminal_background_saliency_action(
     assert "Use Recompute Saliency" in message
     assert panel.compute_saliency_btn.text() == "Recompute Saliency"
     assert panel.compute_saliency_btn.isEnabled() is True
-
-
-def test_visualization_panel_terminal_observer_refreshes_once_without_polling(
-    qtbot,
-    monkeypatch,
-):
-    class RealMainWindow(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.study = Study()
-
-    controller = cast(Any, Observable())
-    controller.get_trainers = MagicMock(return_value=[])
-    controller.get_averaged_record = MagicMock()
-    parent = RealMainWindow()
-    panel, _ctrl = _make_panel(
-        qtbot,
-        parent=parent,
-        controller=controller,
-    )
-    cast(Any, parent).visualization_panel = panel
-    mark_refresh_dirty = MagicMock()
-    update_panel = MagicMock()
-    panel.mark_refresh_dirty = mark_refresh_dirty
-    panel.update_panel = update_panel
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
-        MagicMock(side_effect=AssertionError("terminal refresh must not poll")),
-    )
-
-    controller.notify("saliency_changed")
-    qtbot.waitUntil(lambda: update_panel.call_count == 1, timeout=1000)
-
-    mark_refresh_dirty.assert_called_once_with()
-    update_panel.assert_called_once_with()
-    assert not hasattr(panel, "_saliency_status_timer")
-    assert not hasattr(panel, "_poll_saliency_status")
 
 
 def test_visualization_panel_partial_coverage_reports_running_not_no_data(qtbot):
@@ -1521,113 +1694,7 @@ def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
 
     assert len(async_commands) == 1
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
-    current_widget.show_message.assert_called_with(
-        "Gradient saliency has not been computed for this run. "
-        "Use Compute Saliency to continue."
-    )
-
-
-def test_visualization_panel_does_not_duplicate_application_saliency_after_training(
-    qtbot,
-    monkeypatch,
-):
-    class RealMainWindow(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.study = Study()
-
-    training_controller = Observable()
-    async_commands = []
-
-    def fake_execute(_panel, command, **_kwargs):
-        if isinstance(command, SaliencyCommand):
-            return CommandResult.success_result(
-                command_name="saliency",
-                message="Saliency parameters are not configured yet.",
-                state={},
-                changed_state=ChangedState(),
-                diagnostics={
-                    "payload_type": "saliency_summary",
-                    "params": {},
-                    "saliency_configured": False,
-                    "saliency_available": False,
-                    "configure_available": True,
-                    "finished_run_count": 1,
-                },
-            )
-        if isinstance(command, VisualizeCommand):
-            return CommandResult.success_result(
-                command_name="visualize",
-                message="Visualization summary ready.",
-                state={},
-                changed_state=ChangedState(),
-                diagnostics={
-                    "payload_type": "visualization_summary",
-                    "available": True,
-                },
-            )
-        raise AssertionError(f"unexpected command: {command!r}")
-
-    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
-        del on_result
-        async_commands.append(command)
-        return True
-
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
-        fake_execute,
-    )
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
-        fake_execute_async,
-    )
-    panel, _ctrl = _make_panel(
-        qtbot,
-        training_controller=training_controller,
-        parent=RealMainWindow(),
-    )
-
-    with patch.object(panel, "update_panel"):
-        training_controller.notify("training_stopped")
-        qtbot.wait(50)
-
-    assert async_commands == []
-
-
-def test_visualization_panel_invalidates_previous_saliency_status_on_training_start(
-    qtbot,
-):
-    class RealMainWindow(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.study = Study()
-
-    training_controller = Observable()
-    panel, _ctrl = _make_panel(
-        qtbot,
-        training_controller=training_controller,
-        parent=RealMainWindow(),
-    )
-    complete = SaliencyMethodCoverageSnapshot(
-        method="Gradient",
-        available=True,
-        complete=True,
-    )
-    _publish_panel_state(
-        panel,
-        _application_query_with_saliency_state(
-            _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
-            complete,
-        ),
-    )
-    panel._application_summary_dirty = False
-
-    with patch.object(panel, "update_panel"):
-        training_controller.notify("training_started")
-        qtbot.wait(50)
-
-    assert panel._application_summary_dirty is True
-    assert panel._saliency_summary_dirty is True
+    current_widget.show_message.assert_called_with("Computing saliency...")
 
 
 def test_visualization_panel_compute_button_uses_recommended_profile(
@@ -1714,6 +1781,300 @@ def test_visualization_panel_compute_button_uses_recommended_profile(
         publication.generation
     )
     assert panel.compute_saliency_btn.text() == "Computing..."
+
+
+def test_saliency_resource_preflight_safe_dispatches_once_without_confirmation(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    current_widget = _current_mock_widget(panel)
+    commands: list[SaliencyCommand] = []
+    callbacks = []
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        commands.append(command)
+        callbacks.append(on_result)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    question = MagicMock(side_effect=AssertionError("safe preflight must not prompt"))
+    monkeypatch.setattr(QMessageBox, "question", question)
+    params = {"profile": "recommended", "methods": ["Gradient"]}
+
+    assert panel._start_saliency_compute(
+        params=params,
+        method_name="Gradient",
+        current_widget=current_widget,
+        attempt_key=("safe-resource-preflight",),
+    )
+    assert len(commands) == 1
+    assert commands[0].resource_preflight_confirmed is False
+    assert commands[0].resource_preflight_token is None
+
+    outcome = callbacks[0](
+        CommandResult.success_result(
+            command_name="saliency",
+            message="Saliency parameters configured.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics={
+                "resource_preflight": {
+                    "schema_version": 1,
+                    "risk_level": "safe",
+                    "requires_confirmation": False,
+                    "message": "Saliency resource check passed.",
+                }
+            },
+        )
+    )
+
+    assert outcome.status is InteractionStatus.COMPLETED
+    assert len(commands) == 1
+    question.assert_not_called()
+
+
+@pytest.mark.parametrize("risk_level", ["warning", "unknown"])
+def test_saliency_resource_preflight_approval_uses_host_receipt_not_param_token(
+    qtbot,
+    monkeypatch,
+    risk_level,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    current_widget = _current_mock_widget(panel)
+    commands: list[SaliencyCommand] = []
+    callbacks = []
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        commands.append(command)
+        callbacks.append(on_result)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    question = MagicMock(return_value=QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, "question", question)
+    params = {
+        "profile": "recommended",
+        "methods": ["Gradient"],
+        "resource_preflight_confirmed": True,
+        "resource_preflight_token": "untrusted-model-token",
+    }
+    host_token = f"host-{risk_level}-receipt"
+    resource_message = f"Host resource message for {risk_level}."
+
+    assert panel._start_saliency_compute(
+        params=params,
+        method_name="Gradient",
+        current_widget=current_widget,
+        attempt_key=("confirmed-resource-preflight", risk_level),
+    )
+    first_outcome = callbacks[0](
+        _saliency_resource_failure(
+            risk_level,
+            receipt_id=host_token,
+            message=resource_message,
+        )
+    )
+
+    assert first_outcome.status is InteractionStatus.ACCEPTED
+    assert len(commands) == 2
+    initial, confirmed = commands
+    assert initial.resource_preflight_confirmed is False
+    assert initial.resource_preflight_token is None
+    assert confirmed.resource_preflight_confirmed is True
+    assert confirmed.resource_preflight_token == host_token
+    assert confirmed.resource_preflight_token != params["resource_preflight_token"]
+    assert confirmed.method == initial.method == "Gradient"
+    assert confirmed.params == initial.params == params
+    question.assert_called_once()
+    assert resource_message in question.call_args.args[2]
+
+    second_outcome = callbacks[1](
+        CommandResult.success_result(
+            command_name="saliency",
+            message="Saliency parameters configured.",
+            state={},
+            changed_state=ChangedState(),
+        )
+    )
+
+    assert second_outcome.status is InteractionStatus.COMPLETED
+    assert len(commands) == 2
+
+
+def test_saliency_resource_preflight_cancel_does_not_mutate_evaluator(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    current_widget = _current_mock_widget(panel)
+    evaluator_state: dict[str, object] = {"params": None}
+    commands: list[SaliencyCommand] = []
+    callbacks = []
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        commands.append(command)
+        callbacks.append(on_result)
+        if command.resource_preflight_confirmed:
+            evaluator_state["params"] = command.params
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        MagicMock(return_value=QMessageBox.StandardButton.No),
+    )
+
+    assert panel._start_saliency_compute(
+        params={"profile": "recommended", "methods": ["Gradient"]},
+        method_name="Gradient",
+        current_widget=current_widget,
+        attempt_key=("cancelled-resource-preflight",),
+    )
+    outcome = callbacks[0](
+        _saliency_resource_failure("warning", receipt_id="cancel-receipt")
+    )
+
+    assert outcome.status is InteractionStatus.CANCELLED
+    assert len(commands) == 1
+    assert evaluator_state["params"] is None
+    assert panel._saliency_compute_in_progress is False
+    current_widget.show_error.assert_not_called()
+
+
+def test_saliency_resource_preflight_blocking_does_not_dispatch_confirmation(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    current_widget = _current_mock_widget(panel)
+    commands: list[SaliencyCommand] = []
+    callbacks = []
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        commands.append(command)
+        callbacks.append(on_result)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    question = MagicMock(side_effect=AssertionError("blocking must not prompt"))
+    critical = MagicMock()
+    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(QMessageBox, "critical", critical)
+    resource_message = "Saliency exceeds the available memory limit."
+
+    assert panel._start_saliency_compute(
+        params={"profile": "recommended", "methods": ["Gradient"]},
+        method_name="Gradient",
+        current_widget=current_widget,
+        attempt_key=("blocking-resource-preflight",),
+    )
+    outcome = callbacks[0](
+        _saliency_resource_failure("blocking", message=resource_message)
+    )
+
+    assert outcome.status is InteractionStatus.BLOCKED
+    assert len(commands) == 1
+    question.assert_not_called()
+    critical.assert_called_once_with(panel, "Saliency Resource Check", resource_message)
+
+
+def test_saliency_resource_preflight_rejects_mismatched_host_challenge(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    current_widget = _current_mock_widget(panel)
+    commands: list[SaliencyCommand] = []
+    callbacks = []
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        commands.append(command)
+        callbacks.append(on_result)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    question = MagicMock(side_effect=AssertionError("mismatched receipt must fail"))
+    monkeypatch.setattr(QMessageBox, "question", question)
+
+    assert panel._start_saliency_compute(
+        params={"profile": "recommended", "methods": ["Gradient"]},
+        method_name="Gradient",
+        current_widget=current_widget,
+        attempt_key=("mismatched-resource-preflight",),
+    )
+    outcome = callbacks[0](
+        _saliency_resource_failure(
+            "warning",
+            receipt_id="training-receipt",
+            challenge_command="start_training",
+        )
+    )
+
+    assert outcome.status is InteractionStatus.FAILED
+    assert "could not be confirmed safely" in outcome.message.lower()
+    assert len(commands) == 1
+    question.assert_not_called()
+
+
+def test_saliency_resource_preflight_rejected_receipt_never_retries_twice(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    current_widget = _current_mock_widget(panel)
+    commands: list[SaliencyCommand] = []
+    callbacks = []
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        commands.append(command)
+        callbacks.append(on_result)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    question = MagicMock(return_value=QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, "question", question)
+
+    assert panel._start_saliency_compute(
+        params={"profile": "recommended", "methods": ["Gradient"]},
+        method_name="Gradient",
+        current_widget=current_widget,
+        attempt_key=("one-shot-resource-preflight",),
+    )
+    first_outcome = callbacks[0](
+        _saliency_resource_failure("warning", receipt_id="first-receipt")
+    )
+    assert first_outcome.status is InteractionStatus.ACCEPTED
+    assert len(commands) == 2
+
+    rejected_outcome = callbacks[1](
+        _saliency_resource_failure("warning", receipt_id="replacement-receipt")
+    )
+
+    assert rejected_outcome.status is InteractionStatus.FAILED
+    assert "no longer valid" in rejected_outcome.message.lower()
+    assert len(commands) == 2
+    question.assert_called_once()
+    assert panel._saliency_compute_in_progress is False
 
 
 @pytest.mark.parametrize("startup_failure", ["returned_false", "raised"])
@@ -1921,9 +2282,8 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
     assert panel.saliency_action_bar.isVisibleTo(panel)
 
 
-def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):
-    training_controller = Observable()
-    panel, ctrl = _make_panel(qtbot, training_controller=training_controller)
+def test_visualization_panel_preserves_selection_across_publication_refresh(qtbot):
+    panel, ctrl = _make_panel(qtbot)
     complete = _complete_coverage()
     result = _result_with_run_coverages(
         SaliencyRunCoverageSnapshot(
@@ -1958,78 +2318,6 @@ def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):
     assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
     assert panel.run_combo.currentText() == "Run 2"
     ctrl.get_trainers.assert_not_called()
-
-
-def test_visualization_panel_training_stopped_never_replays_advanced_settings(
-    qtbot,
-    monkeypatch,
-):
-    class RealMainWindow(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.study = Study()
-
-    training_controller = Observable()
-    configured_params = {
-        "SmoothGrad": {"nt_samples": 2},
-        "SmoothGrad_Squared": {"nt_samples": 2},
-        "VarGrad": {"nt_samples": 2},
-    }
-    async_commands = []
-
-    def fake_execute(_panel, command, **_kwargs):
-        if isinstance(command, SaliencyCommand):
-            return CommandResult.success_result(
-                command_name="saliency",
-                message="Saliency summary ready.",
-                state={},
-                changed_state=ChangedState(),
-                diagnostics={
-                    "payload_type": "saliency_summary",
-                    "params": configured_params,
-                    "saliency_configured": True,
-                    "saliency_available": False,
-                    "configure_available": True,
-                    "finished_run_count": 1,
-                },
-            )
-        if isinstance(command, VisualizeCommand):
-            return CommandResult.success_result(
-                command_name="visualize",
-                message="Visualization summary ready.",
-                state={},
-                changed_state=ChangedState(),
-                diagnostics={
-                    "payload_type": "visualization_summary",
-                    "available": True,
-                },
-            )
-        raise AssertionError(f"unexpected command: {command!r}")
-
-    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
-        del on_result
-        async_commands.append(command)
-        return True
-
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
-        fake_execute,
-    )
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
-        fake_execute_async,
-    )
-    panel, _ctrl = _make_panel(
-        qtbot,
-        training_controller=training_controller,
-        parent=RealMainWindow(),
-    )
-
-    with patch.object(panel, "update_panel"):
-        training_controller.notify("training_stopped")
-        qtbot.wait(50)
-
-    assert async_commands == []
 
 
 def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
@@ -2150,7 +2438,7 @@ def test_visualization_placeholder_wraps_inside_narrow_view(qtbot):
     view = BaseSaliencyView()
     qtbot.addWidget(view)
     message = (
-        "Create epochs, complete training, or configure saliency before "
+        "Create EEG epochs, complete training, or configure saliency before "
         "opening visualization views."
     )
 
@@ -2185,7 +2473,7 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
 
     assert panel.last_application_query is not None
     assert panel.last_application_query.failed
-    assert "Create epochs, complete training, or configure saliency" in (
+    assert "Create EEG epochs, complete training, or configure saliency" in (
         panel.last_application_query.message
     )
     ctrl.get_trainers.assert_not_called()
@@ -2193,7 +2481,7 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     assert panel.plan_combo.itemText(0) == "Select a plan"
     assert panel.run_combo.count() == 0
     current_widget.show_message.assert_called_once_with(
-        "Create epochs, complete training, or configure saliency before "
+        "Create EEG epochs, complete training, or configure saliency before "
         "opening visualization views."
     )
     current_widget.show_error.assert_not_called()
@@ -2341,21 +2629,15 @@ def test_visualization_panel_has_no_average_option_without_publication(
     panel.refresh_combos()
 
     assert commands
-    assert all(
-        not command.include_objects and not command.include_averaged_records
-        for command in commands
-    )
+    assert all(set(vars(command)) == {"view"} for command in commands)
 
-    assert all(
-        not command.include_objects and not command.include_averaged_records
-        for command in commands
-    )
+    assert all(set(vars(command)) == {"view"} for command in commands)
     assert panel.run_combo.findText("Average") == -1
     ctrl.get_trainers.assert_not_called()
     ctrl.get_averaged_record.assert_not_called()
 
 
-def test_visualization_panel_unpublished_state_never_starts_object_query(
+def test_visualization_panel_unpublished_state_uses_detached_summary_query(
     qtbot,
     monkeypatch,
 ):
@@ -2398,10 +2680,7 @@ def test_visualization_panel_unpublished_state_never_starts_object_query(
 
     panel.refresh_combos()
     assert commands
-    assert all(
-        not command.include_objects and not command.include_averaged_records
-        for command in commands
-    )
+    assert all(set(vars(command)) == {"view"} for command in commands)
     ctrl.get_trainers.assert_not_called()
     ctrl.get_averaged_record.assert_not_called()
     assert panel.run_combo.findText("Average") == -1

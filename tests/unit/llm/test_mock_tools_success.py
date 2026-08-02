@@ -92,10 +92,15 @@ class TestMockDatasetSuccess:
     def test_load_data_success(self):
         tool = MockLoadDataTool(MockWorkflowState())
         result = tool.execute(study=None, paths=["/data/A01T.gdf"])
-        _assert_success(
-            result,
-            "Successfully loaded data from 1 sources: ['/data/A01T.gdf']",
-        )
+
+        assert isinstance(result, ToolResult)
+        assert result.ok is True
+        assert "Successfully loaded data from 1 sources" in result.message
+        assert "A01T.gdf" in result.message
+        assert "/data/A01T.gdf" in result.message
+        assert result.payload is None
+        assert result.error_type == "none"
+        assert result.recoverable is True
 
     def test_attach_labels_success(self):
         tool = MockAttachLabelsTool()
@@ -117,7 +122,7 @@ class TestMockTrainingSuccess:
         _assert_success(
             result,
             (
-                "Training configured (Epochs: 100, LR: 0.001, Device: cpu, "
+                "Training configured (Training epochs: 100, LR: 0.001, Device: cpu, "
                 "Optim: adam, Ckt: 0)."
             ),
         )

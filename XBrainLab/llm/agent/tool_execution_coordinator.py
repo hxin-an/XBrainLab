@@ -7,6 +7,12 @@ import time
 from dataclasses import dataclass
 from typing import Any, NoReturn, Protocol
 
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+    PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+)
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
@@ -32,6 +38,24 @@ from XBrainLab.llm.tools.result_contract import (
 from .tool_feedback import summarize_tool_result
 
 logger = logging.getLogger(__name__)
+_PUBLIC_TOOL_NAME_MAX_BYTES = 1024
+
+
+def _public_tool_name(value: object) -> str:
+    if type(value) is not str:
+        return PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER
+    rendered = public_diagnostic_text(
+        value,
+        layout=DiagnosticTextLayout.SINGLE_LINE,
+    )
+    encoded = rendered.encode("utf-8")
+    if len(encoded) <= _PUBLIC_TOOL_NAME_MAX_BYTES:
+        return rendered
+    marker = PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER.encode("utf-8")
+    prefix = encoded[: _PUBLIC_TOOL_NAME_MAX_BYTES - len(marker)].decode(
+        "utf-8", errors="ignore"
+    )
+    return f"{prefix}{PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER}"
 
 
 def _raise_invalid_application_result(message: str) -> NoReturn:
@@ -87,6 +111,7 @@ class ToolExecutionCoordinator:
         context: ToolAvailabilityContext,
         application_runtime: ApplicationToolRuntime | None = None,
     ) -> ToolExecutionOutcome:
+        command_name = _public_tool_name(command_name)
         runtime = (
             application_runtime
             if application_runtime is not None
@@ -126,13 +151,13 @@ class ToolExecutionCoordinator:
 
         availability = context.availability
         if not availability.enabled:
-            result = self.block_policy.blocked_result(command_name, context)
-            logger.warning(redact_public_text(result.message))
-            self._record(command_name, False, 0, result.message)
+            blocked_result = self.block_policy.blocked_result(command_name, context)
+            logger.warning(redact_public_text(blocked_result.message))
+            self._record(command_name, False, 0, blocked_result.message)
             self.host.status_update.emit(
-                summarize_tool_result(command_name, False, result)
+                summarize_tool_result(command_name, False, blocked_result)
             )
-            return ToolExecutionOutcome(False, result)
+            return ToolExecutionOutcome(False, blocked_result)
 
         started_at = time.monotonic()
         is_application_command = command_name in APPLICATION_COMMAND_TOOLS
@@ -171,13 +196,13 @@ class ToolExecutionCoordinator:
                     )
                 raw_result = tool.execute(direct_execution_host, **params)
 
-            result: ToolCommandResult | UiRequest
-            if isinstance(raw_result, UiRequest):
+            execution_result: ToolCommandResult | UiRequest
+            if type(raw_result) is UiRequest:
                 if is_application_command:
                     _raise_invalid_application_result(
                         "Application command returned an unexpected UI request"
                     )
-                result = raw_result
+                execution_result = raw_result
                 success = True
             else:
                 normalized = normalize_tool_result(
@@ -188,12 +213,12 @@ class ToolExecutionCoordinator:
                     state=context.state,
                     runtime=runtime,
                 )
-                result = normalized
+                execution_result = normalized
                 success = (
-                    normalized.ok if isinstance(normalized, ToolCommandResult) else True
+                    normalized.ok if type(normalized) is ToolCommandResult else True
                 )
                 if is_application_command:
-                    if not isinstance(normalized, ToolCommandResult):
+                    if type(normalized) is not ToolCommandResult:
                         _raise_invalid_application_result(
                             "Application command did not produce a tool result"
                         )
@@ -206,15 +231,15 @@ class ToolExecutionCoordinator:
                 elapsed,
                 None
                 if success
-                else result.error_code
-                if isinstance(result, ToolCommandResult)
+                else execution_result.error_code
+                if type(execution_result) is ToolCommandResult
                 else "tool_request_failed",
             )
             if not success:
                 self.host.status_update.emit(
-                    summarize_tool_result(command_name, success, result)
+                    summarize_tool_result(command_name, success, execution_result)
                 )
-            return ToolExecutionOutcome(success, result)
+            return ToolExecutionOutcome(success, execution_result)
         except Exception as exc:
             elapsed = (time.monotonic() - started_at) * 1000
             failure = safe_unexpected_failure(

@@ -76,11 +76,11 @@ class TrainingCommandService:
         wants_option = any(value is not None for value in option_values)
         if wants_option and not all(value is not None for value in option_values):
             raise PreconditionError(
-                "epoch, batch_size, and learning_rate are required.",
+                "Training epochs, batch size, and learning rate are required.",
             )
         if not command.model_name and not wants_option:
             raise PreconditionError(
-                "epoch, batch_size, and learning_rate are required.",
+                "Training epochs, batch size, and learning rate are required.",
             )
 
         repeat = normalize_positive_integer("repeat", command.repeat)
@@ -160,11 +160,16 @@ class TrainingCommandService:
             raise RuntimeError(
                 "Training controller returned an invalid terminal handoff generation."
             )
+        trainer_identity = self._require_training_identity(
+            self._training_terminal_outcome()
+        )
         completion_diagnostics: dict[str, Any] = {}
         if defer_synchronous_completion and not command.interactive:
             completion_diagnostics["synchronous_completion_deferred"] = True
         elif not command.interactive:
-            _message, completion_diagnostics = self.complete_synchronous_training()
+            _message, completion_diagnostics = self.complete_synchronous_training(
+                trainer_identity
+            )
         return (
             (
                 "Training started."
@@ -175,6 +180,7 @@ class TrainingCommandService:
                 "append": command.append,
                 "interactive": command.interactive,
                 "training_handoff_generation": handoff_generation,
+                "training_trainer_identity": trainer_identity,
                 "resource_preflight": {
                     **preflight.to_diagnostics(),
                     "confirmation_receipt_reused": receipt_reused,
@@ -183,10 +189,13 @@ class TrainingCommandService:
             },
         )
 
-    def complete_synchronous_training(self) -> tuple[str, dict[str, Any]]:
+    def complete_synchronous_training(
+        self,
+        expected_trainer_identity: str,
+    ) -> tuple[str, dict[str, Any]]:
         """Verify one deferred synchronous run after its worker has exited."""
-        self._raise_for_synchronous_training_failure()
-        outcome = self._training_terminal_outcome()
+        self._raise_for_synchronous_training_failure(expected_trainer_identity)
+        outcome = self._training_terminal_outcome(expected_trainer_identity)
         return (
             "Training completed.",
             {
@@ -197,9 +206,12 @@ class TrainingCommandService:
             },
         )
 
-    def _raise_for_synchronous_training_failure(self) -> None:
+    def _raise_for_synchronous_training_failure(
+        self,
+        expected_trainer_identity: str,
+    ) -> None:
         """Require typed completion before publishing synchronous success."""
-        outcome = self._training_terminal_outcome()
+        outcome = self._training_terminal_outcome(expected_trainer_identity)
         if outcome.state is TrainingOutcomeState.COMPLETED:
             return
         if outcome.state is TrainingOutcomeState.FAILED:
@@ -226,8 +238,45 @@ class TrainingCommandService:
             },
         )
 
-    def _training_terminal_outcome(self) -> TrainingTerminalOutcome:
-        return self.training_runtime.terminal_outcome()
+    def _training_terminal_outcome(
+        self,
+        expected_trainer_identity: str | None = None,
+    ) -> TrainingTerminalOutcome:
+        outcome = self.training_runtime.terminal_outcome()
+        if expected_trainer_identity is None:
+            return outcome
+        run = outcome.run
+        if run is None or run.trainer_id != expected_trainer_identity:
+            raise ApplicationError(
+                message=(
+                    "Training runtime changed before completion could be verified."
+                ),
+                error_type=ErrorType.TRAINING,
+                recoverable=True,
+                diagnostics={
+                    "training_failed": True,
+                    "training_trainer_identity": expected_trainer_identity,
+                    "observed_training_trainer_identity": (
+                        run.trainer_id if run is not None else None
+                    ),
+                },
+            )
+        return outcome
+
+    @staticmethod
+    def _require_training_identity(outcome: TrainingTerminalOutcome) -> str:
+        run = outcome.run
+        if run is None or not run.trainer_id.strip():
+            raise ApplicationError(
+                message="Training runtime identity is unavailable.",
+                error_type=ErrorType.TRAINING,
+                recoverable=True,
+                diagnostics={
+                    "training_failed": True,
+                    "training_trainer_identity_invalid": True,
+                },
+            )
+        return run.trainer_id
 
     def get_resource_preflight(self) -> ResourcePreflightResult:
         """Check the current application-owned training configuration."""

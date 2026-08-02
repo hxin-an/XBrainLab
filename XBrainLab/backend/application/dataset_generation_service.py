@@ -265,7 +265,7 @@ class DatasetGenerationCommandService:
         command: GenerateDatasetCommand,
     ) -> DataSplittingConfig:
         if command.split_config:
-            return DatasetGenerationCommandService._config_from_payload(
+            return DatasetGenerationCommandService.config_from_payload(
                 command.split_config,
             )
 
@@ -320,7 +320,8 @@ class DatasetGenerationCommandService:
             ) from exc
 
     @staticmethod
-    def _config_from_payload(payload: dict[str, Any]) -> DataSplittingConfig:
+    def config_from_payload(payload: dict[str, Any]) -> DataSplittingConfig:
+        """Build the canonical domain config from a detached UI payload."""
         train_type = DatasetGenerationCommandService._enum_from_value(
             TrainingType,
             payload.get("train_type"),

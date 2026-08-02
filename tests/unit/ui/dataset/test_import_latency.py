@@ -133,6 +133,35 @@ def test_dataset_actions_import_does_not_load_dialogs() -> None:
     assert "PASS" in output
 
 
+def test_application_errors_import_does_not_load_label_data_stack() -> None:
+    """Exception mapping must stay lightweight on Dataset first open."""
+    output = _run_import_probe(
+        """
+        import sys
+
+        import XBrainLab.backend.application.errors
+
+        forbidden_roots = (
+            "numpy",
+            "mne",
+            "XBrainLab.backend.load_data",
+            "XBrainLab.backend.services.label_import_service",
+        )
+        loaded = sorted(
+            module
+            for module in sys.modules
+            if any(
+                module == root or module.startswith(root + ".")
+                for root in forbidden_roots
+            )
+        )
+        assert not loaded, loaded
+        print("PASS")
+        """,
+    )
+    assert "PASS" in output
+
+
 def test_main_window_dataset_first_open_does_not_load_training_or_dialog_stack() -> (
     None
 ):

@@ -31,6 +31,7 @@ import tempfile
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 # ── Project setup ──
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -203,11 +204,12 @@ def evaluate(test_cases: list[dict], client, embeddings, collection_name: str, k
                 tool_hit = True
 
         if tool_hit:
+            matched_rank = cast(int, first_tool_rank)
             metrics["tool_recall_hits"] += 1
             cat_stats["tool_recall"] += 1
-            metrics["reciprocal_ranks"].append(1.0 / first_tool_rank)
+            metrics["reciprocal_ranks"].append(1.0 / matched_rank)
             tool_stats["tool_recall"] += 1
-            tool_stats["rr_sum"] += 1.0 / first_tool_rank
+            tool_stats["rr_sum"] += 1.0 / matched_rank
         else:
             metrics["reciprocal_ranks"].append(0.0)
 

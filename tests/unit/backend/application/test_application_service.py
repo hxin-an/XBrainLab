@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -61,6 +62,7 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.resource_guard import ResourceChecker
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -69,7 +71,6 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
 )
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.dataset import (
     Dataset,
     DataSplittingConfig,
@@ -97,6 +98,7 @@ from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyScheduleDisposition,
     PostTrainingSaliencyScheduleReason,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingReadBoundary,
     TrainingRunIdentity,
@@ -168,6 +170,13 @@ def _valid_training_option(*, batch_size: int = 4) -> TrainingOption:
         evaluation_option=TrainingEvaluation.LAST_EPOCH,
         repeat_num=1,
     )
+
+
+def _publish_mock_training_identity(service: ApplicationService) -> None:
+    """Keep mocked starts honest about the typed runtime identity contract."""
+    trainer = Trainer([])
+    trainer.run(interact=False)
+    service.study.training_manager.trainer = trainer
 
 
 def _positive_epoch_data() -> Epochs:
@@ -276,6 +285,32 @@ def test_application_service_binds_every_command_handler_at_initialization():
         )
 
 
+def test_shutdown_owner_exists_before_lifecycle_observers_can_publish(
+    monkeypatch,
+) -> None:
+    study = Study()
+    training_events = study.training_state_service
+    original_subscribe = training_events.subscribe_training_started
+    observed_callbacks: list[object] = []
+
+    def subscribe_and_publish(callback) -> None:
+        original_subscribe(callback)
+        observed_callbacks.append(callback)
+        callback()
+
+    monkeypatch.setattr(
+        training_events,
+        "subscribe_training_started",
+        subscribe_and_publish,
+    )
+
+    service = ApplicationService(study)
+
+    assert observed_callbacks
+    assert service.is_closed is False
+    service.close()
+
+
 def test_application_service_serializes_commands_across_calling_threads(monkeypatch):
     study = Study()
     service = ApplicationService(study)
@@ -377,7 +412,6 @@ def test_state_query_flags_do_not_mix_publication_generations() -> None:
         QueryStateCommand(
             query="state",
             params={"unused": True},
-            include_objects=True,
         )
     )
 
@@ -395,7 +429,7 @@ def test_published_state_query_returns_actionable_readiness_summary() -> None:
     assert result.message == "No data loaded. Next: Scan data source."
 
 
-def test_object_query_fails_fast_instead_of_waiting_for_mutation_lock() -> None:
+def test_detached_data_query_fails_fast_instead_of_waiting_for_mutation_lock() -> None:
     service = ApplicationService(Study())
     lock_acquired = Event()
     release_lock = Event()
@@ -415,7 +449,7 @@ def test_object_query_fails_fast_instead_of_waiting_for_mutation_lock() -> None:
     def query_objects() -> None:
         results.append(
             service.execute(
-                QueryStateCommand(query="data_lists", include_objects=True),
+                QueryStateCommand(query="data_lists"),
             )
         )
         query_completed.set()
@@ -923,7 +957,7 @@ def test_training_history_query_reuses_live_event_publication(
     service.training.notify("training_updated")
     published = service.get_view_publication()
     result = service.execute(
-        QueryStateCommand(query="training_history", include_objects=True),
+        QueryStateCommand(query="training_history"),
     )
 
     assert result.ok is True
@@ -943,7 +977,7 @@ def test_training_history_query_rejects_when_training_token_outgrows_publication
 
     trainer.add_training_plan_holders([])
     result = service.execute(
-        QueryStateCommand(query="training_history", include_objects=True),
+        QueryStateCommand(query="training_history"),
     )
 
     assert result.failed is True
@@ -1312,7 +1346,7 @@ def test_shutdown_fence_does_not_wait_for_saliency_terminal_reconciliation() -> 
     service.training_runtime.cancel_saliency_job.assert_called_once_with()
 
 
-def test_shutdown_fence_rechecks_command_queued_before_fence() -> None:
+def test_shutdown_fence_rechecks_command_queued_before_fence(monkeypatch) -> None:
     study = Study()
     service = ApplicationService(study)
     original_admission_lock = service._command_admission_lock
@@ -1330,7 +1364,11 @@ def test_shutdown_fence_rechecks_command_queued_before_fence() -> None:
             if current_thread() is mutation_thread:
                 admission_passed.set()
 
-    service._command_admission_lock = _ObservedAdmissionLock()
+    monkeypatch.setattr(
+        service.shutdown_lifecycle,
+        "_command_admission_lock",
+        _ObservedAdmissionLock(),
+    )
 
     def execute_queued_mutation() -> None:
         result_holder.append(service.execute(NewSessionCommand(confirmed=True)))
@@ -1354,7 +1392,7 @@ def test_shutdown_fence_release_stays_exact_when_state_refresh_fails() -> None:
     service = ApplicationService(Study())
     service.get_state()
     service.request_shutdown_fence()
-    fence_generation = service._shutdown_fence_generation
+    fence_generation = service.shutdown_lifecycle.fence_generation
     original_build = service.state_snapshot.build
     service.state_snapshot.build = MagicMock(
         side_effect=RuntimeError("state backend unavailable"),
@@ -1362,13 +1400,13 @@ def test_shutdown_fence_release_stays_exact_when_state_refresh_fails() -> None:
 
     assert service.release_shutdown_fence() is False
 
-    assert service._shutdown_fenced is True
-    assert service._shutdown_fence_generation == fence_generation
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
+    assert service.shutdown_lifecycle.fence_generation == fence_generation
 
     service.state_snapshot.build = original_build
 
     assert service.release_shutdown_fence() is True
-    assert service._shutdown_fenced is False
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
 
 
 def test_shutdown_fence_release_rejects_unusable_refresh_publication() -> None:
@@ -1376,19 +1414,19 @@ def test_shutdown_fence_release_rejects_unusable_refresh_publication() -> None:
     reliable_state = service.get_state()
     unreliable_state = replace(reliable_state, state_reliable=False)
     service.request_shutdown_fence()
-    fence_generation = service._shutdown_fence_generation
+    fence_generation = service.shutdown_lifecycle.fence_generation
     original_build = service.state_snapshot.build
     service.state_snapshot.build = MagicMock(return_value=unreliable_state)
 
     assert service.release_shutdown_fence() is False
-    assert service._shutdown_fenced is True
-    assert service._shutdown_fence_generation == fence_generation
+    assert service.shutdown_lifecycle.is_shutdown_fenced is True
+    assert service.shutdown_lifecycle.fence_generation == fence_generation
     assert service._committed_view_publication().usable is False
 
     service.state_snapshot.build = original_build
 
     assert service.release_shutdown_fence() is True
-    assert service._shutdown_fenced is False
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
 
 
 def test_product_interpretation_rollback_uses_complete_data_manager_state() -> None:
@@ -1746,6 +1784,33 @@ def test_handler_error_and_refresh_failure_fails_closed_without_retry() -> None:
     assert result.state is not before
     assert result.state.state_reliable is False
     assert result.state.pipeline_stage == "unavailable"
+
+
+def test_handler_failure_does_not_execute_hostile_exception_metaclass() -> None:
+    class HostileMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            if name == "__name__":
+                raise AssertionError("hostile exception metaclass name access executed")
+            return super().__getattribute__(name)
+
+    class HostileHandlerError(Exception, metaclass=HostileMeta):
+        def __str__(self) -> str:
+            raise AssertionError("hostile exception string protocol executed")
+
+    service = ApplicationService(Study())
+
+    def fail(_command: ConfigureTrainingCommand) -> Any:
+        raise HostileHandlerError("/srv/Clinical Records/Mary Example")
+
+    service._command_handlers[CommandName.CONFIGURE_TRAINING] = fail
+
+    result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.INTERNAL
+    assert result.message == "An unexpected application error occurred."
+    assert result.diagnostics["exception_type"] == "Exception"
+    assert "Mary Example" not in repr(result.to_public_dict())
 
 
 def test_explicit_state_unknown_handler_failure_fails_closed_when_state_is_readable() -> (
@@ -2225,7 +2290,90 @@ def test_read_only_training_history_query_reuses_committed_publication(monkeypat
     assert calls == 0
 
 
-def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_path):
+def test_training_history_query_returns_detached_json_rows(monkeypatch):
+    service = ApplicationService(Study())
+    plan = SimpleNamespace(
+        option=SimpleNamespace(epoch=3),
+        get_training_status=lambda: "Training 1",
+    )
+    record = SimpleNamespace(
+        epoch=2,
+        train={
+            TrainRecordKey.LOSS: [0.5, 0.4],
+            TrainRecordKey.ACC: [80.0, 82.0],
+            TrainRecordKey.AUC: [0.7, 0.75],
+            TrainRecordKey.LR: [0.001, 0.0005],
+            TrainRecordKey.TIME: [1.2, 1.1],
+        },
+        val={
+            RecordKey.LOSS: [0.6, 0.45],
+            RecordKey.ACC: [75.0, 79.0],
+            RecordKey.AUC: [0.65, 0.72],
+        },
+        start_timestamp=10.0,
+        end_timestamp=70.0,
+    )
+    record.get_epoch = lambda: record.epoch
+    record.is_finished = lambda: False
+    source_row = {
+        "plan": plan,
+        "record": record,
+        "group_name": "Group 1",
+        "run_name": "2",
+        "model_name": "EEGNet",
+        "is_active": True,
+        "is_current_run": True,
+    }
+    monkeypatch.setattr(
+        service.state_snapshot.training_state,
+        "get_formatted_history",
+        lambda: [source_row],
+    )
+
+    result = service.execute(QueryStateCommand(query="training_history"))
+
+    assert result.ok is True
+    json.dumps(result.diagnostics, allow_nan=False)
+    returned_row = result.diagnostics["rows"][0]
+    expected_row = {
+        "identity": {"plan_index": 0, "run_index": 0},
+        "group_name": "Group 1",
+        "run_name": "2",
+        "model_name": "EEGNet",
+        "status": "Running",
+        "status_detail": None,
+        "epoch": 2,
+        "max_epochs": 3,
+        "is_active": True,
+        "is_current_run": True,
+        "start_timestamp": 10.0,
+        "end_timestamp": 70.0,
+        "metrics": {
+            "train": {
+                "loss": [0.5, 0.4],
+                "accuracy": [80.0, 82.0],
+                "auc": [0.7, 0.75],
+                "lr": [0.001, 0.0005],
+                "time": [1.2, 1.1],
+            },
+            "validation": {
+                "loss": [0.6, 0.45],
+                "accuracy": [75.0, 79.0],
+                "auc": [0.65, 0.72],
+            },
+        },
+    }
+    assert returned_row == expected_row
+
+    record.train[TrainRecordKey.ACC].append(99.0)
+    record.val[RecordKey.LOSS][0] = 9.9
+    record.epoch = 3
+    source_row["model_name"] = "MutatedNet"
+
+    assert result.diagnostics["rows"][0] == expected_row
+
+
+def test_data_interpretation_unresolved_sequence_target_cannot_be_confirmed(tmp_path):
     source_dir = tmp_path / "gdf_with_external_labels"
     source_dir.mkdir()
     eeg_path = source_dir / "A01T.gdf"
@@ -2257,18 +2405,17 @@ def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_pat
     assert "label placement" in confirmation_text
     assert "trial anchors" in confirmation_text
     assert validation.ok is True
-    assert validation.diagnostics["validation_decision"]["decision"] == (
-        "needs_confirmation"
-    )
-    assert validation.state.interpretation.validation_decision == "needs_confirmation"
+    [carrier] = preview.diagnostics["candidate"]["label_carrier_plan"]
+    assert carrier["placement_review"]["status"] == "blocked"
+    assert validation.diagnostics["validation_decision"]["decision"] == "blocked"
+    assert validation.state.interpretation.validation_decision == "blocked"
 
     assert unconfirmed_apply.failed is True
-    assert unconfirmed_apply.error_type == ErrorType.CONFIRMATION_REQUIRED
-    assert service.dataset.import_files.call_count == 1
+    assert unconfirmed_apply.error_type == ErrorType.PRECONDITION
     assert confirmed_apply.failed is True
-    assert confirmed_apply.error_type == ErrorType.VALIDATION
-    assert confirmed_apply.diagnostics["label_apply"]["status"] == "failed"
-    assert "Label placement is not ready" in confirmed_apply.message
+    assert confirmed_apply.error_type == ErrorType.PRECONDITION
+    assert "explicit target EEG event" in confirmed_apply.message
+    assert service.dataset.import_files.call_count == 0
     assert confirmed_apply.state.interpretation.has_applied_interpretation is False
 
 
@@ -2695,6 +2842,8 @@ def test_data_interpretation_scan_reports_format_capability_boundaries(tmp_path)
     assert "boundary" in capabilities["eeglab.set"]["message"]
     assert capabilities["brainvision.vhdr"]["format"] == "BrainVision"
     assert "stimulus" in capabilities["brainvision.vhdr"]["message"]
+    assert capabilities["brainvision.vmrk"]["format"] == "BrainVision markers"
+    assert capabilities["brainvision.vmrk"]["role"] == "sidecar"
     assert capabilities["labels.mat"]["format"] == "MAT labels"
     assert capabilities["events.tsv"]["format"] == "BIDS events"
     assert capabilities["lsl_recording.xdf"]["status"] == "blocked"
@@ -2702,10 +2851,20 @@ def test_data_interpretation_scan_reports_format_capability_boundaries(tmp_path)
         "XDF / LSL stream selection is not available"
         in capabilities["lsl_recording.xdf"]["message"]
     )
-    assert (
-        preview.diagnostics["preview"]["format_capabilities"]
-        == scan.diagnostics["scan_result"]["format_capabilities"]
-    )
+    preview_capabilities = {
+        item["name"]: item
+        for item in preview.diagnostics["preview"]["format_capabilities"]
+    }
+    assert "brainvision.vmrk" not in preview_capabilities
+    assert "lsl_recording.xdf" not in preview_capabilities
+    assert set(preview_capabilities) == {
+        "A01T.gdf",
+        "brainvision.vhdr",
+        "eeglab.set",
+        "events.tsv",
+        "labels.mat",
+        "physionet.edf",
+    }
 
 
 def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path):
@@ -2752,7 +2911,10 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path)
         np.array([[50, 0, 1], [150, 0, 2]]),
     )
     assert event_id == {"left hand": 1, "right hand": 2}
-    annotations = raw.get_mne().annotations
+    mne_raw = raw.get_mne()
+    assert mne_raw is not None
+    annotations = mne_raw.annotations
+    assert annotations is not None
     np.testing.assert_allclose(annotations.onset, [0.5, 1.5])
     np.testing.assert_allclose(annotations.duration, [0.1, 0.1])
     assert list(annotations.description) == ["left hand", "right hand"]
@@ -2812,7 +2974,10 @@ def test_apply_interpretation_converts_sample_index_csv_labels_to_seconds(tmp_pa
         np.array([[128, 0, 1], [256, 0, 2]]),
     )
     assert event_id == {"left hand": 1, "right hand": 2}
-    annotations = raw.get_mne().annotations
+    mne_raw = raw.get_mne()
+    assert mne_raw is not None
+    annotations = mne_raw.annotations
+    assert annotations is not None
     np.testing.assert_allclose(annotations.onset, [1.0, 2.0])
     np.testing.assert_allclose(annotations.duration, [0.5, 0.5])
     assert list(annotations.description) == ["left hand", "right hand"]
@@ -3041,7 +3206,9 @@ def test_apply_interpretation_blocks_partial_manual_timestamp_label_mapping(
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.PRECONDITION
     assert "Label carrier pairing is incomplete" in apply_result.message
-    assert eeg_1.name in apply_result.message
+    assert "task-mi_run-1_raw.fif" in apply_result.message
+    assert "sub-01" not in apply_result.message
+    assert "[SUBJECT_REF:" in apply_result.message
     service.dataset.import_files.assert_not_called()
     service.dataset.apply_labels_batch.assert_not_called()
 
@@ -3348,7 +3515,10 @@ def test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier(
         np.array([[100, 0, 1], [250, 0, 2], [400, 0, 1]]),
     )
     assert event_id == {"left hand": 1, "right hand": 2}
-    annotations = raw.get_mne().annotations
+    mne_raw = raw.get_mne()
+    assert mne_raw is not None
+    annotations = mne_raw.annotations
+    assert annotations is not None
     np.testing.assert_allclose(annotations.onset, [1.0, 2.5, 4.0])
     np.testing.assert_allclose(annotations.duration, [0.5, 0.75, 0.25])
     assert list(annotations.description) == [
@@ -3480,7 +3650,10 @@ def test_apply_interpretation_honors_interval_end_field(
         np.array([[10, 0, 1], [100, 0, 2]]),
     )
     assert event_id == {"Left hand": 1, "Right hand": 2}
-    annotations = raw.get_mne().annotations
+    mne_raw = raw.get_mne()
+    assert mne_raw is not None
+    annotations = mne_raw.annotations
+    assert annotations is not None
     np.testing.assert_allclose(annotations.onset, [0.1, 1.0])
     np.testing.assert_allclose(annotations.duration, [0.5, 0.4])
     assert list(annotations.description) == ["Left hand", "Right hand"]
@@ -3833,7 +4006,7 @@ def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy(
     assert policy.get(CommandName.PREPROCESS).available is True
     assert policy.get(CommandName.CREATE_EPOCH).available is False
     assert (
-        "Preprocess data before creating epochs"
+        "Preprocess data before creating EEG epochs"
         in (policy.get(CommandName.CREATE_EPOCH).reasons[0])
     )
 
@@ -3861,21 +4034,45 @@ def test_evaluate_command_returns_typed_service_backed_summary():
     service = ApplicationService(Study())
     run = MagicMock()
     run.is_finished.return_value = True
+    run.get_name.return_value = "Repeat-0"
+    run.eval_record.evaluation_split = "test"
     plan = MagicMock()
     plan.get_name.return_value = "Plan A"
     plan.get_plans.return_value = [run]
     trainer = Trainer([])
     trainer.get_training_plan_holders = MagicMock(return_value=[plan])
     service.study.training_manager.trainer = trainer
-    service.evaluation.get_plans = MagicMock(return_value=[plan])
+    service.training_runtime.training_plan_holders = MagicMock(return_value=(plan,))
 
-    result = service.execute(EvaluateCommand(include_metrics=False))
+    result = service.execute(EvaluateCommand())
 
     assert result.ok is True
+    assert not hasattr(service, "evaluation")
     assert result.command_name == "evaluate"
     assert result.diagnostics["payload_type"] == "evaluation_summary"
+    assert result.diagnostics["evaluation_publication_generation"] == (
+        service.get_view_publication().generation
+    )
     assert result.diagnostics["available"] is True
     assert result.diagnostics["plan_count"] == 1
+    assert result.diagnostics["plans"] == [
+        {
+            "identity": {"plan_index": 0},
+            "name": "Plan A",
+            "run_count": 1,
+            "finished_run_count": 1,
+            "evaluation_splits": ["test"],
+            "runs": [
+                {
+                    "identity": {"plan_index": 0, "run_index": 0},
+                    "name": "Repeat-0",
+                    "finished": True,
+                    "evaluation_split": "test",
+                }
+            ],
+        }
+    ]
+    assert "plan_objects" not in result.diagnostics
     assert result.diagnostics["training_read_verified"] is True
     assert isinstance(result.diagnostics["training_read_generation"], int)
     assert result.state.last_error is None
@@ -3892,19 +4089,97 @@ def test_evaluation_query_fails_when_training_generation_changes_mid_read() -> N
     trainer.get_training_plan_holders = MagicMock(return_value=[plan])
     service.study.training_manager.trainer = trainer
 
-    def mutate_training_while_reading() -> list[Any]:
+    original_handle_evaluate = service.analysis.handle_evaluate
+
+    def mutate_training_while_reading(command: Any) -> Any:
+        summary = original_handle_evaluate(command)
         trainer.set_interrupt()
         trainer.clear_interrupt()
-        return [plan]
+        return summary
 
-    service.evaluation.get_plans = MagicMock(side_effect=mutate_training_while_reading)
+    service._command_handlers[CommandName.EVALUATE] = MagicMock(
+        side_effect=mutate_training_while_reading
+    )
 
-    result = service.execute(EvaluateCommand(include_metrics=False))
+    result = service.execute(EvaluateCommand())
 
     assert result.failed is True
     assert result.error_type is ErrorType.PRECONDITION
     assert result.recoverable is True
     assert result.diagnostics["training_state_changed"] is True
+
+
+def test_evaluation_catalog_keeps_the_generation_read_under_command_lock() -> None:
+    """A later mutation must not relabel an older Evaluation catalog."""
+    service = ApplicationService(Study())
+    run = MagicMock()
+    run.is_finished.return_value = True
+    run.get_name.return_value = "Repeat-0"
+    run.eval_record.evaluation_split = "test"
+    plan = MagicMock()
+    plan.get_name.return_value = "Old plan"
+    plan.get_plans.return_value = [run]
+    trainer = Trainer([])
+    trainer.get_training_plan_holders = MagicMock(return_value=[plan])
+    service.study.training_manager.trainer = trainer
+    service.training_runtime.training_plan_holders = MagicMock(return_value=(plan,))
+
+    command_lock_released = Event()
+    allow_evaluate_to_return = Event()
+    original_lock = service._command_lock
+    lock_depths: dict[object, int] = {}
+
+    class _ReleaseBarrierLock:
+        def acquire(self, *args: Any, **kwargs: Any) -> bool:
+            acquired = original_lock.acquire(*args, **kwargs)
+            if acquired:
+                thread = current_thread()
+                lock_depths[thread] = lock_depths.get(thread, 0) + 1
+            return acquired
+
+        def release(self) -> None:
+            thread = current_thread()
+            depth = lock_depths.get(thread, 0)
+            assert depth > 0
+            if depth == 1:
+                del lock_depths[thread]
+            else:
+                lock_depths[thread] = depth - 1
+            original_lock.release()
+            if (
+                depth == 1
+                and thread.name.startswith("ThreadPoolExecutor")
+                and not command_lock_released.is_set()
+            ):
+                command_lock_released.set()
+                assert allow_evaluate_to_return.wait(timeout=5)
+
+        def __enter__(self) -> _ReleaseBarrierLock:
+            self.acquire()
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            self.release()
+
+    service._command_lock = _ReleaseBarrierLock()
+    before_generation = service.get_view_publication().generation
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(service.execute, EvaluateCommand())
+        assert command_lock_released.wait(timeout=5)
+        clear_result = service.execute(ClearTrainingHistoryCommand(confirmed=True))
+        after_generation = service.get_view_publication().generation
+        allow_evaluate_to_return.set()
+        evaluate_result = future.result(timeout=5)
+
+    assert clear_result.ok is True
+    assert after_generation > before_generation
+    assert evaluate_result.ok is True
+    assert evaluate_result.diagnostics["plans"][0]["name"] == "Old plan"
+    catalog_generation = evaluate_result.diagnostics[
+        "evaluation_publication_generation"
+    ]
+    assert before_generation <= catalog_generation < after_generation
 
 
 def test_training_history_query_fails_when_generation_changes_mid_read() -> None:
@@ -4417,6 +4692,58 @@ def test_saliency_oom_returns_recoverable_visualization_error_and_releases_cache
     assert trainer.get_state_generation() == generation_before
 
 
+def test_oversized_saliency_is_rejected_before_evaluator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _trainer, holder, _record, _old_eval_record = _saliency_recompute_service()
+    epoch_count = 64
+    shape_only_data = SimpleNamespace(
+        shape=(epoch_count, 128, 4096),
+        nbytes=epoch_count * 128 * 4096 * 4,
+    )
+    shape_only_epoch = SimpleNamespace(get_data=lambda: shape_only_data)
+    holder.dataset = cast(
+        Any,
+        SimpleNamespace(
+            get_epoch_data=lambda: shape_only_epoch,
+            train_mask=np.zeros(epoch_count, dtype=bool),
+            val_mask=np.zeros(epoch_count, dtype=bool),
+            test_mask=np.ones(epoch_count, dtype=bool),
+        ),
+    )
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 2 * 1024**3,
+                "total_bytes": 4 * 1024**3,
+                "used_bytes": 2 * 1024**3,
+            }
+        ),
+    )
+
+    with patch.object(
+        Evaluator,
+        "evaluate_with_saliency",
+        side_effect=AssertionError("evaluator crossed saliency admission"),
+    ) as evaluator:
+        result = service.execute(
+            SaliencyCommand(
+                method="SmoothGrad",
+                params={"nt_samples": 512},
+            )
+        )
+
+    assert result.failed
+    assert result.error_type == ErrorType.PRECONDITION
+    assert result.recoverable
+    assert "saliency" in result.message.lower()
+    assert "ram" in result.message.lower()
+    assert result.diagnostics["resource_preflight"]["risk_level"] == "blocking"
+    evaluator.assert_not_called()
+
+
 def test_reconfiguring_saliency_marks_visualization_changed() -> None:
     service = ApplicationService(Study())
     service.study.training_manager.model_holder = ModelHolder(
@@ -4480,7 +4807,7 @@ def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> 
     assert second.state.visualization.montage_positions == [[0.1, 0.2, 0.3]]
 
 
-def test_saliency_command_normalizes_flat_method_params():
+def test_saliency_command_applies_exact_requested_params_to_authoritative_state():
     service = ApplicationService(Study())
     service.study.training_manager.model_holder = ModelHolder(
         type("EEGNet", (), {}),
@@ -4490,7 +4817,7 @@ def test_saliency_command_normalizes_flat_method_params():
 
     result = service.execute(
         SaliencyCommand(
-            method="Gradient",
+            method="SmoothGrad",
             params={
                 "nt_samples": 2,
                 "nt_samples_batch_size": 1,
@@ -4500,13 +4827,46 @@ def test_saliency_command_normalizes_flat_method_params():
     )
 
     assert result.ok is True
-    assert result.diagnostics["requested_method"] == "Gradient"
+    assert result.diagnostics["requested_method"] == "SmoothGrad"
     params = result.diagnostics["params"]
-    assert params["_methods"] == ["Gradient"]
-    for method in ("SmoothGrad", "SmoothGrad_Squared", "VarGrad"):
-        assert params[method]["nt_samples"] == 2
-        assert params[method]["nt_samples_batch_size"] == 1
-        assert params[method]["stdevs"] == 1.0
+    assert params == result.state.visualization.saliency_params
+    assert params["_methods"] == ["SmoothGrad"]
+    assert params["SmoothGrad"] == {
+        "nt_samples": 2,
+        "nt_samples_batch_size": 1,
+        "stdevs": 1.0,
+    }
+    assert params["SmoothGrad_Squared"] == {
+        "nt_samples": 5,
+        "nt_samples_batch_size": None,
+        "stdevs": 1.0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("method", "params"),
+    [
+        ("IntegratedGradients", None),
+        ("Gradient", {"nt_samples": 2}),
+    ],
+)
+def test_saliency_command_returns_typed_validation_failure_for_unsupported_request(
+    method: str,
+    params: dict[str, object] | None,
+) -> None:
+    service = ApplicationService(Study())
+    service.study.training_manager.model_holder = ModelHolder(
+        type("EEGNet", (), {}),
+        {},
+    )
+    service.study.training_manager.set_training_option(_valid_training_option())
+
+    result = service.execute(SaliencyCommand(method=method, params=params))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.VALIDATION
+    assert result.state.visualization.saliency_configured is False
+    assert result.state.visualization.saliency_params == {}
 
 
 def test_command_result_classifies_unsupported_load(tmp_path):
@@ -4561,6 +4921,7 @@ def test_train_command_requires_confirmation_before_long_running_start():
     service.training.start_training = MagicMock(return_value=1)
 
     result = service.execute(TrainCommand())
+    _publish_mock_training_identity(service)
     confirmed = service.execute(TrainCommand(confirmed=True))
 
     assert result.failed is True
@@ -4641,6 +5002,84 @@ def test_synchronous_train_command_returns_failed_result_for_plan_failure(
     assert result.diagnostics["training_failed"] is True
     assert result.diagnostics["cuda_oom"] is is_oom
     assert result.state.training.progress_message == f"Error: {failure_message}"
+
+
+def test_synchronous_training_failure_waits_for_exact_terminal_handoff(
+    monkeypatch,
+) -> None:
+    """Worker failure is not returned until its monitor publication is terminal."""
+    service = ApplicationService(Study())
+    service.study.loaded_data_list = [_raw_mock()]
+    cast(Any, service.study).datasets = [object()]
+    service.study.set_model_holder(_valid_model_holder())
+    service.study.set_training_option(_valid_training_option())
+    failure_message = "training data loader failed"
+    plan = _SynchronousFailingTrainingPlan(failure_message)
+    trainer = Trainer([cast(TrainingPlanHolder, plan)])
+    plan_started = Event()
+    release_plan = Event()
+    monitor_waiting = Event()
+    release_monitor_poll = Event()
+    results: list[CommandResult] = []
+
+    def install_failing_plan(
+        *,
+        force_update: bool = False,
+        append: bool = False,
+    ) -> None:
+        del force_update, append
+        service.study.training_manager.trainer = trainer
+
+    def controlled_monitor_wait(_timeout: float | None = None) -> bool:
+        monitor_waiting.set()
+        assert release_monitor_poll.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return False
+
+    def blocking_failure() -> None:
+        plan_started.set()
+        assert release_plan.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        plan.error = failure_message
+
+    plan.train = blocking_failure  # type: ignore[method-assign]
+    service.study.generate_plan = install_failing_plan  # type: ignore[method-assign]
+    training_state = cast(Any, service.training)
+    monkeypatch.setattr(
+        training_state._shutdown_event,
+        "wait",
+        controlled_monitor_wait,
+    )
+    train_thread = Thread(
+        target=lambda: results.append(
+            service.execute(
+                TrainCommand(
+                    confirmed=True,
+                    interactive=False,
+                    resource_preflight_confirmed=True,
+                )
+            )
+        ),
+        name="synchronous-failing-train",
+    )
+
+    train_thread.start()
+    assert plan_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert monitor_waiting.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    release_plan.set()
+    worker = trainer.job_thread
+    assert worker is not None
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+    assert not worker.is_alive()
+    returned_before_terminal_handoff = not train_thread.is_alive()
+
+    release_monitor_poll.set()
+    train_thread.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert returned_before_terminal_handoff is False
+    assert not train_thread.is_alive()
+    assert len(results) == 1
+    assert results[0].failed is True
+    assert results[0].error_type is ErrorType.TRAINING
+    assert results[0].message == failure_message
 
 
 def test_train_restart_cleanup_waits_before_command_lock_and_fails_recoverably(
@@ -4807,7 +5246,7 @@ def test_synchronous_train_waits_for_application_background_tasks() -> None:
 
     assert result is expected
     service.wait_for_background_tasks.assert_called_once_with(
-        training_handoff_generation=7
+        timeout=300.0, training_handoff_generation=7
     )
 
 
@@ -4854,8 +5293,12 @@ def test_synchronous_train_waits_for_real_monitor_terminal_handoff(monkeypatch) 
             failures.append(exc)
 
     service.study.generate_plan = install_plan  # type: ignore[method-assign]
-    controller = service.study.get_controller("training")
-    monkeypatch.setattr(controller._shutdown_event, "wait", controlled_monitor_wait)
+    training_state = cast(Any, service.training)
+    monkeypatch.setattr(
+        training_state._shutdown_event,
+        "wait",
+        controlled_monitor_wait,
+    )
     service.training.subscribe("training_terminal_published", terminal_events.append)
     train_thread = Thread(target=execute_train, name="synchronous-train")
 
@@ -4879,74 +5322,113 @@ def test_synchronous_train_waits_for_real_monitor_terminal_handoff(monkeypatch) 
     assert len(terminal_events) == 1
 
 
-def test_second_synchronous_train_waits_for_first_terminal_handoff() -> None:
-    """One synchronous lifecycle lock owns admission through exact handoff wait."""
-    service = ApplicationService(Study())
-    state = service.get_view_publication().state
+def test_parallel_services_keep_synchronous_training_handoffs_isolated() -> None:
+    """Deferred waits may overlap without mixing either run's evidence."""
+    study = Study()
+    first_service = ApplicationService(study)
+    second_service = ApplicationService(study)
+    state = first_service.get_view_publication().state
     first_waiting = Event()
     release_first = Event()
-    second_attempted = Event()
-    second_admitted = Event()
-    call_lock = Lock()
-    admitted_generations: list[int] = []
-    waited_generations: list[int] = []
-    results: list[CommandResult] = []
+    second_completed = Event()
+    results: dict[str, CommandResult] = {}
+    waited_generations: dict[str, list[int | None]] = {
+        "first": [],
+        "second": [],
+    }
 
-    def execute_serialized(_command: TrainCommand) -> CommandResult:
-        with call_lock:
-            generation = 41 + len(admitted_generations)
-            admitted_generations.append(generation)
-        if generation == 42:
-            second_admitted.set()
+    def started_result(generation: int, identity: str) -> CommandResult:
         return CommandResult.success_result(
             command_name=CommandName.TRAIN.value,
-            message="Training completed.",
+            message="Training started.",
             state=state,
             changed_state=ChangedState(training_changed=True),
-            diagnostics={"training_handoff_generation": generation},
+            diagnostics={
+                "synchronous_completion_deferred": True,
+                "training_handoff_generation": generation,
+                "training_trainer_identity": identity,
+            },
         )
 
-    def wait_for_background_tasks(
-        timeout: float | None = None,
-        *,
-        training_handoff_generation: int | None = None,
-    ) -> bool:
-        del timeout
-        assert training_handoff_generation is not None
-        waited_generations.append(training_handoff_generation)
-        if training_handoff_generation == 41:
-            first_waiting.set()
-            assert release_first.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        return True
+    def complete_first(started: CommandResult) -> CommandResult:
+        assert started.diagnostics["training_handoff_generation"] == 41
+        assert started.diagnostics["training_trainer_identity"] == "trainer-A"
+        assert study._synchronous_training_lifecycle_lock.locked() is False
+        first_waiting.set()
+        assert release_first.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return replace(
+            started,
+            message="Training A completed.",
+            diagnostics={
+                "training_handoff_generation": 41,
+                "training_trainer_identity": "trainer-A",
+            },
+        )
 
-    service._execute_serialized = execute_serialized  # type: ignore[method-assign]
-    service.wait_for_background_tasks = wait_for_background_tasks  # type: ignore[method-assign]
+    def complete_second(started: CommandResult) -> CommandResult:
+        assert started.diagnostics["training_handoff_generation"] == 42
+        assert started.diagnostics["training_trainer_identity"] == "trainer-B"
+        assert study._synchronous_training_lifecycle_lock.locked() is False
+        second_completed.set()
+        return replace(
+            started,
+            message="Training B completed.",
+            diagnostics={
+                "training_handoff_generation": 42,
+                "training_trainer_identity": "trainer-B",
+            },
+        )
+
+    def background_wait(owner: str):
+        def wait(
+            timeout: float | None = None,
+            *,
+            training_handoff_generation: int | None = None,
+        ) -> bool:
+            assert timeout is not None and timeout > 0
+            waited_generations[owner].append(training_handoff_generation)
+            return True
+
+        return wait
+
+    first_service._execute_serialized = MagicMock(  # type: ignore[method-assign]
+        return_value=started_result(41, "trainer-A")
+    )
+    second_service._execute_serialized = MagicMock(  # type: ignore[method-assign]
+        return_value=started_result(42, "trainer-B")
+    )
+    first_service.synchronous_training_lifecycle.complete_deferred = complete_first  # type: ignore[method-assign]
+    second_service.synchronous_training_lifecycle.complete_deferred = complete_second  # type: ignore[method-assign]
+    first_service.wait_for_background_tasks = background_wait("first")  # type: ignore[method-assign]
+    second_service.wait_for_background_tasks = background_wait("second")  # type: ignore[method-assign]
 
     first = Thread(
-        target=lambda: results.append(service.execute(TrainCommand(interactive=False))),
+        target=lambda: results.__setitem__(
+            "first",
+            first_service.execute(TrainCommand(interactive=False)),
+        ),
         name="first-synchronous-train",
     )
-
-    def execute_second() -> None:
-        second_attempted.set()
-        results.append(service.execute(TrainCommand(interactive=False)))
-
-    second = Thread(target=execute_second, name="second-synchronous-train")
+    second = Thread(
+        target=lambda: results.__setitem__(
+            "second",
+            second_service.execute(TrainCommand(interactive=False)),
+        ),
+        name="second-synchronous-train",
+    )
     first.start()
     assert first_waiting.wait(timeout=THREAD_WATCHDOG_SECONDS)
     second.start()
-    assert second_attempted.wait(timeout=THREAD_WATCHDOG_SECONDS)
-    admitted_before_first_handoff = second_admitted.wait(timeout=0.2)
+    assert second_completed.wait(timeout=THREAD_WATCHDOG_SECONDS)
     release_first.set()
     first.join(timeout=THREAD_WATCHDOG_SECONDS)
     second.join(timeout=THREAD_WATCHDOG_SECONDS)
 
-    assert admitted_before_first_handoff is False
     assert not first.is_alive()
     assert not second.is_alive()
-    assert admitted_generations == [41, 42]
-    assert waited_generations == [41, 42]
-    assert [result.ok for result in results] == [True, True]
+    assert results["first"].diagnostics["training_trainer_identity"] == "trainer-A"
+    assert results["second"].diagnostics["training_trainer_identity"] == "trainer-B"
+    assert waited_generations == {"first": [41], "second": [42]}
 
 
 def test_close_wakes_synchronous_train_waiting_for_terminal_handoff() -> None:
@@ -5013,8 +5495,236 @@ def test_close_wakes_synchronous_train_waiting_for_terminal_handoff() -> None:
     assert train_results[0].failed is True
 
 
-def test_close_fences_queued_train_before_cancelling_active_handoff() -> None:
-    """A queued Train cannot start in the gap between cancellation and close."""
+def test_close_stops_worker_blocking_synchronous_training_completion() -> None:
+    service = ApplicationService(Study())
+    state = service.get_view_publication().state
+    worker_wait_entered = Event()
+    worker_released = Event()
+    close_done = Event()
+    stop_timeouts: list[float | None] = []
+    train_results: list[CommandResult] = []
+    service._execute_serialized = MagicMock(
+        return_value=CommandResult.success_result(
+            command_name=CommandName.TRAIN.value,
+            message="Training started.",
+            state=state,
+            changed_state=ChangedState(training_changed=True),
+            diagnostics={
+                "synchronous_completion_deferred": True,
+                "training_handoff_generation": 52,
+                "training_trainer_identity": "trainer-close-test",
+            },
+        )
+    )
+
+    def wait_for_worker(
+        *,
+        expected_trainer_identity: str | None = None,
+        timeout: float | None = None,
+    ) -> bool:
+        assert expected_trainer_identity == "trainer-close-test"
+        assert timeout is not None and timeout > 0
+        worker_wait_entered.set()
+        return worker_released.wait(timeout=THREAD_WATCHDOG_SECONDS)
+
+    def stop_worker(*, wait_timeout: float | None = None) -> bool:
+        stop_timeouts.append(wait_timeout)
+        worker_released.set()
+        return True
+
+    service.training_runtime.wait_for_training_completion = wait_for_worker  # type: ignore[method-assign]
+    service.training_runtime.stop_training = stop_worker  # type: ignore[method-assign]
+    service.training.wait_for_terminal_notification = MagicMock(return_value=False)  # type: ignore[method-assign]
+    service.training.cancel_terminal_notification_waits = MagicMock()  # type: ignore[attr-defined,method-assign]
+    service._retry_synchronous_training_terminal_delivery = MagicMock(  # type: ignore[method-assign]
+        return_value=False
+    )
+
+    train_thread = Thread(
+        target=lambda: train_results.append(
+            service.execute(TrainCommand(interactive=False))
+        ),
+        name="worker-blocked-synchronous-train",
+    )
+    close_thread = Thread(
+        target=lambda: (service.close(), close_done.set()),
+        name="application-service-close",
+    )
+    train_thread.start()
+    assert worker_wait_entered.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    close_thread.start()
+    closed_without_manual_release = close_done.wait(timeout=0.5)
+    if not closed_without_manual_release:
+        worker_released.set()
+    close_thread.join(timeout=THREAD_WATCHDOG_SECONDS)
+    train_thread.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert closed_without_manual_release is True
+    assert stop_timeouts and stop_timeouts[0] is not None
+    assert not close_thread.is_alive()
+    assert not train_thread.is_alive()
+    assert len(train_results) == 1
+    assert train_results[0].failed is True
+
+
+def test_close_does_not_commit_while_real_synchronous_worker_ignores_stop() -> None:
+    service = ApplicationService(Study())
+    service.study.loaded_data_list = [_raw_mock()]
+    cast(Any, service.study).datasets = [object()]
+    service.study.set_model_holder(_valid_model_holder())
+    service.study.set_training_option(_valid_training_option())
+    plan = _SlowCancellationPlan()
+    trainer = Trainer([cast(TrainingPlanHolder, plan)])
+    results: list[CommandResult] = []
+
+    def install_plan(
+        *,
+        force_update: bool = False,
+        append: bool = False,
+    ) -> None:
+        del force_update, append
+        service.study.training_manager.trainer = trainer
+
+    service.study.generate_plan = install_plan  # type: ignore[method-assign]
+    train_thread = Thread(
+        target=lambda: results.append(
+            service.execute(
+                TrainCommand(
+                    confirmed=True,
+                    interactive=False,
+                    resource_preflight_confirmed=True,
+                )
+            )
+        ),
+        name="stubborn-synchronous-train",
+    )
+
+    train_thread.start()
+    assert plan.started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    try:
+        service.close()
+        closed_while_worker_was_alive = service.is_closed
+    finally:
+        plan.release.set()
+        train_thread.join(timeout=THREAD_WATCHDOG_SECONDS)
+        if not service.is_closed:
+            service.close()
+
+    assert plan.interrupt_requested.is_set()
+    assert closed_while_worker_was_alive is False
+    assert not train_thread.is_alive()
+    assert len(results) == 1
+
+
+def test_close_stop_exception_keeps_service_open_and_runtime_owned(monkeypatch) -> None:
+    study = Study()
+    service = get_application_service(study)
+    original_stop = service.training_runtime.stop_training
+
+    def fail_stop(*, wait_timeout: float | None = None) -> bool:
+        del wait_timeout
+        raise RuntimeError("stop failed")
+
+    monkeypatch.setattr(service.training_runtime, "stop_training", fail_stop)
+
+    service.close()
+
+    assert service.is_closed is False
+    assert get_application_service(study) is service
+
+    monkeypatch.setattr(service.training_runtime, "stop_training", original_stop)
+    service.close()
+
+
+def test_close_waits_for_synchronous_completion_publication_to_quiesce(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    service.study.loaded_data_list = [_raw_mock()]
+    cast(Any, service.study).datasets = [object()]
+    service.study.set_model_holder(_valid_model_holder())
+    service.study.set_training_option(_valid_training_option())
+    plan = _SlowCancellationPlan()
+    trainer = Trainer([cast(TrainingPlanHolder, plan)])
+    completion_wait_entered = Event()
+    release_completion_wait = Event()
+    close_done = Event()
+    callback_states: list[bool] = []
+    results: list[CommandResult] = []
+    original_wait = service.training_runtime.wait_for_training_completion
+
+    def install_plan(
+        *,
+        force_update: bool = False,
+        append: bool = False,
+    ) -> None:
+        del force_update, append
+        service.study.training_manager.trainer = trainer
+
+    def delayed_completion_wait(
+        *,
+        expected_trainer_identity: str | None = None,
+        timeout: float | None = None,
+    ) -> bool:
+        completion_wait_entered.set()
+        assert release_completion_wait.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return original_wait(
+            expected_trainer_identity=expected_trainer_identity,
+            timeout=timeout,
+        )
+
+    def observe_publication(_publication: object) -> bool:
+        callback_states.append(service.is_closed)
+        return True
+
+    service.study.generate_plan = install_plan  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        service.training_runtime,
+        "wait_for_training_completion",
+        delayed_completion_wait,
+    )
+    service.subscribe(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        observe_publication,
+    )
+    train_thread = Thread(
+        target=lambda: results.append(
+            service.execute(
+                TrainCommand(
+                    confirmed=True,
+                    interactive=False,
+                    resource_preflight_confirmed=True,
+                )
+            )
+        ),
+        name="late-synchronous-completion",
+    )
+    close_thread = Thread(
+        target=lambda: (service.close(), close_done.set()),
+        name="close-during-synchronous-completion",
+    )
+
+    train_thread.start()
+    assert plan.started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    plan.release.set()
+    assert completion_wait_entered.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    close_thread.start()
+    closed_while_completion_was_blocked = close_done.wait(timeout=0.25)
+    release_completion_wait.set()
+    train_thread.join(timeout=THREAD_WATCHDOG_SECONDS)
+    close_thread.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert closed_while_completion_was_blocked is False
+    assert close_done.is_set()
+    assert service.is_closed is True
+    assert not train_thread.is_alive()
+    assert not close_thread.is_alive()
+    assert len(results) == 1
+    assert all(closed is False for closed in callback_states)
+
+
+def test_close_fences_train_queued_before_lifecycle_admission() -> None:
+    """A Train already approaching admission cannot pass a queued close."""
 
     class _FifoLifecycleLock:
         def __init__(self) -> None:
@@ -5022,19 +5732,22 @@ def test_close_fences_queued_train_before_cancelling_active_handoff() -> None:
             self._next_ticket = 0
             self._serving = 0
             self._held = False
-            self.second_queued = Event()
+            self.close_queued = Event()
+            self.train_queued = Event()
 
         def __enter__(self) -> _FifoLifecycleLock:
             with self._condition:
                 ticket = self._next_ticket
                 self._next_ticket += 1
+                if current_thread().name == "application-service-close":
+                    self.close_queued.set()
                 if current_thread().name == "queued-synchronous-train":
-                    self.second_queued.set()
-                self._condition.wait_for(
+                    self.train_queued.set()
+                admitted = self._condition.wait_for(
                     lambda: ticket == self._serving and not self._held,
                     timeout=THREAD_WATCHDOG_SECONDS,
                 )
-                assert ticket == self._serving and not self._held
+                assert admitted and ticket == self._serving and not self._held
                 self._held = True
             return self
 
@@ -5047,48 +5760,14 @@ def test_close_fences_queued_train_before_cancelling_active_handoff() -> None:
     service = ApplicationService(Study())
     lifecycle_lock = _FifoLifecycleLock()
     service._synchronous_training_lifecycle_lock = cast(Any, lifecycle_lock)
-    state = service.get_view_publication().state
-    first_waiting = Event()
-    release_first = Event()
+    service.shutdown_lifecycle._synchronous_training_lifecycle_lock = cast(
+        Any,
+        lifecycle_lock,
+    )
     close_done = Event()
-    admitted_generations: list[int] = []
     train_results: list[CommandResult] = []
-
-    def execute_serialized(_command: TrainCommand) -> CommandResult:
-        generation = 71 + len(admitted_generations)
-        admitted_generations.append(generation)
-        return CommandResult.success_result(
-            command_name=CommandName.TRAIN.value,
-            message="Training completed.",
-            state=state,
-            changed_state=ChangedState(training_changed=True),
-            diagnostics={"training_handoff_generation": generation},
-        )
-
-    def wait_for_terminal(
-        generation: int | None = None,
-        *,
-        timeout: float | None = None,
-    ) -> bool:
-        del timeout
-        if generation == 71:
-            first_waiting.set()
-            assert release_first.wait(timeout=THREAD_WATCHDOG_SECONDS)
-            return False
-        return True
-
-    service._execute_serialized = execute_serialized  # type: ignore[method-assign]
-    service.training.wait_for_terminal_notification = wait_for_terminal  # type: ignore[method-assign]
-    service.training.cancel_terminal_notification_waits = (  # type: ignore[attr-defined,method-assign]
-        lambda _reason: release_first.set()
-    )
-    first = Thread(
-        target=lambda: train_results.append(
-            service.execute(TrainCommand(interactive=False))
-        ),
-        name="active-synchronous-train",
-    )
-    second = Thread(
+    service._execute_serialized = MagicMock()  # type: ignore[method-assign]
+    queued_train = Thread(
         target=lambda: train_results.append(
             service.execute(TrainCommand(interactive=False))
         ),
@@ -5100,28 +5779,26 @@ def test_close_fences_queued_train_before_cancelling_active_handoff() -> None:
         close_done.set()
 
     closing = Thread(target=close_service, name="application-service-close")
-    first.start()
-    assert first_waiting.wait(timeout=THREAD_WATCHDOG_SECONDS)
-    second.start()
-    assert lifecycle_lock.second_queued.wait(timeout=THREAD_WATCHDOG_SECONDS)
-    closing.start()
+    lifecycle_lock.__enter__()
+    try:
+        closing.start()
+        assert lifecycle_lock.close_queued.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        assert service.shutdown_lifecycle.is_shutdown_fenced is True
+        queued_train.start()
+        assert lifecycle_lock.train_queued.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    finally:
+        lifecycle_lock.__exit__(None, None, None)
+
     assert close_done.wait(timeout=THREAD_WATCHDOG_SECONDS)
-    first.join(timeout=THREAD_WATCHDOG_SECONDS)
-    second.join(timeout=THREAD_WATCHDOG_SECONDS)
+    queued_train.join(timeout=THREAD_WATCHDOG_SECONDS)
     closing.join(timeout=THREAD_WATCHDOG_SECONDS)
 
-    assert not first.is_alive()
-    assert not second.is_alive()
+    assert not queued_train.is_alive()
     assert not closing.is_alive()
-    assert admitted_generations == [71]
-    assert len(train_results) == 2
-    assert all(result.failed for result in train_results)
-    queued_result = next(
-        result
-        for result in train_results
-        if result.diagnostics.get("shutdown_fenced") is True
-    )
-    assert queued_result.error_type is ErrorType.PRECONDITION
+    assert len(train_results) == 1
+    assert train_results[0].failed is True
+    assert train_results[0].diagnostics["application_service_closed"] is True
+    service._execute_serialized.assert_not_called()
 
 
 def test_synchronous_train_reports_incomplete_background_delivery() -> None:
@@ -5147,7 +5824,7 @@ def test_synchronous_train_reports_incomplete_background_delivery() -> None:
     assert result.diagnostics["background_delivery_incomplete"] is True
     assert result.diagnostics["training_completed"] is True
     service.wait_for_background_tasks.assert_called_once_with(
-        training_handoff_generation=61
+        timeout=300.0, training_handoff_generation=61
     )
 
 
@@ -5224,6 +5901,7 @@ def test_train_resource_warning_is_returned_before_training_starts(monkeypatch):
     assert receipt
     service.training.start_training.assert_not_called()
 
+    _publish_mock_training_identity(service)
     continued = service.execute(
         TrainCommand(
             confirmed=True,
@@ -5293,14 +5971,14 @@ def test_raw_mutation_commands_block_after_epoch_without_side_effects():
     service.study.data_manager.loaded_data_list = [raw]
     service.study.data_manager.preprocessed_data_list = [raw]
     service.study.data_manager.epoch_data = MagicMock()
-    service.dataset.remove_files = MagicMock()
+    service.dataset_state.remove_files = MagicMock()
 
     result = service.execute(RemoveFilesCommand(indices=[0]))
 
     assert result.failed is True
     assert result.error_type == ErrorType.PRECONDITION
     assert "Reset the session" in result.message
-    service.dataset.remove_files.assert_not_called()
+    service.dataset_state.remove_files.assert_not_called()
 
 
 def test_apply_interpretation_blocks_after_epoch_without_import_side_effect(
@@ -5636,7 +6314,6 @@ def test_clear_datasets_and_training_history_commands_route_cleanup():
     trainer = Trainer([])
     plan = MagicMock()
     trainer.get_training_plan_holders = MagicMock(return_value=[plan])
-    service.evaluation.get_plans = MagicMock(return_value=[plan])
     service.study.training_manager.trainer = trainer
     service.training.clear_history = MagicMock()
 
@@ -5754,14 +6431,14 @@ def test_metadata_update_command_routes_through_service():
     raw = _raw_mock()
     service.study.data_manager.loaded_data_list = [raw]
     service.study.data_manager.preprocessed_data_list = [raw]
-    service.dataset.update_metadata_batch = MagicMock(return_value=1)
+    service.dataset_state.update_metadata_batch = MagicMock(return_value=1)
 
     result = service.execute(UpdateMetadataCommand(index=0, subject="S01"))
 
     assert result.ok is True
     assert result.command_name == CommandName.UPDATE_METADATA.value
     assert result.diagnostics["success_count"] == 1
-    service.dataset.update_metadata_batch.assert_called_once_with(
+    service.dataset_state.update_metadata_batch.assert_called_once_with(
         [(0, "S01", None)],
     )
 
@@ -5905,12 +6582,11 @@ def test_query_state_returns_typed_dataset_summary():
     assert result.diagnostics["metadata"][0]["subject"] == "S01"
 
 
-def test_query_state_smart_filter_uses_adapter_target_file_argument():
+def test_query_state_smart_filter_uses_study_port_target_file_argument():
     service = ApplicationService(Study())
     raw = object()
     service.study.data_manager.loaded_data_list = [raw]
-    dataset_controller = service.study.get_controller("dataset")
-    dataset_controller.get_smart_filter_suggestions = MagicMock(return_value=[7, 8])
+    service.dataset_state.get_smart_filter_suggestions = MagicMock(return_value=[7, 8])
 
     result = service.execute(
         QueryStateCommand(
@@ -5921,7 +6597,7 @@ def test_query_state_smart_filter_uses_adapter_target_file_argument():
 
     assert result.ok is True
     assert result.diagnostics == {"suggestions": [7, 8]}
-    dataset_controller.get_smart_filter_suggestions.assert_called_once_with(raw, 2)
+    service.dataset_state.get_smart_filter_suggestions.assert_called_once_with(raw, 2)
 
 
 def test_new_session_requires_confirmation_and_clears_single_backend_session():

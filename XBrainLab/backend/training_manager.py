@@ -629,13 +629,33 @@ class TrainingManager:
             trainer.stop(wait_timeout=max(0.0, deadline - monotonic())),
         )
 
-    def wait_for_training_completion(self, timeout: float | None = None) -> bool:
-        """Wait for the current trainer without holding the pipeline lock."""
+    def wait_for_training_completion(
+        self,
+        timeout: float | None = None,
+        *,
+        expected_trainer_identity: str | None = None,
+    ) -> bool:
+        """Wait for one exact trainer without retaining mutable runtime access."""
         with self._training_pipeline_lock:
             trainer = self.trainer
+            boundary = self._capture_training_read_boundary_locked()
         if trainer is None:
             return False
-        return bool(trainer.wait_for_completion(timeout=timeout))
+        if (
+            expected_trainer_identity is not None
+            and boundary.trainer_identity != expected_trainer_identity
+        ):
+            return False
+        if not trainer.wait_for_completion(timeout=timeout):
+            return False
+        with self._training_pipeline_lock:
+            if self.trainer is not trainer:
+                return False
+            current = self._capture_training_read_boundary_locked()
+            return (
+                expected_trainer_identity is None
+                or current.trainer_identity == expected_trainer_identity
+            )
 
     def is_training(self) -> bool:
         """Return whether training is currently running."""
@@ -668,6 +688,18 @@ class TrainingManager:
         if isinstance(value, bool) or not isinstance(value, int):
             return None
         return value
+
+    def get_training_progress_text(self) -> str:
+        """Return progress text without exposing the current trainer."""
+        with self._training_pipeline_lock:
+            trainer = self.trainer
+        if trainer is None:
+            return ""
+        try:
+            progress = trainer.get_progress_text()
+        except Exception:
+            return ""
+        return str(progress or "")
 
     # --- Evaluation Helpers ---
 

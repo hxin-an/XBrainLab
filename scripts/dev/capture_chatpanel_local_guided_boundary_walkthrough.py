@@ -11,12 +11,15 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.dev.active_checkout import assert_active_checkout_import
 from scripts.dev.chatpanel_guided_boundary.runtime import cli_main
+from scripts.dev.chatpanel_guided_boundary.strict_evidence import (
+    run_with_strict_evidence,
+)
 
 assert_active_checkout_import(ROOT)
 
 
 def main() -> int:
-    return cli_main()
+    return run_with_strict_evidence(cli_main, sys.argv[1:])
 
 
 if __name__ == "__main__":

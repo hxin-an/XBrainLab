@@ -26,6 +26,7 @@ from XBrainLab.ui.refresh_coordinator import (
 class _PanelSpy:
     def __init__(self) -> None:
         self.update_calls = 0
+        self.main_window: object | None = None
 
     def update_panel(self) -> None:
         self.update_calls += 1
@@ -115,6 +116,33 @@ def test_raw_change_refreshes_workflow_panels_without_pulling_assistant_status()
     assert main_window.agent_manager.refresh_calls == 0
 
 
+def test_application_context_detection_failure_does_not_fail_open_refresh(
+    monkeypatch,
+) -> None:
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    def fail_detection(_context) -> bool:
+        raise RuntimeError("application context detection failed")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.application_capabilities.has_real_application_context",
+        fail_detection,
+    )
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(raw_changed=True)),
+    )
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert info.update_calls == 0
+
+
 def test_serialized_agent_change_uses_the_same_refresh_routes():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
@@ -129,11 +157,11 @@ def test_serialized_agent_change_uses_the_same_refresh_routes():
     assert main_window.preprocess_panel.update_calls == 1
     assert main_window.training_panel.update_calls == 1
     assert main_window.training_panel.terminal_refresh_calls == 0
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
 
 
-def test_analysis_changes_refresh_only_analysis_panels_and_shared_status():
+def test_analysis_changes_exclude_publication_owned_panels():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
     context = SimpleNamespace(main_window=main_window)
@@ -152,13 +180,13 @@ def test_analysis_changes_refresh_only_analysis_panels_and_shared_status():
     assert main_window.dataset_panel.update_calls == 0
     assert main_window.preprocess_panel.update_calls == 0
     assert main_window.training_panel.update_calls == 0
-    assert main_window.evaluation_panel.update_calls == 1
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
 
-def test_training_change_refreshes_downstream_analysis_readiness():
+def test_training_change_excludes_publication_owned_analysis_refresh():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
     context = SimpleNamespace(main_window=main_window)
@@ -172,13 +200,13 @@ def test_training_change_refreshes_downstream_analysis_readiness():
     assert main_window.dataset_panel.update_calls == 0
     assert main_window.preprocess_panel.update_calls == 0
     assert main_window.training_panel.update_calls == 1
-    assert main_window.evaluation_panel.update_calls == 1
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
 
-def test_epoch_change_refreshes_visualization_readiness():
+def test_epoch_change_excludes_publication_owned_visualization_refresh():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
     context = SimpleNamespace(main_window=main_window)
@@ -193,12 +221,12 @@ def test_epoch_change_refreshes_visualization_readiness():
     assert main_window.preprocess_panel.update_calls == 1
     assert main_window.training_panel.update_calls == 1
     assert main_window.evaluation_panel.update_calls == 0
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
 
-def test_evaluation_change_refreshes_visualization_readiness():
+def test_evaluation_change_excludes_publication_owned_analysis_refresh():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
     context = SimpleNamespace(main_window=main_window)
@@ -212,8 +240,8 @@ def test_evaluation_change_refreshes_visualization_readiness():
     assert main_window.dataset_panel.update_calls == 0
     assert main_window.preprocess_panel.update_calls == 0
     assert main_window.training_panel.update_calls == 0
-    assert main_window.evaluation_panel.update_calls == 1
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
@@ -235,7 +263,7 @@ def test_no_state_change_does_not_refresh_ui():
     assert main_window.agent_manager.refresh_calls == 0
 
 
-def test_unknown_post_command_state_refreshes_every_workflow_panel():
+def test_unknown_post_command_state_excludes_publication_owned_panels():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
     context = SimpleNamespace(main_window=main_window)
@@ -249,8 +277,8 @@ def test_unknown_post_command_state_refreshes_every_workflow_panel():
     assert main_window.dataset_panel.update_calls == 1
     assert main_window.preprocess_panel.update_calls == 1
     assert main_window.training_panel.update_calls == 1
-    assert main_window.evaluation_panel.update_calls == 1
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
@@ -368,8 +396,8 @@ def test_terminal_training_publication_replays_once_after_outer_command_scope():
 
     assert main_window.training_panel.update_calls == 0
     assert main_window.training_panel.terminal_refresh_calls == 1
-    assert main_window.evaluation_panel.update_calls == 1
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
@@ -408,8 +436,8 @@ def test_command_completion_coalesces_terminal_observer_and_changed_state():
     assert refreshed is True
     assert main_window.training_panel.update_calls == 0
     assert main_window.training_panel.terminal_refresh_calls == 1
-    assert main_window.evaluation_panel.update_calls == 1
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
@@ -431,7 +459,7 @@ def test_standalone_training_panel_uses_terminal_renderer_without_shell_slot():
     assert panel.terminal_refresh_calls == 1
 
 
-def test_deleted_saliency_owner_is_not_retained_or_replayed(qtbot):
+def test_legacy_saliency_event_is_not_retained_for_visualization(qtbot):
     main_window = _main_window()
     lease_context = SimpleNamespace(main_window=main_window)
     callback_calls: list[str] = []
@@ -448,8 +476,7 @@ def test_deleted_saliency_owner_is_not_retained_or_replayed(qtbot):
     with suppress_observer_refresh_during_command(lease_context):
         assert refresh_after_observer(panel, event_name="saliency_changed") is False
         assert refresh_after_observer(panel, event_name="saliency_changed") is False
-        pending = refresh_coordinator._DEFERRED_TERMINAL_REFRESHES[main_window_id]
-        assert len(pending) == 1
+        assert main_window_id not in refresh_coordinator._DEFERRED_TERMINAL_REFRESHES
 
         panel.deleteLater()
         qtbot.waitUntil(owner_deleted, timeout=1_000)
@@ -475,6 +502,22 @@ def test_navigation_refreshes_selected_panel_and_shared_status():
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_revisioned_navigation_does_not_pull_shared_status(monkeypatch):
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    monkeypatch.setattr(
+        "XBrainLab.ui.application_capabilities.has_real_application_context",
+        lambda context: context is main_window,
+    )
+
+    refreshed = refresh_after_navigation(main_window, 2)
+
+    assert refreshed is True
+    assert main_window.training_panel.update_calls == 1
+    assert info.update_calls == 0
     assert main_window.agent_manager.refresh_calls == 0
 
 
@@ -598,7 +641,7 @@ def test_preprocess_changed_observer_uses_central_refresh_scope():
     assert main_window.preprocess_panel.update_calls == 1
     assert main_window.training_panel.update_calls == 1
     assert main_window.evaluation_panel.update_calls == 0
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
@@ -633,8 +676,8 @@ def test_training_lifecycle_observer_uses_training_owner_scope():
     assert main_window.dataset_panel.update_calls == 0
     assert main_window.preprocess_panel.update_calls == 0
     assert main_window.training_panel.update_calls == 1
-    assert main_window.evaluation_panel.update_calls == 1
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
@@ -675,7 +718,7 @@ def test_secondary_training_lifecycle_observer_does_not_duplicate_central_scope(
     assert main_window.agent_manager.refresh_calls == 0
 
 
-def test_visualization_observer_uses_visualization_scope_from_helper_context():
+def test_legacy_visualization_observer_has_no_central_panel_route():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
     context = SimpleNamespace(
@@ -690,7 +733,7 @@ def test_visualization_observer_uses_visualization_scope_from_helper_context():
     assert main_window.preprocess_panel.update_calls == 0
     assert main_window.training_panel.update_calls == 0
     assert main_window.evaluation_panel.update_calls == 0
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
@@ -716,13 +759,11 @@ def test_terminal_analysis_publication_does_not_repeat_workflow_refreshes():
     assert main_window.agent_manager.refresh_calls == 0
 
 
-def test_terminal_analysis_event_pair_refreshes_each_panel_once():
+def test_terminal_analysis_event_does_not_refresh_publication_owned_panels():
     main_window = _main_window()
     _attach_info_spy(main_window)
     training = main_window.training_panel
     training.main_window = main_window
-    visualization = main_window.visualization_panel
-    visualization.main_window = main_window
 
     assert (
         refresh_after_observer(
@@ -731,34 +772,28 @@ def test_terminal_analysis_event_pair_refreshes_each_panel_once():
         )
         is True
     )
-    assert (
-        refresh_after_observer(
-            visualization,
-            event_name="saliency_changed",
-        )
-        is True
-    )
-
     assert main_window.training_panel.update_calls == 0
     assert main_window.evaluation_panel.update_calls == 0
-    assert main_window.visualization_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 0
 
 
-def test_secondary_visualization_observer_does_not_duplicate_central_scope():
+def test_legacy_montage_event_has_no_central_visualization_route():
     main_window = _main_window()
     info = _attach_info_spy(main_window)
-    panel = main_window.evaluation_panel
-    panel.main_window = main_window
+    context = SimpleNamespace(
+        main_window=main_window,
+        panel=main_window.visualization_panel,
+    )
 
-    refreshed = refresh_after_observer(panel, event_name="montage_changed")
+    refreshed = refresh_after_observer(context, event_name="montage_changed")
 
-    assert refreshed is False
+    assert refreshed is True
     assert main_window.dataset_panel.update_calls == 0
     assert main_window.preprocess_panel.update_calls == 0
     assert main_window.training_panel.update_calls == 0
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
-    assert info.update_calls == 0
+    assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 0
 
 

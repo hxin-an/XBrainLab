@@ -540,6 +540,7 @@ class DataInterpretationSessionState:
                     *applied.excluded_label_carriers,
                     *superseded_carriers,
                 }
+                - set(label_carriers)
             ),
             event_roles=updated_event_roles,
             class_map=updated_class_map,
@@ -1080,7 +1081,7 @@ class DataInterpretationSessionState:
             return [
                 EpochHandoffBlocker(
                     EpochHandoffBlockerCode.IMPORT_NOT_APPLIED,
-                    "Apply the reviewed import before creating supervised epochs.",
+                    "Apply the reviewed import before creating supervised EEG epochs.",
                 )
             ]
         if has_value_contract:
@@ -1104,8 +1105,8 @@ class DataInterpretationSessionState:
                 return [
                     EpochHandoffBlocker(
                         EpochHandoffBlockerCode.MISSING_REVIEWED_TARGET,
-                        "No reviewed class target is available for supervised epoch "
-                        "defaults.",
+                        "No reviewed class target is available for supervised "
+                        "EEG epoch defaults.",
                     )
                 ]
             if carrier_plan and not label_imports:
@@ -1132,7 +1133,8 @@ class DataInterpretationSessionState:
                 return [
                     EpochHandoffBlocker(
                         EpochHandoffBlockerCode.MISSING_CLASS_LABELS,
-                        "No class labels are available for supervised epoch defaults.",
+                        "No class labels are available for supervised EEG "
+                        "epoch defaults.",
                     )
                 ]
         if not has_minimum_usable_classes(usable_classes):

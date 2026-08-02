@@ -10,13 +10,13 @@ from dataclasses import dataclass
 from threading import Event, Lock, Thread, Timer, current_thread
 from typing import Any
 
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
     post_training_saliency_target,
 )
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingTerminalOutcome,
     read_training_terminal_outcome,
@@ -445,7 +445,7 @@ class PostTrainingSaliencyAutomation:
         self._job_thread: Thread | None = None
 
     def arm(self, *, append: bool = True) -> None:
-        """Capture the pre-run baseline and listen for one terminal event."""
+        """Capture the pre-run baseline and await one acknowledged terminal view."""
         state = self._get_state()
         finished_runs = self._finished_run_count(state)
         run_before_training = self._typed_outcome()
@@ -469,8 +469,8 @@ class PostTrainingSaliencyAutomation:
         if self._subscribed:
             return
         self._training.subscribe(
-            "training_stopped",
-            self._on_training_stopped,
+            "training_terminal_published",
+            self._on_training_terminal_published,
         )
         self._subscribed = True
 
@@ -479,12 +479,20 @@ class PostTrainingSaliencyAutomation:
         if not self._subscribed:
             return
         self._training.unsubscribe(
-            "training_stopped",
-            self._on_training_stopped,
+            "training_terminal_published",
+            self._on_training_terminal_published,
         )
         self._subscribed = False
 
-    def _on_training_stopped(self, *_args: Any, **_kwargs: Any) -> None:
+    def _on_training_terminal_published(
+        self,
+        event: TrainingLifecycleEvent | Any = None,
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> None:
+        """Schedule saliency only after the matching terminal view is acknowledged."""
+        if not isinstance(event, TrainingLifecycleEvent):
+            return
         with self._lock:
             if not self._armed:
                 return
@@ -496,7 +504,7 @@ class PostTrainingSaliencyAutomation:
         thread: Thread | None = None
         target: PostTrainingSaliencyTarget | None = None
         try:
-            outcome = self._typed_outcome()
+            outcome = event.outcome
             if outcome.run is None:
                 if outcome.state is TrainingOutcomeState.UNKNOWN:
                     with self._lock:

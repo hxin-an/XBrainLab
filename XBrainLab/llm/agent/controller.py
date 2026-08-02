@@ -22,7 +22,6 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
-from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.application_surface import (
     APPLICATION_COMMAND_TOOLS,
@@ -64,6 +63,7 @@ from .pending_interaction import (
 )
 from .product_turn_policy import ProductTurnKind, ProductTurnPolicy
 from .rag_lifecycle import RAGLifecycleRetriever, RAGRetrieverLifecycle
+from .rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from .request_admission import (
     UserRequestAdmissionAction,
     UserRequestAdmissionPolicy,
@@ -76,6 +76,7 @@ from .response_presentation import (
     AssistantResponsePresentation,
     interaction_outcome_kind,
     interaction_outcome_message,
+    panel_target_for_blocked_command,
     panel_target_for_command,
     user_facing_generation_error,
 )
@@ -122,6 +123,10 @@ from .turn import (
     AssistantTurnRequest,
     AssistantTurnScope,
     AssistantTurnTerminal,
+)
+from .turn_orchestrator import (
+    AssistantToolAttemptSession,
+    AssistantTurnOrchestrator,
 )
 from .turn_scope import workflow_command_is_within_endpoint
 from .ui_handoff import (
@@ -264,7 +269,9 @@ class LLMController(QObject):
         self,
         study,
         *,
-        rag_lifecycle: RAGRetrieverLifecycle | None = None,
+        rag_lifecycle: (
+            RAGRetrieverLifecycle | ProcessRAGRetrieverLifecycle | None
+        ) = None,
     ) -> None:
         """Initializes the LLMController.
 
@@ -279,6 +286,8 @@ class LLMController(QObject):
         super().__init__()
         self.sig_generate = _BestEffortGenerationObservers()
         self.study = study
+        self._turn_orchestrator = AssistantTurnOrchestrator()
+        self._tool_attempt_session = AssistantToolAttemptSession()
 
         # Initialize Tool Registry & Assembler
         self.registry = ToolRegistry()
@@ -296,40 +305,41 @@ class LLMController(QObject):
         self._rag_lifecycle = (
             rag_lifecycle
             if rag_lifecycle is not None
-            else RAGRetrieverLifecycle(RAGRetriever())
+            else ProcessRAGRetrieverLifecycle()
         )
 
         # Setup Worker in separate thread to avoid blocking UI during load/inference
         self.worker_thread = QThread()
-        self.worker = AgentWorker()
-        self.worker.moveToThread(self.worker_thread)
-        self.worker_thread.finished.connect(self.worker.deleteLater)
+        worker = AgentWorker()
+        self.worker: AgentWorker | None = worker
+        worker.moveToThread(self.worker_thread)
+        self.worker_thread.finished.connect(worker.deleteLater)
         self.worker_thread.finished.connect(self._on_worker_thread_finished)
 
         self._conversation = ConversationHistory(max_size=self.MAX_HISTORY)
 
         # Connect worker signals
-        self.worker.generation_chunk_received.connect(self._on_chunk_received)
-        self.worker.generation_finished.connect(self._on_generation_finished)
-        self.worker.generation_error.connect(self._on_generation_error)
-        self.worker.generation_dispatch_acknowledged.connect(
+        worker.generation_chunk_received.connect(self._on_chunk_received)
+        worker.generation_finished.connect(self._on_generation_finished)
+        worker.generation_error.connect(self._on_generation_error)
+        worker.generation_dispatch_acknowledged.connect(
             self._on_generation_dispatch_acknowledged
         )
-        self.worker.error.connect(self._on_runtime_error)
-        self.worker.log.connect(self.status_update)
+        worker.error.connect(self._on_runtime_error)
+        worker.log.connect(self.status_update)
 
         # Connect control signals
-        self.sig_initialize.connect(self.worker.initialize_agent)
-        self._sig_dispatch_generation.connect(self.worker.generate_from_messages)
-        self.sig_reinit.connect(self.worker.reinitialize_agent)  # M3.4
-        self.sig_cancel_generation.connect(self.worker.cancel_generation)
+        self.sig_initialize.connect(worker.initialize_agent)
+        self._sig_dispatch_generation.connect(worker.generate_from_messages)
+        self.sig_reinit.connect(worker.reinitialize_agent)  # M3.4
+        self.sig_cancel_generation.connect(worker.cancel_generation)
         # Worker affinity is the dedicated thread, so AutoConnection queues cleanup.
-        self.sig_shutdown_worker.connect(self.worker.shutdown)
-        self.worker.generation_stop_finished.connect(
+        self.sig_shutdown_worker.connect(worker.shutdown)
+        worker.generation_stop_finished.connect(
             self._on_generation_stop_finished,
         )
-        self.worker.runtime_snapshot_changed.connect(self._on_runtime_snapshot_changed)
-        self.worker.shutdown_finished.connect(self._on_worker_shutdown_finished)
+        worker.runtime_snapshot_changed.connect(self._on_runtime_snapshot_changed)
+        worker.shutdown_finished.connect(self._on_worker_shutdown_finished)
         self.sig_rag_context_ready.connect(self._on_rag_context_ready)
 
         # Start thread
@@ -341,23 +351,16 @@ class LLMController(QObject):
             initialized=False,
         )
         self.is_processing = False
-        self._visible_response_sent = False
-        self._last_tool_summary: str | None = None
-        self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
-        self._active_tool_publication = PromptToolPublication.empty()
         self._active_response_contract = AssistantResponseContract.STRUCTURED_ACTION
 
         # Metrics tracker
         self.metrics = AgentMetricsTracker()
 
         # Robustness State
-        self._retry_count = 0
         self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
 
         # Tool Failure Loop Protection
-        self._tool_failure_count = 0
         self._max_tool_failures = 3
-        self._loop_break_count = 0
         self._max_loop_breaks = 3
 
         # The model proposes commands; this deterministic policy boundary owns
@@ -373,29 +376,8 @@ class LLMController(QObject):
         )
         self._request_admission = UserRequestAdmissionPolicy()
         self._product_turn_policy = ProductTurnPolicy(self.study)
-        self._tool_execution_count = 0
-        self._turn_cancelled = False
-        self._cancellation_response_sent = False
-        self._rag_turn_id = 0
-        self._active_rag_turn_id: int | None = None
-        self._active_host_turn_id: int | None = None
-        self._active_host_turn_generation: int | None = None
-        self._active_turn_scope: AssistantTurnScope | None = None
-        self._active_turn_terminal_command: str | None = None
-        self._active_turn_excluded_commands: frozenset[CommandName] = frozenset()
-        self._generation_id = 0
-        self._active_generation_id: int | None = None
-        self._active_generation_dispatch_phase: (
-            AssistantGenerationDispatchPhase | None
-        ) = None
-        self._generation_dispatch_in_progress = False
-        self._stopping_generation_id: int | None = None
-        self._waiting_for_rag = False
-        self._admitted_command_name: str | None = None
-        self._admitted_publication_generation: int | None = None
         self._initialize_shutdown_lifecycle()
 
-        self._successful_tool_count = 0
         self._max_tool_executions = 5
 
         self._pending_interactions = PendingInteractionCoordinator()
@@ -407,6 +389,7 @@ class LLMController(QObject):
         self._shutdown_phase = _ControllerShutdownPhase.OPEN
         self._shutdown_preamble_complete = False
         self._rag_shutdown_attempted = False
+        self._rag_shutdown_clean = True
         self._shutdown_timeout_timer = QTimer(self)
         self._shutdown_timeout_timer.setSingleShot(True)
         self._shutdown_timeout_timer.timeout.connect(self._on_shutdown_timeout)
@@ -427,7 +410,10 @@ class LLMController(QObject):
     @property
     def rag_retriever(self) -> RAGLifecycleRetriever:
         """Expose the lifecycle-owned retriever for diagnostics and compatibility."""
-        return self._rag_lifecycle.retriever
+        retriever = self._rag_lifecycle.retriever
+        if retriever is None:
+            raise RuntimeError("Production RAG is owned by an isolated process.")
+        return retriever
 
     @property
     def pending_interactions(self) -> PendingInteractionCoordinator:
@@ -450,8 +436,8 @@ class LLMController(QObject):
                 command_name=command_name,
                 request_id=request_id,
                 message=message,
-                turn_id=self._active_host_turn_id,
-                generation=self._active_host_turn_generation,
+                turn_id=self._turn_orchestrator.host_turn_id,
+                generation=self._turn_orchestrator.host_turn_generation,
                 attention_kind=attention_kind,
             )
         )
@@ -478,11 +464,11 @@ class LLMController(QObject):
         )
         self.response_presentation_ready.emit(presentation)
         if marks_current_turn:
-            self._visible_response_sent = True
+            self._tool_attempt_session.mark_response_visible()
 
     def _active_policy_mode(self) -> str:
         """Return immutable autonomy for the active turn."""
-        active_scope = getattr(self, "_active_turn_scope", None)
+        active_scope = self._turn_orchestrator.scope
         if active_scope is not None:
             return active_scope.policy_mode
         return AssistantTurnScope.SINGLE_ACTION.policy_mode
@@ -546,14 +532,14 @@ class LLMController(QObject):
                     message="Assistant controller is closing.",
                 )
             if (
-                self._active_host_turn_id is not None
+                self._turn_orchestrator.has_active_host_turn
                 or self.is_processing
                 or self.pending_interactions.has_pending
             ):
                 logger.warning(
                     "Rejected turn %s because controller turn %s is still active",
                     redact_public_text(payload.turn_id),
-                    self._active_host_turn_id,
+                    self._turn_orchestrator.host_turn_id,
                 )
                 self.turn_finished.emit(
                     AssistantTurnTerminal(
@@ -566,11 +552,7 @@ class LLMController(QObject):
                     phase=AssistantTurnDeliveryPhase.REJECTED,
                     message="Assistant controller is busy.",
                 )
-            self._active_host_turn_id = payload.turn_id
-            self._active_host_turn_generation = payload.generation
-            self._active_turn_scope = payload.scope
-            self._active_turn_terminal_command = payload.terminal_command
-            self._active_turn_excluded_commands = frozenset(payload.excluded_commands)
+            self._turn_orchestrator.bind_host_turn(payload)
             self.assembler.bind_turn_scope(payload.scope)
             self._handle_admitted_user_input(payload.text)
         except Exception as exc:
@@ -614,7 +596,6 @@ class LLMController(QObject):
             ("RAG context", self.assembler.clear_context),
             ("recovery feedback", self.assembler.clear_recovery_feedback),
             ("turn authorization", self.assembler.clear_turn_authorization),
-            ("tool attempt state", self._tool_attempt_coordinator.reset_turn),
         )
         for label, cleanup in cleanup_steps:
             self._run_turn_setup_cleanup(label, cleanup)
@@ -622,27 +603,9 @@ class LLMController(QObject):
         self._invalidate_pending_rag_turn()
         self.is_processing = False
         self.current_response = ""
-        self._active_generation_id = None
-        self._active_generation_dispatch_phase = None
-        self._generation_dispatch_in_progress = False
-        self._stopping_generation_id = None
-        self._admitted_command_name = None
-        self._admitted_publication_generation = None
-        self._active_turn_scope = None
-        self._active_turn_terminal_command = None
-        self._active_turn_excluded_commands = frozenset()
-        self._active_tool_publication = PromptToolPublication.empty()
         self._active_response_contract = AssistantResponseContract.STRUCTURED_ACTION
-        self._retry_count = 0
-        self._tool_failure_count = 0
-        self._loop_break_count = 0
-        self._successful_tool_count = 0
-        self._tool_execution_count = 0
-        self._turn_cancelled = False
-        self._cancellation_response_sent = False
-        self._visible_response_sent = False
-        self._last_tool_summary = None
-        self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
+        self._turn_orchestrator.reset_failed_setup()
+        self._tool_attempt_session.reset_for_user_turn()
 
     @staticmethod
     def _run_turn_setup_cleanup(
@@ -662,15 +625,7 @@ class LLMController(QObject):
 
     def _emit_processing_finished(self, outcome: str = "completed") -> None:
         """Publish UI completion and a correlated host terminal exactly once."""
-        correlation = self._active_turn_correlation()
-        self._active_host_turn_id = None
-        self._active_host_turn_generation = None
-        self._active_turn_scope = None
-        self._active_turn_terminal_command = None
-        self._active_turn_excluded_commands = frozenset()
-        self._active_generation_id = None
-        self._active_generation_dispatch_phase = None
-        self._stopping_generation_id = None
+        correlation = self._turn_orchestrator.finish_host_turn()
         self.processing_finished.emit()
         if correlation is not None:
             self.turn_finished.emit(
@@ -678,15 +633,7 @@ class LLMController(QObject):
             )
 
     def _active_turn_correlation(self) -> AssistantTurnCorrelation | None:
-        if (
-            self._active_host_turn_id is None
-            or self._active_host_turn_generation is None
-        ):
-            return None
-        return AssistantTurnCorrelation(
-            generation=self._active_host_turn_generation,
-            turn_id=self._active_host_turn_id,
-        )
+        return self._turn_orchestrator.correlation
 
     def _require_active_turn_correlation(self) -> AssistantTurnCorrelation:
         correlation = self._active_turn_correlation()
@@ -830,7 +777,7 @@ class LLMController(QObject):
         label = {
             AssistantPanelTarget.DATASET: "Open Dataset",
             AssistantPanelTarget.PREPROCESS: (
-                "Open Epoch Settings"
+                "Open EEG Epoch Settings"
                 if contextual_command is CommandName.CREATE_EPOCH
                 else "Open Preprocessing"
             ),
@@ -843,24 +790,11 @@ class LLMController(QObject):
 
     def _reset_user_turn_state(self) -> None:
         """Reset counters that are scoped to one user-authored turn."""
-        self._retry_count = 0
-        self._tool_failure_count = 0
-        self._loop_break_count = 0
-        self._successful_tool_count = 0
-        self._tool_execution_count = 0
-        self._turn_cancelled = False
-        self._cancellation_response_sent = False
-        self._stopping_generation_id = None
-        self._tool_attempt_coordinator.reset_turn()
+        self._tool_attempt_session.reset_for_user_turn()
+        self._turn_orchestrator.reset_for_user_turn()
         self.pending_interactions.clear_workflow_handoff()
-        self._active_tool_publication = PromptToolPublication.empty()
-        self._visible_response_sent = False
-        self._last_tool_summary = None
-        self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
         self.assembler.clear_recovery_feedback()
         self.assembler.clear_turn_authorization()
-        self._admitted_command_name = None
-        self._admitted_publication_generation = None
 
     def _handle_request_admission(self, text: str) -> bool:
         """Resolve explicit blockers and decisions before model generation."""
@@ -880,21 +814,21 @@ class LLMController(QObject):
         decision = self._request_admission.evaluate(
             text,
             publication,
-            scope=self._active_turn_scope or AssistantTurnScope.SINGLE_ACTION,
-            terminal_command=self._active_turn_terminal_command,
+            scope=self._turn_orchestrator.scope or AssistantTurnScope.SINGLE_ACTION,
+            terminal_command=self._turn_orchestrator.terminal_command,
         )
         if decision.command is not None and self._reject_excluded_turn_command(
             decision.command.value
         ):
             return True
         if decision.action is UserRequestAdmissionAction.GENERATE:
-            self._admitted_command_name = (
-                decision.command.value if decision.command is not None else None
+            self._turn_orchestrator.record_admission(
+                decision.command.value if decision.command is not None else None,
+                publication.generation if publication is not None else None,
             )
-            self._admitted_publication_generation = (
-                publication.generation if publication is not None else None
+            self.assembler.set_turn_authorized_command(
+                self._turn_orchestrator.admitted_command_name
             )
-            self.assembler.set_turn_authorized_command(self._admitted_command_name)
             return False
         if decision.command is None:
             logger.error(
@@ -1051,16 +985,16 @@ class LLMController(QObject):
 
     def _begin_rag_turn(self) -> int:
         """Open a new RAG turn token before asynchronous retrieval starts."""
-        self._rag_turn_id += 1
-        self._active_rag_turn_id = self._rag_turn_id
-        self._waiting_for_rag = True
-        return self._rag_turn_id
+        return self._turn_orchestrator.begin_rag_turn()
 
     def _invalidate_pending_rag_turn(self) -> None:
         """Invalidate any queued RAG result for stop/reset/close boundaries."""
-        self._rag_turn_id = int(getattr(self, "_rag_turn_id", 0)) + 1
-        self._active_rag_turn_id = None
-        self._waiting_for_rag = False
+        active_turn_id = self._turn_orchestrator.active_rag_turn_id
+        if active_turn_id is not None:
+            cancel = getattr(self._rag_lifecycle, "cancel_retrieval", None)
+            if callable(cancel):
+                cancel(active_turn_id)
+        self._turn_orchestrator.invalidate_rag_turn()
 
     def _publish_rag_context_ready(
         self,
@@ -1081,17 +1015,17 @@ class LLMController(QObject):
     ) -> None:
         """Start generation only for the still-current user turn."""
         if (
-            turn_id != self._active_rag_turn_id
-            or not self._waiting_for_rag
+            turn_id != self._turn_orchestrator.active_rag_turn_id
+            or not self._turn_orchestrator.waiting_for_rag
             or not self.is_processing
-            or self._turn_cancelled
+            or self._turn_orchestrator.cancelled
             or self._closing
             or self._closed
         ):
             return
 
-        self._waiting_for_rag = False
-        self._active_rag_turn_id = None
+        if not self._turn_orchestrator.accept_rag_result(turn_id):
+            return
         if error:
             logger.warning(
                 "Optional RAG retrieval failed; continuing without RAG context: %s",
@@ -1101,14 +1035,14 @@ class LLMController(QObject):
 
         try:
             admitted_before_rag = (
-                self._admitted_command_name,
-                self._admitted_publication_generation,
+                self._turn_orchestrator.admitted_command_name,
+                self._turn_orchestrator.admitted_publication_generation,
             )
             if self._handle_request_admission(text):
                 return
             admitted_after_rag = (
-                self._admitted_command_name,
-                self._admitted_publication_generation,
+                self._turn_orchestrator.admitted_command_name,
+                self._turn_orchestrator.admitted_publication_generation,
             )
             if admitted_after_rag != admitted_before_rag:
                 logger.info(
@@ -1131,18 +1065,14 @@ class LLMController(QObject):
         Builds the full message list via the assembler, resets the
         response accumulator, and emits signals to the worker thread.
         """
-        if self._generation_dispatch_in_progress:
+        if not self._turn_orchestrator.begin_generation_dispatch():
             logger.warning(
                 "Ignored reentrant assistant generation dispatch for the active turn."
             )
             return False
-        self._generation_dispatch_in_progress = True
         try:
             request = self.assembler.get_generation_request(self.history)
-            self._generation_id += 1
-            request = request.correlated(self._generation_id)
-            self._active_generation_id = request.generation_id
-            self._active_generation_dispatch_phase = None
+            request = request.correlated(self._turn_orchestrator.begin_generation())
             messages = request.to_model_messages()
             self._active_response_contract = request.response_contract
             publication = getattr(
@@ -1150,7 +1080,7 @@ class LLMController(QObject):
                 "latest_tool_publication",
                 None,
             )
-            self._active_tool_publication = (
+            self._turn_orchestrator.set_active_publication(
                 publication
                 if isinstance(publication, PromptToolPublication)
                 else PromptToolPublication.empty()
@@ -1159,9 +1089,7 @@ class LLMController(QObject):
             # Hold the complete generation until it is classified as user text or
             # a tool proposal. This prevents prose-prefixed or cross-chunk JSON from
             # appearing briefly in the product transcript.
-            self._visible_response_sent = False
-            self._last_tool_summary = None
-            self._last_tool_summary_kind = AssistantResponseKind.MESSAGE
+            self._tool_attempt_session.begin_generation()
 
             if self.metrics.current_turn:
                 self.metrics.current_turn.llm_calls += 1
@@ -1177,7 +1105,7 @@ class LLMController(QObject):
             self._finish_generation_request_failure(error)
             return False
         finally:
-            self._generation_dispatch_in_progress = False
+            self._turn_orchestrator.finish_generation_dispatch()
         return True
 
     def _on_generation_dispatch_acknowledged(self, payload: object) -> None:
@@ -1187,26 +1115,26 @@ class LLMController(QObject):
                 "Ignored untyped assistant generation dispatch acknowledgement."
             )
             return
-        if payload.generation_id != self._active_generation_id:
+        if payload.generation_id != self._turn_orchestrator.active_generation_id:
             return
-        if self._turn_cancelled or self._closing or self._closed:
+        if self._turn_orchestrator.cancelled:
+            return
+        if self._closing or self._closed:
+            return
+        if not self._turn_orchestrator.acknowledge_generation_dispatch(
+            payload.generation_id,
+            payload.phase,
+        ):
+            if payload.phase is AssistantGenerationDispatchPhase.STARTED:
+                logger.error(
+                    "Ignored assistant generation start without acceptance for %s.",
+                    redact_public_text(payload.generation_id),
+                )
             return
         if payload.phase is AssistantGenerationDispatchPhase.ACCEPTED:
-            if self._active_generation_dispatch_phase is None:
-                self._active_generation_dispatch_phase = payload.phase
             return
         if payload.phase is not AssistantGenerationDispatchPhase.STARTED:
             return
-        if (
-            self._active_generation_dispatch_phase
-            is not AssistantGenerationDispatchPhase.ACCEPTED
-        ):
-            logger.error(
-                "Ignored assistant generation start without acceptance for %s.",
-                redact_public_text(payload.generation_id),
-            )
-            return
-        self._active_generation_dispatch_phase = payload.phase
         self.generation_event.emit(
             AssistantGenerationEvent(
                 generation_id=payload.generation_id,
@@ -1224,7 +1152,7 @@ class LLMController(QObject):
         )
         message = failure.message
         self._invalidate_pending_rag_turn()
-        generation_id = self._active_generation_id
+        generation_id = self._turn_orchestrator.active_generation_id
         if generation_id is not None:
             self._arbitrate_generation_terminal(
                 generation_id,
@@ -1250,11 +1178,11 @@ class LLMController(QObject):
             chunk: A text fragment received from the LLM generation stream.
 
         """
-        if generation_id != self._active_generation_id:
+        if generation_id != self._turn_orchestrator.active_generation_id:
             return
         if (
             not self.is_processing
-            or self._turn_cancelled
+            or self._turn_orchestrator.cancelled
             or self._closing
             or self._closed
         ):
@@ -1307,7 +1235,7 @@ class LLMController(QObject):
             )
             is AssistantResponseContract.NATURAL_LANGUAGE
         ):
-            self._retry_count = 0
+            self._tool_attempt_session.clear_format_retries()
             self._finalize_turn(response_text)
             return
 
@@ -1319,7 +1247,7 @@ class LLMController(QObject):
             return
 
         if envelope.status is ToolEnvelopeStatus.VALID:
-            self._retry_count = 0  # Reset on success
+            self._tool_attempt_session.clear_format_retries()
             self._process_tool_calls(list(envelope.commands), response_text)
         else:
             self._finalize_turn(envelope.message or response_text)
@@ -1329,7 +1257,7 @@ class LLMController(QObject):
         message = (
             "Assistant returned an empty response. The local model may still be "
             "loading, may have failed to generate text, or may have been stopped "
-            "before producing output. Try Retry, or open settings to inspect the "
+            "before producing output. Try again, or open settings to inspect the "
             "local runtime status."
         )
         logger.warning(redact_public_text(message))
@@ -1338,12 +1266,6 @@ class LLMController(QObject):
         self._publish_response(
             message,
             kind=AssistantResponseKind.ERROR,
-            actions=(
-                AssistantResponseAction.send_message(
-                    "Retry",
-                    "Please retry my previous request.",
-                ),
-            ),
         )
         self.status_update.emit("Empty response")
         self._publish_activity(
@@ -1377,7 +1299,7 @@ class LLMController(QObject):
         decision = self._strict_envelope_recovery_policy.decide(
             StrictEnvelopeRecoveryRequest(
                 envelope=envelope,
-                recovery_attempts_used=self._retry_count,
+                recovery_attempts_used=self._tool_attempt_session.retry_count,
             )
         )
         if decision.action not in {
@@ -1391,7 +1313,9 @@ class LLMController(QObject):
                 "Rejected model tool envelope: %s",
                 redact_public_text(envelope.error),
             )
-            self._retry_count = decision.recovery_attempts_after
+            self._tool_attempt_session.record_format_retry(
+                decision.recovery_attempts_after
+            )
             if decision.message is None:
                 raise RuntimeError("Format retry decision is missing recovery context")
             self.assembler.add_context(decision.message.content)
@@ -1444,16 +1368,18 @@ class LLMController(QObject):
                 cmd,
                 params,
                 latest_user_text=latest_user_text,
-                published_tool_names=self._active_tool_publication.tool_names,
+                published_tool_names=(
+                    self._turn_orchestrator.active_publication.tool_names
+                ),
             )
             for cmd, params in parsed_commands
         ]
         selection = self._tool_attempt_coordinator.select_proposal(
             normalized_commands,
             mode=self._active_policy_mode(),
-            execution_count=self._tool_execution_count,
+            execution_count=self._tool_attempt_session.execution_count,
             workflow_tool_cap=self._max_tool_executions,
-            cancelled=self._turn_cancelled,
+            cancelled=self._turn_orchestrator.cancelled,
         )
         command = selection.command
         if command is None:
@@ -1482,13 +1408,15 @@ class LLMController(QObject):
         logger.debug("Heuristic confidence: %.2f", confidence)
 
         cmd, params = command
+        repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
         return self._tool_attempt_coordinator.evaluate(
             ToolAttemptRequest(
                 command_name=cmd,
                 params=params,
                 confidence=confidence,
-                publication=self._active_tool_publication,
+                publication=self._turn_orchestrator.active_publication,
                 latest_user_text=self._latest_user_request_text(),
+                repeated=repeated,
             )
         )
 
@@ -1526,12 +1454,12 @@ class LLMController(QObject):
     ) -> bool:
         """Repair one invented tool name without weakening the policy gate."""
         result = decision.result
-        publication = self._active_tool_publication
+        publication = self._turn_orchestrator.active_publication
         if (
             decision.action is not ToolAttemptAction.PUBLICATION_BLOCKED
             or self._active_policy_mode()
             != AssistantTurnScope.GUIDED_WORKFLOW.policy_mode
-            or self._tool_failure_count != 0
+            or self._tool_attempt_session.tool_failure_count != 0
             or not isinstance(result, ToolCommandResult)
             or result.error_type != "tool_not_published"
             or not result.recoverable
@@ -1550,7 +1478,7 @@ class LLMController(QObject):
                 "exact tool name using its published JSON contract."
             ),
         )
-        self._tool_failure_count = 1
+        self._tool_attempt_session.record_guided_repair()
         self.assembler.set_recovery_feedback(feedback)
         self.status_update.emit("Assistant action did not match; retrying...")
         logger.warning(
@@ -1635,7 +1563,7 @@ class LLMController(QObject):
             command_name=cmd,
             request_id=request_id,
         )
-        self._tool_execution_count += 1
+        self._tool_attempt_session.begin_execution()
         if expected_publication_generation is None:
             outcome = self._execute_tool_no_loop(
                 cmd,
@@ -1659,7 +1587,7 @@ class LLMController(QObject):
             return
         if after_confirmation:
             if not success:
-                self._tool_failure_count += 1
+                self._tool_attempt_session.record_failure()
                 self._refresh_execution_snapshot()
                 self._finalize_turn_after_tool()
                 return
@@ -1685,11 +1613,9 @@ class LLMController(QObject):
         """Publish one result or pause it at the resource confirmation boundary."""
         cmd = decision.command_name
         success, result = outcome.success, outcome.result
-        self._last_tool_summary = self._summarize_tool_result(cmd, success, result)
-        self._last_tool_summary_kind = (
-            AssistantResponseKind.TOOL_RESULT
-            if success
-            else AssistantResponseKind.BLOCKED
+        self._tool_attempt_session.record_summary(
+            self._summarize_tool_result(cmd, success, result),
+            self._tool_result_response_kind(success, result),
         )
         resource_boundary = self._tool_attempt_coordinator.resource_confirmation(
             decision,
@@ -1737,7 +1663,10 @@ class LLMController(QObject):
             command_name=command_name,
             message=user_message,
         )
-        panel_target = self._panel_target_for_command(command_name)
+        panel_target = panel_target_for_blocked_command(
+            command_name,
+            result.blocked_reason or result.message,
+        )
         actions = (
             (
                 AssistantResponseAction.open_panel(
@@ -1759,8 +1688,10 @@ class LLMController(QObject):
             else f"System: Tool call REJECTED: {result.message}"
         )
         self._append_history("user", history_message)
-        self._last_tool_summary = user_message
-        self._last_tool_summary_kind = AssistantResponseKind.BLOCKED
+        self._tool_attempt_session.record_summary(
+            user_message,
+            AssistantResponseKind.BLOCKED,
+        )
         self._finalize_turn_after_tool()
 
     @staticmethod
@@ -1770,21 +1701,35 @@ class LLMController(QObject):
         """Map a blocked backend/tool action to one existing product surface."""
         return panel_target_for_command(command_name)
 
+    @staticmethod
+    def _tool_result_response_kind(
+        success: bool,
+        result: ToolCommandResult | UiRequest,
+    ) -> AssistantResponseKind:
+        """Distinguish an informational read from a completed state change."""
+        if not success:
+            return AssistantResponseKind.BLOCKED
+        if isinstance(result, ToolCommandResult) and any(
+            changed is True for changed in result.changed_state.values()
+        ):
+            return AssistantResponseKind.TOOL_RESULT
+        return AssistantResponseKind.MESSAGE
+
     def _handle_tool_failure(
         self,
         autonomy: ToolAvailability | None,
         result: ToolCommandResult | UiRequest,
     ) -> None:
         """Apply host retry limits after one failed command."""
-        self._tool_failure_count += 1
+        failure_count = self._tool_attempt_session.record_failure()
         decision = self._tool_attempt_coordinator.after_failure(
             mode=self._active_policy_mode(),
             availability=autonomy,
-            failure_count=self._tool_failure_count,
+            failure_count=failure_count,
             global_retry_limit=self._max_tool_failures,
-            execution_count=self._tool_execution_count,
+            execution_count=self._tool_attempt_session.execution_count,
             tool_cap=self._max_tool_executions,
-            cancelled=self._turn_cancelled,
+            cancelled=self._turn_orchestrator.cancelled,
         )
         if decision.continue_workflow:
             self.assembler.set_recovery_feedback(
@@ -1795,7 +1740,7 @@ class LLMController(QObject):
             )
             logger.info(
                 "Workflow failure %d/%d; requesting one corrected proposal.",
-                self._tool_failure_count,
+                failure_count,
                 self._max_tool_failures,
             )
             self._generate_response()
@@ -1820,8 +1765,7 @@ class LLMController(QObject):
     ) -> None:
         """Refresh workflow truth, then apply host continuation policy."""
         self.assembler.clear_recovery_feedback()
-        self._tool_failure_count = 0
-        self._successful_tool_count += 1
+        self._tool_attempt_session.record_success()
         if self._turn_endpoint_reached(command_name):
             logger.info(
                 "Assistant workflow reached its user-authored endpoint: %s",
@@ -1837,15 +1781,16 @@ class LLMController(QObject):
         else:
             snapshot = ExecutionSnapshot.safe_to_continue()
 
-        if snapshot.recommended_next_step and not workflow_command_is_within_endpoint(
-            snapshot.recommended_next_step,
-            self._active_turn_terminal_command,
+        boundary_command = snapshot.recommended_next_step or snapshot.blocked_command
+        if boundary_command and not workflow_command_is_within_endpoint(
+            boundary_command,
+            self._turn_orchestrator.terminal_command,
         ):
             logger.info(
                 "Assistant workflow stopped before exceeding its user-authored "
                 "endpoint: next=%s endpoint=%s",
-                redact_public_text(snapshot.recommended_next_step),
-                redact_public_text(self._active_turn_terminal_command or ""),
+                redact_public_text(boundary_command),
+                redact_public_text(self._turn_orchestrator.terminal_command or ""),
             )
             self._finalize_turn_after_tool()
             return
@@ -1854,10 +1799,10 @@ class LLMController(QObject):
             mode=self._active_policy_mode(),
             availability=autonomy,
             snapshot=snapshot,
-            execution_count=self._tool_execution_count,
+            execution_count=self._tool_attempt_session.execution_count,
             tool_cap=self._max_tool_executions,
             after_confirmation=after_confirmation,
-            cancelled=self._turn_cancelled,
+            cancelled=self._turn_orchestrator.cancelled,
         )
         if decision.continue_workflow:
             if not snapshot.recommended_next_step:
@@ -1875,7 +1820,7 @@ class LLMController(QObject):
             )
             logger.info(
                 "Workflow policy allowed one next proposal (%d/%d).",
-                self._tool_execution_count,
+                self._tool_attempt_session.execution_count,
                 self._max_tool_executions,
             )
             self._generate_response()
@@ -1883,10 +1828,12 @@ class LLMController(QObject):
 
         if decision.reason == "decision_needed":
             self.status_update.emit("Waiting for workflow decision.")
-            if snapshot.recommended_next_step:
-                if self._last_tool_summary and not self._visible_response_sent:
+            handoff_command = snapshot.recommended_next_step or snapshot.blocked_command
+            if handoff_command:
+                summary = self._tool_attempt_session.last_tool_summary
+                if summary and not self._tool_attempt_session.visible_response_sent:
                     self._publish_response(
-                        self._last_tool_summary,
+                        summary,
                         # This is an intermediate workflow update. The open
                         # product dialog owns completion, so presenting it as a
                         # completed tool result would contradict the waiting
@@ -1894,7 +1841,7 @@ class LLMController(QObject):
                         kind=AssistantResponseKind.MESSAGE,
                     )
                 request = self._workflow_ui_handoff_request(
-                    snapshot.recommended_next_step,
+                    handoff_command,
                     decision_fields=snapshot.decision_needed,
                     publication=snapshot.publication,
                 )
@@ -1957,11 +1904,7 @@ class LLMController(QObject):
                 mapped_command = CommandName(command_name)
             except ValueError:
                 return False
-        excluded_commands = getattr(
-            self,
-            "_active_turn_excluded_commands",
-            frozenset(),
-        )
+        excluded_commands = self._turn_orchestrator.excluded_commands
         if mapped_command not in excluded_commands:
             return False
 
@@ -1988,14 +1931,16 @@ class LLMController(QObject):
             "user",
             f"System: Action excluded by the user: {mapped_command.value}",
         )
-        self._last_tool_summary = message
-        self._last_tool_summary_kind = AssistantResponseKind.BLOCKED
+        self._tool_attempt_session.record_summary(
+            message,
+            AssistantResponseKind.BLOCKED,
+        )
         self._finalize_turn_after_tool()
         return True
 
     def _turn_endpoint_reached(self, tool_name: str) -> bool:
         """Return whether one verified tool completed the delegated endpoint."""
-        terminal = self._active_turn_terminal_command
+        terminal = self._turn_orchestrator.terminal_command
         if terminal is None:
             return False
         command = AGENT_ACTION_CONTRACTS.tool_to_command().get(tool_name)
@@ -2014,9 +1959,11 @@ class LLMController(QObject):
                 mode=self._active_policy_mode(),
                 publication=publication,
             )
+            blocked_command = getattr(context, "blocked_command", None)
+            next_command = context.recommended_next_step or blocked_command
             next_capability = None
-            if context.recommended_next_step:
-                next_capability = capabilities.get(context.recommended_next_step)
+            if next_command:
+                next_capability = capabilities.get(next_command)
             return ExecutionSnapshot(
                 state_reliable=(
                     publication.usable and self._state_snapshot_reliable(state)
@@ -2045,6 +1992,7 @@ class LLMController(QObject):
                     next_capability and next_capability.stop_after_success
                 ),
                 recommended_next_step=context.recommended_next_step,
+                blocked_command=blocked_command,
                 publication=publication,
             )
         except Exception as exc:
@@ -2071,13 +2019,16 @@ class LLMController(QObject):
             logger.error("Refused to finalize while a workflow UI handoff is pending")
             self.status_update.emit("Waiting for XBrainLab settings to finish.")
             return
-        self._successful_tool_count = 0
-        if not self._visible_response_sent:
-            summary = (
-                self._last_tool_summary
-                or "Tool execution finished, but no assistant message was produced."
+        terminal = self._tool_attempt_session.arbitrate_terminal_response(
+            "Tool execution finished, but no assistant message was produced."
+        )
+        if terminal.text is not None:
+            self._publish_response(
+                terminal.text,
+                kind=terminal.kind,
+                marks_current_turn=False,
             )
-            self._publish_response(summary, kind=self._last_tool_summary_kind)
+        self._tool_attempt_session.commit_terminal_response(terminal)
         self.metrics.finish_turn()
         self.status_update.emit("Ready")
         self._publish_activity(AssistantTurnActivityPhase.IDLE)
@@ -2127,8 +2078,8 @@ class LLMController(QObject):
 
         if resolution.decision is PendingConfirmationDecision.CANCEL:
             logger.info("User cancelled assistant action: %s", cmd)
-            self._turn_cancelled = True
-            self._last_tool_summary = None
+            self._turn_orchestrator.request_cancellation()
+            self._tool_attempt_session.clear_summary()
             self._append_history(
                 "user",
                 f"System: User rejected '{cmd}'. Action was NOT executed.",
@@ -2283,7 +2234,7 @@ class LLMController(QObject):
                     "verified as completed."
                 ),
             )
-            self._last_tool_summary = None
+            self._tool_attempt_session.clear_summary()
             self.status_update.emit("Product panel open for manual completion.")
             return
 
@@ -2292,16 +2243,17 @@ class LLMController(QObject):
                 "user",
                 f"System: The user completed '{command_name}' in XBrainLab.",
             )
-            self._last_tool_summary = (
+            self._tool_attempt_session.record_summary(
                 "The requested settings were completed in XBrainLab. Read current "
-                "workflow state before proposing another action."
+                "workflow state before proposing another action.",
+                AssistantResponseKind.MESSAGE,
             )
             self.status_update.emit("Existing settings completed.")
             return
 
         if status is AgentInteractionStatus.CANCELLED:
-            self._turn_cancelled = True
-            self._last_tool_summary = None
+            self._turn_orchestrator.request_cancellation()
+            self._tool_attempt_session.clear_summary()
             self._append_history(
                 "user",
                 (
@@ -2321,9 +2273,10 @@ class LLMController(QObject):
             "user",
             f"System: XBrainLab settings for '{command_name}' were {outcome_label}.",
         )
-        self._last_tool_summary = (
+        self._tool_attempt_session.record_summary(
             f"The existing settings surface was {outcome_label}. No workflow "
-            "action was executed."
+            "action was executed.",
+            AssistantResponseKind.MESSAGE,
         )
         self.status_update.emit(
             {
@@ -2345,8 +2298,7 @@ class LLMController(QObject):
             cmd: The tool name that was called repeatedly.
 
         """
-        self._loop_break_count += 1
-        if self._loop_break_count >= self._max_loop_breaks:
+        if self._tool_attempt_session.record_loop_break(limit=self._max_loop_breaks):
             msg = (
                 f"System: Persistent loop detected for '{cmd}'. "
                 "Aborting to prevent infinite recursion."
@@ -2488,7 +2440,7 @@ class LLMController(QObject):
         if isinstance(result, UiRequest):
             if result.kind is UiRequestKind.SWITCH_PANEL:
                 try:
-                    request = AssistantPanelNavigationRequest(
+                    navigation_request = AssistantPanelNavigationRequest(
                         target=AssistantPanelTarget(
                             str(result.params.get("panel", "")).strip().lower()
                         ),
@@ -2501,11 +2453,11 @@ class LLMController(QObject):
                         kind=AssistantResponseKind.BLOCKED,
                     )
                     return False
-                self.panel_navigation_requested.emit(request)
+                self.panel_navigation_requested.emit(navigation_request)
                 return True
             if result.kind is UiRequestKind.CONFIRM_MONTAGE:
                 self.status_update.emit("Waiting for user to confirm montage...")
-                request = WorkflowUiHandoffRequest.for_decision(
+                workflow_request = WorkflowUiHandoffRequest.for_decision(
                     CommandName.APPLY_MONTAGE,
                     decision_fields=("channel_mapping",),
                     suggested_values={
@@ -2513,13 +2465,13 @@ class LLMController(QObject):
                         "warning": result.params.get("warning"),
                     },
                 )
-                self.pending_interactions.begin_workflow_handoff(request)
+                self.pending_interactions.begin_workflow_handoff(workflow_request)
                 self._publish_activity(
                     AssistantTurnActivityPhase.WAITING_FOR_DECISION,
-                    command_name=request.command_name,
-                    request_id=request.request_id,
+                    command_name=workflow_request.command_name,
+                    request_id=workflow_request.request_id,
                 )
-                self.workflow_ui_handoff_requested.emit(request)
+                self.workflow_ui_handoff_requested.emit(workflow_request)
                 return True
             return False
 
@@ -2558,7 +2510,7 @@ class LLMController(QObject):
 
     def _on_runtime_error(self, error_msg: object) -> None:
         """Handle model/runtime errors only when no generation owns work."""
-        if self._active_generation_id is not None:
+        if self._turn_orchestrator.active_generation_id is not None:
             return
         self._finish_worker_error(str(error_msg or "Assistant runtime failed."))
 
@@ -2590,15 +2542,11 @@ class LLMController(QObject):
         generation. The stop acknowledgement can then commit ``CANCELLED`` and
         clear correlation, which also makes every later callback stale.
         """
-        if generation_id != self._active_generation_id:
+        if not self._turn_orchestrator.accept_generation_terminal(
+            generation_id,
+            phase,
+        ):
             return False
-        if self._turn_cancelled:
-            if phase is not AssistantGenerationEventPhase.CANCELLED:
-                return False
-        elif phase is AssistantGenerationEventPhase.CANCELLED:
-            return False
-        self._active_generation_id = None
-        self._active_generation_dispatch_phase = None
         self.generation_event.emit(
             AssistantGenerationEvent(
                 generation_id=generation_id,
@@ -2625,12 +2573,6 @@ class LLMController(QObject):
             self._publish_response(
                 user_facing_generation_error(message),
                 kind=AssistantResponseKind.ERROR,
-                actions=(
-                    AssistantResponseAction.send_message(
-                        "Retry",
-                        "Please retry my previous request.",
-                    ),
-                ),
             )
         self.status_update.emit("Error")
         self._publish_activity(
@@ -2644,7 +2586,18 @@ class LLMController(QObject):
     def close(self) -> bool:
         """Start signal-driven cleanup and report whether ownership is terminal."""
         if self._closed:
-            return True
+            if self._rag_shutdown_clean:
+                return True
+            self._rag_shutdown_clean = self._close_rag_lifecycle()
+            self.shutdown_finished.emit(
+                self._rag_shutdown_clean,
+                (
+                    ""
+                    if self._rag_shutdown_clean
+                    else self._rag_shutdown_failure_message()
+                ),
+            )
+            return self._rag_shutdown_clean
         if self._shutdown_phase in {
             _ControllerShutdownPhase.WORKER_STOPPING,
             _ControllerShutdownPhase.THREAD_STOPPING,
@@ -2656,14 +2609,14 @@ class LLMController(QObject):
         worker = cast(Any, getattr(self, "worker", None))
         if worker is None:
             self._request_worker_thread_exit()
-            return self._closed
+            return self._closed and self._rag_shutdown_clean
 
         if not isinstance(worker, QObject):
             return self._close_non_qobject_worker(worker)
 
         if sip.isdeleted(worker):
             self._request_worker_thread_exit()
-            return self._closed
+            return self._closed and self._rag_shutdown_clean
 
         self._shutdown_phase = _ControllerShutdownPhase.WORKER_STOPPING
         if not self._shutdown_timeout_timer.isActive():
@@ -2678,21 +2631,18 @@ class LLMController(QObject):
         self._shutdown_preamble_complete = True
         correlation = self._active_turn_correlation()
         self.is_processing = False
-        self._turn_cancelled = False
+        self._turn_orchestrator.reset_for_shutdown()
         if correlation is not None:
             self._emit_processing_finished("shutdown_cancelled")
-        else:
-            self._active_generation_id = None
-            self._active_generation_dispatch_phase = None
-            self._stopping_generation_id = None
         self.pending_interactions.clear()
         self._invalidate_pending_rag_turn()
         if not self._rag_shutdown_attempted:
             self._rag_shutdown_attempted = True
-            if not self._close_rag_lifecycle():
+            self._rag_shutdown_clean = self._close_rag_lifecycle()
+            if not self._rag_shutdown_clean:
                 logger.warning(
                     "Optional RAG retriever lifecycle did not stop cleanly; "
-                    "continuing controller shutdown."
+                    "controller shutdown will remain pending."
                 )
 
     def _close_non_qobject_worker(self, worker: Any) -> bool:
@@ -2712,7 +2662,7 @@ class LLMController(QObject):
             self._shutdown_phase = _ControllerShutdownPhase.OPEN
             return False
         self._request_worker_thread_exit()
-        return self._closed
+        return self._closed and self._rag_shutdown_clean
 
     @pyqtSlot()
     def _request_worker_shutdown(self) -> None:
@@ -2838,7 +2788,15 @@ class LLMController(QObject):
         self.worker = None
         self._closed = True
         self._shutdown_phase = _ControllerShutdownPhase.CLOSED
-        self.shutdown_finished.emit(True, detail)
+        shutdown_ok = self._rag_shutdown_clean
+        terminal_detail = (
+            detail if shutdown_ok else self._rag_shutdown_failure_message()
+        )
+        self.shutdown_finished.emit(shutdown_ok, terminal_detail)
+
+    @staticmethod
+    def _rag_shutdown_failure_message() -> str:
+        return "Assistant retrieval cleanup did not finish; cleanup is still pending."
 
     def _reject_command_while_closing(self, command: str) -> bool:
         """Reject new work once shutdown starts, while cleanup remains retryable."""
@@ -2909,20 +2867,18 @@ class LLMController(QObject):
             )
             return
         if self.is_processing:
-            if not self._turn_cancelled:
-                self._turn_cancelled = True
+            if self._turn_orchestrator.request_cancellation():
                 self.status_update.emit("Stopping...")
                 self._publish_activity(AssistantTurnActivityPhase.STOPPING)
                 self.metrics.finish_turn()
-            if self._waiting_for_rag:
+            if self._turn_orchestrator.waiting_for_rag:
                 self._invalidate_pending_rag_turn()
                 self._complete_cancelled_turn()
                 return
-            generation_id = self._stopping_generation_id or self._active_generation_id
+            generation_id = self._turn_orchestrator.begin_stopping_generation()
             if generation_id is None:
                 self._complete_cancelled_turn()
                 return
-            self._stopping_generation_id = generation_id
             request = AssistantGenerationStopRequest(generation_id=generation_id)
             worker = getattr(self, "worker", None)
             worker_object = (
@@ -2950,18 +2906,17 @@ class LLMController(QObject):
         if not isinstance(payload, AssistantGenerationStopAcknowledgement):
             logger.error("Ignored untyped assistant generation stop acknowledgement.")
             return
-        if not self._turn_cancelled:
+        if not self._turn_orchestrator.cancelled:
             return
-        if (
-            payload.generation_id != self._stopping_generation_id
-            or payload.generation_id != self._active_generation_id
+        if not self._turn_orchestrator.accepts_stop_acknowledgement(
+            payload.generation_id
         ):
             logger.warning(
                 "Ignored stale generation stop acknowledgement for %s; "
                 "active=%s stopping=%s",
                 redact_public_text(payload.generation_id),
-                self._active_generation_id,
-                self._stopping_generation_id,
+                self._turn_orchestrator.active_generation_id,
+                self._turn_orchestrator.stopping_generation_id,
             )
             return
         if not payload.stopped:
@@ -2971,20 +2926,16 @@ class LLMController(QObject):
 
     def _complete_cancelled_turn(self) -> None:
         """Publish one durable cancellation result after work has stopped."""
-        if self._cancellation_response_sent:
+        generation_id = self._turn_orchestrator.active_generation_id
+        if not self._turn_orchestrator.accept_cancellation_terminal():
             return
-        self._cancellation_response_sent = True
-        generation_id = self._active_generation_id
-        if (
-            generation_id is not None
-            and not LLMController._arbitrate_generation_terminal(
-                self,
-                generation_id,
-                AssistantGenerationEventPhase.CANCELLED,
+        if generation_id is not None:
+            self.generation_event.emit(
+                AssistantGenerationEvent(
+                    generation_id=generation_id,
+                    phase=AssistantGenerationEventPhase.CANCELLED,
+                )
             )
-        ):
-            self._cancellation_response_sent = False
-            return
         message = ASSISTANT_CANCELLED_MESSAGE
         self.current_response = ""
         self._append_history("assistant", message)
@@ -3015,7 +2966,7 @@ class LLMController(QObject):
         if self._reject_command_while_closing("reset conversation"):
             return
         if (
-            self._active_host_turn_id is not None
+            self._turn_orchestrator.has_active_host_turn
             or self.is_processing
             or self.pending_interactions.workflow_handoff is not None
         ):
@@ -3024,19 +2975,9 @@ class LLMController(QObject):
         self._invalidate_pending_rag_turn()
         self._conversation.clear()
         self.current_response = ""
-        self._retry_count = 0
-        self._tool_failure_count = 0
-        self._loop_break_count = 0
-        self._tool_attempt_coordinator.reset_turn()
+        self._tool_attempt_session.reset_for_user_turn()
         self.pending_interactions.reset()
-        self._tool_execution_count = 0
-        self._turn_cancelled = False
-        self._cancellation_response_sent = False
-        self._active_turn_scope = None
-        self._active_turn_terminal_command = None
-        self._active_turn_excluded_commands = frozenset()
-        self._admitted_command_name = None
-        self._admitted_publication_generation = None
+        self._turn_orchestrator.reset_conversation()
 
         # Reset metrics for new conversation
         self.metrics.reset()
@@ -3070,7 +3011,7 @@ class LLMController(QObject):
                     message="Assistant controller is closing.",
                 )
             if (
-                self._active_host_turn_id is not None
+                self._turn_orchestrator.has_active_host_turn
                 or self.is_processing
                 or self.pending_interactions.has_pending
             ):
@@ -3085,8 +3026,7 @@ class LLMController(QObject):
                     phase=AssistantTurnDeliveryPhase.REJECTED,
                     message="Assistant controller is busy.",
                 )
-            self._active_host_turn_id = payload.turn_id
-            self._active_host_turn_generation = payload.generation
+            self._turn_orchestrator.bind_correlation(payload.correlation)
             self._execute_admitted_debug_tool(
                 payload.tool_name,
                 payload.to_params(),
@@ -3176,11 +3116,7 @@ class LLMController(QObject):
         self._append_history("assistant", msg)
         self._publish_response(
             self._summarize_tool_result(display_tool_name, success, result),
-            kind=(
-                AssistantResponseKind.TOOL_RESULT
-                if success
-                else AssistantResponseKind.BLOCKED
-            ),
+            kind=self._tool_result_response_kind(success, result),
         )
 
         self.status_update.emit("Ready")

@@ -11,6 +11,10 @@ from XBrainLab.backend.application.view_publication import (
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
     ApplicationViewPublication,
 )
+from XBrainLab.chat_contract import (
+    MAX_CHAT_MODEL_REQUEST_UTF8_BYTES,
+    MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
+)
 
 from ..pipeline_state import STAGE_CONFIG, PipelineStage, compute_pipeline_stage
 from ..tools.application_surface import (
@@ -20,7 +24,9 @@ from ..tools.application_surface import (
 from ..tools.schema_contract import LEGACY_COMPATIBILITY_TOOLS, tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
 from .context_encoding import (
+    MAX_UNTRUSTED_CONTEXT_BYTES,
     MAX_UNTRUSTED_STRING_CHARS,
+    MIN_UNTRUSTED_CONTEXT_BYTES,
     UntrustedContextItem,
     UntrustedContextSource,
     decode_untrusted_context,
@@ -60,6 +66,10 @@ _BACKEND_DEFAULT_CONTINUATION_TOOLS = frozenset(
     }
 )
 _MAX_CONTEXT_NOTES = 4
+_MAX_HISTORY_INPUT_ROWS = 64
+_MAX_HISTORY_MESSAGES = 4
+_MAX_HISTORY_MESSAGE_UTF8_BYTES = 1_024
+_MAX_HISTORY_UTF8_BYTES = 4_096
 
 
 @dataclass(frozen=True)
@@ -120,7 +130,7 @@ action.
     )
 
     _TOOL_BLOCK_TEMPLATE = """
-Available Action Contracts (exhaustive JSON array):
+Action Contract Catalog (input definitions, never an output array):
 {tools_str}
 {availability_note}
 """
@@ -166,7 +176,8 @@ instead of inventing a workflow fact.
         self._turn_authorized_command: str | None = None
         self._turn_authorization_is_continuation = False
         self._turn_policy_mode = STEP_BY_STEP_MODE
-        self.max_history_messages = 4
+        self.max_history_messages = _MAX_HISTORY_MESSAGES
+        self.max_history_utf8_bytes = _MAX_HISTORY_UTF8_BYTES
 
     def _get_stage_config(
         self,
@@ -206,15 +217,16 @@ instead of inventing a workflow fact.
         *,
         backend_default_tools: frozenset[str] = frozenset(),
     ) -> str:
-        """Format only the tools whose names are in *allowed_names*.
+        """Format request-scoped contracts without resembling model output.
 
         Args:
             allowed_names: Tool name strings permitted by the current
                 pipeline stage.
 
         Returns:
-            A newline-joined string of JSON-formatted tool definitions,
-            or a fallback message if no tools are currently available.
+            Labeled JSON definitions for callable actions and the structured
+            no-action fallback. Definitions are deliberately not wrapped in an
+            array because the model must emit exactly one top-level object.
 
         """
         allowed_set = set(allowed_names)
@@ -222,17 +234,65 @@ instead of inventing a workflow fact.
             t for t in self.registry.get_all_tools() if t.name in allowed_set
         ]
 
-        tool_descs: list[dict[str, Any]] = []
+        sections: list[str] = []
         for tool in active_tools:
             tool_def = tool_contract_for_llm(
                 tool,
                 use_backend_defaults=tool.name in backend_default_tools,
             )
-            tool_descs.append(tool_def)
+            sections.extend(
+                (
+                    "Callable action contract:",
+                    json.dumps(tool_def, indent=2),
+                )
+            )
+            if self._is_zero_parameter_contract(tool_def):
+                output_shape = {
+                    "tool_name": tool.name,
+                    "parameters": {},
+                }
+                sections.extend(
+                    (
+                        "Exact zero-parameter output shape:",
+                        json.dumps(output_shape, separators=(",", ":")),
+                    )
+                )
 
-        tool_descs.insert(0, model_response_tool_contract())
+        if not active_tools:
+            sections.append("No callable action contract is available.")
 
-        return json.dumps(tool_descs, indent=2)
+        sections.extend(
+            (
+                "Fallback response contract:",
+                json.dumps(model_response_tool_contract(), indent=2),
+            )
+        )
+        return "\n".join(sections)
+
+    @staticmethod
+    def _is_zero_parameter_contract(tool_def: dict[str, Any]) -> bool:
+        """Return whether an action accepts no model-provided parameters."""
+        parameters = tool_def.get("parameters")
+        if not isinstance(parameters, dict):
+            return False
+        supported_keys = {
+            "type",
+            "properties",
+            "required",
+            "additionalProperties",
+            "title",
+            "description",
+        }
+        if set(parameters).difference(supported_keys):
+            return False
+        properties = parameters.get("properties")
+        required = parameters.get("required")
+        return bool(
+            parameters.get("type") == "object"
+            and properties == {}
+            and parameters.get("additionalProperties") is False
+            and required in (None, [])
+        )
 
     def _application_allowed_tools(
         self,
@@ -521,7 +581,9 @@ instead of inventing a workflow fact.
             text: Context string or an internally encoded RAG envelope.
 
         """
-        value = str(text)
+        if type(text) is not str:
+            raise TypeError("Assistant context must be an exact string.")
+        value = text
         if decode_untrusted_context(value) is None:
             value = sanitize_untrusted_text(
                 value,
@@ -553,7 +615,9 @@ instead of inventing a workflow fact.
         continuation: bool = False,
     ) -> None:
         """Set the command authorized for the next model proposal in this turn."""
-        normalized = str(command_name or "").strip()
+        if command_name is not None and type(command_name) is not str:
+            raise TypeError("Assistant command name must be an exact string.")
+        normalized = command_name.strip() if command_name is not None else ""
         next_command = normalized or None
         if (
             self._turn_authorized_command is not None
@@ -576,46 +640,74 @@ instead of inventing a workflow fact.
         self._recovery_feedback = None
 
     def get_messages(self, history: list) -> list:
-        """Combines the system prompt and history into a message list.
+        """Build policy, untrusted context, and the current user request.
 
-        The sliding window over history is managed externally by the
-        controller; this method simply concatenates system and history.
+        Prior conversation rows are encoded as untrusted JSON data. Only the
+        latest human request retains a chat-template ``user`` role.
 
         Args:
             history: List of message dicts with ``role`` and ``content`` keys.
 
         Returns:
-            Complete message list starting with the system prompt followed
-            by the conversation history.
+            Complete message list containing policy, bounded context, and the
+            latest user request.
 
         """
+        if type(history) is not list:
+            raise TypeError("Assistant history must be an exact list.")
+        history_input_truncated = len(history) > _MAX_HISTORY_INPUT_ROWS
         clean_history = self._history_for_llm(history)
         latest_user_text = self._latest_user_text(clean_history)
+        latest_user_content = self._latest_user_content(clean_history)
+        latest_user_index = self._latest_user_index(clean_history)
+        prior_history = [
+            message
+            for index, message in enumerate(clean_history)
+            if index != latest_user_index
+        ]
         if self._uses_natural_language_response(
             latest_user_text
         ) and not self._requires_conversation_context(latest_user_text):
-            clean_history = [
-                message
-                for message in clean_history[-1:]
-                if message.get("role") == "user"
-            ]
-        messages: list[dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": self.build_system_prompt(latest_user_text),
-            },
-        ]
-
-        if self._latest_context_items:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": encode_untrusted_context(
-                        self._latest_context_items,
-                    ),
-                }
+            prior_history = []
+        system_message = {
+            "role": "system",
+            "content": self.build_system_prompt(latest_user_text),
+        }
+        latest_user_message = (
+            {"role": "user", "content": latest_user_content}
+            if latest_user_index is not None
+            else None
+        )
+        base_messages = [system_message]
+        if latest_user_message is not None:
+            base_messages.append(latest_user_message)
+        if (
+            self._serialized_utf8_size(base_messages)
+            > MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
+        ):
+            raise ValueError(
+                "System policy and current request exceed the model request "
+                "UTF-8 byte cap."
             )
-        messages.extend(clean_history)
+        messages: list[dict[str, Any]] = [system_message]
+
+        context_items = list(self._latest_context_items)
+        history_item = self._conversation_history_item(
+            prior_history,
+            input_truncated=history_input_truncated,
+        )
+        if history_item is not None:
+            context_items.append(history_item)
+        if context_items:
+            encoded_context = self._fit_context_to_request(
+                context_items,
+                system_message=system_message,
+                latest_user_message=latest_user_message,
+            )
+            if encoded_context is not None:
+                messages.append({"role": "user", "content": encoded_context})
+        if latest_user_message is not None:
+            messages.append(latest_user_message)
 
         return messages
 
@@ -664,43 +756,182 @@ instead of inventing a workflow fact.
         self._turn_policy_mode = normalize_workflow_mode(scope.policy_mode)
 
     def _history_for_llm(self, history: list) -> list[dict[str, Any]]:
-        """Return short user-visible history for the LLM prompt.
+        """Return exact built-in user-visible rows eligible for projection.
 
         Internal tool feedback remains in controller history for metrics and
         recovery, but it should not become workflow truth for the next LLM turn.
         """
+        if type(history) is not list:
+            raise TypeError("Assistant history must be an exact list.")
         cleaned: list[dict[str, Any]] = []
-        for message in history:
-            if not isinstance(message, dict):
+        for message in history[-_MAX_HISTORY_INPUT_ROWS:]:
+            if type(message) is not dict:
                 continue
             role = message.get("role")
-            content = str(message.get("content", "")).strip()
-            if role not in {"user", "assistant"} or not content:
+            raw_content = message.get("content")
+            if type(role) is not str or type(raw_content) is not str:
                 continue
-            if content.startswith(("System:", "Tool Output:")):
+            normalized_content = raw_content.strip()
+            if role not in {"user", "assistant"} or not normalized_content:
                 continue
-            if role == "assistant" and self._is_internal_action_envelope(content):
+            if normalized_content.startswith(("System:", "Tool Output:")):
                 continue
-            cleaned.append({"role": role, "content": content})
-        return cleaned[-self.max_history_messages :]
+            if role == "assistant" and self._is_internal_action_envelope(
+                normalized_content
+            ):
+                continue
+            cleaned.append({"role": role, "content": raw_content})
+        return cleaned
+
+    def _conversation_history_item(
+        self,
+        prior_history: list[dict[str, Any]],
+        *,
+        input_truncated: bool,
+    ) -> UntrustedContextItem | None:
+        """Project recent speakers as bounded data, never chat-template roles."""
+        if not prior_history:
+            return None
+        if type(self.max_history_messages) is not int:
+            raise TypeError("History message bound must be an exact integer.")
+        if type(self.max_history_utf8_bytes) is not int:
+            raise TypeError("History UTF-8 byte bound must be an exact integer.")
+        max_messages = max(
+            min(self.max_history_messages, _MAX_HISTORY_MESSAGES) - 1,
+            0,
+        )
+        max_utf8_bytes = max(
+            min(self.max_history_utf8_bytes, _MAX_HISTORY_UTF8_BYTES),
+            256,
+        )
+        selected = prior_history[-max_messages:] if max_messages else []
+        truncated = input_truncated or len(prior_history) > len(selected)
+        safe_messages: list[dict[str, str]] = []
+        for message in selected:
+            safe_text = sanitize_untrusted_text(
+                message["content"],
+                max_chars=MAX_UNTRUSTED_STRING_CHARS,
+                max_utf8_bytes=_MAX_HISTORY_MESSAGE_UTF8_BYTES,
+            )
+            safe_messages.append(
+                {
+                    "speaker": message["role"],
+                    "text": safe_text,
+                }
+            )
+            truncated = truncated or safe_text.endswith("...[truncated]")
+
+        payload: dict[str, Any] = {
+            "bounds": {
+                "max_messages": max_messages,
+                "max_utf8_bytes": max_utf8_bytes,
+            },
+            "messages": safe_messages,
+            "truncated": truncated,
+        }
+        while safe_messages and self._serialized_utf8_size(payload) > max_utf8_bytes:
+            safe_messages.pop(0)
+            payload["truncated"] = True
+        if not safe_messages:
+            return None
+        return UntrustedContextItem(
+            item_type="conversation_history",
+            source=UntrustedContextSource(kind="assistant_conversation_history"),
+            data=payload,
+        )
+
+    @staticmethod
+    def _serialized_utf8_size(value: object) -> int:
+        serialized = json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return len(serialized.encode("utf-8"))
+
+    def _fit_context_to_request(
+        self,
+        context_items: list[UntrustedContextItem],
+        *,
+        system_message: dict[str, str],
+        latest_user_message: dict[str, str] | None,
+    ) -> str | None:
+        """Fit only untrusted data while preserving policy and latest request."""
+
+        def request_size(encoded_context: str) -> int:
+            messages = [
+                system_message,
+                {"role": "user", "content": encoded_context},
+            ]
+            if latest_user_message is not None:
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
+                    }
+                )
+                messages.append(latest_user_message)
+            return self._serialized_utf8_size(messages)
+
+        encoded = encode_untrusted_context(
+            context_items,
+            max_chars=MAX_UNTRUSTED_CONTEXT_BYTES,
+        )
+        if request_size(encoded) <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES:
+            return encoded
+
+        best: str | None = None
+        low = MIN_UNTRUSTED_CONTEXT_BYTES
+        high = MAX_UNTRUSTED_CONTEXT_BYTES - 1
+        while low <= high:
+            candidate_cap = (low + high) // 2
+            candidate = encode_untrusted_context(
+                context_items,
+                max_chars=candidate_cap,
+            )
+            if request_size(candidate) <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES:
+                best = candidate
+                low = candidate_cap + 1
+            else:
+                high = candidate_cap - 1
+        return best
 
     @staticmethod
     def _is_internal_action_envelope(content: str) -> bool:
         """Return whether assistant text is an internal structured decision."""
+        if type(content) is not str:
+            return False
         try:
             payload = json.loads(content)
         except (TypeError, ValueError, json.JSONDecodeError):
             return False
         return (
-            isinstance(payload, dict)
+            type(payload) is dict
             and set(payload) == {"tool_name", "parameters"}
-            and isinstance(payload.get("tool_name"), str)
-            and isinstance(payload.get("parameters"), dict)
+            and type(payload.get("tool_name")) is str
+            and type(payload.get("parameters")) is dict
         )
 
     @staticmethod
     def _latest_user_text(history: list[dict[str, Any]]) -> str:
+        return ContextAssembler._latest_user_content(history).strip()
+
+    @staticmethod
+    def _latest_user_content(history: list[dict[str, Any]]) -> str:
         for message in reversed(history):
-            if message.get("role") == "user":
-                return str(message.get("content", "")).strip()
+            if (
+                type(message) is dict
+                and message.get("role") == "user"
+                and type(message.get("content")) is str
+            ):
+                return message["content"]
         return ""
+
+    @staticmethod
+    def _latest_user_index(history: list[dict[str, Any]]) -> int | None:
+        for index in range(len(history) - 1, -1, -1):
+            message = history[index]
+            if type(message) is dict and message.get("role") == "user":
+                return index
+        return None

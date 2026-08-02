@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from XBrainLab.backend.services.dataset_state_service import DatasetDetachedReadPort
+
 from .commands import Command, QueryStateCommand
 from .errors import PreconditionError
 from .state import ApplicationStateSnapshot
@@ -22,7 +24,7 @@ class QueryStateCommandService:
         self,
         *,
         study: Any,
-        dataset: Any,
+        dataset: DatasetDetachedReadPort,
         state_builder: StateSnapshotService,
         get_state: Callable[[], ApplicationStateSnapshot],
     ) -> None:
@@ -46,36 +48,44 @@ class QueryStateCommandService:
                 "State queries must use ApplicationService publication routing.",
             )
         if query == "data_lists":
-            state = state if state is not None else self.get_state()
-            loaded = list(getattr(self.study, "loaded_data_list", []) or [])
-            preprocessed = list(
-                getattr(self.study, "preprocessed_data_list", []) or [],
-            )
+            loaded_rows = self.dataset.get_loaded_data_rows()
+            preprocessed_rows = self.dataset.get_preprocessed_data_rows()
             diagnostics: dict[str, Any] = {
-                "raw_count": len(loaded),
-                "preprocessed_count": len(preprocessed),
-                "raw_files": state.raw.files,
-                "preprocessed_files": state.preprocessed.files,
+                "raw_count": len(loaded_rows),
+                "preprocessed_count": len(preprocessed_rows),
+                "raw_files": [str(row.get("filepath", "")) for row in loaded_rows],
+                "preprocessed_files": [
+                    str(row.get("filepath", "")) for row in preprocessed_rows
+                ],
+                "raw_rows": loaded_rows,
+                "preprocessed_rows": preprocessed_rows,
             }
-            if command.include_objects:
-                diagnostics["loaded_data_list"] = loaded
-                diagnostics["preprocessed_data_list"] = preprocessed
             return "Data list query ready.", diagnostics
-        if query == "dataset_generation_context":
-            epoch_data = getattr(self.study, "epoch_data", None)
-            dataset_generator = getattr(self.study, "dataset_generator", None)
-            datasets = list(getattr(self.study, "datasets", []) or [])
-            diagnostics = {
-                "payload_type": "dataset_generation_context",
-                "epoch_available": epoch_data is not None,
-                "generator_exists": dataset_generator is not None,
-                "dataset_count": len(datasets),
-            }
-            if command.include_objects:
-                diagnostics["epoch_data"] = epoch_data
-                diagnostics["dataset_generator"] = dataset_generator
-                diagnostics["datasets"] = datasets
-            return "Dataset generation context ready.", diagnostics
+        if query == "label_import_targets":
+            target_indices = command.params.get("target_indices")
+            target_count = command.params.get("target_count", 0)
+            if not isinstance(target_indices, list):
+                raise PreconditionError("target_indices must be a list.")
+            if (
+                isinstance(target_count, bool)
+                or not isinstance(target_count, int)
+                or target_count < 0
+            ):
+                raise PreconditionError(
+                    "target_count must be a non-negative integer.",
+                )
+            rows = self.dataset.get_label_import_target_rows(
+                target_indices,
+                target_count=target_count,
+            )
+            return (
+                "Label import targets ready.",
+                {
+                    "payload_type": "label_import_targets",
+                    "target_count": len(rows),
+                    "targets": rows,
+                },
+            )
         if query == "data_summary":
             state = state if state is not None else self.get_state()
             return "Dataset summary ready.", self.state_builder.data_summary_from_state(
@@ -94,9 +104,7 @@ class QueryStateCommandService:
                 {"suggestions": suggestions},
             )
         if query == "training_history":
-            rows = self.state_builder.training_history(
-                include_objects=command.include_objects,
-            )
+            rows = self.state_builder.training_history()
             return (
                 "Training history query ready.",
                 {

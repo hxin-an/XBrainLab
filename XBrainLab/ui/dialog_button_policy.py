@@ -19,9 +19,14 @@ _NORMALIZE_EVENTS = {
 class _DialogButtonPolicy(QObject):
     """Remove platform glyphs from standard OK and Cancel dialog buttons."""
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+    def eventFilter(  # noqa: N802
+        self,
+        watched: QObject | None,
+        event: QEvent | None,
+    ) -> bool:
         if (
             isinstance(watched, QPushButton)
+            and event is not None
             and event.type() in _NORMALIZE_EVENTS
             and _is_standard_dialog_button(watched)
         ):

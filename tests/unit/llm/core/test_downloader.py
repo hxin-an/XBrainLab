@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from XBrainLab.llm.core.downloader import (
+    DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC,
+    MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE,
     PROCESS_JOIN_TIMEOUT_SEC,
     PROCESS_KILL_JOIN_TIMEOUT_SEC,
     PROCESS_TERMINATE_JOIN_TIMEOUT_SEC,
@@ -19,6 +21,7 @@ from XBrainLab.llm.core.downloader import (
     ProcessCleanupPhase,
     run_download_task,
 )
+from XBrainLab.llm.core.model_catalog import DownloadConsumptionResult
 
 PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 PRIMARY_MODEL_REVISION = (
@@ -196,6 +199,26 @@ class TestModelDownloader:
         assert outcome.target.repo_id == "repo/id"
         assert "Network Error" in outcome.diagnostic_message
         assert "Network Error" not in outcome.message
+
+    def test_download_deadline_terminates_owned_process_and_is_retryable(
+        self,
+        mock_multiprocessing,
+        qtbot,
+    ):
+        _, mock_process, mock_queue = mock_multiprocessing
+        mock_queue.get_nowait.side_effect = stdlib_queue.Empty
+        downloader = ModelDownloader(download_deadline_seconds=0.01)
+
+        with qtbot.waitSignal(downloader.failed, timeout=1000) as blocker:
+            assert downloader.start_download("repo/id", "/cache") is True
+
+        outcome = blocker.args[0]
+        assert outcome.status is ModelDownloadStatus.FAILED
+        assert outcome.message == MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE
+        assert outcome.failure_code.value == "timeout"
+        assert "deadline" in outcome.diagnostic_message
+        mock_process.terminate.assert_called()
+        assert downloader.is_idle() is True
 
     def test_cancellation(self, mock_multiprocessing, qtbot):
         """Test that cancel() calls process.terminate()."""
@@ -607,6 +630,74 @@ class TestRunDownloadTask:
 
 
 class TestDownloadWorker:
+    def test_inflight_limit_failure_terminates_child_and_reports_diagnostic(
+        self,
+    ) -> None:
+        worker = DownloadWorker(PRIMARY_MODEL_ID, "/cache")
+        failures: list[str] = []
+        worker.download_failed.connect(failures.append)
+        process = MagicMock()
+        process.is_alive.side_effect = lambda: not process.terminate.called
+        result_queue = MagicMock()
+        result_queue.get_nowait.side_effect = stdlib_queue.Empty
+        consumption = DownloadConsumptionResult(
+            ok=False,
+            public_message=(
+                "Model download stopped because the total cache limit was exceeded."
+            ),
+            diagnostic_message=(
+                "total_cache_limit_exceeded: total_cache_bytes=21000000001"
+            ),
+            model_cache_bytes=1_000_000_000,
+            total_cache_bytes=21_000_000_001,
+            available_disk_bytes=10_000_000_000,
+        )
+
+        with (
+            _patch_download_process_context(process, result_queue),
+            patch(
+                "XBrainLab.llm.core.downloader.inspect_model_download_consumption",
+                return_value=consumption,
+            ) as inspect,
+        ):
+            worker.run()
+
+        assert failures == [consumption.diagnostic_message]
+        inspect.assert_called_once_with(PRIMARY_MODEL_ID, "/cache")
+        process.terminate.assert_called_once()
+        assert worker._process is None
+
+    def test_consumption_polling_has_a_bounded_cadence(self) -> None:
+        worker = DownloadWorker(PRIMARY_MODEL_ID, "/cache")
+        consumption = DownloadConsumptionResult(
+            ok=True,
+            public_message="",
+            diagnostic_message="",
+            model_cache_bytes=1,
+            total_cache_bytes=1,
+            available_disk_bytes=10_000_000_000,
+        )
+
+        with patch(
+            "XBrainLab.llm.core.downloader.inspect_model_download_consumption",
+            return_value=consumption,
+        ) as inspect:
+            assert worker._check_consumption_if_due(now=100.0) is True
+            assert (
+                worker._check_consumption_if_due(
+                    now=100.0 + DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC / 2
+                )
+                is True
+            )
+            assert (
+                worker._check_consumption_if_due(
+                    now=100.0 + DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC
+                )
+                is True
+            )
+
+        assert inspect.call_count == 2
+
     def test_worker_uses_explicit_spawn_context(self, mock_multiprocessing) -> None:
         mock_mp, mock_process, mock_queue = mock_multiprocessing
         mock_process.is_alive.side_effect = [True, False, False]

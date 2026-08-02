@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Any, cast
 from unittest.mock import patch
 
 import numpy as np
 import pytest
-import torch
 
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.saliency_provenance import (
@@ -111,31 +111,22 @@ def test_visualizer_rejects_context_drift_instead_of_rebinding_indices(
         visualizer.iter_saliency_by_label("Gradient")
 
 
-def test_visualizer_rejects_reloaded_legacy_saliency_without_identity_context(
-    tmp_path,
-) -> None:
-    torch.save(
-        {
-            "label": np.array([0, 1]),
-            "output": np.array([[0.9, 0.1], [0.1, 0.9]]),
-            "gradient": {
-                0: np.ones((1, 2, 51), dtype=np.float32),
-                1: np.ones((1, 2, 51), dtype=np.float32),
-            },
-            "gradient_input": {},
-            "smoothgrad": {},
-            "smoothgrad_sq": {},
-            "vargrad": {},
-        },
-        tmp_path / "eval",
+def test_visualizer_rejects_safe_artifact_without_identity_context(tmp_path) -> None:
+    epoch_data = _EpochContext()
+    _record(epoch_data).export(str(tmp_path))
+    manifest_path = tmp_path / "eval"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["payload"]["saliency_context"] = None
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
     )
     loaded = EvalRecord.load(str(tmp_path))
     assert loaded is not None
+    assert loaded.saliency_context_status == "legacy_missing"
 
     with pytest.raises(SaliencyContextError, match=r"legacy.*identity context"):
-        Visualizer(loaded, cast(Any, _EpochContext())).iter_saliency_by_label(
-            "Gradient"
-        )
+        Visualizer(loaded, cast(Any, epoch_data)).iter_saliency_by_label("Gradient")
 
 
 def test_visualizer_uses_persisted_class_identity_after_round_trip(tmp_path) -> None:

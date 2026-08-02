@@ -17,6 +17,7 @@ from PyQt6.QtCore import (
     QTimer,
 )
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -37,7 +38,11 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.downloader import ModelDownloadOutcome
+from XBrainLab.llm.core.downloader import (
+    ModelDownloadFailureCode,
+    ModelDownloadOutcome,
+    model_download_public_failure_message,
+)
 from XBrainLab.llm.core.model_catalog import (
     format_bytes,
     local_model_spec,
@@ -52,6 +57,7 @@ from XBrainLab.llm.core.model_download_lifecycle import (
 )
 from XBrainLab.ui.chat.segmented_control import AssistantSegmentedControl
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.styles.theme import Theme
 
 _RESPONSE_STYLE_PRESETS: dict[str, tuple[float, float]] = {
     "precise": (0.2, 0.8),
@@ -64,157 +70,187 @@ _RESPONSE_LENGTH_PRESETS: dict[str, int] = {
     "detailed": 1024,
 }
 
-_ASSISTANT_SETTINGS_STYLE = """
-    QDialog#AssistantSettingsDialog {
-        background-color: #181c20;
-        color: #edf3f8;
-    }
-    QLabel#AssistantSettingsHeading {
-        color: #f3f7fb;
+_ASSISTANT_SETTINGS_STYLE = f"""
+    QDialog#AssistantSettingsDialog {{
+        background-color: {Theme.BACKGROUND_DARK};
+        color: {Theme.TEXT_PRIMARY};
+    }}
+    QLabel#AssistantSettingsHeading {{
+        color: {Theme.TEXT_PRIMARY};
         background: transparent;
         border: none;
         font-size: 20px;
         font-weight: 700;
-    }
-    QLabel#AssistantSettingsSection {
-        color: #edf3f8;
+    }}
+    QLabel#AssistantSettingsSection {{
+        color: {Theme.TEXT_PRIMARY};
         background: transparent;
         border: none;
         font-size: 14px;
         font-weight: 700;
-    }
-    QLabel#AssistantSettingsMuted {
-        color: #9aa8b4;
+    }}
+    QLabel#AssistantSettingsMuted {{
+        color: {Theme.TEXT_SECONDARY};
         background: transparent;
         border: none;
         font-size: 12px;
-    }
-    QComboBox#AssistantModelCombo {
+    }}
+    QLabel#AssistantSettingsSaveError {{
+        color: {Theme.LOG_ERROR};
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }}
+    QComboBox#AssistantModelCombo {{
         min-height: 34px;
-        color: #edf3f8;
-        background-color: #20262c;
-        border: 1px solid #3d4852;
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BACKGROUND_MID};
+        border: 1px solid {Theme.BORDER};
         border-radius: 5px;
         padding: 2px 9px;
-    }
+    }}
     QDoubleSpinBox#AssistantExactValue,
-    QSpinBox#AssistantExactValue {
+    QSpinBox#AssistantExactValue {{
         min-height: 30px;
-        color: #edf3f8;
-        background-color: #20262c;
-        border: 1px solid #3d4852;
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BACKGROUND_MID};
+        border: 1px solid {Theme.BORDER};
         border-radius: 5px;
         padding: 1px 9px;
-    }
+    }}
+    QDoubleSpinBox#AssistantExactValue::up-button,
+    QDoubleSpinBox#AssistantExactValue::down-button,
+    QSpinBox#AssistantExactValue::up-button,
+    QSpinBox#AssistantExactValue::down-button {{
+        width: 0px;
+        border: none;
+        background: transparent;
+    }}
     QComboBox#AssistantModelCombo:focus,
     QDoubleSpinBox#AssistantExactValue:focus,
-    QSpinBox#AssistantExactValue:focus {
-        border-color: #168be0;
-    }
-    QFrame#AssistantModelStatusDot {
+    QSpinBox#AssistantExactValue:focus {{
+        border-color: {Theme.BLUE_FOCUS_BORDER};
+    }}
+    QFrame#AssistantModelStatusDot {{
         min-width: 9px;
         max-width: 9px;
         min-height: 9px;
         max-height: 9px;
         border: none;
         border-radius: 4px;
-        background-color: #7d8994;
-    }
-    QFrame#AssistantModelStatusDot[statusTone="ready"] {
-        background-color: #42c961;
-    }
-    QFrame#AssistantModelStatusDot[statusTone="warning"] {
-        background-color: #d8a846;
-    }
-    QFrame#AssistantModelStatusDot[statusTone="error"] {
-        background-color: #d65f66;
-    }
-    QCheckBox#AssistantLocalEnabled {
-        color: #c8d3dc;
+        background-color: {Theme.GRAY_MUTED};
+    }}
+    QFrame#AssistantModelStatusDot[statusTone="ready"] {{
+        background-color: {Theme.LOG_INFO};
+    }}
+    QFrame#AssistantModelStatusDot[statusTone="warning"] {{
+        background-color: {Theme.LOG_WARNING};
+    }}
+    QFrame#AssistantModelStatusDot[statusTone="error"] {{
+        background-color: {Theme.LOG_ERROR};
+    }}
+    QCheckBox#AssistantLocalEnabled {{
+        color: {Theme.TEXT_MUTED};
         spacing: 8px;
-    }
-    QToolButton#AssistantAdvancedToggle {
+    }}
+    QToolButton#AssistantAdvancedToggle {{
         min-height: 38px;
-        color: #d7e0e8;
-        background-color: #1c2228;
-        border: 1px solid #39434c;
+        color: {Theme.TEXT_MUTED};
+        background-color: {Theme.METRICS_TABLE_BG};
+        border: 1px solid {Theme.METRICS_TABLE_GRID};
         border-radius: 5px;
         padding: 4px 11px;
         text-align: left;
         font-size: 13px;
         font-weight: 600;
-    }
-    QToolButton#AssistantAdvancedToggle:hover {
-        color: #f3f7fb;
-        background-color: #222a31;
-        border-color: #4b5c69;
-    }
-    QWidget#AssistantAdvancedContent {
+    }}
+    QToolButton#AssistantAdvancedToggle:hover {{
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.METRICS_TABLE_ALT_BG};
+        border-color: {Theme.BORDER};
+    }}
+    QWidget#AssistantAdvancedContent {{
         background: transparent;
-        border: 1px solid #303941;
+        border: 1px solid {Theme.METRICS_TABLE_GRID};
         border-radius: 5px;
-    }
+    }}
     QPushButton#AssistantModelAction,
-    QPushButton#AssistantSecondaryButton {
+    QPushButton#AssistantSecondaryButton {{
         min-height: 34px;
-        color: #d6dee6;
-        background-color: #252c32;
-        border: 1px solid #414c55;
+        color: {Theme.TEXT_MUTED};
+        background-color: {Theme.BACKGROUND_MID};
+        border: 1px solid {Theme.BORDER};
         border-radius: 5px;
         padding: 3px 12px;
-    }
+    }}
     QPushButton#AssistantModelAction:hover,
-    QPushButton#AssistantSecondaryButton:hover {
-        color: #ffffff;
-        background-color: #303940;
-        border-color: #596875;
-    }
-    QPushButton#AssistantPrimaryButton {
+    QPushButton#AssistantSecondaryButton:hover {{
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BACKGROUND_LIGHT};
+        border-color: {Theme.GRAY_LIGHT};
+    }}
+    QPushButton#AssistantModelAction[destructive="true"] {{
+        color: {Theme.LOG_ERROR};
+        background-color: {Theme.BTN_DANGER_BG};
+        border-color: {Theme.BTN_DANGER_BORDER};
+    }}
+    QPushButton#AssistantModelAction[destructive="true"]:hover {{
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BTN_DANGER_HOVER};
+        border-color: {Theme.ACCENT_ERROR};
+    }}
+    QPushButton#AssistantPrimaryButton {{
         min-height: 34px;
-        color: #ffffff;
-        background-color: #087dcc;
-        border: 1px solid #168be0;
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BLUE_PRIMARY};
+        border: 1px solid transparent;
         border-radius: 5px;
         padding: 3px 18px;
         font-weight: 700;
-    }
-    QPushButton#AssistantPrimaryButton:hover {
-        background-color: #168fe0;
-    }
-    QPushButton#AssistantPrimaryButton:disabled {
-        color: #7f8a94;
-        background-color: #2a3239;
-        border-color: #353f47;
-    }
-    QFrame#AssistantSettingsDivider {
-        color: #303941;
-        background-color: #303941;
+    }}
+    QPushButton#AssistantPrimaryButton:hover {{
+        background-color: {Theme.BLUE_HOVER};
+    }}
+    QPushButton#AssistantPrimaryButton:pressed {{
+        background-color: {Theme.BLUE_PRESSED};
+    }}
+    QPushButton#AssistantPrimaryButton:focus {{
+        border-color: {Theme.BLUE_FOCUS_BORDER};
+    }}
+    QPushButton#AssistantPrimaryButton:disabled {{
+        color: {Theme.BTN_DISABLED_TEXT};
+        background-color: {Theme.BTN_DISABLED_BG};
+        border-color: {Theme.BTN_DISABLED_BORDER};
+    }}
+    QFrame#AssistantSettingsDivider {{
+        color: {Theme.METRICS_TABLE_GRID};
+        background-color: {Theme.METRICS_TABLE_GRID};
         border: none;
         max-height: 1px;
-    }
-    QProgressBar#AssistantDownloadProgress {
+    }}
+    QProgressBar#AssistantDownloadProgress {{
         min-height: 5px;
         max-height: 5px;
-        background-color: #242c33;
+        background-color: {Theme.METRICS_TABLE_BG};
         border: none;
         border-radius: 2px;
         text-align: center;
-    }
-    QProgressBar#AssistantDownloadProgress::chunk {
-        background-color: #168be0;
+    }}
+    QProgressBar#AssistantDownloadProgress::chunk {{
+        background-color: {Theme.BLUE_PRIMARY};
         border-radius: 2px;
-    }
-    QScrollArea#AssistantSettingsBodyScroll {
+    }}
+    QScrollArea#AssistantSettingsBodyScroll {{
         background: transparent;
         border: none;
-    }
-    QScrollArea#AssistantSettingsBodyScroll > QWidget > QWidget {
-        background: #181c20;
-    }
-    QWidget#AssistantAdvancedContent {
+    }}
+    QScrollArea#AssistantSettingsBodyScroll > QWidget > QWidget {{
+        background: {Theme.BACKGROUND_DARK};
+    }}
+    QWidget#AssistantAdvancedContent {{
         background: transparent;
         border: none;
-    }
+    }}
 """
 
 
@@ -408,7 +444,9 @@ class ModelSettingsDialog(BaseDialog):
         self.last_runtime_attempt_label = QLabel(self.settings_body)
         self.last_runtime_attempt_label.setObjectName("AssistantSettingsMuted")
         self.last_runtime_attempt_label.setWordWrap(True)
-        self.last_runtime_attempt_label.setStyleSheet("color: #d8a846;")
+        self.last_runtime_attempt_label.setStyleSheet(
+            f"color: {Theme.LOG_WARNING}; background: transparent; border: none;"
+        )
         self.last_runtime_attempt_label.setVisible(False)
         layout.addWidget(self.last_runtime_attempt_label)
 
@@ -502,6 +540,7 @@ class ModelSettingsDialog(BaseDialog):
         self.temperature_spin.setSingleStep(0.1)
         self.temperature_spin.setDecimals(2)
         self.temperature_spin.setValue(self.config.temperature)
+        self.temperature_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.temperature_spin.setFixedWidth(160)
         self.temperature_spin.setToolTip(
             "Controls variety in explanatory answers. Workflow actions always "
@@ -515,6 +554,7 @@ class ModelSettingsDialog(BaseDialog):
         self.top_p_spin.setSingleStep(0.05)
         self.top_p_spin.setDecimals(2)
         self.top_p_spin.setValue(self.config.top_p)
+        self.top_p_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.top_p_spin.setFixedWidth(160)
         self.top_p_spin.setToolTip("Nucleus sampling cutoff for explanatory answers.")
         exact_form.addRow("Top-p", self.top_p_spin)
@@ -524,6 +564,7 @@ class ModelSettingsDialog(BaseDialog):
         self.max_tokens_spin.setRange(64, 8192)
         self.max_tokens_spin.setSingleStep(64)
         self.max_tokens_spin.setValue(self.config.max_new_tokens)
+        self.max_tokens_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.max_tokens_spin.setFixedWidth(160)
         self.max_tokens_spin.setToolTip(
             "Maximum length of explanatory answers. Workflow actions use a "
@@ -564,6 +605,12 @@ class ModelSettingsDialog(BaseDialog):
         divider.setObjectName("AssistantSettingsDivider")
         divider.setFrameShape(QFrame.Shape.HLine)
         footer_layout.addWidget(divider)
+
+        self.save_error_label = QLabel(self.footer_widget)
+        self.save_error_label.setObjectName("AssistantSettingsSaveError")
+        self.save_error_label.setWordWrap(True)
+        self.save_error_label.setVisible(False)
+        footer_layout.addWidget(self.save_error_label)
 
         btn_layout = QHBoxLayout()
         btn_layout.setContentsMargins(0, 0, 0, 0)
@@ -699,6 +746,13 @@ class ModelSettingsDialog(BaseDialog):
             style.unpolish(self.model_status_dot)
             style.polish(self.model_status_dot)
 
+    def _set_model_action_destructive(self, destructive: bool) -> None:
+        self.local_action_btn.setProperty("destructive", destructive)
+        style = self.local_action_btn.style()
+        if style is not None:
+            style.unpolish(self.local_action_btn)
+            style.polish(self.local_action_btn)
+
     def load_state(self):
         """Load lightweight config state and defer cache/runtime inspection."""
         selection = self.config.assistant_runtime_selection()
@@ -729,18 +783,24 @@ class ModelSettingsDialog(BaseDialog):
         if dialog is not None:
             dialog.check_local_model_status()
 
+    @staticmethod
+    def _set_status_text_color(label: QLabel, color: str) -> None:
+        """Apply a semantic color without introducing a second dialog palette."""
+        label.setStyleSheet(f"color: {color}; background: transparent; border: none;")
+
     def _show_model_status_checking(self) -> None:
         """Render a non-blocking placeholder while inspection runs."""
         self._current_local_model_state = None
         self.local_downloaded = False
         self.local_status_label.setText("Model: Checking...")
-        self.local_status_label.setStyleSheet("color: #888888;")
+        self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
         self._set_model_status_tone("neutral")
         self.local_runtime_label.setText("Environment check: Checking...")
-        self.local_runtime_label.setStyleSheet("color: #888888;")
+        self._set_status_text_color(self.local_runtime_label, Theme.TEXT_SECONDARY)
         self._render_runtime_attempt_notice()
         self.local_resource_label.setText("")
         self.local_action_btn.setText("Checking...")
+        self._set_model_action_destructive(False)
         self.local_action_btn.setEnabled(False)
 
     def _render_local_model_state(
@@ -752,14 +812,19 @@ class ModelSettingsDialog(BaseDialog):
         self.local_downloaded = state.installed
         if state.installed:
             self.local_status_label.setText("Model: Installed")
-            self.local_status_label.setStyleSheet("color: #4caf50;")
+            self._set_status_text_color(self.local_status_label, Theme.LOG_INFO)
             self._set_model_status_tone("warning")
             self.local_action_btn.setText("Delete")
+            self._set_model_action_destructive(True)
         else:
             self.local_status_label.setText("Model: Not installed")
-            self.local_status_label.setStyleSheet("color: #888888;")
+            self._set_status_text_color(
+                self.local_status_label,
+                Theme.TEXT_SECONDARY,
+            )
             self._set_model_status_tone("neutral")
             self.local_action_btn.setText("Install Model")
+            self._set_model_action_destructive(False)
         self.local_action_btn.setEnabled(
             not self.is_downloading and not state.diagnostic_message
         )
@@ -780,22 +845,34 @@ class ModelSettingsDialog(BaseDialog):
             detail = state.runtime_message.removeprefix("Local runtime ready.").strip()
             if not detail:
                 self.local_runtime_label.setText("Environment check: Ready")
-                self.local_runtime_label.setStyleSheet("color: #4caf50;")
+                self._set_status_text_color(
+                    self.local_runtime_label,
+                    Theme.LOG_INFO,
+                )
             else:
                 self.local_runtime_label.setText(
                     f"Environment check: Ready with notes — {detail}"
                 )
-                self.local_runtime_label.setStyleSheet("color: #ff9800;")
+                self._set_status_text_color(
+                    self.local_runtime_label,
+                    Theme.LOG_WARNING,
+                )
             self._render_runtime_attempt_notice()
             return
 
         detail = state.runtime_message.removeprefix("Local runtime unavailable. ")
         self.local_runtime_label.setText(f"Environment check: Not ready — {detail}")
         if "Missing optional packages" in state.runtime_message:
-            self.local_runtime_label.setStyleSheet("color: #f44336;")
+            self._set_status_text_color(
+                self.local_runtime_label,
+                Theme.LOG_ERROR,
+            )
             self._set_model_status_tone("error")
         else:
-            self.local_runtime_label.setStyleSheet("color: #ff9800;")
+            self._set_status_text_color(
+                self.local_runtime_label,
+                Theme.LOG_WARNING,
+            )
             self._set_model_status_tone("warning")
         self._render_runtime_attempt_notice()
 
@@ -1056,8 +1133,12 @@ class ModelSettingsDialog(BaseDialog):
             outcome.diagnostic_message or outcome.message,
         )
         if selected_target:
-            self.local_status_label.setText("Download failed")
-            self.local_status_label.setStyleSheet("color: #f44336;")
+            self.local_status_label.setText(
+                "Download timed out"
+                if outcome.failure_code is ModelDownloadFailureCode.TIMEOUT
+                else "Download failed"
+            )
+            self._set_status_text_color(self.local_status_label, Theme.LOG_ERROR)
             self._set_model_status_tone("error")
             self.local_action_btn.setText("Retry")
             self.download_progress.setVisible(False)
@@ -1065,7 +1146,7 @@ class ModelSettingsDialog(BaseDialog):
         QMessageBox.critical(
             self,
             "Download Failed",
-            "Model download failed. Check the application log and try again.",
+            model_download_public_failure_message(outcome),
         )
 
     def on_cache_cleanup_finished(self, result: object) -> None:
@@ -1161,9 +1242,18 @@ class ModelSettingsDialog(BaseDialog):
             ui_active_mode="local",
         )
 
-        # Persist to JSON
-        self.config.save_to_file()
+        if not self.config.save_to_file():
+            logger.error("Assistant settings could not be persisted")
+            self.save_error_label.setText(
+                "Settings could not be saved. Check that your XBrainLab settings "
+                "folder is writable, then try again."
+            )
+            self.save_error_label.setVisible(True)
+            self._schedule_fit()
+            return
 
+        self.save_error_label.clear()
+        self.save_error_label.setVisible(False)
         self.accept()
 
     def accept(self) -> None:

@@ -3,31 +3,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.application import (
+    EvaluationPlanIdentity,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
+)
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view import (
     BaseSaliencyView,
 )
-
-
-class _Record:
-    eval_record = None
-
-    @staticmethod
-    def is_finished() -> bool:
-        return True
-
-
-class _Plan:
-    def __init__(self) -> None:
-        self.record = _Record()
-
-    @staticmethod
-    def get_name() -> str:
-        return "EEGNet"
-
-    def get_plans(self) -> list[_Record]:
-        return [self.record]
 
 
 def test_evaluation_async_worker_error_reaches_visible_terminal_state(
@@ -45,28 +29,22 @@ def test_evaluation_async_worker_error_reaches_visible_terminal_state(
         "XBrainLab.ui.panels.evaluation.panel.execute_application_command_async",
         capture_async,
     )
-    plan = _Plan()
-    panel = EvaluationPanel(controller=None)
+    panel = EvaluationPanel()
     qtbot.addWidget(panel)
     panel.resize(900, 650)
-    panel.last_application_query = CommandResult.success_result(
-        command_name="evaluate",
-        message="Evaluation summary ready.",
-        state={},
-        changed_state=ChangedState(),
-        diagnostics={
-            "payload_type": "evaluation_summary",
-            "available": True,
-            "plan_objects": [plan],
-        },
+    panel._application_generation = 4
+    run_identity = EvaluationRunIdentity(
+        plan=EvaluationPlanIdentity(plan_index=0),
+        run_index=0,
     )
-    panel.model_combo.blockSignals(True)
-    panel.model_combo.addItem("Fold 1: EEGNet", plan)
-    panel.model_combo.blockSignals(False)
+    summary_identity = EvaluationSummaryIdentity(
+        plan=run_identity.plan,
+        run=run_identity,
+    )
     panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
     panel.show()
 
-    panel.update_model_summary(plan, record=plan.record)
+    panel.update_model_summary(summary_identity)
     assert panel.summary_text.toPlainText() == "Loading model details..."
 
     callbacks["error"](

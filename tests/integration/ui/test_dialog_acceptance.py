@@ -76,7 +76,10 @@ def test_event_filter_dialog_accepts_checked_selection_via_ok_button(qtbot):
 def test_epoching_dialog_accepts_selected_event_and_baseline_toggle(qtbot):
     data = MagicMock()
     data.get_event_list.return_value = (None, {"left": 1, "right": 2})
-    dialog = EpochingDialog(None, [data])
+    dialog = EpochingDialog(
+        None,
+        epoch_context=build_epoching_context([data]),
+    )
 
     _show_dialog(qtbot, dialog)
 
@@ -119,7 +122,10 @@ def test_epoching_dialog_uses_import_interval_defaults(qtbot):
         "duration_stats": {"numeric_count": 288, "min": 0.5, "max": 1.25},
         "class_map": {"left": "Left hand", "right": "Right hand"},
     }
-    dialog = EpochingDialog(None, [data])
+    dialog = EpochingDialog(
+        None,
+        epoch_context=build_epoching_context([data]),
+    )
 
     _show_dialog(qtbot, dialog)
 
@@ -166,7 +172,10 @@ def test_epoching_dialog_displays_and_returns_backend_duration_requirement(
         "duration_stats": {"numeric_count": 2, "min": 0.25, "max": 12.0},
         "class_map": {"left": "left", "right": "right"},
     }
-    dialog = EpochingDialog(None, [data])
+    dialog = EpochingDialog(
+        None,
+        epoch_context=build_epoching_context([data]),
+    )
     _show_dialog(qtbot, dialog)
 
     requirement = dialog.confirmation_requirement
@@ -238,7 +247,7 @@ def test_epoching_dialog_preserves_sample_aligned_bids_tmax_precision(qtbot):
     }
     context = build_epoching_context([data])
 
-    dialog = EpochingDialog(None, [data], epoch_context=context)
+    dialog = EpochingDialog(None, epoch_context=context)
     _show_dialog(qtbot, dialog)
 
     assert dialog.tmax_spin is not None
@@ -256,7 +265,10 @@ def test_epoching_dialog_uses_card_sections_not_groupbox_legends(qtbot):
         "placement_method": "internal_events",
         "class_map": {"769": "Left hand", "770": "Right hand"},
     }
-    dialog = EpochingDialog(None, [data])
+    dialog = EpochingDialog(
+        None,
+        epoch_context=build_epoching_context([data]),
+    )
 
     _show_dialog(qtbot, dialog)
 

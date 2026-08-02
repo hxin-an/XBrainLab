@@ -191,8 +191,11 @@ class Visualizer:
                 figure is created on each call to :meth:`get_plt`.
 
         """
+        self.render_data: SaliencyRenderData | None
+        self.eval_record: EvalRecord | SaliencyRenderData
+        self.epoch_data: Epochs | SaliencyRenderData
         if isinstance(eval_record, SaliencyRenderData):
-            self.render_data: SaliencyRenderData | None = eval_record
+            self.render_data = eval_record
             self.eval_record = eval_record
             self.epoch_data = eval_record
         else:

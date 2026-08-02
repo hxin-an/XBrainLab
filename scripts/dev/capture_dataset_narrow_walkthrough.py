@@ -8,6 +8,7 @@ import json
 import subprocess
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,17 +29,30 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.pipeline_stage import (
+    PipelineStage,
+    pipeline_stage_status_label,
+)
+from XBrainLab.backend.application.state import (
+    ActiveDatasetSnapshot,
+    ApplicationStateSnapshot,
+    PreprocessedStateSnapshot,
+    RawStateSnapshot,
+)
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts/ui/product-quality-closure/dataset-narrow"
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "build" / "dev-artifacts" / "dataset-narrow"
 SHELL_HEIGHTS = (520, 800)
 ASSISTANT_DOCK_WIDTH = 320
-SHELL_WIDTHS = (760, 820, 1280)
+FIXED_SUMMARY_SIDEBAR_WIDTH = 260
+MINIMUM_FIXED_SIDEBAR_SHELL_WIDTH = 840
+SHELL_WIDTHS = (MINIMUM_FIXED_SIDEBAR_SHELL_WIDTH, 960, 1280)
 LOGICAL_SCALES = (1.0, 1.25, 1.5)
-SUMMARY_TAB_BREAKPOINT = 760
 SOURCE_PATHS = (
     "XBrainLab/ui/components/info_panel.py",
     "XBrainLab/ui/panels/dataset/panel.py",
@@ -47,18 +61,53 @@ SOURCE_PATHS = (
 )
 
 
+def _fixture_publication(
+    *, has_data: bool, revision: int
+) -> ApplicationViewPublication:
+    state = ApplicationStateSnapshot.empty()
+    if has_data:
+        state = replace(
+            state,
+            pipeline_stage=PipelineStage.PREPROCESSED.value,
+            raw=RawStateSnapshot(
+                loaded=True,
+                count=1,
+                files=["sub-01_task-mi_run-01_eeg.fif"],
+                formats=["fif"],
+            ),
+            preprocessed=PreprocessedStateSnapshot(
+                available=True,
+                count=1,
+                files=["sub-01_task-mi_run-01_eeg.fif"],
+                is_epoched=True,
+            ),
+            active_dataset=ActiveDatasetSnapshot(
+                has_raw_data=True,
+                has_preprocessed_data=True,
+            ),
+        )
+    return ApplicationViewPublication(
+        generation=revision,
+        revision=revision,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+
+
 class _DatasetControllerFixture:
-    """Observable-shaped controller fixture for presentation-only capture."""
+    """Controller and publication fixture with one consistent capture state."""
 
     def __init__(self) -> None:
         self.study = SimpleNamespace()
         self._subscribers: dict[str, list[Callable[..., Any]]] = defaultdict(list)
+        self._loaded_data: list[Any] = []
+        self._publication = _fixture_publication(has_data=False, revision=1)
 
-    def subscribe(self, event: str, callback: Callable[..., Any]) -> None:
-        self._subscribers[event].append(callback)
+    def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        self._subscribers[event_name].append(callback)
 
-    def unsubscribe(self, event: str, callback: Callable[..., Any]) -> None:
-        subscribers = self._subscribers.get(event, [])
+    def unsubscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
+        subscribers = self._subscribers.get(event_name, [])
         if callback in subscribers:
             subscribers.remove(callback)
 
@@ -66,13 +115,19 @@ class _DatasetControllerFixture:
     def is_locked() -> bool:
         return False
 
-    @staticmethod
-    def has_data() -> bool:
-        return False
+    def has_data(self) -> bool:
+        return bool(self._loaded_data)
 
-    @staticmethod
-    def get_loaded_data_list() -> list[Any]:
-        return []
+    def get_loaded_data_list(self) -> list[Any]:
+        return list(self._loaded_data)
+
+    def get_view_publication(self) -> ApplicationViewPublication:
+        return self._publication
+
+    def set_loaded_data(self, data: Any) -> ApplicationViewPublication:
+        self._loaded_data = [data]
+        self._publication = _fixture_publication(has_data=True, revision=2)
+        return self._publication
 
 
 class _LoadedEpochFixture:
@@ -130,6 +185,24 @@ class _LoadedEpochFixture:
             "count": 120,
             "labels": ["left", "right"],
         }
+
+
+def _detached_summary_row(data: _LoadedEpochFixture) -> dict[str, Any]:
+    """Build the detached publication row consumed by AggregateInfoPanel."""
+    highpass, lowpass = data.get_filter_range()
+    return {
+        "subject": data.get_subject_name(),
+        "session": data.get_session_name(),
+        "epochs_length": data.get_epochs_length(),
+        "is_raw": data.is_raw(),
+        "event": data.get_event_summary(),
+        "n_channels": data.get_nchan(),
+        "sampling_frequency": data.get_sfreq(),
+        "epoch_duration_samples": data.get_epoch_duration(),
+        "tmin": data.get_tmin(),
+        "highpass": highpass,
+        "lowpass": lowpass,
+    }
 
 
 def _settle(app: QApplication, turns: int = 12) -> None:
@@ -247,9 +320,17 @@ def _info_evidence(
                 continue
             text = " ".join(item.text().split())
             cell_rect = table.visualItemRect(item)
-            text_width = table.fontMetrics().horizontalAdvance(text)
+            available_width = max(1, cell_rect.width() - 8)
+            text_rect = table.fontMetrics().boundingRect(
+                QRect(0, 0, available_width, 10_000),
+                int(Qt.AlignmentFlag.AlignLeft)
+                | int(Qt.AlignmentFlag.AlignTop)
+                | int(Qt.TextFlag.TextWordWrap),
+                text,
+            )
             fits = bool(
-                text_width + 16 <= cell_rect.width()
+                text_rect.width() <= available_width
+                and text_rect.height() + 2 <= cell_rect.height()
                 and cell_rect.left() >= 0
                 and cell_rect.right() <= viewport.width()
             )
@@ -261,7 +342,9 @@ def _info_evidence(
                     "column": column,
                     "text": text,
                     "cell_width": int(cell_rect.width()),
-                    "required_width": int(text_width + 16),
+                    "cell_height": int(cell_rect.height()),
+                    "required_width": int(text_rect.width() + 8),
+                    "required_height": int(text_rect.height() + 2),
                     "fits": fits,
                 }
             )
@@ -286,31 +369,6 @@ def _info_evidence(
         "passed": bool(cells)
         and not clipped
         and (inside_panel or inside_scroll_content),
-    }
-
-
-def _tab_evidence(panel: DatasetPanel) -> dict[str, Any]:
-    tab_bar = panel.content_tabs.tabBar()
-    if tab_bar is None:
-        raise RuntimeError("Dataset content tabs did not create a tab bar.")
-    tabs = []
-    for index in range(panel.content_tabs.count()):
-        text = panel.content_tabs.tabText(index)
-        tab_rect = tab_bar.tabRect(index)
-        required_width = tab_bar.fontMetrics().horizontalAdvance(text) + 24
-        tabs.append(
-            {
-                "index": index,
-                "text": text,
-                "width": int(tab_rect.width()),
-                "required_width": int(required_width),
-                "fits": required_width <= tab_rect.width(),
-            }
-        )
-    return {
-        "visible": bool(tab_bar.isVisibleTo(panel)),
-        "tabs": tabs,
-        "passed": not tab_bar.isVisibleTo(panel) or all(item["fits"] for item in tabs),
     }
 
 
@@ -430,13 +488,21 @@ def _build_shell(
     central_layout.addWidget(top_bar)
 
     controller = _DatasetControllerFixture()
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(
+        controller=controller,
+        parent=window,
+        publication_port=controller,
+    )
     central_layout.addWidget(panel)
     window.setCentralWidget(central_widget)
     status_bar = window.statusBar()
     if status_bar is None:
         raise RuntimeError("Dataset capture shell did not create a status bar.")
-    status_bar.showMessage("Dataset is ready.")
+    status_bar.showMessage(
+        pipeline_stage_status_label(
+            controller.get_view_publication().state.pipeline_stage,
+        )
+    )
 
     chat_panel = ChatPanel()
     chat_panel.set_runtime_state("ready")
@@ -462,8 +528,13 @@ def _build_shell(
 
 def _apply_loaded_state(panel: DatasetPanel) -> None:
     data = _LoadedEpochFixture()
-    panel.sidebar.info_panel.update_info(preprocessed_data_list=[data])
-    panel.summary_info_panel.update_info(preprocessed_data_list=[data])
+    controller = panel.controller
+    if not isinstance(controller, _DatasetControllerFixture):
+        raise RuntimeError("Dataset capture lost its application fixture.")
+    publication = controller.set_loaded_data(data)
+    panel.sidebar.info_panel.update_info(
+        preprocessed_data_list=[_detached_summary_row(data)]
+    )
     panel.table.blockSignals(True)
     panel.table.setRowCount(1)
     for column, text in enumerate(
@@ -480,32 +551,87 @@ def _apply_loaded_state(panel: DatasetPanel) -> None:
         panel.table.setItem(0, column, QTableWidgetItem(text))
     panel.table.blockSignals(False)
     panel.data_surface.setCurrentWidget(panel.table)
-    publication = SimpleNamespace(
-        usable=True,
-        state=SimpleNamespace(
-            active_dataset=SimpleNamespace(
-                has_raw_data=True,
-                has_preprocessed_data=True,
-                has_epoch_data=False,
-                has_datasets=False,
-            )
-        ),
-    )
     panel._post_import_action_requested = True
     panel._sync_post_import_action(publication)
+    window = panel.window()
+    if not isinstance(window, QMainWindow):
+        raise RuntimeError("Dataset capture shell lost its status bar.")
+    status_bar = window.statusBar()
+    if status_bar is None:
+        raise RuntimeError("Dataset capture shell lost its status bar.")
+    status_bar.showMessage(
+        pipeline_stage_status_label(publication.state.pipeline_stage)
+    )
+
+
+def _state_truth_evidence(
+    window: QMainWindow,
+    panel: DatasetPanel,
+    *,
+    state: str,
+) -> dict[str, Any]:
+    controller = panel.controller
+    publication = panel._read_application_publication()
+    status_bar = window.statusBar()
+    status_text = status_bar.currentMessage() if status_bar is not None else ""
+    fixture_has_data = bool(
+        isinstance(controller, _DatasetControllerFixture) and controller.has_data()
+    )
+    publication_has_data = bool(
+        publication is not None
+        and publication.usable
+        and (
+            publication.state.active_dataset.has_raw_data
+            or publication.state.active_dataset.has_preprocessed_data
+            or publication.state.active_dataset.has_epoch_data
+            or publication.state.active_dataset.has_datasets
+        )
+    )
+    expected_has_data = state == "loaded-summary"
+    expected_surface = panel.table if expected_has_data else panel.empty_state
+    expected_status = (
+        pipeline_stage_status_label(publication.state.pipeline_stage)
+        if publication is not None
+        else ""
+    )
+    contradictory_empty_copy = bool(
+        panel.data_surface.currentWidget() is panel.empty_state
+        and panel.empty_state_title.text() == "No EEG data loaded"
+        and status_text.strip().casefold() in {"dataset is ready.", "dataset ready"}
+    )
+    checks = {
+        "publication_available": publication is not None and publication.usable,
+        "fixture_matches_scenario": fixture_has_data == expected_has_data,
+        "publication_matches_scenario": publication_has_data == expected_has_data,
+        "surface_matches_scenario": panel.data_surface.currentWidget()
+        is expected_surface,
+        "status_matches_publication": bool(expected_status)
+        and status_text == expected_status,
+        "no_empty_ready_contradiction": not contradictory_empty_copy,
+    }
+    return {
+        "fixture_has_data": fixture_has_data,
+        "publication_has_data": publication_has_data,
+        "publication_pipeline_stage": (
+            publication.state.pipeline_stage if publication is not None else None
+        ),
+        "visible_surface": (
+            "empty"
+            if panel.data_surface.currentWidget() is panel.empty_state
+            else "table"
+        ),
+        "empty_state_title": panel.empty_state_title.text(),
+        "status_text": status_text,
+        "expected_status_text": expected_status,
+        "checks": checks,
+        "passed": all(checks.values()),
+    }
 
 
 def _active_info_panel(panel: DatasetPanel) -> Any:
-    tab_bar = panel.content_tabs.tabBar()
-    if tab_bar is None:
-        raise RuntimeError("Dataset content tabs did not create a tab bar.")
-    if tab_bar.isVisibleTo(panel) and panel.content_tabs.isTabVisible(1):
-        panel.content_tabs.setCurrentIndex(1)
-        return panel.summary_info_panel
     if panel.sidebar.info_panel.isVisibleTo(panel):
-        panel.content_tabs.setCurrentIndex(0)
         return panel.sidebar.info_panel
-    raise RuntimeError("Loaded Dataset summary did not choose a visible host.")
+    raise RuntimeError("Loaded Dataset summary is not visible in the sidebar.")
 
 
 def _scenario_evidence(
@@ -519,8 +645,6 @@ def _scenario_evidence(
     shell_height: int,
     logical_scale: float,
     active_info_panel: Any | None,
-    automatic_summary_host: str,
-    expected_summary_host: str,
 ) -> dict[str, Any]:
     sidebar = panel.sidebar
     action_buttons = [
@@ -547,23 +671,25 @@ def _scenario_evidence(
         if state == "loaded-summary"
         else None
     )
-    summary_scroll_owner = (
-        panel.summary_page
-        if active_info_panel is panel.summary_info_panel
-        else sidebar.scroll_area
-    )
     info = (
         _info_evidence(
             active_info_panel,
             panel,
-            scroll_area=summary_scroll_owner,
+            scroll_area=sidebar.scroll_area,
         )
         if active_info_panel is not None
         else None
     )
-    tab_evidence = _tab_evidence(panel)
-    empty_title_width = panel.empty_state_title.fontMetrics().horizontalAdvance(
-        panel.empty_state_title.text()
+    state_truth = _state_truth_evidence(window, panel, state=state)
+    empty_title_rect = panel.empty_state_title.fontMetrics().boundingRect(
+        QRect(
+            0,
+            0,
+            max(1, panel.empty_state_title.contentsRect().width()),
+            10_000,
+        ),
+        int(Qt.AlignmentFlag.AlignCenter) | int(Qt.TextFlag.TextWordWrap),
+        panel.empty_state_title.text(),
     )
     horizontal_scroll = {
         "dataset_table": _scroll_maximum(
@@ -576,10 +702,6 @@ def _scenario_evidence(
         ),
         "sidebar_summary": _scroll_maximum(
             sidebar.info_panel.table,
-            Qt.Orientation.Horizontal,
-        ),
-        "tab_summary": _scroll_maximum(
-            panel.summary_info_panel.table,
             Qt.Orientation.Horizontal,
         ),
         "assistant": _scroll_maximum(
@@ -597,25 +719,21 @@ def _scenario_evidence(
         visible_horizontal_scroll["sidebar_summary"] = horizontal_scroll[
             "sidebar_summary"
         ]
-    if panel.summary_info_panel.table.isVisibleTo(panel):
-        visible_horizontal_scroll["tab_summary"] = horizontal_scroll["tab_summary"]
-    stacked = panel.main_layout.direction() == panel.main_layout.Direction.TopToBottom
     non_overlapping = (
-        panel.content_column.geometry().bottom() < sidebar.geometry().top()
-        if stacked
-        else panel.content_column.geometry().right() < sidebar.geometry().left()
+        panel.content_column.geometry().right() < sidebar.geometry().left()
     )
     checks = {
         "shell_size_exact": window.size().width() == shell_width
         and window.size().height() == shell_height,
         "assistant_visible_at_320": assistant_dock.isVisible()
         and assistant_dock.width() == ASSISTANT_DOCK_WIDTH,
+        "sidebar_fixed_at_260": sidebar.width() == FIXED_SUMMARY_SIDEBAR_WIDTH,
         "content_inside_panel": _fits_ancestor(panel.content_column, panel),
         "sidebar_inside_panel": _fits_ancestor(sidebar, panel),
         "primary_surfaces_do_not_overlap": non_overlapping,
         "empty_title_fits": state != "empty"
-        or empty_title_width <= panel.empty_state_title.contentsRect().width(),
-        "tabs_fit": bool(tab_evidence["passed"]),
+        or empty_title_rect.height()
+        <= panel.empty_state_title.contentsRect().height() + 1,
         "all_actions_visible": all(
             item["visible"] and item["inside_scroll_content"] and item["text_fits"]
             for item in action_buttons
@@ -627,9 +745,10 @@ def _scenario_evidence(
             and post_import["text_fits"]
         ),
         "loaded_summary_readable": info is None or bool(info["passed"]),
-        "automatic_summary_host_valid": state != "loaded-summary"
-        or automatic_summary_host == expected_summary_host,
+        "summary_stays_in_sidebar": state != "loaded-summary"
+        or active_info_panel is sidebar.info_panel,
         "loaded_table_readable": state != "loaded-summary",
+        "state_truth_consistent": bool(state_truth["passed"]),
         "no_horizontal_scroll": all(
             maximum == 0 for maximum in visible_horizontal_scroll.values()
         ),
@@ -642,14 +761,8 @@ def _scenario_evidence(
         "device_pixel_ratio": float(window.devicePixelRatioF()),
         "dock_width": int(assistant_dock.width()),
         "dataset_panel_size": [int(panel.width()), int(panel.height())],
-        "layout_mode": "stacked" if stacked else "side-by-side",
-        "summary_host": (
-            "none"
-            if info is None
-            else ("tab" if active_info_panel is panel.summary_info_panel else "sidebar")
-        ),
-        "automatic_summary_host": automatic_summary_host,
-        "expected_summary_host": expected_summary_host,
+        "layout_mode": "side-by-side",
+        "summary_host": "none" if info is None else "sidebar",
         "content_geometry": _rect(panel.content_column.geometry()),
         "sidebar_geometry": _rect(sidebar.geometry()),
         "sidebar_vertical_scroll_maximum": _scroll_maximum(
@@ -658,28 +771,13 @@ def _scenario_evidence(
         ),
         "horizontal_scroll_maximum": horizontal_scroll,
         "visible_horizontal_scroll_maximum": visible_horizontal_scroll,
-        "tabs": tab_evidence,
         "actions": action_buttons,
         "post_import_action": post_import,
         "summary": info,
+        "state_truth": state_truth,
         "checks": checks,
         "passed": all(checks.values()),
     }
-
-
-def _expected_summary_host(panel: DatasetPanel) -> str:
-    """Independently encode the product policy the responsive UI must satisfy."""
-    sidebar = panel.sidebar
-    margins = sidebar.scroll_area.content_layout.contentsMargins()
-    sidebar_table_width = max(
-        sidebar.width() - margins.left() - margins.right() - 2,
-        0,
-    )
-    summary_needs_tab = (
-        panel.width() < SUMMARY_TAB_BREAKPOINT
-        or sidebar.info_panel.minimum_readable_table_width() > sidebar_table_width
-    )
-    return "tab" if summary_needs_tab else "sidebar"
 
 
 def _capture_scenario(
@@ -709,14 +807,6 @@ def _capture_scenario(
         active_info_panel = (
             _active_info_panel(panel) if state == "loaded-summary" else None
         )
-        automatic_summary_host = (
-            "none"
-            if active_info_panel is None
-            else ("tab" if active_info_panel is panel.summary_info_panel else "sidebar")
-        )
-        expected_summary_host = (
-            _expected_summary_host(panel) if state == "loaded-summary" else "none"
-        )
         evidence = _scenario_evidence(
             window,
             panel,
@@ -727,8 +817,6 @@ def _capture_scenario(
             shell_height=shell_height,
             logical_scale=logical_scale,
             active_info_panel=active_info_panel,
-            automatic_summary_host=automatic_summary_host,
-            expected_summary_host=expected_summary_host,
         )
         scale_label = round(logical_scale * 100)
         filename = f"dataset-{state}-w{shell_width}-h{shell_height}-s{scale_label}.png"
@@ -744,7 +832,6 @@ def _capture_scenario(
             }
         )
         if state == "loaded-summary":
-            panel.content_tabs.setCurrentIndex(0)
             _settle(app)
             table_evidence = _dataset_table_evidence(panel)
             evidence["table"] = table_evidence
@@ -817,17 +904,15 @@ def _render_readme(payload: dict[str, Any]) -> str:
             "",
             "## Root Cause",
             "",
-            "At the 760 px shell width, the 320 px Assistant leaves a 434-435 px "
-            "Dataset panel. The prior horizontal layout still required a 260 px "
-            "fixed sidebar plus a summary content minimum, so its children extended "
-            "past the panel edge. The two-column summary then gave the loaded Type "
-            "value less width than its rendered text.",
+            "A 760 px synthetic shell with a forced 320 px Assistant leaves only "
+            "434-435 px for Dataset. That fixture came from the superseded variable-"
+            "width sidebar design and cannot contain the accepted fixed 260 px "
+            "sidebar plus readable Dataset content at every text scale.",
             "",
-            "The compact presentation now stacks the data surface above a full-width "
-            "action area, uses measured summary placement, and compacts actions only "
-            "when stacked. Aggregate rows track the active font without excess "
-            "vertical padding. The summary host follows component presentation "
-            "signals, and short windows use one vertical scroll owner.",
+            "The current matrix starts at the supported 840 px synthetic shell, keeps "
+            "Data Summary at the top of the right sidebar, and requires that sidebar "
+            "to remain exactly 260 px. Short windows use one sidebar-owned vertical "
+            "scroll area. No duplicate summary or responsive summary tab remains.",
             "",
             "## Claim Boundary",
             "",
@@ -893,6 +978,7 @@ def capture(output_dir: Path) -> dict[str, Any]:
             "shell_widths": list(SHELL_WIDTHS),
             "shell_heights": list(SHELL_HEIGHTS),
             "assistant_dock_width": ASSISTANT_DOCK_WIDTH,
+            "fixed_summary_sidebar_width": FIXED_SUMMARY_SIDEBAR_WIDTH,
             "logical_text_scales": list(LOGICAL_SCALES),
         },
         "claim_boundary": (

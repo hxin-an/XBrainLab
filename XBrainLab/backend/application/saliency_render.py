@@ -310,7 +310,7 @@ class SaliencyRenderPublisher:
         epoch_getter = getattr(dataset, "get_epoch_data", None)
         epoch_data = epoch_getter() if callable(epoch_getter) else None
         if epoch_data is None:
-            raise self._target_error("Epoch data is no longer available")
+            raise self._target_error("EEG epoch data is no longer available")
 
         saliency_store = self._saliency_store(eval_record, request.method)
         class_map = self._validated_class_map(eval_record, epoch_data)

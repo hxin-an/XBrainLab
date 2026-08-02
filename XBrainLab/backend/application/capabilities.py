@@ -199,8 +199,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         or active_training.has_trainer
     ):
         load_reasons.append(
-            "Reset the session before loading new raw data after epoching, "
-            "dataset generation, or trainer creation."
+            "Reset the session before loading new raw data after EEG epochs "
+            "are created, dataset generation, or trainer creation."
         )
     if _has_preprocess_operations(state):
         load_reasons.append(
@@ -245,8 +245,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         preprocess_reasons.append("Load raw data before preprocessing.")
     if active_dataset.has_epoch_data or active_dataset.has_datasets:
         preprocess_reasons.append(
-            "Reset the session before changing preprocessing after epoching "
-            "or dataset generation."
+            "Reset the session before changing preprocessing after EEG epochs "
+            "are created or dataset generation."
         )
     capabilities[CommandName.PREPROCESS.value] = _cap(
         CommandName.PREPROCESS,
@@ -255,10 +255,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
 
     epoch_reasons = []
     if not active_dataset.has_preprocessed_data:
-        epoch_reasons.append("Preprocess data before creating epochs.")
+        epoch_reasons.append("Preprocess data before creating EEG epochs.")
     if active_dataset.has_epoch_data or active_dataset.has_datasets:
         epoch_reasons.append(
-            "Reset the session before recreating epochs for the active dataset."
+            "Reset the session before recreating EEG epochs for the active dataset."
         )
     capabilities[CommandName.CREATE_EPOCH.value] = _cap(
         CommandName.CREATE_EPOCH,
@@ -267,7 +267,9 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
 
     dataset_reasons = []
     if not _has_usable_epoch_payload(state):
-        dataset_reasons.append("Create epochs before generating datasets.")
+        dataset_reasons.append(
+            "Create EEG epochs before building the training dataset."
+        )
     dataset_reasons.extend(_supervised_label_blockers(state))
     if active_training.is_running:
         dataset_reasons.append("Stop training before changing data splitting.")
@@ -404,7 +406,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         and not state.visualization.saliency_available
     ):
         visualize_reasons.append(
-            "Create epochs, complete training, or configure saliency before "
+            "Create EEG epochs, complete training, or configure saliency before "
             "opening visualization views."
         )
     capabilities[CommandName.VISUALIZE.value] = _cap(
@@ -420,8 +422,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         or (active_training.has_model and active_training.has_training_option)
     ):
         saliency_reasons.append(
-            "Create epochs, generate datasets, or select a model and training "
-            "settings before querying saliency readiness."
+            "Create EEG epochs, build the training dataset, or select a model "
+            "and training settings before querying saliency readiness."
         )
     if active_training.is_running:
         saliency_reasons.append(SALIENCY_TRAINING_ACTIVE_REASON)
@@ -432,7 +434,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
 
     montage_reasons = []
     if not active_dataset.has_epoch_data:
-        montage_reasons.append("Create epochs before applying a montage.")
+        montage_reasons.append("Create EEG epochs before applying a montage.")
     capabilities[CommandName.APPLY_MONTAGE.value] = _cap(
         CommandName.APPLY_MONTAGE,
         montage_reasons,
@@ -599,7 +601,7 @@ def _raw_edit_blockers(state: ApplicationStateSnapshot) -> list[str]:
     if active_dataset.has_epoch_data or active_dataset.has_datasets:
         reasons.append(
             "Reset the session before changing raw files, labels, or metadata "
-            "after epoching or dataset generation."
+            "after EEG epochs are created or a training dataset is generated."
         )
     if active_training.has_trainer:
         reasons.append(
@@ -665,8 +667,9 @@ def _model_epoch_blockers(state: ApplicationStateSnapshot) -> list[str]:
         (
             f"{requirement.model_name} needs at least {requirement.min_samples} "
             f"samples ({requirement.min_duration_seconds:.2f}s at {float(sfreq):g}Hz); "
-            f"current epoch has {samples} samples ({duration:.2f}s). "
-            "Increase the epoch window, lower sampling rate, or choose another model."
+            f"current EEG epoch has {samples} samples ({duration:.2f}s). "
+            "Increase the EEG epoch window, lower sampling rate, or choose "
+            "another model."
         )
     ]
 
@@ -714,12 +717,12 @@ def _epoch_supervised_class_blockers(
         return []
     event_ids = state.epoch.event_ids
     if not isinstance(event_ids, dict):
-        return ["Epoch class label mapping is incomplete or invalid."]
+        return ["EEG epoch class-label mapping is incomplete or invalid."]
     labels = [str(label).strip() for label in event_ids if str(label).strip()]
     if not has_minimum_usable_classes(labels):
         return [insufficient_usable_classes_message(labels)]
     if not _has_authoritative_supervised_epoch_contract(state):
-        return ["Epoch class label mapping is incomplete or invalid."]
+        return ["EEG epoch class-label mapping is incomplete or invalid."]
     return []
 
 
@@ -776,6 +779,8 @@ def _has_authoritative_supervised_epoch_contract(
 def _only_missing_import_defaults(
     blocker_codes: tuple[EpochHandoffBlockerCode, ...] | None,
 ) -> bool:
-    return bool(blocker_codes) and all(
+    if not blocker_codes:
+        return False
+    return all(
         blocker in _MISSING_IMPORT_DEFAULT_BLOCKER_CODES for blocker in blocker_codes
     )

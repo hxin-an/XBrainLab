@@ -1,8 +1,8 @@
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QCheckBox,
     QDialogButtonBox,
     QLabel,
@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QRadioButton,
 )
 
+from XBrainLab.backend.application.epoch_context import build_epoching_context
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog, SmartParserDialog
 from XBrainLab.ui.dialogs.preprocess import (
@@ -23,14 +24,11 @@ from XBrainLab.ui.dialogs.preprocess import (
 
 def test_channel_selection_dialog(qtbot):
     """Test ChannelSelectionDialog initialization and selection."""
-    # Mock data list
-    mock_data = MagicMock()
-    mock_data.get_mne.return_value.ch_names = ["C3", "C4", "Cz"]
-    data_list = [mock_data]
+    channels = ["C3", "C4", "Cz"]
 
     # Mock Preprocessor
     with patch("XBrainLab.backend.preprocessor.ChannelSelection"):
-        dialog = ChannelSelectionDialog(None, data_list)
+        dialog = ChannelSelectionDialog(None, channels)
         qtbot.addWidget(dialog)
 
         # Check list items
@@ -87,7 +85,10 @@ def test_epoching_dialog_init(qtbot):
     # Patch validate_list_type to bypass strict type checking if spec
     # doesn't work perfectly
     with patch("XBrainLab.backend.preprocessor.base.validate_list_type"):
-        dialog = EpochingDialog(None, [mock_data])
+        dialog = EpochingDialog(
+            None,
+            epoch_context=build_epoching_context([mock_data]),
+        )
         qtbot.addWidget(dialog)
 
         # Check if event table is populated
@@ -124,7 +125,10 @@ def test_epoching_dialog_baseline_and_primary_button_are_product_styled(qtbot):
     mock_data.get_event_list.return_value = (MagicMock(), {"Event1": 1})
     mock_data.is_raw.return_value = True
 
-    dialog = EpochingDialog(None, [mock_data])
+    dialog = EpochingDialog(
+        None,
+        epoch_context=build_epoching_context([mock_data]),
+    )
     qtbot.addWidget(dialog)
 
     baseline = dialog.findChild(QCheckBox, "EpochBaselineCheck")
@@ -134,9 +138,13 @@ def test_epoching_dialog_baseline_and_primary_button_are_product_styled(qtbot):
 
     create_button = dialog.findChild(QPushButton, "EpochPrimaryButton")
     assert create_button is not None
-    assert create_button.text() == "Create Epochs"
+    assert create_button.text() == "Create EEG Epochs"
     assert not create_button.autoDefault()
     assert not create_button.isDefault()
+
+    title = dialog.findChild(QLabel, "EpochDialogTitle")
+    assert title is not None
+    assert title.text() == "Create EEG Epochs"
 
 
 def test_resample_dialog_init(qtbot):
@@ -150,6 +158,14 @@ def test_resample_dialog_init(qtbot):
     dialog.accept()
 
     assert dialog.get_params() == 250
+
+
+def test_resample_dialog_hides_empty_native_stepper_strip(qtbot):
+    dialog = ResampleDialog(None)
+    qtbot.addWidget(dialog)
+
+    assert dialog.sfreq_spin.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+    assert not dialog.sfreq_spin.isReadOnly()
 
 
 def test_filtering_dialog_init(qtbot):
@@ -169,6 +185,19 @@ def test_filtering_dialog_init(qtbot):
     # (l_freq, h_freq, notch_freqs)
     params = dialog.get_params()
     assert params == (1.0, 40.0, 60.0)
+
+
+def test_filtering_dialog_hides_empty_native_stepper_strips(qtbot):
+    dialog = FilteringDialog(None)
+    qtbot.addWidget(dialog)
+
+    for spinbox in (
+        dialog.l_freq_spin,
+        dialog.h_freq_spin,
+        dialog.notch_spin,
+    ):
+        assert spinbox.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+        assert not spinbox.isReadOnly()
 
 
 def test_filtering_dialog_uses_section_toggles_and_inline_validation(qtbot):
@@ -225,24 +254,21 @@ def test_filtering_dialog_validates_and_preserves_notch_mode(qtbot):
 
 def test_rereference_dialog_default(qtbot):
     """Test RereferenceDialog default state (Average)."""
-    mock_data = MagicMock(spec=Raw)
-    mock_data.get_mne.return_value.ch_names = ["C3", "C4", "Cz"]
+    dialog = RereferenceDialog(None, ["C3", "C4", "Cz"])
+    qtbot.addWidget(dialog)
 
-    if True:
-        dialog = RereferenceDialog(None, [mock_data])
-        qtbot.addWidget(dialog)
-
-        # Default is Average
-        assert dialog.average_radio.isChecked()
-        dialog.accept()
-        assert dialog.get_params() == "average"
+    assert dialog.average_radio.isChecked()
+    assert [dialog.chan_list.item(index).text() for index in range(3)] == [
+        "C3",
+        "C4",
+        "Cz",
+    ]
+    dialog.accept()
+    assert dialog.get_params() == "average"
 
 
 def test_rereference_dialog_explains_mutually_exclusive_reference_modes(qtbot):
-    mock_data = MagicMock(spec=Raw)
-    mock_data.get_mne.return_value.ch_names = ["C3", "C4"]
-
-    dialog = RereferenceDialog(None, [mock_data])
+    dialog = RereferenceDialog(None, ["C3", "C4"])
     qtbot.addWidget(dialog)
 
     assert isinstance(dialog.average_radio, QRadioButton)
@@ -265,22 +291,15 @@ def test_rereference_dialog_explains_mutually_exclusive_reference_modes(qtbot):
 
 def test_rereference_dialog_custom(qtbot):
     """Test RereferenceDialog custom selection."""
-    mock_data = MagicMock(spec=Raw)
-    mock_data.get_mne.return_value.ch_names = ["C3", "C4", "Cz"]
+    dialog = RereferenceDialog(None, ["C3", "C4", "Cz"])
+    qtbot.addWidget(dialog)
 
-    if True:
-        dialog = RereferenceDialog(None, [mock_data])
-        qtbot.addWidget(dialog)
+    dialog.selected_channels_radio.setChecked(True)
+    item = dialog.chan_list.item(0)
+    item.setSelected(True)
 
-        # Swtich to Custom
-        dialog.selected_channels_radio.setChecked(True)
-
-        # Select channel
-        item = dialog.chan_list.item(0)  # C3
-        item.setSelected(True)
-
-        dialog.accept()
-        assert dialog.get_params() == ["C3"]
+    dialog.accept()
+    assert dialog.get_params() == ["C3"]
 
 
 def test_normalize_dialog_init(qtbot):
@@ -301,14 +320,11 @@ def test_normalize_dialog_init(qtbot):
 
 def test_preprocess_setting_dialogs_fit_their_visible_content(qtbot):
     """Compact setting dialogs must not distribute surplus height between rows."""
-    data = SimpleNamespace(
-        get_mne=lambda: SimpleNamespace(ch_names=["Fz", "C3", "Cz", "C4", "Pz"])
-    )
     dialogs = (
         NormalizeDialog(None),
         ResampleDialog(None),
         FilteringDialog(None, sampling_rate_hz=250.0),
-        RereferenceDialog(None, [data]),
+        RereferenceDialog(None, ["Fz", "C3", "Cz", "C4", "Pz"]),
     )
 
     for dialog in dialogs:

@@ -210,12 +210,12 @@ def test_explicit_runtime_reaches_backend_backed_read_only_adapter() -> None:
     assert result.raw_result["status"] == "ok"
     assert result.raw_result["command_name"] == "query_state"
     assert result.raw_result["changed_state"]["state_unknown"] is False
-    assert result.raw_result["diagnostics"] == {
-        "count": 1,
-        "files": ["injected-runtime.edf"],
-        "total": 7,
-        "unique_count": 1,
-    }
+    diagnostics = result.raw_result["diagnostics"]
+    assert diagnostics["count"] == 1
+    assert diagnostics["total"] == 7
+    assert diagnostics["unique_count"] == 1
+    assert diagnostics["files"][0].startswith("file (.edf) [REDACTED_PATH]")
+    assert "injected-runtime.edf" not in diagnostics["files"][0]
     assert result.state is not None
     runtime.execute.assert_called_once()
     assert isinstance(runtime.execute.call_args.args[0], QueryStateCommand)
@@ -480,11 +480,15 @@ def test_ui_debug_tool_records_exact_ui_adapter_invocation() -> None:
 def test_debug_info_log_records_parameter_count_without_names_or_private_values(
     tmp_path,
     caplog,
+    capture_product_logs,
 ) -> None:
     private_directory = tmp_path / "private-subject-data"
     private_directory.mkdir()
 
-    with caplog.at_level(logging.INFO, logger="XBrainLab.debug.tool_executor"):
+    with capture_product_logs(
+        logging.INFO,
+        logger_name="XBrainLab.debug.tool_executor",
+    ):
         result = ToolExecutor(object()).execute(
             "list_files",
             {
@@ -499,7 +503,7 @@ def test_debug_info_log_records_parameter_count_without_names_or_private_values(
     messages = [
         record.getMessage()
         for record in caplog.records
-        if record.pathname.endswith("tool_executor.py")
+        if record.getMessage().startswith("Admitting debug tool")
     ]
     assert any("list_files" in message for message in messages)
     assert any("parameter count: 2" in message for message in messages)

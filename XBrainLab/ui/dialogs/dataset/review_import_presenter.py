@@ -127,7 +127,7 @@ def internal_label_placement_summary(
         event_word = "event" if selected_class_count == 1 else "events"
         return f"{selected_class_count} EEG {event_word} selected as class labels"
     if event_role_count:
-        return "Event roles saved; confirm class labels before training"
+        return "EEG event choices saved; confirm training classes"
     return "No usable labels selected yet"
 
 

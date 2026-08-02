@@ -24,8 +24,12 @@ from XBrainLab.ui.dialogs.preprocess.common import (
 class RereferenceDialog(BaseDialog):
     """Choose average reference or one or more explicit reference channels."""
 
-    def __init__(self, parent, data_list: list):
-        self.data_list = data_list
+    def __init__(self, parent, channel_names: list[str]):
+        if not isinstance(channel_names, list) or any(
+            not isinstance(channel, str) for channel in channel_names
+        ):
+            raise TypeError("channel_names must be a list of strings")
+        self.channel_names = list(channel_names)
         self.reref_params: str | list[str] | None = None
         self.reference_method_group: QButtonGroup
         self.average_radio: QRadioButton
@@ -64,9 +68,7 @@ class RereferenceDialog(BaseDialog):
         self.chan_list.setObjectName("PreprocessReferenceChannels")
         self.chan_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.chan_list.setMinimumHeight(150)
-        if self.data_list:
-            first_data = self.data_list[0]
-            self.chan_list.addItems(list(first_data.get_mne().ch_names))
+        self.chan_list.addItems(self.channel_names)
         channel_layout.addWidget(self.chan_list)
         layout.addWidget(channel_section)
 

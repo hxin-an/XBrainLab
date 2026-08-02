@@ -28,6 +28,7 @@ from scripts.agent.evals.run_local_tool_call_eval import (
 )
 from scripts.agent.evals.run_tool_call_eval import ExpectedToolCall, build_eval_cases
 from XBrainLab.llm.agent.prompt_policy import DIRECT_ACTION_TOOL_NAMES
+from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
 
 
 def _case(case_id: str):
@@ -214,8 +215,8 @@ def test_primary_prompt_publishes_state_only_contracts_and_blockers():
     assert '"request_category": "scan source"' in context
     assert '"callable_tool_names": ["scan_source"]' in context
     assert "Load raw data before preprocessing." in context
-    assert "Preprocess data before creating epochs." in context
-    assert "Create epochs before generating datasets." in context
+    assert "Preprocess data before creating EEG epochs." in context
+    assert "Create EEG epochs before building the training dataset." in context
     assert "Load raw data before training." in context
     assert '"unavailable_operations"' not in context
 
@@ -750,7 +751,7 @@ def test_raw_summary_reports_unmeasured_outcomes_as_excluded():
     )
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["successful-load-summary"],
         generator=MagicMock(return_value=raw_output),
@@ -1239,7 +1240,7 @@ def test_run_local_eval_with_fake_generator_and_writes_artifacts(tmp_path: Path)
         )
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=3,
         case_ids=["empty-scan-source-folder"],
         generator=fake_generator,
@@ -1348,7 +1349,7 @@ def test_run_local_eval_closes_owned_engine_generator(monkeypatch):
     )
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["empty-scan-source-folder"],
     )
@@ -1377,7 +1378,7 @@ def test_local_eval_recovers_malformed_then_valid_and_scores_final_output():
         return next(outputs)
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["empty-scan-source-folder"],
         generator=recovering_generator,
@@ -1405,7 +1406,7 @@ def test_local_eval_exhausts_malformed_output_after_one_recovery_attempt():
     generator = MagicMock(return_value=malformed)
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["empty-scan-source-folder"],
         generator=generator,
@@ -1431,7 +1432,7 @@ def test_local_eval_no_tool_prose_retries_then_fails_strict_envelope():
     generator = MagicMock(return_value="Epoch 是圍繞事件切出的 EEG 時間窗。")
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["no-tool-what-is-epoch"],
         generator=generator,
@@ -1455,7 +1456,7 @@ def test_local_eval_generation_error_fails_even_for_expected_no_tool_case():
         raise RuntimeError("boom")
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["no-tool-what-is-epoch"],
         generator=failing_generator,
@@ -1479,7 +1480,7 @@ def test_local_eval_reports_raw_failure_and_safe_host_block_separately():
     )
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["loaded-create-epoch-block"],
         generator=MagicMock(return_value=raw_output),
@@ -1504,7 +1505,7 @@ def test_product_publication_blocks_wrong_browse_tool_without_claiming_completio
     raw_output = '{"tool_name":"list_files","parameters":{"directory":"/data/S04.edf"}}'
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["workflow-continue-empty-scan"],
         generator=MagicMock(return_value=raw_output),
@@ -1524,7 +1525,7 @@ def test_local_eval_ui_handoff_is_not_failed_by_unused_model_generation():
         raise RuntimeError("model should not be required by product admission")
 
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["empty-scan-source-missing-path"],
         generator=failing_generator,
@@ -1552,7 +1553,7 @@ def test_run_local_eval_closes_owned_engine_when_evaluation_aborts(monkeypatch):
 
     with pytest.raises(RuntimeError, match="scorer failed"):
         run_local_eval(
-            model_id="microsoft/Phi-4-mini-instruct",
+            model_id=PRIMARY_LOCAL_MODEL_ID,
             repeat_count=1,
             case_ids=["empty-scan-source-folder"],
         )
@@ -1783,7 +1784,7 @@ def _stub_completed_cli_eval(
 
 def test_strict_gate_failure_contract_is_persisted_in_artifacts(tmp_path: Path):
     result = run_local_eval(
-        model_id="microsoft/Phi-4-mini-instruct",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
         repeat_count=1,
         case_ids=["empty-scan-source-folder"],
         generator=MagicMock(

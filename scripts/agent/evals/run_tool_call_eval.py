@@ -322,7 +322,7 @@ def build_eval_cases() -> list[EvalCase]:
             ["Create epochs from -0.1 to 1.0 seconds."],
             "create_epoch",
             expected_blocked=True,
-            expected_reason_terms=["Preprocess data before creating epochs"],
+            expected_reason_terms=["Preprocess data before creating EEG epochs"],
         ),
         EvalCase(
             "epoched-generate-dataset",
@@ -348,7 +348,9 @@ def build_eval_cases() -> list[EvalCase]:
             ["Generate the training dataset."],
             "generate_dataset",
             expected_blocked=True,
-            expected_reason_terms=["Create epochs before generating datasets"],
+            expected_reason_terms=[
+                "Create EEG epochs before building the training dataset"
+            ],
         ),
         EvalCase(
             "dataset-train-missing-config",
@@ -404,7 +406,7 @@ def build_eval_cases() -> list[EvalCase]:
             ["Create epoch windows from -0.25 to 0.75 seconds now."],
             "create_epoch",
             expected_blocked=True,
-            expected_reason_terms=["Preprocess data before creating epochs"],
+            expected_reason_terms=["Preprocess data before creating EEG epochs"],
             families=("blocked_command", "paraphrase", "wrong_tool_temptation"),
         ),
         EvalCase(
@@ -414,7 +416,7 @@ def build_eval_cases() -> list[EvalCase]:
             ["Create epochs from -0.2 to 0.8 seconds now."],
             "create_epoch",
             expected_blocked=True,
-            expected_reason_terms=["Preprocess data before creating epochs"],
+            expected_reason_terms=["Preprocess data before creating EEG epochs"],
             families=(
                 "blocked_command",
                 "workflow_mode",
@@ -443,7 +445,9 @@ def build_eval_cases() -> list[EvalCase]:
             ["Generate train/test dataset splits from the loaded EEG now."],
             "generate_dataset",
             expected_blocked=True,
-            expected_reason_terms=["Create epochs before generating datasets"],
+            expected_reason_terms=[
+                "Create EEG epochs before building the training dataset"
+            ],
             families=("blocked_command", "paraphrase", "wrong_tool_temptation"),
         ),
         EvalCase(
@@ -880,7 +884,7 @@ def build_eval_cases() -> list[EvalCase]:
             "multi-turn-validate-apply-safe",
             "Validation then apply safe interpretation",
             "validated_safe",
-            ["Validate the candidate.", "Apply it."],
+            ["Validate the candidate.", "Apply the validated interpretation."],
             "apply_interpretation",
             [ExpectedToolCall("apply_interpretation", {})],
             expected_recovery=True,
@@ -1299,7 +1303,7 @@ def build_eval_cases() -> list[EvalCase]:
             ["Create epochs from -0.2 to 0.8 seconds for event 769."],
             "create_epoch",
             expected_blocked=True,
-            expected_reason_terms=["Reset the session before recreating epochs"],
+            expected_reason_terms=["Reset the session before recreating EEG epochs"],
         ),
         EvalCase(
             "preprocessed-epoch-default-window",

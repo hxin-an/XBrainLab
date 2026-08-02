@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -7,6 +8,10 @@ from pathlib import Path
 import pytest
 
 from scripts.dev import run_tests
+from scripts.dev.pytest_completion_attestation import (
+    REQUIRED_PYTEST_RUNNER_ID,
+    build_attestation,
+)
 
 
 def test_headless_runner_uses_one_wsl_safe_temp_namespace(monkeypatch) -> None:
@@ -193,3 +198,38 @@ def test_ci_uses_the_isolated_test_runner() -> None:
 
     assert "scripts/dev/run_tests.py all" in workflow
     assert "poetry run pytest tests/" not in workflow
+
+
+def test_main_attests_aggregate_shard_completion(monkeypatch, tmp_path) -> None:
+    result_path = tmp_path / "ui-suite.json"
+    counts = {
+        "collected": 3,
+        "executed": 3,
+        "passed": 3,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xfailed": 0,
+        "xpassed": 0,
+        "deselected": 0,
+    }
+
+    def fake_dispatch(command, sink):
+        assert command == "ui"
+        assert sink is not None
+        sink.append(
+            build_attestation(
+                runner=REQUIRED_PYTEST_RUNNER_ID,
+                command_args=("tests/unit/ui", "-q"),
+                exit_code=0,
+                counts=counts,
+            )
+        )
+
+    monkeypatch.setattr(run_tests, "_dispatch", fake_dispatch)
+
+    assert run_tests.main(["ui", "--result-json", str(result_path)]) == 0
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["runner"] == "xbrainlab.sharded-test-runner"
+    assert payload["command_args"] == ["ui"]
+    assert payload["counts"] == counts

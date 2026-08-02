@@ -7,21 +7,24 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication
 
+from scripts.dev.bounded_qt_shutdown import BoundedQtShutdown
+from scripts.dev.capture_chatpanel_local_pipeline_chain_walkthrough import (
+    assistant_surface_ready,
+)
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _capture_current_window,
     _clear_saved_main_window_geometry,
     _force_offline_hf_runtime,
-    _load_capture_config,
     _runtime_summary,
     _set_baseline_window_geometry,
-    write_synthetic_raw_fif,
 )
 from scripts.dev.capture_chatpanel_local_walkthrough import (
     collect_executed_tools,
@@ -31,7 +34,19 @@ from scripts.dev.capture_chatpanel_local_walkthrough import (
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     _has_runtime_error_text,
 )
+from scripts.dev.chatpanel_confirmation_driver import (
+    describe_visible_confirmation_card,
+    resolve_visible_confirmation_card,
+)
+from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
+from scripts.dev.local_assistant_capture_runtime import (
+    collect_capture_source_identity,
+    collect_runtime_input_evidence,
+    finalize_strict_capture_evidence,
+    isolated_assistant_runtime_config,
+    validate_strict_capture_evidence,
+)
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     CreateEpochCommand,
@@ -46,10 +61,17 @@ from XBrainLab.backend.application import (
 from XBrainLab.llm.core.config import LLMConfig
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "chatpanel-local-training-readiness"
+DEFAULT_OUTPUT_DIR = (
+    ROOT / "build" / "dev-artifacts" / "chatpanel-local-training-readiness"
+)
 READY_SCREENSHOT = "chatpanel-training-readiness-ready.png"
 JSON_ARTIFACT = "chatpanel-local-training-readiness-walkthrough.json"
 MD_ARTIFACT = "chatpanel-local-training-readiness-walkthrough.md"
+READINESS_SOURCE_PATH = (
+    Path(tempfile.gettempdir())
+    / "xbrainlab_chatpanel_training_readiness"
+    / "training_readiness_raw.fif"
+)
 
 TURN_SPECS: list[dict[str, str]] = [
     {
@@ -94,12 +116,16 @@ TURN_SPECS: list[dict[str, str]] = [
     {
         "kind": "blocked",
         "expected_tool": "evaluate",
-        "prompt": (
-            "Evaluate current training results. If evaluation is blocked, explain "
-            "the blocked reason in one short user-facing sentence."
-        ),
+        "prompt": "Evaluate the current training results.",
     },
 ]
+
+_EVALUATION_READINESS_GUIDANCE = (
+    "create a training plan before evaluating results",
+    "complete at least one training run before evaluating results",
+)
+_RUNTIME_INPUT_NAME = "training_eeg_fixture"
+_RUNTIME_INPUT_KIND = "deterministic-eeg-fixture"
 
 
 def main() -> int:
@@ -126,27 +152,69 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     _force_offline_hf_runtime()
-    config = _load_capture_config(args.model)
-    runtime = classify_runtime(config)
-    if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
+    model_id = args.model or LLMConfig.default_local_model_id()
+    source_identity_at_start = collect_capture_source_identity(refresh=True)
+    with isolated_assistant_runtime_config(
+        model_id,
+        parent_dir=output_dir,
+    ) as config:
+        runtime = classify_runtime(config)
         source_path = write_synthetic_raw_fif()
-        payload = _blocked_payload(args, runtime, source_path)
-        _write_artifacts(output_dir, payload)
-        print(payload["status"])
-        return 2
+        runtime_input_paths = {_RUNTIME_INPUT_NAME: source_path}
+        runtime_input_kinds = {_RUNTIME_INPUT_NAME: _RUNTIME_INPUT_KIND}
+        runtime_input_evidence_at_start = collect_runtime_input_evidence(
+            runtime_input_paths,
+            kinds=runtime_input_kinds,
+            retained=False,
+        )
+        if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
+            payload = _blocked_payload(args, runtime, source_path)
+            finalize_strict_capture_evidence(
+                payload,
+                requested_model_id=model_id,
+                runtime_snapshot=None,
+                cache_dir=config.cache_dir,
+                artifact_root=output_dir,
+                source_identity_at_start=source_identity_at_start,
+                host_actions=("prepared deterministic dataset state",),
+                runtime_input_paths=runtime_input_paths,
+                runtime_input_kinds=runtime_input_kinds,
+                runtime_input_evidence_at_start=runtime_input_evidence_at_start,
+            )
+            _write_artifacts(output_dir, payload)
+            print(payload["status"])
+            return 2
 
-    source_path = write_synthetic_raw_fif()
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    if args.model:
-        app.setProperty("model_override", args.model)
-
-    payload = run_training_readiness_walkthrough(
-        app,
-        output_dir,
-        source_path,
-        args.timeout_seconds,
-    )
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")
+        app.setProperty("model_override", model_id)
+        payload = run_training_readiness_walkthrough(
+            app,
+            output_dir,
+            source_path,
+            args.timeout_seconds,
+        )
+        runtime_snapshot = payload.pop("_runtime_snapshot", None)
+        strict_ok, strict_reason = finalize_strict_capture_evidence(
+            payload,
+            requested_model_id=model_id,
+            runtime_snapshot=(
+                runtime_snapshot if isinstance(runtime_snapshot, dict) else None
+            ),
+            cache_dir=config.cache_dir,
+            artifact_root=output_dir,
+            source_identity_at_start=source_identity_at_start,
+            host_actions=(
+                "prepared deterministic dataset state",
+                "cancelled the visible training confirmation card",
+            ),
+            runtime_input_paths=runtime_input_paths,
+            runtime_input_kinds=runtime_input_kinds,
+            runtime_input_evidence_at_start=runtime_input_evidence_at_start,
+        )
+        if payload.get("status") == "passed" and not strict_ok:
+            payload["status"] = "failed"
+            payload["failure_reason"] = strict_reason
     _write_artifacts(output_dir, payload)
     print(f"Wrote {output_dir / JSON_ARTIFACT}")
     print(f"Wrote {output_dir / MD_ARTIFACT}")
@@ -156,6 +224,11 @@ def main() -> int:
 def build_prompts() -> list[str]:
     """Return visible user prompts for the training-readiness walkthrough."""
     return [turn["prompt"] for turn in TURN_SPECS]
+
+
+def write_synthetic_raw_fif() -> Path:
+    """Write the shared deterministic fixture for readiness evidence."""
+    return write_training_ready_raw_fif(READINESS_SOURCE_PATH)
 
 
 def prepare_dataset_ready_state(study: Any, source_path: Path) -> dict[str, Any]:
@@ -172,7 +245,7 @@ def prepare_dataset_ready_state(study: Any, source_path: Path) -> dict[str, Any]
             high_freq=40.0,
             method="z-score",
         ),
-        CreateEpochCommand(t_min=0.0, t_max=0.25, event_ids=["left", "right"]),
+        CreateEpochCommand(t_min=0.0, t_max=1.5, event_ids=["left", "right"]),
         GenerateDatasetCommand(
             test_ratio=0.25,
             val_ratio=0.25,
@@ -230,48 +303,71 @@ def run_training_readiness_walkthrough(
         "turns": [],
         "visible_messages": [],
         "executed_tools": [],
-        "confirmation_dialogs": [],
+        "confirmation_events": [],
         "final_state": {},
         "send_button_text": "",
         "send_button_enabled": False,
         "input_enabled": False,
         "chat_processing": True,
         "controller_processing": True,
+        "dataset_table_rows": 0,
+        "dataset_empty_state_visible": True,
+        "shutdown": {"status": "pending", "detail": ""},
+        "runtime_snapshot": {},
+        "terminal_started": False,
         "elapsed_seconds": 0.0,
     }
+    handled_confirmation_ids: set[str] = set()
+    shutdown = BoundedQtShutdown(
+        app=app,
+        window=window,
+        manager_provider=lambda: window.agent_manager,
+        state=state,
+        schedule=QTimer.singleShot,
+        now=time.monotonic,
+    )
 
     def fail(reason: str) -> None:
         state["status"] = "failed"
         state["failure_reason"] = reason
         finish()
 
-    def reject_confirmation_dialogs() -> None:
-        for widget in QApplication.topLevelWidgets():
-            if not isinstance(widget, QMessageBox) or not widget.isVisible():
-                continue
-            if widget.windowTitle() != "Confirm Action":
-                continue
-            state["confirmation_dialogs"].append(
-                {
-                    "title": widget.windowTitle(),
-                    "text": widget.text(),
-                    "informative_text": widget.informativeText(),
-                    "approved": False,
-                }
-            )
-            no_button = widget.button(QMessageBox.StandardButton.No)
-            if no_button is not None:
-                no_button.click()
-            else:
-                widget.done(int(QMessageBox.StandardButton.No))
+    def reject_confirmation_cards() -> None:
+        manager = window.agent_manager
+        panel = manager.chat_panel if manager is not None else None
+        event = (
+            describe_visible_confirmation_card(panel, approved=False)
+            if panel is not None
+            else None
+        )
+        if event is not None and event["request_id"] not in handled_confirmation_ids:
+            request_id = str(event["request_id"])
+            handled_confirmation_ids.add(request_id)
+            screenshot_path = output_dir / "chatpanel-training-confirmation-cancel.png"
+            if _capture_current_window(window, screenshot_path) != 0:
+                fail("Training confirmation card screenshot could not be saved.")
+                return
+            event["screenshot"] = str(screenshot_path)
+            state["confirmation_events"].append(event)
+            if not resolve_visible_confirmation_card(
+                panel,
+                request_id=request_id,
+                expected_command_name="start_training",
+                approved=False,
+            ):
+                fail("Training confirmation card changed before cancellation.")
+                return
         if state["status"] == "running":
-            QTimer.singleShot(250, reject_confirmation_dialogs)
+            QTimer.singleShot(250, reject_confirmation_cards)
 
     def finish() -> None:
+        if state["terminal_started"]:
+            return
+        state["terminal_started"] = True
         state["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         manager = window.agent_manager
-        panel = manager.chat_panel
-        controller = manager.agent_controller
+        panel = manager.chat_panel if manager is not None else None
+        controller = manager.agent_controller if manager is not None else None
         if panel is not None:
             state["visible_messages"] = [
                 message.__dict__ for message in collect_visible_messages(panel)
@@ -281,32 +377,67 @@ def run_training_readiness_walkthrough(
             state["input_enabled"] = panel.input_field.isEnabled()
         if controller is not None:
             state["executed_tools"] = collect_executed_tools(controller.metrics)
+        lifecycle = getattr(manager, "assistant_runtime", None)
+        current_runtime = getattr(lifecycle, "current", None)
+        if current_runtime is not None and hasattr(current_runtime, "to_dict"):
+            state["runtime_snapshot"] = current_runtime.to_dict()
         try:
             state["final_state"] = get_application_service(study).get_state().to_dict()
         except Exception:
             state["final_state"] = {}
-        state["chat_processing"] = bool(manager.chat_controller.is_processing)
+        state["chat_processing"] = bool(
+            manager is not None and manager.chat_controller.is_processing
+        )
         state["controller_processing"] = bool(
             controller and getattr(controller, "is_processing", False)
         )
+        state["ui_state"] = _ui_state_from_runtime_state(state)
         if state["status"] == "running":
-            ok, reason = validate_training_readiness_payload(state)
+            ok, reason = validate_training_readiness_payload(state, strict=False)
             state["status"] = "passed" if ok else "failed"
             state["failure_reason"] = "" if ok else reason
-        window.close()
+        shutdown.start()
 
     def open_assistant() -> None:
         if not dataset_preparation.get("ok"):
             fail("Dataset preparation failed before ChatPanel opened.")
             return
         window.ai_btn.click()
-        QTimer.singleShot(2500, capture_ready)
+        QTimer.singleShot(250, wait_for_assistant_ready)
+
+    def wait_for_assistant_ready() -> None:
+        if time.monotonic() - started_at > timeout_seconds:
+            fail(f"Timed out waiting for assistant readiness after {timeout_seconds}s.")
+            return
+        manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager was not initialized.")
+            return
+        ready, _reason = assistant_surface_ready(manager)
+        if not ready:
+            QTimer.singleShot(250, wait_for_assistant_ready)
+            return
+        capture_ready()
 
     def capture_ready() -> None:
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared before ready capture.")
+            return
         panel = manager.chat_panel
         if panel is None or not manager.chat_dock or not manager.chat_dock.isVisible():
             fail("Assistant dock did not open.")
+            return
+        dataset_panel = getattr(window, "dataset_panel", None)
+        if dataset_panel is None:
+            fail("Dataset panel was not materialized for visible state validation.")
+            return
+        state["dataset_table_rows"] = int(dataset_panel.table.rowCount())
+        state["dataset_empty_state_visible"] = bool(
+            dataset_panel.data_surface.currentWidget() is dataset_panel.empty_state
+        )
+        if state["dataset_table_rows"] < 1 or state["dataset_empty_state_visible"]:
+            fail("Dataset-ready backend state rendered as an empty Dataset panel.")
             return
         ready_path = output_dir / READY_SCREENSHOT
         if _capture_current_window(window, ready_path) != 0:
@@ -317,6 +448,9 @@ def run_training_readiness_walkthrough(
 
     def send_prompt(index: int) -> None:
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared during training-readiness walkthrough.")
+            return
         panel = manager.chat_panel
         if panel is None:
             fail("ChatPanel disappeared during training-readiness walkthrough.")
@@ -345,6 +479,9 @@ def run_training_readiness_walkthrough(
             return
 
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared during training-readiness walkthrough.")
+            return
         panel = manager.chat_panel
         controller = manager.agent_controller
         if panel is None:
@@ -411,9 +548,10 @@ def run_training_readiness_walkthrough(
             lambda: wait_for_turn(index, prompt, before_messages, before_tools),
         )
 
-    QTimer.singleShot(250, reject_confirmation_dialogs)
+    QTimer.singleShot(250, reject_confirmation_cards)
     QTimer.singleShot(1500, open_assistant)
     app.exec()
+    shutdown.reconcile_after_event_loop()
 
     config = LLMConfig.load_from_file() or LLMConfig()
     runtime = classify_runtime(config)
@@ -433,15 +571,11 @@ def run_training_readiness_walkthrough(
         "turns": state["turns"],
         "visible_messages": state["visible_messages"],
         "executed_tools": state["executed_tools"],
-        "confirmation_dialogs": state["confirmation_dialogs"],
+        "confirmation_events": state["confirmation_events"],
         "final_state": state["final_state"],
-        "ui_state": {
-            "send_button_text": state["send_button_text"],
-            "send_button_enabled": state["send_button_enabled"],
-            "input_enabled": state["input_enabled"],
-            "chat_processing": state["chat_processing"],
-            "controller_processing": state["controller_processing"],
-        },
+        "shutdown": state["shutdown"],
+        "_runtime_snapshot": state["runtime_snapshot"],
+        "ui_state": dict(state["ui_state"]),
         "elapsed_seconds": state["elapsed_seconds"],
     }
 
@@ -457,8 +591,8 @@ def validate_turn(
     expected_tool = spec["expected_tool"]
     kind = spec["kind"]
     if kind == "confirmation":
-        if not state.get("confirmation_dialogs"):
-            return False, "Training confirmation dialog was not observed."
+        if not state.get("confirmation_events"):
+            return False, "Training confirmation card was not observed."
         if any(_successful_tool(tool, "start_training") for tool in new_tools):
             return False, "Training started even though confirmation was rejected."
         if "cancel" not in assistant_text.lower():
@@ -476,8 +610,13 @@ def validate_turn(
                 f"Blocked turn executed substitute tools: {successful_unexpected}",
             )
         lower_text = assistant_text.lower()
-        if "evaluat" not in lower_text and "training plan" not in lower_text:
-            return False, "Blocked evaluate turn did not explain evaluation readiness."
+        if not any(
+            guidance in lower_text for guidance in _EVALUATION_READINESS_GUIDANCE
+        ):
+            return (
+                False,
+                "Blocked evaluate turn did not present backend readiness guidance.",
+            )
         return True, ""
     if not any(_successful_tool(tool, expected_tool) for tool in new_tools):
         return (
@@ -488,17 +627,19 @@ def validate_turn(
     return True, ""
 
 
-def validate_training_readiness_payload(payload: dict[str, Any]) -> tuple[bool, str]:
+def validate_training_readiness_payload(
+    payload: dict[str, Any],
+    *,
+    strict: bool = True,
+) -> tuple[bool, str]:
     """Validate dataset-ready -> training config -> analysis-readiness evidence."""
     if not payload.get("dataset_preparation", {}).get("ok"):
         return False, "Dataset preparation failed."
     if len(payload.get("turns", [])) != len(TURN_SPECS):
         return False, "Not all training-readiness turns completed."
-    if not payload.get("confirmation_dialogs"):
-        return False, "Training confirmation dialog was not observed."
-    if any(
-        dialog.get("approved") for dialog in payload.get("confirmation_dialogs", [])
-    ):
+    if not payload.get("confirmation_events"):
+        return False, "Training confirmation card was not observed."
+    if any(event.get("approved") for event in payload.get("confirmation_events", [])):
         return False, "Training confirmation was approved; this artifact should stop."
 
     tools = payload.get("executed_tools", [])
@@ -521,8 +662,17 @@ def validate_training_readiness_payload(payload: dict[str, Any]) -> tuple[bool, 
         return False, "Training unexpectedly started."
 
     ui = payload.get("ui_state") or {}
+    if int(ui.get("dataset_table_rows") or 0) < 1:
+        return False, "Dataset-ready state did not render any Dataset table rows."
+    if ui.get("dataset_empty_state_visible"):
+        return False, "Dataset-ready state still rendered the Dataset empty state."
     if ui.get("chat_processing") or ui.get("controller_processing"):
         return False, "ChatPanel did not return to idle."
+    if strict:
+        return validate_strict_capture_evidence(
+            payload,
+            required_runtime_inputs=(_RUNTIME_INPUT_NAME,),
+        )
     return True, ""
 
 
@@ -537,16 +687,20 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- status: `{payload['status']}`",
         f"- failure reason: {payload.get('failure_reason') or 'none'}",
-        f"- source path: `{payload.get('source_path', '')}`",
+        f"- dataset fixture: `{_runtime_input_display_name(payload)}`",
+        f"- dataset fixture SHA-256: `{_runtime_input_sha256(payload)}`",
         f"- dataset preparation ok: `{payload['dataset_preparation']['ok']}`",
         f"- runtime classification: `{payload['runtime']['classification']}`",
-        f"- model: `{payload['runtime']['model_id']}`",
+        f"- requested model: `{payload['runtime'].get('requested_model_id', '')}`",
+        f"- loaded model: `{payload['runtime'].get('loaded_model_id', '')}`",
+        f"- loaded revision: `{(payload['runtime'].get('model_identity') or {}).get('loaded_revision', '')}`",
         f"- cache usage: `{payload['runtime']['cache_usage']}`",
         f"- HF offline: `{payload['hf_offline']['HF_HUB_OFFLINE']}`",
         f"- Transformers offline: `{payload['hf_offline']['TRANSFORMERS_OFFLINE']}`",
         f"- ready screenshot: `{payload['screenshots']['ready']}`",
-        f"- training confirmations observed: `{len(payload.get('confirmation_dialogs', []))}`",
+        f"- training confirmation cards observed: `{len(payload.get('confirmation_events', []))}`",
         f"- evaluate blocked: `{evaluate_blocked}`",
+        f"- shutdown: `{(payload.get('shutdown') or {}).get('status', 'unknown')}`",
         f"- elapsed seconds: `{payload['elapsed_seconds']}`",
         "",
         "## Dataset Preparation",
@@ -616,6 +770,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- input enabled: `{ui['input_enabled']}`",
             f"- chat processing: `{ui['chat_processing']}`",
             f"- controller processing: `{ui['controller_processing']}`",
+            f"- dataset table rows: `{ui['dataset_table_rows']}`",
+            f"- dataset empty state visible: `{ui['dataset_empty_state_visible']}`",
         ]
     )
     return "\n".join(lines).rstrip() + "\n"
@@ -625,9 +781,35 @@ def _successful_tool(tool: dict[str, Any], name: str) -> bool:
     return str(tool.get("name") or "") == name and bool(tool.get("success"))
 
 
+def _ui_state_from_runtime_state(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "send_button_text": state["send_button_text"],
+        "send_button_enabled": state["send_button_enabled"],
+        "input_enabled": state["input_enabled"],
+        "chat_processing": state["chat_processing"],
+        "controller_processing": state["controller_processing"],
+        "dataset_table_rows": state["dataset_table_rows"],
+        "dataset_empty_state_visible": state["dataset_empty_state_visible"],
+    }
+
+
 def _section(payload: dict[str, Any], key: str) -> dict[str, Any]:
     value = payload.get(key)
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _runtime_input_record(payload: dict[str, Any]) -> dict[str, Any]:
+    evidence = _section(payload, "runtime_input_artifacts")
+    artifacts = _section(evidence, "artifacts")
+    return _section(artifacts, _RUNTIME_INPUT_NAME)
+
+
+def _runtime_input_display_name(payload: dict[str, Any]) -> str:
+    return str(_runtime_input_record(payload).get("display_name") or "")
+
+
+def _runtime_input_sha256(payload: dict[str, Any]) -> str:
+    return str(_runtime_input_record(payload).get("sha256") or "")
 
 
 def _blocked_payload(
@@ -651,8 +833,9 @@ def _blocked_payload(
         "turns": [],
         "visible_messages": [],
         "executed_tools": [],
-        "confirmation_dialogs": [],
+        "confirmation_events": [],
         "final_state": {},
+        "shutdown": {"status": "not_started", "detail": ""},
         "ui_state": {
             "send_button_text": "",
             "send_button_enabled": False,
@@ -665,6 +848,10 @@ def _blocked_payload(
 
 
 def _write_artifacts(output_dir: Path, payload: dict[str, Any]) -> None:
+    if payload.get("status") == "passed":
+        ok, reason = validate_training_readiness_payload(payload)
+        if not ok:
+            raise ValueError(f"Refusing to write invalid strict evidence: {reason}")
     (output_dir / JSON_ARTIFACT).write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

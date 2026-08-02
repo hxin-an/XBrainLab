@@ -70,3 +70,71 @@ def test_resolved_options_reject_sampling_without_positive_temperature():
             temperature=0.0,
             top_p=0.9,
         )
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [True, 1.0, float("nan"), float("inf"), float("-inf"), "128"],
+)
+def test_resolved_options_require_exact_positive_integer_output_budget(invalid):
+    with pytest.raises(ValueError, match="positive integer"):
+        ResolvedGenerationOptions(
+            max_new_tokens=invalid,
+            do_sample=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("temperature", True),
+        ("temperature", float("nan")),
+        ("temperature", float("inf")),
+        ("top_p", True),
+        ("top_p", float("nan")),
+        ("top_p", float("inf")),
+    ],
+)
+def test_resolved_options_reject_non_finite_or_boolean_sampling_values(
+    field,
+    invalid,
+):
+    values = {
+        "max_new_tokens": 128,
+        "do_sample": True,
+        "temperature": 0.7,
+        "top_p": 0.9,
+    }
+    values[field] = invalid
+
+    with pytest.raises(ValueError):
+        ResolvedGenerationOptions(**values)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("max_new_tokens", True),
+        ("max_new_tokens", 128.0),
+        ("max_new_tokens", "128"),
+        ("do_sample", 1),
+        ("do_sample", "false"),
+        ("temperature", "0.7"),
+        ("top_p", "0.9"),
+    ],
+)
+def test_generation_option_resolution_rejects_coercible_wrong_types(
+    field,
+    invalid,
+):
+    values = {
+        "profile": GenerationProfile.INFORMATIONAL_TEXT,
+        "max_new_tokens": 128,
+        "do_sample": True,
+        "temperature": 0.7,
+        "top_p": 0.9,
+    }
+    values[field] = invalid
+
+    with pytest.raises(ValueError):
+        resolve_generation_options(**values)

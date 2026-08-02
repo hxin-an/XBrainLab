@@ -1,13 +1,21 @@
-"""Service-backed data-list queries used by Preprocess UI rendering."""
+"""Detached ApplicationService reads used by the Preprocess UI."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.preprocess_render import (
+    DEFAULT_PREPROCESS_PREVIEW_SECONDS,
+    PreprocessRenderPublication,
+    PreprocessRenderRequest,
+)
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
-    local_result_payload,
+    get_application_view_publication,
+    get_preprocess_render_publication,
 )
 
 PREPROCESS_RENDER_DATA_UNAVAILABLE_MESSAGE = (
@@ -19,43 +27,58 @@ class PreprocessRenderDataUnavailableError(RuntimeError):
     """Raised when the UI cannot obtain one authoritative render publication."""
 
 
-def query_preprocess_render_lists(
+def query_preprocess_render(
     context: Any,
     *,
-    require_available: bool = False,
-) -> tuple[list[Any], list[Any]] | None:
-    """Return current/original objects from one ApplicationService query.
+    channel_index: int,
+    start_seconds: float,
+    duration_seconds: float = DEFAULT_PREPROCESS_PREVIEW_SECONDS,
+) -> PreprocessRenderPublication | None:
+    """Return one bounded detached signal publication for the active view."""
+    view = get_application_view_publication(context)
+    if view is None or not bool(getattr(view, "usable", False)):
+        return None
+    request = PreprocessRenderRequest(
+        publication_generation=view.generation,
+        channel_index=max(0, int(channel_index)),
+        start_seconds=max(0.0, float(start_seconds)),
+        duration_seconds=float(duration_seconds),
+    )
+    try:
+        publication = get_preprocess_render_publication(context, request)
+    except ApplicationError as error:
+        raise PreprocessRenderDataUnavailableError(str(error)) from error
+    except Exception as error:
+        logger.error("Preprocess render publication failed.", exc_info=True)
+        raise PreprocessRenderDataUnavailableError(
+            PREPROCESS_RENDER_DATA_UNAVAILABLE_MESSAGE,
+        ) from error
+    if publication is None:
+        return None
+    return publication
 
-    ``require_available`` is used by product renderers that must fail closed.
-    The default preserves the temporary panel compatibility boundary while it
-    is migrated independently.
-    """
+
+def query_preprocess_data_rows(
+    context: Any,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """Return detached current/original aggregate rows for form validation."""
     result = execute_application_command(
         context,
-        QueryStateCommand(query="data_lists", include_objects=True),
+        QueryStateCommand(query="data_lists"),
         refresh=False,
     )
     if result is None:
-        if require_available:
-            raise PreprocessRenderDataUnavailableError(
-                PREPROCESS_RENDER_DATA_UNAVAILABLE_MESSAGE,
-            )
         return None
     if result.failed:
-        if require_available:
-            reason = result.error_message or result.message
-            raise PreprocessRenderDataUnavailableError(reason)
         return [], []
-    payload = local_result_payload(result)
-    preprocessed = payload.get("preprocessed_data_list")
-    loaded = payload.get("loaded_data_list")
-    if require_available and not (
-        isinstance(preprocessed, list) and isinstance(loaded, list)
-    ):
-        raise PreprocessRenderDataUnavailableError(
-            "Preprocess application state did not publish both data lists.",
-        )
+    diagnostics = result.diagnostics
+    current = diagnostics.get("preprocessed_rows")
+    original = diagnostics.get("raw_rows")
     return (
-        list(preprocessed) if isinstance(preprocessed, list) else [],
-        list(loaded) if isinstance(loaded, list) else [],
+        [dict(row) for row in current if isinstance(row, dict)]
+        if isinstance(current, list)
+        else [],
+        [dict(row) for row in original if isinstance(row, dict)]
+        if isinstance(original, list)
+        else [],
     )

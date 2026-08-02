@@ -31,6 +31,7 @@ from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     CommandName,
+    DatasetSplitContextRequest,
     LoadDataCommand,
     PreviewInterpretationCommand,
     QueryStateCommand,
@@ -221,7 +222,12 @@ def test_human_like_capture_script_is_a_real_exit_code_gate(tmp_path) -> None:
 
 
 def _click(qtbot, button) -> None:
-    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(button.isEnabled, timeout=10000)
+    qtbot.mouseClick(
+        button,
+        Qt.MouseButton.LeftButton,
+        pos=button.rect().center(),
+    )
     qtbot.wait(50)
 
 
@@ -260,12 +266,12 @@ def _wait_for_workflow_panel(qtbot, window, index: int, attr_name: str):
     return getattr(window, attr_name)
 
 
-def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+def _query_diagnostics(study, query: str):
     result = get_application_service(study).execute(
-        QueryStateCommand(query=query, include_objects=include_objects),
+        QueryStateCommand(query=query),
     )
     assert result.ok, result.message
-    return result.local_payload
+    return result.diagnostics
 
 
 def _write_synthetic_raw_fif(tmp_path):
@@ -423,8 +429,8 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
     assert manager.retry_title_btn.text() == ""
     assert not manager.retry_title_btn.icon().isNull()
-    assert manager.settings_btn.text() == "⋮"
-    assert manager.settings_btn.icon().isNull()
+    assert manager.settings_btn.text() == ""
+    assert not manager.settings_btn.icon().isNull()
     assert manager.settings_btn.accessibleName() == "Assistant options"
     assert not hasattr(manager, "float_btn")
     assert manager.retry_title_btn.isEnabled() is False
@@ -474,8 +480,8 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert manager.retry_title_btn.isEnabled() is False
     assert manager.clear_conversation_title_action.isEnabled() is False
 
-    assert panel.send_btn.toolButtonStyle() is (Qt.ToolButtonStyle.ToolButtonIconOnly)
-    assert panel.send_btn.icon().isNull() is False
+    assert panel.send_btn.toolButtonStyle() is (Qt.ToolButtonStyle.ToolButtonTextOnly)
+    assert panel.send_btn.icon().isNull() is True
     assert panel.send_btn.accessibleName() == "Send request"
 
     panel.append_message("user", "hello from a product user")
@@ -840,7 +846,7 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
         for item in terminal_publications
     ]
     expected_projection = build_assistant_status_projection(publication)
-    assert expected_projection.stage == "Ready for epoching"
+    assert expected_projection.stage == "Ready for EEG epoching"
     qtbot.waitUntil(
         lambda: (
             manager.assistant_status_projection is not None
@@ -901,16 +907,12 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
         _wait_for_raw_count(qtbot, test_app.study, 1)
 
     qtbot.waitUntil(lambda: test_app.dataset_panel.table.rowCount() == 1, timeout=5000)
-    loaded_objects = _query_diagnostics(
-        test_app.study,
-        "data_lists",
-        include_objects=True,
-    )["loaded_data_list"]
+    loaded_rows = _query_diagnostics(test_app.study, "data_lists")["raw_rows"]
     assert test_app.dataset_panel.table.rowCount() == 1
-    assert (
-        test_app.dataset_panel.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
-        is loaded_objects[0]
-    )
+    name_item = test_app.dataset_panel.table.item(0, 0)
+    assert name_item.data(Qt.ItemDataRole.UserRole) is None
+    row_identity = name_item.data(test_app.dataset_panel._ROW_IDENTITY_ROLE)
+    assert row_identity.canonical_filepath.endswith(loaded_rows[0]["filename"])
     stale_render.assert_not_called()
     stale_sidebar.assert_not_called()
 
@@ -923,6 +925,21 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         QMessageBox,
         "information",
         lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+    )
+    blocking_messages: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, title, text, *_args, **_kwargs: blocking_messages.append(
+            (str(title), str(text)),
+        ),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "critical",
+        lambda _parent, title, text, *_args, **_kwargs: blocking_messages.append(
+            (str(title), str(text)),
+        ),
     )
     fif_path = _write_synthetic_raw_fif(tmp_path)
     training_option_holder = {}
@@ -942,6 +959,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         eval_record = SimpleNamespace(
             label=np.array([0, 1, 0, 1]),
             output=np.array([0, 1, 0, 1]),
+            evaluation_split="test",
             gradient={},
             gradient_input={},
             smoothgrad={},
@@ -1078,8 +1096,12 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return (1.0, 40.0, None)
 
     class FakeEpochingDialog:
-        def __init__(self, _parent, _data_list, **_dialog_context):
-            pass
+        def __init__(self, _parent, *, epoch_context, **_dialog_context):
+            available_events = {
+                str(row.get("name"))
+                for row in epoch_context.get("available_events", [])
+            }
+            assert {"left", "right"} <= available_events
 
         def exec(self):
             return True
@@ -1114,9 +1136,11 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_epoch)
     qtbot.waitUntil(
-        lambda: bool(_application_state(test_app.study)["epoch"]["exists"]),
+        lambda: bool(_application_state(test_app.study)["epoch"]["exists"])
+        or bool(blocking_messages),
         timeout=5000,
     )
+    assert not blocking_messages, blocking_messages
     epoch_state = _application_state(test_app.study)["epoch"]
     assert epoch_state["exists"] is True
     assert epoch_state["epoch_count"] == 12
@@ -1151,12 +1175,13 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             )
         ],
     )
-    split_context = _query_diagnostics(
-        test_app.study,
-        "dataset_generation_context",
-        include_objects=True,
+    split_service = get_application_service(test_app.study)
+    split_context = split_service.get_dataset_split_context(
+        DatasetSplitContextRequest(
+            publication_generation=split_service.get_view_publication().generation,
+        ),
     )
-    assert split_context["epoch_available"] is True
+    assert split_context.context.epoch_available is True
     split_payload = {
         "train_type": split_config.train_type.value,
         "is_cross_validation": split_config.is_cross_validation,
@@ -1179,8 +1204,9 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     }
 
     class FakeSplitDialog:
-        def __init__(self, _parent, _controller, **_dialog_context):
-            pass
+        def __init__(self, _parent, *, split_context, **_dialog_context):
+            assert split_context.epoch_available is True
+            assert split_context.trial_count == 12
 
         def exec(self):
             return True

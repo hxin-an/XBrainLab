@@ -76,7 +76,7 @@ class Saliency3D:
 
         self.plotter.background_color = bgcolor
 
-        self.channelActor = []
+        self.channelActor: list[pv.Actor] = []
         self.headActor = None
 
         if self.engine:

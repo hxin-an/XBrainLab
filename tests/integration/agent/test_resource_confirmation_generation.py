@@ -9,7 +9,9 @@ import mne
 import numpy as np
 
 from XBrainLab.backend.application import (
-    data_compatibility_service,
+    PreviewInterpretationCommand,
+    ValidateInterpretationCommand,
+    data_interpretation_service,
     get_application_service,
 )
 from XBrainLab.backend.application.commands import ScanSourceCommand
@@ -78,33 +80,45 @@ def test_agent_resource_confirmation_survives_warning_but_not_domain_mutation(
     eeg_path = _write_raw_fif(tmp_path / "agent-confirmation_raw.fif")
     study = Study()
     service = get_application_service(study)
+    assert service.execute(ScanSourceCommand(source_path=str(eeg_path))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            }
+        )
+    )
+    assert preview.ok
+    candidate_id = str(preview.diagnostics["candidate"]["candidate_id"])
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
     monkeypatch.setattr(
-        data_compatibility_service,
+        data_interpretation_service,
         "check_import_resource_preflight",
         _warning_preflight,
     )
     context_source = ApplicationToolContextSource(study)
-    context = context_source.get_context("load_data")
+    context = context_source.get_context("apply_interpretation")
     assert context is not None
     assert context.generation is not None
-    params = {"paths": [str(eeg_path)]}
+    params = {"candidate_id": candidate_id, "confirmed": True}
 
     challenged = execute_application_tool_command(
         study,
-        "load_data",
+        "apply_interpretation",
         params,
         availability=context.availability,
         state=context.state,
     )
     assert isinstance(challenged, ToolCommandResult)
     assert challenged.error_type == "confirmation_required"
-    after_warning = context_source.get_context("load_data")
+    after_warning = context_source.get_context("apply_interpretation")
     assert after_warning is not None
     assert after_warning.generation == context.generation
 
     initial = ToolAttemptDecision(
         action=ToolAttemptAction.EXECUTE,
-        command_name="load_data",
+        command_name="apply_interpretation",
         params=params,
         context=context,
     )
@@ -120,7 +134,7 @@ def test_agent_resource_confirmation_survives_warning_but_not_domain_mutation(
 
     mutated = service.execute(ScanSourceCommand(source_path=str(eeg_path)))
     assert mutated.ok
-    current = context_source.get_context("load_data")
+    current = context_source.get_context("apply_interpretation")
     assert current is not None
     assert current.generation is not None
     assert current.generation > request.publication_generation

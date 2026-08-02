@@ -5,6 +5,7 @@ useful for reducing data size and computation time.
 """
 
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QDialogButtonBox,
     QDoubleSpinBox,
     QHBoxLayout,
@@ -51,6 +52,7 @@ class ResampleDialog(BaseDialog):
         self.sfreq_spin.setRange(1, 10000)
         self.sfreq_spin.setValue(250.0)
         self.sfreq_spin.setFixedWidth(150)
+        self.sfreq_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         field_row = QHBoxLayout()
         field_row.setContentsMargins(0, 0, 0, 0)
         field_row.setSpacing(8)

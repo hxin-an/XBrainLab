@@ -35,10 +35,13 @@ from XBrainLab.ui.application_capabilities import (
     get_epoch_dialog_context,
     has_real_application_context,
     is_stale_publication_result,
-    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.dialogs.preprocess import (
     EpochingDialog,
     FilteringDialog,
@@ -47,9 +50,18 @@ from XBrainLab.ui.dialogs.preprocess import (
     ResampleDialog,
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
-from XBrainLab.ui.refresh_coordinator import refresh_shared_status
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+_PREPROCESS_AVAILABILITY_UNAVAILABLE = (
+    "Preprocessing availability is unavailable right now."
+)
+_EPOCH_AVAILABILITY_UNAVAILABLE = (
+    "EEG epoch creation availability is unavailable right now."
+)
+_RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE = (
+    "Reset preprocessing availability is unavailable right now."
+)
 
 
 class PreprocessSidebar(QWidget):
@@ -167,7 +179,7 @@ class PreprocessSidebar(QWidget):
         exec_layout.setContentsMargins(0, 10, 0, 0)
         exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.btn_epoch = QPushButton("Epoching")
+        self.btn_epoch = QPushButton("Create EEG Epochs")
         self.btn_epoch.setStyleSheet(Stylesheets.BTN_SUCCESS)
         self.btn_epoch.clicked.connect(self.open_epoching)
         exec_layout.addWidget(self.btn_epoch)
@@ -185,7 +197,7 @@ class PreprocessSidebar(QWidget):
 
     def update_sidebar(self):
         """Update info panel and button states."""
-        if not self.controller:
+        if self.controller is None and not has_real_application_context(self):
             return
 
         # 1. Update Info Panel
@@ -193,7 +205,11 @@ class PreprocessSidebar(QWidget):
 
         is_epoched = False
         publication = get_application_view_publication(self)
-        if publication is not None:
+        product_context = has_real_application_context(self)
+        publication_usable = publication is not None and bool(
+            getattr(publication, "usable", not product_context)
+        )
+        if publication_usable:
             active_dataset = getattr(
                 getattr(publication, "state", None),
                 "active_dataset",
@@ -213,7 +229,11 @@ class PreprocessSidebar(QWidget):
             if capabilities is not None
             else None
         )
-        if preprocess_capability is None and epoch_capability is None:
+        if (
+            preprocess_capability is None
+            and epoch_capability is None
+            and not product_context
+        ):
             data_list = self._compatibility_preprocessed_data_list_for_render()
             if data_list:
                 first_data = data_list[0]
@@ -235,25 +255,12 @@ class PreprocessSidebar(QWidget):
             return []
         return list(data_list) if isinstance(data_list, list) else []
 
-    def _preprocessed_data_list_for_epoching(
-        self,
-        epoch_capability,
-        *,
-        expected_publication_generation: int | None = None,
-    ) -> list[Any] | None:
-        return self._preprocessed_data_list_for_dialog(
-            epoch_capability,
-            "Epoching Blocked",
-            expected_publication_generation=expected_publication_generation,
-        )
-
-    def _preprocessed_data_list_for_dialog(
+    def _preprocessed_channel_names_for_rereference(
         self,
         command_capability,
-        failure_title: str,
         *,
         expected_publication_generation: int | None = None,
-    ) -> list[Any] | None:
+    ) -> list[str] | None:
         command_kwargs: dict[str, Any] = {"refresh": False}
         if expected_publication_generation is not None:
             command_kwargs["expected_publication_generation"] = (
@@ -261,32 +268,67 @@ class PreprocessSidebar(QWidget):
             )
         result = execute_application_command(
             self,
-            QueryStateCommand(query="data_lists", include_objects=True),
+            QueryStateCommand(query="data_lists"),
             **command_kwargs,
         )
         if result is None:
-            if command_capability is None:
-                return self._compatibility_preprocessed_data_list_for_dialog(
-                    failure_title,
+            if command_capability is None and not has_real_application_context(self):
+                return self._compatibility_preprocessed_channel_names(
+                    "Re-reference Blocked",
                 )
             QMessageBox.warning(
                 self,
-                failure_title,
+                "Re-reference Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
             return None
         if result.failed:
-            self._show_command_failure(failure_title, result.message)
+            self._show_command_failure("Re-reference Blocked", result.message)
             return None
-        data_list = local_result_payload(result).get("preprocessed_data_list")
-        if not isinstance(data_list, list):
+        rows = getattr(result, "diagnostics", {}).get("preprocessed_rows")
+        if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+            QMessageBox.warning(
+                self,
+                "Re-reference Blocked",
+                "Preprocessed channel information is unavailable.",
+            )
+            return None
+        channels = rows[0].get("channels")
+        if not isinstance(channels, list) or any(
+            not isinstance(channel, str) for channel in channels
+        ):
+            QMessageBox.warning(
+                self,
+                "Re-reference Blocked",
+                "Preprocessed channel information is unavailable.",
+            )
+            return None
+        return list(channels)
+
+    def _compatibility_preprocessed_channel_names(
+        self,
+        failure_title: str,
+    ) -> list[str] | None:
+        data_list = self._compatibility_preprocessed_data_list_for_dialog(
+            failure_title,
+        )
+        if not data_list:
             QMessageBox.warning(
                 self,
                 failure_title,
-                "Preprocessed data is unavailable from the current workflow state.",
+                "Preprocessed channel information is unavailable.",
             )
             return None
-        return list(data_list)
+        try:
+            channels = list(data_list[0].get_mne().ch_names)
+        except (AttributeError, TypeError):
+            QMessageBox.warning(
+                self,
+                failure_title,
+                "Preprocessed channel information is unavailable.",
+            )
+            return None
+        return [str(channel) for channel in channels]
 
     def _compatibility_preprocessed_data_list_for_dialog(
         self,
@@ -315,7 +357,8 @@ class PreprocessSidebar(QWidget):
                 preprocessing is locked.
 
         """
-        if publication is None:
+        product_context = has_real_application_context(self)
+        if publication is None and not product_context:
             preprocess_capability = get_command_capability(
                 self,
                 CommandName.PREPROCESS,
@@ -328,39 +371,61 @@ class PreprocessSidebar(QWidget):
                 self,
                 CommandName.RESET_PREPROCESS,
             )
+        elif publication is None:
+            preprocess_capability = None
+            epoch_capability = None
+            reset_capability = None
         else:
             capabilities = publication.effective_capabilities
             preprocess_capability = capabilities.get(CommandName.PREPROCESS)
             epoch_capability = capabilities.get(CommandName.CREATE_EPOCH)
             reset_capability = capabilities.get(CommandName.RESET_PREPROCESS)
         preprocess_enabled = (
-            preprocess_capability.enabled if preprocess_capability is not None else True
+            preprocess_capability.enabled
+            if preprocess_capability is not None
+            else not product_context
         )
         epoch_enabled = (
-            epoch_capability.enabled if epoch_capability is not None else True
+            epoch_capability.enabled
+            if epoch_capability is not None
+            else not product_context
         )
         reset_enabled = (
-            reset_capability.enabled if reset_capability is not None else True
+            reset_capability.enabled
+            if reset_capability is not None
+            else not product_context
         )
         preprocess_reason = blocked_reason(
             preprocess_capability,
-            "Preprocessing is not available.",
+            (
+                _PREPROCESS_AVAILABILITY_UNAVAILABLE
+                if product_context
+                else "Preprocessing is not available."
+            ),
         )
         epoch_reason = blocked_reason(
             epoch_capability,
-            "Epoching is not available.",
+            (
+                _EPOCH_AVAILABILITY_UNAVAILABLE
+                if product_context
+                else "Creating EEG epochs is not available."
+            ),
         )
         reset_reason = blocked_reason(
             reset_capability,
-            "Reset preprocessing is not available.",
+            (
+                _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE
+                if product_context
+                else "Reset preprocessing is not available."
+            ),
         )
-        if preprocess_capability is None and is_epoched:
+        if preprocess_capability is None and is_epoched and not product_context:
             preprocess_reason = (
-                "Preprocessing is locked (Data Epoched). Click to see details."
+                "Preprocessing is locked (EEG epochs created). Click for details."
             )
-        if epoch_capability is None and is_epoched:
+        if epoch_capability is None and is_epoched and not product_context:
             epoch_reason = (
-                "Preprocessing is locked (Data Epoched). Click to see details."
+                "Preprocessing is locked (EEG epochs created). Click for details."
             )
 
         for button in (
@@ -373,12 +438,16 @@ class PreprocessSidebar(QWidget):
         self.btn_epoch.setEnabled(epoch_enabled)
         self.btn_reset.setEnabled(reset_enabled and not is_epoched)
         self.btn_reset.setToolTip(
-            "Preprocessing is locked after epoching."
-            if is_epoched
+            reset_reason
+            if product_context and reset_capability is None
             else (
-                "Restore the loaded EEG data before preprocessing."
-                if reset_enabled
-                else reset_reason
+                "Preprocessing is locked after EEG epochs are created."
+                if is_epoched
+                else (
+                    "Restore the loaded EEG data before preprocessing."
+                    if reset_enabled
+                    else reset_reason
+                )
             )
         )
 
@@ -408,11 +477,13 @@ class PreprocessSidebar(QWidget):
 
         # Epoch Button
         if not epoch_enabled or (epoch_capability is None and is_epoched):
-            self.btn_epoch.setText("Epoched (Locked)" if is_epoched else "Epoching")
+            self.btn_epoch.setText(
+                "EEG Epochs Created" if is_epoched else "Create EEG Epochs"
+            )
             self.btn_epoch.setToolTip(epoch_reason)
         else:
-            self.btn_epoch.setText("Epoching")
-            self.btn_epoch.setToolTip("Segment data into epochs")
+            self.btn_epoch.setText("Create EEG Epochs")
+            self.btn_epoch.setToolTip("Segment continuous EEG into EEG epochs")
 
     # --- Action Logic ---
 
@@ -425,7 +496,7 @@ class PreprocessSidebar(QWidget):
             bool: ``True`` if the action is blocked, ``False`` otherwise.
 
         """
-        if not self.controller:
+        if self.controller is None and not has_real_application_context(self):
             return False
         preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
         if preprocess_capability is not None and not preprocess_capability.enabled:
@@ -439,9 +510,19 @@ class PreprocessSidebar(QWidget):
             )
             return True
         if preprocess_capability is None:
+            if has_real_application_context(self):
+                QMessageBox.warning(
+                    self,
+                    "Action Blocked",
+                    _PREPROCESS_AVAILABILITY_UNAVAILABLE,
+                )
+                return True
+            controller = self.controller
+            if controller is None:
+                return False
             fallback_ok, is_epoched = self._run_preprocess_compatibility_call(
                 "Action Blocked",
-                self.controller.is_epoched,
+                controller.is_epoched,
             )
             if not fallback_ok:
                 return True
@@ -449,7 +530,7 @@ class PreprocessSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     "Action Blocked",
-                    "Preprocessing is locked because data has been Epoched.\n"
+                    "Preprocessing is locked because EEG epochs were created.\n"
                     "Please 'Reset All Preprocessing' to make changes.",
                 )
                 return True
@@ -476,6 +557,13 @@ class PreprocessSidebar(QWidget):
             )
             return False
         if preprocess_capability is None:
+            if has_real_application_context(self):
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    _PREPROCESS_AVAILABILITY_UNAVAILABLE,
+                )
+                return False
             if not self.controller:
                 QMessageBox.warning(
                     self,
@@ -498,19 +586,6 @@ class PreprocessSidebar(QWidget):
                 return False
         return True
 
-    def notify_update(self):
-        """Notify parent panel to update itself (plots etc)."""
-        if self.panel and hasattr(self.panel, "update_panel"):
-            self.panel.update_panel()
-
-    def _notify_update_after_command_result(self, result) -> None:
-        if result is None:
-            self.notify_update()
-
-    def _refresh_shared_status_after_command_result(self, result) -> None:
-        if result is None:
-            refresh_shared_status(self)
-
     def _show_status(self, message: str) -> None:
         if show_status_message(self.panel, message):
             return
@@ -520,16 +595,13 @@ class PreprocessSidebar(QWidget):
         QMessageBox.critical(self, title, message)
 
     def _show_epoch_success(self, result) -> None:
-        message = "Epoching applied. Preprocessing is now locked."
+        message = "EEG epochs created. Preprocessing is now locked."
         self._show_status(message)
 
     def _show_preprocess_success(self, result: Any, message: str) -> None:
-        self._notify_update_after_command_result(result)
         self._show_status(message)
 
     def _handle_epoch_command_success(self, result: Any) -> None:
-        self._notify_update_after_command_result(result)
-        self._refresh_shared_status_after_command_result(result)
         self._show_epoch_success(result)
 
     def _run_preprocess_compatibility_call(
@@ -550,6 +622,13 @@ class PreprocessSidebar(QWidget):
         """Capture one authoritative publication before opening an edit dialog."""
         review_context = get_command_review_context(self, CommandName.PREPROCESS)
         if review_context is None:
+            if has_real_application_context(self):
+                QMessageBox.warning(
+                    self,
+                    blocked_title,
+                    _PREPROCESS_AVAILABILITY_UNAVAILABLE,
+                )
+                return review_context, False
             return review_context, not (
                 self.check_lock() or not self.check_data_loaded()
             )
@@ -559,7 +638,7 @@ class PreprocessSidebar(QWidget):
             QMessageBox.warning(
                 self,
                 blocked_title,
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                _PREPROCESS_AVAILABILITY_UNAVAILABLE,
             )
             return review_context, False
         if not capability.enabled:
@@ -603,8 +682,11 @@ class PreprocessSidebar(QWidget):
             return InteractionOutcome.completed(result.message)
 
         def _handle_error(error: tuple) -> None:
-            message = error[1] if len(error) > 1 else error
-            QMessageBox.critical(self, "Error", f"{failure_prefix}: {message}")
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.PREPROCESS_EXECUTION,
+                error_info=error,
+            )
 
         if execute_application_command_async(
             self,
@@ -642,9 +724,12 @@ class PreprocessSidebar(QWidget):
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
                 )
             return _handle_result(result)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"{failure_prefix}: {e}")
-            return InteractionOutcome.failed(failure_prefix)
+        except Exception:
+            message = present_unexpected_error(
+                self,
+                UnexpectedErrorContext.PREPROCESS_EXECUTION,
+            )
+            return InteractionOutcome.failed(message)
 
     def open_filtering(self):
         """Open the filtering dialog and apply bandpass/notch filters."""
@@ -692,11 +777,11 @@ class PreprocessSidebar(QWidget):
 
     def _current_sampling_rate_hz(self) -> float | None:
         """Return the lowest loaded rate so validation is safe for every file."""
-        query_candidate = getattr(self.panel, "_query_data_lists_for_render", None)
+        query_candidate = getattr(self.panel, "_query_preprocess_data_rows", None)
         if not callable(query_candidate):
             return None
         query = cast(
-            Callable[[], tuple[list[Any], list[Any]] | None],
+            Callable[[], tuple[list[dict[str, Any]], list[dict[str, Any]]] | None],
             query_candidate,
         )
         try:
@@ -707,32 +792,22 @@ class PreprocessSidebar(QWidget):
             return None
         rates = [
             rate
-            for data in rendered[0]
-            if (rate := self._sampling_rate_hz(data)) is not None
+            for row in rendered[0]
+            if (rate := self._sampling_rate_hz(row)) is not None
         ]
         return min(rates) if rates else None
 
     @staticmethod
-    def _sampling_rate_hz(data: Any) -> float | None:
-        """Read one signal's rate without loading or mutating its samples."""
-        get_sfreq_candidate = getattr(data, "get_sfreq", None)
-        if callable(get_sfreq_candidate):
-            get_sfreq = cast(Callable[[], Any], get_sfreq_candidate)
-            try:
-                value = float(get_sfreq())
-                if value > 0:
-                    return value
-            except (TypeError, ValueError):
-                pass
-        get_mne_candidate = getattr(data, "get_mne", None)
-        if not callable(get_mne_candidate):
+    def _sampling_rate_hz(row: dict[str, Any]) -> float | None:
+        """Read one detached aggregate row's sampling frequency."""
+        value = row.get("sampling_frequency")
+        if isinstance(value, bool) or value is None:
             return None
-        get_mne = cast(Callable[[], Any], get_mne_candidate)
         try:
-            value = float(get_mne().info["sfreq"])
-        except (KeyError, TypeError, ValueError, AttributeError):
+            converted = float(value)
+        except (TypeError, ValueError, OverflowError):
             return None
-        return value if value > 0 else None
+        return converted if converted > 0 else None
 
     def open_resample(self):
         """Open the resample dialog and change the sampling rate."""
@@ -783,14 +858,13 @@ class PreprocessSidebar(QWidget):
             if review_context is not None
             else get_command_capability(self, CommandName.PREPROCESS)
         )
-        data_list = self._preprocessed_data_list_for_dialog(
+        channel_names = self._preprocessed_channel_names_for_rereference(
             preprocess_capability,
-            "Re-reference Blocked",
             expected_publication_generation=expected_generation,
         )
-        if data_list is None:
+        if channel_names is None:
             return
-        dialog = RereferenceDialog(self, data_list)
+        dialog = RereferenceDialog(self, channel_names)
         if dialog.exec():
             ref_channels = dialog.get_params()
             if ref_channels:
@@ -855,53 +929,49 @@ class PreprocessSidebar(QWidget):
             dialog_context.require_usable()
         except PreconditionError as exc:
             message = str(exc)
-            QMessageBox.warning(self, "Epoching Blocked", message)
+            QMessageBox.warning(self, "Create EEG Epochs Blocked", message)
             return InteractionOutcome.blocked(message)
 
         epoch_capability = dialog_context.capability
         if epoch_capability is None:
             message = dialog_context.unavailable_reason or (
-                "Epoching is unavailable because workflow state could not be verified."
+                "Creating EEG epochs is unavailable because workflow state "
+                "could not be verified."
             )
-            QMessageBox.warning(self, "Epoching Blocked", message)
+            QMessageBox.warning(self, "Create EEG Epochs Blocked", message)
             return InteractionOutcome.blocked(message)
         if not epoch_capability.enabled:
             message = blocked_reason(
                 epoch_capability,
-                "Epoching is not available.",
+                "Creating EEG epochs is not available.",
             )
             QMessageBox.warning(
                 self,
-                "Epoching Blocked",
+                "Create EEG Epochs Blocked",
                 message,
             )
             return InteractionOutcome.blocked(message)
 
-        data_list = self._preprocessed_data_list_for_epoching(
-            epoch_capability,
-            expected_publication_generation=dialog_context.publication_generation,
-        )
-        if data_list is None:
-            return InteractionOutcome.blocked(
-                "Preprocessed data is unavailable for epoching."
-            )
         epoch_handoff = dialog_context.epoch_handoff
-        if epoch_handoff is None:
-            message = "Epoching context is unavailable."
-            QMessageBox.warning(self, "Epoching Blocked", message)
+        epoch_setup = dialog_context.epoch_setup
+        if epoch_handoff is None or epoch_setup is None:
+            message = "EEG epoch setup is unavailable."
+            QMessageBox.warning(self, "Create EEG Epochs Blocked", message)
             return InteractionOutcome.blocked(message)
-        dialog_kwargs: dict[str, Any] = {}
+        dialog_kwargs: dict[str, Any] = {
+            "epoch_context": dict(epoch_setup),
+        }
         if epoch_handoff:
             dialog_kwargs["epoch_handoff"] = dict(epoch_handoff)
         if suggested_values:
             dialog_kwargs["assistant_suggestions"] = dict(suggested_values)
-        dialog = EpochingDialog(self, data_list, **dialog_kwargs)
+        dialog = EpochingDialog(self, **dialog_kwargs)
         if not dialog.exec():
-            return InteractionOutcome.cancelled("Epoching was cancelled.")
+            return InteractionOutcome.cancelled("Creating EEG epochs was cancelled.")
         params = dialog.get_params()
         if not params:
             return InteractionOutcome.accepted(
-                "The epoching dialog was accepted without an applicable change."
+                "The EEG epoch dialog was accepted without an applicable change."
             )
         baseline, selected_events, tmin, tmax = params
         return self._execute_preprocess_command(
@@ -912,21 +982,35 @@ class PreprocessSidebar(QWidget):
                 event_ids=selected_events,
                 confirmation_receipt=dialog.get_confirmation_receipt(),
             ),
-            blocked_title="Epoching Blocked",
-            failure_prefix="Epoching failed",
+            blocked_title="Create EEG Epochs Blocked",
+            failure_prefix="Creating EEG epochs failed",
             on_success=self._handle_epoch_command_success,
             expected_publication_generation=(dialog_context.publication_generation),
-            stale_review_title="Review Epoching Again",
+            stale_review_title="Review EEG Epoch Setup Again",
         )
 
     def reset_preprocess(self):
         """Prompt the user and reset all preprocessing steps to the original data."""
         publication = get_application_view_publication(self)
+        if publication is None and has_real_application_context(self):
+            QMessageBox.warning(
+                self,
+                "Reset Blocked",
+                _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
+            )
+            return
         reset_capability = (
             publication.effective_capabilities.get(CommandName.RESET_PREPROCESS)
             if publication is not None
             else get_command_capability(self, CommandName.RESET_PREPROCESS)
         )
+        if reset_capability is None and has_real_application_context(self):
+            QMessageBox.warning(
+                self,
+                "Reset Blocked",
+                _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
+            )
+            return
         if reset_capability is not None and not reset_capability.enabled:
             QMessageBox.warning(
                 self,
@@ -980,9 +1064,9 @@ class PreprocessSidebar(QWidget):
             elif result.failed:
                 self._show_command_failure("Error", result.message)
                 return
-            self._notify_update_after_command_result(result)
-            self._refresh_shared_status_after_command_result(result)
             self._show_status("Preprocessing reset")
-        except Exception as e:
-            logger.error("Reset failed: %s", e)
-            QMessageBox.critical(self, "Error", f"Reset failed: {e}")
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.PREPROCESS_RESET,
+            )

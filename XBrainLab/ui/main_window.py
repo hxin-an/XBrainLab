@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
 from threading import RLock
-from typing import Any
+from typing import Any, cast
 
 from PyQt6 import sip
 from PyQt6.QtCore import (
@@ -36,29 +36,36 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from XBrainLab.backend.application import QueryStateCommand, StopTrainingCommand
+from XBrainLab.backend.application.commands import (
+    QueryStateCommand,
+    StopTrainingCommand,
+)
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
-    application_background_tasks_idle,
     application_runtime_initialized,
+    application_ui_runtime,
     execute_application_command,
     execute_application_command_async,
     has_real_application_context,
-    local_result_payload,
     release_application_shutdown_fence,
     request_application_shutdown_fence,
+    training_transient_ui_port,
+)
+from XBrainLab.ui.application_publication_renderer import (
+    ApplicationPublicationRenderLedger,
+    DesktopApplicationPublicationRenderer,
 )
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
-)
-from XBrainLab.ui.controller_compatibility_bootstrap import (
-    get_compatibility_workflow_controllers_for_panel_bootstrap,
 )
 from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.panel_navigation import PanelPreparationFailure
@@ -116,21 +123,21 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "Dataset",
         "XBrainLab.ui.panels.dataset.panel",
         "DatasetPanel",
-        ("dataset",),
+        (),
     ),
     _PanelSpec(
         "preprocess_panel",
         "Preprocess",
         "XBrainLab.ui.panels.preprocess.panel",
         "PreprocessPanel",
-        ("preprocess", "dataset"),
+        (),
     ),
     _PanelSpec(
         "training_panel",
         "Training",
         "XBrainLab.ui.panels.training.panel",
         "TrainingPanel",
-        ("training", "dataset"),
+        (),
         background_import_safe=False,
     ),
     _PanelSpec(
@@ -138,7 +145,7 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "Evaluation",
         "XBrainLab.ui.panels.evaluation.panel",
         "EvaluationPanel",
-        ("evaluation", "training"),
+        (),
         background_import_safe=False,
     ),
     _PanelSpec(
@@ -146,7 +153,7 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "Visualization",
         "XBrainLab.ui.panels.visualization.panel",
         "VisualizationPanel",
-        ("visualization", "training"),
+        (),
         background_import_safe=False,
     ),
 )
@@ -177,8 +184,8 @@ def _load_agent_manager_class():
     return module.AgentManager
 
 
-def _load_info_panel_service_class():
-    """Load the full aggregate info service only after the UI is visible."""
+def _load_info_panel_service_class() -> Callable[..., Any]:
+    """Load the aggregate publication service during desktop composition."""
     patched = globals().get("InfoPanelService")
     if patched is not None:
         return patched
@@ -270,90 +277,6 @@ class _PanelPrepareDelivery(QObject):
             self.deleteLater()
 
 
-class _StartupInfoPanelService:
-    """Lightweight proxy that defers full info-service imports until needed."""
-
-    def __init__(
-        self,
-        study,
-        *,
-        observe_controller_events: bool = True,
-    ) -> None:
-        self.study = study
-        self._observes_controller_events = observe_controller_events
-        self._listeners: weakref.WeakSet = weakref.WeakSet()
-        self._real_service = None
-
-    def _service(self):
-        if self._real_service is None:
-            service_class = _load_info_panel_service_class()
-            self._real_service = service_class(
-                self.study,
-                observe_controller_events=self._observes_controller_events,
-            )
-            for panel in list(self._listeners):
-                self._real_service.register(panel)
-        return self._real_service
-
-    def register(self, panel) -> None:
-        self._listeners.add(panel)
-        if self._real_service is not None:
-            self._real_service.register(panel)
-            return
-        panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
-
-    def unregister(self, panel) -> None:
-        self._listeners.discard(panel)
-        if self._real_service is not None:
-            self._real_service.unregister(panel)
-
-    def notify_all(self, *args, **kwargs) -> None:
-        if self._real_service is not None:
-            self._real_service.notify_all(*args, **kwargs)
-            return
-        loaded, preprocessed = self._query_data_lists()
-        for panel in list(self._listeners):
-            with contextlib.suppress(RuntimeError):
-                panel.update_info(
-                    loaded_data_list=loaded,
-                    preprocessed_data_list=preprocessed,
-                )
-
-    def update_single(self, panel) -> None:
-        if self._real_service is not None:
-            self._real_service.update_single(panel)
-            return
-        loaded, preprocessed = self._query_data_lists()
-        panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
-
-    def _query_data_lists(self) -> tuple[list[Any], list[Any]]:
-        if not application_runtime_initialized(self):
-            return [], []
-        try:
-            from XBrainLab.backend.application.commands import (  # noqa: PLC0415
-                QueryStateCommand,
-            )
-            from XBrainLab.ui.application_capabilities import (  # noqa: PLC0415
-                execute_application_command,
-            )
-
-            result = execute_application_command(
-                self,
-                QueryStateCommand(query="data_lists", include_objects=True),
-                refresh=False,
-            )
-        except Exception:
-            logger.debug("Startup info state query failed", exc_info=True)
-            return [], []
-        if result is None or result.failed:
-            return [], []
-        payload = local_result_payload(result)
-        return (
-            list(payload.get("loaded_data_list", [])),
-            list(payload.get("preprocessed_data_list", [])),
-        )
-
-
 class MainWindow(QMainWindow):
     """The main application window for XBrainLab (PyQt6 version).
 
@@ -379,6 +302,7 @@ class MainWindow(QMainWindow):
     # Signals to control the worker
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
+    _close_retry_requested = pyqtSignal(int)
     COMPACT_NAV_BREAKPOINT = 720
     ASSISTANT_DOCK_STANDARD_WIDTH = 420
     ASSISTANT_DOCK_MINIMUM_WIDTH = 320
@@ -394,13 +318,16 @@ class MainWindow(QMainWindow):
         """
         super().__init__()
         self.study = study
+        cast(Any, self._close_retry_requested.connect)(
+            self._arm_close_retry,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self.setWindowTitle("XBrainLab")
         self.window_geometry = WindowGeometryLifecycle(self)
         self.window_geometry.restore_initial_geometry()
 
         self.agent_initialized = False  # Flag for lazy loading
         self.agent_manager = None
-        self._workflow_controllers = None
         self._loaded_panel_indices: set[int] = set()
         self._startup_prewarm_worker = None
         self._panel_prepare_workers: dict[
@@ -421,6 +348,7 @@ class MainWindow(QMainWindow):
         ] = {}
         self._close_retry_pending = False
         self._closing_in_progress = False
+        self._desktop_render_shutdown_started = False
         self._shutdown_fence_active = False
         self._training_close_check_in_flight = False
         self._training_close_ready = False
@@ -429,11 +357,16 @@ class MainWindow(QMainWindow):
         self._shutdown_only_mode = False
         self._force_shutdown_requested = False
         self._assistant_shutdown_attempts = 0
+        self._assistant_shutdown_pending_logged = False
+        self._assistant_shutdown_slow_logged = False
         self._assistant_cleanup_signal = None
         self._assistant_cleanup_runtime = None
         self._model_download_terminal_signal = None
         self._model_download_lifecycle = None
         self._defer_initial_application_runtime = True
+        self._deferred_application_subscriptions: list[
+            tuple[str, Callable[..., Any]]
+        ] = []
         self._startup_prewarm_retry_pending = False
         self._assistant_dock_resize_pending = False
 
@@ -483,7 +416,13 @@ class MainWindow(QMainWindow):
         self.add_nav_btn("Evaluation", 3, "Evaluation")
         self.add_nav_btn("Visualization", 4, "Visualization")
 
-        self.top_bar_layout.addStretch()
+        self.top_bar_spacer = QWidget()
+        self.top_bar_spacer.setObjectName("TopBarFlexibleSpace")
+        self.top_bar_spacer.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.top_bar_layout.addWidget(self.top_bar_spacer)
 
         # AI Toggle Button
         self.ai_btn = QPushButton("AI Assistant")
@@ -491,20 +430,29 @@ class MainWindow(QMainWindow):
         self.ai_btn.setChecked(False)  # Default Off
         self.ai_btn.clicked.connect(self.toggle_ai_dock)
         self.ai_btn.setObjectName("ActionBtn")
+        self.ai_btn.setSizePolicy(
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.ai_btn.ensurePolished()
+        self._sync_assistant_entry_width()
         self.top_bar_layout.addWidget(self.ai_btn)
 
         main_layout.addWidget(self.top_bar)
         QTimer.singleShot(0, self._update_navigation_layout)
 
         # 2. Services (Must be before panels to allow registration)
-        self.info_service = _StartupInfoPanelService(
-            self.study,
-            observe_controller_events=False,
-        )
+        info_service_class = _load_info_panel_service_class()
+        self.info_service = info_service_class(self.study)
 
         # 3. Stacked Widget (Content Area)
         self.stack = QStackedWidget()
         main_layout.addWidget(self.stack)
+
+        self._application_publication_renderer = None
+        self._last_rendered_application_publication: (
+            ApplicationViewPublication | None
+        ) = None
 
         # Initialize Panels
         self.init_panels()
@@ -686,10 +634,24 @@ class MainWindow(QMainWindow):
         """Keep every workflow destination readable in the available top bar."""
         if not hasattr(self, "compact_nav_combo"):
             return
+        self._sync_assistant_entry_width()
         compact = self.top_bar.contentsRect().width() < self.COMPACT_NAV_BREAKPOINT
         self.compact_nav_combo.setVisible(compact)
+        self.top_bar_spacer.setVisible(not compact)
         for button in self.nav_btns:
             button.setVisible(not compact)
+        self.top_bar_layout.invalidate()
+        self.top_bar_layout.activate()
+
+    def _sync_assistant_entry_width(self) -> None:
+        """Reserve the current styled font width for the Assistant entry point."""
+        if not hasattr(self, "ai_btn"):
+            return
+        required_width = (
+            self.ai_btn.fontMetrics().horizontalAdvance(self.ai_btn.text()) + 32
+        )
+        if self.ai_btn.minimumWidth() != required_width:
+            self.ai_btn.setMinimumWidth(required_width)
 
     def _activate_page(self, index: int) -> None:
         """Activate an already materialized page through the synchronous API."""
@@ -706,7 +668,9 @@ class MainWindow(QMainWindow):
         refresh_after_navigation(self, index)
         self._repaint_navigation_surface()
         QTimer.singleShot(0, self._repaint_navigation_surface)
-        if self.agent_manager is None:
+        if has_real_application_context(self):
+            self._restore_application_publication_status()
+        elif self.agent_manager is None:
             status_bar = self.statusBar()
             if status_bar is not None:
                 status_bar.showMessage(self._backend_status_bar_hint())
@@ -954,12 +918,82 @@ class MainWindow(QMainWindow):
         state = result.diagnostics.get("state", {})
         return workflow_stage_hint(state.get("pipeline_stage"))
 
+    def _render_application_view_publication(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> bool:
+        """Render committed workflow truth on the always-present desktop shell."""
+        if not isinstance(publication, ApplicationViewPublication) or sip.isdeleted(
+            self
+        ):
+            return False
+        info_service = getattr(self, "info_service", None)
+        render_info = getattr(info_service, "render_publication", None)
+        if not callable(render_info) or render_info(publication) is not True:
+            return False
+        shell_rendered = self._show_application_publication_status(publication)
+        if shell_rendered:
+            self._last_rendered_application_publication = publication
+        panels_rendered = all(
+            self._panel_rendered_application_revision(index, publication.revision)
+            for index in tuple(self._loaded_panel_indices)
+        )
+        return shell_rendered and panels_rendered
+
+    def _restore_application_publication_status(self) -> bool:
+        """Restore the last shell-rendered revision after transient navigation UI."""
+        publication = self._last_rendered_application_publication
+        if publication is None:
+            return False
+        return self._show_application_publication_status(publication)
+
+    def _show_application_publication_status(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> bool:
+        """Render one publication-derived workflow status without a state query."""
+        status_bar = self.statusBar()
+        if status_bar is None or sip.isdeleted(status_bar):
+            return False
+        message = self._application_publication_status_message(publication)
+        status_bar.showMessage(message)
+        status_bar.repaint()
+        return status_bar.currentMessage() == message
+
+    @staticmethod
+    def _application_publication_status_message(
+        publication: ApplicationViewPublication,
+    ) -> str:
+        """Project the highest-priority committed workflow state to the shell."""
+        if not publication.usable:
+            return "Workflow status unavailable · Try again"
+        if (
+            publication.state.training.terminal_outcome.state
+            is TrainingOutcomeState.FAILED
+        ):
+            return "Training failed · Adjust settings"
+        return workflow_stage_hint(publication.state.pipeline_stage)
+
+    def _panel_rendered_application_revision(
+        self,
+        index: int,
+        revision: int,
+    ) -> bool:
+        """Return whether one materialized workflow panel committed a revision."""
+        if index < 0 or index >= len(_PANEL_SPECS):
+            return False
+        panel = getattr(self, _PANEL_SPECS[index].attr, None)
+        if panel is None or isinstance(panel, _LazyPanelPlaceholder):
+            return False
+        if isinstance(panel, QObject) and sip.isdeleted(panel):
+            return False
+        ledger = getattr(panel, "_application_render_ledger", None)
+        if not isinstance(ledger, ApplicationPublicationRenderLedger):
+            return False
+        return ledger.last_rendered_revision >= revision
+
     def init_panels(self):
         """Create the first panel now and defer hidden panels until first use."""
-        self._workflow_controllers = (
-            get_compatibility_workflow_controllers_for_panel_bootstrap(self.study)
-        )
-
         for spec in _PANEL_SPECS:
             placeholder = _LazyPanelPlaceholder(spec.label, self)
             setattr(self, spec.attr, placeholder)
@@ -1007,20 +1041,36 @@ class MainWindow(QMainWindow):
         if self.stack.count() <= index:
             return existing
 
-        controllers = self._workflow_controllers
-        if controllers is None:
-            controllers = get_compatibility_workflow_controllers_for_panel_bootstrap(
-                self.study,
-            )
-            self._workflow_controllers = controllers
-
         resolved_panel_class = panel_class or self._prepared_panel_classes.get(index)
         if resolved_panel_class is None:
             resolved_panel_class = _load_panel_class(spec.module, spec.class_name)
         if not callable(resolved_panel_class):
             raise TypeError(f"{spec.class_name} did not resolve to a panel class")
-        controller_args = [getattr(controllers, name) for name in spec.controller_names]
-        panel = resolved_panel_class(*controller_args, self)
+        if spec.attr in {"dataset_panel", "preprocess_panel"}:
+            runtime = application_ui_runtime(self)
+            panel = resolved_panel_class(
+                parent=self,
+                publication_port=runtime,
+            )
+        elif spec.attr == "training_panel":
+            runtime = application_ui_runtime(self)
+            panel = resolved_panel_class(
+                parent=self,
+                query_port=runtime,
+                publication_port=runtime,
+                action_port=runtime,
+                transient_port=training_transient_ui_port(self),
+            )
+        elif spec.attr in {"evaluation_panel", "visualization_panel"}:
+            runtime = application_ui_runtime(self)
+            panel = resolved_panel_class(
+                parent=self,
+                query_port=runtime,
+                publication_port=runtime,
+                action_port=runtime,
+            )
+        else:
+            raise RuntimeError(f"No typed product bootstrap for {spec.class_name}")
         if not isinstance(panel, QWidget):
             if isinstance(panel, QObject):
                 panel.setParent(None)
@@ -1068,8 +1118,26 @@ class MainWindow(QMainWindow):
         if self.agent_manager is not None:
             return
 
+        renderer = self._ensure_application_publication_renderer()
+        if renderer is None:
+            logger.error(
+                "AI assistant initialization requires the desktop publication owner."
+            )
+            self.ai_btn.setChecked(False)
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "AI Assistant could not connect to the application. Try again.",
+                    6000,
+                )
+            return
+
         agent_manager_class = _load_agent_manager_class()
-        self.agent_manager = agent_manager_class(self, self.study)
+        self.agent_manager = agent_manager_class(
+            self,
+            self.study,
+            application_service=renderer.service,
+        )
         try:
             self.agent_manager.init_ui()
         except Exception:
@@ -1223,7 +1291,7 @@ class MainWindow(QMainWindow):
             self._start_startup_prewarm()
 
     def _on_startup_prewarm_result(self, result: dict[str, list[str]]) -> None:
-        """Log prewarm outcome for profiling without surfacing UI noise."""
+        """Bind publication delivery after heavy imports leave the first paint."""
         loaded = result.get("loaded", [])
         failed = result.get("failed", [])
         logger.debug(
@@ -1231,6 +1299,95 @@ class MainWindow(QMainWindow):
             len(loaded),
             failed,
         )
+        self._ensure_application_publication_renderer()
+
+    def _ensure_application_publication_renderer(
+        self,
+    ) -> DesktopApplicationPublicationRenderer | None:
+        """Create the canonical desktop publication owner on first backend use."""
+        renderer = self._application_publication_renderer
+        if renderer is not None:
+            return renderer
+        if (
+            self._closing_in_progress
+            or sip.isdeleted(self)
+            or not has_real_application_context(self)
+        ):
+            return None
+        from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+            get_application_service,
+        )
+
+        renderer = DesktopApplicationPublicationRenderer(
+            service=get_application_service(self.study),
+            render_publication=self._render_application_view_publication,
+            parent=self,
+        )
+        self._application_publication_renderer = renderer
+        self._defer_initial_application_runtime = False
+        initial_publication = self._flush_deferred_application_subscriptions(
+            renderer.service,
+        )
+        if initial_publication is not None:
+            renderer.render_initial_publication(initial_publication)
+        return renderer
+
+    def _defer_application_runtime_subscription(
+        self,
+        event_name: str,
+        callback: Callable[..., Any],
+    ) -> bool:
+        """Queue a panel subscription without constructing the command runtime."""
+        if (
+            not self._defer_initial_application_runtime
+            or self._application_publication_renderer is not None
+            or self._closing_in_progress
+        ):
+            return False
+        subscription = (str(event_name), callback)
+        if subscription not in self._deferred_application_subscriptions:
+            self._deferred_application_subscriptions.append(subscription)
+        return True
+
+    def _cancel_deferred_application_runtime_subscription(
+        self,
+        event_name: str,
+        callback: Callable[..., Any],
+    ) -> bool:
+        """Remove a bridge that was disposed before runtime initialization."""
+        subscription = (str(event_name), callback)
+        try:
+            self._deferred_application_subscriptions.remove(subscription)
+        except ValueError:
+            return False
+        return True
+
+    def _flush_deferred_application_subscriptions(
+        self,
+        service: Any,
+    ) -> ApplicationViewPublication | None:
+        """Bind queued observers and replay the latest committed publication."""
+        pending = tuple(self._deferred_application_subscriptions)
+        self._deferred_application_subscriptions.clear()
+        try:
+            publication = service.get_view_publication()
+        except Exception:
+            logger.exception("Could not read the initial application publication.")
+            self._deferred_application_subscriptions.extend(pending)
+            return None
+        for event_name, callback in pending:
+            try:
+                service.subscribe(event_name, callback)
+            except Exception:
+                logger.exception(
+                    "Could not bind a deferred application publication observer.",
+                )
+                self._deferred_application_subscriptions.append(
+                    (event_name, callback),
+                )
+                continue
+            callback(publication)
+        return publication
 
     def _clear_startup_prewarm_worker(self) -> None:
         """Release the worker reference after the background task completes."""
@@ -1266,6 +1423,7 @@ class MainWindow(QMainWindow):
         if self._force_shutdown_requested:
             if not self._closing_in_progress:
                 self._begin_close_attempt()
+            self._begin_desktop_render_shutdown()
             if not self._owned_ui_background_work_idle():
                 event.ignore()
                 self._schedule_close_retry()
@@ -1282,6 +1440,10 @@ class MainWindow(QMainWindow):
                 return
             if not self._close_assistant_for_shutdown():
                 self._handle_assistant_shutdown_failure(event)
+                return
+            if not self._finalize_application_publication_renderer_for_shutdown():
+                event.ignore()
+                self._schedule_close_retry()
                 return
             self._delegate_close_event_if_alive(event)
             return
@@ -1305,6 +1467,7 @@ class MainWindow(QMainWindow):
                     3000,
                 )
             return
+        self._begin_desktop_render_shutdown()
         if not self._owned_ui_background_work_idle():
             event.ignore()
             self._schedule_close_retry()
@@ -1321,6 +1484,10 @@ class MainWindow(QMainWindow):
             return
         if not self._close_assistant_for_shutdown():
             self._handle_assistant_shutdown_failure(event)
+            return
+        if not self._finalize_application_publication_renderer_for_shutdown():
+            event.ignore()
+            self._schedule_close_retry()
             return
         if not self.window_geometry.persist_before_close():
             event.accept()
@@ -1352,9 +1519,40 @@ class MainWindow(QMainWindow):
         self._shutdown_release_retry_pending = False
         self._shutdown_release_attempts = 0
         self._assistant_shutdown_attempts = 0
+        self._assistant_shutdown_pending_logged = False
+        self._assistant_shutdown_slow_logged = False
         self._set_close_interaction_enabled(False)
+
+    def _begin_desktop_render_shutdown(self) -> None:
+        """Quiesce visible native surfaces after terminal state is published."""
+        if self._desktop_render_shutdown_started:
+            return
+        self._desktop_render_shutdown_started = True
+        self._pause_application_publication_renderer_for_shutdown()
         self._prepare_preprocess_native_plots_for_shutdown()
         self._begin_visualization_render_shutdown()
+
+    def _pause_application_publication_renderer_for_shutdown(self) -> None:
+        """Suspend visible delivery while materialized panels become quiescent."""
+        renderer = self._application_publication_renderer
+        pause = getattr(renderer, "pause_for_shutdown", None)
+        if callable(pause):
+            pause()
+
+    def _finalize_application_publication_renderer_for_shutdown(self) -> bool:
+        """Detach publication delivery before Qt destroys rendered surfaces."""
+        renderer = self._application_publication_renderer
+        if renderer is None:
+            return True
+        cleanup = getattr(renderer, "cleanup", None)
+        try:
+            if callable(cleanup):
+                cleanup()
+        except Exception:
+            logger.exception("Could not finalize desktop publication delivery.")
+            return False
+        self._application_publication_renderer = None
+        return True
 
     def _prepare_preprocess_native_plots_for_shutdown(self) -> None:
         """Quiesce deferred PyQtGraph paint work before window destruction."""
@@ -1363,6 +1561,14 @@ class MainWindow(QMainWindow):
         prepare = getattr(preview, "prepare_for_shutdown", None)
         if callable(prepare):
             prepare()
+
+    def _resume_preprocess_native_plots_after_cancelled_shutdown(self) -> None:
+        """Reconnect Preprocess plot callbacks after a cancelled close."""
+        panel = getattr(self, "preprocess_panel", None)
+        preview = getattr(panel, "preview_widget", None)
+        resume = getattr(preview, "resume_after_cancelled_shutdown", None)
+        if callable(resume):
+            resume()
 
     def _owned_ui_background_work_idle(self) -> bool:
         """Return whether every UI-owned background worker is terminal."""
@@ -1423,6 +1629,8 @@ class MainWindow(QMainWindow):
             logger.exception("Assistant teardown failed during GUI shutdown")
         if stopped:
             self._assistant_shutdown_attempts = 0
+            self._assistant_shutdown_pending_logged = False
+            self._assistant_shutdown_slow_logged = False
             return True
         self._assistant_shutdown_attempts = min(
             self._assistant_shutdown_attempts + 1,
@@ -1504,11 +1712,11 @@ class MainWindow(QMainWindow):
         event.ignore()
         attempts = self._assistant_shutdown_attempts
         if attempts < ASSISTANT_SHUTDOWN_MAX_ATTEMPTS:
-            logger.warning(
-                "Assistant teardown incomplete; scheduling retry %s of %s.",
-                attempts + 1,
-                ASSISTANT_SHUTDOWN_MAX_ATTEMPTS,
-            )
+            if not self._assistant_shutdown_pending_logged:
+                logger.info(
+                    "Assistant teardown is pending; waiting for terminal cleanup."
+                )
+                self._assistant_shutdown_pending_logged = True
             status_bar = self.statusBar()
             if status_bar is not None:
                 status_bar.showMessage(
@@ -1519,11 +1727,13 @@ class MainWindow(QMainWindow):
             self._schedule_close_retry()
             return
 
-        logger.warning(
-            "Assistant teardown is taking longer than %s attempts; continuing "
-            "safe shutdown retries.",
-            attempts,
-        )
+        if not self._assistant_shutdown_slow_logged:
+            logger.warning(
+                "Assistant teardown exceeded the %sms shutdown watchdog; "
+                "continuing safe cleanup.",
+                ASSISTANT_SHUTDOWN_MAX_WAIT_MS,
+            )
+            self._assistant_shutdown_slow_logged = True
         status_bar = self.statusBar()
         if status_bar is not None:
             status_bar.showMessage(
@@ -1618,6 +1828,7 @@ class MainWindow(QMainWindow):
     def _restore_close_interaction(self) -> None:
         """Restore the desktop shell after a cancelled close attempt."""
         self._closing_in_progress = False
+        self._desktop_render_shutdown_started = False
         self._training_close_ready = False
         self._training_close_check_in_flight = False
         self._shutdown_release_retry_pending = False
@@ -1632,6 +1843,11 @@ class MainWindow(QMainWindow):
         )
         if callable(cancel_render_shutdown):
             cancel_render_shutdown()
+        self._resume_preprocess_native_plots_after_cancelled_shutdown()
+        renderer = self._application_publication_renderer
+        resume = getattr(renderer, "resume_after_cancelled_shutdown", None)
+        if callable(resume):
+            resume()
         self._set_close_interaction_enabled(True)
 
     def _set_close_interaction_enabled(self, enabled: bool) -> None:
@@ -1647,7 +1863,8 @@ class MainWindow(QMainWindow):
         if self._shutdown_fence_active:
             return True
         if not has_real_application_context(self):
-            self._shutdown_fence_active = True
+            return True
+        if not application_runtime_initialized(self):
             return True
         try:
             installed = request_application_shutdown_fence(self)
@@ -1665,10 +1882,21 @@ class MainWindow(QMainWindow):
         *,
         delay_ms: int = ASSISTANT_SHUTDOWN_RETRY_INTERVAL_MS,
     ) -> None:
-        """Coalesce close retries while training or assistant workers stop."""
-        if self._close_retry_pending:
+        """Coalesce close retries and always arm their timer on the GUI thread."""
+        if self._close_retry_pending or sip.isdeleted(self):
             return
         self._close_retry_pending = True
+        delay = max(0, int(delay_ms))
+        if QThread.currentThread() is self.thread():
+            self._arm_close_retry(delay)
+            return
+        self._close_retry_requested.emit(delay)
+
+    @pyqtSlot(int)
+    def _arm_close_retry(self, delay_ms: int) -> None:
+        """Create the close timer only on the MainWindow's Qt event loop."""
+        if sip.isdeleted(self):
+            return
         QTimer.singleShot(max(0, int(delay_ms)), self._retry_close)
 
     def _retry_close(self) -> None:
@@ -1687,22 +1915,21 @@ class MainWindow(QMainWindow):
             return False
         if not has_real_application_context(self):
             return True
+        if not application_runtime_initialized(self):
+            return True
 
         self._training_close_check_in_flight = True
 
         def _handle_result(result) -> None:
             self._training_close_check_in_flight = False
             if self._training_stop_result_allows_close(result):
-                self._training_close_ready = application_background_tasks_idle(
-                    self,
-                    timeout=0.0,
-                )
-                if not self._training_close_ready:
-                    status_bar = self.statusBar()
-                    if status_bar is not None:
-                        status_bar.showMessage(
-                            "Finishing background analysis before closing...",
-                        )
+                # The result callback runs before its own async command handle is
+                # released. Waiting for application background idleness here can
+                # therefore wait on the callback that is performing the check and
+                # dispatch Stop Training forever. A terminal stop result is the
+                # training-liveness gate; subsequent close stages independently
+                # quiesce UI and native-render owners.
+                self._training_close_ready = True
                 self._schedule_close_retry()
                 return
             if not result.failed and result.diagnostics.get("stopped") is False:

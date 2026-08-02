@@ -61,6 +61,36 @@ def test_runtime_coordinator_serializes_preflight_and_worker_transitions():
     assert coordinator.current is published[-1]
 
 
+def test_runtime_coordinator_preserves_explicit_execution_device() -> None:
+    published: list[AssistantRuntimeSnapshot] = []
+    coordinator = AssistantRuntimeCoordinator(published.append)
+    original = _launch_spec(TEST_ACTIVE_MODEL_ID)
+    spec = AssistantRuntimeLaunchSpec(
+        backend=original.backend,
+        requested_backend_id=original.requested_backend_id,
+        requested_model_id=original.requested_model_id,
+        model_id=original.model_id,
+        outcome=original.outcome,
+        selection_detail="Local runtime ready on CPU.",
+        settings=original.settings,
+        device_fallback_reason="CUDA is not available",
+    )
+
+    coordinator.begin_loading(spec, activation_id=17)
+    coordinator.accept_worker_snapshot(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode=spec.backend_mode,
+            model_id=spec.model_id,
+            activation_id=17,
+        )
+    )
+
+    assert coordinator.current.execution_device == spec.execution_device
+    assert coordinator.current.device_fallback_reason == "CUDA is not available"
+
+
 def test_runtime_coordinator_owns_preflight_failure_copy():
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)

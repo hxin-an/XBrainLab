@@ -23,9 +23,16 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application.saliency_policy import (
     ADVANCED_SALIENCY_METHODS,
     DEFAULT_ADVANCED_SALIENCY_PARAMS,
+    MAX_SALIENCY_NT_SAMPLES,
+    MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
+    MIN_SALIENCY_NT_SAMPLES,
     selected_saliency_methods_from_params,
 )
 from XBrainLab.backend.visualization import supported_saliency_methods
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
     dark_dialog_stylesheet,
@@ -242,8 +249,17 @@ class SaliencySettingDialog(BaseDialog):
             self.saliency_params = new_params
             super().accept()
 
-        except Exception as e:
-            QMessageBox.warning(self, "Validation Error", str(e))
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Select at least one saliency method and review its parameters.",
+            )
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.SALIENCY_SETTINGS,
+            )
 
     def get_result(self):
         """Return the configured saliency parameters."""
@@ -286,6 +302,7 @@ class SaliencySettingDialog(BaseDialog):
         return page
 
     def _build_param_editor(self, param: str) -> QSpinBox | QDoubleSpinBox:
+        editor: QSpinBox | QDoubleSpinBox
         if param == "stdevs":
             editor = QDoubleSpinBox()
             editor.setRange(0.0, 100.0)
@@ -294,10 +311,13 @@ class SaliencySettingDialog(BaseDialog):
         else:
             editor = QSpinBox()
             if param == "nt_samples_batch_size":
-                editor.setRange(0, 100_000)
+                editor.setRange(0, MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE)
                 editor.setSpecialValueText("Automatic")
             else:
-                editor.setRange(1, 100_000)
+                editor.setRange(
+                    MIN_SALIENCY_NT_SAMPLES,
+                    MAX_SALIENCY_NT_SAMPLES,
+                )
         editor.setObjectName("SaliencyParamEditor")
         editor.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         editor.setFixedWidth(150)

@@ -17,8 +17,11 @@ from ...training import TrainingOption
 from ...utils import get_random_state, set_random_state
 from ...utils.filesystem_identity import (
     ContainedOutputDirectory,
+    FilesystemIdentityError,
+    StableDirectoryIdentity,
     create_contained_output_directory,
     filesystem_safe_identity,
+    retain_directory_identity,
 )
 from ...utils.logger import logger
 from .artifact_store import (
@@ -372,6 +375,16 @@ class TrainRecord:
             if self.start_timestamp is None:
                 self.start_timestamp = time.time()
 
+    def _retain_artifact_identity(
+        self,
+        target_path: str,
+    ) -> StableDirectoryIdentity:
+        """Bind one persistence operation to the admitted output directory."""
+        output_directory = self._output_directory
+        if output_directory is not None:
+            return output_directory.retain_identity()
+        return retain_directory_identity(target_path)
+
     def pause(self) -> None:
         """Pause training by saving the current random state and timestamp."""
         with self._state_mutation():
@@ -532,53 +545,59 @@ class TrainRecord:
         target_path = self._artifact_io_path
         if not target_path:
             return
-
-        if self.eval_record:
-            self.eval_record.export(target_path)
-
-        for key in RecordKey():
-            full_key = f"best_val_{key}_model"
-            model = getattr(self, full_key)
-            if model:
-                save_model_state_dict(
-                    model,
-                    os.path.join(target_path, full_key),
+        with self._retain_artifact_identity(target_path) as identity:
+            if self.eval_record:
+                self.eval_record.export(
+                    target_path,
+                    directory_identity=identity,
                 )
 
-        fname = f"Epoch-{epoch}-model"
-        save_model_state_dict(
-            self.model.state_dict(),
-            os.path.join(target_path, fname),
-        )
-        arrays: dict[str, object] = {}
-        payload = {
-            "record_schema_version": TRAIN_RECORD_SCHEMA_VERSION,
-            "epoch": epoch,
-            "train": _serialize_history(
-                self.train,
-                prefix="train",
+            for key in RecordKey():
+                full_key = f"best_val_{key}_model"
+                model = getattr(self, full_key)
+                if model:
+                    save_model_state_dict(
+                        model,
+                        os.path.join(target_path, full_key),
+                        directory_identity=identity,
+                    )
+
+            fname = f"Epoch-{epoch}-model"
+            save_model_state_dict(
+                self.model.state_dict(),
+                os.path.join(target_path, fname),
+                directory_identity=identity,
+            )
+            arrays: dict[str, object] = {}
+            payload = {
+                "record_schema_version": TRAIN_RECORD_SCHEMA_VERSION,
+                "epoch": epoch,
+                "train": _serialize_history(
+                    self.train,
+                    prefix="train",
+                    arrays=arrays,
+                ),
+                "val": _serialize_history(
+                    self.val,
+                    prefix="val",
+                    arrays=arrays,
+                ),
+                "test": _serialize_history(
+                    self._legacy_test_history,
+                    prefix="test",
+                    arrays=arrays,
+                ),
+                "best_record": self.best_record,
+                "seed": self.seed,
+            }
+            write_json_npz_artifact(
+                os.path.join(target_path, "record"),
+                artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
+                payload=payload,
                 arrays=arrays,
-            ),
-            "val": _serialize_history(
-                self.val,
-                prefix="val",
-                arrays=arrays,
-            ),
-            "test": _serialize_history(
-                self._legacy_test_history,
-                prefix="test",
-                arrays=arrays,
-            ),
-            "best_record": self.best_record,
-            "seed": self.seed,
-        }
-        write_json_npz_artifact(
-            os.path.join(target_path, "record"),
-            artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
-            payload=payload,
-            arrays=arrays,
-            arrays_filename="record.npz",
-        )
+                arrays_filename="record.npz",
+                directory_identity=identity,
+            )
 
     def load(self) -> None:
         """Load a previously saved training record from disk.
@@ -588,46 +607,52 @@ class TrainRecord:
         """
         with self._state_mutation():
             target_path = self._artifact_io_path
-            if not target_path or not os.path.exists(target_path):
+            if not target_path:
                 return
+            try:
+                identity = self._retain_artifact_identity(target_path)
+            except FileNotFoundError:
+                return
+            with identity:
+                record_path = os.path.join(target_path, "record")
+                if os.path.exists(record_path):
+                    try:
+                        data, arrays = read_json_npz_artifact(
+                            record_path,
+                            expected_artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
+                            directory_identity=identity,
+                        )
+                        (
+                            train,
+                            val,
+                            test,
+                            loaded_best,
+                            seed,
+                            epoch,
+                        ) = _decode_training_artifact(
+                            data,
+                            arrays,
+                            best_record_keys=set(self.best_record),
+                        )
+                        self.best_record.update(loaded_best)
+                        self.train = train
+                        self.val = val
+                        self._legacy_test_history = test
+                        self.seed = seed
+                        self.epoch = epoch
+                    except (FilesystemIdentityError, UnsupportedArtifactError):
+                        raise
+                    except Exception as e:
+                        logger.error(
+                            "Failed to load TrainRecord stats: %s",
+                            e,
+                            exc_info=True,
+                        )
 
-            # Load record dict
-            record_path = os.path.join(target_path, "record")
-            if os.path.exists(record_path):
-                try:
-                    data, arrays = read_json_npz_artifact(
-                        record_path,
-                        expected_artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
-                    )
-                    (
-                        train,
-                        val,
-                        test,
-                        loaded_best,
-                        seed,
-                        epoch,
-                    ) = _decode_training_artifact(
-                        data,
-                        arrays,
-                        best_record_keys=set(self.best_record),
-                    )
-                    self.best_record.update(loaded_best)
-                    self.train = train
-                    self.val = val
-                    self._legacy_test_history = test
-                    self.seed = seed
-                    self.epoch = epoch
-                except UnsupportedArtifactError:
-                    raise
-                except Exception as e:
-                    logger.error(
-                        "Failed to load TrainRecord stats: %s",
-                        e,
-                        exc_info=True,
-                    )
-
-            # Load EvalRecord
-            self.eval_record = EvalRecord.load(target_path)
+                self.eval_record = EvalRecord.load(
+                    target_path,
+                    directory_identity=identity,
+                )
 
     def get_model_output(self) -> str:
         """Return a formatted string summary of the training history.
@@ -639,7 +664,7 @@ class TrainRecord:
         """
         lines = []
         lines.append(f"=== Training Summary for {self.get_name()} ===")
-        lines.append(f"Total Epochs: {self.epoch}")
+        lines.append(f"Total Training Epochs: {self.epoch}")
 
         # Best Performance
         lines.append("\n[Best Performance]")
@@ -649,10 +674,10 @@ class TrainRecord:
             epoch_key = key + "_epoch"
             epoch_val = self.best_record.get(epoch_key, "-")
             formatted = "N/A" if val is None else f"{val:.4f}"
-            lines.append(f"  {key}: {formatted} (Epoch {epoch_val or '-'})")
+            lines.append(f"  {key}: {formatted} (Training epoch {epoch_val or '-'})")
 
-        # Last Epoch Stats
-        lines.append("\n[Last Epoch Statistics]")
+        # Last training-epoch statistics
+        lines.append("\n[Last Training Epoch Statistics]")
         if self.epoch > 0:
             idx = -1
 
@@ -714,7 +739,7 @@ class TrainRecord:
         if len(test_loss_list) > 0:
             ax.plot(_numeric_series(test_loss_list), "r", label="testing loss")
         ax.set_title("Training loss")
-        ax.set_xlabel("Epochs")
+        ax.set_xlabel("Training epochs")
         ax.set_ylabel("Loss")
         _ = ax.legend(loc="center left")
 
@@ -760,7 +785,7 @@ class TrainRecord:
         if len(test_acc_list) > 0:
             ax.plot(_numeric_series(test_acc_list), "r", label="testing accuracy")
         ax.set_title("Training Accuracy")
-        ax.set_xlabel("Epochs")
+        ax.set_xlabel("Training epochs")
         ax.set_ylabel("Accuracy (%)")
         _ = ax.legend(loc="upper left")
 
@@ -806,7 +831,7 @@ class TrainRecord:
         if len(test_auc_list) > 0:
             ax.plot(_numeric_series(test_auc_list), "r", label="testing AUC")
         ax.set_title("Training AUC")
-        ax.set_xlabel("Epochs")
+        ax.set_xlabel("Training epochs")
         ax.set_ylabel("AUC")
         _ = ax.legend(loc="upper left")
 
@@ -841,7 +866,7 @@ class TrainRecord:
         ax = fig.add_subplot(111)
         ax.plot(_numeric_series(lr_list), "g")
         ax.set_title("Learning Rate")
-        ax.set_xlabel("Epochs")
+        ax.set_xlabel("Training epochs")
         ax.set_ylabel("lr")
         return fig
 

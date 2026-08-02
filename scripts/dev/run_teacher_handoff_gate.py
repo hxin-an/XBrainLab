@@ -26,8 +26,8 @@ from scripts.dev.report_teacher_dataset_preflight import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
-DATA_ARTIFACT_DIR = ROOT / "artifacts" / "data_interpretation"
-UI_ARTIFACT_DIR = ROOT / "artifacts" / "ui" / "teacher-data-preflight"
+DATA_ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "teacher-data-preflight"
+UI_ARTIFACT_DIR = DATA_ARTIFACT_DIR / "ui"
 EVIDENCE_JSON = UI_ARTIFACT_DIR / "teacher-handoff-gate.json"
 EVIDENCE_MARKDOWN = UI_ARTIFACT_DIR / "README.md"
 EXPECTED_SCREENSHOTS = (
@@ -35,7 +35,7 @@ EXPECTED_SCREENSHOTS = (
     "openneuro-event-value-controls.png",
     "openneuro-review-and-import.png",
 )
-_PROTECTED_LOCAL_PATHS = {".vscode/settings.json", "settings.json"}
+_PROTECTED_LOCAL_PATHS = {"settings.json"}
 
 
 def verify_teacher_fixture_profile() -> dict[str, Any]:
@@ -112,11 +112,7 @@ def _source_dirty_paths() -> list[str]:
         path = line[3:].strip()
         if " -> " in path:
             path = path.split(" -> ", maxsplit=1)[1]
-        if (
-            path
-            and path not in _PROTECTED_LOCAL_PATHS
-            and not path.startswith("artifacts/")
-        ):
+        if path and path not in _PROTECTED_LOCAL_PATHS:
             paths.append(path)
     return sorted(set(paths))
 

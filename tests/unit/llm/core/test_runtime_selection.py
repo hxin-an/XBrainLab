@@ -39,6 +39,7 @@ def _runtime_config(
             else f"Model cache not found for {candidate or config.model_name}."
         ),
     )
+    monkeypatch.setattr(config, "local_backend_cpu_fallback_reason", lambda: None)
     return config
 
 
@@ -70,6 +71,39 @@ def test_resolver_freezes_the_exact_launch_selection_and_settings(
     assert launch_config.temperature == 0.25
     with pytest.raises(FrozenInstanceError):
         setattr(spec, "model_id", alternate)  # noqa: B010 - exercise frozen guard.
+
+
+def test_resolver_makes_cuda_to_cpu_fallback_explicit_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _runtime_config(monkeypatch)
+    config.device = "cuda:0"
+    config.load_in_4bit = True
+    monkeypatch.setattr(
+        config,
+        "local_backend_cpu_fallback_reason",
+        lambda: "CUDA is not available",
+    )
+    monkeypatch.setattr(
+        config,
+        "local_backend_status_message",
+        lambda candidate=None: (
+            "Local runtime ready. GPU execution is unavailable in this "
+            "environment, so startup will fall back to CPU and disable "
+            "4-bit loading."
+        ),
+    )
+
+    resolution = AssistantRuntimeLaunchResolver().resolve(config)
+
+    assert resolution.launch_spec is not None
+    spec = resolution.launch_spec
+    assert spec.settings.device == "cpu"
+    assert spec.settings.load_in_4bit is False
+    assert spec.execution_device == "cpu"
+    assert spec.device_fallback_reason == "CUDA is not available"
+    assert config.device == "cuda:0"
+    assert config.load_in_4bit is True
 
 
 def test_persisted_first_run_notice_is_not_copied_into_engine_config(

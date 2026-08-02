@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "mcp"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "mcp"
 DEFAULT_CONFIG = Path("artifacts/mcp/xbrainlab-mcp.json")
 DEFAULT_SERVER_NAME = "xbrainlab-windows-wsl"
 WINDOWS_NPX = Path("/mnt/c/Program Files/nodejs/npx")
@@ -380,18 +380,7 @@ def capture_walkthrough(
         payload["failure_reason"] = str(exc)
     finally:
         _terminate_process(chrome)
-        _stop_windows_processes(
-            process_name="chrome.exe",
-            commandline_patterns=[f"*{wsl_path_to_windows(profile_dir)}*"],
-        )
         _terminate_process(inspector)
-        _stop_windows_processes(
-            process_name="node.exe",
-            commandline_patterns=[
-                "*xbrainlab-mcp.json*",
-                "*run_mcp_server_for_client.sh*",
-            ],
-        )
         if profile_dir.exists():
             shutil.rmtree(profile_dir, ignore_errors=True)
 
@@ -700,32 +689,6 @@ def _terminate_process(proc: subprocess.Popen[str] | None) -> None:
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait(timeout=10)
-
-
-def _stop_windows_processes(
-    *,
-    process_name: str,
-    commandline_patterns: list[str],
-) -> None:
-    patterns_json = json.dumps(commandline_patterns)
-    command = (
-        f"$patterns = ConvertFrom-Json @'\n{patterns_json}\n'@; "
-        f"Get-CimInstance Win32_Process -Filter \"name='{process_name}'\" | "
-        "Where-Object { "
-        "$cmd = $_.CommandLine; "
-        "$patterns | Where-Object { $cmd -like $_ } "
-        "} | ForEach-Object { "
-        "Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue "
-        "}"
-    )
-    subprocess.run(  # noqa: S603 - fixed PowerShell cleanup command.
-        ["powershell.exe", "-NoProfile", "-Command", command],  # noqa: S607
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
 
 
 if __name__ == "__main__":

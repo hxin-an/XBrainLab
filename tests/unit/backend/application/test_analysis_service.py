@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
+from XBrainLab.backend.application import saliency_resource
 from XBrainLab.backend.application.analysis_service import (
     AnalysisCommandService,
     HandlerResult,
@@ -17,6 +20,16 @@ from XBrainLab.backend.application.commands import (
     VisualizeCommand,
 )
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.evaluation_render import (
+    EvaluationPlanIdentity,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
+)
+from XBrainLab.backend.application.resource_guard import (
+    ResourceConfirmationRequiredError,
+    ResourcePreflightResult,
+)
+from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -30,6 +43,7 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from XBrainLab.backend.application.training_runtime import TrainingRuntimeContext
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
     TrainingManager,
@@ -56,6 +70,10 @@ class _Run:
     def is_finished(self) -> bool:
         return self._finished
 
+    @staticmethod
+    def get_name() -> str:
+        return "Repeat-0"
+
 
 class _Plan:
     def __init__(self, name: str, runs: list[_Run]) -> None:
@@ -69,42 +87,128 @@ class _Plan:
         return list(self._runs)
 
 
-class _EvaluationController:
-    def __init__(self, plans: list[_Plan]) -> None:
-        self._plans = plans
-        self.pooled_result_calls = 0
-        self.model_summary_calls = 0
+class _ShapeOnlyArray:
+    def __init__(self, shape: tuple[int, int, int]) -> None:
+        self.shape = shape
+        self.nbytes = math.prod(shape) * np.dtype(np.float32).itemsize
 
-    def get_plans(self) -> list[_Plan]:
-        return list(self._plans)
 
-    def get_pooled_eval_result(
+class _EpochData:
+    def __init__(self, shape: tuple[int, int, int] = (8, 2, 16)) -> None:
+        self._data = _ShapeOnlyArray(shape)
+        self._labels = np.zeros(shape[0], dtype=np.int64)
+
+    def get_data(self) -> _ShapeOnlyArray:
+        return self._data
+
+    def get_label_list(self) -> np.ndarray:
+        return self._labels
+
+    def get_model_args(self) -> dict[str, int]:
+        return {
+            "n_classes": 1,
+            "channels": self._data.shape[1],
+            "samples": self._data.shape[2],
+            "sfreq": 128,
+        }
+
+
+class _Dataset:
+    def __init__(self, shape: tuple[int, int, int] = (8, 2, 16)) -> None:
+        self._epoch_data = _EpochData(shape)
+        self.train_mask = np.zeros(shape[0], dtype=bool)
+        self.val_mask = np.zeros(shape[0], dtype=bool)
+        self.test_mask = np.ones(shape[0], dtype=bool)
+
+    def get_epoch_data(self) -> _EpochData:
+        return self._epoch_data
+
+
+class _TrainingOption:
+    def __init__(
         self,
-        _plan: _Plan,
-    ) -> tuple[list[int], list[int], dict[str, Any]]:
-        self.pooled_result_calls += 1
-        return [], [], {"accuracy": np.float32(0.75)}
+        *,
+        batch_size: int = 2,
+        use_cpu: bool = True,
+        gpu_idx: int | None = None,
+    ) -> None:
+        self.bs = batch_size
+        self.repeat_num = 1
+        self.use_cpu = use_cpu
+        self.gpu_idx = gpu_idx
 
-    def get_model_summary_str(self, plan: _Plan, record: _Run | None = None) -> str:
-        self.model_summary_calls += 1
-        suffix = " run" if record is not None else ""
-        return f"{plan.get_name()} summary{suffix}"
+
+class _ModelParameter:
+    @staticmethod
+    def numel() -> int:
+        return 1_024
+
+    @staticmethod
+    def element_size() -> int:
+        return 4
 
 
-class _BrokenEvaluationController(_EvaluationController):
-    def get_plans(self) -> list[_Plan]:
+class _Model:
+    @staticmethod
+    def parameters() -> list[_ModelParameter]:
+        return [_ModelParameter()]
+
+    def cpu(self) -> _Model:
+        return self
+
+
+class _ModelHolder:
+    @staticmethod
+    def get_model(_args: dict[str, Any]) -> _Model:
+        return _Model()
+
+
+class _TrainingRuntime:
+    def __init__(
+        self,
+        plans: list[_Plan],
+        *,
+        datasets: tuple[_Dataset, ...] | None = None,
+        training_option: _TrainingOption | None = None,
+    ) -> None:
+        self._plans = plans
+        self._resource_context = TrainingRuntimeContext(
+            datasets=datasets or (_Dataset(),),
+            training_option=training_option or _TrainingOption(),
+            model_holder=_ModelHolder(),
+        )
+
+    def training_plan_holders(self) -> tuple[_Plan, ...]:
+        return tuple(self._plans)
+
+    def resource_context(self) -> Any:
+        return self._resource_context
+
+    def is_training(self) -> bool:
+        return False
+
+    def current_training_plan_index(self) -> int | None:
+        return None
+
+    def progress_text(self) -> str:
+        return ""
+
+
+class _BrokenTrainingRuntime(_TrainingRuntime):
+    def training_plan_holders(self) -> tuple[_Plan, ...]:
         raise RuntimeError("evaluation query failed")
 
 
-class _BrokenModelSummaryController(_EvaluationController):
-    def get_model_summary_str(self, plan: _Plan, record: _Run | None = None) -> str:
-        raise RuntimeError("model summary failed")
+class _BrokenSaliencyResourceRuntime(_TrainingRuntime):
+    def resource_context(self) -> Any:
+        raise RuntimeError("resource snapshot failed")
 
 
 class _VisualizationController:
     def __init__(self) -> None:
         self.params: dict[str, Any] | None = None
         self.averaged_record_calls = 0
+        self.saliency_set_calls = 0
 
     def get_trainers(self) -> list[str]:
         return ["trainer-a"]
@@ -114,6 +218,7 @@ class _VisualizationController:
         return f"{trainer}-average"
 
     def set_saliency_params(self, params: dict[str, Any]) -> None:
+        self.saliency_set_calls += 1
         self.params = params
 
     def get_saliency_params(self) -> dict[str, Any] | None:
@@ -125,9 +230,53 @@ class _BrokenVisualizationController(_VisualizationController):
         raise RuntimeError("visualization query failed")
 
 
-class _BrokenAveragedRecordController(_VisualizationController):
-    def get_averaged_record(self, trainer: Any) -> str:
-        raise RuntimeError("averaged record failed")
+class _LossySaliencyController(_VisualizationController):
+    def set_saliency_params(self, params: dict[str, Any]) -> None:
+        self.params = {
+            **params,
+            "SmoothGrad": {
+                "nt_samples": 5,
+                "nt_samples_batch_size": None,
+                "stdevs": 1.0,
+            },
+        }
+
+
+class _TypeCoercingSaliencyController(_VisualizationController):
+    def set_saliency_params(self, params: dict[str, Any]) -> None:
+        self.params = {
+            **params,
+            "SmoothGrad": {
+                **params["SmoothGrad"],
+                "nt_samples": float(params["SmoothGrad"]["nt_samples"]),
+            },
+        }
+
+
+class _EvaluatorSentinelController(_VisualizationController):
+    def set_saliency_params(self, params: dict[str, Any]) -> None:
+        raise AssertionError("saliency evaluator was reached before admission")
+
+
+def _saliency_preflight(risk_level: str) -> ResourcePreflightResult:
+    message = f"Saliency resource risk: {risk_level}."
+    return ResourcePreflightResult(
+        issues=(message,) if risk_level == "blocking" else (),
+        warnings=(message,) if risk_level == "warning" else (),
+        unknowns=(message,) if risk_level == "unknown" else (),
+        diagnostics={
+            "operation": "saliency_recomputation",
+            "risk_level": risk_level,
+            "required_memory_bytes": 1024,
+        },
+    )
+
+
+def _resource_challenge(error: ResourceConfirmationRequiredError):
+    preflight = ResourcePreflightView.from_diagnostics(error.diagnostics)
+    assert preflight is not None
+    assert preflight.challenge is not None
+    return preflight.challenge
 
 
 def _state(
@@ -184,11 +333,12 @@ def _state(
 def _service(
     *,
     state: ApplicationStateSnapshot | None = None,
-    evaluation: _EvaluationController | None = None,
+    plans: list[_Plan] | None = None,
+    training_runtime: _TrainingRuntime | None = None,
 ) -> tuple[AnalysisCommandService, _VisualizationController]:
     visualization = _VisualizationController()
     service = AnalysisCommandService(
-        evaluation=evaluation or _EvaluationController([]),
+        training_runtime=training_runtime or _TrainingRuntime(plans or []),
         visualization=visualization,
         get_state=lambda: state or _state(),
     )
@@ -202,9 +352,7 @@ def _expect_payload(result: HandlerResult) -> tuple[str, dict[str, Any]]:
 
 def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
     plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
-    service, _visualization = _service(
-        evaluation=_EvaluationController([plan]),
-    )
+    service, _visualization = _service(plans=[plan])
 
     message, diagnostics = _expect_payload(
         service.handle_evaluate(EvaluateCommand(target="latest")),
@@ -218,9 +366,27 @@ def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
     assert diagnostics["finished_run_count"] == 1
     assert diagnostics["evaluation_splits"] == ["test"]
     assert diagnostics["training_active"] is False
-    assert diagnostics["plans"][0]["name"] == "Plan A"
-    assert diagnostics["plans"][0]["evaluation_splits"] == ["test"]
-    assert diagnostics["plans"][0]["metrics"] == {"accuracy": 0.75}
+    assert diagnostics["plans"][0] == {
+        "identity": {"plan_index": 0},
+        "name": "Plan A",
+        "run_count": 2,
+        "finished_run_count": 1,
+        "evaluation_splits": ["test"],
+        "runs": [
+            {
+                "identity": {"plan_index": 0, "run_index": 0},
+                "name": "Repeat-0",
+                "finished": True,
+                "evaluation_split": "test",
+            },
+            {
+                "identity": {"plan_index": 0, "run_index": 1},
+                "name": "Repeat-0",
+                "finished": False,
+                "evaluation_split": "unknown",
+            },
+        ],
+    }
 
 
 def test_analysis_service_reports_validation_fallback_provenance() -> None:
@@ -231,9 +397,7 @@ def test_analysis_service_reports_validation_fallback_provenance() -> None:
             _Run(finished=True, evaluation_split="test"),
         ],
     )
-    service, _visualization = _service(
-        evaluation=_EvaluationController([plan]),
-    )
+    service, _visualization = _service(plans=[plan])
 
     _message, diagnostics = _expect_payload(
         service.handle_evaluate(EvaluateCommand(target="latest")),
@@ -244,9 +408,7 @@ def test_analysis_service_reports_validation_fallback_provenance() -> None:
 
 
 def test_analysis_service_reports_no_results_without_facade() -> None:
-    service, _visualization = _service(
-        evaluation=_EvaluationController([]),
-    )
+    service, _visualization = _service()
 
     message, diagnostics = _expect_payload(
         service.handle_evaluate(EvaluateCommand(target="latest")),
@@ -263,7 +425,7 @@ def test_analysis_service_reports_no_results_without_facade() -> None:
 
 def test_analysis_service_does_not_turn_evaluation_failure_into_empty_success() -> None:
     service, _visualization = _service(
-        evaluation=_BrokenEvaluationController([]),
+        training_runtime=_BrokenTrainingRuntime([]),
     )
 
     with pytest.raises(RuntimeError, match="evaluation query failed"):
@@ -275,7 +437,7 @@ def test_analysis_service_does_not_turn_visualization_failure_into_empty_success
 ):
     visualization = _BrokenVisualizationController()
     service = AnalysisCommandService(
-        evaluation=_EvaluationController([]),
+        training_runtime=_TrainingRuntime([]),
         visualization=visualization,
         get_state=_state,
     )
@@ -284,27 +446,15 @@ def test_analysis_service_does_not_turn_visualization_failure_into_empty_success
         service.handle_visualize(VisualizeCommand(view="summary"))
 
 
-def test_analysis_service_does_not_hide_requested_model_summary_failure() -> None:
-    plan = _Plan("Plan A", [_Run(finished=True)])
-    service, _visualization = _service(
-        evaluation=_BrokenModelSummaryController([plan]),
+def test_analysis_service_rejects_stale_model_summary_identity() -> None:
+    service, _visualization = _service()
+    stale_identity = EvaluationSummaryIdentity(
+        plan=EvaluationPlanIdentity(plan_index=4),
     )
 
-    with pytest.raises(RuntimeError, match="model summary failed"):
-        service.handle_evaluate(EvaluateCommand(include_model_summaries=True))
-
-
-def test_analysis_service_does_not_hide_requested_averaged_record_failure() -> None:
-    visualization = _BrokenAveragedRecordController()
-    service = AnalysisCommandService(
-        evaluation=_EvaluationController([]),
-        visualization=visualization,
-        get_state=lambda: _state(finished_runs=1),
-    )
-
-    with pytest.raises(RuntimeError, match="averaged record failed"):
-        service.handle_visualize(
-            VisualizeCommand(view="summary", include_averaged_records=True),
+    with pytest.raises(PreconditionError, match="no longer available"):
+        service.handle_evaluate(
+            EvaluateCommand(summary_identity=stale_identity),
         )
 
 
@@ -313,7 +463,7 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     plan_b = _Plan("Plan B", [_Run(finished=True)])
     service, _visualization = _service(
         state=_state(is_training=True, finished_runs=2),
-        evaluation=_EvaluationController([plan_a, plan_b]),
+        plans=[plan_a, plan_b],
     )
 
     _message, diagnostics = _expect_payload(
@@ -326,71 +476,67 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     assert [plan["name"] for plan in diagnostics["plans"]] == ["Plan A", "Plan B"]
 
 
-def test_analysis_service_can_return_ui_evaluation_objects() -> None:
+def test_analysis_service_never_returns_ui_evaluation_objects() -> None:
     plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
-    service, _visualization = _service(
-        evaluation=_EvaluationController([plan]),
-    )
+    service, _visualization = _service(plans=[plan])
 
     _message, diagnostics = _expect_payload(
-        service.handle_evaluate(
-            EvaluateCommand(
-                include_objects=True,
-                include_pooled_results=True,
-                include_model_summaries=True,
-            ),
-        ),
+        service.handle_evaluate(EvaluateCommand()),
     )
 
-    assert diagnostics["plan_objects"] == [plan]
-    assert diagnostics["pooled_eval_results"][0][2] == {"accuracy": 0.75}
-    assert diagnostics["model_summaries"][0]["plan"] == "Plan A summary"
-    assert diagnostics["model_summaries"][0]["runs"] == [
-        "Plan A summary run",
-        "Plan A summary run",
-    ]
-
-
-def test_analysis_service_targets_requested_model_summary_only() -> None:
-    plan_a = _Plan("Plan A", [_Run(finished=True), _Run(finished=True)])
-    plan_b = _Plan("Plan B", [_Run(finished=True)])
-    evaluation = _EvaluationController([plan_a, plan_b])
-    service, _visualization = _service(evaluation=evaluation)
-
-    _message, diagnostics = _expect_payload(
-        service.handle_evaluate(
-            EvaluateCommand(
-                include_model_summaries=True,
-                model_summary_plan_index=1,
-                model_summary_run_index=0,
-            ),
-        ),
-    )
-
-    assert diagnostics["model_summaries"] == [
-        {"plan": "", "runs": ["", ""]},
-        {"plan": "", "runs": ["Plan B summary run"]},
-    ]
-    assert evaluation.model_summary_calls == 1
-
-
-def test_analysis_service_can_skip_heavy_evaluation_payloads() -> None:
-    plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
-    evaluation = _EvaluationController([plan])
-    service, _visualization = _service(evaluation=evaluation)
-
-    _message, diagnostics = _expect_payload(
-        service.handle_evaluate(
-            EvaluateCommand(include_objects=True, include_metrics=False),
-        ),
-    )
-
-    assert diagnostics["plan_objects"] == [plan]
-    assert diagnostics["plans"][0]["metrics"] == {}
+    assert "plan_objects" not in diagnostics
     assert "pooled_eval_results" not in diagnostics
     assert "model_summaries" not in diagnostics
-    assert evaluation.pooled_result_calls == 0
-    assert evaluation.model_summary_calls == 0
+    assert diagnostics["plans"][0]["identity"] == {"plan_index": 0}
+    assert diagnostics["plans"][0]["runs"][0]["identity"] == {
+        "plan_index": 0,
+        "run_index": 0,
+    }
+
+
+def test_analysis_service_targets_requested_model_summary_only(monkeypatch) -> None:
+    plan_a = _Plan("Plan A", [_Run(finished=True), _Run(finished=True)])
+    plan_b = _Plan("Plan B", [_Run(finished=True)])
+    runtime = _TrainingRuntime([plan_a, plan_b])
+    service, _visualization = _service(training_runtime=runtime)
+    identity = EvaluationSummaryIdentity(
+        plan=EvaluationPlanIdentity(plan_index=1),
+        run=EvaluationRunIdentity(
+            plan=EvaluationPlanIdentity(plan_index=1),
+            run_index=0,
+        ),
+    )
+    summary_builder = MagicMock(return_value="Plan B summary run")
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service.build_evaluation_model_summary",
+        summary_builder,
+    )
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(
+            EvaluateCommand(summary_identity=identity),
+        ),
+    )
+
+    assert diagnostics["model_summary"] == {
+        "identity": {"plan_index": 1, "run_index": 0},
+        "text": "Plan B summary run",
+    }
+    summary_builder.assert_called_once_with(runtime, identity)
+
+
+def test_analysis_service_catalog_is_summary_only() -> None:
+    plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
+    service, _visualization = _service(plans=[plan])
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand()),
+    )
+
+    assert "plan_objects" not in diagnostics
+    assert "metrics" not in diagnostics["plans"][0]
+    assert "pooled_eval_results" not in diagnostics
+    assert "model_summaries" not in diagnostics
 
 
 def test_analysis_service_visualize_and_saliency_handlers() -> None:
@@ -402,16 +548,317 @@ def test_analysis_service_visualize_and_saliency_handlers() -> None:
     )
     _saliency_message, saliency = _expect_payload(
         service.handle_saliency(
-            SaliencyCommand(method="Gradient", params={"nt_samples": 2}),
+            SaliencyCommand(method="SmoothGrad", params={"nt_samples": 2}),
         ),
     )
     assert visualize["payload_type"] == "visualization_summary"
     assert "saliency map" in visualize["available_views"]
     assert saliency["payload_type"] == "saliency_configuration"
-    assert saliency["requested_method"] == "Gradient"
-    assert saliency["params"]["_methods"] == ["Gradient"]
+    assert saliency["requested_method"] == "SmoothGrad"
+    assert saliency["params"]["_methods"] == ["SmoothGrad"]
     assert saliency["params"]["SmoothGrad"]["nt_samples"] == 2
     assert visualization.params is not None
+
+
+def test_analysis_service_rejects_oversized_saliency_before_evaluator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _TrainingRuntime(
+        [],
+        datasets=(_Dataset((64, 128, 4096)),),
+        training_option=_TrainingOption(
+            batch_size=32,
+            use_cpu=False,
+            gpu_idx=0,
+        ),
+    )
+    visualization = _EvaluatorSentinelController()
+    service = AnalysisCommandService(
+        training_runtime=runtime,
+        visualization=visualization,
+        get_state=lambda: _state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.resource_guard.ResourceChecker.get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 2 * 1024**3,
+                "total_bytes": 4 * 1024**3,
+                "used_bytes": 2 * 1024**3,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.resource_guard.ResourceChecker.get_gpu_vram_status",
+        staticmethod(
+            lambda _gpu_idx=None: {
+                "available_bytes": 1024**3,
+                "total_bytes": 2 * 1024**3,
+                "used_bytes": 1024**3,
+                "gpu_index": 0,
+                "reason": None,
+            }
+        ),
+    )
+
+    with pytest.raises(
+        PreconditionError,
+        match=r"(?i)(?:saliency.*memory|memory.*saliency)",
+    ):
+        service.handle_saliency(
+            SaliencyCommand(
+                method="SmoothGrad",
+                params={"nt_samples": 512},
+            ),
+        )
+
+
+@pytest.mark.parametrize("risk_level", ["warning", "unknown"])
+def test_analysis_service_requires_matching_receipt_for_risky_saliency(
+    monkeypatch: pytest.MonkeyPatch,
+    risk_level: str,
+) -> None:
+    service, visualization = _service(
+        state=_state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: _saliency_preflight(risk_level),
+    )
+
+    with pytest.raises(ResourceConfirmationRequiredError) as raised:
+        service.handle_saliency(SaliencyCommand(method="Gradient"))
+
+    challenge = _resource_challenge(raised.value)
+    assert challenge.command_name == "saliency"
+    assert visualization.params is None
+
+    _message, diagnostics = _expect_payload(
+        service.handle_saliency(
+            SaliencyCommand(
+                method="Gradient",
+                resource_preflight_confirmed=True,
+                resource_preflight_token=challenge.challenge_id,
+            )
+        )
+    )
+
+    assert visualization.params is not None
+    assert diagnostics["resource_preflight"]["risk_level"] == risk_level
+    assert diagnostics["resource_preflight"]["confirmation_receipt_reused"] is True
+
+    with pytest.raises(ResourceConfirmationRequiredError) as replayed:
+        service.handle_saliency(
+            SaliencyCommand(
+                method="Gradient",
+                resource_preflight_confirmed=True,
+                resource_preflight_token=challenge.challenge_id,
+            )
+        )
+
+    assert _resource_challenge(replayed.value).challenge_id != challenge.challenge_id
+    assert visualization.saliency_set_calls == 1
+
+
+def test_analysis_service_rejects_tokenless_saliency_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, visualization = _service(
+        state=_state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: _saliency_preflight("warning"),
+    )
+
+    with pytest.raises(ResourceConfirmationRequiredError) as raised:
+        service.handle_saliency(
+            SaliencyCommand(
+                method="Gradient",
+                resource_preflight_confirmed=True,
+            )
+        )
+
+    challenge = _resource_challenge(raised.value)
+    assert challenge.command_name == "saliency"
+    assert visualization.params is None
+    assert visualization.saliency_set_calls == 0
+
+
+def test_analysis_service_rejects_mismatched_saliency_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, visualization = _service(
+        state=_state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: _saliency_preflight("warning"),
+    )
+
+    with pytest.raises(ResourceConfirmationRequiredError) as raised:
+        service.handle_saliency(SaliencyCommand(method="Gradient"))
+    first = _resource_challenge(raised.value)
+
+    with pytest.raises(ResourceConfirmationRequiredError) as mismatched:
+        service.handle_saliency(
+            SaliencyCommand(
+                method="SmoothGrad",
+                params={"nt_samples": 2},
+                resource_preflight_confirmed=True,
+                resource_preflight_token=first.challenge_id,
+            )
+        )
+
+    replacement = _resource_challenge(mismatched.value)
+    assert replacement.challenge_id != first.challenge_id
+    assert replacement.scope_fingerprint != first.scope_fingerprint
+    assert visualization.params is None
+
+
+def test_analysis_service_rejects_expired_saliency_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [100.0]
+    monkeypatch.setattr(saliency_resource.time, "monotonic", lambda: now[0])
+    service, visualization = _service(
+        state=_state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: _saliency_preflight("warning"),
+    )
+
+    with pytest.raises(ResourceConfirmationRequiredError) as raised:
+        service.handle_saliency(SaliencyCommand(method="Gradient"))
+    first = _resource_challenge(raised.value)
+    now[0] += 121.0
+
+    with pytest.raises(ResourceConfirmationRequiredError) as expired:
+        service.handle_saliency(
+            SaliencyCommand(
+                method="Gradient",
+                resource_preflight_confirmed=True,
+                resource_preflight_token=first.challenge_id,
+            )
+        )
+
+    replacement = _resource_challenge(expired.value)
+    assert replacement.challenge_id != first.challenge_id
+    assert replacement.scope_fingerprint == first.scope_fingerprint
+    assert visualization.params is None
+
+
+def test_analysis_service_allows_safe_saliency_without_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, visualization = _service(
+        state=_state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: _saliency_preflight("safe"),
+    )
+
+    _message, diagnostics = _expect_payload(
+        service.handle_saliency(SaliencyCommand(method="Gradient"))
+    )
+
+    assert visualization.params is not None
+    assert diagnostics["resource_preflight"]["risk_level"] == "safe"
+    assert diagnostics["resource_preflight"]["confirmation_receipt_reused"] is False
+    assert "confirmation_challenge" not in diagnostics["resource_preflight"]
+
+
+def test_analysis_service_blocks_saliency_without_confirmation_challenge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = AnalysisCommandService(
+        training_runtime=_TrainingRuntime([]),
+        visualization=_EvaluatorSentinelController(),
+        get_state=lambda: _state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: _saliency_preflight("blocking"),
+    )
+
+    with pytest.raises(PreconditionError) as raised:
+        service.handle_saliency(SaliencyCommand(method="Gradient"))
+
+    preflight = ResourcePreflightView.from_diagnostics(raised.value.diagnostics)
+    assert preflight is not None
+    assert preflight.risk_level == "blocking"
+    assert preflight.challenge is None
+
+
+def test_analysis_service_blocks_when_saliency_resource_context_is_unavailable() -> (
+    None
+):
+    service = AnalysisCommandService(
+        training_runtime=_BrokenSaliencyResourceRuntime([]),
+        visualization=_EvaluatorSentinelController(),
+        get_state=lambda: _state(has_trainer=True, finished_runs=1),
+    )
+
+    with pytest.raises(PreconditionError) as raised:
+        service.handle_saliency(SaliencyCommand(method="Gradient"))
+
+    assert "current dataset, model, and training settings" in str(raised.value)
+    assert raised.value.diagnostics["resource_preflight"] == {
+        "operation": "saliency_recomputation",
+        "risk_level": "blocking",
+        "reason": "resource_context_read_failed",
+        "error_type": "RuntimeError",
+    }
+
+
+def test_analysis_service_rejects_unverified_saliency_readback() -> None:
+    visualization = _LossySaliencyController()
+    service = AnalysisCommandService(
+        training_runtime=_TrainingRuntime([]),
+        visualization=visualization,
+        get_state=lambda: _state(has_trainer=True, finished_runs=1),
+    )
+
+    with pytest.raises(ValueError, match="could not be verified"):
+        service.handle_saliency(
+            SaliencyCommand(
+                method="SmoothGrad",
+                params={
+                    "nt_samples": 2,
+                    "nt_samples_batch_size": 1,
+                    "stdevs": 1.0,
+                },
+            ),
+        )
+
+
+def test_analysis_service_rejects_type_coerced_saliency_readback() -> None:
+    visualization = _TypeCoercingSaliencyController()
+    service = AnalysisCommandService(
+        training_runtime=_TrainingRuntime([]),
+        visualization=visualization,
+        get_state=lambda: _state(has_trainer=True, finished_runs=1),
+    )
+
+    with pytest.raises(ValueError, match="could not be verified"):
+        service.handle_saliency(
+            SaliencyCommand(
+                method="SmoothGrad",
+                params={
+                    "nt_samples": 2,
+                    "nt_samples_batch_size": 1,
+                    "stdevs": 1.0,
+                },
+            ),
+        )
 
 
 def test_analysis_service_rejects_automatic_scheduler_noop_with_terminal_status() -> (
@@ -429,7 +876,7 @@ def test_analysis_service_rejects_automatic_scheduler_noop_with_terminal_status(
 
     visualization = _ManagerVisualizationController()
     service = AnalysisCommandService(
-        evaluation=_EvaluationController([]),
+        training_runtime=_TrainingRuntime([]),
         visualization=visualization,
         get_state=lambda: _state(has_trainer=True, finished_runs=1),
     )
@@ -554,36 +1001,19 @@ def test_analysis_service_requires_channel_positions_for_3d_plot() -> None:
     ]
 
 
-def test_analysis_service_can_return_ui_visualization_objects_without_averaging() -> (
-    None
-):
+def test_analysis_service_returns_only_detached_visualization_summary() -> None:
     state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
     service, visualization = _service(state=state)
 
     _message, diagnostics = _expect_payload(
-        service.handle_visualize(
-            VisualizeCommand(view="summary", include_objects=True)
-        ),
+        service.handle_visualize(VisualizeCommand(view="summary")),
     )
 
-    assert diagnostics["trainer_objects"] == ["trainer-a"]
+    assert diagnostics["trainer_count"] == 1
+    assert "trainer_objects" not in diagnostics
     assert "averaged_records" not in diagnostics
     assert visualization.averaged_record_calls == 0
 
 
-def test_analysis_service_returns_averaged_records_only_when_requested() -> None:
-    state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
-    service, visualization = _service(state=state)
-
-    _message, diagnostics = _expect_payload(
-        service.handle_visualize(
-            VisualizeCommand(
-                view="summary",
-                include_objects=True,
-                include_averaged_records=True,
-            )
-        ),
-    )
-
-    assert diagnostics["averaged_records"] == ["trainer-a-average"]
-    assert visualization.averaged_record_calls == 1
+def test_analysis_service_does_not_define_live_object_projection_helpers() -> None:
+    assert not hasattr(AnalysisCommandService, "_averaged_record")

@@ -14,51 +14,20 @@ description: Use when choosing and interpreting XBrainLab validation commands, q
 1. `docs/validation/README.md`
 2. `docs/architecture/validation.md`
 3. `docs/current.md`
-4. `.agents/runbooks/setup.md`
+4. `docs/agent_goals/product_quality_closure_goal.md`
+5. `docs/records/product_quality_audit_2026-07-30.md`
+6. `.agents/runbooks/setup.md`
 
-## 常用驗證
+## Command Authority
 
-文件站：
+所有 current validation commands 只由 `docs/validation/README.md` 的 **Handoff Command
+Manifest** 定義。這個 skill 負責選擇、執行和解讀 manifest slice，不複製命令、不省略
+`required-ci` / `--verify-only` / wizard / multi-dataset steps，也不移除 native command 的
+timeout 或 `prlimit --core=0`。
 
-```bash
-poetry run mkdocs build --strict
-```
-
-fast dashboard：
-
-```bash
-poetry run python scripts/dev/update_quality_dashboard.py
-```
-
-real-data IO：
-
-```bash
-poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
-```
-
-required multi-dataset handoff gate：
-
-```bash
-poetry run python scripts/dev/fetch_public_eeg_fixtures.py
-poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-poetry run python scripts/dev/report_data_interpretation_format_matrix.py \
-  --strict --format json --write-artifacts
-QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
-  tests/integration/io/test_io_integration.py \
-  tests/integration/io/test_public_bids_fixture.py \
-  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
-poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
-  --format json --strict
-```
-
-tiny pipeline smoke：
-
-```bash
-poetry run pytest --capture=sys \
-  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
-  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
-  -q
-```
+若 manifest command 與 repo path/CLI 不一致，先回報並修正 canonical manifest；不得自行改跑
+較弱 command 後宣稱原 gate 通過。Focused work 可以只跑相關 slice，但 completion label 必須
+保持 `checkpoint`，直到 active goal 要求的完整 exact-commit manifest 通過。
 
 ## 判斷規則
 

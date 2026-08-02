@@ -186,7 +186,7 @@ class MockConfigureTrainingTool(BaseConfigureTrainingTool):
         return ToolResult(
             ok=True,
             message=(
-                f"Training configured (Epochs: {training_input.epoch}, "
+                f"Training configured (Training epochs: {training_input.epoch}, "
                 f"LR: {training_input.learning_rate}, Device: {canonical_device}, "
                 f"Optim: {canonical_optimizer}, Ckt: {normalized_checkpoint})."
             ),

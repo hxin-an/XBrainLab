@@ -66,7 +66,7 @@ class TestPanelControllerBinding:
     def test_training_update_event_clears_empty_history(self, training_panel):
         """Test 'training_updated' clears stale display state when history is empty."""
         stale_record = object()
-        training_panel.current_plotting_record = stale_record
+        training_panel.current_plotting_row = stale_record
         training_panel._last_epoch_count = 3
         training_panel.history_table = MagicMock()
         training_panel.tab_acc = MagicMock()
@@ -83,7 +83,7 @@ class TestPanelControllerBinding:
         training_panel.history_table.update_table.assert_not_called()
         training_panel.tab_acc.clear.assert_called_once()
         training_panel.tab_loss.clear.assert_called_once()
-        assert training_panel.current_plotting_record is None
+        assert training_panel.current_plotting_row is None
         assert training_panel._last_epoch_count == -1
         training_panel._compatibility_history_for_render.assert_not_called()
         refresh_after_observer.assert_called_once_with(

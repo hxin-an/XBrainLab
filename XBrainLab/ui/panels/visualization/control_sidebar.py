@@ -24,10 +24,15 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     get_command_capability,
     get_command_review_context,
+    has_real_application_context,
     is_stale_publication_result,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.dialogs.visualization import (
     PickMontageDialog,
     SaliencySettingDialog,
@@ -81,7 +86,7 @@ class ControlSidebar(QWidget):
         root_layout.addWidget(self.scroll_area)
         layout = self.scroll_area.content_layout
 
-        # 1. Aggregate Information
+        # 1. Data Summary
         self.info_panel = AggregateInfoPanel(self.main_window)
         self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
         layout.addWidget(self.info_panel)
@@ -126,10 +131,6 @@ class ControlSidebar(QWidget):
 
     # --- Actions ---
 
-    def _on_update_after_command_result(self, result) -> None:
-        if result is None and self.panel and hasattr(self.panel, "on_update"):
-            self.panel.on_update()
-
     def set_montage(
         self,
         _checked: bool = False,
@@ -142,15 +143,23 @@ class ControlSidebar(QWidget):
             self,
             CommandName.APPLY_MONTAGE,
         )
+        if review_context is None and has_real_application_context(self):
+            message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            QMessageBox.warning(self, "Montage blocked", message)
+            return InteractionOutcome.blocked(message)
         capability = (
-            review_context.capability
+            getattr(review_context, "capability", None)
             if review_context is not None
             else get_command_capability(self, CommandName.APPLY_MONTAGE)
         )
+        if review_context is not None and capability is None:
+            message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            QMessageBox.warning(self, "Montage blocked", message)
+            return InteractionOutcome.blocked(message)
         if capability is not None and not capability.enabled:
             message = blocked_reason(
                 capability,
-                "Create epochs before applying a montage.",
+                "Create EEG epochs before applying a montage.",
             )
             QMessageBox.warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
@@ -163,7 +172,7 @@ class ControlSidebar(QWidget):
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
                 )
             if not has_epoch_data:
-                message = "No epoch data available."
+                message = "No EEG epochs are available."
                 QMessageBox.warning(self, "Warning", message)
                 return InteractionOutcome.blocked(message)
 
@@ -203,7 +212,7 @@ class ControlSidebar(QWidget):
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
         if not channels:
-            message = "No epoch channel names are available for montage setup."
+            message = "No EEG epoch channel names are available for montage setup."
             QMessageBox.warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
 
@@ -225,9 +234,11 @@ class ControlSidebar(QWidget):
                 selected_channels,
                 positions,
             )
-        except Exception as exc:
-            message = f"Montage setup failed: {exc}"
-            QMessageBox.critical(self, "Error", message)
+        except Exception:
+            message = present_unexpected_error(
+                self,
+                UnexpectedErrorContext.MONTAGE_SETUP,
+            )
             return InteractionOutcome.failed(message)
 
         result = execute_application_command(
@@ -261,7 +272,6 @@ class ControlSidebar(QWidget):
             return InteractionOutcome.failed(result.message)
 
         self._show_status("Montage set")
-        self._on_update_after_command_result(result)
         return InteractionOutcome.completed("Montage set.")
 
     def _montage_channel_names(self, query_result) -> list[str]:
@@ -300,11 +310,19 @@ class ControlSidebar(QWidget):
             self,
             CommandName.SALIENCY,
         )
+        if review_context is None and has_real_application_context(self):
+            message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            QMessageBox.warning(self, "Saliency blocked", message)
+            return InteractionOutcome.blocked(message)
         capability = (
-            review_context.capability
+            getattr(review_context, "capability", None)
             if review_context is not None
             else get_command_capability(self, CommandName.SALIENCY)
         )
+        if review_context is not None and capability is None:
+            message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            QMessageBox.warning(self, "Saliency blocked", message)
+            return InteractionOutcome.blocked(message)
         if capability is not None and not capability.enabled:
             message = blocked_reason(
                 capability,

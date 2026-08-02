@@ -180,6 +180,7 @@ class TestRetrieverEdgeCases:
 
     def test_hybrid_bm25_merge(self):
         """L264-276: BM25 results merged into candidates."""
+        from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
         from XBrainLab.llm.rag.retriever import RAGRetriever
 
         r = RAGRetriever()
@@ -219,7 +220,12 @@ class TestRetrieverEdgeCases:
 
         result = r.get_similar_examples("test")
         assert isinstance(result, str)
-        assert "Example" in result
+        decoded = decode_untrusted_context(result)
+        assert decoded is not None
+        assert len(decoded) == 1
+        assert decoded[0].item_type == "rag_example"
+        assert decoded[0].data["input"] == "hello world"
+        assert decoded[0].data["expected_action"]["tool_name"] == "scan_source"
 
 
 # ── downloader.py DownloadWorker.run() ──────────────────────
@@ -324,10 +330,16 @@ def _make_ctrl() -> Any:
     from XBrainLab.llm.agent.tool_execution_coordinator import (
         ToolExecutionCoordinator,
     )
+    from XBrainLab.llm.agent.turn_orchestrator import (
+        AssistantToolAttemptSession,
+        AssistantTurnOrchestrator,
+    )
     from XBrainLab.llm.tools.application_surface import READ_ONLY_TOOLS, TOOL_TO_COMMAND
 
     ctrl = LLMController.__new__(LLMController)
     QObject.__init__(ctrl)
+    ctrl._turn_orchestrator = AssistantTurnOrchestrator()
+    ctrl._tool_attempt_session = AssistantToolAttemptSession()
     conv = MagicMock()
     conv.messages = []
     ctrl._conversation = conv
@@ -336,8 +348,8 @@ def _make_ctrl() -> Any:
     ctrl.status_update = MagicMock()
     ctrl.processing_finished = MagicMock()
     ctrl.turn_finished = MagicMock()
-    ctrl._active_host_turn_id = 1
-    ctrl._active_host_turn_generation = 1
+    ctrl._turn_orchestrator.host_turn_id = 1
+    ctrl._turn_orchestrator.host_turn_generation = 1
     ctrl.sig_generate = MagicMock()
     ctrl.assembler = MagicMock()
     ctrl.generation_event = MagicMock()
@@ -345,26 +357,26 @@ def _make_ctrl() -> Any:
     ctrl.panel_navigation_requested = MagicMock()
     ctrl.error_occurred = MagicMock()
     ctrl.current_response = ""
-    ctrl._generation_id = 0
-    ctrl._active_generation_id = None
-    ctrl._retry_count = 0
+    ctrl._turn_orchestrator.generation_sequence = 0
+    ctrl._turn_orchestrator.active_generation_id = None
+    ctrl._tool_attempt_session.retry_count = 0
     ctrl._strict_envelope_recovery_policy = StrictEnvelopeRecoveryPolicy(
         max_recovery_attempts=3,
     )
     ctrl.is_processing = True
-    ctrl._tool_failure_count = 0
+    ctrl._tool_attempt_session.tool_failure_count = 0
     ctrl._max_tool_failures = 3
-    ctrl._successful_tool_count = 0
-    ctrl._tool_execution_count = 0
+    ctrl._tool_attempt_session.successful_tool_count = 0
+    ctrl._tool_attempt_session.execution_count = 0
     ctrl._max_tool_executions = 5
-    ctrl._turn_cancelled = False
-    ctrl._active_turn_scope = AssistantTurnScope.SINGLE_ACTION
+    ctrl._turn_orchestrator.cancelled = False
+    ctrl._turn_orchestrator.scope = AssistantTurnScope.SINGLE_ACTION
     from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
 
     ctrl._pending_interactions = PendingInteractionCoordinator()
-    ctrl._loop_break_count = 0
+    ctrl._tool_attempt_session.loop_break_count = 0
     ctrl._max_loop_breaks = 2
-    ctrl._active_tool_publication = PromptToolPublication(
+    ctrl._turn_orchestrator.active_publication = PromptToolPublication(
         tool_names=frozenset(set(TOOL_TO_COMMAND) | set(READ_ONLY_TOOLS))
     )
     ctrl.registry = MagicMock()
@@ -372,6 +384,9 @@ def _make_ctrl() -> Any:
     ctrl.verifier = MagicMock()
     ctrl._rag_lifecycle = MagicMock()
     ctrl._rag_lifecycle.retriever = MagicMock()
+    ctrl._turn_orchestrator.rag_sequence = 0
+    ctrl._turn_orchestrator.active_rag_turn_id = None
+    ctrl._turn_orchestrator.waiting_for_rag = False
     context_source = MagicMock()
     context_source.get_context.side_effect = lambda tool_name: (
         ToolAvailabilityContext(
@@ -401,14 +416,14 @@ class TestControllerResponseComplete:
         ctrl.current_response = (
             '{"tool_name":"load_data","parameters":{"paths":["/a"]}}'
         )
-        ctrl._active_generation_id = 61
+        ctrl._turn_orchestrator.active_generation_id = 61
         with patch.object(ctrl, "_process_tool_calls") as mock_ptc:
             ctrl._on_generation_finished(61, [])
         mock_ptc.assert_called_once_with(
             [("load_data", {"paths": ["/a"]})],
             ctrl.current_response,
         )
-        assert ctrl._retry_count == 0
+        assert ctrl._tool_attempt_session.retry_count == 0
         ctrl.generation_event.emit.assert_called_once_with(
             AssistantGenerationEvent(
                 generation_id=61,
@@ -423,7 +438,7 @@ class TestControllerResponseComplete:
         ctrl = _make_ctrl()
         ctrl.current_response = "Hello world"
         ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
-        ctrl._active_generation_id = 62
+        ctrl._turn_orchestrator.active_generation_id = 62
         ctrl._on_generation_finished(62, [])
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.text == "Hello world"
@@ -434,7 +449,7 @@ class TestControllerResponseComplete:
         from XBrainLab.llm.agent.parser import CommandParser
 
         ctrl = _make_ctrl()
-        ctrl._retry_count = 3
+        ctrl._tool_attempt_session.retry_count = 3
         response = '{"broken'
         result = ctrl._handle_tool_envelope_failure(
             response,
@@ -448,7 +463,7 @@ class TestControllerResponseComplete:
     def test_on_generation_error(self):
         """A correlated generation failure emits a typed terminal event."""
         ctrl = _make_ctrl()
-        ctrl._active_generation_id = 63
+        ctrl._turn_orchestrator.active_generation_id = 63
 
         ctrl._on_generation_error(63, "Something failed")
 
@@ -469,7 +484,7 @@ class TestControllerResponseComplete:
     def test_on_runtime_error_without_active_generation(self):
         """An uncorrelated runtime failure stays on the runtime error path."""
         ctrl = _make_ctrl()
-        ctrl._active_generation_id = None
+        ctrl._turn_orchestrator.active_generation_id = None
 
         ctrl._on_runtime_error("Runtime failed")
 
@@ -600,7 +615,12 @@ class TestLLMConfig:
         assert payload["local"]["model_name"] == cfg.model_name
         assert payload["inference_mode"] == "local"
 
-    def test_save_to_file_exception(self, tmp_path, caplog):
+    def test_save_to_file_exception(
+        self,
+        tmp_path,
+        caplog,
+        capture_product_logs,
+    ):
         """L149-150: save failure logged."""
         from XBrainLab.llm.core.config import LLMConfig
 
@@ -612,7 +632,10 @@ class TestLLMConfig:
             patch(
                 "XBrainLab.llm.core.config.json.dump", side_effect=OSError("disk full")
             ),
-            caplog.at_level(logging.ERROR, logger="XBrainLab.llm.core.config"),
+            capture_product_logs(
+                logging.ERROR,
+                logger_name="XBrainLab.llm.core.config",
+            ),
         ):
             saved = cfg.save_to_file(str(target))
 

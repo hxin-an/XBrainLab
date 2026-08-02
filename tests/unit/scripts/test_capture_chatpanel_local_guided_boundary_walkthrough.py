@@ -6,12 +6,14 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
 
 import scripts.dev.chatpanel_guided_boundary.driver as guided_boundary_driver
 import scripts.dev.chatpanel_guided_boundary.runtime as guided_boundary_runtime
+import scripts.dev.chatpanel_guided_boundary.strict_evidence as guided_strict_evidence
 from scripts.dev.capture_chatpanel_local_guided_boundary_walkthrough import main
 from scripts.dev.chatpanel_guided_boundary import (
     DEFAULT_MODEL_ID,
@@ -52,6 +54,59 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 )
 
 _SYNTHETIC_CURRENT_SOURCE_IDENTITY = collect_source_identity()
+
+
+def test_guided_entrypoint_attaches_redacted_strict_identity(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    payload = _valid_payload(tmp_path)
+    (tmp_path / JSON_ARTIFACT).write_text(json.dumps(payload), encoding="utf-8")
+
+    def finalize(strict_payload, **_kwargs):
+        strict_payload["runtime"].update(
+            {
+                "requested_model_id": DEFAULT_MODEL_ID,
+                "loaded_model_id": DEFAULT_MODEL_ID,
+                "model_identity": {
+                    "loaded_revision": "a" * 40,
+                    "snapshot_manifest_sha256": "b" * 64,
+                },
+            }
+        )
+        strict_payload["source_identity"] = {
+            "commit_sha": "c" * 40,
+            "identity_sha256": "d" * 64,
+        }
+        strict_payload["screenshot_artifacts"] = {
+            "aggregate_sha256": "e" * 64,
+        }
+        return True, ""
+
+    monkeypatch.setattr(
+        guided_strict_evidence,
+        "finalize_strict_capture_evidence",
+        finalize,
+    )
+    monkeypatch.setattr(
+        guided_strict_evidence,
+        "LLMConfig",
+        lambda: SimpleNamespace(cache_dir="/private/cache"),
+    )
+
+    result = guided_strict_evidence.attach_guided_strict_evidence(
+        tmp_path,
+        source_identity_at_start={"identity_sha256": "f" * 64},
+    )
+
+    assert result == 0
+    stored = json.loads((tmp_path / JSON_ARTIFACT).read_text(encoding="utf-8"))
+    strict = stored["strict_evidence"]
+    assert strict["runtime"]["requested_model_id"] == DEFAULT_MODEL_ID
+    assert strict["runtime"]["loaded_model_id"] == DEFAULT_MODEL_ID
+    assert "/private/cache" not in json.dumps(strict)
+    markdown = (tmp_path / MARKDOWN_ARTIFACT).read_text(encoding="utf-8")
+    assert "## Strict Evidence Identity" in markdown
 
 
 def test_prepare_capture_config_uses_only_the_isolated_config_dir(
@@ -165,7 +220,7 @@ def _valid_payload(tmp_path: Path) -> dict:
     first_calls = canonical_turn_calls(str(source), turn="first")
     assert first_calls[0]["parameters"] == {
         "source_path": str(source),
-        "source_hint": "file",
+        "source_hint": "auto",
     }
     observations = [
         {
@@ -822,6 +877,55 @@ def test_validator_rejects_noncanonical_proposal_parameters(tmp_path):
     assert "canonical" in reason.lower()
 
 
+def test_validator_accepts_omitted_optional_scan_source_defaults(tmp_path):
+    payload = _valid_payload(tmp_path)
+    first_attempt = payload["first_turn"]["tool_attempts"][0]
+    for call in (
+        payload["first_turn"]["tool_proposals"][0],
+        first_attempt["raw"],
+        first_attempt["normalized"],
+        first_attempt["actual"],
+    ):
+        call["parameters"].pop("source_hint", None)
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is True, reason
+
+
+def test_validator_accepts_compatible_explicit_file_hint(tmp_path):
+    payload = _valid_payload(tmp_path)
+    first_attempt = payload["first_turn"]["tool_attempts"][0]
+    for call in (
+        payload["first_turn"]["tool_proposals"][0],
+        first_attempt["raw"],
+        first_attempt["normalized"],
+        first_attempt["actual"],
+    ):
+        call["parameters"]["source_hint"] = "file"
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is True, reason
+
+
+def test_validator_rejects_scan_hint_that_conflicts_with_file_source(tmp_path):
+    payload = _valid_payload(tmp_path)
+    first_attempt = payload["first_turn"]["tool_attempts"][0]
+    for call in (
+        payload["first_turn"]["tool_proposals"][0],
+        first_attempt["raw"],
+        first_attempt["normalized"],
+        first_attempt["actual"],
+    ):
+        call["parameters"]["source_hint"] = "folder"
+
+    ok, reason = validate_guided_boundary_payload(payload)
+
+    assert ok is False
+    assert "canonical" in reason.lower()
+
+
 def test_validator_rejects_normalized_and_actual_parameter_drift(tmp_path):
     payload = _valid_payload(tmp_path)
     payload["first_turn"]["tool_attempts"][0]["actual"]["parameters"] = {
@@ -1006,6 +1110,31 @@ def test_dirty_source_digest_changes_when_content_changes_with_same_status(tmp_p
     assert first["source_digest"] != second["source_digest"]
 
 
+def test_source_identity_tracks_binary_dataset_inputs(tmp_path):
+    """Runtime fixtures must not be invisible to exact-source evidence."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = shutil.which("git")
+    assert git is not None
+    _run_git(git, repo, "init", "-q")
+    _run_git(git, repo, "config", "user.email", "test@example.com")
+    _run_git(git, repo, "config", "user.name", "Test")
+    fixture = repo / "recording.gdf"
+    fixture.write_bytes(b"GDF fixture version 1\x00\x01")
+    _run_git(git, repo, "add", "recording.gdf")
+    _run_git(git, repo, "commit", "-qm", "binary fixture")
+
+    first = collect_source_identity(repo, refresh=True)
+    fixture.write_bytes(b"GDF fixture version 2\x00\x01")
+    second = collect_source_identity(repo, refresh=True)
+
+    assert first["dirty"] is False
+    assert second["dirty"] is True
+    assert first["source_content_digest"] != second["source_content_digest"]
+    assert first["dirty_digest"] != second["dirty_digest"]
+    assert first["source_digest"] != second["source_digest"]
+
+
 def test_source_content_digest_survives_committing_identical_worktree_content(
     tmp_path,
 ):
@@ -1057,12 +1186,20 @@ def test_source_content_digest_excludes_generated_artifacts_and_local_settings(
     artifacts = repo / "artifacts"
     artifacts.mkdir()
     (artifacts / "evidence.json").write_text('{"run": 1}\n', encoding="utf-8")
+    build_artifacts = repo / "build" / "dev-artifacts"
+    build_artifacts.mkdir(parents=True)
+    (build_artifacts / "capture.json").write_text('{"capture": 1}\n', encoding="utf-8")
+    model_cache = repo / "XBrainLab" / "llm" / "core" / "models" / "download"
+    model_cache.mkdir(parents=True)
+    (model_cache / "weights.bin").write_bytes(b"local model version 1")
     _run_git(git, repo, "add", ".")
     _run_git(git, repo, "commit", "-qm", "initial")
 
     first = collect_source_identity(repo, refresh=True)
     (repo / "settings.json").write_text('{"local": false}\n', encoding="utf-8")
     (artifacts / "evidence.json").write_text('{"run": 2}\n', encoding="utf-8")
+    (build_artifacts / "capture.json").write_text('{"capture": 2}\n', encoding="utf-8")
+    (model_cache / "weights.bin").write_bytes(b"local model version 2")
     second = collect_source_identity(repo, refresh=True)
 
     assert first["source_content_digest"] == second["source_content_digest"]

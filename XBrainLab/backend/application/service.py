@@ -9,18 +9,33 @@ from threading import Lock, RLock
 from time import monotonic
 from typing import Any
 
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
+from XBrainLab.backend.services.dataset_state_service import (
+    DatasetProductPort,
+)
+from XBrainLab.backend.services.preprocess_state_service import PreprocessProductPort
+from XBrainLab.backend.services.training_state_service import TrainingProductPort
+from XBrainLab.backend.services.visualization_state_service import (
+    VisualizationProductPort,
+)
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyStatus,
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingReadBoundary,
     TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.backend.utils.public_diagnostics import (
+    public_exception_message,
+    safe_exception_type_name,
+)
 
 from .application_publication_lifecycle import ApplicationPublicationLifecycle
+from .application_shutdown_lifecycle import (
+    ApplicationShutdownLifecycleCoordinator,
+)
 from .capabilities import (
     RECOVERY_COMMAND_NAMES,
     CapabilityPolicy,
@@ -60,18 +75,29 @@ from .commands import (
     VisualizeCommand,
     command_name,
 )
-from .controller_adapters import (
-    DatasetControllerAdapter,
-    EvaluationControllerAdapter,
-    PreprocessControllerAdapter,
-    TrainingControllerAdapter,
-    VisualizationControllerAdapter,
-)
 from .data_table_service import DataTableCommandService
+from .dataset_split_preview import (
+    DatasetSplitContextPublication,
+    DatasetSplitContextRequest,
+    DatasetSplitPreviewPublication,
+    DatasetSplitPreviewPublisher,
+    DatasetSplitPreviewRequest,
+)
+from .epoch_context import (
+    EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE,
+    EpochDialogContext,
+    build_epoching_context,
+    validated_epoch_handoff,
+)
 from .errors import (
     ApplicationError,
     PreconditionError,
     map_exception,
+)
+from .evaluation_render import (
+    EvaluationRenderPublication,
+    EvaluationRenderPublisher,
+    EvaluationRenderRequest,
 )
 from .lifecycle_service import LifecycleCommandService
 from .pipeline_stage import pipeline_stage_readiness_summary
@@ -80,24 +106,40 @@ from .post_training_saliency import (
     PostTrainingSaliencyAutomation,
     SaliencyTerminalNotification,
 )
+from .preprocess_render import (
+    PreprocessRenderPublication,
+    PreprocessRenderPublisher,
+    PreprocessRenderRequest,
+)
 from .preprocess_service import PreprocessCommandService
 from .query_state_service import QueryStateCommandService
 from .resource_guard import ResourcePreflightResult
-from .results import ChangedState, CommandResult, CommandStatus, ErrorType
+from .results import ChangedState, CommandResult, ErrorType
 from .saliency_coverage import SaliencyCoverageProjector
 from .saliency_render import (
     SaliencyRenderPublication,
     SaliencyRenderPublisher,
     SaliencyRenderRequest,
 )
-from .state import ApplicationStateSnapshot, ErrorSnapshot
+from .state import (
+    ApplicationStateSnapshot,
+    ErrorSnapshot,
+    InterpretationStateSnapshot,
+)
 from .state_read_models import EvaluationStateReadModel, TrainingStateReadModel
 from .state_service import StateSnapshotService
+from .synchronous_training_lifecycle import (
+    SynchronousTrainingLifecycleCoordinator,
+)
 from .training_configuration_reset import TrainingConfigurationResetService
 from .training_publication_lifecycle import (
     SaliencyTerminalDeliveryPlan,
 )
-from .training_runtime import StudyTrainingRuntime, TrainingRuntimePort
+from .training_runtime import (
+    StudyTrainingRuntime,
+    TrainingProjectionReadPort,
+    TrainingRuntimePort,
+)
 from .training_snapshot import (
     model_name as snapshot_model_name,
 )
@@ -107,7 +149,10 @@ from .training_snapshot import (
 from .training_snapshot import (
     training_option_snapshot as build_training_option_snapshot,
 )
-from .view_event_publisher import ApplicationViewEventPublisher
+from .view_event_publisher import (
+    ApplicationViewEventPublisher,
+    UnobservedDeliveryPolicy,
+)
 from .view_publication import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     ApplicationViewCoordinator,
@@ -121,7 +166,9 @@ _CLOSED_SERVICE_MESSAGE = (
     "This XBrainLab application service is closed. Use the current application "
     "service instance."
 )
+_UNRECOGNIZED_COMMAND_NAME = "unsupported_command"
 _TRAINING_RESTART_SAFETY_WAIT_SECONDS = 2.0
+_SYNCHRONOUS_BACKGROUND_WAIT_SECONDS = 300.0
 
 
 class _LegacyRawMutationLifecycleCoordinator:
@@ -199,7 +246,7 @@ class _LazyDataInterpretationCommandService:
 
     def __init__(
         self,
-        dataset: Any,
+        dataset: DatasetProductPort,
         pipeline_transaction: PipelineStateTransaction,
     ) -> None:
         self.dataset = dataset
@@ -270,7 +317,7 @@ class _LazyDataCompatibilityCommandService:
     def __init__(
         self,
         *,
-        dataset: Any,
+        dataset: DatasetProductPort,
         interpretation: Any,
         pipeline_transaction: PipelineStateTransaction,
     ) -> None:
@@ -405,8 +452,11 @@ class _LazyTrainingCommandService:
             defer_synchronous_completion=defer_synchronous_completion,
         )
 
-    def complete_synchronous_training(self) -> tuple[str, dict[str, Any]]:
-        return self._service().complete_synchronous_training()
+    def complete_synchronous_training(
+        self,
+        expected_trainer_identity: str,
+    ) -> tuple[str, dict[str, Any]]:
+        return self._service().complete_synchronous_training(expected_trainer_identity)
 
     def handle_stop_training(self, command: Command) -> HandlerResult:
         return self._service().handle_stop_training(command)
@@ -421,11 +471,11 @@ class _LazyAnalysisCommandService:
     def __init__(
         self,
         *,
-        evaluation: Any,
+        training_runtime: TrainingProjectionReadPort,
         visualization: Any,
         get_state: Callable[[], ApplicationStateSnapshot],
     ) -> None:
-        self.evaluation = evaluation
+        self.training_runtime = training_runtime
         self.visualization = visualization
         self._get_state = get_state
         self._service_instance: Any | None = None
@@ -435,7 +485,7 @@ class _LazyAnalysisCommandService:
             from .analysis_service import AnalysisCommandService  # noqa: PLC0415
 
             self._service_instance = AnalysisCommandService(
-                evaluation=self.evaluation,
+                training_runtime=self.training_runtime,
                 visualization=self.visualization,
                 get_state=self._get_state,
             )
@@ -452,7 +502,7 @@ class _LazyAnalysisCommandService:
 
 
 class ApplicationService(Observable):
-    """Command-oriented application layer over the existing backend controllers."""
+    """Command spine composed from Study-owned domain ports."""
 
     def __init__(self, study: Study | None = None) -> None:
         super().__init__()
@@ -464,20 +514,21 @@ class ApplicationService(Observable):
         self.study = study
         self._command_lock = command_lock
         self.training_runtime = StudyTrainingRuntime(self.study)
-        self.dataset = DatasetControllerAdapter(self.study)
-        self.preprocess = PreprocessControllerAdapter(self.study)
-        self.training = TrainingControllerAdapter(self.study)
-        self.evaluation = EvaluationControllerAdapter(self.study)
-        self.visualization = VisualizationControllerAdapter(self.study)
+        self.dataset = self.study.dataset_state_service
+        self.dataset_state = self.dataset
+        self.preprocess: PreprocessProductPort = self.study.preprocess_state_service
+        self.training: TrainingProductPort = self.study.training_state_service
+        self.training_lifecycle_events = self.study.training_state_service
+        self.visualization: VisualizationProductPort = (
+            self.study.visualization_state_service
+        )
         self.training_state = TrainingStateReadModel(self.training_runtime)
         self.evaluation_state = EvaluationStateReadModel(self.training_runtime)
         self._last_error: ErrorSnapshot | None = None
         self._command_admission_lock = Lock()
-        self._synchronous_training_lifecycle_lock = Lock()
-        self._shutdown_fenced = False
-        self._shutdown_fence_generation = 0
-        self._closing = False
-        self._closed = False
+        self._synchronous_training_lifecycle_lock = (
+            self.study._synchronous_training_lifecycle_lock
+        )
         self._mutation_in_progress = False
         self._publication_delivery_fence_depth = 0
         self.pipeline_transaction = PipelineStateTransaction(
@@ -496,7 +547,7 @@ class ApplicationService(Observable):
         self.legacy_raw_mutation_lifecycle = _LegacyRawMutationLifecycleCoordinator(
             self.interpretation,
         )
-        self.data_table = DataTableCommandService(dataset=self.dataset)
+        self.data_table = DataTableCommandService(dataset=self.dataset_state)
         self.preprocess_commands = PreprocessCommandService(
             preprocess=self.preprocess,
             dataset=self.dataset,
@@ -521,12 +572,12 @@ class ApplicationService(Observable):
         self.saliency_coverage_projector = SaliencyCoverageProjector()
         self.state_snapshot = StateSnapshotService(
             study=self.study,
-            dataset=self.dataset,
+            dataset=self.dataset_state,
             preprocess=self.preprocess,
-            training=self.training,
+            training=self.training_state,
             training_runtime=self.training_runtime,
             training_state=self.training_state,
-            evaluation=self.evaluation,
+            evaluation=self.evaluation_state,
             evaluation_state=self.evaluation_state,
             visualization=self.visualization,
             dataset_generation=self.dataset_generation,
@@ -536,6 +587,16 @@ class ApplicationService(Observable):
         )
         initial_training_boundary = self.state_snapshot.capture_training_read_boundary()
         initial_state = self.state_snapshot.build(last_error=self._last_error)
+        initial_training_history = (
+            tuple(self.state_snapshot.training_history())
+            if initial_state.state_reliable and initial_training_boundary.stable
+            else ()
+        )
+        initial_data_summary_rows = (
+            tuple(self._build_data_summary_rows())
+            if initial_state.state_reliable and initial_training_boundary.stable
+            else None
+        )
         final_initial_training_boundary = (
             self.state_snapshot.capture_training_read_boundary()
         )
@@ -543,9 +604,13 @@ class ApplicationService(Observable):
             initial_state,
             initial_training_boundary=final_initial_training_boundary,
             build_state=lambda: self.state_snapshot.build(last_error=self._last_error),
+            build_training_history=self.state_snapshot.training_history,
+            build_data_summary_rows=self._build_data_summary_rows,
             capture_training_boundary=(
                 self.state_snapshot.capture_training_read_boundary
             ),
+            initial_training_history=initial_training_history,
+            initial_data_summary_rows=initial_data_summary_rows,
         )
         if (
             initial_training_boundary != final_initial_training_boundary
@@ -561,17 +626,23 @@ class ApplicationService(Observable):
                 APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
                 publication,
             ),
+            unobserved_delivery_policy=(
+                UnobservedDeliveryPolicy.ACKNOWLEDGE_WITHOUT_RENDER
+            ),
         )
         self.publication_lifecycle = ApplicationPublicationLifecycle(
-            training=self.training,
+            training_events=self.training_lifecycle_events,
             training_runtime=self.training_runtime,
             visualization=self.visualization,
             state_snapshot=self.state_snapshot,
             command_lock=self._command_lock,
             command_admission_lock=self._command_admission_lock,
-            is_closed=lambda: self._closed,
+            is_closed=(
+                lambda: self.shutdown_lifecycle.is_closing
+                or self.shutdown_lifecycle.is_closed
+            ),
             is_mutation_in_progress=self._publication_delivery_is_fenced,
-            is_shutdown_fenced=lambda: self._shutdown_fenced,
+            is_shutdown_fenced=(lambda: self.shutdown_lifecycle.is_shutdown_fenced),
             refresh_training_publication=self._refresh_training_publication_strict,
             committed_view_publication=self._committed_view_publication,
             publish_view_changed=self._publish_view_changed,
@@ -585,14 +656,30 @@ class ApplicationService(Observable):
                 self.state_snapshot.capture_training_read_boundary
             ),
         )
+        self.evaluation_render = EvaluationRenderPublisher(
+            training_runtime=self.training_runtime,
+            get_publication=self._committed_view_publication,
+            capture_training_boundary=(
+                self.state_snapshot.capture_training_read_boundary
+            ),
+        )
+        self.preprocess_render = PreprocessRenderPublisher(
+            dataset=self.dataset_state,
+            get_publication=self._committed_view_publication,
+        )
+        self.dataset_split_preview = DatasetSplitPreviewPublisher(
+            dataset=self.dataset_state,
+            generator_factory=self.study.get_datasets_generator,
+            get_publication=self._committed_view_publication,
+        )
         self.query_state_commands = QueryStateCommandService(
             study=self.study,
-            dataset=self.dataset,
+            dataset=self.dataset_state,
             state_builder=self.state_snapshot,
             get_state=self.get_state,
         )
         self.analysis = _LazyAnalysisCommandService(
-            evaluation=self.evaluation,
+            training_runtime=self.training_runtime,
             visualization=self.visualization,
             get_state=self.get_state,
         )
@@ -615,7 +702,53 @@ class ApplicationService(Observable):
             ),
             read_terminal_outcome=self.training_runtime.terminal_outcome,
         )
+        self.shutdown_lifecycle = ApplicationShutdownLifecycleCoordinator(
+            command_admission_lock=self._command_admission_lock,
+            command_lock=self._command_lock,
+            synchronous_training_lifecycle_lock=(
+                self._synchronous_training_lifecycle_lock
+            ),
+            training=self.training,
+            training_runtime=self.training_runtime,
+            dataset_split_preview=self.dataset_split_preview,
+            post_training_saliency=self.post_training_saliency,
+            publication_lifecycle=self.publication_lifecycle,
+            refresh_training_publication=self._refresh_training_publication_strict,
+            committed_view_publication=self._committed_view_publication,
+            wait_for_synchronous_training_quiescence=(
+                self._wait_for_synchronous_training_quiescence
+            ),
+        )
+        self.synchronous_training_lifecycle = SynchronousTrainingLifecycleCoordinator(
+            training_runtime=self.training_runtime,
+            terminal_notifications=self.training,
+            retry_terminal_delivery=(
+                self._retry_synchronous_training_terminal_delivery
+            ),
+            command_lock=self._command_lock,
+            complete_training=(self.training_commands.complete_synchronous_training),
+            committed_publication=self._committed_view_publication,
+            clear_last_error=self._clear_last_error,
+            state_after_command=self._state_after_command,
+            changed_state=self._changed_state,
+            post_state_verification_failure=(
+                self._post_state_verification_failure_result
+            ),
+            handler_failure=self._handler_failure_result,
+            completion_is_closed=lambda: self.shutdown_lifecycle.is_closed,
+        )
         self._command_handlers = self._build_command_handlers()
+        self.publication_lifecycle.start()
+
+    def _wait_for_synchronous_training_quiescence(self, timeout: float) -> bool:
+        return self.synchronous_training_lifecycle.wait_until_quiescent(timeout=timeout)
+
+    def _build_data_summary_rows(self) -> list[dict[str, Any]]:
+        """Return the active detached dataset rows for one view publication."""
+        preprocessed_rows = self.dataset.get_preprocessed_data_rows()
+        if preprocessed_rows:
+            return preprocessed_rows
+        return self.dataset.get_loaded_data_rows()
 
     @property
     def _observer_finalizer(self) -> Callable[[], Any]:
@@ -638,45 +771,16 @@ class ApplicationService(Observable):
         if not begin_application_service_close(
             self.study,
             self,
-            self._begin_close,
+            self.shutdown_lifecycle.begin_close,
         ):
             return
-        try:
-            self.post_training_saliency.cancel()
-        except Exception:
-            logger.debug(
-                "Could not cancel post-training saliency automation during close",
-                exc_info=True,
-            )
+        self.shutdown_lifecycle.cancel_close_automation()
         self.publication_lifecycle.close()
 
-    def _begin_close(self) -> bool:
-        """Linearize close after active commands without waiting on callbacks."""
-        with self._command_admission_lock:
-            if self._closed or self._closing:
-                return False
-            self._closing = True
-            self._shutdown_fenced = True
-            self._shutdown_fence_generation += 1
-        try:
-            self.training.cancel_terminal_notification_waits(
-                "Application service is closing."
-            )
-        except Exception:
-            logger.debug(
-                "Could not cancel training terminal handoff waits during close",
-                exc_info=True,
-            )
-        with (
-            self._synchronous_training_lifecycle_lock,
-            self._command_lock,
-            self._command_admission_lock,
-        ):
-            if self._closed:
-                return False
-            self._closed = True
-            self._closing = False
-            return True
+    @property
+    def is_closed(self) -> bool:
+        """Return whether this service instance has released runtime ownership."""
+        return self.shutdown_lifecycle.is_closed
 
     def _closed_command_result(self, command: Command | Any) -> CommandResult:
         """Return a stable rejection without rebuilding closed backend state."""
@@ -684,7 +788,7 @@ class ApplicationService(Observable):
         try:
             name = command_name(command).value
         except Exception:
-            name = command.__class__.__name__
+            name = _UNRECOGNIZED_COMMAND_NAME
         return CommandResult.failure_result(
             command_name=name,
             message=_CLOSED_SERVICE_MESSAGE,
@@ -705,16 +809,14 @@ class ApplicationService(Observable):
         command: Command | Any,
     ) -> CommandResult | None:
         """Check command admission against the service lifetime boundary."""
-        with self._command_admission_lock:
-            if not self._closed:
-                return None
-            return self._closed_command_result(command)
+        if not self.shutdown_lifecycle.snapshot().closed:
+            return None
+        return self._closed_command_result(command)
 
     def _ensure_open(self) -> None:
         """Reject direct API reads after this service released ownership."""
-        with self._command_admission_lock:
-            if self._closed:
-                raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
+        if self.shutdown_lifecycle.snapshot().closed:
+            raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
 
     def _discard_pending_saliency_terminal(self) -> None:
         """Explicitly abandon terminal UI delivery during permanent close."""
@@ -912,6 +1014,159 @@ class ApplicationService(Observable):
         self._ensure_open()
         return self.saliency_render.publish(request)
 
+    def get_evaluation_render(
+        self,
+        request: EvaluationRenderRequest,
+    ) -> EvaluationRenderPublication:
+        """Return detached Evaluation data guarded by publication/training identity."""
+        self._ensure_open()
+        return self.evaluation_render.publish(request)
+
+    def get_preprocess_render(
+        self,
+        request: PreprocessRenderRequest,
+    ) -> PreprocessRenderPublication:
+        """Return one bounded signal DTO without transferring mutable EEG objects."""
+        acquired = self._command_lock.acquire(blocking=False)
+        if not acquired:
+            raise PreconditionError(
+                "Signal preview is busy. Wait for the current action and retry.",
+                diagnostics={
+                    "preprocess_render_unavailable": True,
+                    "retryable": True,
+                },
+            )
+        try:
+            self._ensure_open()
+            if self._mutation_in_progress:
+                raise PreconditionError(
+                    "Signal preview is changing. Wait for the action to finish.",
+                    diagnostics={
+                        "preprocess_render_unavailable": True,
+                        "retryable": True,
+                    },
+                )
+            return self.preprocess_render.publish(request)
+        finally:
+            self._command_lock.release()
+
+    def get_epoch_dialog_context(self) -> EpochDialogContext:
+        """Return one detached epoch setup bound to a committed publication."""
+        acquired = self._command_lock.acquire(blocking=False)
+        if not acquired:
+            return EpochDialogContext.unavailable(
+                reason="EEG epoch setup is busy. Wait for the current action and retry."
+            )
+        try:
+            self._ensure_open()
+            publication = self._committed_view_publication()
+            capability = publication.effective_capabilities.get(
+                CommandName.CREATE_EPOCH
+            )
+            if self._mutation_in_progress or not publication.usable:
+                return EpochDialogContext.unavailable(
+                    reason=(
+                        publication.public_unavailable_reason
+                        or EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE
+                    ),
+                    capability=capability,
+                    publication_generation=publication.generation,
+                )
+            state = publication.state
+            if (
+                not isinstance(state, ApplicationStateSnapshot)
+                or state.state_reliable is not True
+                or state.read_errors
+                or not isinstance(state.interpretation, InterpretationStateSnapshot)
+            ):
+                return EpochDialogContext.unavailable(
+                    capability=capability,
+                    publication_generation=publication.generation,
+                )
+            handoff = validated_epoch_handoff(state.interpretation.epoch_handoff)
+            setup = build_epoching_context(
+                self.dataset_state.get_preprocessed_data_list(),
+                epoch_handoff=handoff,
+            )
+            return EpochDialogContext(
+                capability=capability,
+                epoch_handoff=handoff,
+                epoch_setup=setup,
+                publication_generation=publication.generation,
+                usable=True,
+                unavailable_reason=None,
+            )
+        except (TypeError, ValueError):
+            logger.error("Failed to build detached EEG epoch setup.", exc_info=True)
+            publication = self._committed_view_publication()
+            return EpochDialogContext.unavailable(
+                publication_generation=publication.generation,
+            )
+        finally:
+            self._command_lock.release()
+
+    def get_dataset_split_context(
+        self,
+        request: DatasetSplitContextRequest,
+    ) -> DatasetSplitContextPublication:
+        """Return detached split choices without transferring live Epochs."""
+        acquired = self._command_lock.acquire(blocking=False)
+        if not acquired:
+            raise PreconditionError(
+                "Dataset splitting is busy. Wait for the current action and retry.",
+                diagnostics={
+                    "dataset_split_context_unavailable": True,
+                    "retryable": True,
+                },
+            )
+        try:
+            self._ensure_open()
+            if self._mutation_in_progress:
+                raise PreconditionError(
+                    "Dataset splitting is changing. Wait for the action to finish.",
+                    diagnostics={
+                        "dataset_split_context_unavailable": True,
+                        "retryable": True,
+                    },
+                )
+            return self.dataset_split_preview.publish_context(request)
+        finally:
+            self._command_lock.release()
+
+    def get_dataset_split_preview(
+        self,
+        request: DatasetSplitPreviewRequest,
+    ) -> DatasetSplitPreviewPublication:
+        """Return detached speculative split rows under the command lock."""
+        acquired = self._command_lock.acquire(blocking=False)
+        if not acquired:
+            raise PreconditionError(
+                "Dataset split preview is busy. Wait and retry.",
+                diagnostics={
+                    "dataset_split_preview_unavailable": True,
+                    "retryable": True,
+                },
+            )
+        try:
+            self._ensure_open()
+            if self._mutation_in_progress:
+                raise PreconditionError(
+                    "Dataset splitting is changing. Wait for the action to finish.",
+                    diagnostics={
+                        "dataset_split_preview_unavailable": True,
+                        "retryable": True,
+                    },
+                )
+            return self.dataset_split_preview.publish_preview(request)
+        finally:
+            self._command_lock.release()
+
+    def cancel_dataset_split_preview(self, request_id: str) -> bool:
+        """Cancel one preview without waiting on the command lock it occupies."""
+        if self.shutdown_lifecycle.is_closed:
+            return False
+        return self.dataset_split_preview.cancel_preview(request_id)
+
     def get_training_resource_preflight(self) -> ResourcePreflightResult | None:
         """Check current training resources without waiting on an active command."""
         acquired = self._command_lock.acquire(blocking=False)
@@ -1047,15 +1302,28 @@ class ApplicationService(Observable):
         """Copy the internal publication without exposing mutable nested values."""
         return self._view_coordinator.committed()
 
-    def query_published_state(self) -> CommandResult:
+    def query_published_state(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
         """Return a safe UI read model without waiting for an active mutation."""
-        closed = self._closed_command_result_if_any(QueryStateCommand(query="state"))
+        command = QueryStateCommand(query="state")
+        closed = self._closed_command_result_if_any(command)
         if closed is not None:
             return closed
         publication = self._committed_view_publication()
         if not publication.usable and self._pending_saliency_terminal() is not None:
             self._reconcile_pending_saliency_terminal(blocking=False)
             publication = self._committed_view_publication()
+        if expected_publication_generation is not None:
+            rejection = self._expected_publication_rejection_for_publication(
+                command,
+                expected_publication_generation,
+                publication,
+            )
+            if rejection is not None:
+                return rejection
         diagnostics = {
             "state": publication.state.to_dict(),
             "capabilities": publication.effective_capabilities.to_dict(),
@@ -1100,12 +1368,16 @@ class ApplicationService(Observable):
         if closed is not None:
             return closed
         if isinstance(command, QueryStateCommand):
-            result = self._execute_at_command_boundary(
+            result, completion_release = self._execute_at_command_boundary(
                 command,
                 expected_publication_generation=expected_publication_generation,
             )
-            self._publish_committed_view()
-            return result
+            try:
+                self._publish_committed_view()
+                return result
+            finally:
+                if completion_release is not None:
+                    completion_release()
         visualization_notifications = (
             self.visualization.batch_notifications()
             if isinstance(command, SaliencyCommand)
@@ -1115,28 +1387,40 @@ class ApplicationService(Observable):
             self._commit_post_training_saliency_terminal_state
         )
         visualization_batch_generation: int | None = None
-        with (
-            self.training_publications.capture_saliency_notifications(),
-            visualization_notifications,
-            manager_notifications,
-        ):
-            if isinstance(command, SaliencyCommand):
-                visualization_batch_generation = self._visualization_batch_generation()
-            result = self._execute_at_command_boundary(
+        completion_release: Callable[[], None] | None = None
+        try:
+            with (
+                self.training_publications.capture_saliency_notifications(),
+                visualization_notifications,
+                manager_notifications,
+            ):
+                if isinstance(command, SaliencyCommand):
+                    visualization_batch_generation = (
+                        self._visualization_batch_generation()
+                    )
+                result, completion_release = self._execute_at_command_boundary(
+                    command,
+                    expected_publication_generation=expected_publication_generation,
+                )
+            result = self._retry_failed_manual_saliency_delivery(
                 command,
-                expected_publication_generation=expected_publication_generation,
+                result,
+                visualization_batch_generation,
             )
-        result = self._retry_failed_manual_saliency_delivery(
-            command,
-            result,
-            visualization_batch_generation,
-        )
-        self._publish_committed_view()
-        return result
+            self._publish_committed_view()
+            return result
+        finally:
+            if completion_release is not None:
+                completion_release()
 
     def _publish_committed_view(self) -> bool:
         """Deliver unseen committed truth and retry unacknowledged revisions."""
-        if self._publication_delivery_is_fenced():
+        shutdown = self.shutdown_lifecycle.snapshot()
+        if (
+            shutdown.closing
+            or shutdown.closed
+            or self._publication_delivery_is_fenced()
+        ):
             return False
         return self._publish_view_changed(self._committed_view_publication())
 
@@ -1155,19 +1439,33 @@ class ApplicationService(Observable):
             )
         return self._view_event_publisher.publish(publication)
 
-    def acknowledge_view_publication_delivery(self, revision: int) -> bool:
+    def acknowledge_view_publication_delivery(
+        self,
+        revision: int,
+        *,
+        owner: object | None = None,
+    ) -> bool:
         """Acknowledge that a product consumer rendered one publication revision."""
-        acknowledged = self._view_event_publisher.acknowledge(revision)
+        acknowledged = self._view_event_publisher.acknowledge(
+            revision,
+            owner=owner,
+        )
         if acknowledged:
             self.training_publications.retry_training_terminal_delivery()
         return acknowledged
 
+    def require_visible_view_publication_acknowledgement(self, owner: object) -> None:
+        """Claim desktop-visible acknowledgement ownership from now on."""
+        self._view_event_publisher.require_acknowledging_subscriber(owner)
+
     def reject_view_publication_delivery(
         self,
         publication: ApplicationViewPublication,
+        *,
+        owner: object | None = None,
     ) -> bool:
         """Release one deferred publication after a visible render failure."""
-        return self._view_event_publisher.reject(publication)
+        return self._view_event_publisher.reject(publication, owner=owner)
 
     def _retry_failed_manual_saliency_delivery(
         self,
@@ -1208,15 +1506,26 @@ class ApplicationService(Observable):
         command: Command | Any,
         *,
         expected_publication_generation: int | None = None,
-    ) -> CommandResult:
+    ) -> tuple[CommandResult, Callable[[], None] | None]:
         """Execute a command and return a result envelope."""
         closed = self._closed_command_result_if_any(command)
         if closed is not None:
-            return closed
+            return closed, None
         if self._is_published_state_query(command):
-            return self.query_published_state()
+            return (
+                self.query_published_state(
+                    expected_publication_generation=expected_publication_generation,
+                ),
+                None,
+            )
         if isinstance(command, QueryStateCommand):
-            return self._execute_query_without_wait(command)
+            return (
+                self._execute_query_without_wait(
+                    command,
+                    expected_publication_generation=expected_publication_generation,
+                ),
+                None,
+            )
 
         train_command = command if isinstance(command, TrainCommand) else None
         synchronous_train = train_command is not None and not train_command.interactive
@@ -1225,6 +1534,7 @@ class ApplicationService(Observable):
             if train_command is not None
             else nullcontext()
         )
+        completion_release: Callable[[], None] | None = None
         with lifecycle_boundary:
             if (
                 train_command is not None
@@ -1233,7 +1543,7 @@ class ApplicationService(Observable):
                     timeout=_TRAINING_RESTART_SAFETY_WAIT_SECONDS,
                 )
             ):
-                return self._training_restart_pending_result()
+                return self._training_restart_pending_result(), None
             result = self._execute_with_command_lock(
                 command,
                 expected_publication_generation=expected_publication_generation,
@@ -1243,9 +1553,15 @@ class ApplicationService(Observable):
                 and result.ok
                 and result.diagnostics.get("synchronous_completion_deferred") is True
             ):
-                result = self._complete_deferred_synchronous_training(result)
+                completion_release = (
+                    self.synchronous_training_lifecycle.admit_deferred_completion()
+                )
 
-            if not self._closed:
+        try:
+            if completion_release is not None:
+                result = self.synchronous_training_lifecycle.complete_deferred(result)
+
+            if not self.shutdown_lifecycle.is_closed:
                 try:
                     self.training_publications.retry_training_terminal_delivery()
                 except Exception:
@@ -1253,28 +1569,46 @@ class ApplicationService(Observable):
                         "Could not retry retained terminal training publication"
                     )
             if synchronous_train and result.ok:
-                generation = self._training_handoff_generation(result)
+                generation = self.synchronous_training_lifecycle.handoff_generation(
+                    result
+                )
                 if generation is None:
-                    return self._background_delivery_failure(
-                        result,
-                        reason=(
-                            "Training completed, but its terminal handoff identity "
-                            "was unavailable."
-                        ),
-                        invalid_handoff=True,
+                    result = (
+                        self.synchronous_training_lifecycle.background_delivery_failure(
+                            result,
+                            reason=(
+                                "Training completed, but its terminal handoff identity "
+                                "was unavailable."
+                            ),
+                            invalid_handoff=True,
+                        )
                     )
-                if not self.wait_for_background_tasks(
-                    training_handoff_generation=generation
+                elif not self.wait_for_background_tasks(
+                    timeout=_SYNCHRONOUS_BACKGROUND_WAIT_SECONDS,
+                    training_handoff_generation=generation,
                 ):
-                    return self._background_delivery_failure(
-                        result,
-                        reason=(
-                            "Training completed, but its final application updates "
-                            "could not be delivered. Retry after the application "
-                            "becomes idle."
-                        ),
+                    result = (
+                        self.synchronous_training_lifecycle.background_delivery_failure(
+                            result,
+                            reason=(
+                                "Training completed, but its final application updates "
+                                "could not be delivered. Retry after the application "
+                                "becomes idle."
+                            ),
+                        )
                     )
-            return result
+        except BaseException:
+            if completion_release is not None:
+                completion_release()
+            raise
+        return result, completion_release
+
+    def _retry_synchronous_training_terminal_delivery(
+        self,
+        _generation: int,
+    ) -> bool:
+        """Retry the retained terminal publication outside lifecycle locks."""
+        return bool(self.training_publications.retry_training_terminal_delivery())
 
     def _training_restart_pending_result(self) -> CommandResult:
         """Return a retryable result when terminal monitor cleanup is incomplete."""
@@ -1294,40 +1628,6 @@ class ApplicationService(Observable):
             diagnostics={"training_restart_pending": True},
         )
 
-    @staticmethod
-    def _training_handoff_generation(result: CommandResult) -> int | None:
-        """Read one exact controller handoff identity from a command result."""
-        generation = result.diagnostics.get("training_handoff_generation")
-        if (
-            isinstance(generation, bool)
-            or not isinstance(generation, int)
-            or generation < 1
-        ):
-            return None
-        return generation
-
-    @staticmethod
-    def _background_delivery_failure(
-        result: CommandResult,
-        *,
-        reason: str,
-        invalid_handoff: bool = False,
-    ) -> CommandResult:
-        """Turn an unverified synchronous terminal handoff into a safe failure."""
-        diagnostics = dict(result.diagnostics)
-        diagnostics["background_delivery_incomplete"] = True
-        if invalid_handoff:
-            diagnostics["training_handoff_generation_invalid"] = True
-        return replace(
-            result,
-            status=CommandStatus.FAILED,
-            message=reason,
-            error_type=ErrorType.INTERNAL,
-            recoverable=True,
-            error_message=reason,
-            diagnostics=diagnostics,
-        )
-
     def _execute_with_command_lock(
         self,
         command: Command | Any,
@@ -1338,15 +1638,15 @@ class ApplicationService(Observable):
         with self._command_lock:
             self._publication_delivery_fence_depth += 1
             try:
-                with self._command_admission_lock:
-                    closed = self._closed
-                    rejected_by_shutdown = self._shutdown_fenced and not isinstance(
-                        command,
-                        (
-                            QueryStateCommand,
-                            StopTrainingCommand,
-                        ),
-                    )
+                admission = self.shutdown_lifecycle.snapshot()
+                closed = admission.closed
+                rejected_by_shutdown = admission.fenced and not isinstance(
+                    command,
+                    (
+                        QueryStateCommand,
+                        StopTrainingCommand,
+                    ),
+                )
                 if closed:
                     result = self._closed_command_result(command)
                 elif rejected_by_shutdown:
@@ -1372,107 +1672,25 @@ class ApplicationService(Observable):
                     )
         return result
 
-    def _complete_deferred_synchronous_training(
-        self,
-        started: CommandResult,
-    ) -> CommandResult:
-        """Wait outside the command lock, then verify one terminal run under it."""
-        completion_error: Exception | None = None
-        try:
-            if not self.training_runtime.wait_for_training_completion():
-                completion_error = ApplicationError(
-                    message="Training completion could not be verified.",
-                    error_type=ErrorType.TRAINING,
-                    recoverable=True,
-                    diagnostics={"training_failed": True},
-                )
-        except Exception as exc:
-            completion_error = exc
-
-        with self._command_lock:
-            before_publication = self._committed_view_publication()
-            try:
-                self._raise_completion_error(completion_error)
-                message, completion_diagnostics = (
-                    self.training_commands.complete_synchronous_training()
-                )
-                self._last_error = None
-                after, refresh_error = self._state_after_command()
-                if refresh_error is not None or not after.state_reliable:
-                    verification_error = refresh_error or RuntimeError(
-                        "; ".join(after.read_errors)
-                        or "updated application state is unreliable",
-                    )
-                    completed = self._post_state_verification_failure_result(
-                        name=CommandName.TRAIN,
-                        state=after,
-                        diagnostics=completion_diagnostics,
-                        error=verification_error,
-                    )
-                else:
-                    completed = CommandResult.success_result(
-                        command_name=CommandName.TRAIN.value,
-                        message=message,
-                        state=after,
-                        changed_state=self._changed_state(started.state, after),
-                        diagnostics=completion_diagnostics,
-                    )
-            except Exception as exc:
-                completed = self._handler_failure_result(
-                    CommandName.TRAIN,
-                    started.state,
-                    before_publication,
-                    exc,
-                )
-
-        diagnostics = dict(started.diagnostics)
-        diagnostics.pop("synchronous_completion_deferred", None)
-        return replace(
-            completed,
-            changed_state=self._merge_changed_state(
-                started.changed_state,
-                completed.changed_state,
-            ),
-            diagnostics={**diagnostics, **completed.diagnostics},
-        )
-
-    @staticmethod
-    def _raise_completion_error(error: Exception | None) -> None:
-        """Re-enter the normal command failure mapping after an unlocked wait."""
-        if error is not None:
-            raise error
-
-    @staticmethod
-    def _merge_changed_state(
-        first: ChangedState,
-        second: ChangedState,
-    ) -> ChangedState:
-        """Union state deltas produced by start and terminal publication phases."""
-        return ChangedState(
-            raw_changed=first.raw_changed or second.raw_changed,
-            preprocessed_changed=(
-                first.preprocessed_changed or second.preprocessed_changed
-            ),
-            epoch_changed=first.epoch_changed or second.epoch_changed,
-            datasets_changed=first.datasets_changed or second.datasets_changed,
-            training_changed=first.training_changed or second.training_changed,
-            evaluation_changed=first.evaluation_changed or second.evaluation_changed,
-            visualization_changed=(
-                first.visualization_changed or second.visualization_changed
-            ),
-            interpretation_changed=(
-                first.interpretation_changed or second.interpretation_changed
-            ),
-            error_changed=first.error_changed or second.error_changed,
-            state_unknown=first.state_unknown or second.state_unknown,
-        )
-
     def _expected_publication_rejection(
         self,
         command: Command | Any,
         expected_generation: int,
     ) -> CommandResult | None:
         """Reject a generation-bound mutation against any other committed view."""
+        return self._expected_publication_rejection_for_publication(
+            command,
+            expected_generation,
+            self._committed_view_publication(),
+        )
+
+    @staticmethod
+    def _expected_publication_rejection_for_publication(
+        command: Command | Any,
+        expected_generation: int,
+        publication: ApplicationViewPublication,
+    ) -> CommandResult | None:
+        """Validate a command against the exact publication it will consume."""
         if (
             isinstance(expected_generation, bool)
             or not isinstance(expected_generation, int)
@@ -1481,13 +1699,12 @@ class ApplicationService(Observable):
             raise ValueError(
                 "Expected publication generation must be a non-negative integer."
             )
-        publication = self._committed_view_publication()
         if publication.usable and publication.generation == expected_generation:
             return None
         try:
             name = command_name(command).value
         except Exception:
-            name = command.__class__.__name__
+            name = _UNRECOGNIZED_COMMAND_NAME
         message = (
             "Workflow state changed while this confirmed action was pending. "
             "Review the action again before continuing."
@@ -1523,7 +1740,12 @@ class ApplicationService(Observable):
             and str(command.query or "state").lower() == "state"
         )
 
-    def _execute_query_without_wait(self, command: QueryStateCommand) -> CommandResult:
+    def _execute_query_without_wait(
+        self,
+        command: QueryStateCommand,
+        *,
+        expected_publication_generation: int | None,
+    ) -> CommandResult:
         """Serialize mutable-object reads only when the command lock is available."""
         acquired = self._command_lock.acquire(blocking=False)
         if not acquired:
@@ -1545,158 +1767,33 @@ class ApplicationService(Observable):
                 },
             )
         try:
-            with self._command_admission_lock:
-                if self._closed:
-                    return self._closed_command_result(command)
+            if self.shutdown_lifecycle.snapshot().closed:
+                return self._closed_command_result(command)
+            if expected_publication_generation is not None:
+                rejection = self._expected_publication_rejection(
+                    command,
+                    expected_publication_generation,
+                )
+                if rejection is not None:
+                    return rejection
             return self._execute_serialized(command)
         finally:
             self._command_lock.release()
 
     def request_shutdown_fence(self) -> None:
         """Atomically reject new mutations without waiting for command execution."""
-        with (
-            self.training_publications.capture_saliency_notifications(),
-            self.training_runtime.defer_saliency_terminal(),
-        ):
-            with self._command_admission_lock:
-                self._shutdown_fenced = True
-                self._shutdown_fence_generation += 1
-            try:
-                self.post_training_saliency.cancel()
-                self.training_runtime.cancel_saliency_job()
-            except Exception:
-                logger.exception("Could not cancel background saliency during shutdown")
+        self.shutdown_lifecycle.request_fence()
 
     def release_shutdown_fence(self) -> bool:
         """Reopen admission and reconcile state hidden by the shutdown fence."""
-        publication_changed = False
-        terminal_status: PostTrainingSaliencyStatus | None = None
-        release_generation = -1
-        try:
-            with self._command_lock, self._command_admission_lock:
-                if self._closed or self._closing:
-                    return False
-                if not self._shutdown_fenced:
-                    return True
-                release_generation = self._shutdown_fence_generation
-                before = self._committed_view_publication()
-                refreshed_state = self._refresh_training_publication_strict()
-                after = self._committed_view_publication()
-                if (
-                    not refreshed_state.state_reliable
-                    or not after.usable
-                    or after.refresh_error is not None
-                    or after.state != refreshed_state
-                ):
-                    return False
-                before_visualization = before.state.visualization
-                after_visualization = after.state.visualization
-                publication_changed = (
-                    before_visualization.post_training_saliency
-                    != after_visualization.post_training_saliency
-                    or before_visualization.saliency_coverage
-                    != after_visualization.saliency_coverage
-                )
-                if publication_changed:
-                    status = after.state.visualization.post_training_saliency
-                    if status.phase.terminal:
-                        terminal_status = status
-        except Exception:
-            logger.exception(
-                "Could not reconcile application state after shutdown was cancelled"
-            )
-            terminal_status = self._terminal_saliency_release_obligation()
-            if terminal_status is not None:
-                self._remember_pending_saliency_terminal(terminal_status)
-            return False
-        terminal_status = (
-            self._terminal_saliency_release_obligation() or terminal_status
-        )
-        try:
-            with self.training_publications.capture_saliency_notifications():
-                if terminal_status is not None:
-                    self._remember_pending_saliency_terminal(terminal_status)
-                self._reconcile_pending_saliency_terminal(
-                    allow_shutdown_fenced=True,
-                )
-        except Exception:
-            logger.exception(
-                "Could not queue terminal saliency while releasing shutdown fence"
-            )
-            return False
-        if self._pending_saliency_terminal() is not None:
-            return False
-        if (
-            publication_changed
-            and terminal_status is None
-            and not self._notify_saliency_publication_changed()
-        ):
-            return False
-        publication = self._committed_view_publication()
-        if (
-            not publication.usable
-            or publication.refresh_error is not None
-            or not self._runtime_saliency_terminal_delivery_committed()
-        ):
-            return False
-        return self._complete_shutdown_fence_release(release_generation)
-
-    def _terminal_saliency_release_obligation(
-        self,
-    ) -> PostTrainingSaliencyStatus | None:
-        """Return current manager truth that still lacks public acknowledgement."""
-        status = self.training_runtime.saliency_status()
-        if not status.phase.terminal:
-            return None
-        visualization_state = self._committed_view_publication().state.visualization
-        publication_status = visualization_state.post_training_saliency
-        if publication_status.generation > status.generation:
-            return None
-        if self.training_publications.has_delivered_saliency_generation(
-            status.generation
-        ):
-            return None
-        return status
-
-    def _runtime_saliency_terminal_delivery_committed(self) -> bool:
-        """Require runtime queue acknowledgement before reopening admission."""
-        delivery = self.training_runtime.saliency_delivery_state()
-        if (
-            delivery.pending_generations
-            and delivery.active_generation is None
-            and not delivery.retry_owner_active
-        ):
-            self.training_runtime.retry_saliency_delivery()
-            delivery = self.training_runtime.saliency_delivery_state()
-        if delivery.pending_generations or delivery.active_generation is not None:
-            return False
-        status = self.training_runtime.saliency_status()
-        if not status.phase.terminal:
-            return True
-        if delivery.delivered_generation < status.generation:
-            return False
-        return self.training_publications.has_delivered_saliency_generation(
-            status.generation
-        )
-
-    def _complete_shutdown_fence_release(self, expected_generation: int) -> bool:
-        """Clear only the exact fence whose reconciliation just committed."""
-        with self._command_admission_lock:
-            if self._closed or self._closing:
-                return False
-            if not self._shutdown_fenced:
-                return True
-            if self._shutdown_fence_generation != expected_generation:
-                return False
-            self._shutdown_fenced = False
-            return True
+        return self.shutdown_lifecycle.release_fence()
 
     def _shutdown_fence_rejection(self, command: Command | Any) -> CommandResult:
         """Return a structured rejection for commands denied at admission time."""
         try:
             name = command_name(command).value
         except Exception:
-            name = command.__class__.__name__
+            name = _UNRECOGNIZED_COMMAND_NAME
         try:
             state = self.get_state()
         except Exception as exc:
@@ -1736,6 +1833,7 @@ class ApplicationService(Observable):
                 before,
                 before_publication,
                 exc,
+                read_only=self._is_read_only_command(command, name),
             )
 
     def _state_before_command(self, command: Command | Any) -> ApplicationStateSnapshot:
@@ -1808,6 +1906,12 @@ class ApplicationService(Observable):
                 "training_read_verified": True,
                 "training_read_generation": after_boundary.token.generation,
                 "training_read_trainer_identity": after_boundary.trainer_identity,
+            }
+        if name is CommandName.EVALUATE:
+            publication = self._committed_view_publication()
+            diagnostics = {
+                **diagnostics,
+                "evaluation_publication_generation": publication.generation,
             }
         if read_only:
             return CommandResult.success_result(
@@ -1889,28 +1993,32 @@ class ApplicationService(Observable):
         before: ApplicationStateSnapshot,
         before_publication: ApplicationViewPublication,
         exc: Exception,
+        *,
+        read_only: bool = False,
     ) -> CommandResult:
         """Map one handler failure and fail closed when post-state is uncertain."""
         app_error = map_exception(exc)
+        public_message = str(app_error)
         failure_diagnostics = {
             **app_error.diagnostics,
-            "exception_type": exc.__class__.__name__,
+            "exception_type": safe_exception_type_name(exc),
             "handler_error_type": app_error.error_type.value,
-            "handler_error_message": app_error.message,
+            "handler_error_message": public_message,
             "handler_error_recoverable": app_error.recoverable,
         }
-        if name is CommandName.QUERY_STATE:
+        if read_only or name is CommandName.QUERY_STATE:
             return CommandResult.failure_result(
                 command_name=name.value,
-                message=app_error.message,
+                message=public_message,
                 state=before,
                 changed_state=ChangedState(),
                 error_type=app_error.error_type,
                 recoverable=app_error.recoverable,
-                error_message=app_error.message,
+                error_message=public_message,
                 diagnostics={
                     **failure_diagnostics,
                     "read_only_query": True,
+                    "state_preserved": True,
                     "publication_generation": before_publication.generation,
                     "publication_revision": before_publication.revision,
                 },
@@ -1941,12 +2049,12 @@ class ApplicationService(Observable):
             if unchanged:
                 return CommandResult.failure_result(
                     command_name=name.value,
-                    message=app_error.message,
+                    message=public_message,
                     state=after,
                     changed_state=ChangedState(),
                     error_type=app_error.error_type,
                     recoverable=app_error.recoverable,
-                    error_message=app_error.message,
+                    error_message=public_message,
                     diagnostics={
                         **failure_diagnostics,
                         "control_flow_outcome": True,
@@ -1957,15 +2065,17 @@ class ApplicationService(Observable):
                 )
         self._last_error = ErrorSnapshot(
             error_type=app_error.error_type.value,
-            message=app_error.message,
+            message=public_message,
             recoverable=app_error.recoverable,
         )
         after, refresh_error = self._state_after_command()
         if refresh_error is not None:
             failure_diagnostics.update(
                 {
-                    "state_refresh_error": str(refresh_error),
-                    "state_refresh_exception_type": refresh_error.__class__.__name__,
+                    "state_refresh_error": public_exception_message(refresh_error),
+                    "state_refresh_exception_type": safe_exception_type_name(
+                        refresh_error
+                    ),
                 },
             )
         if refresh_error is not None or not after.state_reliable:
@@ -1982,8 +2092,8 @@ class ApplicationService(Observable):
         explicit_state_unknown = bool(app_error.diagnostics.get("state_unknown"))
         if explicit_state_unknown:
             read_errors = list(after.read_errors)
-            if app_error.message not in read_errors:
-                read_errors.append(app_error.message)
+            if public_message not in read_errors:
+                read_errors.append(public_message)
             after = replace(
                 after,
                 state_reliable=False,
@@ -1994,12 +2104,12 @@ class ApplicationService(Observable):
             changed_state = replace(changed_state, state_unknown=True)
         return CommandResult.failure_result(
             command_name=name.value,
-            message=app_error.message,
+            message=public_message,
             state=after,
             changed_state=changed_state,
             error_type=app_error.error_type,
             recoverable=app_error.recoverable,
-            error_message=app_error.message,
+            error_message=public_message,
             diagnostics=failure_diagnostics,
         )
 
@@ -2019,6 +2129,10 @@ class ApplicationService(Observable):
         except Exception as exc:
             fallback = self._state_fallback(exc)
             return fallback, exc
+
+    def _clear_last_error(self) -> None:
+        """Clear application error state after verified command completion."""
+        self._last_error = None
 
     def _post_state_verification_failure_result(
         self,
@@ -2053,14 +2167,14 @@ class ApplicationService(Observable):
             diagnostics={
                 **diagnostics,
                 "state_refresh_failed": True,
-                "state_refresh_error": str(error),
-                "state_refresh_exception_type": error.__class__.__name__,
+                "state_refresh_error": public_exception_message(error),
+                "state_refresh_exception_type": safe_exception_type_name(error),
                 "command_effect_may_have_applied": True,
             },
         )
 
     def _state_fallback(self, exc: Exception) -> ApplicationStateSnapshot:
-        message = f"state snapshot unavailable: {exc}"
+        message = f"state snapshot unavailable: {public_exception_message(exc)}"
         last_state = self._view_coordinator.committed().state
         errors = [message]
         return replace(
@@ -2089,7 +2203,7 @@ class ApplicationService(Observable):
         exc: Exception,
     ) -> CommandResult:
         app_error = map_exception(exc)
-        message = f"Unable to verify application state: {app_error.message}"
+        message = f"Unable to verify application state: {app_error}"
         self._last_error = ErrorSnapshot(
             error_type=ErrorType.INTERNAL.value,
             message=message,
@@ -2108,7 +2222,7 @@ class ApplicationService(Observable):
             recoverable=False,
             error_message=message,
             diagnostics={
-                "exception_type": exc.__class__.__name__,
+                "exception_type": safe_exception_type_name(exc),
                 "state_read_failed": True,
             },
         )
@@ -2121,7 +2235,7 @@ class ApplicationService(Observable):
         """Reject an object query without refreshing or mutating error truth."""
         publication = self._committed_view_publication()
         app_error = map_exception(exc)
-        message = app_error.message or (
+        message = str(app_error) or (
             "Application state is changing. Retry this query shortly."
         )
         return CommandResult.failure_result(
@@ -2139,7 +2253,7 @@ class ApplicationService(Observable):
                 "publication_generation": publication.generation,
                 "publication_revision": publication.revision,
                 "publication_usable": publication.usable,
-                "exception_type": exc.__class__.__name__,
+                "exception_type": safe_exception_type_name(exc),
             },
         )
 
@@ -2219,12 +2333,18 @@ class ApplicationService(Observable):
         """Execute a load-data command."""
         return self.execute(LoadDataCommand(paths=paths))
 
-    def attach_labels(self, mapping: dict[str, str]) -> CommandResult:
+    def attach_labels(
+        self,
+        mapping: dict[str, str],
+        *,
+        selected_event_names: list[str] | set[str] | None = None,
+    ) -> CommandResult:
         """Execute an attach-labels command."""
         return self.execute(
             AttachLabelsCommand(
                 mapping=mapping,
                 label_paths=list(dict.fromkeys(mapping.values())),
+                selected_event_names=selected_event_names,
             )
         )
 
@@ -2418,8 +2538,7 @@ class ApplicationService(Observable):
         command: Command,
         state: ApplicationStateSnapshot,
     ) -> None:
-        with self._command_admission_lock:
-            shutdown_fenced = self._shutdown_fenced
+        shutdown_fenced = self.shutdown_lifecycle.snapshot().fenced
         if shutdown_fenced and not isinstance(
             command,
             (QueryStateCommand, StopTrainingCommand),
@@ -2442,26 +2561,28 @@ class ApplicationService(Observable):
     ) -> CommandResult:
         self._last_error = ErrorSnapshot(
             error_type=ErrorType.UNSUPPORTED_COMMAND.value,
-            message=str(exc),
+            message=public_exception_message(exc),
             recoverable=True,
         )
         after, refresh_error = self._state_after_command()
-        diagnostics = {"exception_type": exc.__class__.__name__}
+        diagnostics = {"exception_type": safe_exception_type_name(exc)}
         if refresh_error is not None:
             diagnostics.update(
                 {
-                    "state_refresh_error": str(refresh_error),
-                    "state_refresh_exception_type": refresh_error.__class__.__name__,
+                    "state_refresh_error": public_exception_message(refresh_error),
+                    "state_refresh_exception_type": safe_exception_type_name(
+                        refresh_error
+                    ),
                 },
             )
         return CommandResult.failure_result(
             command_name=ErrorType.UNSUPPORTED_COMMAND.value,
-            message=str(exc),
+            message=public_exception_message(exc),
             state=after,
             changed_state=self._changed_state(before, after),
             error_type=ErrorType.UNSUPPORTED_COMMAND,
             recoverable=True,
-            error_message=str(exc),
+            error_message=public_exception_message(exc),
             diagnostics=diagnostics,
         )
 
@@ -2481,8 +2602,8 @@ class ApplicationService(Observable):
         return (
             name == CommandName.SALIENCY
             and isinstance(command, SaliencyCommand)
-            and command.method is None
-            and command.params is None
+            and not command.method
+            and not command.params
         )
 
     @staticmethod

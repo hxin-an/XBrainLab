@@ -51,84 +51,53 @@ Recommended branch names:
 - `docs/<area>` for docs-only work.
 - `wip/<area>` for checkpoints not ready for PR.
 
-## MVP Stabilization Branch Strategy
+## Current Product-Quality Closure Flow
 
-When the product is not yet runnable or MVP-stable, do not merge the unstable
-state into `main`. Use a stabilization branch as the integration line:
-
-```text
-main
-  |
-  +-- codex/stabilization-autopilot or stabilize/<mvp-area>
-        |
-        +-- fix/<one-blocker>
-        +-- test/<one-evidence-gap>
-        +-- refactor/<one-boundary>
-```
-
-Rules for this mode:
-
-- `main` should only receive states that are runnable and validated enough to be
-  better than the previous baseline.
-- The stabilization branch may hold the MVP integration state, but do not keep
-  piling unrelated work directly onto it.
-- Create small branches from the stabilization branch for one blocker, one test
-  gap, or one boundary cleanup; merge them back into the stabilization branch
-  after focused validation.
-- Merge the stabilization branch into `main` only after the agreed MVP minimum
-  works end to end and the required dashboard / docs / smoke gates pass.
-- If a branch cannot start the app, complete the representative product flow, or
-  explain its known blockers, it may be a draft integration branch but it is not
-  ready for `main`.
-
-## Desktop MVP Delivery Flow
-
-During Desktop MVP stabilization, branch governance and handoff governance are one
-flow. Do not treat them as separate checklists.
+The active integration worktree is
+`build/worktrees/assistant-product-v1`, on
+`stabilize/product-quality-closure`. Branch governance and handoff governance are
+one flow:
 
 ```text
-stabilize/desktop-mvp
-  -> fix/<one-blocker> | test/<one-gap> | refactor/<one-boundary>
-      task-branch gate
-  -> merge back into stabilize/desktop-mvp
-      stabilization handoff gate
-  -> user manual acceptance
-      main merge gate
-  -> main
+ux/assistant-product-v1@3869aaef
+  baseline only
+  -> stabilize/product-quality-closure
+      bounded audit slices and checkpoint evidence
+  -> one clean pushed exact commit
+      handoff candidate gate
+  -> user Windows acceptance
+      explicitly agreed main merge gate
 ```
 
 Rules:
 
-- `stabilize/desktop-mvp` is the current integration line, not a scratch branch.
-- Before the first repair branch for a product area, run a Desktop MVP audit
-  pass from the stabilization line. The audit must look for product bugs, code
-  quality risks, architecture drift, weak tests, stale artifacts, and obvious UI
-  regressions across adjacent workflow areas; do not wait for the user to report
-  each bug one by one.
-- Product-code changes must normally happen on a short-lived task branch from
-  `stabilize/desktop-mvp`.
-- One task branch owns one blocker, one evidence gap, or one boundary cleanup.
-- A task branch may be merged back only after focused regression, same-class
-  sweep, relevant tests/artifacts, clean worktree, commit, and push.
-- A task branch being merged back does not mean the product is ready for the
-  user to test.
-- "Ready for manual test" can only be said from the stabilization line after
-  the handoff candidate gate passes.
-- `main` receives the stabilization line only after user acceptance or an
+- Confirm the branch and worktree from Git before acting; do not copy branch
+  inventory from records or old plans.
+- Treat `stabilize/product-quality-closure` as the current shared integration
+  line. Preserve existing dirty work and use bounded ownership; do not switch
+  branches or create a task branch unless the user or main agent requests it.
+- A deliberately split task branch owns one finding, one evidence gap, or one
+  boundary cleanup. It returns to the integration line only after focused
+  regression, same-class sweep, relevant tests/artifacts, commit, and push.
+- Current closure authority is
+  `docs/agent_goals/product_quality_closure_goal.md` plus
+  `docs/records/product_quality_audit_2026-07-30.md`. Do not create a parallel
+  `AQ-*`, `Prep Gate`, or `Repair Loop` task system.
+- A merged slice or validated checkpoint does not make the product ready for
+  manual testing. Only the clean exact integration commit may enter the handoff
+  candidate gate.
+- `main` receives the integration line only after user acceptance or an
   explicitly agreed release-candidate gate.
-- If a fix cannot be kept small, split it before implementation or mark the
-  branch as WIP/checkpoint rather than pretending it is reviewable.
-- If the audit finds multiple blocking issues, create separate task branches or
-  an explicit ordered blocker queue; do not hide known blockers behind a narrow
-  "fixed the reported bug" claim.
+- If a change cannot be kept reviewable, split it before implementation or
+  report it as a checkpoint with explicit remaining risk.
 
-This flow intentionally follows short-lived branch practice: small batches,
-frequent integration, automated checks before merge, and visible product evidence
-before human acceptance.
+The former `stabilize/desktop-mvp` flow is superseded history. It may remain in
+dated records for provenance, but it is not the current integration branch, task
+base, merge destination, or validation authority.
 
-## Long-Running MVP Checkpoints
+## Long-Running Closure Checkpoints
 
-Important progress must not stay local-only during long-running MVP work. After
+Important progress must not stay local-only during long-running closure work. After
 each validated checkpoint:
 
 1. Run `git status --short --branch`.
@@ -152,14 +121,14 @@ A checkpoint report should include:
 Local commit is not enough for important work. A checkpoint is only backed up
 when it is pushed.
 
-Recommended minimum before merging a stabilization branch to `main`:
+Recommended minimum before presenting the integration branch as a handoff candidate:
 
 - app launches through the intended launcher or `run.py`;
 - `MainWindow` is visible;
 - representative Data Import can scan, preview, and apply one fixture or agreed
   local sample;
 - local LLM unavailable state is visible and non-crashing;
-- fast quality dashboard is `PASS`;
+- handoff quality dashboard is rebuilt from the same clean exact commit;
 - `mkdocs build --strict` is `PASS`;
 - worktree is clean and remaining risks are documented.
 
@@ -194,7 +163,8 @@ Keep these apart unless the user explicitly asks to combine them:
 - backend command/API behavior
 - test inventory or obsolete test deletion
 - clean-code refactor
-- agent/MCP behavior
+- assistant behavior
+- explicitly requested, opt-in MCP work
 - docs-only sync
 
 For Data Import specifically:

@@ -3,7 +3,9 @@ from typing import Any, cast
 import pytest
 from PyQt6.QtCore import Qt
 
+from XBrainLab.backend.application import CommandName, ErrorType
 from XBrainLab.backend.study import Study
+from XBrainLab.ui.application_capabilities import get_application_view_publication
 from XBrainLab.ui.main_window import MainWindow
 
 EXPECTED_NAV_TEXTS = [
@@ -105,26 +107,17 @@ def test_evaluation_page_empty_state_uses_command_blocked_reason(qtbot, study):
     eval_panel = _switch_and_wait_for_panel(window, 3, qtbot)
     eval_panel.update_panel()
 
-    assert eval_panel.last_application_query is not None
-    assert eval_panel.last_application_query.failed
-    assert (
-        eval_panel.last_application_query.message
-        == "Create a training plan before evaluating results."
-    )
-    assert (
-        eval_panel.last_application_query.diagnostics.get("exception_type")
-        == "PreconditionError"
-    )
+    publication = get_application_view_publication(window)
+    assert publication is not None
+    assert publication.usable
+    capability = publication.effective_capabilities.get(CommandName.EVALUATE)
+    assert capability.enabled is False
+    assert capability.reasons == ["Create a training plan before evaluating results."]
+    blocked_reason = capability.reasons[0]
     assert eval_panel.model_combo.count() == 0
     assert eval_panel.model_combo.isEnabled() is False
-    assert (
-        eval_panel.model_combo.toolTip()
-        == "Create a training plan before evaluating results."
-    )
-    assert (
-        eval_panel.no_data_label.text()
-        == "Create a training plan before evaluating results."
-    )
+    assert eval_panel.model_combo.toolTip() == blocked_reason
+    assert eval_panel.no_data_label.text() == blocked_reason
     assert eval_panel.run_combo.count() == 0
     assert eval_panel.plot_stack.currentIndex() == 1
     assert eval_panel.bottom_tabs.tabText(0) == "Metrics Summary"
@@ -141,17 +134,24 @@ def test_visualization_page_empty_state_uses_command_blocked_reason(qtbot, study
     viz_panel = _switch_and_wait_for_panel(window, 4, qtbot)
     viz_panel.update_panel()
 
-    assert viz_panel.last_application_query is not None
-    assert viz_panel.last_application_query.failed
-    assert (
-        viz_panel.last_application_query.message
-        == "Create epochs, complete training, or configure saliency before "
+    publication = get_application_view_publication(window)
+    assert publication is not None
+    assert publication.usable
+    capability = publication.effective_capabilities.get(CommandName.VISUALIZE)
+    assert capability.enabled is False
+    assert capability.reasons == [
+        "Create EEG epochs, complete training, or configure saliency before "
         "opening visualization views."
-    )
-    assert (
-        viz_panel.last_application_query.diagnostics.get("exception_type")
-        == "PreconditionError"
-    )
+    ]
+    blocked_reason = capability.reasons[0]
+    query_result = viz_panel.last_application_query
+    assert query_result is not None
+    assert query_result.failed
+    assert query_result.error_type is ErrorType.PRECONDITION
+    assert query_result.message == blocked_reason
+    assert query_result.state == publication.state
+    assert query_result.state is not publication.state
+    assert query_result.diagnostics.get("exception_type") != "PreconditionError"
     assert viz_panel.plan_combo.count() == 1
     assert viz_panel.plan_combo.currentText() == "Select a plan"
     assert viz_panel.run_combo.count() == 0
@@ -160,10 +160,7 @@ def test_visualization_page_empty_state_uses_command_blocked_reason(qtbot, study
     assert viz_panel.tabs.tabText(2) == "Topographic Map"
     current_widget = cast(Any, viz_panel.tabs.currentWidget())
     assert current_widget.error_label.isHidden() is False
-    assert current_widget.error_label.text() == (
-        "Create epochs, complete training, or configure saliency before opening "
-        "visualization views."
-    )
+    assert current_widget.error_label.text() == blocked_reason
     assert "Error:" not in current_widget.error_label.text()
 
     window.close()

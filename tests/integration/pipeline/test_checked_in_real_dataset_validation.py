@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 from XBrainLab.backend.application import (
@@ -30,6 +31,7 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.training.record import RecordKey
 from XBrainLab.backend.training.training_plan import TrainingPlanHolder
+from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 
 TEST_DATA_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "data"
 CHECKED_IN_GDF_STEMS = ("A01T", "A02T", "A03T")
@@ -208,6 +210,7 @@ def _build_label_attached_service(stem: str) -> ApplicationService:
         AttachLabelsCommand(
             mapping={f"{stem}.gdf": label_path},
             label_paths=[label_path],
+            selected_event_names=["769", "770", "771", "772"],
         ),
     )
     assert attach_result.ok is True
@@ -215,14 +218,73 @@ def _build_label_attached_service(stem: str) -> ApplicationService:
     return service
 
 
-def _query_first_preprocessed(service: ApplicationService):
-    result = service.execute(
-        QueryStateCommand(query="data_lists", include_objects=True)
+@pytest.mark.parametrize(
+    ("selected_event_names", "expected_message"),
+    [
+        (None, "explicit target EEG event set"),
+        ([], "explicit target EEG event set"),
+        (["event-that-does-not-exist"], "not found in the recording"),
+    ],
+    ids=["missing", "empty", "unknown"],
+)
+def test_checked_in_sequence_labels_fail_without_reviewed_target_events(
+    selected_event_names: list[str] | None,
+    expected_message: str,
+) -> None:
+    gdf_path, label_path = _checked_in_fixture_pair("A01T")
+    service = ApplicationService()
+    loaded = service.execute(LoadDataCommand(paths=[gdf_path]))
+    assert loaded.ok is True
+
+    attached = service.execute(
+        AttachLabelsCommand(
+            mapping={"A01T.gdf": label_path},
+            label_paths=[label_path],
+            selected_event_names=selected_event_names,
+        )
     )
-    assert result.ok is True
-    preprocessed = result.runtime["preprocessed_data_list"]
-    assert preprocessed
-    return preprocessed[0]
+
+    assert attached.failed is True
+    assert expected_message in attached.message
+    raw = service.dataset.get_loaded_data_list()[0]
+    events, event_id = raw.get_event_list()
+    assert raw.is_labels_imported() is False
+    assert len(events) == 603
+    assert {"769", "770", "771", "772"} <= set(event_id)
+
+
+def test_checked_in_sequence_labels_preserve_reviewed_cue_sample_positions() -> None:
+    gdf_path, label_path = _checked_in_fixture_pair("A01T")
+    service = ApplicationService()
+    loaded = service.execute(LoadDataCommand(paths=[gdf_path]))
+    assert loaded.ok is True
+
+    raw = service.dataset.get_loaded_data_list()[0]
+    original_events, original_event_id = raw.get_event_list()
+    cue_ids = [original_event_id[name] for name in ("769", "770", "771", "772")]
+    expected_samples = original_events[
+        np.isin(original_events[:, -1], cue_ids),
+        0,
+    ].copy()
+    assert expected_samples.shape == (288,)
+
+    attached = service.execute(
+        AttachLabelsCommand(
+            mapping={"A01T.gdf": label_path},
+            label_paths=[label_path],
+            selected_event_names=["769", "770", "771", "772"],
+        )
+    )
+
+    assert attached.ok is True, attached.message
+    applied_events, _applied_event_id = raw.get_event_list()
+    np.testing.assert_array_equal(applied_events[:, 0], expected_samples)
+
+
+def _query_epoch_setup(service: ApplicationService) -> dict[str, object]:
+    context = service.get_epoch_dialog_context().require_usable()
+    assert context.epoch_setup is not None
+    return context.epoch_setup
 
 
 def _generate_trial_split(service: ApplicationService, stem: str):
@@ -303,11 +365,11 @@ def _configure_and_train(service: ApplicationService, output_dir: Path):
     assert train_result.state.training.run_count == 1
     assert train_result.state.training.finished_run_count == 1
     history = service.execute(
-        QueryStateCommand(query="training_history", include_objects=True),
+        QueryStateCommand(query="training_history"),
     )
     assert history.ok is True
     assert history.diagnostics["row_count"] == 1
-    return history.runtime["rows"][0]["record"]
+    return history.diagnostics["rows"][0]
 
 
 def _wait_for_training_stop(service: ApplicationService, timeout: float = 5.0) -> None:
@@ -323,11 +385,10 @@ def test_checked_in_label_attached_dataset_generation(stem):
     """Each checked-in GDF+MAT pair should support dataset generation."""
     service = _build_label_attached_service(stem)
 
-    preprocessed = _query_first_preprocessed(service)
-    events, event_id = preprocessed.get_event_list()
-    assert event_id == EXPECTED_LABEL_EVENT_ID
-    assert events.shape == (288, 3)
-    assert preprocessed.is_labels_imported() is True
+    epoch_setup = _query_epoch_setup(service)
+    assert epoch_setup["available_events"] == [
+        {"name": event_name, "count": 72} for event_name in EXPECTED_LABEL_EVENT_ID
+    ]
 
     dataset_result = _generate_trial_split(service, stem)
 
@@ -342,10 +403,11 @@ def test_checked_in_label_attached_training_smoke(stem, tmp_path):
     service = _build_label_attached_service(stem)
     _generate_trial_split(service, stem)
 
-    record = _configure_and_train(service, tmp_path / "test-real-output")
+    history_row = _configure_and_train(service, tmp_path / "test-real-output")
+    train_metrics = history_row["metrics"]["train"]
 
-    assert RecordKey.LOSS in record.train
-    assert RecordKey.ACC in record.train
+    assert RecordKey.LOSS in train_metrics
+    assert RecordKey.ACC in train_metrics
 
 
 def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path):
@@ -440,13 +502,13 @@ def test_cuda_oom_job_failure_is_visible_and_training_can_restart(
     assert start.ok
     _wait_for_training_stop(service)
 
-    history = service.execute(
-        QueryStateCommand(query="training_history", include_objects=True)
-    )
+    history = service.execute(QueryStateCommand(query="training_history"))
     assert history.ok
-    failed_plan = history.runtime["rows"][0]["plan"]
-    assert failed_plan.status == "Failed: CUDA out of memory"
-    assert "CUDA out of memory during training" in failed_plan.error
+    assert history.diagnostics["rows"][0]["status"] == "Failed"
+    terminal_outcome = service.get_state().training.terminal_outcome
+    assert terminal_outcome.state is TrainingOutcomeState.FAILED
+    assert terminal_outcome.detail is not None
+    assert "CUDA out of memory during training" in terminal_outcome.detail
 
     monkeypatch.undo()
     with (

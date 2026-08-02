@@ -503,13 +503,15 @@ def aggregate_info_readability_evidence(panel: Any) -> dict[str, Any]:
     viewport = table.viewport()
     viewport_width = int(viewport.width()) if viewport is not None else 0
     for row in range(table.rowCount()):
+        if table.isRowHidden(row):
+            continue
         for column in range(table.columnCount()):
             item = table.item(row, column)
             if item is None:
                 continue
             text = " ".join(str(item.text() or "").split())
             rect = table.visualItemRect(item)
-            required_width = metrics.horizontalAdvance(text) + 8
+            required_width = metrics.horizontalAdvance(text) + 16
             clipped = bool(
                 text
                 and (
@@ -955,10 +957,22 @@ def assistant_dock_evidence(dock: QWidget, panel: Any) -> dict[str, Any]:
     )
     visible_messages = collect_visible_messages(panel)
     placeholder = assistant_composer_placeholder_evidence(panel)
+    panel_origin = panel.mapTo(dock, QPoint(0, 0))
+    dock_content = dock.contentsRect()
+    panel_left_gap = panel_origin.x() - dock_content.x()
+    panel_right_gap = (
+        dock_content.x() + dock_content.width() - panel_origin.x() - panel.width()
+    )
+    panel_fills_dock_width = abs(panel_left_gap) <= 2 and abs(panel_right_gap) <= 2
     return {
         "capture_target": "full_dock",
         "dock_width": dock.width(),
         "dock_height": dock.height(),
+        "dock_content_width": dock_content.width(),
+        "panel_width": panel.width(),
+        "panel_left_gap_px": panel_left_gap,
+        "panel_right_gap_px": panel_right_gap,
+        "panel_fills_dock_width": panel_fills_dock_width,
         "title_bar_visible": bool(title_bar is not None and title_bar.isVisible()),
         "title_text": title_text,
         "title_text_fits": title_text_fits,

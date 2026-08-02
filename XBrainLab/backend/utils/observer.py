@@ -19,6 +19,8 @@ class ObserverDeliveryStatus(str, Enum):
     DELIVERED = "delivered"
     DEFERRED = "deferred"
     FAILED = "failed"
+    NO_SUBSCRIBERS = "no_subscribers"
+    UNACKNOWLEDGED = "unacknowledged"
 
 
 @dataclass(slots=True)
@@ -166,8 +168,13 @@ class Observable:
             batch.pending_events[event_name] = (args, kwargs)
             return ObserverDeliveryStatus.DEFERRED
 
-        status = ObserverDeliveryStatus.DELIVERED
-        for callback in self._observer_snapshot(event_name):
+        callbacks = self._observer_snapshot(event_name)
+        if not callbacks:
+            return ObserverDeliveryStatus.NO_SUBSCRIBERS
+
+        delivered = False
+        deferred = False
+        for callback in callbacks:
             try:
                 result = callback(*args, **kwargs)
             except Exception as exc:
@@ -180,9 +187,15 @@ class Observable:
                 return ObserverDeliveryStatus.FAILED
             if result is False or result is ObserverDeliveryStatus.FAILED:
                 return ObserverDeliveryStatus.FAILED
+            if result is True or result is ObserverDeliveryStatus.DELIVERED:
+                delivered = True
             if result is ObserverDeliveryStatus.DEFERRED:
-                status = ObserverDeliveryStatus.DEFERRED
-        return status
+                deferred = True
+        if deferred:
+            return ObserverDeliveryStatus.DEFERRED
+        if delivered:
+            return ObserverDeliveryStatus.DELIVERED
+        return ObserverDeliveryStatus.UNACKNOWLEDGED
 
     @contextmanager
     def batch_notifications(self):

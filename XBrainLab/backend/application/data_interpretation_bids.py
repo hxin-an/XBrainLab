@@ -8,7 +8,7 @@ import math
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from XBrainLab.backend.load_data.raw_data_loader import load_raw_data
 
@@ -28,6 +28,19 @@ class StrictBidsEventReview:
     blocked_reasons: list[str] = field(default_factory=list)
     confirmation_items: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+
+
+class _ParsedBidsEventRow(TypedDict):
+    row: int
+    raw_onset: str
+    raw_duration: str
+    onset: Decimal | None
+    onset_kind: str
+    duration: Decimal | None
+    duration_kind: str
+    selected_label: str
+    event_code: str
+    schema_issue_codes: list[str]
 
 
 def review_strict_bids_event_runs(
@@ -285,12 +298,12 @@ def _review_one_run(
             )
         )
 
-    parsed_rows: list[dict[str, Any]] = []
+    parsed_rows: list[_ParsedBidsEventRow] = []
     zero_duration_count = 0
-    for index, row in enumerate(rows, start=2):
-        raw_onset = str(row.get(onset_column) or "").strip() if onset_column else ""
+    for index, raw_row in enumerate(rows, start=2):
+        raw_onset = str(raw_row.get(onset_column) or "").strip() if onset_column else ""
         raw_duration = (
-            str(row.get(duration_column) or "").strip() if duration_column else ""
+            str(raw_row.get(duration_column) or "").strip() if duration_column else ""
         )
         onset, onset_kind = _bids_numeric_value(raw_onset)
         event_duration, duration_kind = _bids_numeric_value(raw_duration)
@@ -324,10 +337,12 @@ def _review_one_run(
             legal_special_values["unknown_duration_count"] += 1
         elif event_duration == 0:
             zero_duration_count += 1
-        raw_label = str(row.get(label_column) or "").strip() if label_column else ""
+        raw_label = str(raw_row.get(label_column) or "").strip() if label_column else ""
         selected_label = _selected_label(raw_label)
         event_code = (
-            str(row.get(code_column) or "").strip() if code_column is not None else ""
+            str(raw_row.get(code_column) or "").strip()
+            if code_column is not None
+            else ""
         )
         parsed_rows.append(
             {
@@ -372,7 +387,7 @@ def _review_one_run(
         "interval",
     }
     row_evidence: list[dict[str, Any]] = []
-    usable_rows: list[dict[str, Any]] = []
+    usable_rows: list[_ParsedBidsEventRow] = []
     excluded_rows: list[dict[str, Any]] = []
     unknown_duration_rows: list[dict[str, Any]] = []
     raw_decisions = plan.get("value_decisions")

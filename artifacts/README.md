@@ -1,171 +1,71 @@
 # XBrainLab Artifacts
 
-最後更新：`2026-05-30`
+最後更新：`2026-08-01`
 
-`artifacts/` 放的是機器產物：dashboard、截圖、walkthrough、eval output、packaging evidence。
-它們是 evidence，不是 current truth。
+`artifacts/` 保存可重建的測試、walkthrough 與 UI review 產物。它們是 checkpoint evidence，
+不是 current truth，也不能單靠資料夾名稱推論為目前 release candidate。
 
-目前真相請看 `docs/current.md`；evidence 怎麼解讀請看 `docs/validation/README.md`。
+目前狀態請讀 `docs/current.md`；完整驗證契約請讀 `docs/validation/README.md`。
 
-## 使用規則
+## Evidence 層級
 
-- artifact 可以支撐它實際跑過的範圍。
-- artifact 不能自動擴張成 product complete、human acceptance 或 thesis claim。
-- 不手改 generated artifact 來讓結果看起來更好。
-- 如果 artifact 和 current docs 衝突，先查 source / runtime，再更新 canonical docs 或重跑 artifact。
-- artifact 不應變成第二套文件系統；過期 handoff、被較完整 walkthrough 覆蓋的截圖族群、
-  或可由 generator 重建的 duplicate snapshot，應保留在 git history，不長期留在 current tree。
-- current tree 只保留「需要被現在讀者判讀」的 evidence 入口；探索型、affected-case、
-  guardrail-only、或已被 full dashboard / consolidated walkthrough 覆蓋的 artifact，保留在
-  git history，不再保留一份目前副本。
+| 位置 | 用途 | 證據邊界 |
+| --- | --- | --- |
+| `build/handoff-evidence/<full-SHA>/` | clean pushed commit 的完整 handoff dossier；由 canonical runner 產生且不追蹤。 | 唯一可支撐 automated handoff-candidate 的 artifact root；仍不取代 Windows 人工驗收。 |
+| `build/dev-artifacts/<family>/` | standalone capture、除錯與本地 UI review；不追蹤。 | 只能支撐開發期觀察，不能直接升格為 final dossier。 |
+| `artifacts/quality/` | 本機 dashboard 與開發期摘要。 | 只能代表 dashboard 實際執行的 checks。 |
+| `artifacts/ui/<family>/` | 人工檢視用的 UI checkpoint。 | 只有 manifest 記錄的畫面、viewport、source identity 與狀態；沒有 exact identity 時一律視為 historical checkpoint。 |
+| `artifacts/validation/<family>/` | format、runtime 或 workflow 的開發期驗證輸出。 | 不得升格為 clean-SHA dossier，也不得外推成 scientific accuracy。 |
+| `tests/baselines/ui/` | 自動化視覺 regression baseline。 | 用來偵測差異，不代表產品美觀或真人驗收。 |
 
-## 主要 artifact family
+目前尚未產生通過的 clean-SHA handoff dossier。任何名稱包含 `current`、`final`、
+`release-candidate` 或 `passed` 的舊檔，都必須先核對 manifest 的 commit、dirty state、generator
+與 limitations；名稱本身不構成證據。
+
+## 保留的 checkpoint 入口
 
 | Family | 用途 | 不能代表 |
 | --- | --- | --- |
-| `quality/` | local generated fast engineering dashboard。 | product complete；clean clone 內的 canonical truth。 |
-| `agent_evals/` | tool-call benchmark / scorer output。 | UI usability 或 EEG training quality。 |
-| `mcp/` | MCP stdio / HTTP adapter walkthrough。 | 完整 MCP client certification。 |
-| `data_interpretation/` | format capability matrix、internal-event preview evidence。 | 所有 EEG 格式完整支援，或數字 event code 的真實 class semantics。 |
-| `ui/data-import-wizard-steps/` | Data Import wizard minimal review screenshots plus placement panels。 | final Match Labels / Review and Import UX，或 human Windows acceptance。 |
-| `ui/epoching-dialog/` | Data Import -> Create Epochs handoff screenshots。 | full Preprocess redesign 或 scientific epoch-window approval。 |
-| `ui/app-polish/` | current model selection、data splitting、evaluation metrics UI polish screenshots。 | end-to-end training quality 或完整人工驗收。 |
-| `launcher/` | Windows launcher / startup smoke。 | release approval 或 signed installer。 |
-| `docs-site/` | docs site visual check 截圖。 | 文件內容一定正確。 |
-| `ui/visualization-render/` | offscreen VisualizationPanel render / blocked-3D evidence。 | interactive Windows 3D acceptance。 |
-| top-level `ui/*.png` | transient dashboard UI capture outputs, ignored by git. | approved baseline truth；approved references live in `tests/baselines/ui/`. |
+| `ui/data-import-wizard-steps/` | Data Import wizard 與 Match Labels 的可見 checkpoint。 | final UX、任意 EEG 格式支援或 Windows acceptance。 |
+| `data_interpretation/` | format capability 與 event/label interpretation evidence。 | full BIDS validator、任意 sidecar labels 或 class semantics。 |
+| `agent_evals/` | agent/tool-call benchmark 開發輸出。 | UI usability、EEG model accuracy 或 thesis conclusion。 |
+| `launcher/` | launcher/startup checkpoint。 | signed installer 或 release approval。 |
+| `mcp/` | 歷史或明確 opt-in 的 MCP evidence。 | active product roadmap 或 handoff prerequisite。 |
 
-## 高價值入口
+## 產物規則
 
-| Artifact | 什麼時候看 |
-| --- | --- |
-| `quality/latest.md` | 想看本機最近 fast dashboard；此檔由 script 產生且 git-ignored。 |
-| `agent_evals/dashboard.md` | 想看 tool-call benchmark。 |
-| `mcp/http-walkthrough.md` | 想看 MCP HTTP baseline。 |
-| `data_interpretation/format-capability-matrix.md` | 想看 Data Interpretation format boundary。 |
-| `data_interpretation/internal-event-preview-backend.png` | 想看 backend internal-event evidence preview 的人眼截圖。 |
-| `data_interpretation/internal-event-evidence-A01T-A03T.json` | 想看 A01T/A02T/A03T internal-event evidence payload。 |
-| `ui/data-import-wizard-steps/README.md` | 想看目前保留的 Data Import wizard screenshot 入口和 Match Labels placement mode 截圖索引。 |
-| `ui/epoching-dialog/README.md` | 想看 Data Import handoff 到 Create Epochs 的 current screenshot evidence。 |
-| `ui/app-polish/README.md` | 想看 current training/evaluation side-panel polish screenshots。 |
-| `docs-site/data-import-private-portal/visual-review.md` | 想看 private docs portal 首頁 desktop/mobile visual review。 |
-| `launcher/windows-launcher-walkthrough.md` | 想看 launcher smoke。 |
-| `ui/visualization-render/visualization-render-walkthrough.md` | 想看 VisualizationPanel render evidence。 |
+- generated artifact 不手改成 PASS；修 source 或 generator 後重跑。
+- final handoff 只執行 `docs/validation/README.md` 指定的 canonical runner，不手動拼接較弱 gate。
+- clean-SHA evidence 必須包含 branch、完整 commit、dirty state、generator、environment、claims、
+  limitations 與 artifact hashes。
+- UI evidence 必須記錄 viewport / scale，並由主 agent 逐張檢查 text fit、overlap、scroll、
+  primary action、dialog geometry 與 responsive behavior。
+- 不同副檔名不等於不同資料集；format coverage 不取代 dataset-source diversity。
+- artifact 與 canonical docs 衝突時，以目前 source/runtime 重新驗證，不沿用舊截圖結論。
+- 大型、可重建或暫時產物放 D 槽或 ignored `build/`，不放 WSL root filesystem。
 
-## 保留 / 清理規則
+## 清理規則
 
-保留 current tree 裡的 artifact 時，至少要符合一項：
+可以從 current tree 移除並留在 Git history：
 
-- canonical docs 或 artifact dashboard 直接引用；
-- 代表目前仍要判讀的 product evidence；
-- 是 approved UI baseline candidate、MCP / launcher / Data Import / agent eval
-  這類仍在 evidence board 的入口；
-- 不是重複截圖，或雖然相似但代表不同使用者流程的重要狀態。
+- byte-identical duplicate screenshots；
+- `debug`、`tmp`、`review-runs` 或失敗重跑的中間資料夾；
+- 沒有 source identity、已被較完整 walkthrough 取代的 `current` / `final` family；
+- canonical docs 沒有引用且 generator 可重建的 dated checkpoint；
+- 僅是 dashboard 複本、又與 `tests/baselines/ui/` 完全相同的 PNG。
 
-可以清掉的 artifact 類型：
+清理時禁止使用 broad `git clean`。先用 `git ls-files`、文件引用與 manifest 確認 ownership，
+再逐一刪除明確可重建的 family。Repo root `settings.json` 不屬於 artifact，永遠不得 stage、
+commit、revert 或覆寫。
 
-- old goal handoff / continuation notes；這類紀錄應回到 `docs/records/` 或 git history。
-- 被更完整 walkthrough supersede 的短版 chatpanel 截圖族群。
-- 未被 current docs 引用、可由 script 重跑生成的 dated docs-site visual checkpoint。
-- exact duplicate splash / ready screenshots，除非該檔本身是 current artifact family 的入口。
-- affected-case / guardrail-only eval 子目錄，當 full deterministic / primary / fallback dashboard
-  已涵蓋相同 case 或更完整 suite。
-- 舊 Data Interpretation replay screenshots，當 canonical Data Import wizard screenshots 和
-  consolidated human-like walkthrough 已覆蓋目前要判讀的畫面。
-- exploratory smart-parser / sidebar option screenshots，除非它們被 current product docs 直接引用。
-- tracked top-level `artifacts/ui/*.png` copies that duplicate `tests/baselines/ui/` approved
-  references; dashboard captures may recreate them locally, but they should stay git-ignored.
-
-## 最近清理
-
-2026-05-13 current-tree cleanup 已移除：
-
-- `agent_evals/deterministic_changed/`
-- `agent_evals/local_*_analysis_tools/`
-- `agent_evals/local_*_guardrail_smoke/`
-- `ui/chatpanel-local-workflow/`
-- `ui/chatpanel-local-training-readiness/`
-- `ui/data-source-entry-options/`
-- `ui/smart-parser/`
-- legacy `ui/data-interpretation-*` replay files
-
-這些檔案不是宣告作廢；它們仍可從 git history 找回。只是 current tree 不再保留
-被 full dashboard、canonical wizard screenshots、local pipeline/training walkthrough、
-或 consolidated human-like walkthrough 覆蓋的重複 evidence。
-
-2026-05-14 second-pass cleanup removed:
-
-- stale `agent_evals/deterministic/latest.md` that still reported the older 118-case
-  deterministic result while root `agent_evals/latest.*` and the dashboard report the
-  current 121-case run.
-- `ui/training-start-confirmation/`, a short confirmation-dialog replay now covered by
-  stronger agent/controller confirmation-boundary evidence and product-smoke claim
-  boundaries.
-- extra Data Import wizard status variants from the current tree. The retained set is
-  one canonical screenshot per wizard step plus four Match Labels placement panels;
-  deleted variants remain recoverable from git history or can be regenerated for a
-  targeted UX review.
-
-2026-05-14 duplicate-screenshot cleanup removed:
-
-- root `artifacts/.gitkeep`; `artifacts/README.md` now keeps the root directory present.
-- `ui/human-like-walkthrough/03-source-selection.png`; it was byte-identical to
-  `02-dataset-page.png`, so both screenshot labels now point at the same canonical
-  PNG.
-- one previous ChatPanel training-completion duplicate screenshot; it was
-  byte-identical to the turn-3 checkpoint, so the trained checkpoint reused that
-  canonical screenshot path while the folder was current.
-- `ui/visualization-render/visualization-render-ready.png`; it was byte-identical
-  to `visualization-render-saliency-map.png`, so the ready checkpoint now reuses
-  the saliency render screenshot path.
-
-The corresponding capture scripts were updated so these exact duplicates should not
-be regenerated during the next artifact refresh.
-
-2026-05-14 dashboard/live-capture cleanup removed:
-
-- tracked top-level `artifacts/ui/*.png` baseline screenshots that duplicated
-  `tests/baselines/ui/` byte-for-byte.
-- unreferenced `artifacts/ui/sidebar-operation-alignment.png`; it was not a current evidence
-  entrance and remains recoverable from git history.
-- local generated `artifacts/quality/history.jsonl`; dashboard history is ignored generated output,
-  while current dashboard summaries are generated locally as `artifacts/quality/latest.*`
-  and canonical validation truth stays in `docs/validation/README.md`.
-
-`artifacts/ui/.gitignore` now keeps future top-level dashboard captures local-only. UI walkthrough
-and review evidence should live in named artifact subdirectories with a clear README or markdown
-entry.
-
-2026-05-30 release-candidate gate cleanup removed:
-
-- `ui/human-like-walkthrough/`; it still showed the old debug-style Data Interpretation
-  preview and must not be presented as current Data Import wizard evidence.
-- `ui/audit-visualization-render/`; the current canonical visualization evidence is
-  `ui/visualization-render/`.
-- stale `ui/visualization-render/pyvistaqt-runtime-probe.*`; the current visualization
-  folder now only keeps canonical VisualizationPanel render evidence. The standalone
-  PyVistaQt probe script writes to `ui/pyvistaqt-runtime-probe/` when explicitly run.
-
-Historical records may still mention those removed paths because they describe past
-validation runs. They are not current evidence entrances; regenerate or use the
-current families above when judging the active branch.
-
-2026-05-30 local ChatPanel evidence cleanup:
-
-- The two previous local ChatPanel artifact folders were removed from the
-  current tree because they were captured when the local model cache was present
-  and the runtime was `gpu-ready`.
-- The active release-candidate environment now reports local model
-  `missing-cache`, so those walkthroughs must not be used as current product
-  evidence or high-value entry points.
-- Regenerate them on the current worktree/runtime before adding ChatPanel local
-  pipeline screenshots back to current evidence.
-
-## 新 artifact 要寫清楚
+## 新 artifact 最低欄位
 
 ```text
 status:
 generator:
+branch:
+commit:
+dirty:
 environment:
 supports:
 does_not_support:

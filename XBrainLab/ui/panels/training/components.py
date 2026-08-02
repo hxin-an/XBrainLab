@@ -82,7 +82,7 @@ class MetricTab(QWidget):
         layout.setContentsMargins(0, 10, 0, 0)
 
         self.empty_state_label = QLabel(
-            "Training metrics will appear after the first epoch.",
+            "Training metrics will appear after the first training epoch.",
             self,
         )
         self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -96,12 +96,14 @@ class MetricTab(QWidget):
         )
         layout.addWidget(self.empty_state_label, stretch=1)
 
-        self.fig = Figure(figsize=(5, 3), dpi=100)
-        self.canvas = _OwnedDrawFigureCanvas(self.fig)
-        self.ax: Any = self.fig.add_subplot(111)
+        figure = Figure(figsize=(5, 3), dpi=100)
+        self.fig: Figure | None = figure
+        canvas = _OwnedDrawFigureCanvas(figure)
+        self.canvas: _OwnedDrawFigureCanvas | None = canvas
+        self.ax: Any = figure.add_subplot(111)
 
-        self.ax.set_title(f"{self.metric_name} vs Epoch")
-        self.ax.set_xlabel("Epoch")
+        self.ax.set_title(f"{self.metric_name} vs Training Epoch")
+        self.ax.set_xlabel("Training epoch")
 
         # Add Units
         ylabel = self.metric_name
@@ -115,10 +117,10 @@ class MetricTab(QWidget):
             alpha=0.3,
             color=Theme.TEXT_SECONDARY,
         )  # Subtle grid
-        Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
+        Theme.apply_matplotlib_dark_theme(figure, ax=self.ax)
         self._fit_axes()
-        layout.addWidget(self.canvas, stretch=1)
-        self.canvas.hide()
+        layout.addWidget(canvas, stretch=1)
+        canvas.hide()
 
         self.epochs = []
         self.train_vals = []
@@ -190,8 +192,8 @@ class MetricTab(QWidget):
                 label=f"Val {self.metric_name}",
             )
 
-        self.ax.set_title(f"{self.metric_name} vs Epoch")
-        self.ax.set_xlabel("Epoch")
+        self.ax.set_title(f"{self.metric_name} vs Training Epoch")
+        self.ax.set_xlabel("Training epoch")
 
         # Add Units
         ylabel = self.metric_name
@@ -236,8 +238,8 @@ class MetricTab(QWidget):
             return
         # Clear plot
         self.ax.clear()
-        self.ax.set_title(f"{self.metric_name} vs Epoch")
-        self.ax.set_xlabel("Epoch")
+        self.ax.set_title(f"{self.metric_name} vs Training Epoch")
+        self.ax.set_xlabel("Training epoch")
 
         # Add Units
         ylabel = self.metric_name

@@ -1,10 +1,51 @@
-from unittest.mock import MagicMock
-
 import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from XBrainLab.ui.panels.training.history_table import TrainingHistoryTable
+
+
+def _history_row(
+    *,
+    plan_index=0,
+    run_index=0,
+    group_name="G1",
+    run_name="R1",
+    model_name="M1",
+    status="Running",
+    epoch=1,
+    max_epochs=10,
+):
+    return {
+        "identity": {
+            "plan_index": plan_index,
+            "run_index": run_index,
+        },
+        "group_name": group_name,
+        "run_name": run_name,
+        "model_name": model_name,
+        "status": status,
+        "epoch": epoch,
+        "max_epochs": max_epochs,
+        "is_active": status == "Running",
+        "is_current_run": status == "Running",
+        "start_timestamp": None,
+        "end_timestamp": None,
+        "metrics": {
+            "train": {
+                "loss": [0.5],
+                "accuracy": [0.8],
+                "auc": [],
+                "lr": [0.001],
+                "time": [],
+            },
+            "validation": {
+                "loss": [0.6],
+                "accuracy": [0.75],
+                "auc": [],
+            },
+        },
+    }
 
 
 @pytest.fixture
@@ -22,12 +63,13 @@ def test_init_ui(history_table):
 def test_metric_headers_fit_without_clipping(history_table):
     header = history_table.horizontalHeader()
     assert header is not None
+    assert header.font().bold()
     metrics = header.fontMetrics()
     for column in range(history_table.columnCount()):
         item = history_table.horizontalHeaderItem(column)
         assert item is not None
         assert history_table.columnWidth(column) >= (
-            metrics.horizontalAdvance(item.text()) + 28
+            metrics.horizontalAdvance(item.text()) + history_table.HEADER_PADDING
         )
 
 
@@ -37,27 +79,7 @@ def test_update_history_empty(history_table):
 
 
 def test_update_history_populates_rows(history_table):
-    # Mock data structure
-    mock_plan = MagicMock()
-    mock_plan.option.epoch = 10
-
-    mock_record = MagicMock()
-    mock_record.get_epoch.return_value = 5
-    mock_record.is_finished.return_value = False
-    mock_record.epoch = 5
-    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
-    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
-
-    data = [
-        {
-            "plan": mock_plan,
-            "record": mock_record,
-            "group_name": "G1",
-            "run_name": "R1",
-            "model_name": "M1",
-            "is_current_run": True,
-        }
-    ]
+    data = [_history_row(epoch=5)]
 
     history_table.update_history(data)
 
@@ -70,25 +92,15 @@ def test_update_history_populates_rows(history_table):
 
 
 def test_finished_history_uses_completed_product_status(history_table):
-    mock_plan = MagicMock()
-    mock_plan.option.epoch = 10
-    mock_record = MagicMock()
-    mock_record.get_epoch.return_value = 10
-    mock_record.is_finished.return_value = True
-    mock_record.epoch = 10
-    mock_record.train = {"loss": [0.2], "accuracy": [0.9], "lr": [0.001]}
-    mock_record.val = {"loss": [0.3], "accuracy": [0.85]}
-
     history_table.update_history(
         [
-            {
-                "plan": mock_plan,
-                "record": mock_record,
-                "group_name": "Group 01",
-                "run_name": "Run 01",
-                "model_name": "EEGNet",
-                "is_current_run": False,
-            }
+            _history_row(
+                group_name="Group 01",
+                run_name="Run 01",
+                model_name="EEGNet",
+                status="Completed",
+                epoch=10,
+            )
         ]
     )
 
@@ -99,27 +111,19 @@ def test_key_columns_expand_for_group_run_model_and_status_text(
     history_table,
     qtbot,
 ):
-    mock_plan = MagicMock()
-    mock_plan.option.epoch = 12
-    mock_record = MagicMock()
-    mock_record.get_epoch.return_value = 12
-    mock_record.is_finished.return_value = True
-    mock_record.epoch = 12
-    mock_record.train = {"loss": [0.2], "accuracy": [0.9], "lr": [0.001]}
-    mock_record.val = {"loss": [0.3], "accuracy": [0.85]}
     history_table.resize(640, 320)
     history_table.show()
 
     history_table.update_history(
         [
-            {
-                "plan": mock_plan,
-                "record": mock_record,
-                "group_name": "Motor imagery group 01",
-                "run_name": "Repeated run 12",
-                "model_name": "ShallowConvNet",
-                "is_current_run": False,
-            }
+            _history_row(
+                group_name="Motor imagery group 01",
+                run_name="Repeated run 12",
+                model_name="ShallowConvNet",
+                status="Completed",
+                epoch=12,
+                max_epochs=12,
+            )
         ]
     )
     qtbot.wait(0)
@@ -133,6 +137,30 @@ def test_key_columns_expand_for_group_run_model_and_status_text(
         )
         assert history_table.columnWidth(column) >= required_width
     assert history_table.horizontalScrollBar().maximum() > 0
+
+
+def test_standard_history_width_fits_without_horizontal_scrolling(
+    history_table,
+    qtbot,
+):
+    history_table.resize(980, 320)
+    history_table.show()
+    history_table.update_history(
+        [
+            _history_row(
+                group_name="Group 01",
+                run_name="Run 01",
+                model_name="ShallowConvNet",
+                status="Completed",
+                epoch=12,
+                max_epochs=12,
+            )
+        ]
+    )
+    qtbot.wait(0)
+
+    assert history_table.horizontalScrollBar().maximum() == 0
+    assert history_table.horizontalHeader().length() <= history_table.viewport().width()
 
 
 def test_empty_history_uses_the_stable_history_viewport(
@@ -155,8 +183,6 @@ def test_empty_history_uses_the_stable_history_viewport(
         )
         + (2 * history_table.frameWidth())
     )
-    if history_table._horizontal_scrollbar_expected():
-        expected_height += history_table.horizontalScrollBar().sizeHint().height()
     assert history_table.preferred_content_height() == expected_height
     assert (
         history_table.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -167,22 +193,7 @@ def test_small_history_does_not_resize_the_history_viewport(
     history_table,
     qtbot,
 ):
-    mock_plan = MagicMock()
-    mock_plan.option.epoch = 10
-    mock_record = MagicMock()
-    mock_record.get_epoch.return_value = 1
-    mock_record.is_finished.return_value = False
-    mock_record.epoch = 1
-    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
-    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
-    row = {
-        "plan": mock_plan,
-        "record": mock_record,
-        "group_name": "G1",
-        "run_name": "R1",
-        "model_name": "M1",
-        "is_current_run": True,
-    }
+    row = _history_row()
     history_table.resize(980, 420)
     history_table.show()
 
@@ -223,23 +234,12 @@ def test_stable_history_geometry_skips_redundant_item_layout(
 
 
 def test_large_history_caps_height_and_enables_row_scrolling(history_table, qtbot):
-    mock_plan = MagicMock()
-    mock_plan.option.epoch = 10
-    mock_record = MagicMock()
-    mock_record.get_epoch.return_value = 1
-    mock_record.is_finished.return_value = False
-    mock_record.epoch = 1
-    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
-    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
     rows = [
-        {
-            "plan": mock_plan,
-            "record": mock_record,
-            "group_name": "G1",
-            "run_name": f"R{index + 1}",
-            "model_name": "M1",
-            "is_current_run": index == 0,
-        }
+        _history_row(
+            run_index=index,
+            run_name=f"R{index + 1}",
+            status="Running" if index == 0 else "Pending",
+        )
         for index in range(history_table.MAX_VISIBLE_ROWS + 3)
     ]
     history_table.resize(980, 520)
@@ -254,6 +254,8 @@ def test_large_history_caps_height_and_enables_row_scrolling(history_table, qtbo
         history_table.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     )
     assert history_table.verticalScrollBar().maximum() > 0
+    assert history_table.horizontalScrollBar().maximum() == 0
+    assert history_table.horizontalHeader().length() <= history_table.viewport().width()
     viewport = history_table.viewport()
     assert viewport is not None
     for row in range(history_table.MAX_VISIBLE_ROWS):
@@ -270,23 +272,12 @@ def test_wide_history_viewport_does_not_reveal_a_partial_fourth_row(
     history_table,
     qtbot,
 ):
-    mock_plan = MagicMock()
-    mock_plan.option.epoch = 10
-    mock_record = MagicMock()
-    mock_record.get_epoch.return_value = 1
-    mock_record.is_finished.return_value = False
-    mock_record.epoch = 1
-    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
-    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
     rows = [
-        {
-            "plan": mock_plan,
-            "record": mock_record,
-            "group_name": "G1",
-            "run_name": f"R{index + 1}",
-            "model_name": "M1",
-            "is_current_run": False,
-        }
+        _history_row(
+            run_index=index,
+            run_name=f"R{index + 1}",
+            status="Stopped",
+        )
         for index in range(history_table.MAX_VISIBLE_ROWS + 1)
     ]
     history_table.resize(1800, 520)
@@ -305,22 +296,7 @@ def test_history_height_stays_fixed_when_vertical_scrollbar_appears(
     history_table,
     qtbot,
 ):
-    mock_plan = MagicMock()
-    mock_plan.option.epoch = 10
-    mock_record = MagicMock()
-    mock_record.get_epoch.return_value = 1
-    mock_record.is_finished.return_value = False
-    mock_record.epoch = 1
-    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
-    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
-    row = {
-        "plan": mock_plan,
-        "record": mock_record,
-        "group_name": "G1",
-        "run_name": "R1",
-        "model_name": "M1",
-        "is_current_run": False,
-    }
+    row = _history_row(status="Stopped")
     header = history_table.horizontalHeader()
     assert header is not None
     just_fits_columns = header.length() + (2 * history_table.frameWidth()) + 2
@@ -347,27 +323,26 @@ def test_history_height_stays_fixed_when_vertical_scrollbar_appears(
 
 
 def test_selection_emit(history_table, qtbot):
-    # Setup mock row with an item so selection works
-    mock_record = MagicMock()
-    history_table.row_map[0] = (None, mock_record)
+    identity = {"plan_index": 2, "run_index": 3}
+    history_table.row_identity_by_index[0] = identity
     history_table.setRowCount(1)
     history_table.setColumnCount(1)
-
-    # Must explicitly set an item for QTableWidget to consider it "selectable" via items?
-    # Actually, verify: does selecting a row without items return empty selectedItems()? Yes.
     history_table.setItem(0, 0, QTableWidgetItem("Test"))
 
-    with qtbot.waitSignal(history_table.selection_changed_record) as blocker:
+    with qtbot.waitSignal(history_table.selection_changed_identity) as blocker:
         history_table.selectRow(0)
 
-    assert blocker.args[0] == mock_record
+    assert blocker.args[0] == identity
 
 
 def test_clear_history(history_table):
-    history_table.row_map[0] = ("plan", "record")
+    history_table.row_identity_by_index[0] = {
+        "plan_index": 0,
+        "run_index": 0,
+    }
     history_table.setRowCount(1)
 
     history_table.clear_history()
 
     assert history_table.rowCount() == 0
-    assert len(history_table.row_map) == 0
+    assert len(history_table.row_identity_by_index) == 0

@@ -7,7 +7,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
-from PyQt6.QtCore import QPoint
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QMainWindow, QMessageBox
 
 from XBrainLab.backend.application.capabilities import CommandCapability
@@ -16,6 +16,7 @@ from XBrainLab.backend.application.commands import (
     RemoveFilesCommand,
     UpdateMetadataCommand,
 )
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import CommandReviewContext
 from XBrainLab.ui.panels.dataset import actions
 from XBrainLab.ui.panels.dataset import panel as panel_module
@@ -52,6 +53,22 @@ def _result(
     stale: bool = False,
 ) -> SimpleNamespace:
     files = [str(data.get_filepath()) for data in list(data_list or [])]
+    rows = [
+        {
+            "filepath": str(data.get_filepath()),
+            "filename": str(data.get_filename()),
+            "subject": str(data.get_subject_name()),
+            "session": str(data.get_session_name()),
+            "n_channels": int(data.get_nchan()),
+            "sampling_frequency": float(data.get_sfreq()),
+            "epochs_length": int(data.get_epochs_length()),
+            "is_raw": True,
+            "labels_imported": False,
+            "channels": [],
+            "event": dict(data.get_event_summary(allow_scan=False)),
+        }
+        for data in list(data_list or [])
+    ]
     return SimpleNamespace(
         failed=stale,
         recoverable=stale,
@@ -60,9 +77,14 @@ def _result(
             if stale
             else "Dataset state was read successfully."
         ),
-        diagnostics=({"stale_publication": True} if stale else {"raw_files": files}),
-        runtime=(
-            {"loaded_data_list": list(data_list or [])} if data_list is not None else {}
+        diagnostics=(
+            {"stale_publication": True}
+            if stale
+            else {
+                "raw_files": files,
+                "raw_rows": rows,
+                "preprocessed_rows": [],
+            }
         ),
     )
 
@@ -136,6 +158,18 @@ def rendered_dataset(qtbot, monkeypatch):
     return panel, current, mutations
 
 
+def test_dataset_table_stores_detached_identity_not_live_raw(rendered_dataset) -> None:
+    panel, current, _mutations = rendered_dataset
+    name_item = panel.table.item(0, 0)
+
+    assert name_item is not None
+    assert name_item.data(Qt.ItemDataRole.UserRole) is None
+    identity = name_item.data(panel._ROW_IDENTITY_ROLE)
+    assert isinstance(identity, actions.DatasetTableRowIdentity)
+    assert identity.canonical_filepath.endswith("sub-01_task-mi_run-01_raw.fif")
+    assert current["data"][0] is not identity
+
+
 def test_inline_metadata_edit_rejects_replaced_rendered_row(
     rendered_dataset,
     monkeypatch,
@@ -157,6 +191,30 @@ def test_inline_metadata_edit_rejects_replaced_rendered_row(
     assert mutations == []
     assert warnings
     assert warnings[0][1] == "Refresh Dataset and Edit Again"
+
+
+def test_batch_metadata_update_uses_product_runtime_without_controller(
+    rendered_dataset,
+    monkeypatch,
+) -> None:
+    panel, _current, mutations = rendered_dataset
+    panel.controller = None
+    selection = panel.capture_table_selection([0])
+    assert selection is not None
+    monkeypatch.setattr(
+        actions.QInputDialog,
+        "getText",
+        lambda *_args, **_kwargs: ("participant-07", True),
+    )
+
+    panel.action_handler._batch_set(selection, "Subject")
+
+    assert len(mutations) == 1
+    command, expected_generation = mutations[0]
+    assert isinstance(command, UpdateMetadataCommand)
+    assert command.updates[0].index == 0
+    assert command.updates[0].subject == "participant-07"
+    assert expected_generation == selection.publication_generation
 
 
 @pytest.mark.parametrize(
@@ -210,3 +268,41 @@ def test_context_menu_rejects_rows_reordered_while_menu_is_open(
     assert mutations == []
     assert warnings
     assert warnings[0][1] == expected_title
+
+
+@pytest.mark.parametrize("action_name", ["metadata", "remove"])
+def test_table_mutations_fail_before_prompt_without_product_review(
+    qtbot,
+    monkeypatch,
+    action_name,
+):
+    panel = QMainWindow()
+    qtbot.addWidget(panel)
+    cast(Any, panel).study = Study()
+    cast(Any, panel).controller = MagicMock()
+    handler = actions.DatasetActionHandler(panel)
+    selection = actions.DatasetTableSelection(
+        publication_generation=17,
+        rows=(
+            actions.DatasetTableRowIdentity(
+                canonical_filepath="/data/sub-01_raw.fif",
+                rendered_row=0,
+            ),
+        ),
+    )
+    input_dialog = MagicMock(return_value=("", False))
+    confirmation = MagicMock(return_value=QMessageBox.StandardButton.No)
+    warning = MagicMock()
+    monkeypatch.setattr(actions, "get_command_review_context", lambda *_args: None)
+    monkeypatch.setattr(actions.QInputDialog, "getText", input_dialog)
+    monkeypatch.setattr(actions.QMessageBox, "question", confirmation)
+    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+
+    if action_name == "metadata":
+        handler._batch_set(selection, "Subject")
+    else:
+        handler._remove_files(selection)
+
+    input_dialog.assert_not_called()
+    confirmation.assert_not_called()
+    warning.assert_called_once()

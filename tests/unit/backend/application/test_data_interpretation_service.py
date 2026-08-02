@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
-from XBrainLab.backend.application import data_interpretation_service as service_module
-from XBrainLab.backend.application import resource_guard
+from XBrainLab.backend.application import (
+    data_interpretation_internal_events,
+    resource_guard,
+)
+from XBrainLab.backend.application import (
+    data_interpretation_service as service_module,
+)
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     LabelImportPlan,
@@ -69,10 +75,10 @@ class _DatasetController:
         self.notifications: list[str] = []
         self.clean_count = 0
 
-    def import_files(self, paths: list[str]) -> tuple[int, list[str]]:
-        self.imported_paths = list(paths)
-        self.loaded = [_LoadedData(path) for path in paths]
-        return len(paths), []
+    def import_files(self, filepaths: Sequence[str]) -> tuple[int, list[str]]:
+        self.imported_paths = list(filepaths)
+        self.loaded = [_LoadedData(path) for path in filepaths]
+        return len(filepaths), []
 
     def get_loaded_data_list(self) -> list[_LoadedData]:
         return list(self.loaded)
@@ -87,12 +93,13 @@ class _DatasetController:
 
     def apply_labels_batch(
         self,
-        _target_files: list[Any],
-        _label_map: dict[str, Any],
-        _file_mapping: dict[str, str],
-        _mapping: Any,
-        _selected_event_names: set[str] | None,
+        target_files: Sequence[Any],
+        label_map: Mapping[str, Any],
+        file_mapping: Mapping[str, str],
+        mapping: Mapping[Any, str],
+        selected_event_names: Sequence[str] | set[str] | None,
     ) -> int:
+        del target_files, label_map, file_mapping, mapping, selected_event_names
         return 1
 
     def apply_labels_sequence(
@@ -436,6 +443,44 @@ def test_review_explicit_file_selection_does_not_scan_unselected_subfolders(
     assert payload["candidate"]["selected_eeg_files"] == expected_eeg_files
     assert payload["resource_preflight"]["eeg_path_count"] == 3
     assert str(unrelated_eeg.resolve()) not in payload["scan_result"]["eeg_files"]
+
+
+def test_folder_preview_materializes_only_the_selected_admitted_eeg_scope(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    nested_dir = source_dir / "other-format"
+    nested_dir.mkdir(parents=True)
+    selected_eeg = source_dir / "selected.fif"
+    unrelated_eeg = nested_dir / "unrelated.edf"
+    selected_eeg.write_bytes(b"selected header")
+    unrelated_eeg.write_bytes(b"unselected header")
+    service, _dataset = _service()
+
+    service.handle_scan_source(
+        ScanSourceCommand(
+            source_path=str(source_dir),
+            source_hint="folder",
+        ),
+    )
+    _message, payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(
+                choices={
+                    "selected_eeg_files": [str(selected_eeg.resolve())],
+                    "label_carrier": "embedded_events",
+                },
+            ),
+        ),
+    )
+
+    assert payload["candidate"]["selected_eeg_files"] == [
+        str(selected_eeg.resolve()),
+    ]
+    capability_paths = {
+        item["path"] for item in payload["candidate"]["format_capabilities"]
+    }
+    assert str(unrelated_eeg.resolve()) not in capability_paths
 
 
 def test_review_blocks_external_label_before_candidate_materialization(
@@ -2545,7 +2590,7 @@ def test_apply_interpretation_rolls_back_partial_import_failure(
     assert service.state.snapshot().has_applied_interpretation is False
 
 
-def test_apply_interpretation_rolls_back_when_label_placement_not_ready(
+def test_confirmation_cannot_apply_unresolved_sequence_label_target(
     tmp_path: Path,
 ) -> None:
     source_dir = tmp_path / "source"
@@ -2560,27 +2605,90 @@ def test_apply_interpretation_rolls_back_when_label_placement_not_ready(
     dataset.imported_paths = [old_path]
 
     service.handle_scan_source(ScanSourceCommand(source_path=str(source_dir)))
-    service.handle_preview_interpretation(
-        PreviewInterpretationCommand(
-            choices={
-                "label_carrier_choices": {
-                    str(label_path): {
-                        "label_field": "label",
-                        "role": "class labels",
+    _preview_message, preview_payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(
+                choices={
+                    "label_carrier_choices": {
+                        str(label_path): {
+                            "label_field": "label",
+                            "role": "class labels",
+                        }
                     }
                 }
-            }
+            )
         )
     )
-    service.handle_validate_interpretation(ValidateInterpretationCommand())
+    _validation_message, validation_payload = _expect_payload(
+        service.handle_validate_interpretation(ValidateInterpretationCommand())
+    )
 
-    with pytest.raises(ApplicationError, match="Label placement is not ready"):
+    [carrier] = preview_payload["candidate"]["label_carrier_plan"]
+    assert carrier["placement_review"]["status"] == "blocked"
+    assert validation_payload["validation_decision"]["decision"] == "blocked"
+    with pytest.raises(PreconditionError, match="explicit target EEG event"):
         service.handle_apply_interpretation(
             ApplyInterpretationCommand(confirmed=True),
         )
 
     assert [item.filepath for item in dataset.loaded] == [old_path]
     assert dataset.imported_paths == [old_path]
+    assert dataset.clean_count == 0
+    assert service.state.snapshot().has_applied_interpretation is False
+
+
+def test_confirmation_cannot_apply_sequence_placement_that_needs_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scipy.io import savemat
+
+    eeg_path = tmp_path / "A01T.gdf"
+    label_path = tmp_path / "A01T.mat"
+    eeg_path.write_bytes(b"reviewed EEG scope")
+    savemat(label_path, {"classlabel": [1, 2]})
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {"events": {"768": {"count": 3, "description": "trial start"}}},
+    )
+    service, dataset = _service()
+
+    service.handle_scan_source(ScanSourceCommand(source_path=str(tmp_path)))
+    _preview_message, preview_payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(
+                choices={
+                    "label_carrier_choices": {
+                        str(label_path): {
+                            "label_field": "classlabel",
+                            "target_event_codes": ["768"],
+                            "placement_method": "eeg_event",
+                            "time_model": "trial_order",
+                            "granularity": "trial",
+                            "value_decisions": _class_value_decisions(
+                                {"1": "left", "2": "right"}
+                            ),
+                        }
+                    }
+                }
+            )
+        )
+    )
+    _validation_message, validation_payload = _expect_payload(
+        service.handle_validate_interpretation(ValidateInterpretationCommand())
+    )
+
+    [carrier] = preview_payload["candidate"]["label_carrier_plan"]
+    assert carrier["placement_review"]["status"] == "needs_review"
+    assert validation_payload["validation_decision"]["decision"] == "blocked"
+    with pytest.raises(PreconditionError, match="selected EEG event has no label"):
+        service.handle_apply_interpretation(
+            ApplyInterpretationCommand(confirmed=True),
+        )
+
+    assert dataset.imported_paths == []
+    assert dataset.clean_count == 0
     assert service.state.snapshot().has_applied_interpretation is False
 
 
@@ -2786,7 +2894,7 @@ def test_apply_metadata_and_label_import_recipe_state_stay_together(
     assert loaded.runtime_details["data_interpretation_metadata"]["task"] == (
         "motor-imagery"
     )
-    assert "data_changed" in dataset.notifications
+    assert dataset.notifications == []
     assert record is not None
     assert record["mode"] == "timestamp"
     assert snapshot.has_applied_interpretation is True

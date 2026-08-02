@@ -29,6 +29,7 @@ import time
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import torch
 
@@ -45,7 +46,7 @@ except ImportError:
     pass
 
 from XBrainLab.llm.agent.assembler import ContextAssembler
-from XBrainLab.llm.agent.parser import CommandParser
+from XBrainLab.llm.agent.parser import CommandParser, ToolCommand
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.generation import GenerationProfile
@@ -561,7 +562,10 @@ def run_benchmark(
         test_cases = json.load(f)
 
     # Load Model
-    config = LLMConfig(**config_dict)
+    config = LLMConfig(
+        model_name=config_dict["model_name"],
+        inference_mode=config_dict["inference_mode"],
+    )
     engine = LLMEngine(config)
     engine.load_model()
 
@@ -649,7 +653,7 @@ def run_benchmark(
         "Do NOT explain or refuse. Output the JSON now."
     )
 
-    def _parse_calls(raw):
+    def _parse_calls(raw: str) -> list[ToolCommand]:
         """Parse raw LLM response into list of (tool_name, params) tuples."""
         parsed = parser.parse(raw)
         if not parsed:
@@ -757,7 +761,10 @@ def run_benchmark(
                 for round_idx, (round_stage, round_expected) in enumerate(rounds):
                     # Set stage for this round
                     if is_stage_aware:
-                        prompt_manager.current_stage = round_stage
+                        cast(
+                            StageAwareBenchmarkAssembler,
+                            prompt_manager,
+                        ).current_stage = round_stage
                         visible_count = len(
                             STAGE_CONFIG.get(round_stage, {}).get("tools", []),
                         )

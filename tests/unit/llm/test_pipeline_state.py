@@ -28,7 +28,7 @@ EXPECTED_STAGE_LABELS = {
     PipelineStage.EMPTY: "Empty (No Data)",
     PipelineStage.DATA_LOADED: "Data Loaded",
     PipelineStage.PREPROCESSED: "Preprocessed",
-    PipelineStage.EPOCH_READY: "Epochs Ready",
+    PipelineStage.EPOCH_READY: "EEG epochs ready",
     PipelineStage.DATASET_READY: "Dataset Ready",
     PipelineStage.TRAINING: "Training In Progress",
     PipelineStage.TRAINED: "Trained",
@@ -50,12 +50,12 @@ EXPECTED_STAGE_PROMPT_MARKERS = {
     PipelineStage.PREPROCESSED: (
         "## Current Stage: Preprocessed",
         "EEG epoching guide",
-        "Ready for epoching",
+        "Ready for EEG epoching",
         "target event",
         "epoch window",
     ),
     PipelineStage.EPOCH_READY: (
-        "## Current Stage: Epochs Ready",
+        "## Current Stage: EEG Epochs Ready",
         "EEG dataset generation guide",
         "epoch data is available",
         "split strategy",
@@ -286,7 +286,7 @@ class TestStageConfig:
 
     def test_standard_preprocess_prompt_keeps_epoching_as_a_separate_step(self):
         prompt = STAGE_CONFIG[PipelineStage.DATA_LOADED]["system_prompt"]
-        assert "Preprocessing must complete before epoching" in prompt
+        assert "Preprocessing must complete before EEG epoching" in prompt
 
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]

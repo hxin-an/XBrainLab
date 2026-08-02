@@ -77,8 +77,8 @@ def test_assistant_exact_import_review_cancel_leaves_product_unchanged(
     correlation = AssistantTurnCorrelation(generation=1, turn_id=1)
     controller.pending_interactions.begin_workflow_handoff(request)
     controller.is_processing = True
-    controller._active_host_turn_generation = correlation.generation
-    controller._active_host_turn_id = correlation.turn_id
+    controller._turn_orchestrator.host_turn_generation = correlation.generation
+    controller._turn_orchestrator.host_turn_id = correlation.turn_id
     terminals = []
     completions = []
     controller.turn_finished.connect(terminals.append)

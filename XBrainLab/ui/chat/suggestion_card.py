@@ -41,7 +41,7 @@ class AssistantSuggestionCard(QPushButton):
         self.setObjectName("AssistantSuggestionPrompt")
         self.setProperty("accent", accent)
         self.setStyleSheet(SUGGESTION_PROMPT_STYLE)
-        self.setMinimumHeight(58)
+        self.setMinimumHeight(52)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAutoDefault(False)
@@ -52,8 +52,8 @@ class AssistantSuggestionCard(QPushButton):
         self.setToolTip(f"{title}\n{subtitle}")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 10, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 6, 8, 6)
+        layout.setSpacing(6)
 
         self.icon_label = QLabel(self)
         self.icon_label.setObjectName("AssistantSuggestionIcon")
@@ -71,7 +71,7 @@ class AssistantSuggestionCard(QPushButton):
         copy.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         copy_layout = QVBoxLayout(copy)
         copy_layout.setContentsMargins(0, 0, 0, 0)
-        copy_layout.setSpacing(3)
+        copy_layout.setSpacing(2)
         self.title_label = QLabel(title, copy)
         self.title_label.setObjectName("AssistantSuggestionTitle")
         self.title_label.setStyleSheet(SUGGESTION_TITLE_STYLE)
@@ -90,7 +90,7 @@ class AssistantSuggestionCard(QPushButton):
         self.chevron_label.setObjectName("AssistantSuggestionChevron")
         self.chevron_label.setStyleSheet(SUGGESTION_CHEVRON_STYLE)
         self.chevron_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.chevron_label.setFixedWidth(18)
+        self.chevron_label.setFixedWidth(16)
         self.chevron_label.setText("\N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK}")
         self.chevron_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layout.addWidget(self.chevron_label)
@@ -135,10 +135,10 @@ class AssistantSuggestionCard(QPushButton):
             return required
 
         copy_height = (
-            wrapped_height(self.title_label) + wrapped_height(self.subtitle_label) + 3
+            wrapped_height(self.title_label) + wrapped_height(self.subtitle_label) + 2
         )
         target_height = max(
-            58,
+            52,
             margins.top()
             + margins.bottom()
             + max(self.icon_label.height(), copy_height),
@@ -151,7 +151,7 @@ class AssistantSuggestionCard(QPushButton):
         """Return the visible action title for compatibility with buttons."""
         return self._title
 
-    def setText(self, title: str) -> None:  # noqa: N802
+    def setText(self, title: str | None) -> None:  # noqa: N802
         """Update the visible and accessible action title."""
         self._title = str(title)
         self.title_label.setText(self._title)

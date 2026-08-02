@@ -1,19 +1,30 @@
 import sys
+from copy import deepcopy
+from dataclasses import replace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QApplication, QGroupBox, QMainWindow, QVBoxLayout, QWidget
 
+from XBrainLab.backend.application import (
+    ActiveDatasetSnapshot,
+    ActiveTrainingSnapshot,
+    ApplicationStateSnapshot,
+    ApplicationViewPublication,
+    CapabilityPolicy,
+    CommandCapability,
+    CommandName,
+)
 from XBrainLab.backend.application.results import (
     ChangedState,
     CommandResult,
     ErrorType,
 )
-from XBrainLab.backend.controller.training_controller import TrainingLifecycleEvent
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.training_state_contract import (
+    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingRunIdentity,
     TrainingStateToken,
@@ -24,6 +35,135 @@ from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
 
 # Ensure QApplication exists
 app = QApplication.instance() or QApplication(sys.argv)
+
+
+def _typed_training_ports(history_query):
+    ports = Observable()
+    ports.get_view_publication = MagicMock(
+        return_value=ApplicationViewPublication(
+            generation=1,
+            revision=1,
+            state=ApplicationStateSnapshot.empty(),
+            capabilities=CapabilityPolicy(
+                {
+                    CommandName.TRAIN.value: CommandCapability(
+                        command_name=CommandName.TRAIN.value,
+                        enabled=False,
+                        reasons=["Training is not ready."],
+                    )
+                }
+            ),
+            verified=True,
+            stale=False,
+        )
+    )
+    ports.query_training_history = history_query
+    ports.query_training_state = MagicMock(return_value=None)
+    ports.execute = MagicMock(return_value=None)
+    return ports
+
+
+def test_training_panel_acknowledges_unrelated_publication_without_redraw(
+    qtbot,
+):
+    ports = _typed_training_ports(MagicMock())
+    panel = TrainingPanel(
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
+    )
+    qtbot.addWidget(panel)
+    initial = ports.get_view_publication()
+
+    with patch.object(panel, "update_panel") as update_panel:
+        assert panel._on_application_view_publication_changed(initial)
+        qtbot.waitUntil(lambda: panel._last_application_revision == 1)
+        assert update_panel.call_count == 1
+        update_panel.reset_mock()
+
+        saliency_only = replace(
+            initial,
+            generation=2,
+            revision=2,
+            state=replace(
+                initial.state,
+                visualization=replace(
+                    initial.state.visualization,
+                    saliency_configured=True,
+                ),
+            ),
+        )
+        assert panel._on_application_view_publication_changed(saliency_only)
+        qtbot.waitUntil(lambda: panel._last_application_revision == 2)
+        update_panel.assert_not_called()
+        assert panel._application_view_publication is saliency_only
+
+        training_changed = replace(
+            saliency_only,
+            generation=3,
+            revision=3,
+            state=replace(
+                saliency_only.state,
+                training=replace(
+                    saliency_only.state.training,
+                    has_model=True,
+                    model_name="EEGNet",
+                ),
+                active_training=replace(
+                    saliency_only.state.active_training,
+                    has_model=True,
+                ),
+            ),
+        )
+        assert panel._on_application_view_publication_changed(training_changed)
+        qtbot.waitUntil(lambda: panel._last_application_revision == 3)
+        assert update_panel.call_count == 1
+
+
+def test_training_panel_reads_history_from_the_matching_publication(qtbot):
+    query_history = MagicMock(
+        side_effect=AssertionError(
+            "published Training history must not re-read mutable backend state"
+        )
+    )
+    ports = _typed_training_ports(query_history)
+    panel = TrainingPanel(
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
+    )
+    qtbot.addWidget(panel)
+    publication = replace(
+        ports.get_view_publication(),
+        training_history=(
+            {
+                "identity": {"plan_index": 0, "run_index": 0},
+                "group_name": "Group 1",
+                "run_name": "1",
+                "model_name": "EEGNet",
+                "status": "Completed",
+                "epoch": 1,
+                "max_epochs": 1,
+                "is_active": False,
+                "is_current_run": False,
+                "metrics": {
+                    "train": {"accuracy": [0.75], "loss": [0.5]},
+                    "validation": {"accuracy": [0.7], "loss": [0.6]},
+                },
+            },
+        ),
+    )
+    ports.get_view_publication.return_value = publication
+    panel._application_view_publication = publication
+
+    rows = panel._history_for_render()
+
+    assert rows is not None
+    assert rows[0]["epoch"] == 1
+    assert rows[0]["status"] == "Completed"
+    query_history.assert_not_called()
 
 
 def test_undefined_metric_is_rendered_as_not_available() -> None:
@@ -276,9 +416,7 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
 
         panel.sidebar.split_data()
 
-        # Verify Dialog checked with Controller
-        MockDialog.assert_called_with(panel.sidebar, mock_controller)
-
+        MockDialog.assert_not_called()
         mock_controller.apply_data_splitting.assert_not_called()
         mock_info.assert_not_called()
         mock_warning.assert_called_once()
@@ -405,6 +543,242 @@ def _make_history_entry(
     }
 
 
+def _make_detached_history_entry(
+    *,
+    plan_index=0,
+    run_index=0,
+    epoch_count=2,
+    is_current_run=True,
+    status="Running",
+    model_name="EEGNet",
+    max_epochs=5,
+):
+    return {
+        "identity": {
+            "plan_index": plan_index,
+            "run_index": run_index,
+        },
+        "group_name": f"Group {plan_index + 1}",
+        "run_name": str(run_index + 1),
+        "model_name": model_name,
+        "status": status,
+        "epoch": epoch_count,
+        "max_epochs": max_epochs,
+        "is_active": is_current_run,
+        "is_current_run": is_current_run,
+        "start_timestamp": 10.0,
+        "end_timestamp": None,
+        "metrics": {
+            "train": {
+                TrainRecordKey.LOSS: [0.5, 0.4][:epoch_count],
+                TrainRecordKey.ACC: [0.8, 0.82][:epoch_count],
+                TrainRecordKey.AUC: [0.7, 0.72][:epoch_count],
+                TrainRecordKey.LR: [0.001, 0.0005][:epoch_count],
+                TrainRecordKey.TIME: [1.2, 1.1][:epoch_count],
+            },
+            "validation": {
+                RecordKey.LOSS: [0.6, 0.45][:epoch_count],
+                RecordKey.ACC: [0.75, 0.79][:epoch_count],
+                RecordKey.AUC: [0.65, 0.7][:epoch_count],
+            },
+        },
+    }
+
+
+def test_training_history_signature_covers_every_rendered_metric_and_detail() -> None:
+    original = _make_detached_history_entry(status="Failed")
+    original["status_detail"] = "CUDA out of memory."
+    original["epoch"] = 5
+    for metrics in original["metrics"].values():
+        for key, values in metrics.items():
+            metrics[key] = [*values, 0.3, 0.2, 0.1]
+    baseline = TrainingPanel._training_history_signature((original,))
+    variants = []
+
+    for metric_group, keys in (
+        (
+            "train",
+            (
+                TrainRecordKey.ACC,
+                TrainRecordKey.LOSS,
+                TrainRecordKey.AUC,
+                TrainRecordKey.LR,
+                TrainRecordKey.TIME,
+            ),
+        ),
+        (
+            "validation",
+            (RecordKey.ACC, RecordKey.LOSS, RecordKey.AUC),
+        ),
+    ):
+        for key in keys:
+            changed = deepcopy(original)
+            changed["metrics"][metric_group][key][0] = 0.123
+            variants.append(changed)
+    for key, value in (
+        ("status_detail", "Training was stopped by the user."),
+        ("start_timestamp", 11.0),
+        ("end_timestamp", 20.0),
+    ):
+        changed = deepcopy(original)
+        changed[key] = value
+        variants.append(changed)
+
+    assert all(
+        TrainingPanel._training_history_signature((changed,)) != baseline
+        for changed in variants
+    )
+
+
+def test_training_publication_updates_visible_cells_and_selected_log_before_commit(
+    qtbot,
+) -> None:
+    initial_row = _make_detached_history_entry(status="Failed")
+    initial_row["status_detail"] = "Initial training failure."
+    initial_row["start_timestamp"] = 10.0
+    initial_row["end_timestamp"] = 20.0
+    ports = _typed_training_ports(MagicMock())
+    initial = replace(
+        ports.get_view_publication(),
+        training_history=(deepcopy(initial_row),),
+    )
+    ports.get_view_publication.return_value = initial
+    panel = TrainingPanel(
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
+    )
+    qtbot.addWidget(panel)
+
+    assert panel._on_application_view_publication_changed(initial)
+    qtbot.waitUntil(lambda: panel._last_application_revision == initial.revision)
+    assert "Initial training failure." in panel.log_text.toPlainText()
+
+    changed_row = deepcopy(initial_row)
+    changed_row["status_detail"] = "Retry with a smaller batch size."
+    changed_row["end_timestamp"] = 85.0
+    changed_row["metrics"]["train"][TrainRecordKey.AUC][-1] = 0.91
+    changed_row["metrics"]["train"][TrainRecordKey.LR][-1] = 0.0025
+    changed_row["metrics"]["train"][TrainRecordKey.TIME][-1] = 8.75
+    changed_row["metrics"]["validation"][RecordKey.AUC][-1] = 0.87
+    changed = replace(
+        initial,
+        generation=initial.generation + 1,
+        revision=initial.revision + 1,
+        training_history=(changed_row,),
+    )
+    ports.get_view_publication.return_value = changed
+
+    assert panel._on_application_view_publication_changed(changed)
+    qtbot.waitUntil(lambda: panel._last_application_revision == changed.revision)
+
+    assert panel.history_table.item(0, 9).text() == "0.0025"
+    assert panel.history_table.item(0, 10).text() == "00:01:15"
+    visible_log = panel.log_text.toPlainText()
+    assert "auc=0.91" in visible_log
+    assert "auc=0.87" in visible_log
+    assert "lr=0.0025 time=8.75" in visible_log
+    assert "Retry with a smaller batch size." in visible_log
+    assert "Initial training failure." not in visible_log
+
+
+def test_training_panel_renders_detached_product_history_without_object_opt_in(
+    qtbot,
+):
+    class RealMainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    detached_row = _make_detached_history_entry()
+    query_result = CommandResult.success_result(
+        command_name="query_state",
+        message="Training history query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "training_history",
+            "row_count": 1,
+            "rows": [detached_row],
+        },
+    )
+    query = MagicMock(return_value=query_result)
+    ports = _typed_training_ports(query)
+    controller = Observable()
+    controller.get_formatted_history = MagicMock(
+        side_effect=AssertionError("product rendering must not read live history"),
+    )
+    panel = TrainingPanel(
+        parent=RealMainWindow(),
+        controller=controller,
+        dataset_controller=Observable(),
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_loop(log_epochs=True)
+
+    query.assert_called_once_with(expected_publication_generation=1)
+    assert panel.current_plotting_identity == (0, 0)
+    assert panel.history_table.item(0, 3).text() == "Running"
+    assert panel.history_table.item(0, 4).text() == "2/5"
+    assert panel.tab_acc.epochs == [1, 2]
+    assert panel.tab_acc.train_vals == [0.8, 0.82]
+    assert "Training epoch 2: train loss=0.4 acc=0.82" in (panel.log_text.toPlainText())
+    controller.get_formatted_history.assert_not_called()
+
+
+def test_terminal_outcome_overlays_stale_detached_history_projection(
+    mock_main_window,
+    qtbot,
+    monkeypatch,
+):
+    """A terminal publication must win over a lagging successful history query."""
+    stale_row = _make_detached_history_entry(status="Running")
+    query_result = CommandResult.success_result(
+        command_name="query_state",
+        message="Training history query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "training_history",
+            "row_count": 1,
+            "rows": [stale_row],
+        },
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.training.panel.execute_application_command",
+        MagicMock(return_value=query_result),
+    )
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    panel.training_completed_shown = True
+    panel._latest_terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+    )
+
+    panel.update_loop()
+
+    assert panel.history_table.item(0, 3).text() == "Completed"
+    assert panel.current_plotting_row is not None
+    assert panel.current_plotting_row["status"] == "Completed"
+    assert panel.current_plotting_row["is_current_run"] is False
+
+
 def test_training_panel_populates_history_immediately_on_training_started(
     mock_main_window,
     qtbot,
@@ -431,19 +805,18 @@ def test_training_panel_populates_history_immediately_on_training_started(
 
     assert panel.history_table.rowCount() == 1
     assert panel.history_table.item(0, 3).text() == "Running"
-    assert panel.current_plotting_record is not None
+    assert panel.current_plotting_identity == (0, 0)
 
 
 def test_training_panel_uses_application_history_before_stale_controller(
     qtbot,
-    monkeypatch,
 ):
     class RealMainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
             self.study = Study()
 
-    service_entry = _make_history_entry(model_name="ServiceNet")
+    service_entry = _make_detached_history_entry(model_name="ServiceNet")
     query_result = CommandResult.success_result(
         command_name="query_state",
         message="Training history query ready.",
@@ -455,10 +828,8 @@ def test_training_panel_uses_application_history_before_stale_controller(
             "rows": [service_entry],
         },
     )
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.training.panel.execute_application_command",
-        lambda *_args, **_kwargs: query_result,
-    )
+    query = MagicMock(return_value=query_result)
+    ports = _typed_training_ports(query)
     stale_controller = Observable()
     stale_controller.validate_ready = MagicMock(return_value=True)
     stale_controller.has_datasets = MagicMock(return_value=True)
@@ -472,6 +843,10 @@ def test_training_panel_uses_application_history_before_stale_controller(
         parent=RealMainWindow(),
         controller=stale_controller,
         dataset_controller=Observable(),
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
     )
     qtbot.addWidget(panel)
 
@@ -480,22 +855,19 @@ def test_training_panel_uses_application_history_before_stale_controller(
     stale_controller.get_formatted_history.assert_not_called()
     assert panel.history_table.rowCount() == 1
     assert panel.history_table.item(0, 2).text() == "ServiceNet"
-    assert panel.current_plotting_record is service_entry["record"]
+    assert panel.current_plotting_identity == (0, 0)
+    assert panel.current_plotting_row == service_entry
 
 
 def test_training_panel_refuses_real_study_query_none_controller_history(
     qtbot,
-    monkeypatch,
 ):
     class RealMainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
             self.study = Study()
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.training.panel.execute_application_command",
-        lambda *_args, **_kwargs: None,
-    )
+    ports = _typed_training_ports(MagicMock(return_value=None))
     stale_controller = Observable()
     stale_controller.validate_ready = MagicMock(return_value=True)
     stale_controller.has_datasets = MagicMock(return_value=True)
@@ -509,6 +881,10 @@ def test_training_panel_refuses_real_study_query_none_controller_history(
         parent=RealMainWindow(),
         controller=stale_controller,
         dataset_controller=Observable(),
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
     )
     qtbot.addWidget(panel)
 
@@ -516,19 +892,18 @@ def test_training_panel_refuses_real_study_query_none_controller_history(
 
     stale_controller.get_formatted_history.assert_not_called()
     assert panel.history_table.rowCount() == 0
-    assert panel.current_plotting_record is None
+    assert panel.current_plotting_identity is None
 
 
 def test_training_panel_keeps_verified_history_when_live_query_is_busy(
     qtbot,
-    monkeypatch,
 ):
     class RealMainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
             self.study = Study()
 
-    service_entry = _make_history_entry(model_name="ServiceNet")
+    service_entry = _make_detached_history_entry(model_name="ServiceNet")
     ready = CommandResult.success_result(
         command_name="query_state",
         message="Training history query ready.",
@@ -549,7 +924,7 @@ def test_training_panel_keeps_verified_history_when_live_query_is_busy(
         recoverable=True,
         diagnostics={"training_state_changed": True, "retryable": True},
     )
-    recovered_entry = _make_history_entry(model_name="RecoveredNet")
+    recovered_entry = _make_detached_history_entry(model_name="RecoveredNet")
     recovered = CommandResult.success_result(
         command_name="query_state",
         message="Training history query ready.",
@@ -562,10 +937,7 @@ def test_training_panel_keeps_verified_history_when_live_query_is_busy(
         },
     )
     query = MagicMock(side_effect=[ready, busy, busy, recovered])
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.training.panel.execute_application_command",
-        query,
-    )
+    ports = _typed_training_ports(query)
     stale_controller = Observable()
     stale_controller.validate_ready = MagicMock(return_value=True)
     stale_controller.has_datasets = MagicMock(return_value=True)
@@ -579,11 +951,15 @@ def test_training_panel_keeps_verified_history_when_live_query_is_busy(
         parent=RealMainWindow(),
         controller=stale_controller,
         dataset_controller=Observable(),
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
     )
     qtbot.addWidget(panel)
 
     panel.update_loop()
-    verified_record = panel.current_plotting_record
+    verified_identity = panel.current_plotting_identity
     with patch.object(panel, "show_status_message") as status:
         panel.update_loop(log_epochs=True)
         panel.update_loop(log_epochs=True)
@@ -591,7 +967,7 @@ def test_training_panel_keeps_verified_history_when_live_query_is_busy(
     stale_controller.get_formatted_history.assert_not_called()
     assert panel.history_table.rowCount() == 1
     assert panel.history_table.item(0, 2).text() == "ServiceNet"
-    assert panel.current_plotting_record is verified_record
+    assert panel.current_plotting_identity == verified_identity
     status.assert_called_once_with(
         "Training view is updating · Keeping the last verified results"
     )
@@ -599,21 +975,23 @@ def test_training_panel_keeps_verified_history_when_live_query_is_busy(
     panel.update_loop()
 
     assert panel.history_table.item(0, 2).text() == "RecoveredNet"
-    assert panel.current_plotting_record is recovered_entry["record"]
+    assert panel.current_plotting_identity == (0, 0)
+    assert panel.current_plotting_row == recovered_entry
     assert panel._history_query_unavailable_shown is False
 
 
-def test_terminal_publication_preserves_verified_objects_when_final_query_is_busy(
+def test_terminal_publication_preserves_verified_rows_when_final_query_is_busy(
     qtbot,
-    monkeypatch,
 ):
     class RealMainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
             self.study = Study()
 
-    service_entry = _make_history_entry(epoch_count=1)
-    service_entry["plan"].option.epoch = 1
+    service_entry = _make_detached_history_entry(
+        epoch_count=1,
+        max_epochs=1,
+    )
     ready = CommandResult.success_result(
         command_name="query_state",
         message="Training history query ready.",
@@ -635,10 +1013,7 @@ def test_terminal_publication_preserves_verified_objects_when_final_query_is_bus
         diagnostics={"application_busy": True},
     )
     query = MagicMock(side_effect=[ready, busy])
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.training.panel.execute_application_command",
-        query,
-    )
+    ports = _typed_training_ports(query)
     controller = Observable()
     controller.validate_ready = MagicMock(return_value=True)
     controller.has_datasets = MagicMock(return_value=True)
@@ -649,23 +1024,42 @@ def test_terminal_publication_preserves_verified_objects_when_final_query_is_bus
         parent=RealMainWindow(),
         controller=controller,
         dataset_controller=Observable(),
+        query_port=ports,
+        publication_port=ports,
+        action_port=ports,
+        transient_port=ports,
     )
     qtbot.addWidget(panel)
     panel.sidebar.check_ready_to_train = MagicMock()
     panel.update_loop()
     assert panel.history_table.item(0, 3).text() == "Running"
-    service_entry["record"].is_finished.return_value = True
 
-    panel._on_training_terminal_published(
-        TrainingLifecycleEvent(
-            token=TrainingStateToken(generation=12, stable=True),
-            outcome=TrainingTerminalOutcome(
-                state=TrainingOutcomeState.COMPLETED,
-                run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
-            ),
-            publication_generation=31,
-        )
+    publication = panel._read_application_publication()
+    assert publication is not None
+    outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
     )
+    terminal_publication = replace(
+        publication,
+        generation=publication.generation + 1,
+        revision=publication.revision + 1,
+        state=replace(
+            publication.state,
+            training=replace(
+                publication.state.training,
+                is_running=False,
+                terminal_outcome=outcome,
+            ),
+        ),
+    )
+    with patch.object(
+        panel,
+        "_read_application_publication",
+        return_value=terminal_publication,
+    ):
+        assert panel._on_application_view_publication_changed(terminal_publication)
+        qtbot.waitUntil(lambda: query.call_count == 2)
 
     assert query.call_count == 2
     assert panel.history_table.item(0, 3).text() == "Completed"
@@ -693,7 +1087,7 @@ def test_training_panel_clears_stale_history_on_config_changed(
 
     panel.update_loop()
     assert panel.history_table.rowCount() == 1
-    assert panel.current_plotting_record is not None
+    assert panel.current_plotting_identity == (0, 0)
 
     controller.get_formatted_history.return_value = []
     controller.validate_ready.return_value = False
@@ -702,7 +1096,8 @@ def test_training_panel_clears_stale_history_on_config_changed(
     qtbot.wait(50)
 
     assert panel.history_table.rowCount() == 0
-    assert panel.current_plotting_record is None
+    assert panel.current_plotting_identity is None
+    assert panel.current_plotting_row is None
     assert panel._last_epoch_count == -1
 
 
@@ -741,14 +1136,14 @@ def test_training_panel_switches_to_active_run_on_training_started(
     qtbot.addWidget(panel)
 
     panel.update_loop()
-    assert panel.current_plotting_record is old_entry["record"]
+    assert panel.current_plotting_identity == (0, 0)
 
     controller.get_formatted_history.return_value = [old_entry, active_entry]
     controller.notify("training_started")
     qtbot.wait(50)
 
     assert panel.history_table.rowCount() == 2
-    assert panel.current_plotting_record is active_entry["record"]
+    assert panel.current_plotting_identity == (1, 0)
     assert panel.tab_acc.epochs == [1]
 
 
@@ -788,7 +1183,7 @@ def test_training_panel_replaces_stale_selected_record_when_history_changes(
     qtbot.addWidget(panel)
 
     panel.update_loop()
-    assert panel.current_plotting_record is old_entry["record"]
+    assert panel.current_plotting_identity == (0, 0)
     assert panel.tab_acc.epochs == [1, 2, 3]
 
     controller.get_formatted_history.return_value = [new_entry]
@@ -796,7 +1191,8 @@ def test_training_panel_replaces_stale_selected_record_when_history_changes(
     qtbot.wait(50)
 
     assert panel.history_table.rowCount() == 1
-    assert panel.current_plotting_record is new_entry["record"]
+    assert panel.current_plotting_identity == (0, 0)
+    assert panel.current_plotting_row["model_name"] == "SCCNet"
     assert panel.tab_acc.epochs == [1, 2]
 
 
@@ -835,7 +1231,7 @@ def test_training_panel_auto_follows_new_active_run_on_training_updated(
     qtbot.addWidget(panel)
 
     panel.update_loop()
-    assert panel.current_plotting_record is first_active["record"]
+    assert panel.current_plotting_identity == (0, 0)
     assert panel.tab_acc.epochs == [1, 2, 3]
 
     first_active["is_current_run"] = False
@@ -844,7 +1240,7 @@ def test_training_panel_auto_follows_new_active_run_on_training_updated(
     controller.notify("training_updated")
     qtbot.wait(50)
 
-    assert panel.current_plotting_record is second_active["record"]
+    assert panel.current_plotting_identity == (1, 0)
     assert panel.tab_acc.epochs == [1]
 
 
@@ -883,10 +1279,12 @@ def test_training_panel_keeps_manual_selection_on_training_updated(
     qtbot.addWidget(panel)
 
     panel.update_loop()
-    assert panel.current_plotting_record is active_run["record"]
+    assert panel.current_plotting_identity == (1, 0)
 
-    panel.on_history_selection_changed(old_run["record"])
-    assert panel.current_plotting_record is old_run["record"]
+    panel.on_history_selection_changed(
+        {"plan_index": 0, "run_index": 0},
+    )
+    assert panel.current_plotting_identity == (0, 0)
 
     active_run["record"].train[TrainRecordKey.ACC] = [0.8, 0.81]
     active_run["record"].train[TrainRecordKey.LOSS] = [0.5, 0.49]
@@ -896,7 +1294,7 @@ def test_training_panel_keeps_manual_selection_on_training_updated(
     controller.notify("training_updated")
     qtbot.wait(50)
 
-    assert panel.current_plotting_record is old_run["record"]
+    assert panel.current_plotting_identity == (0, 0)
     assert panel._selection_pinned_by_user is True
 
 
@@ -930,13 +1328,60 @@ def test_training_panel_log_tab_follows_selected_history_row(
     )
     qtbot.addWidget(panel)
 
-    panel.on_history_selection_changed(group_1["record"])
+    panel.update_loop()
+
+    panel.on_history_selection_changed({"plan_index": 0, "run_index": 0})
     assert "train loss=0.5" in panel.log_text.toPlainText()
     assert "train loss=0.33" not in panel.log_text.toPlainText()
 
-    panel.on_history_selection_changed(group_2["record"])
+    panel.on_history_selection_changed({"plan_index": 1, "run_index": 0})
     assert "train loss=0.33" in panel.log_text.toPlainText()
     assert "train loss=0.5" not in panel.log_text.toPlainText()
+
+
+def test_training_panel_log_tab_shows_failure_for_selected_history_row(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    failed = _make_detached_history_entry(
+        plan_index=0,
+        run_index=0,
+        epoch_count=0,
+        is_current_run=False,
+        status="Failed",
+    )
+    failed["status_detail"] = (
+        "CUDA out of memory during training. Try reducing batch size."
+    )
+    completed = _make_detached_history_entry(
+        plan_index=1,
+        run_index=0,
+        epoch_count=1,
+        is_current_run=False,
+        status="Completed",
+    )
+    controller.get_formatted_history = MagicMock(return_value=[])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    panel._rendered_history_rows = [failed, completed]
+
+    panel.on_history_selection_changed({"plan_index": 0, "run_index": 0})
+
+    assert "CUDA out of memory during training" in panel.log_text.toPlainText()
+
+    panel.on_history_selection_changed({"plan_index": 1, "run_index": 0})
+
+    assert "CUDA out of memory during training" not in panel.log_text.toPlainText()
 
 
 def test_training_panel_refreshes_progress_and_plot_on_training_updated(
@@ -1060,8 +1505,8 @@ def test_training_panel_logs_each_epoch_on_training_updated(
     qtbot.wait(50)
 
     log_text = panel.log_text.toPlainText()
-    assert "Epoch 1: train loss=0.5 acc=0.8" in log_text
-    assert "Epoch 2: train loss=0.49 acc=0.81" in log_text
+    assert "Training epoch 1: train loss=0.5 acc=0.8" in log_text
+    assert "Training epoch 2: train loss=0.49 acc=0.81" in log_text
     assert "val loss=0.59 acc=0.76" in log_text
 
 
@@ -1585,6 +2030,131 @@ def test_terminal_refresh_restores_failure_copy_after_history_rerender(
     )
 
 
+def test_terminal_refresh_keeps_stopped_event_and_completion_copy_after_rerender(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    panel.training_completed_shown = True
+    panel._terminal_event_log_expected = True
+    panel._latest_terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+    )
+
+    with patch.object(panel, "update_panel", side_effect=panel.log_text.clear):
+        panel.refresh_terminal_publication()
+
+    visible_log = panel.log_text.toPlainText()
+    assert "Training stopped (event)." in visible_log
+    assert "All training jobs finished." in visible_log
+
+
+@pytest.mark.parametrize(
+    ("publication_usable", "capability_enabled", "expected_start_enabled"),
+    [
+        pytest.param(False, True, False, id="unavailable-publication"),
+        pytest.param(True, False, False, id="blocked-publication"),
+        pytest.param(True, True, True, id="ready-publication"),
+    ],
+)
+def test_terminal_refresh_keeps_start_bound_to_publication_truth(
+    qtbot,
+    publication_usable,
+    capability_enabled,
+    expected_start_enabled,
+):
+    class RealMainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    controller = Observable()
+    controller.validate_ready = MagicMock(
+        side_effect=AssertionError("product readiness must not use the controller"),
+    )
+    controller.has_datasets = MagicMock(
+        side_effect=AssertionError("product readiness must not use the controller"),
+    )
+    controller.has_model = MagicMock(
+        side_effect=AssertionError("product readiness must not use the controller"),
+    )
+    controller.has_training_option = MagicMock(
+        side_effect=AssertionError("product readiness must not use the controller"),
+    )
+    panel = TrainingPanel(
+        parent=RealMainWindow(),
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        active_dataset=ActiveDatasetSnapshot(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+            has_epoch_data=True,
+            has_datasets=True,
+        ),
+        active_training=ActiveTrainingSnapshot(
+            has_model=True,
+            has_training_option=True,
+        ),
+    )
+    publication = ApplicationViewPublication(
+        generation=7,
+        revision=11,
+        state=state,
+        capabilities=CapabilityPolicy(
+            {
+                CommandName.TRAIN.value: CommandCapability(
+                    command_name=CommandName.TRAIN.value,
+                    enabled=capability_enabled,
+                    reasons=[] if capability_enabled else ["Training is blocked."],
+                ),
+            }
+        ),
+        verified=publication_usable,
+        stale=not publication_usable,
+    )
+    panel.training_completed_shown = True
+    panel._latest_terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(trainer_id="trainer-1", run_id=1),
+    )
+    panel.sidebar.btn_start.setEnabled(False)
+    panel.sidebar.btn_stop.setEnabled(True)
+
+    with (
+        patch.object(
+            panel,
+            "_read_application_publication",
+            return_value=publication,
+        ),
+        patch.object(panel, "update_info"),
+        patch.object(panel, "update_loop"),
+    ):
+        panel.refresh_terminal_publication()
+
+    assert panel.sidebar.btn_start.isEnabled() is expected_start_enabled
+    assert not panel.sidebar.btn_stop.isEnabled()
+    controller.validate_ready.assert_not_called()
+    controller.has_datasets.assert_not_called()
+    controller.has_model.assert_not_called()
+    controller.has_training_option.assert_not_called()
+
+
 def test_duplicate_analysis_publication_refreshes_once(
     mock_main_window,
     qtbot,
@@ -1778,5 +2348,6 @@ def test_training_panel_clears_log_on_config_changed(
     qtbot.wait(50)
 
     assert panel.log_text.toPlainText() == ""
-    assert panel.current_plotting_record is new_entry["record"]
+    assert panel.current_plotting_identity == (0, 0)
+    assert panel.current_plotting_row["model_name"] == "SCCNet"
     assert panel.tab_acc.epochs == [1]

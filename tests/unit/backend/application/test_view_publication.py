@@ -287,3 +287,97 @@ def test_publication_generation_changes_when_only_training_identity_changes() ->
     assert publication.state == state
     assert publication.training_boundary == second
     assert publication.generation > initial.generation
+
+
+def test_strict_refresh_retries_one_transient_training_boundary_change() -> None:
+    state = ApplicationStateSnapshot.empty()
+    first = _boundary("trainer-a", generation=1)
+    second = _boundary("trainer-a", generation=2)
+    boundaries = iter((first, second, second, second))
+    build_state = MagicMock(return_value=state)
+    coordinator = ApplicationViewCoordinator(
+        state,
+        initial_training_boundary=first,
+        build_state=build_state,
+        capture_training_boundary=lambda: next(boundaries),
+    )
+
+    refreshed = coordinator.refresh_strict()
+    publication = coordinator.committed()
+
+    assert refreshed == state
+    assert publication.usable is True
+    assert publication.training_boundary == second
+    assert build_state.call_count == 2
+
+
+def test_strict_refresh_captures_training_history_inside_the_same_boundary() -> None:
+    state = ApplicationStateSnapshot.empty()
+    first = _boundary("trainer-a", generation=2)
+    second = _boundary("trainer-a", generation=4)
+    boundaries = iter((first, second, second, second))
+    build_state = MagicMock(return_value=state)
+    build_history = MagicMock(
+        side_effect=[
+            [{"identity": {"plan_index": 0, "run_index": 0}, "epoch": 0}],
+            [{"identity": {"plan_index": 0, "run_index": 0}, "epoch": 1}],
+        ]
+    )
+    coordinator = ApplicationViewCoordinator(
+        state,
+        initial_training_boundary=first,
+        build_state=build_state,
+        build_training_history=build_history,
+        capture_training_boundary=lambda: next(boundaries),
+    )
+
+    coordinator.refresh_strict()
+    publication = coordinator.committed()
+
+    assert publication.training_boundary == second
+    assert publication.training_history == (
+        {"identity": {"plan_index": 0, "run_index": 0}, "epoch": 1},
+    )
+    assert build_state.call_count == 2
+    assert build_history.call_count == 2
+
+
+def test_application_service_publication_captures_detached_data_summary_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Visible aggregate summaries must share the committed view revision."""
+    service = ApplicationService(Study())
+    raw_rows = [
+        {
+            "filepath": "/data/sub-01.edf",
+            "filename": "sub-01.edf",
+            "subject": "01",
+            "session": "baseline",
+            "n_channels": 22,
+            "sampling_frequency": 250.0,
+            "epochs_length": 0,
+            "is_raw": True,
+            "event": {"count": 48, "labels": ["left", "right"]},
+            "highpass": 1.0,
+            "lowpass": 40.0,
+        }
+    ]
+    monkeypatch.setattr(
+        service.dataset,
+        "get_loaded_data_rows",
+        MagicMock(return_value=raw_rows),
+    )
+    monkeypatch.setattr(
+        service.dataset,
+        "get_preprocessed_data_rows",
+        MagicMock(return_value=[]),
+    )
+
+    try:
+        service.get_state()
+        publication = service.get_view_publication()
+
+        assert publication.data_summary_rows == tuple(raw_rows)
+        assert publication.usable is True
+    finally:
+        service.close()

@@ -10,6 +10,10 @@ from typing import Any, cast
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
+from ...utils.filesystem_identity import (
+    FilesystemIdentityError,
+    StableDirectoryIdentity,
+)
 from ...utils.logger import logger
 from ..saliency_artifact_integrity import (
     SALIENCY_METHOD_STORE_NAMES,
@@ -473,8 +477,9 @@ class EvalRecord:
         self._raise_saliency_context_error()
         if self.has_saliency_data() and self.saliency_context is None:
             raise SaliencyContextError(
-                "Saliency cannot be persisted without class, channel, and epoch "
-                "identity context. Bind the evaluation record to its epoch data first."
+                "Saliency cannot be persisted without class, channel, and EEG epoch "
+                "identity context. Bind the evaluation record to its EEG epoch "
+                "data first."
             )
         if self.has_saliency_data():
             if self.saliency_integrity_manifest is None:
@@ -482,7 +487,12 @@ class EvalRecord:
             else:
                 self._verify_saliency_integrity()
 
-    def export(self, target_path: str) -> None:
+    def export(
+        self,
+        target_path: str,
+        *,
+        directory_identity: StableDirectoryIdentity | None = None,
+    ) -> None:
         """Export the evaluation record as JSON metadata and numeric NPZ arrays.
 
         Args:
@@ -537,6 +547,7 @@ class EvalRecord:
             payload=payload,
             arrays=arrays,
             arrays_filename="eval.npz",
+            directory_identity=directory_identity,
         )
 
     @classmethod
@@ -545,6 +556,7 @@ class EvalRecord:
         target_path: str,
         *,
         expected_producer_identity: SaliencyProducerIdentity | None = None,
+        directory_identity: StableDirectoryIdentity | None = None,
     ) -> EvalRecord | None:
         """Load an evaluation record from the safe JSON/NPZ artifact store.
 
@@ -564,6 +576,7 @@ class EvalRecord:
             payload, arrays = read_json_npz_artifact(
                 path,
                 expected_artifact_type=EVALUATION_RECORD_ARTIFACT_TYPE,
+                directory_identity=directory_identity,
             )
             data = _decode_eval_artifact(payload, arrays)
             saliency_stores = {
@@ -667,7 +680,7 @@ class EvalRecord:
                 ),
                 _from_artifact=True,
             )
-        except UnsupportedArtifactError:
+        except (FilesystemIdentityError, UnsupportedArtifactError):
             raise
         except Exception as e:
             logger.error("Failed to load EvalRecord: %s", e, exc_info=True)

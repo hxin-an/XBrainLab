@@ -1,8 +1,13 @@
 import logging
+import ntpath
 from typing import Any, cast
 
 import pytest
 
+from XBrainLab.backend.application.saliency_policy import (
+    MAX_SALIENCY_NT_SAMPLES,
+)
+from XBrainLab.llm.agent.tool_call_normalizer import normalize_tool_call
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
     PathExistsValidator,
@@ -14,6 +19,9 @@ from XBrainLab.llm.agent.verifier import (
     VerificationLayer,
     VerificationResult,
 )
+from XBrainLab.llm.tools import authorized_paths
+from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
+from XBrainLab.llm.tools.definitions.analysis_def import BaseSaliencyTool
 from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseLoadDataTool,
     BasePreviewInterpretationTool,
@@ -24,6 +32,73 @@ from XBrainLab.llm.tools.definitions.training_def import BaseConfigureTrainingTo
 def _error_message(result: VerificationResult) -> str:
     assert result.error_message is not None
     return result.error_message
+
+
+@pytest.mark.parametrize(
+    "user_text",
+    [
+        "Configure IntegratedGradients saliency.",
+        "Configure Integrated Gradient saliency.",
+    ],
+)
+def test_unsupported_saliency_request_is_a_typed_schema_failure(
+    user_text: str,
+) -> None:
+    tool_name, params = normalize_tool_call(
+        "saliency",
+        {},
+        latest_user_text=user_text,
+    )
+    validator = ToolSchemaValidator(
+        {"saliency": BaseSaliencyTool().parameters},
+    )
+
+    result = validator.validate(tool_name, params)
+
+    assert result.is_valid is False
+    assert "method must be one of" in _error_message(result)
+
+
+@pytest.mark.parametrize(
+    "user_text",
+    [
+        "Configure SmoothGrad saliency with nt_samples 2.5.",
+        "Configure SmoothGrad saliency with nt_samples two.",
+    ],
+)
+def test_unrepresentable_saliency_params_are_typed_schema_failures(
+    user_text: str,
+) -> None:
+    tool_name, params = normalize_tool_call(
+        "saliency",
+        {"method": "SmoothGrad"},
+        latest_user_text=user_text,
+    )
+    validator = ToolSchemaValidator(
+        {"saliency": BaseSaliencyTool().parameters},
+    )
+
+    result = validator.validate(tool_name, params)
+
+    assert result.is_valid is False
+    assert "nt_samples" in _error_message(result)
+
+
+def test_oversized_saliency_noise_samples_fail_agent_schema_admission() -> None:
+    validator = ToolSchemaValidator(
+        {"saliency": BaseSaliencyTool().parameters},
+    )
+
+    result = validator.validate(
+        "saliency",
+        {
+            "method": "SmoothGrad",
+            "nt_samples": MAX_SALIENCY_NT_SAMPLES + 1,
+        },
+    )
+
+    assert result.is_valid is False
+    assert f"nt_samples must be <= {MAX_SALIENCY_NT_SAMPLES}" in _error_message(result)
 
 
 def test_verification_script_syntax(tmp_path):
@@ -581,6 +656,49 @@ class TestPathProvenanceVerifier:
 
         assert result.is_valid
 
+    def test_windows_junction_descendant_cannot_escape_selected_root(
+        self,
+        monkeypatch,
+    ):
+        selected = ntpath.normcase(ntpath.normpath(r"C:\Data\Selected"))
+        escaped = ntpath.normcase(ntpath.normpath(r"D:\Private\secret.edf"))
+
+        def _resolve_windows_path(value: str) -> str:
+            normalized = ntpath.normcase(ntpath.normpath(value))
+            if normalized.endswith(r"\junction\secret.edf"):
+                return escaped
+            return selected if normalized == selected else normalized
+
+        def _identity(
+            value: str,
+            *,
+            expected_kind: PathKind | None,
+        ) -> FilesystemIdentity:
+            final_path = _resolve_windows_path(value)
+            return FilesystemIdentity(
+                platform="windows",
+                final_path=final_path,
+                object_id=(1, hash(final_path)),
+                kind="directory" if expected_kind == "directory" else "file",
+            )
+
+        monkeypatch.setattr(authorized_paths, "_resolve_windows_identity", _identity)
+        state = {
+            "interpretation": {
+                "source_path": r"C:\Data\Selected",
+                "source_kind": "folder",
+            }
+        }
+
+        result = PathProvenanceVerifier().validate(
+            "list_files",
+            {"directory": r"C:\Data\Selected\junction\secret.edf"},
+            latest_user_text="Show files from the selected EEG folder",
+            state=state,
+        )
+
+        assert not result.is_valid
+
     def test_latest_turn_exact_spaced_path_satisfies_provenance(self, tmp_path):
         source = tmp_path / "subject one" / "A01T.gdf"
         source.parent.mkdir()
@@ -963,10 +1081,16 @@ class _PrivateFailureValidator(ValidatorStrategy):
         )
 
 
-def test_verification_boundary_redacts_public_error_and_validator_log(caplog) -> None:
+def test_verification_boundary_redacts_public_error_and_validator_log(
+    caplog,
+    capture_product_logs,
+) -> None:
     verifier = VerificationLayer(validators=[_PrivateFailureValidator()])
 
-    with caplog.at_level(logging.WARNING, logger="XBrainLab.llm.agent.verifier"):
+    with capture_product_logs(
+        logging.WARNING,
+        logger_name="XBrainLab.llm.agent.verifier",
+    ):
         result = verifier.verify_tool_call(("query_state", {}), confidence=1.0)
 
     assert result.is_valid is False

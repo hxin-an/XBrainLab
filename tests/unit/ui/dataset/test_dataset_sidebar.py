@@ -269,7 +269,9 @@ def test_update_sidebar_refuses_real_study_clear_availability_fallback(qtbot):
     panel_mock.controller.has_data.assert_not_called()
     panel_mock.controller.is_epoched.assert_not_called()
     assert widget.clear_btn.isEnabled() is False
-    assert "state is unavailable" in widget.clear_btn.toolTip()
+    assert widget.clear_btn.toolTip() == (
+        "Session reset availability is unavailable right now."
+    )
 
 
 def test_reset_availability_does_not_issue_ad_hoc_state_query(qtbot):
@@ -343,6 +345,107 @@ def test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback(qtbo
     assert "unavailable" in widget.import_label_btn.toolTip()
 
 
+def test_update_sidebar_real_study_missing_publication_skips_compatibility_state(
+    qtbot,
+):
+    from XBrainLab.backend.study import Study
+
+    panel = MagicMock()
+    panel.action_handler = MagicMock()
+    panel.controller = MagicMock()
+    panel.main_window = QWidget()
+    panel.main_window.study = Study()
+    widget = DatasetSidebar(panel, parent=None)
+    qtbot.addWidget(widget)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+            return_value=None,
+        ),
+        patch.object(
+            widget,
+            "_compatibility_sidebar_state",
+            side_effect=AssertionError(
+                "real product state must not consult controller compatibility"
+            ),
+        ) as compatibility_state,
+        patch.object(
+            widget,
+            "_compatibility_controller_value",
+            side_effect=AssertionError(
+                "real product reset state must not consult controller compatibility"
+            ),
+        ) as compatibility_value,
+    ):
+        widget.update_sidebar()
+
+    compatibility_state.assert_not_called()
+    compatibility_value.assert_not_called()
+    expected = {
+        widget.import_btn: "Data interpretation availability is unavailable right now.",
+        widget.import_folder_btn: (
+            "Data interpretation availability is unavailable right now."
+        ),
+        widget.import_bids_btn: (
+            "Data interpretation availability is unavailable right now."
+        ),
+        widget.reload_recipe_btn: (
+            "Recipe reload availability is unavailable right now."
+        ),
+        widget.chan_select_btn: (
+            "Channel selection availability is unavailable right now."
+        ),
+        widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
+        widget.import_label_btn: (
+            "Label import availability is unavailable right now."
+        ),
+        widget.clear_btn: "Session reset availability is unavailable right now.",
+    }
+    for button, tooltip in expected.items():
+        assert button.isEnabled() is False
+        assert button.toolTip() == tooltip
+
+
+def test_deferred_startup_real_study_missing_publication_fails_closed(qtbot):
+    from XBrainLab.backend.study import Study
+
+    panel = MagicMock()
+    panel.action_handler = MagicMock()
+    panel.controller = MagicMock()
+    panel.main_window = QWidget()
+    panel.main_window.study = Study()
+    widget = DatasetSidebar(panel, parent=None)
+    qtbot.addWidget(widget)
+
+    with patch.object(widget, "_uses_startup_bootstrap_state", return_value=True):
+        widget.update_sidebar()
+
+    expected = {
+        widget.import_btn: "Data interpretation availability is unavailable right now.",
+        widget.import_folder_btn: (
+            "Data interpretation availability is unavailable right now."
+        ),
+        widget.import_bids_btn: (
+            "Data interpretation availability is unavailable right now."
+        ),
+        widget.reload_recipe_btn: (
+            "Recipe reload availability is unavailable right now."
+        ),
+        widget.chan_select_btn: (
+            "Channel selection availability is unavailable right now."
+        ),
+        widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
+        widget.import_label_btn: (
+            "Label import availability is unavailable right now."
+        ),
+        widget.clear_btn: "Session reset availability is unavailable right now.",
+    }
+    for button, tooltip in expected.items():
+        assert button.isEnabled() is False
+        assert button.toolTip() == tooltip
+
+
 def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
     from XBrainLab.backend.study import Study
 
@@ -376,14 +479,67 @@ def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
             "warning",
             side_effect=lambda *args: warning_calls.append(args),
         ),
+        patch.object(
+            widget,
+            "_compatibility_controller_value",
+            side_effect=AssertionError(
+                "real product actions must not consult controller compatibility"
+            ),
+        ) as compatibility_value,
     ):
         widget.open_channel_selection()
 
+    compatibility_value.assert_not_called()
     panel_mock.controller.has_data.assert_not_called()
     panel_mock.controller.is_locked.assert_not_called()
     assert len(warning_calls) == 1
     assert warning_calls[0][1] == "Channel Selection Blocked"
-    assert "could not safely complete" in warning_calls[0][2]
+    assert warning_calls[0][2] == (
+        "Channel selection availability is unavailable right now."
+    )
+
+
+def test_reset_session_fails_closed_without_product_capability(qtbot):
+    from XBrainLab.backend.study import Study
+
+    panel = MagicMock()
+    panel.action_handler = MagicMock()
+    panel.controller = MagicMock()
+    panel.main_window = QWidget()
+    panel.main_window.study = Study()
+    widget = DatasetSidebar(panel, parent=None)
+    qtbot.addWidget(widget)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+            return_value=None,
+        ),
+        patch.object(
+            widget,
+            "_compatibility_controller_value",
+            side_effect=AssertionError(
+                "real product actions must not consult controller compatibility"
+            ),
+        ) as compatibility_value,
+        patch.object(widget, "_show_status") as show_status,
+        patch.object(QMessageBox, "question") as question,
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+        ) as execute,
+    ):
+        widget.clear_dataset()
+
+    compatibility_value.assert_not_called()
+    question.assert_not_called()
+    execute.assert_not_called()
+    show_status.assert_called_once_with(
+        "Session reset availability is unavailable right now."
+    )
 
 
 def test_reset_session_binds_confirmation_to_publication_and_reviews_stale_result(

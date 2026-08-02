@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import json
+import logging
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from scripts.dev.inspect_local_assistant_runtime import (
     classify_runtime,
+    main,
     render_markdown,
     run_prompt_smoke,
     run_structured_output_smoke,
 )
+from scripts.dev.sensitive_path_redaction import contains_sensitive_path
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import (
     MIN_MODEL_WEIGHT_BYTES,
@@ -97,6 +104,83 @@ def test_render_markdown_includes_classification(tmp_path: Path):
     assert "inspected backend mode" in rendered
     assert "legacy compatibility models" in rendered
     assert "fallback local model" not in rendered
+
+
+def test_runtime_cli_outputs_redacted_cache_identity(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    config = LLMConfig()
+    config.cache_dir = str(tmp_path / "private-model-cache")
+
+    with patch.object(LLMConfig, "load_from_file", return_value=config):
+        exit_code = main(["--format", "json"])
+
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+    assert exit_code == 0
+    assert config.cache_dir not in output
+    assert "cache_dir" not in payload
+    assert payload["cache_identity"]["redacted"] is True
+    assert payload["cache_identity"]["path_sha256"]
+
+
+@pytest.mark.parametrize(
+    "cache_alias",
+    [
+        "/mnt/d/XBrainLabCache/models",
+        "D:/XBrainLabCache/models",
+        "D:\\XBrainLabCache\\models",
+        json.dumps("D:\\XBrainLabCache\\models")[1:-1],
+        "\\\\wsl.localhost\\Ubuntu\\mnt\\d\\XBrainLabCache\\models",
+        "\\\\wsl$\\Ubuntu\\mnt\\d\\XBrainLabCache\\models",
+    ],
+    ids=("wsl", "windows-slash", "windows", "json", "unc-localhost", "unc-dollar"),
+)
+def test_runtime_cli_redacts_cache_aliases_from_nested_diagnostics(
+    cache_alias: str,
+    capsys,
+) -> None:
+    canonical = "/mnt/d/XBrainLabCache/models"
+    config = LLMConfig(cache_dir=canonical)
+    classified = {
+        "cache_dir": canonical,
+        "cache_candidates": [],
+        "disallowed_cache_candidates": [],
+        "classification": "missing-cache",
+        "message": f"Cache unavailable at {cache_alias}",
+        "details": {"error": cache_alias},
+    }
+
+    with (
+        patch.object(LLMConfig, "load_from_file", return_value=config),
+        patch(
+            "scripts.dev.inspect_local_assistant_runtime.classify_runtime",
+            return_value=classified,
+        ),
+    ):
+        exit_code = main(["--format", "json"])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert (
+        contains_sensitive_path(
+            output,
+            {canonical: "<redacted:model-cache>"},
+        )
+        is False
+    )
+    assert output.count("<redacted:model-cache>") >= 2
+
+
+def test_runtime_markdown_does_not_expose_cache_path(tmp_path: Path) -> None:
+    config = LLMConfig()
+    config.cache_dir = str(tmp_path / "private-model-cache")
+
+    rendered = render_markdown(classify_runtime(config))
+
+    assert config.cache_dir not in rendered
+    assert "cache identity" in rendered
 
 
 def test_prompt_smoke_skips_when_local_runtime_unavailable(tmp_path: Path):
@@ -194,3 +278,60 @@ def test_structured_smoke_rejects_legacy_arguments_and_code_fences():
         assert result["status"] == "failed"
         assert result["failure_type"] == "output_format"
         engine_type.return_value.close.assert_called_once_with()
+
+
+def test_json_main_suppresses_product_info_logs(capsys):
+    config = LLMConfig()
+    runtime = {"classification": "gpu-ready"}
+    logger = logging.getLogger("XBrainLab.LLM")
+    handler = logging.StreamHandler(sys.stdout)
+    logger.addHandler(handler)
+    original_level = logger.level
+    logger.setLevel(logging.INFO)
+
+    def _prompt_smoke(_config):
+        logger.info("runtime detail that must not corrupt JSON")
+        return {"status": "passed", "message": "ok", "response": "READY"}
+
+    try:
+        with (
+            patch.object(LLMConfig, "load_from_file", return_value=config),
+            patch(
+                "scripts.dev.inspect_local_assistant_runtime.classify_runtime",
+                return_value=runtime,
+            ),
+            patch(
+                "scripts.dev.inspect_local_assistant_runtime.run_prompt_smoke",
+                side_effect=_prompt_smoke,
+            ),
+        ):
+            exit_code = main(["--format", "json", "--prompt-smoke", "--strict"])
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(original_level)
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["prompt_smoke"]["status"] == "passed"
+
+
+def test_strict_main_fails_when_requested_smoke_fails(capsys):
+    config = LLMConfig()
+
+    with (
+        patch.object(LLMConfig, "load_from_file", return_value=config),
+        patch(
+            "scripts.dev.inspect_local_assistant_runtime.classify_runtime",
+            return_value={"classification": "gpu-ready"},
+        ),
+        patch(
+            "scripts.dev.inspect_local_assistant_runtime.run_structured_output_smoke",
+            return_value={"status": "failed", "message": "bad", "response": ""},
+        ),
+    ):
+        exit_code = main(["--format", "json", "--structured-smoke", "--strict"])
+
+    assert exit_code == 1
+    assert (
+        json.loads(capsys.readouterr().out)["structured_output_smoke"]["status"]
+        == "failed"
+    )

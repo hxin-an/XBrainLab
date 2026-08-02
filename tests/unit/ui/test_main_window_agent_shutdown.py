@@ -179,7 +179,25 @@ def test_deferred_close_logs_user_shutdown_intent_once(qtbot):
         window.close()
 
 
-def test_close_keeps_the_window_fenced_until_late_assistant_teardown_succeeds(
+def test_render_shutdown_pauses_and_cancelled_close_resumes_publication_renderer(
+    qtbot,
+):
+    window = _make_window(qtbot)
+    renderer = MagicMock()
+    window._application_publication_renderer = renderer
+
+    window._begin_close_attempt()
+    renderer.pause_for_shutdown.assert_not_called()
+    window._begin_desktop_render_shutdown()
+
+    renderer.pause_for_shutdown.assert_called_once_with()
+
+    window._restore_close_interaction()
+
+    renderer.resume_after_cancelled_shutdown.assert_called_once_with()
+
+
+def test_close_keeps_interaction_disabled_until_late_assistant_teardown_succeeds(
     qtbot,
     monkeypatch,
 ):
@@ -197,7 +215,7 @@ def test_close_keeps_the_window_fenced_until_late_assistant_teardown_succeeds(
         qtbot.waitUntil(lambda: manager.close_calls >= 2, timeout=2_000)
 
         assert window._closing_in_progress is True
-        assert window._shutdown_fence_active is True
+        assert window._shutdown_fence_active is False
         central_widget = window.centralWidget()
         assert central_widget is not None
         assert central_widget.isEnabled() is False
@@ -299,6 +317,41 @@ def test_close_uses_watchdog_while_waiting_for_assistant_terminal_signal(qtbot):
     assert manager.close_calls >= 2
 
 
+def test_signal_driven_assistant_shutdown_logs_pending_once_while_watchdog_probes(
+    qtbot,
+):
+    window = _make_window(qtbot)
+    manager = _SignalDrivenAgentManager(window)
+    window.agent_manager = manager
+
+    try:
+        with (
+            patch("XBrainLab.ui.main_window.logger.info") as info,
+            patch("XBrainLab.ui.main_window.logger.warning") as warning,
+        ):
+            assert window.close() is False
+            qtbot.waitUntil(lambda: manager.close_calls >= 4, timeout=2_000)
+
+            pending_messages = [
+                call
+                for call in info.call_args_list
+                if call.args
+                and call.args[0]
+                == "Assistant teardown is pending; waiting for terminal cleanup."
+            ]
+            assert len(pending_messages) == 1
+            assert not any(
+                call.args and str(call.args[0]).startswith("Assistant teardown")
+                for call in warning.call_args_list
+            )
+
+            manager.complete()
+            qtbot.waitUntil(lambda: not window.isVisible(), timeout=1_000)
+    finally:
+        manager.complete()
+        window.close()
+
+
 def test_app_close_waits_for_active_model_download_terminal(qtbot):
     window = _make_window(qtbot)
     manager = _DownloadOwningAgentManager(window)
@@ -340,13 +393,22 @@ def test_shutdown_attempt_counter_saturates_in_noninteractive_recovery(qtbot):
     window._assistant_shutdown_attempts = ASSISTANT_SHUTDOWN_MAX_ATTEMPTS
     event = MagicMock()
 
-    with patch.object(window, "_schedule_close_retry") as schedule_retry:
-        window._handle_assistant_shutdown_failure(event)
+    with (
+        patch.object(window, "_schedule_close_retry") as schedule_retry,
+        patch("XBrainLab.ui.main_window.logger.warning") as warning,
+    ):
+        for _ in range(3):
+            window._handle_assistant_shutdown_failure(event)
 
-    event.ignore.assert_called_once_with()
+    assert event.ignore.call_count == 3
     assert window._assistant_shutdown_attempts == ASSISTANT_SHUTDOWN_MAX_ATTEMPTS
     assert window._shutdown_only_mode is True
-    schedule_retry.assert_called_once_with()
+    assert schedule_retry.call_count == 3
+    warning.assert_called_once_with(
+        "Assistant teardown exceeded the %sms shutdown watchdog; "
+        "continuing safe cleanup.",
+        12_000,
+    )
 
 
 def test_global_exception_handler_uses_safe_central_presenter(qtbot):

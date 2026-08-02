@@ -115,9 +115,9 @@ def test_epoch_capture_contract_requires_complete_visible_controls(
 
     assert contract["scenario"] == scenario
     assert contract["selected_event_count"] > 0
-    assert contract["primary_action"] == "Create Epochs"
+    assert contract["primary_action"] == "Create EEG Epochs"
     assert contract["cancel_action"] == "Cancel"
-    assert "Create Epochs" in contract["verified_controls"]
+    assert "Create EEG Epochs" in contract["verified_controls"]
     assert "Cancel" in contract["verified_controls"]
     if scenario == "internal_events":
         assert contract["placement_method"] == "internal_events"
@@ -136,7 +136,7 @@ def test_bids_epoch_capture_rejects_missing_primary_action(qtbot) -> None:
     assert primary is not None
     primary.hide()
 
-    with pytest.raises(RuntimeError, match="Create Epochs"):
+    with pytest.raises(RuntimeError, match="Create EEG Epochs"):
         _assert_capture_geometry(BIDS_EPOCH_SCREENSHOT, dialog)
 
 
@@ -154,6 +154,28 @@ def test_assistant_setup_capture_is_a_valid_320px_state(qtbot) -> None:
     assert panel.setup_btn.isVisible()
     assert panel.send_btn.text() == "Send"
     assert panel.send_btn.isEnabled() is False
+
+
+def test_assistant_setup_pixel_gate_accepts_transparent_composer_input(
+    qtbot,
+    tmp_path,
+) -> None:
+    panel = _assistant_setup_required_narrow()
+    qtbot.addWidget(panel)
+    panel.show()
+
+    evidence = _capture(panel, tmp_path / "assistant-setup.png")
+
+    assert evidence["capture_method"] == "QWidget.grab"
+    assert evidence["reference_validated"] is True
+    assert "Assistant input" in evidence["required_regions"]
+    assert "Assistant runtime title" in evidence["required_regions"]
+    assert "Assistant runtime detail" in evidence["required_regions"]
+    assert any(
+        str(region).endswith("Open Assistant Settings")
+        for region in evidence["required_regions"]
+    )
+    assert "Assistant runtime feedback" not in evidence["required_regions"]
 
 
 def test_assistant_active_turn_capture_is_ready_before_processing(qtbot) -> None:
@@ -275,6 +297,21 @@ def test_evaluation_controls_capture_can_render_its_model_summary(qtbot) -> None
     assert isinstance(cast(Any, panel).summary_text.toPlainText(), str)
 
 
+def test_evaluation_controls_cleanup_quiesces_matplotlib_canvases(qtbot) -> None:
+    panel = _evaluation_controls_panel()
+    qtbot.addWidget(panel)
+    assert panel.matrix_widget.canvas is not None
+    assert panel.bar_chart.canvas is not None
+
+    panel.cleanup()
+    panel.cleanup()
+
+    assert panel.matrix_widget.canvas is None
+    assert panel.matrix_widget.fig is None
+    assert panel.bar_chart.canvas is None
+    assert panel.bar_chart.fig is None
+
+
 @pytest.mark.parametrize(
     ("factory", "filename", "row_count", "running"),
     [
@@ -311,6 +348,7 @@ def test_training_history_capture_contract_is_coherent_and_readable(
     assert semantics["running"] is running
     assert semantics["start_enabled"] is (not running)
     assert semantics["stop_enabled"] is running
+    assert semantics["summary_has_data"] is True
     if running:
         assert "Running" in semantics["statuses"]
     else:

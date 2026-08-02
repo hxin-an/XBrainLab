@@ -38,6 +38,9 @@ PUBLIC_BIDS_EEG = (
     / "sub-01_ses-eeg_task-rest_eeg.vhdr"
 )
 PUBLIC_BIDS_EVENTS = PUBLIC_BIDS_EEG.with_name("sub-01_ses-eeg_task-rest_events.tsv")
+PHYSIONET_MOTOR_EDF = (
+    FIXTURE_ROOT / "public" / "physionet-eegmmidb-S008R04.edf"
+).resolve()
 
 GRAZ_CLASS_NAMES = {
     "1": "left hand",
@@ -182,7 +185,7 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
             TrainCommand(confirmed=True, interactive=False),
         )
         history = service.execute(
-            QueryStateCommand(query="training_history", include_objects=True),
+            QueryStateCommand(query="training_history"),
         )
 
         assert trained.ok, trained.message
@@ -190,9 +193,9 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
         assert trained.state.training.finished_run_count == 1
         assert history.ok, history.message
         assert history.diagnostics["row_count"] == 1
-        record = history.runtime["rows"][0]["record"]
-        assert RecordKey.LOSS in record.train
-        assert RecordKey.ACC in record.train
+        train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
+        assert RecordKey.LOSS in train_metrics
+        assert RecordKey.ACC in train_metrics
     finally:
         _close_service(service)
 
@@ -289,5 +292,126 @@ def test_public_bids_reaches_epoch_and_dataset_generation_readiness() -> None:
         assert dataset_capability.available is True
         assert train_capability.available is False
         assert "Generate datasets before training." in train_capability.reasons
+    finally:
+        _close_service(service)
+
+
+def test_physionet_internal_events_reach_real_training_through_interpretation_spine(
+    tmp_path: Path,
+) -> None:
+    """A second public source must reach training through reviewed internal events."""
+    if not PHYSIONET_MOTOR_EDF.exists():
+        pytest.skip(
+            "Public PhysioNet EEGMMI fixture is unavailable; run the fixture fetcher "
+            "first."
+        )
+
+    class_map = {"T1": "left fist", "T2": "right fist"}
+    service = ApplicationService()
+    choices = {
+        "selected_eeg_files": [str(PHYSIONET_MOTOR_EDF)],
+        "label_carrier": "embedded_events",
+        "class_map": class_map,
+        "internal_event_selection": {
+            "label_event_codes": list(class_map),
+            "class_map": class_map,
+        },
+        "run_event_mappings": {
+            PHYSIONET_MOTOR_EDF.name: class_map,
+        },
+    }
+
+    try:
+        scan = service.execute(
+            ScanSourceCommand(
+                source_path=str(PHYSIONET_MOTOR_EDF),
+                source_hint="file",
+            )
+        )
+        preview = service.execute(PreviewInterpretationCommand(choices=choices))
+        validation = service.execute(ValidateInterpretationCommand())
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+        assert scan.ok, scan.message
+        scan_payload = scan.diagnostics["scan_result"]
+        assert scan_payload["source_path"] == str(PHYSIONET_MOTOR_EDF)
+        assert scan_payload["eeg_files"] == [str(PHYSIONET_MOTOR_EDF)]
+        assert preview.ok, preview.message
+        candidate = preview.diagnostics["candidate"]
+        assert candidate["selected_eeg_files"] == [str(PHYSIONET_MOTOR_EDF)]
+        assert validation.ok, validation.message
+        validation_decision = validation.diagnostics["validation_decision"]
+        assert validation_decision["blocked_reasons"] == []
+        assert applied.ok, applied.message
+        assert applied.state.raw.files == [PHYSIONET_MOTOR_EDF.name]
+        assert applied.state.interpretation.label_sources == []
+        assert applied.state.interpretation.class_map == class_map
+        assert applied.state.interpretation.run_event_mappings == {
+            PHYSIONET_MOTOR_EDF.name: class_map,
+        }
+        assert applied.state.interpretation.epoch_handoff["label_source"] == (
+            "internal_events"
+        )
+
+        filtered = service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.BANDPASS,
+                low_freq=4,
+                high_freq=38,
+            )
+        )
+        epoch = service.execute(
+            CreateEpochCommand(
+                t_min=0.0,
+                t_max=2.0,
+                event_ids=list(class_map),
+            )
+        )
+        generated = service.execute(
+            GenerateDatasetCommand(
+                test_ratio=0.2,
+                val_ratio=0.2,
+                split_strategy="trial",
+                training_mode="individual",
+            )
+        )
+
+        assert filtered.ok, filtered.message
+        assert epoch.ok, epoch.message
+        assert epoch.state.epoch.epoch_count == 15
+        assert set(epoch.state.epoch.event_ids) == set(class_map)
+        assert generated.ok, generated.message
+        assert generated.diagnostics["split_audit"]["ok"] is True
+        assert generated.state.dataset.available is True
+
+        model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
+        options = service.execute(
+            ConfigureTrainingCommand(
+                output_dir=str(tmp_path / "physionet-handoff-training"),
+                device="cpu",
+                epoch=1,
+                batch_size=4,
+                learning_rate=0.001,
+                save_checkpoints_every=0,
+                evaluation_option="val_acc",
+            )
+        )
+        train_capability = service.get_capabilities().get(CommandName.TRAIN)
+
+        assert model.ok, model.message
+        assert options.ok, options.message
+        assert train_capability.available is True
+
+        trained = service.execute(TrainCommand(confirmed=True, interactive=False))
+        history = service.execute(QueryStateCommand(query="training_history"))
+
+        assert trained.ok, trained.message
+        assert trained.state.training.run_count == 1
+        assert trained.state.training.finished_run_count == 1
+        assert history.ok, history.message
+        assert history.diagnostics["row_count"] == 1
+        train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
+        assert RecordKey.LOSS in train_metrics
+        assert RecordKey.ACC in train_metrics
     finally:
         _close_service(service)

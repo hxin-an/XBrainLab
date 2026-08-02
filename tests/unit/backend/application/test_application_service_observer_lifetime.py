@@ -24,31 +24,31 @@ def test_direct_services_share_one_lifecycle_observer_owner() -> None:
     study = Study()
     first = get_application_service(study)
     second = get_application_service(study)
-    training_controller = study.get_controller("training")
+    training_events = study.training_state_service
     saliency_events = study.training_manager._saliency_lifecycle_events
 
     assert second is first
-    assert _observer_count(training_controller, "training_started") == 1
-    assert _observer_count(training_controller, "training_updated") == 1
-    assert _observer_count(training_controller, "training_stopped") == 1
+    assert _observer_count(training_events, "training_started") == 1
+    assert _observer_count(training_events, "training_updated") == 1
+    assert _observer_count(training_events, "training_stopped") == 1
     assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 1
 
     first.publication_lifecycle.publish_training_live_state = MagicMock()
     first.close()
     first.close()
     first.dispose()
-    training_controller.notify("training_started")
+    training_events.notify("training_started")
 
     first.publication_lifecycle.publish_training_live_state.assert_not_called()
-    assert _observer_count(training_controller, "training_started") == 0
-    assert _observer_count(training_controller, "training_updated") == 0
-    assert _observer_count(training_controller, "training_stopped") == 0
+    assert _observer_count(training_events, "training_started") == 0
+    assert _observer_count(training_events, "training_updated") == 0
+    assert _observer_count(training_events, "training_stopped") == 0
     assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 0
 
 
 def test_runtime_service_cache_releases_only_after_explicit_close() -> None:
     study = Study()
-    training_controller = study.get_controller("training")
+    training_events = study.training_state_service
     saliency_events = study.training_manager._saliency_lifecycle_events
     service = get_application_service(study)
     service_ref = ref(service)
@@ -64,35 +64,37 @@ def test_runtime_service_cache_releases_only_after_explicit_close() -> None:
     gc.collect()
 
     assert service_ref() is None
-    assert _observer_count(training_controller, "training_started") == 0
-    assert _observer_count(training_controller, "training_updated") == 0
-    assert _observer_count(training_controller, "training_stopped") == 0
+    assert _observer_count(training_events, "training_started") == 0
+    assert _observer_count(training_events, "training_updated") == 0
+    assert _observer_count(training_events, "training_stopped") == 0
     assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 0
 
 
 def test_close_unsubscribes_armed_automation_and_releases_service() -> None:
     study = Study()
-    training_controller = study.get_controller("training")
+    training_events = study.training_state_service
     saliency_events = study.training_manager._saliency_lifecycle_events
     service = ApplicationService(study)
     service.post_training_saliency.arm()
     service_ref = ref(service)
 
-    assert _observer_count(training_controller, "training_stopped") == 2
+    assert _observer_count(training_events, "training_stopped") == 1
+    assert _observer_count(training_events, "training_terminal_published") == 1
     assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 1
 
     service.close()
 
-    assert _observer_count(training_controller, "training_started") == 0
-    assert _observer_count(training_controller, "training_updated") == 0
-    assert _observer_count(training_controller, "training_stopped") == 0
+    assert _observer_count(training_events, "training_started") == 0
+    assert _observer_count(training_events, "training_updated") == 0
+    assert _observer_count(training_events, "training_stopped") == 0
+    assert _observer_count(training_events, "training_terminal_published") == 0
     assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 0
 
     del service
     gc.collect()
 
     assert service_ref() is None
-    training_controller.notify("training_stopped")
+    training_events.notify("training_stopped")
     assert service_ref() is None
 
 

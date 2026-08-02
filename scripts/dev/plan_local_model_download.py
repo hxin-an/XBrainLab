@@ -46,8 +46,25 @@ def build_plan(model_id: str | None = None) -> dict[str, object]:
     return result
 
 
+def _string_list(value: object, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise TypeError(f"{field_name} must be a list of strings.")
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise TypeError(f"{field_name} must be a list of strings.")
+        items.append(item)
+    return items
+
+
 def render_markdown(plan: dict[str, object]) -> str:
     """Render a concise human-readable preflight report."""
+    legacy_models = _string_list(
+        plan["legacy_compatibility_models"],
+        "legacy_compatibility_models",
+    )
     lines = [
         "# Local Model Download Preflight",
         "",
@@ -55,8 +72,7 @@ def render_markdown(plan: dict[str, object]) -> str:
         f"- model: `{plan['model_id']}`",
         f"- primary model: `{plan['primary_model']}`",
         "- automatic fallback: `disabled`",
-        "- legacy explicit choices: "
-        f"`{', '.join(plan['legacy_compatibility_models'])}`",
+        f"- legacy explicit choices: `{', '.join(legacy_models)}`",
         f"- cache directory: `{plan['cache_dir']}`",
         f"- estimated download: `{plan['estimated_download']}`",
         f"- current cache: `{plan['current_cache']}`",
@@ -79,7 +95,7 @@ def render_markdown(plan: dict[str, object]) -> str:
                 f"- source: {spec['source_url']}",
             ]
         )
-    cleanup = plan.get("cleanup_candidates")
+    cleanup = _string_list(plan.get("cleanup_candidates"), "cleanup_candidates")
     if cleanup:
         lines.append("- cleanup candidates:")
         lines.extend(f"  - `{path}`" for path in cleanup)

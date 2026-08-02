@@ -27,6 +27,9 @@ def _assert_canonical_result(
     payload: object,
     error_type: str,
     state: dict | None = None,
+    recoverable: bool = True,
+    error_code: str | None = None,
+    recovery_action: str | None = None,
 ) -> None:
     assert result.ok is ok
     assert result.message == message
@@ -43,14 +46,14 @@ def _assert_canonical_result(
         assert isinstance(result.payload["state"], dict)
         assert isinstance(result.payload["changed_state"], dict)
     assert result.error_type == error_type
-    assert result.recoverable is True
+    assert result.recoverable is recoverable
     assert result.command_name == application_surface.TOOL_TO_COMMAND[tool_name].value
     assert result.capability is not None
     assert result.capability["tool_name"] == tool_name
     assert result.state == ({} if result.payload is not None else state)
     assert isinstance(result.changed_state, dict)
-    assert result.error_code is None
-    assert result.recovery_action is None
+    assert result.error_code == error_code
+    assert result.recovery_action == recovery_action
 
 
 def _assert_safe_unexpected_result(
@@ -366,16 +369,20 @@ class TestRealListFilesValidation:
         assert result.ok is False
         assert "does not exist" in result.message
 
-    @patch(
-        "XBrainLab.llm.tools.real.dataset_real.os.listdir",
-        return_value=["a.gdf", "b.set", "c.gdf"],
-    )
-    @patch("XBrainLab.llm.tools.real.dataset_real.os.path.isdir", return_value=True)
-    def test_pattern_filtering(self, _mock_isdir, _mock_listdir):
+    def test_pattern_filtering(self, tmp_path):
+        from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
         from XBrainLab.llm.tools.real.dataset_real import RealListFilesTool
 
+        for name in ("a.gdf", "b.set", "c.gdf"):
+            (tmp_path / name).touch()
         result = RealListFilesTool().execute(
-            study=MagicMock(), directory="/data", pattern="*.gdf"
+            study=MagicMock(),
+            directory=authorize_existing_path(
+                tmp_path,
+                authorized_root=tmp_path,
+                expected_kind="directory",
+            ),
+            pattern="*.gdf",
         )
         assert result.ok is True
         assert result.payload == ["a.gdf", "c.gdf"]
@@ -393,6 +400,12 @@ class TestRealListFilesSecurity:
 
 
 class TestRealLoadDataValidation:
+    _DENIAL = (
+        "Direct assistant file loading is unavailable because the legacy loader "
+        "cannot preserve an authorized filesystem identity through file parsing. "
+        "Use scan_source and the Data Interpretation workflow instead."
+    )
+
     @pytest.mark.parametrize("paths", [None, []])
     def test_empty_paths_use_canonical_surface_validation(self, monkeypatch, paths):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
@@ -409,24 +422,24 @@ class TestRealLoadDataValidation:
             result,
             tool_name="load_data",
             ok=False,
-            message="Required inputs are missing for this workflow command.",
+            message=self._DENIAL,
             payload={},
-            error_type="input",
+            error_type="precondition",
             state={"canonical_snapshot": True},
+            recoverable=False,
+            error_code="assistant_direct_load_disabled",
+            recovery_action=(
+                "Use scan_source, preview_interpretation, "
+                "validate_interpretation, and apply_interpretation."
+            ),
         )
         runtime.execute.assert_not_called()
         get_context.assert_called_once_with(study, "load_data", runtime=runtime)
         runtime_provider.assert_called_once_with(study)
 
-    def test_directory_scan_error_is_owned_by_canonical_surface(self, monkeypatch):
+    def test_plain_directory_is_not_scanned_by_adapter(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
-        monkeypatch.setattr(application_surface.os.path, "isdir", lambda _path: True)
-        monkeypatch.setattr(
-            application_surface.os,
-            "listdir",
-            MagicMock(side_effect=PermissionError("no access")),
-        )
         runtime, get_context, runtime_provider = _install_canonical_runtime(
             monkeypatch,
             "load_data",
@@ -439,20 +452,24 @@ class TestRealLoadDataValidation:
             result,
             tool_name="load_data",
             ok=False,
-            message="Required inputs are missing for this workflow command.",
+            message=self._DENIAL,
             payload={},
-            error_type="input",
+            error_type="precondition",
             state={"canonical_snapshot": True},
+            recoverable=False,
+            error_code="assistant_direct_load_disabled",
+            recovery_action=(
+                "Use scan_source, preview_interpretation, "
+                "validate_interpretation, and apply_interpretation."
+            ),
         )
         runtime.execute.assert_not_called()
         get_context.assert_called_once_with(study, "load_data", runtime=runtime)
         runtime_provider.assert_called_once_with(study)
 
-    def test_no_valid_files_is_owned_by_canonical_surface(self, monkeypatch):
+    def test_empty_directory_is_not_expanded_by_adapter(self, monkeypatch):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
-        monkeypatch.setattr(application_surface.os.path, "isdir", lambda _path: True)
-        monkeypatch.setattr(application_surface.os, "listdir", lambda _path: [])
         runtime, get_context, runtime_provider = _install_canonical_runtime(
             monkeypatch,
             "load_data",
@@ -465,16 +482,25 @@ class TestRealLoadDataValidation:
             result,
             tool_name="load_data",
             ok=False,
-            message="Required inputs are missing for this workflow command.",
+            message=self._DENIAL,
             payload={},
-            error_type="input",
+            error_type="precondition",
             state={"canonical_snapshot": True},
+            recoverable=False,
+            error_code="assistant_direct_load_disabled",
+            recovery_action=(
+                "Use scan_source, preview_interpretation, "
+                "validate_interpretation, and apply_interpretation."
+            ),
         )
         runtime.execute.assert_not_called()
         get_context.assert_called_once_with(study, "load_data", runtime=runtime)
         runtime_provider.assert_called_once_with(study)
 
-    def test_partial_success_preserves_canonical_structured_result(self, monkeypatch):
+    def test_configured_runtime_success_cannot_bypass_direct_load_denial(
+        self,
+        monkeypatch,
+    ):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
         runtime, get_context, runtime_provider = _install_canonical_runtime(
@@ -493,16 +519,22 @@ class TestRealLoadDataValidation:
             paths=["/a.gdf", "/b.gdf"],
         )
 
-        command = runtime.execute.call_args.args[0]
-        assert command.paths == ["/a.gdf", "/b.gdf"]
         _assert_canonical_result(
             result,
             tool_name="load_data",
-            ok=True,
-            message="Loaded 2 file(s); 1 failed.",
-            payload={"success_count": 2, "errors": ["err1"]},
-            error_type="none",
+            ok=False,
+            message=self._DENIAL,
+            payload={},
+            error_type="precondition",
+            state={"canonical_snapshot": True},
+            recoverable=False,
+            error_code="assistant_direct_load_disabled",
+            recovery_action=(
+                "Use scan_source, preview_interpretation, "
+                "validate_interpretation, and apply_interpretation."
+            ),
         )
+        runtime.execute.assert_not_called()
         get_context.assert_called_once_with(study, "load_data", runtime=runtime)
         runtime_provider.assert_called_once_with(study)
 
@@ -587,19 +619,26 @@ class TestRealGetDatasetInfoEvents:
 
         command = runtime.execute.call_args.args[0]
         assert command.query == "data_summary"
-        _assert_canonical_result(
-            result,
-            tool_name="query_state",
-            ok=True,
-            message="Loaded 3 files:\na.gdf\nb.gdf\nc.gdf\nEvents: 120 (Unique: 4)",
-            payload={
-                "count": 3,
-                "files": ["a.gdf", "b.gdf", "c.gdf"],
-                "total": 120,
-                "unique_count": 4,
-            },
-            error_type="none",
+        assert result.ok is True
+        assert result.message == (
+            "Loaded 3 files:\na.gdf\nb.gdf\nc.gdf\nEvents: 120 (Unique: 4)"
         )
+        assert result.diagnostics == {
+            "count": 3,
+            "files": ["a.gdf", "b.gdf", "c.gdf"],
+            "total": 120,
+            "unique_count": 4,
+        }
+        assert isinstance(result.payload, dict)
+        assert result.payload["status"] == "ok"
+        assert result.payload["command_name"] == CommandName.QUERY_STATE.value
+        public_files = result.payload["diagnostics"]["files"]
+        assert len(public_files) == 3
+        assert all("[REDACTED_PATH]" in value for value in public_files)
+        assert all(
+            raw_name not in public_files for raw_name in ("a.gdf", "b.gdf", "c.gdf")
+        )
+        assert result.error_type == "none"
         get_context.assert_called_once_with(study, "query_state", runtime=runtime)
         runtime_provider.assert_called_once_with(study)
 

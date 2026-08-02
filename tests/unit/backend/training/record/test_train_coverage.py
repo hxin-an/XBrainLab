@@ -57,15 +57,15 @@ class TestGetModelOutput:
 
         output = train_record.get_model_output()
         assert "Training Summary" in output
-        assert "Total Epochs: 3" in output
+        assert "Total Training Epochs: 3" in output
         assert "Best Performance" in output
-        assert "Last Epoch" in output
+        assert "Last Training Epoch" in output
         assert "Train Loss" in output
 
     def test_no_training_data(self, train_record):
         """Before any training, shows 'No training data'."""
         output = train_record.get_model_output()
-        assert "Total Epochs: 0" in output
+        assert "Total Training Epochs: 0" in output
         assert "No training data" in output
 
 

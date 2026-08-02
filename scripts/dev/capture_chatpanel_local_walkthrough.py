@@ -27,7 +27,7 @@ from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-local"
 READY_SCREENSHOT = "chatpanel-local-ready.png"
 RESPONSE_SCREENSHOT = "chatpanel-local-response.png"
 JSON_ARTIFACT = "chatpanel-local-walkthrough.json"
@@ -143,6 +143,8 @@ def run_walkthrough(
     def finish() -> None:
         state["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         manager = window.agent_manager
+        if manager is None:
+            raise RuntimeError("Assistant manager disappeared before cleanup.")
         panel = manager.chat_panel
         controller = manager.agent_controller
         if panel is not None:
@@ -170,8 +172,12 @@ def run_walkthrough(
 
     def capture_ready() -> None:
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared before the ready capture.")
+            return
         panel = manager.chat_panel
-        if panel is None or not manager.chat_dock or not manager.chat_dock.isVisible():
+        dock = manager.chat_dock
+        if panel is None or dock is None or not dock.isVisible():
             fail("Assistant dock did not open.")
             return
         ready_path = output_dir / READY_SCREENSHOT
@@ -189,6 +195,9 @@ def run_walkthrough(
             return
 
         manager = window.agent_manager
+        if manager is None:
+            fail("Assistant manager disappeared during walkthrough.")
+            return
         panel = manager.chat_panel
         controller = manager.agent_controller
         if panel is None:

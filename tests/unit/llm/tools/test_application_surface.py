@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -24,13 +25,26 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     ResetPreprocessCommand,
+    SaliencyCommand,
     StopTrainingCommand,
     get_application_service,
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.dataset import (
+    Dataset,
+    DataSplittingConfig,
+    Epochs,
+    EpochWindowProvenance,
+    TrainingType,
+)
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training.trainer import Trainer
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES,
+)
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
@@ -189,7 +203,6 @@ def test_every_application_tool_builder_matches_its_declared_command():
         "apply_interpretation": {},
         "save_interpretation_recipe": {},
         "reload_interpretation_recipe": {"recipe_path": "import.recipe.json"},
-        "load_data": {"paths": ["recording.edf"]},
         "attach_labels": {"mapping": {"recording.edf": "events.tsv"}},
         "apply_standard_preprocess": {},
         "apply_bandpass_filter": {"low_freq": 1.0, "high_freq": 40.0},
@@ -220,8 +233,12 @@ def test_every_application_tool_builder_matches_its_declared_command():
         "query_state": {},
     }
 
-    application_contracts = AGENT_ACTION_CONTRACTS.contracts_for_kind(
-        AgentExecutionKind.APPLICATION_COMMAND
+    application_contracts = tuple(
+        contract
+        for contract in AGENT_ACTION_CONTRACTS.contracts_for_kind(
+            AgentExecutionKind.APPLICATION_COMMAND
+        )
+        if contract.canonical_tool != "load_data"
     )
     assert set(valid_params) == {
         contract.canonical_tool for contract in application_contracts
@@ -236,6 +253,7 @@ def test_every_application_tool_builder_matches_its_declared_command():
                 f"{contract.canonical_tool} did not build its application command"
             )
         assert command.name is contract.capability_command, contract.canonical_tool
+    assert _command_for_tool("load_data", {"paths": ["recording.edf"]}) is None
 
 
 def test_agent_tool_policy_reuses_application_train_reasons():
@@ -250,6 +268,17 @@ def test_agent_tool_policy_reuses_application_train_reasons():
     assert start_training.command_name == CommandName.TRAIN.value
     assert start_training.reasons == tuple(application_train.reasons)
     assert "Generate datasets before training." in start_training.reasons
+
+
+def test_agent_tool_policy_disables_legacy_direct_file_loading():
+    availability = build_agent_tool_policy(Study())["load_data"]
+
+    assert availability.enabled is False
+    assert availability.can_auto_execute is False
+    assert availability.command_name == CommandName.LOAD_DATA.value
+    assert "cannot preserve an authorized filesystem identity" in (
+        availability.reason_text
+    )
 
 
 def test_agent_tool_policy_reads_state_and_capabilities_from_one_publication():
@@ -299,6 +328,142 @@ def test_tool_payload_preserves_changed_state_for_agent_recovery():
     )
 
     assert result.to_payload()["changed_state"] == {"state_unknown": True}
+
+
+def test_tool_payload_rejects_hostile_scalar_and_mapping_protocols() -> None:
+    private_path = "/srv/private/patient-Jane/session.edf"
+
+    class HostileTruth:
+        def __bool__(self) -> bool:
+            raise AssertionError("hostile bool protocol executed")
+
+    class HostileText(str):
+        def __str__(self) -> str:
+            raise AssertionError("hostile string protocol executed")
+
+    class HostileMapping(dict):
+        def __iter__(self):
+            raise AssertionError("hostile mapping iteration executed")
+
+        def __len__(self):
+            raise AssertionError("hostile mapping length executed")
+
+        def __getitem__(self, key):
+            raise AssertionError("hostile mapping item access executed")
+
+        def items(self):
+            raise AssertionError("hostile mapping items executed")
+
+    result = ToolCommandResult(
+        ok=HostileTruth(),  # type: ignore[arg-type]
+        tool_name=HostileText(private_path),
+        command_name=HostileText(private_path),
+        message=HostileText(private_path),
+        recoverable=HostileTruth(),  # type: ignore[arg-type]
+        diagnostics=HostileMapping({"private_path": private_path}),
+        changed_state=HostileMapping({"private_path": True}),
+    )
+
+    payload = result.to_payload()
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["ok"] is False
+    assert payload["recoverable"] is False
+    assert type(payload["tool_name"]) is str
+    assert payload["command_name"] is None or type(payload["command_name"]) is str
+    assert payload["changed_state"] == {}
+    assert private_path not in serialized
+
+
+def test_tool_payload_redacts_normalized_nested_sensitive_keys_fail_closed() -> None:
+    private_values = (
+        "credential-secret",
+        "session=private-cookie",
+        "private-refresh-token",
+        "Mary Example",
+        "subject-private-uuid",
+        "Mary Example.edf",
+        "Clinical Records/Mary Example",
+        "recipes/Mary Example.json",
+    )
+
+    class HostileContainer(dict[str, object]):
+        def __iter__(self):
+            raise AssertionError("hostile container iteration executed")
+
+        def __len__(self) -> int:
+            raise AssertionError("hostile container length executed")
+
+        def items(self):
+            raise AssertionError("hostile container items executed")
+
+    result = ToolCommandResult(
+        ok=False,
+        tool_name="query_state",
+        message="The query failed; refresh application state.",
+        raw_result={
+            "nested": {
+                "Credential": private_values[0],
+                "Cookie": private_values[1],
+                "refreshToken": private_values[2],
+                "participant_identity": private_values[3],
+                "subject_uuid": private_values[4],
+                "filename": private_values[5],
+                "input_path": private_values[6],
+                "recipePath": private_values[7],
+            },
+            "hostile": HostileContainer({"input_path": private_values[6]}),
+        },
+        diagnostics={"hostile": HostileContainer({"Cookie": private_values[1]})},
+    )
+
+    payload = result.to_payload()
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    assert all(value not in serialized for value in private_values)
+    assert payload["raw_result"]["hostile"] == "[UNSUPPORTED_VALUE]"
+    assert payload["diagnostics"]["hostile"] == "[UNSUPPORTED_VALUE]"
+    assert "refresh application state" in payload["message"]
+
+
+def test_tool_payload_caps_the_complete_serialized_envelope() -> None:
+    large = "x" * PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES
+    result = ToolCommandResult(
+        ok=True,
+        tool_name=large,
+        command_name=large,
+        message=large,
+        raw_result={"value": large},
+        state={"value": large},
+        capability={"value": large},
+        diagnostics={"value": large},
+        changed_state={large: True},
+    )
+
+    payload = result.to_payload()
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    assert set(payload) == {
+        "ok",
+        "tool_name",
+        "command_name",
+        "message",
+        "error_type",
+        "error_code",
+        "recovery_action",
+        "recoverable",
+        "blocked_reason",
+        "state",
+        "capability",
+        "diagnostics",
+        "changed_state",
+        "raw_result",
+    }
+    assert len(serialized) <= PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES
 
 
 @pytest.mark.parametrize(
@@ -351,6 +516,71 @@ def test_explicit_application_runtime_executes_for_headless_context():
     assert result.recovery_action is None
     assert len(runtime.commands) == 1
     assert isinstance(runtime.commands[0], QueryStateCommand)
+
+
+def test_saliency_application_surface_preserves_flat_noise_parameters() -> None:
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=13,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    runtime = _ApplicationRuntimeFake(
+        publication=publication,
+        command_result=CommandResult.success_result(
+            command_name=CommandName.SALIENCY.value,
+            message="Saliency parameters configured.",
+            state=state,
+            changed_state=ChangedState(visualization_changed=True),
+        ),
+    )
+    availability = ToolAvailability(
+        tool_name="saliency",
+        enabled=True,
+        command_name=CommandName.SALIENCY.value,
+    )
+
+    result = execute_application_tool_command(
+        object(),
+        "saliency",
+        {
+            "method": "SmoothGrad",
+            "nt_samples": 2,
+            "nt_samples_batch_size": 1,
+            "stdevs": 1.0,
+        },
+        availability=availability,
+        state=state.to_dict(),
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is True
+    assert len(runtime.commands) == 1
+    command = runtime.commands[0]
+    assert isinstance(command, SaliencyCommand)
+    assert command.method == "SmoothGrad"
+    assert command.params == {
+        "nt_samples": 2,
+        "nt_samples_batch_size": 1,
+        "stdevs": 1.0,
+    }
+
+
+def test_saliency_application_surface_preserves_host_resource_receipt() -> None:
+    command = _command_for_tool(
+        "saliency",
+        {
+            "method": "Gradient",
+            "resource_preflight_confirmed": True,
+            "resource_preflight_token": "saliency-receipt-1",
+        },
+    )
+
+    assert isinstance(command, SaliencyCommand)
+    command = cast(SaliencyCommand, command)
+    assert command.resource_preflight_confirmed is True
+    assert command.resource_preflight_token == "saliency-receipt-1"  # noqa: S105
 
 
 def test_reset_preprocess_tool_routes_to_narrow_command_and_publishes_final_state():
@@ -532,6 +762,7 @@ def test_attach_labels_surface_preserves_paths_and_host_resource_receipt() -> No
                 "A02T.gdf": "/labels/A02T.mat",
             },
             "label_format": "mat",
+            "selected_event_names": ["769", "770", "771", "772"],
             "resource_preflight_confirmed": True,
             "resource_preflight_token": "label-receipt-1",
         },
@@ -541,6 +772,7 @@ def test_attach_labels_surface_preserves_paths_and_host_resource_receipt() -> No
     command = cast(AttachLabelsCommand, command)
     assert command.label_paths == ["/labels/A01T.mat", "/labels/A02T.mat"]
     assert command.label_format == "mat"
+    assert command.selected_event_names == ["769", "770", "771", "772"]
     assert command.resource_preflight_confirmed is True
     assert command.resource_preflight_token == "label-receipt-1"  # noqa: S105
 
@@ -586,11 +818,6 @@ def test_generate_dataset_surface_does_not_guess_missing_split_decisions():
         ),
         ("start_training", CommandName.TRAIN, {"confirmed": 1}),
         ("clear_dataset", CommandName.RESET_SESSION, {"confirmed": "true"}),
-        (
-            "load_data",
-            CommandName.LOAD_DATA,
-            {"paths": ["/tmp/A01T.gdf"], "resource_preflight_confirmed": "false"},
-        ),
     ],
 )
 def test_application_surface_rejects_non_boolean_confirmation_values(
@@ -727,7 +954,45 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     raw.get_filename.return_value = "sample.fif"
     raw.get_filepath.return_value = "/tmp/sample.fif"
     study.loaded_data_list = [raw]
-    cast(Any, study).datasets = [object()]
+    labels = np.arange(12, dtype=int) % 2
+    events = np.column_stack((np.arange(12), np.zeros(12, dtype=int), labels))
+    info = mne.create_info(
+        [f"EEG-{index}" for index in range(4)],
+        sfreq=128,
+        ch_types="eeg",
+    )
+    mne_epochs = mne.EpochsArray(
+        np.zeros((12, 4, 168), dtype=np.float32),
+        info,
+        events=events,
+        event_id={"class-0": 0, "class-1": 1},
+        verbose=False,
+    )
+    epoch_data = Epochs([Raw("confirmation-boundary-epo.fif", mne_epochs)])
+    epoch_data.epoch_window_provenance = tuple(
+        EpochWindowProvenance(
+            source_recording_id=f"path-sha256:{'a' * 64}",
+            event_sample=index * 200,
+            window_start_sample=index * 200,
+            window_end_sample_exclusive=index * 200 + 168,
+            source_sfreq=128.0,
+            epoch_sfreq=128.0,
+            tmin_seconds=0.0,
+            tmax_seconds=167 / 128,
+            source_coordinates_verified=True,
+        )
+        for index in range(12)
+    )
+    dataset = Dataset(
+        epoch_data,
+        DataSplittingConfig(TrainingType.FULL, False, [], []),
+    )
+    dataset.set_name("confirmation-boundary")
+    dataset.train_mask[:8] = True
+    dataset.val_mask[8:10] = True
+    dataset.test_mask[10:] = True
+    dataset.remaining_mask[:] = False
+    cast(Any, study).datasets = [dataset]
     configured = execute_application_tool_command(
         study,
         "configure_training",
@@ -741,15 +1006,10 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     )
     assert isinstance(configured, ToolCommandResult)
     assert configured.ok is True
-    training = study.get_controller("training")
-    training.start_training = MagicMock(return_value=1)
+    training = study.training_state_service
+    training.start_training = MagicMock(return_value=1)  # type: ignore[method-assign]
 
     unconfirmed = execute_application_tool_command(study, "start_training", {})
-    confirmed = execute_application_tool_command(
-        study,
-        "start_training",
-        {"confirmed": True},
-    )
 
     unconfirmed = _assert_tool_command_result(
         unconfirmed,
@@ -762,6 +1022,16 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     assert unconfirmed.blocked_reason == "train requires confirmation."
     assert unconfirmed.raw_result["changed_state"]["error_changed"] is False
     assert unconfirmed.changed_state["error_changed"] is False
+
+    trainer = Trainer([])
+    trainer.run(interact=False)
+    study.training_manager.trainer = trainer
+    confirmed = execute_application_tool_command(
+        study,
+        "start_training",
+        {"confirmed": True},
+    )
+
     confirmed = _assert_tool_command_result(
         confirmed,
         tool_name="start_training",
@@ -941,8 +1211,11 @@ def test_application_tool_command_routes_scan_label_sources(tmp_path):
         raw_status="ok",
     )
     scan = result.raw_result["diagnostics"]["scan_result"]
-    assert scan["label_sources"] == [str(label_dir.resolve())]
-    assert scan["label_carriers"] == [str(label_path.resolve())]
+    assert str(label_dir.resolve()) not in repr(scan["label_sources"])
+    assert scan["label_sources"][0].startswith("private location [REDACTED_PATH]")
+    assert str(label_path.resolve()) not in repr(scan["label_carriers"])
+    assert "[REDACTED_PATH]" in scan["label_carriers"][0]
+    assert "[SUBJECT_REF:" in scan["label_carriers"][0]
 
 
 def test_application_tool_command_apply_surfaces_confirmation_required(tmp_path):
@@ -1149,7 +1422,8 @@ def test_application_tool_command_preserves_host_authorized_training_output_dir(
     )
     training_state = result.raw_result["state"]["training"]["training_option"]
     assert result.raw_result["state"]["training"]["model_name"] == "EEGNet"
-    assert training_state["output_dir"] == str(output_dir)
+    assert str(output_dir) not in training_state["output_dir"]
+    assert "[REDACTED_PATH]" in training_state["output_dir"]
     assert training_state["evaluation_option"] == "Best validation AUC"
 
 
@@ -1241,7 +1515,7 @@ def test_application_tool_command_rejects_fractional_integer_options_without_sta
     assert service.get_state().training == before
 
 
-def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
+def test_application_tool_command_denies_legacy_direct_load(tmp_path):
     sample = tmp_path / "sample.unsupported"
     sample.write_text("not eeg", encoding="utf-8")
 
@@ -1256,9 +1530,11 @@ def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
         tool_name="load_data",
         command_name=CommandName.LOAD_DATA,
         ok=False,
-        raw_status="failed",
+        error_type="precondition",
     )
-    assert result.error_type in {"unsupported_format", "runtime"}
+    assert result.error_code == "assistant_direct_load_disabled"
+    assert result.recoverable is False
+    assert result.raw_result is None
 
 
 def test_query_state_tool_uses_application_command_surface():
@@ -1285,6 +1561,22 @@ def test_query_state_tool_uses_application_command_surface():
     diagnostics = result.raw_result["diagnostics"]
     assert diagnostics["state"]["pipeline_stage"] == "empty"
     assert diagnostics["capabilities"]["query_state"]["enabled"] is True
+
+
+def test_query_state_tool_builds_only_detached_query_parameters() -> None:
+    command = _command_for_tool(
+        "query_state",
+        {
+            "query": "state",
+            "params": {"detail": "summary"},
+        },
+    )
+
+    assert isinstance(command, QueryStateCommand)
+    assert vars(command) == {
+        "query": "state",
+        "params": {"detail": "summary"},
+    }
 
 
 def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
@@ -1342,7 +1634,9 @@ def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
         raw_status="ok",
     )
     interpretation = result.raw_result["diagnostics"]["state"]["interpretation"]
-    assert interpretation["label_carrier_plan"][0]["path"] == str(events_path)
+    public_path = interpretation["label_carrier_plan"][0]["path"]
+    assert str(events_path) not in public_path
+    assert public_path.startswith("events.tsv [REDACTED_PATH]")
     assert interpretation["label_carrier_plan"][0]["selected_label_field"] == (
         "trial_type"
     )
@@ -1397,7 +1691,7 @@ def test_analysis_tools_are_application_service_backed():
         raw_status="failed",
     )
     assert visualize.blocked_reason == (
-        "Create epochs, complete training, or configure saliency before opening "
+        "Create EEG epochs, complete training, or configure saliency before opening "
         "visualization views."
     )
 
@@ -1410,7 +1704,7 @@ def test_analysis_tools_are_application_service_backed():
         raw_status="failed",
     )
     assert saliency.blocked_reason == (
-        "Create epochs, generate datasets, or select a model and training settings "
+        "Create EEG epochs, build the training dataset, or select a model and training settings "
         "before querying saliency readiness."
     )
 

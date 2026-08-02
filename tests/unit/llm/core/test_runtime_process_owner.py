@@ -18,6 +18,8 @@ from XBrainLab.llm.core.runtime_process import (
     LocalRuntimeTurnBusyError,
 )
 
+_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS = 10.0
+
 
 class _CooperativeEngine:
     def __init__(self, config: LLMConfig) -> None:
@@ -133,7 +135,7 @@ def test_process_owner_rejects_overlapping_turns() -> None:
     owner = LocalRuntimeProcessOwner(
         _config(),
         engine_factory=_CooperativeEngine,
-        startup_timeout=3.0,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
     )
     owner.load_model()
     thread, _, errors = _start_generation(owner)
@@ -158,7 +160,7 @@ def test_cooperative_cancel_keeps_process_ready_for_next_turn() -> None:
     owner = LocalRuntimeProcessOwner(
         _config(),
         engine_factory=_CooperativeEngine,
-        startup_timeout=3.0,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
     )
     owner.load_model()
     first_thread, first_chunks, errors = _start_generation(owner)
@@ -180,7 +182,7 @@ def test_stubborn_generation_is_terminated_and_fenced_after_grace() -> None:
     owner = LocalRuntimeProcessOwner(
         _config(),
         engine_factory=_StubbornEngine,
-        startup_timeout=3.0,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
         termination_timeout=0.2,
     )
     owner.load_model()
@@ -214,7 +216,7 @@ def test_close_terminates_only_owned_stubborn_process_within_bound() -> None:
     owner = LocalRuntimeProcessOwner(
         _config(),
         engine_factory=_StubbornEngine,
-        startup_timeout=3.0,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
         termination_timeout=0.2,
     )
     owner.load_model()
@@ -239,7 +241,7 @@ def test_clean_generation_and_close_do_not_require_restart() -> None:
     owner = LocalRuntimeProcessOwner(
         _config(),
         engine_factory=_FiniteEngine,
-        startup_timeout=3.0,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
     )
     owner.load_model()
 
@@ -257,7 +259,7 @@ def test_recoverable_load_failure_crosses_process_boundary_without_traceback() -
     owner = LocalRuntimeProcessOwner(
         _config(),
         engine_factory=_RecoverableLoadFailureEngine,
-        startup_timeout=3.0,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
     )
 
     with pytest.raises(LocalRuntimeLoadError) as raised:
@@ -303,3 +305,6 @@ def test_close_during_model_load_terminates_owned_process_within_bound() -> None
     assert owner.restart_required is False
     assert load_thread.is_alive() is False
     assert len(load_errors) == 1
+    assert owner._command_connection is None
+    assert owner._event_connection is None
+    assert owner._cancel_connection is None

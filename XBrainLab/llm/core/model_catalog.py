@@ -10,14 +10,25 @@ import json
 import os
 import shutil
 import stat
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 BYTES_PER_GB = 1_000_000_000
 MAX_SINGLE_MODEL_DOWNLOAD_GB = 10.0
 MAX_TOTAL_MODEL_CACHE_GB = 20.0
 MIN_DISK_FREE_AFTER_DOWNLOAD_GB = 5.0
 MIN_MODEL_WEIGHT_BYTES = 256_000_000
+CACHE_SCAN_MAX_ENTRIES = 100_000
+CACHE_SCAN_MAX_DEPTH = 64
+
+
+class CacheScanCancellation(Protocol):
+    """Minimal caller cancellation contract for bounded cache scans."""
+
+    def is_set(self) -> bool: ...
+
 
 PRIMARY_LOCAL_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
 PRIMARY_LOCAL_MODEL_REVISION = (
@@ -101,6 +112,18 @@ class ModelCacheValidationResult:
     revision: str
     message: str
     snapshot_path: str | None
+    model_cache_bytes: int
+    total_cache_bytes: int
+    available_disk_bytes: int
+
+
+@dataclass(frozen=True)
+class DownloadConsumptionResult:
+    """Actual resource usage observed while a model download is active."""
+
+    ok: bool
+    public_message: str
+    diagnostic_message: str
     model_cache_bytes: int
     total_cache_bytes: int
     available_disk_bytes: int
@@ -410,8 +433,34 @@ def model_cache_exists(cache_dir: str, repo_id: str) -> bool:
     return model_cache_complete(cache_dir, repo_id)
 
 
-def _directory_size_bytes(path: Path) -> int:
-    """Return recursive logical size, failing closed on an unreadable subtree."""
+def _directory_size_bytes(
+    path: Path,
+    *,
+    deadline: float | None = None,
+    cancel_event: CacheScanCancellation | None = None,
+    max_entries: int = CACHE_SCAN_MAX_ENTRIES,
+    max_depth: int = CACHE_SCAN_MAX_DEPTH,
+) -> int:
+    """Return hardlink-aware size within explicit scan resource bounds."""
+    if max_entries < 1 or max_depth < 0:
+        raise CacheInspectionError("Cache scan limits must be positive.")
+
+    def _check_budget() -> None:
+        try:
+            cancelled = cancel_event is not None and cancel_event.is_set()
+        except Exception as exc:
+            raise CacheInspectionError(
+                "Cache scan cancellation state could not be verified."
+            ) from exc
+        if cancelled:
+            raise CacheInspectionError("Cache scan was cancelled.")
+        if deadline is not None and time.monotonic() >= deadline:
+            raise CacheInspectionError("Cache scan exceeded its deadline.")
+
+    def _raise_scan_limit(limit_name: str) -> None:
+        raise CacheInspectionError(f"Cache scan exceeded its {limit_name} limit.")
+
+    _check_budget()
     try:
         root_stat = path.lstat()
     except FileNotFoundError:
@@ -430,39 +479,52 @@ def _directory_size_bytes(path: Path) -> int:
             raise CacheInspectionError(
                 f"Could not resolve cache path {path}: {exc}"
             ) from exc
-        return _directory_size_bytes(resolved)
+        return _directory_size_bytes(
+            resolved,
+            deadline=deadline,
+            cancel_event=cancel_event,
+            max_entries=max_entries,
+            max_depth=max_depth,
+        )
     if not stat.S_ISDIR(root_stat.st_mode):
         return 0
 
     total = 0
+    entry_count = 0
     seen: set[tuple[int, int]] = set()
+    pending: list[tuple[Path, int]] = [(path, 0)]
     try:
-
-        def _raise_walk_error(error: OSError) -> None:
-            raise error
-
-        for root, directories, files in os.walk(
-            path,
-            followlinks=False,
-            onerror=_raise_walk_error,
-        ):
-            for dirname in directories:
-                directory_path = Path(root) / dirname
-                if directory_path.is_symlink():
-                    total += directory_path.lstat().st_size
-            for filename in files:
-                file_path = Path(root) / filename
-                if file_path.is_symlink():
-                    total += file_path.lstat().st_size
-                    continue
-
-                file_stat = file_path.stat()
-                inode_key = (file_stat.st_dev, file_stat.st_ino)
-                if file_stat.st_ino and inode_key in seen:
-                    continue
-                if file_stat.st_ino:
-                    seen.add(inode_key)
-                total += file_stat.st_size
+        while pending:
+            _check_budget()
+            directory, depth = pending.pop()
+            child_directories: list[tuple[Path, int]] = []
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    _check_budget()
+                    entry_count += 1
+                    if entry_count > max_entries:
+                        _raise_scan_limit("entry")
+                    entry_stat = entry.stat(follow_symlinks=False)
+                    entry_path = Path(entry.path)
+                    if stat.S_ISLNK(entry_stat.st_mode):
+                        total += entry_stat.st_size
+                        continue
+                    if stat.S_ISDIR(entry_stat.st_mode):
+                        if depth >= max_depth:
+                            _raise_scan_limit("depth")
+                        child_directories.append((entry_path, depth + 1))
+                        continue
+                    if not stat.S_ISREG(entry_stat.st_mode):
+                        continue
+                    inode_key = (entry_stat.st_dev, entry_stat.st_ino)
+                    if entry_stat.st_ino and inode_key in seen:
+                        continue
+                    if entry_stat.st_ino:
+                        seen.add(inode_key)
+                    total += entry_stat.st_size
+            pending.extend(reversed(child_directories))
+    except CacheInspectionError:
+        raise
     except OSError as exc:
         raise CacheInspectionError(
             f"Could not measure local model cache {path}: {exc}"
@@ -470,9 +532,22 @@ def _directory_size_bytes(path: Path) -> int:
     return total
 
 
-def cache_usage_bytes(cache_dir: str) -> int:
-    """Return total bytes currently used by the local model cache directory."""
-    return _directory_size_bytes(Path(cache_dir))
+def cache_usage_bytes(
+    cache_dir: str,
+    *,
+    deadline: float | None = None,
+    cancel_event: CacheScanCancellation | None = None,
+    max_entries: int = CACHE_SCAN_MAX_ENTRIES,
+    max_depth: int = CACHE_SCAN_MAX_DEPTH,
+) -> int:
+    """Return cache bytes while enforcing deadline, cancellation, and limits."""
+    return _directory_size_bytes(
+        Path(cache_dir),
+        deadline=deadline,
+        cancel_event=cancel_event,
+        max_entries=max_entries,
+        max_depth=max_depth,
+    )
 
 
 def disallowed_cache_candidates(cache_dir: str) -> list[str]:
@@ -521,6 +596,97 @@ def available_disk_bytes(path: str) -> int:
         return shutil.disk_usage(current).free
     except OSError:
         return 0
+
+
+def inspect_model_download_consumption(
+    repo_id: str,
+    cache_dir: str,
+    *,
+    max_single_model_gb: float = MAX_SINGLE_MODEL_DOWNLOAD_GB,
+    max_total_cache_gb: float = MAX_TOTAL_MODEL_CACHE_GB,
+) -> DownloadConsumptionResult:
+    """Measure active download consumption and fail closed on every limit."""
+    max_single_bytes = _bytes_from_gb(max_single_model_gb)
+    max_total_bytes = _bytes_from_gb(max_total_cache_gb)
+    minimum_reserve = _bytes_from_gb(MIN_DISK_FREE_AFTER_DOWNLOAD_GB)
+    model_bytes = 0
+    total_bytes = 0
+    free_bytes = available_disk_bytes(cache_dir)
+
+    def _result(
+        ok: bool,
+        public_message: str = "",
+        *,
+        reason: str = "within_limits",
+        diagnostic_detail: str = "",
+    ) -> DownloadConsumptionResult:
+        diagnostics = (
+            f"{reason}: model_cache_bytes={model_bytes}; "
+            f"total_cache_bytes={total_bytes}; "
+            f"available_disk_bytes={free_bytes}; "
+            f"max_single_model_bytes={max_single_bytes}; "
+            f"max_total_cache_bytes={max_total_bytes}; "
+            f"minimum_free_disk_bytes={minimum_reserve}"
+        )
+        if diagnostic_detail:
+            diagnostics = f"{diagnostics}; detail={diagnostic_detail}"
+        return DownloadConsumptionResult(
+            ok=ok,
+            public_message=public_message,
+            diagnostic_message=diagnostics,
+            model_cache_bytes=model_bytes,
+            total_cache_bytes=total_bytes,
+            available_disk_bytes=free_bytes,
+        )
+
+    try:
+        model_bytes = sum(
+            _directory_size_bytes(Path(path))
+            for path in model_cache_candidates(cache_dir, repo_id)
+        )
+        total_bytes = cache_usage_bytes(cache_dir)
+    except CacheInspectionError as exc:
+        return _result(
+            False,
+            (
+                "Model download stopped because cache usage could not be "
+                "verified. Check cache permissions and try again."
+            ),
+            reason="cache_inspection_failed",
+            diagnostic_detail=f"{type(exc).__name__}: {exc}",
+        )
+
+    if model_bytes > max_single_bytes:
+        return _result(
+            False,
+            ("Model download stopped because the per-model cache limit was exceeded."),
+            reason="single_model_limit_exceeded",
+        )
+    if total_bytes > max_total_bytes:
+        return _result(
+            False,
+            "Model download stopped because the total cache limit was exceeded.",
+            reason="total_cache_limit_exceeded",
+        )
+    if free_bytes <= 0:
+        return _result(
+            False,
+            (
+                "Model download stopped because free disk space could not be "
+                "verified. Check the cache drive and try again."
+            ),
+            reason="free_disk_inspection_failed",
+        )
+    if free_bytes < minimum_reserve:
+        return _result(
+            False,
+            (
+                "Model download stopped because the required free disk reserve "
+                "was not preserved."
+            ),
+            reason="free_disk_reserve_exceeded",
+        )
+    return _result(True)
 
 
 def plan_model_download(

@@ -1,40 +1,49 @@
-# Product Feedback Log
+# Product Feedback Record
 
-最後更新：`2026-07-04`
+最後更新：`2026-07-31`
 
-這份文件集中保存人工使用 XBrainLab 時看到的產品問題、UI / UX 意見和未來設計方向。
-它不是 current truth、不是 target spec，也不是施工流水帳；它的角色是防止真實使用感受散落在聊天紀錄或 worklog 裡。
+這份文件保存人工使用 XBrainLab 時看到的產品問題、UI / UX 意見和設計訊號。
+它是 observation record，不是 current truth、target spec、active queue 或 status board；它的角色
+是防止真實使用感受散落在聊天紀錄或 worklog 裡。
+目前施工狀態、active branch 和 finding disposition 必須回到 `docs/current.md`、
+`docs/planning/now.md` 與 current product-quality audit ledger 查證。
 
 ## 怎麼使用
 
 - 使用者實際操作時覺得困惑、煩躁、不知道下一步、看不到主操作、或系統說法和使用者心智模型不一致時，記在這裡。
-- 已修掉的問題可以移到「近期已處理」，但不要刪掉；它們是後續 regression smoke 的來源。
+- 不在這裡維護 `Open`、`Fixed`、`In progress` 等 disposition；目前狀態一律回到 active audit
+  和 source/evidence 查證。
 - 產品決策成熟後，再同步到 `docs/target/` 或 `docs/planning/`。不要直接把這份文件當成已承諾的 spec。
 - 驗證方式成熟後，再同步到 `docs/validation/README.md` 或 artifact capture 腳本。
 
-## 目前集中意見
+## Feedback Themes
 
-| 主題 | 使用者觀察 | 產品判讀 | 狀態 |
-| --- | --- | --- | --- |
-| Dataset operations 命名不直觀 | Dataset Operations 一次露出多種 import / interpret / recipe / metadata 操作；問題不只是數量，而是名稱不像一般使用者會找的入口。 | 常用入口應用 `Import file`、`Import folder` 這類直觀命名；進階功能再用次要分組或 advanced wording。 | Fixed, keep smoke |
-| Data Interpretation preview 太雜 | Preview 同時顯示 source、metadata、label carrier、event role、class map、format capability，讀起來像 debug panel。 | 第一屏應只回答「會 import 哪些檔案、label 怎麼配、還有什麼需要確認、能不能套用」。 | Fixed, keep smoke |
-| Preview 有 nested scrolling | Preview 已有全域上下捲動，但每個 table 也可能各自上下捲，操作時會覺得卡在小區塊裡。 | Dialog 應保留單一主要 vertical scroll；表格自己不要再垂直捲動，必要時讓整個 preview 變長。 | Fixed, keep smoke |
-| 第一次使用不知道每個表格要做什麼 | Preview 一次揭露多個表格，初次接觸者不知道哪個是主要確認、哪個只是進階細節。 | 資訊架構要改成 task hierarchy：import scope、label matching、needs attention 是主層；event/class/raw metadata 是細節層。 | Fixed, keep smoke |
-| 選 3 個檔案卻像選整個資料夾 | 多選 `A01T/A02T/A03T` 時，畫面顯示 folder source，讓人以為整個資料夾都會被 import。 | scan root 和 selected scope 要清楚分開；使用者看到的主要範圍應是 selected files。 | Partially fixed |
-| Import Scope 把 file 選擇顯示成 folder | 使用者明明選 `File`，但 Import Scope 的 `Type` 顯示 `folder`，因為底層用 common parent 掃描。 | UI 要顯示 `Selection` 與 `Scan location`，不要把 scan root type 當成使用者選擇 type。 | Fixed, keep smoke |
-| Preview 太長看不到 Apply | 內容區域太長時，主要操作按鈕會被擠出視窗。 | Primary action 必須固定可見；任何 preview table 都不能讓 apply / cancel 消失。 | Fixed, keep smoke |
-| Metadata 明明空卻占很大 | `A01T.gdf` 這類非 BIDS 檔名沒有 subject/session/task/run，但 metadata table 仍占一大塊。 | 空 metadata 應該 compact、collapsed，或用一行說明「未偵測到 BIDS-style metadata」。 | Open |
-| File Metadata 和 Smart Parse 沒連起來 | File Metadata 看起來像靜態表格，但使用者會自然期待它能接 Smart Parse 或手動整理 metadata。 | Metadata 應該是可互動的 metadata review step；Smart Parse 可以作為該 step 的 action，而不是另一個不相干 operation。 | Partially fixed |
-| Label / Event Interpretation 難讀 | 最重要的是 `A01T.mat -> A01T.gdf` 是否配對正確，但畫面也顯示很多 event role / class map 細節。 | Carrier matching 應是主要視覺層級；role / anchor / granularity / class map 是進階確認。 | Fixed, keep smoke |
-| 確認列表不夠直觀 | Attention / Review Summary 類文字仍像系統診斷；第一次使用者不知道列表是在要求確認、修正、還是只是提醒。 | 確認列表要改成使用者任務語言，例如 `Check Before Import`、`Check / Action / Why this matters`，並把 warning / confirmation / format capability 翻成可操作文字。 | Fixed, keep smoke |
-| Launcher 看起來啟動但實際不可用 | log 顯示 `MainWindow initialized`，但可能閃退或視窗跑出螢幕。 | startup smoke 不能只看 process / log；還要驗證視窗可見、可互動、在目前螢幕範圍內。 | Partially fixed |
-| Loading screen 太晚出現 | App 開起來會等很久才看到載入畫面；如果 splash 幾乎快結束才跳出來，使用者感覺上等於沒有載入畫面。 | Splash 必須在 heavy backend / training / panel imports 前出現。Package `__init__`、startup helper import、top-level UI imports 都不能偷偷拖重依賴。 | In progress |
-| 測試很多但抓不到實機 bug | Unit / integration / artifact tests 能證明局部正確，仍漏掉 hidden apply、offscreen window、scope confusion 等問題。 | 需要 Validation Reality-Gap Audit，補 human-observable product smoke。 | In planning |
+以下只保存 observation 與 design signal。表格順序、措辭和是否出現在本頁都不代表 current
+priority 或 disposition。
 
-## 2026-07-04 Desktop MVP blocker board
+| 主題 | 使用者觀察 | 產品判讀 |
+| --- | --- | --- |
+| Dataset operations 命名不直觀 | Dataset Operations 一次露出多種 import / interpret / recipe / metadata 操作；問題不只是數量，而是名稱不像一般使用者會找的入口。 | 常用入口應用 `Import file`、`Import folder` 這類直觀命名；進階功能再用次要分組或 advanced wording。 |
+| Data Interpretation preview 太雜 | Preview 同時顯示 source、metadata、label carrier、event role、class map、format capability，讀起來像 debug panel。 | 第一屏應只回答「會 import 哪些檔案、label 怎麼配、還有什麼需要確認、能不能套用」。 |
+| Preview 有 nested scrolling | Preview 已有全域上下捲動，但每個 table 也可能各自上下捲，操作時會覺得卡在小區塊裡。 | Dialog 應保留單一主要 vertical scroll；表格自己不要再垂直捲動，必要時讓整個 preview 變長。 |
+| 第一次使用不知道每個表格要做什麼 | Preview 一次揭露多個表格，初次接觸者不知道哪個是主要確認、哪個只是進階細節。 | 資訊架構要改成 task hierarchy：import scope、label matching、needs attention 是主層；event/class/raw metadata 是細節層。 |
+| 選 3 個檔案卻像選整個資料夾 | 多選 `A01T/A02T/A03T` 時，畫面顯示 folder source，讓人以為整個資料夾都會被 import。 | scan root 和 selected scope 要清楚分開；使用者看到的主要範圍應是 selected files。 |
+| Import Scope 把 file 選擇顯示成 folder | 使用者明明選 `File`，但 Import Scope 的 `Type` 顯示 `folder`，因為底層用 common parent 掃描。 | UI 要顯示 `Selection` 與 `Scan location`，不要把 scan root type 當成使用者選擇 type。 |
+| Preview 太長看不到 Apply | 內容區域太長時，主要操作按鈕會被擠出視窗。 | Primary action 必須固定可見；任何 preview table 都不能讓 apply / cancel 消失。 |
+| Metadata 明明空卻占很大 | `A01T.gdf` 這類非 BIDS 檔名沒有 subject/session/task/run，但 metadata table 仍占一大塊。 | 空 metadata 應該 compact、collapsed，或用一行說明「未偵測到 BIDS-style metadata」。 |
+| File Metadata 和 Smart Parse 沒連起來 | File Metadata 看起來像靜態表格，但使用者會自然期待它能接 Smart Parse 或手動整理 metadata。 | Metadata 應該是可互動的 metadata review step；Smart Parse 可以作為該 step 的 action，而不是另一個不相干 operation。 |
+| Label / Event Interpretation 難讀 | 最重要的是 `A01T.mat -> A01T.gdf` 是否配對正確，但畫面也顯示很多 event role / class map 細節。 | Carrier matching 應是主要視覺層級；role / anchor / granularity / class map 是進階確認。 |
+| 確認列表不夠直觀 | Attention / Review Summary 類文字仍像系統診斷；第一次使用者不知道列表是在要求確認、修正、還是只是提醒。 | 確認列表要改成使用者任務語言，例如 `Check Before Import`、`Check / Action / Why this matters`，並把 warning / confirmation / format capability 翻成可操作文字。 |
+| Launcher 看起來啟動但實際不可用 | log 顯示 `MainWindow initialized`，但可能閃退或視窗跑出螢幕。 | startup smoke 不能只看 process / log；還要驗證視窗可見、可互動、在目前螢幕範圍內。 |
+| Loading screen 太晚出現 | App 開起來會等很久才看到載入畫面；如果 splash 幾乎快結束才跳出來，使用者感覺上等於沒有載入畫面。 | Splash 必須在 heavy backend / training / panel imports 前出現。Package `__init__`、startup helper import、top-level UI imports 都不能偷偷拖重依賴。 |
+| 測試很多但抓不到實機 bug | Unit / integration / artifact tests 能證明局部正確，仍漏掉 hidden apply、offscreen window、scope confusion 等問題。 | 需要 Validation Reality-Gap Audit，補 human-observable product smoke。 |
 
-以下是最近手測和討論中反覆出現的產品 blocker。它們是下一輪 Desktop MVP repair 的入口；
-每項修復前都要先在 `stabilize/desktop-mvp` 重現或用 artifact 確認，不可只根據聊天記憶直接宣稱已修。
+## Historical: 2026-07-04 Desktop MVP blocker board
+
+以下表格保存當時手測和討論中反覆出現的產品 blocker。它曾是 Desktop MVP repair
+入口，但 `stabilize/desktop-mvp` flow 已被 `stabilize/product-quality-closure` 取代。
+這不是 active queue；仍相關的問題必須先對照 current audit ledger、source 和 artifact
+重新驗證，不可只根據這份歷史記錄宣稱 open 或 fixed。
 
 | 主題 | 使用者觀察 | 產品判讀 | 下一個 gate |
 | --- | --- | --- | --- |
@@ -46,9 +55,10 @@
 | Evaluation table / model summary | metric summary / per-class table 曾白底白字；model summary 可能空或卡住。 | Table palette 和 initial selection 要有 guard；model summary 不可阻塞 UI。 | evaluation screenshot + focused panel tests。 |
 | Visualization / saliency | saliency readiness、label mapping、fold switch、3D 圖置中與 available/blocked state 反覆出問題。 | Saliency 計算、label map、fold selector、figure ownership 要從 backend state 到 UI display 一起驗證。 | visualization render walkthrough、saliency tests、3D runtime probe。 |
 
-## 近期已處理
+## Historical Checkpoint Notes
 
-以下項目已在目前施工中改善，但仍應轉成可重跑的 product smoke，避免回歸：
+以下項目是 2026-07-04 checkpoint 當時記錄的改善；是否仍成立要由 current source 和
+可重跑 product evidence 證明：
 
 - Data Interpretation candidate 會用 selected files 過濾 metadata，不再把整個 scan folder 的 metadata 當成主要 preview。
 - Preview dialog 底部確認文字、recipe checkbox、apply / cancel 按鈕改成固定 footer。
@@ -87,7 +97,7 @@ Data Interpretation 不應堅持把所有資訊都塞進同一個 panel。比較
 3. **Label matching step**：確認 label/event carrier 對應。
 4. **Advanced details**：format support、recipe trace、raw event/class details。
 
-## 後續要補的驗證
+## 當時記錄的後續驗證
 
 - 一條可重跑的人工可觀察流程：desktop launcher -> main window visible -> Data Interpretation -> select 3 fixture files -> preview shows selected scope -> apply button visible -> import only selected files。
 - Screenshot / geometry evidence 應檢查 primary action 是否在視窗內、metadata empty state 是否 compact、重要文字沒有被截斷。

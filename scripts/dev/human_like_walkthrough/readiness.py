@@ -335,4 +335,7 @@ def _white_pixel_count(image: Image.Image) -> int:
 
 def _pixels(image: Image.Image) -> Iterable[Any]:
     """Expose Pillow pixel data through a stable, typed iterable boundary."""
+    flattened = getattr(image, "get_flattened_data", None)
+    if callable(flattened):
+        return cast(Iterable[Any], flattened())
     return cast(Iterable[Any], image.getdata())

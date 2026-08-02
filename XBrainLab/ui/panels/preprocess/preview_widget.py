@@ -4,12 +4,17 @@ Uses PyQtGraph for high-performance interactive visualization with
 crosshair cursors and debounced navigation controls.
 """
 
+from typing import Any
+
 import numpy as np
 import pyqtgraph as pg
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
+    QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -66,7 +71,9 @@ class PreviewWidget(QWidget):
         """
         super().__init__(parent)
         self._native_plot_shutdown = False
+        self._plot_items_attached = False
         self.init_ui()
+        self._plot_items_attached = True
         self.setup_timer()
 
     def init_ui(self):
@@ -94,11 +101,23 @@ class PreviewWidget(QWidget):
         time_layout = QVBoxLayout(self.tab_time)
 
         self.plot_time = pg.PlotWidget()
-        self.plot_time.setLabel("left", "Amplitude", units="uV")
-        self.plot_time.setLabel("bottom", "Time", units="s")
+        self.plot_time.setLabel(
+            "left",
+            "Amplitude",
+            units="uV",
+            color=Theme.TEXT_MUTED,
+        )
+        self.plot_time.setLabel(
+            "bottom",
+            "Time",
+            units="s",
+            color=Theme.TEXT_MUTED,
+        )
         self.plot_time.showGrid(x=True, y=True, alpha=0.3)
         self.plot_time.getAxis("left").setPen(Theme.BORDER)
         self.plot_time.getAxis("bottom").setPen(Theme.BORDER)
+        self.plot_time.getAxis("left").setTextPen(Theme.TEXT_MUTED)
+        self.plot_time.getAxis("bottom").setTextPen(Theme.TEXT_MUTED)
         # Disable properties menu and Mouse Interaction (Zoom/Pan)
         self.plot_time.setMenuEnabled(False)
         self.plot_time.setMouseEnabled(x=False, y=False)
@@ -106,6 +125,7 @@ class PreviewWidget(QWidget):
         self.plot_time.getPlotItem().buttonsHidden = True
         self.plot_time.hideButtons()
         self.time_event_markers = []
+        self.time_excluded_regions = []
         self.time_original_curve = self.plot_time.plot(
             [],
             [],
@@ -160,10 +180,9 @@ class PreviewWidget(QWidget):
         self.plot_time.addItem(self.v_line_time, ignoreBounds=True)
         self.plot_time.addItem(self.h_line_time, ignoreBounds=True)
         self.plot_time.addItem(self.label_time, ignoreBounds=True)
-        self.proxy_time = pg.SignalProxy(
-            self.plot_time.scene().sigMouseMoved,
-            rateLimit=60,
-            slot=self._mouse_moved_time,
+        self.proxy_time = self._create_mouse_proxy(
+            self.plot_time,
+            self._mouse_moved_time,
         )
 
         time_layout.addWidget(self.plot_time)
@@ -174,11 +193,23 @@ class PreviewWidget(QWidget):
         freq_layout = QVBoxLayout(self.tab_freq)
 
         self.plot_freq = pg.PlotWidget()
-        self.plot_freq.setLabel("left", "Power", units="dB/Hz")
-        self.plot_freq.setLabel("bottom", "Frequency", units="Hz")
+        self.plot_freq.setLabel(
+            "left",
+            "Power",
+            units="dB/Hz",
+            color=Theme.TEXT_MUTED,
+        )
+        self.plot_freq.setLabel(
+            "bottom",
+            "Frequency",
+            units="Hz",
+            color=Theme.TEXT_MUTED,
+        )
         self.plot_freq.showGrid(x=True, y=True, alpha=0.3)
         self.plot_freq.getAxis("left").setPen(Theme.BORDER)
         self.plot_freq.getAxis("bottom").setPen(Theme.BORDER)
+        self.plot_freq.getAxis("left").setTextPen(Theme.TEXT_MUTED)
+        self.plot_freq.getAxis("bottom").setTextPen(Theme.TEXT_MUTED)
         # Disable properties menu and Mouse Interaction (Zoom/Pan)
         self.plot_freq.setMenuEnabled(False)
         self.plot_freq.setMouseEnabled(x=False, y=False)
@@ -236,10 +267,9 @@ class PreviewWidget(QWidget):
         self.plot_freq.addItem(self.v_line_freq, ignoreBounds=True)
         self.plot_freq.addItem(self.h_line_freq, ignoreBounds=True)
         self.plot_freq.addItem(self.label_freq, ignoreBounds=True)
-        self.proxy_freq = pg.SignalProxy(
-            self.plot_freq.scene().sigMouseMoved,
-            rateLimit=60,
-            slot=self._mouse_moved_freq,
+        self.proxy_freq = self._create_mouse_proxy(
+            self.plot_freq,
+            self._mouse_moved_freq,
         )
 
         freq_layout.addWidget(self.plot_freq)
@@ -275,9 +305,89 @@ class PreviewWidget(QWidget):
         ctrl_layout.addStretch()
         plot_content_layout.addLayout(ctrl_layout)
 
+        self.signal_legend = QWidget()
+        self.signal_legend.setObjectName("PreprocessSignalLegend")
+        signal_legend_layout = QGridLayout(self.signal_legend)
+        signal_legend_layout.setContentsMargins(0, 0, 0, 0)
+        signal_legend_layout.setHorizontalSpacing(20)
+        signal_legend_layout.setVerticalSpacing(4)
+
+        self.loaded_signal_legend = QWidget(self.signal_legend)
+        loaded_legend_layout = QHBoxLayout(self.loaded_signal_legend)
+        loaded_legend_layout.setContentsMargins(0, 0, 0, 0)
+        loaded_legend_layout.setSpacing(6)
+        loaded_swatch = QFrame()
+        loaded_swatch.setObjectName("PreprocessLoadedLegendSwatch")
+        loaded_swatch.setFixedSize(18, 8)
+        loaded_swatch.setStyleSheet(
+            "background: transparent; border: none; "
+            f"border-top: 1px dashed {Theme.CHART_ORIGINAL_DATA};"
+        )
+        self.loaded_signal_legend_text = QLabel("Loaded EEG")
+        self.loaded_signal_legend_text.setObjectName("PreprocessLoadedLegendText")
+        loaded_legend_layout.addWidget(loaded_swatch)
+        loaded_legend_layout.addWidget(self.loaded_signal_legend_text)
+
+        self.current_signal_legend = QWidget(self.signal_legend)
+        current_legend_layout = QHBoxLayout(self.current_signal_legend)
+        current_legend_layout.setContentsMargins(0, 0, 0, 0)
+        current_legend_layout.setSpacing(6)
+        current_swatch = QFrame()
+        current_swatch.setObjectName("PreprocessCurrentLegendSwatch")
+        current_swatch.setFixedSize(18, 8)
+        current_swatch.setStyleSheet(
+            "background: transparent; border: none; "
+            f"border-top: 2px solid {Theme.CHART_PRIMARY};"
+        )
+        self.current_signal_legend_text = QLabel("Current preview")
+        self.current_signal_legend_text.setObjectName("PreprocessCurrentLegendText")
+        current_legend_layout.addWidget(current_swatch)
+        current_legend_layout.addWidget(self.current_signal_legend_text)
+
+        self.event_legend = QWidget(self.signal_legend)
+        self.event_legend.setObjectName("PreprocessEventLegend")
+        event_legend_layout = QHBoxLayout(self.event_legend)
+        event_legend_layout.setContentsMargins(0, 0, 0, 0)
+        event_legend_layout.setSpacing(6)
+        event_swatch = QFrame()
+        event_swatch.setObjectName("PreprocessEventLegendSwatch")
+        event_swatch.setFixedSize(10, 10)
+        event_swatch.setStyleSheet(
+            f"background-color: {Theme.ACCENT_SUCCESS}; border: none;"
+        )
+        self.event_legend_text = QLabel()
+        self.event_legend_text.setObjectName("PreprocessEventLegendText")
+        event_legend_layout.addWidget(event_swatch)
+        event_legend_layout.addWidget(self.event_legend_text)
+        self.event_legend.hide()
+
+        self.excluded_legend = QWidget(self.signal_legend)
+        self.excluded_legend.setObjectName("PreprocessExcludedLegend")
+        excluded_legend_layout = QHBoxLayout(self.excluded_legend)
+        excluded_legend_layout.setContentsMargins(0, 0, 0, 0)
+        excluded_legend_layout.setSpacing(6)
+        excluded_swatch = QFrame()
+        excluded_swatch.setObjectName("PreprocessExcludedLegendSwatch")
+        excluded_swatch.setFixedSize(10, 10)
+        excluded_swatch.setStyleSheet(
+            f"background-color: {Theme.ACCENT_ERROR}; border: none;"
+        )
+        self.excluded_legend_text = QLabel()
+        self.excluded_legend_text.setObjectName("PreprocessExcludedLegendText")
+        excluded_legend_layout.addWidget(excluded_swatch)
+        excluded_legend_layout.addWidget(self.excluded_legend_text)
+        self.excluded_legend.hide()
+        signal_legend_layout.addWidget(self.loaded_signal_legend, 0, 0)
+        signal_legend_layout.addWidget(self.current_signal_legend, 0, 1)
+        signal_legend_layout.addWidget(self.event_legend, 1, 0)
+        signal_legend_layout.addWidget(self.excluded_legend, 1, 1)
+        signal_legend_layout.setColumnStretch(2, 1)
+        self.signal_legend.hide()
+        plot_content_layout.addWidget(self.signal_legend)
+
         # 3. Time Navigation
         time_nav_layout = QHBoxLayout()
-        self.time_label = QLabel("Time / Epoch:")
+        self.time_label = QLabel("Time / EEG epoch:")
         time_nav_layout.addWidget(self.time_label)
 
         self.time_slider = QSlider(Qt.Orientation.Horizontal)
@@ -310,7 +420,7 @@ class PreviewWidget(QWidget):
         ) = self._preview_state_widget(
             "Preprocessing locked",
             (
-                "The data has already been epoched. Preprocessing operations "
+                "EEG epochs have already been created. Preprocessing operations "
                 "cannot be changed at this stage."
             ),
         )
@@ -386,8 +496,21 @@ class PreviewWidget(QWidget):
         self.plot_timer.setSingleShot(True)
         self.plot_timer.timeout.connect(self._emit_plot_update)
 
+    @staticmethod
+    def _create_mouse_proxy(plot: pg.PlotWidget, slot) -> pg.SignalProxy:
+        """Connect one rate-limited crosshair callback to a plot scene."""
+        scene = plot.scene()
+        mouse_moved = getattr(scene, "sigMouseMoved", None)
+        if mouse_moved is None:
+            raise RuntimeError("PyQtGraph plot scene does not expose mouse movement")
+        return pg.SignalProxy(
+            mouse_moved,
+            rateLimit=60,
+            slot=slot,
+        )
+
     def prepare_for_shutdown(self) -> None:
-        """Stop deferred PyQtGraph work before Qt destroys native plot objects."""
+        """Quiesce callbacks and detach items before native ViewBox destruction."""
         if self._native_plot_shutdown:
             return
         self._native_plot_shutdown = True
@@ -405,20 +528,131 @@ class PreviewWidget(QWidget):
             viewport = plot.viewport()
             if viewport is not None:
                 viewport.setUpdatesEnabled(False)
-            plot.close()
+        self._detach_owned_plot_items()
+
+    def resume_after_cancelled_shutdown(self) -> None:
+        """Restore plot callbacks when an application close is cancelled."""
+        if not self._native_plot_shutdown or not self._attach_owned_plot_items():
+            return
+        self.proxy_time = self._create_mouse_proxy(
+            self.plot_time,
+            self._mouse_moved_time,
+        )
+        self.proxy_freq = self._create_mouse_proxy(
+            self.plot_freq,
+            self._mouse_moved_freq,
+        )
+        for plot in (self.plot_time, self.plot_freq):
+            plot.setUpdatesEnabled(True)
+            viewport = plot.viewport()
+            if viewport is not None:
+                viewport.setUpdatesEnabled(True)
+            plot.update()
+        self._native_plot_shutdown = False
+        self.update()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         """Release deferred plot callbacks before the widget hierarchy closes."""
         self.prepare_for_shutdown()
         super().closeEvent(event)
 
+    def _owned_plot_item_bindings(
+        self,
+    ) -> tuple[tuple[pg.PlotWidget, tuple[tuple[Any, bool], ...]], ...]:
+        """Return every graphics root owned by each plot and its bounds policy."""
+        time_items: tuple[tuple[Any, bool], ...] = (
+            (self.time_original_curve, False),
+            (self.time_current_curve, False),
+            (self.v_line_time, True),
+            (self.h_line_time, True),
+            (self.label_time, True),
+            *((marker, False) for marker in self.time_event_markers),
+            *((region, False) for region in self.time_excluded_regions),
+        )
+        frequency_items: tuple[tuple[Any, bool], ...] = (
+            (self.freq_original_curve, False),
+            (self.freq_current_curve, False),
+            (self.v_line_freq, True),
+            (self.h_line_freq, True),
+            (self.label_freq, True),
+        )
+        return (
+            (self.plot_time, time_items),
+            (self.plot_freq, frequency_items),
+        )
+
+    @staticmethod
+    def _forget_graphics_item_views(root: Any) -> None:
+        """Clear cached ViewBox references for one detached graphics item tree."""
+        pending = [root]
+        while pending:
+            item = pending.pop()
+            if sip.isdeleted(item):
+                continue
+            pending.extend(item.childItems())
+            forget_view_box = getattr(item, "forgetViewBox", None)
+            if callable(forget_view_box):
+                forget_view_box()
+            forget_view_widget = getattr(item, "forgetViewWidget", None)
+            if callable(forget_view_widget):
+                forget_view_widget()
+
+    def _detach_owned_plot_items(self) -> None:
+        """Transfer graphics roots out of each live ViewBox exactly once."""
+        if not self._plot_items_attached:
+            return
+        for plot, bindings in self._owned_plot_item_bindings():
+            if sip.isdeleted(plot):
+                continue
+            plot_item = plot.getPlotItem()
+            if plot_item is None or sip.isdeleted(plot_item):
+                continue
+            plot_scene = plot.scene()
+            for item, _ignore_bounds in bindings:
+                if sip.isdeleted(item):
+                    continue
+                if item.scene() is plot_scene:
+                    plot.removeItem(item)
+                self._forget_graphics_item_views(item)
+        self._plot_items_attached = False
+
+    def _attach_owned_plot_items(self) -> bool:
+        """Restore detached graphics roots only while every native owner is live."""
+        if self._plot_items_attached:
+            return True
+        bindings_by_plot = self._owned_plot_item_bindings()
+        for plot, bindings in bindings_by_plot:
+            if sip.isdeleted(plot):
+                return False
+            plot_item = plot.getPlotItem()
+            if plot_item is None or sip.isdeleted(plot_item):
+                return False
+            plot_scene = plot.scene()
+            for item, _ignore_bounds in bindings:
+                if sip.isdeleted(item):
+                    return False
+                item_scene = item.scene()
+                if item_scene is not None and item_scene is not plot_scene:
+                    return False
+
+        for plot, bindings in bindings_by_plot:
+            for item, ignore_bounds in bindings:
+                item_scene = item.scene()
+                if item_scene is None:
+                    plot.addItem(item, ignore_bounds)
+        self._plot_items_attached = True
+        return True
+
     @pyqtSlot()
     def _emit_plot_update(self) -> None:
         """Forward the owned timer callback through the widget signal."""
+        if self._native_plot_shutdown:
+            return
         self.request_plot_update.emit()
 
     def _on_plot_param_changed(self):
         """Start the debounce timer when a plot parameter changes."""
+        self._refresh_event_legend_visibility()
         if self._native_plot_shutdown:
             return
         self.plot_timer.start(50)  # Debounce
@@ -566,7 +800,7 @@ class PreviewWidget(QWidget):
         detail = str(message).strip()
         if not detail or detail.casefold() == "preprocessing locked":
             detail = (
-                "The data has already been epoched. Preprocessing operations "
+                "EEG epochs have already been created. Preprocessing operations "
                 "cannot be changed at this stage."
             )
         self.locked_state_detail.setText(detail)
@@ -616,6 +850,9 @@ class PreviewWidget(QWidget):
         )
         for control in controls:
             control.setEnabled(enabled)
+        self._preview_state = state
+        self.signal_legend.setVisible(state == "loaded")
+        self._refresh_event_legend_visibility()
         target = {
             "loaded": self.plot_content,
             "empty": self.empty_state,
@@ -653,23 +890,140 @@ class PreviewWidget(QWidget):
         """Hide reusable event markers without removing their Qt graphics items."""
         for marker in getattr(self, "time_event_markers", []):
             marker.hide()
+        for region in getattr(self, "time_excluded_regions", []):
+            region.hide()
+        self.event_legend_text.clear()
+        self.event_legend.setToolTip("")
+        self.excluded_legend_text.clear()
+        self.excluded_legend.setToolTip("")
+        self.event_legend.hide()
+        self.excluded_legend.hide()
 
-    def show_time_event_markers(self, events: list[tuple[float, str]]) -> None:
+    def show_time_event_markers(
+        self,
+        events: list[tuple[float, str] | tuple[float, str, float]],
+    ) -> None:
         """Show visible EEG event markers using a bounded reusable item pool."""
-        visible_events = events[: self.MAX_EVENT_MARKERS]
+        visible_events = [
+            self._event_marker_parts(event)
+            for event in events[: self.MAX_EVENT_MARKERS]
+        ]
         self._ensure_time_event_marker_pool(len(visible_events))
+        excluded_region_count = sum(
+            1
+            for _onset, description, duration in visible_events
+            if self._is_excluded_annotation(description) and duration > 0
+        )
+        self._ensure_time_excluded_region_pool(excluded_region_count)
         self.clear_time_event_markers()
 
-        for marker, (onset, description) in zip(
+        next_region = 0
+        for marker, (onset, description, duration) in zip(
             self.time_event_markers,
             visible_events,
             strict=False,
         ):
+            excluded = self._is_excluded_annotation(description)
             marker.setPos(onset)
-            label = getattr(marker, "label", None)
-            if label is not None:
-                label.setFormat(str(description))
+            marker.setPen(
+                pg.mkPen(
+                    color=(
+                        Theme.ACCENT_ERROR
+                        if excluded
+                        else (Theme.ACCENT_SUCCESS + "80")
+                    ),
+                    width=1,
+                    style=(Qt.PenStyle.DashLine if excluded else Qt.PenStyle.SolidLine),
+                )
+            )
+            marker.setToolTip(self._event_tooltip(description, duration))
             marker.show()
+            if excluded and duration > 0:
+                region = self.time_excluded_regions[next_region]
+                next_region += 1
+                region.setRegion((onset, onset + duration))
+                region.setToolTip(self._event_tooltip(description, duration))
+                region.show()
+        self._show_event_legend(visible_events)
+
+    def _show_event_legend(
+        self,
+        events: list[tuple[float, str, float]],
+    ) -> None:
+        event_descriptions = list(
+            dict.fromkeys(
+                str(description).strip()
+                for _onset, description, _duration in events
+                if not self._is_excluded_annotation(description)
+                if str(description).strip()
+            )
+        )
+        if not event_descriptions:
+            self.event_legend_text.clear()
+            self.event_legend.setToolTip("")
+            self.event_legend.hide()
+        else:
+            self.event_legend_text.setText(
+                f"EEG events: {len(event_descriptions)} "
+                f"{'type' if len(event_descriptions) == 1 else 'types'}"
+            )
+            self.event_legend.setToolTip(", ".join(event_descriptions))
+
+        excluded_events = [
+            (description, duration)
+            for _onset, description, duration in events
+            if self._is_excluded_annotation(description)
+        ]
+        if not excluded_events:
+            self.excluded_legend_text.clear()
+            self.excluded_legend.setToolTip("")
+            self.excluded_legend.hide()
+        else:
+            count = len(excluded_events)
+            self.excluded_legend_text.setText(
+                f"Excluded: {count} {'segment' if count == 1 else 'segments'}"
+            )
+            self.excluded_legend.setToolTip(
+                ", ".join(
+                    self._event_tooltip(description, duration)
+                    for description, duration in excluded_events
+                )
+            )
+        self._refresh_event_legend_visibility()
+
+    def _refresh_event_legend_visibility(self) -> None:
+        """Show time-only legend details only in an active time-domain preview."""
+        if not hasattr(self, "event_legend"):
+            return
+        time_preview_active = (
+            getattr(self, "_preview_state", "empty") == "loaded"
+            and self.plot_tabs.currentIndex() == 0
+        )
+        self.event_legend.setVisible(
+            time_preview_active and bool(self.event_legend_text.text().strip())
+        )
+        self.excluded_legend.setVisible(
+            time_preview_active and bool(self.excluded_legend_text.text().strip())
+        )
+
+    @staticmethod
+    def _event_marker_parts(
+        event: tuple[float, str] | tuple[float, str, float],
+    ) -> tuple[float, str, float]:
+        onset = float(event[0])
+        description = str(event[1])
+        duration = max(float(event[2]), 0.0) if len(event) > 2 else 0.0
+        return onset, description, duration
+
+    @staticmethod
+    def _is_excluded_annotation(description: str) -> bool:
+        """Follow MNE's explicit BAD-prefix exclusion convention."""
+        return str(description).strip().casefold().startswith("bad")
+
+    @staticmethod
+    def _event_tooltip(description: str, duration: float) -> str:
+        detail = str(description).strip()
+        return f"{detail} ({duration:g} s)" if duration > 0 else detail
 
     def _ensure_time_event_marker_pool(self, count: int) -> None:
         while len(self.time_event_markers) < count:
@@ -678,15 +1032,21 @@ class PreviewWidget(QWidget):
                 angle=90,
                 movable=False,
                 pen=pg.mkPen(color=(Theme.ACCENT_SUCCESS + "80"), width=1),
-                label="",
-                labelOpts={
-                    "position": 0.98,
-                    "color": Theme.TEXT_PRIMARY,
-                    "fill": (20, 20, 20, 200),
-                    "anchor": (0, 0),
-                },
             )
             marker.setZValue(500)
             marker.hide()
             self.plot_time.addItem(marker)
             self.time_event_markers.append(marker)
+
+    def _ensure_time_excluded_region_pool(self, count: int) -> None:
+        while len(self.time_excluded_regions) < count:
+            region = pg.LinearRegionItem(
+                values=(0.0, 0.0),
+                movable=False,
+                brush=pg.mkBrush(255, 85, 85, 36),
+                pen=pg.mkPen(Theme.ACCENT_ERROR, width=1),
+            )
+            region.setZValue(400)
+            region.hide()
+            self.plot_time.addItem(region)
+            self.time_excluded_regions.append(region)

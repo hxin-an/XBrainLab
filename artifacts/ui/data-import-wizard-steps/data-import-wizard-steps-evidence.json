@@ -1,8 +1,8 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "artifact_type": "xbrainlab.data_import_wizard_steps",
   "generator": "scripts/dev/capture_data_import_wizard_steps.py",
-  "generated_at_utc": "2026-07-21T02:55:32.360619+00:00",
+  "generated_at_utc": "2026-08-01T09:58:46.168910+00:00",
   "capture_environment": {
     "qt_platform": "xcb",
     "capture_kind": "xcb_native_window",
@@ -19,7 +19,7 @@
       "04-match-labels-conversion-fallback.png",
       "04-match-labels-conversion-table-format-dialog.png",
       "04-match-labels-final-loaded-label-files.png",
-      "04-match-labels-internal-suggested-events-full.png",
+      "04-match-labels-internal-advanced-760px.png",
       "05-review-and-import-report.png",
       "05-review-and-import.png"
     ],
@@ -33,30 +33,30 @@
       "04-match-labels-conversion-fallback.png",
       "04-match-labels-conversion-table-format-dialog.png",
       "04-match-labels-final-loaded-label-files.png",
-      "04-match-labels-internal-suggested-events-full.png",
+      "04-match-labels-internal-advanced-760px.png",
       "05-review-and-import-report.png",
       "05-review-and-import.png"
     ],
     "complete": true
   },
   "capture_session": {
-    "started_at_utc": "2026-07-21T02:49:18.799368+00:00",
-    "completed_at_utc": "2026-07-21T02:55:32.360619+00:00",
-    "source_digest_at_start": "ac6b38f696a88694fed0c9474d973b97d4d67c6d26ce0a6b1bc800621a8faad8",
-    "source_digest_at_completion": "ac6b38f696a88694fed0c9474d973b97d4d67c6d26ce0a6b1bc800621a8faad8",
+    "started_at_utc": "2026-08-01T09:48:29.351799+00:00",
+    "completed_at_utc": "2026-08-01T09:58:46.168910+00:00",
+    "source_digest_at_start": "43d99dc1fe6916db9c4685f0c3bc628ec858ea5e23d1092a54b2523afb9b55ed",
+    "source_digest_at_completion": "43d99dc1fe6916db9c4685f0c3bc628ec858ea5e23d1092a54b2523afb9b55ed",
     "source_identity_stable": true,
-    "session_id": "20260721T024926Z-8b93180a"
+    "session_id": "20260801T094843Z-918c7a3c"
   },
   "source_identity": {
     "version": 2,
-    "repo_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab",
-    "branch": "ux/gui-review-preprocess-polish",
-    "commit_sha": "2df053d291f5dc584b7ef197215c9f061b56dd85",
-    "head_tree_sha": "87469ae0eec521cbd856ac6fd520165b4f626ed0",
-    "dirty": false,
-    "dirty_digest": "d954db2b63d8c8ef9985d3f9ff3f614eace6f47e63bdad12d77e3b176775b72e",
-    "source_content_digest": "2d7cde343f8b134da77f5af1353db90153b448f4a0d4a8d7af03b272f30a8647",
-    "untracked_source_count": 0,
+    "repo_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1",
+    "branch": "stabilize/product-quality-closure",
+    "commit_sha": "c3eac62f68b6ac2308651d3c89cd01b6dc410f51",
+    "head_tree_sha": "8382589535b78cf988ee9467cd233a1f25957a7d",
+    "dirty": true,
+    "dirty_digest": "965b34d4992b1f420171b919dd2891fa54ccf1495261f9e34968c61648a21643",
+    "source_content_digest": "8ad8fd51e588e6f849625a8002cb37d02fb4403e523221914dab7f2995a363c7",
+    "untracked_source_count": 67,
     "excluded_generated_prefixes": [
       "artifacts/",
       ".pytest_cache/",
@@ -93,7 +93,7 @@
       "Makefile"
     ],
     "error": "",
-    "source_digest": "ac6b38f696a88694fed0c9474d973b97d4d67c6d26ce0a6b1bc800621a8faad8"
+    "source_digest": "43d99dc1fe6916db9c4685f0c3bc628ec858ea5e23d1092a54b2523afb9b55ed"
   },
   "screenshots": {
     "01-choose-eeg-data-760px.png": {
@@ -165,8 +165,8 @@
       "path": "04-match-labels-bids-events.png",
       "exists": true,
       "readable": true,
-      "byte_size": 128276,
-      "sha256": "84d37b05b96aafd98c65b0da175a99544103b941605684c069aec8d0e45b3021",
+      "byte_size": 126288,
+      "sha256": "b42bcbfa102883a399d578e280338c855b76dad9cf0fa0c50dcb49c689585c88",
       "dimensions": [
         1220,
         1320
@@ -178,8 +178,8 @@
       "path": "04-match-labels-conversion-fallback.png",
       "exists": true,
       "readable": true,
-      "byte_size": 64154,
-      "sha256": "e93b3067b2c5c24047ceb5c70d29cf59e512554c5a5652511d431a503d9a7907",
+      "byte_size": 65970,
+      "sha256": "d7c72059b3e302fde122cba949d7ab50796252ee9c7f044abc2d6b54bdc7bfb7",
       "dimensions": [
         1220,
         1320
@@ -204,8 +204,8 @@
       "path": "04-match-labels-final-loaded-label-files.png",
       "exists": true,
       "readable": true,
-      "byte_size": 140803,
-      "sha256": "178213e8c3962a9f281f8814870460f834e9a1f56ce44c22bc1993d36a6cf164",
+      "byte_size": 131110,
+      "sha256": "f5102bfdfd361be45d9f3c74a815a02dcf16b6e2af071f4312b6bf63d545d99b",
       "dimensions": [
         1220,
         1320
@@ -213,15 +213,15 @@
       "format": "PNG",
       "error": ""
     },
-    "04-match-labels-internal-suggested-events-full.png": {
-      "path": "04-match-labels-internal-suggested-events-full.png",
+    "04-match-labels-internal-advanced-760px.png": {
+      "path": "04-match-labels-internal-advanced-760px.png",
       "exists": true,
       "readable": true,
-      "byte_size": 113920,
-      "sha256": "f8e49c8884aa004bd5a999bbf69a81dfc9688888de77ac2e5d7f58e4acb6bcd1",
+      "byte_size": 121680,
+      "sha256": "7db2eeb58813fef54ff513cb2b1cc64bdc6d309375ddaf949aef2be3adf9b056",
       "dimensions": [
-        1220,
-        1320
+        760,
+        900
       ],
       "format": "PNG",
       "error": ""
@@ -243,11 +243,11 @@
       "path": "05-review-and-import.png",
       "exists": true,
       "readable": true,
-      "byte_size": 74342,
-      "sha256": "e94990c3595f0cc16f3e2e0ff2741e798e1cfef8161e4d2b59d7ba1e83c4de14",
+      "byte_size": 73704,
+      "sha256": "6e4cd622924126010bca5338c8f1d0891b42142925681ad7c7ea0da0d4dde602",
       "dimensions": [
         1220,
-        632
+        530
       ],
       "format": "PNG",
       "error": ""

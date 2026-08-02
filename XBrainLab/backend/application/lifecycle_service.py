@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.services.dataset_state_service import DatasetLifecyclePort
 
 from .commands import (
     Command,
@@ -26,7 +26,7 @@ class LifecycleCommandService:
         self,
         *,
         study: Any,
-        dataset: Any,
+        dataset: DatasetLifecyclePort,
         preprocess: Any,
         training: Any,
         training_commands: Any,
@@ -52,19 +52,13 @@ class LifecycleCommandService:
         training_boundary = self._pipeline_transaction.begin_downstream_replacement()
         snapshot = self._pipeline_transaction.capture()
         try:
-            self.study.reset_preprocess(force_update=True)
+            self.dataset.reset_preprocess()
             trainer_retired = self._pipeline_transaction.commit_pipeline_invalidation(
                 training_boundary,
             )
         except Exception:
             self._pipeline_transaction.restore(snapshot)
             raise
-        try:
-            self.preprocess.notify("preprocess_changed")
-            self.dataset.notify("data_changed")
-            self.dataset.notify("dataset_locked", False)
-        except Exception:
-            logger.debug("Preprocess reset notification failed", exc_info=True)
         return (
             "Preprocessing reset to loaded raw data.",
             {

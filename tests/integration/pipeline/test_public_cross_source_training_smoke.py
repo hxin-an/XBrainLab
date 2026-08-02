@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TypedDict
-from unittest.mock import patch
 
 import pytest
 
@@ -23,7 +22,8 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     TrainCommand,
 )
-from XBrainLab.backend.training.record import RecordKey
+from XBrainLab.backend.training.record import EvalRecord, RecordKey
+from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DATA_DIR = ROOT / "fixtures" / "data" / "public"
@@ -78,6 +78,28 @@ PUBLIC_EPOCH_ONLY_FIXTURES: tuple[PublicTrainingFixture, ...] = (
         "split_ratio": 0.0,
     },
 )
+
+
+def _assert_real_training_artifacts(output_root: Path) -> None:
+    """Prove that one public-source run persisted reloadable safe artifacts."""
+    record_manifests = list(output_root.rglob("record"))
+    assert len(record_manifests) == 1
+    artifact_dir = record_manifests[0].parent
+    persisted_names = {path.name for path in artifact_dir.iterdir() if path.is_file()}
+    assert {"record", "record.npz", "eval", "eval.npz"} <= persisted_names
+    checkpoint_paths = [
+        path
+        for path in artifact_dir.iterdir()
+        if path.is_file() and path.name.startswith("Epoch-1-model")
+    ]
+    assert len(checkpoint_paths) == 1
+    reloaded_state_dict = load_model_state_dict(checkpoint_paths[0])
+    assert reloaded_state_dict
+
+    reloaded_evaluation = EvalRecord.load(str(artifact_dir))
+    assert reloaded_evaluation is not None
+    assert len(reloaded_evaluation.label) > 0
+    assert len(reloaded_evaluation.output) == len(reloaded_evaluation.label)
 
 
 def _build_public_training_service(
@@ -175,10 +197,11 @@ def test_public_cross_source_training_smoke(
     )
 
     assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
+    output_root = tmp_path / "test-public-output"
     assert (
         service.execute(
             ConfigureTrainingCommand(
-                output_dir=str(tmp_path / "test-public-output"),
+                output_dir=str(output_root),
                 device="cpu",
                 epoch=1,
                 batch_size=8,
@@ -191,28 +214,23 @@ def test_public_cross_source_training_smoke(
     )
     assert service.get_capabilities().get(CommandName.TRAIN).available is True
 
-    with (
-        patch("matplotlib.pyplot.savefig"),
-        patch("torch.save"),
-        patch("numpy.savetxt"),
-        patch("os.makedirs"),
-    ):
-        train_result = service.execute(
-            TrainCommand(confirmed=True, interactive=False),
-        )
+    train_result = service.execute(
+        TrainCommand(confirmed=True, interactive=False),
+    )
 
     assert train_result.ok is True
     assert train_result.state.training.plan_count == 1
     assert train_result.state.training.run_count == 1
     assert train_result.state.training.finished_run_count == 1
     history = service.execute(
-        QueryStateCommand(query="training_history", include_objects=True),
+        QueryStateCommand(query="training_history"),
     )
     assert history.ok is True
     assert history.diagnostics["row_count"] == 1
-    record = history.runtime["rows"][0]["record"]
-    assert RecordKey.LOSS in record.train
-    assert RecordKey.ACC in record.train
+    train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
+    assert RecordKey.LOSS in train_metrics
+    assert RecordKey.ACC in train_metrics
+    _assert_real_training_artifacts(output_root)
 
 
 @pytest.mark.parametrize("fixture", PUBLIC_EPOCH_ONLY_FIXTURES, ids=lambda f: f["name"])

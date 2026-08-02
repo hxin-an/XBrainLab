@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import XBrainLab.llm.core.config as config_module
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import (
     MIN_MODEL_WEIGHT_BYTES,
@@ -70,6 +71,51 @@ class TestDefaults:
     def test_default_max_new_tokens(self):
         cfg = LLMConfig()
         assert cfg.max_new_tokens > 0
+
+    def test_default_model_cache_is_per_user_in_frozen_package_context(
+        self,
+        tmp_path,
+    ):
+        xdg_data_home = tmp_path / "user-data"
+        frozen_config = tmp_path / "read-only-bundle" / "XBrainLab" / "config.py"
+
+        with (
+            patch.dict(
+                os.environ,
+                {"XDG_DATA_HOME": str(xdg_data_home)},
+                clear=True,
+            ),
+            patch.object(config_module, "__file__", str(frozen_config)),
+        ):
+            cfg = LLMConfig(device="cpu")
+
+        assert cfg.cache_dir == str(xdg_data_home / "xbrainlab" / "models")
+        assert not Path(cfg.cache_dir).is_relative_to(frozen_config.parent)
+
+    def test_model_cache_environment_override_has_priority(self, tmp_path):
+        override = tmp_path / "model-cache"
+
+        with patch.dict(
+            os.environ,
+            {"XBRAINLAB_MODEL_CACHE_DIR": str(override)},
+            clear=False,
+        ):
+            cfg = LLMConfig(device="cpu")
+
+        assert cfg.cache_dir == str(override)
+
+    def test_explicit_model_cache_path_is_preserved_over_environment(self, tmp_path):
+        explicit = tmp_path / "explicit-model-cache"
+        environment = tmp_path / "environment-model-cache"
+
+        with patch.dict(
+            os.environ,
+            {"XBRAINLAB_MODEL_CACHE_DIR": str(environment)},
+            clear=False,
+        ):
+            cfg = LLMConfig(cache_dir=str(explicit), device="cpu")
+
+        assert cfg.cache_dir == str(explicit)
 
 
 class TestToDict:
@@ -338,12 +384,43 @@ class TestPerUserSettingsBoundary:
         assert user_path.is_file()
         assert not missing_legacy_path.exists()
 
+    def test_first_run_uses_model_cache_override_without_persisting_it(
+        self,
+        tmp_path,
+    ):
+        user_path = tmp_path / "user" / "settings.json"
+        missing_legacy_path = tmp_path / "repo" / "settings.json"
+        model_cache = tmp_path / "model-cache"
+
+        with (
+            patch.dict(
+                os.environ,
+                {"XBRAINLAB_MODEL_CACHE_DIR": str(model_cache)},
+                clear=False,
+            ),
+            patch.object(
+                LLMConfig,
+                "_default_settings_path",
+                return_value=str(user_path),
+            ),
+            patch.object(
+                LLMConfig,
+                "_legacy_settings_path",
+                return_value=str(missing_legacy_path),
+            ),
+        ):
+            loaded = LLMConfig.load_from_file()
+
+        assert loaded is not None
+        assert loaded.cache_dir == str(model_cache)
+        assert "cache_dir" not in user_path.read_text(encoding="utf-8")
+        assert not missing_legacy_path.exists()
+
     def test_valid_legacy_file_migrates_once_without_modifying_source(
         self,
         tmp_path,
-        caplog,
+        capture_product_logs,
     ):
-        caplog.set_level(logging.INFO)
         user_path = tmp_path / "user" / "settings.json"
         legacy_path = tmp_path / "repo" / "settings.json"
         legacy_path.parent.mkdir(parents=True)
@@ -355,6 +432,7 @@ class TestPerUserSettingsBoundary:
         original_legacy = legacy_path.read_bytes()
 
         with (
+            capture_product_logs(logging.INFO) as captured,
             patch.object(
                 LLMConfig,
                 "_default_settings_path",
@@ -379,7 +457,7 @@ class TestPerUserSettingsBoundary:
         assert first.model_name == legacy_model
         assert second.model_name == legacy_model
         assert user_path.is_file()
-        assert "Migrated local LLM settings" in caplog.text
+        assert "Migrated local LLM settings" in captured.text
 
     def test_existing_malformed_user_file_never_falls_back_to_legacy(self, tmp_path):
         user_path = tmp_path / "user" / "settings.json"
@@ -412,7 +490,7 @@ class TestPerUserSettingsBoundary:
     def test_failed_migration_write_does_not_use_legacy_as_runtime_config(
         self,
         tmp_path,
-        caplog,
+        capture_product_logs,
     ):
         user_path = tmp_path / "user" / "settings.json"
         legacy_path = tmp_path / "repo" / "settings.json"
@@ -423,6 +501,7 @@ class TestPerUserSettingsBoundary:
         )
 
         with (
+            capture_product_logs(logging.INFO) as captured,
             patch.object(
                 LLMConfig,
                 "_default_settings_path",
@@ -440,7 +519,7 @@ class TestPerUserSettingsBoundary:
         assert loaded is not None
         assert loaded.model_name == LLMConfig.default_local_model_id()
         assert loaded.model_name != "legacy/not-persisted"
-        assert "could not be persisted" in caplog.text
+        assert "could not be persisted" in captured.text
 
 
 class TestLocalRuntimeReadiness:

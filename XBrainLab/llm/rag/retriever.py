@@ -120,18 +120,12 @@ class RAGRetriever:
             local_embeddings = self._create_embeddings()
             local_client = self._create_client()
 
-            if not self._collection_exists(local_client):
-                logger.info("RAG collection not found, auto-initializing...")
-                local_vectorstore = self._auto_initialize(
-                    client=local_client,
-                    embeddings=local_embeddings,
-                    publish=False,
-                )
-
-            local_vectorstore = local_vectorstore or self._create_vectorstore(
+            local_vectorstore = self._auto_initialize(
                 local_client,
                 local_embeddings,
+                publish=False,
             )
+            self._require_verified_vectorstore(local_vectorstore)
             local_bm25_index = self._build_bm25_index(publish=False)
 
         except Exception as e:
@@ -162,6 +156,11 @@ class RAGRetriever:
             "RAGRetriever initialized (hybrid_alpha=%.2f).",
             self.hybrid_alpha,
         )
+
+    @staticmethod
+    def _require_verified_vectorstore(vectorstore: Qdrant | None) -> None:
+        if vectorstore is None:
+            raise RuntimeError("The local RAG index could not be verified.")
 
     def _begin_initialize(self) -> bool:
         """Reserve the single initializer slot unless closed or ready."""
@@ -249,12 +248,10 @@ class RAGRetriever:
         Looks for the gold-set file at ``rag/data/gold_set.json`` and
         delegates indexing to ``RAGIndexer``.
         """
-        from pathlib import Path
-
         from .indexer import RAGIndexer
 
-        gold_set_path = Path(__file__).parent / "data" / "gold_set.json"
-        if not gold_set_path.exists():
+        gold_set_path = RAGConfig.get_gold_set_path()
+        if not RAGConfig.gold_set_integrity_ok():
             logger.warning("Gold set not found: %s", gold_set_path)
             return None
 
@@ -421,23 +418,26 @@ class RAGRetriever:
 
             # ── 2. Build candidate pool with dense scores ──
             # Normalize dense scores to [0,1] via min-max
-            raw_scores = [p.score for p in search_result]
-            s_min, s_max = min(raw_scores), max(raw_scores)
-            s_range = s_max - s_min if s_max > s_min else 1.0
+            semantically_admitted = [
+                point
+                for point in search_result
+                if float(point.score) >= RAGConfig.SIMILARITY_THRESHOLD
+            ]
+            if not semantically_admitted:
+                return ""
 
             candidates: dict[str, dict] = {}
-            for p in search_result:
+            for p in semantically_admitted:
                 payload = p.payload or {}
                 content = payload.get("page_content", "") or payload.get(
                     "input",
                     "",
                 )
                 doc_id = str(p.id)
-                norm_dense = (p.score - s_min) / s_range
                 candidates[doc_id] = {
                     "content": content,
                     "metadata": payload.get("metadata", {}),
-                    "dense_score": norm_dense,
+                    "dense_score": float(p.score),
                     "bm25_score": 0.0,
                 }
             candidates = {
@@ -456,23 +456,15 @@ class RAGRetriever:
                     return ""
                 if bm25_results:
                     bm25_max = bm25_results[0][0]  # already sorted desc
-                    for score, bm_id, bm_text, bm_meta in bm25_results:
+                    for score, _bm_id, bm_text, _bm_meta in bm25_results:
                         norm_bm25 = score / bm25_max if bm25_max > 0 else 0.0
                         # Try to match to dense candidate by content
-                        matched = False
                         for cval in candidates.values():
                             if cval["content"] == bm_text:
                                 cval["bm25_score"] = norm_bm25
-                                matched = True
                                 break
-                        if not matched:
-                            # BM25-only candidate
-                            candidates[f"bm25_{bm_id}"] = {
-                                "content": bm_text,
-                                "metadata": bm_meta,
-                                "dense_score": 0.0,
-                                "bm25_score": norm_bm25,
-                            }
+                        # BM25 may rerank semantically admitted candidates, but
+                        # it cannot admit a tool example on keyword overlap alone.
 
             # ── 4. Hybrid interpolation ──
             alpha = lease.hybrid_alpha

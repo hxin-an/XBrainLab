@@ -6,6 +6,7 @@ device, output directory, evaluation strategy, and repeat count.
 
 from typing import Any
 
+from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
@@ -33,6 +34,10 @@ from XBrainLab.backend.training.utils import (
 from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     run_controller_compatibility_call,
+)
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
@@ -70,7 +75,7 @@ class TrainingSettingDialog(BaseDialog):
     def __init__(self, parent, controller, initial_option: Any | None = None):
         # self.controller is handled by BaseDialog
 
-        self.training_option = None
+        self.training_option: TrainingOption | None = None
         self.initial_option = initial_option
         self.output_dir = "./output"
         self.optim_classes = get_optimizer_classes()
@@ -79,31 +84,77 @@ class TrainingSettingDialog(BaseDialog):
         self.use_cpu, self.gpu_idx = self._default_device()
 
         # UI Elements (Init them to None)
-        self.epoch_entry = None
-        self.bs_entry = None
-        self.lr_entry = None
-        self.checkpoint_entry = None
-        self.repeat_entry = None
-        self.opt_label = None
-        self.dev_label = None
-        self.output_dir_label = None
-        self.evaluation_combo = None
+        self.epoch_entry: QLineEdit | None = None
+        self.bs_entry: QLineEdit | None = None
+        self.lr_entry: QLineEdit | None = None
+        self.checkpoint_entry: QLineEdit | None = None
+        self.repeat_entry: QLineEdit | None = None
+        self.opt_label: QLabel | None = None
+        self.dev_label: QLabel | None = None
+        self.output_dir_label: QLabel | None = None
+        self.evaluation_combo: QComboBox | None = None
 
         super().__init__(parent, title="Training Setting", controller=controller)
-        self.resize(520, 390)
-        self.setMinimumWidth(520)
-        self.setMaximumHeight(430)
         self.setStyleSheet(dark_dialog_stylesheet())
+        self._fit_dialog_to_content()
 
         # Set default values in UI
         if self.optim and self.opt_label:
-            self.opt_label.setText(parse_optim_name(self.optim, self.optim_params))
+            self.opt_label.setText(
+                self._optimizer_summary(self.optim, self.optim_params)
+            )
         if self.dev_label:
             self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
         if self.output_dir_label:
             self.output_dir_label.setText(self.output_dir)
 
         self.load_settings()
+
+    def changeEvent(self, event: QEvent | None) -> None:  # noqa: N802
+        """Keep the form readable after application font or DPI changes."""
+        super().changeEvent(event)
+        if event is not None and event.type() in {
+            QEvent.Type.FontChange,
+            QEvent.Type.ApplicationFontChange,
+        }:
+            self._fit_dialog_to_content()
+
+    def _fit_dialog_to_content(self) -> None:
+        """Keep form labels readable without overlapping adjacent controls."""
+        labels = self.findChildren(QLabel, "TrainingSettingLabel")
+        label_text_width = max(
+            (label.fontMetrics().horizontalAdvance(label.text()) for label in labels),
+            default=128,
+        )
+        label_column_width = min(max(label_text_width + 12, 160), 240)
+        for label in labels:
+            label.setWordWrap(True)
+            label.setMinimumWidth(label_column_width)
+            label.setMaximumWidth(label_column_width)
+            label.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Preferred,
+            )
+            label.setMinimumHeight(
+                max(
+                    label.fontMetrics().height(),
+                    label.heightForWidth(label_column_width),
+                )
+            )
+        form_layout = getattr(self, "form_layout", None)
+        if form_layout is not None:
+            form_layout.setColumnMinimumWidth(0, label_column_width)
+            form_layout.setColumnMinimumWidth(1, 240)
+        target_width = max(
+            520,
+            36 + label_column_width + 12 + 240 + 12 + 72,
+        )
+        layout = self.layout()
+        if layout is not None:
+            layout.activate()
+        target_height = max(390, self.sizeHint().height())
+        self.setMinimumSize(target_width, target_height)
+        self.resize(max(self.width(), target_width), max(self.height(), target_height))
 
     def load_settings(self):
         """Load settings from a snapshot or controller compatibility."""
@@ -128,8 +179,10 @@ class TrainingSettingDialog(BaseDialog):
             # Restore optimizer
             self.optim = opt.optim
             self.optim_params = opt.optim_params
-            if self.optim and self.optim_params and self.opt_label:
-                self.opt_label.setText(parse_optim_name(self.optim, self.optim_params))
+            if self.optim and self.opt_label:
+                self.opt_label.setText(
+                    self._optimizer_summary(self.optim, self.optim_params)
+                )
 
             # Restore device
             self.use_cpu = opt.use_cpu
@@ -184,7 +237,9 @@ class TrainingSettingDialog(BaseDialog):
             )
             self.optim_params = dict(option.get("optimizer_params", {}) or {})
             if self.optim and self.opt_label:
-                self.opt_label.setText(parse_optim_name(self.optim, self.optim_params))
+                self.opt_label.setText(
+                    self._optimizer_summary(self.optim, self.optim_params)
+                )
 
         device = str(option.get("device") or "")
         if device:
@@ -216,6 +271,12 @@ class TrainingSettingDialog(BaseDialog):
             return 0
 
     @staticmethod
+    def _optimizer_summary(optim: Any, optim_params: dict[str, Any]) -> str:
+        if not optim_params:
+            return str(getattr(optim, "__name__", optim))
+        return parse_optim_name(optim, optim_params)
+
+    @staticmethod
     def _default_device() -> tuple[bool, int | None]:
         try:
             count = get_device_count()
@@ -236,10 +297,12 @@ class TrainingSettingDialog(BaseDialog):
         form_layout.setVerticalSpacing(9)
         form_layout.setColumnMinimumWidth(0, 128)
         form_layout.setColumnStretch(1, 1)
+        self.form_layout = form_layout
 
         def add_simple_row(row: int, label: str, widget) -> None:
             lbl = QLabel(label)
             lbl.setObjectName("TrainingSettingLabel")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             form_layout.addWidget(lbl, row, 0)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             form_layout.addWidget(widget, row, 1)
@@ -252,6 +315,7 @@ class TrainingSettingDialog(BaseDialog):
         ) -> None:
             lbl = QLabel(label)
             lbl.setObjectName("TrainingSettingLabel")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             value_label.setObjectName("TrainingSettingValue")
             value_label.setMinimumHeight(28)
             value_label.setSizePolicy(
@@ -267,7 +331,7 @@ class TrainingSettingDialog(BaseDialog):
 
         # Entries with default values for easier testing
         self.epoch_entry = QLineEdit("10")
-        add_simple_row(0, "Epoch", self.epoch_entry)
+        add_simple_row(0, "Training epochs", self.epoch_entry)
 
         self.bs_entry = QLineEdit("32")
         add_simple_row(1, "Batch size", self.bs_entry)
@@ -297,7 +361,11 @@ class TrainingSettingDialog(BaseDialog):
         add_set_row(5, "Output directory", self.output_dir_label, self.out_btn)
 
         self.checkpoint_entry = QLineEdit("0")
-        add_simple_row(6, "Checkpoint epoch", self.checkpoint_entry)
+        add_simple_row(
+            6,
+            "Checkpoint interval (training epochs)",
+            self.checkpoint_entry,
+        )
 
         # Evaluation
         self.evaluation_combo = QComboBox()
@@ -330,9 +398,11 @@ class TrainingSettingDialog(BaseDialog):
             optim, optim_params = setter.get_result()
             if optim:  # Params can be empty
                 self.optim = optim
-                self.optim_params = optim_params
+                self.optim_params = dict(optim_params or {})
                 if self.opt_label:
-                    self.opt_label.setText(parse_optim_name(optim, optim_params))
+                    self.opt_label.setText(
+                        self._optimizer_summary(optim, self.optim_params)
+                    )
 
     def set_device(self):
         """Open the device setting dialog and apply the result."""
@@ -382,13 +452,16 @@ class TrainingSettingDialog(BaseDialog):
                 lr = float(self.lr_entry.text())
             except ValueError as e:
                 msg = (
-                    "Epoch, Batch Size, Checkpoint, Repeat must be Integers.\n"
+                    "Training epochs, Batch Size, Checkpoint, Repeat must be "
+                    "integers.\n"
                     "Learning Rate must be Float."
                 )
                 raise ValueError(msg) from e
 
             if epoch <= 0 or bs <= 0:
-                self._raise_value_error("Epoch and Batch Size must be positive.")
+                self._raise_value_error(
+                    "Training epochs and Batch Size must be positive."
+                )
 
             self.training_option = TrainingOption(
                 self.output_dir,
@@ -404,8 +477,17 @@ class TrainingSettingDialog(BaseDialog):
                 repeat,
             )
             super().accept()
-        except Exception as e:
-            QMessageBox.warning(self, "Validation Error", str(e))
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Review the numeric training values and configuration, then try again.",
+            )
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_SETTINGS,
+            )
 
     def _raise_value_error(self, msg: str):
         """Raise a ValueError with the given message.

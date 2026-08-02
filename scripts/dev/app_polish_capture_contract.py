@@ -544,7 +544,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             return False, f"Epoch surface contract kind is invalid: {filename}."
         if contract.get("scenario") != epoch_scenarios[filename]:
             return False, f"Epoch scenario identity is invalid: {filename}."
-        if contract.get("primary_action") != "Create Epochs":
+        if contract.get("primary_action") != "Create EEG Epochs":
             return False, f"Epoch primary action is missing: {filename}."
         if contract.get("cancel_action") != "Cancel":
             return False, f"Epoch cancel action is missing: {filename}."
@@ -552,7 +552,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             return False, f"Epoch event selection is empty: {filename}."
         required_controls = {
             "preprocess-epoching-internal-events-dialog.png": (
-                "Create Epochs",
+                "Create EEG Epochs",
                 "Suggested from import",
                 "labels inside EEG files",
                 "Events inside EEG files",
@@ -562,7 +562,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 "Cancel",
             ),
             "preprocess-epoching-bids-interval-duration-dialog.png": (
-                "Create Epochs",
+                "Create EEG Epochs",
                 "BIDS events from import",
                 "BIDS events confirmed in Match Labels.",
                 "Label interval",
@@ -624,7 +624,13 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 and start_enabled
                 and not stop_enabled
             )
-        if not coherent or contract.get("key_columns_fit") is not True:
+        if (
+            not coherent
+            or contract.get("key_columns_fit") is not True
+            or contract.get("all_visible_text_fits") is not True
+            or contract.get("all_columns_visible_without_scroll") is not True
+            or contract.get("horizontal_scroll_maximum") != 0
+        ):
             return (
                 False,
                 f"Training History state contract is inconsistent: {filename}.",
@@ -661,7 +667,12 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 {
                     f"Training History cell row {row}: {column}"
                     for row in (1, 2)
-                    for column in ("Epochs", "Train Loss", "Train Acc", "Val Loss")
+                    for column in (
+                        "Training epochs",
+                        "Train Loss",
+                        "Train Acc",
+                        "Val Loss",
+                    )
                 }
             )
         if not required_cell_names <= set(region_names):

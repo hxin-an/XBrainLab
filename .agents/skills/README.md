@@ -1,6 +1,6 @@
 # XBrainLab Agent Skills
 
-最後更新：`2026-05-11`
+最後更新：`2026-07-30`
 
 這裡放 repo-local reusable skills。
 
@@ -21,10 +21,8 @@ skill 是「可重用能力」，不是長流程。長流程放 `.agents/workflo
   使用者控制、錯誤預防、清楚命令面與一致內容層級。
 - BIDS / MNE-BIDS：EEG/BCI import 要把 folder-level metadata、events、channels、inheritance
   和 mismatch handling 視為資料語意的一部分。
-- MCP specification：stdio、Streamable HTTP、tools/list、tools/call、authorization 有不同
-  transport / security / session 邊界。
 - PyTorch CUDA、Qt thread/QObject、PyInstaller / Qt deployment、GitHub Actions、Apple
-  notarization、OWASP LLM/MCP：用於 resource、release、security 和 thesis evidence skills。
+  notarization、OWASP LLM：用於 resource、release、security 和 thesis evidence skills。
 
 ## Active Skills
 
@@ -37,10 +35,9 @@ skill 是「可重用能力」，不是長流程。長流程放 `.agents/workflo
 | `ui-product-reviewer` | 檢查桌面 UI 是否像使用者產品，而不是 debug panel。 |
 | `docs-site-product-designer` | 重設 MkDocs 文件站資訊架構與視覺層級，讓 docs 像 project portal。 |
 | `data-interpretation-reviewer` | 檢查 EEG/BCI import、label/event、BIDS、recipe 語意是否可信。 |
-| `mcp-adapter-reviewer` | 檢查 MCP stdio/HTTP、session、tools/list、tools/call 是否只是 adapter。 |
 | `release-packaging-reviewer` | 檢查 launcher、packaging、平台驗證、logs、first-run 和 release evidence。 |
 | `performance-resource-reviewer` | 檢查 GPU/VRAM/disk、UI responsiveness、long-running job 和 native optimization。 |
-| `security-privacy-reviewer` | 檢查 local-first、MCP/agent 權限、prompt injection、logs 和資料隱私。 |
+| `security-privacy-reviewer` | 檢查 local-first、agent 權限、prompt injection、logs 和資料隱私。 |
 | `thesis-evidence-reviewer` | 檢查 tool-call benchmark、trajectory scoring、claim boundary 和論文 evidence。 |
 | `software-design-reviewer` | 評估設計是否有 source-of-truth、contract、testability。 |
 | `docs-curator` | 整理文件、判斷 current / target / historical / records。 |
@@ -50,9 +47,20 @@ skill 是「可重用能力」，不是長流程。長流程放 `.agents/workflo
 | `agent-toolcall-designer` | 設計 agent state / tool / verifier / scoring contract。 |
 | `pr-branch-governance` | 套用 branch / PR / dirty worktree / scope ownership / parallel-agent 規則。 |
 
+## Explicit Opt-In Skill
+
+`mcp-adapter-reviewer` 只在使用者明確要求 MCP 時使用。MCP 已退出 active product / thesis
+roadmap；該 skill 的存在只保留歷史 adapter 的專項審查能力，不代表 MCP 是 current
+architecture、handoff gate 或 thesis prerequisite。
+
 ## 使用原則
 
 - skill 只給 agent 操作方法，不取代 canonical docs。
 - skill 不保存 current truth；current truth 回寫 `docs/current.md`、`docs/architecture/`、`docs/validation/README.md` 或 `docs/decisions/README.md`。
 - skill 不應擴張成長篇規格；長流程應移到 workflow。
 - 舊 `xbrainlab-*` skills 已刪除，不要恢復。
+- Current branch、worktree 和 handoff flow 只讀 `AGENTS.md`、`docs/current.md` 與
+  `.agents/workflows/handoff-candidate.md`。Skill 內的 hard-coded branch example 不得用來
+  dispatch current work。
+- `BackendFacade` 已物理移除；skill 不得把它描述成 active wrapper 或 compatibility target。
+- 任何 skill 的 MCP-specific section 都不預設啟用；未收到明確 MCP request 時不要讀取或套用。

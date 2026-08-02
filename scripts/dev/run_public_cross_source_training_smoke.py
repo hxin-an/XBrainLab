@@ -6,12 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import patch
 
 if __package__:
     from scripts.dev.active_checkout import assert_active_checkout_import
@@ -34,7 +34,8 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training.record import RecordKey
+from XBrainLab.backend.training.record import EvalRecord, RecordKey
+from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
 
 PUBLIC_DATA_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
 
@@ -110,6 +111,7 @@ class SmokeResult:
     dataset_count: int
     message: str
     protocol: str = "training"
+    artifacts_reloaded: bool = False
 
 
 def _raise_if_failed(result) -> None:
@@ -120,6 +122,34 @@ def _raise_if_failed(result) -> None:
 def _require_epoch_count(epoch_count: int) -> None:
     if epoch_count <= 0:
         raise RuntimeError("epoch creation produced no usable epochs")
+
+
+def _reload_real_training_artifacts(output_root: Path) -> None:
+    """Require one complete, safely reloadable training artifact directory."""
+    record_manifests = list(output_root.rglob("record"))
+    if len(record_manifests) != 1:
+        raise RuntimeError(
+            "training persistence did not produce exactly one record manifest"
+        )
+    artifact_dir = record_manifests[0].parent
+    persisted_names = {path.name for path in artifact_dir.iterdir() if path.is_file()}
+    required_names = {"record", "record.npz", "eval", "eval.npz"}
+    if not required_names <= persisted_names:
+        raise RuntimeError("training persistence is missing safe record artifacts")
+    checkpoints = [
+        path
+        for path in artifact_dir.iterdir()
+        if path.is_file() and path.name.startswith("Epoch-1-model")
+    ]
+    if len(checkpoints) != 1 or not load_model_state_dict(checkpoints[0]):
+        raise RuntimeError("training checkpoint could not be safely reloaded")
+    evaluation = EvalRecord.load(str(artifact_dir))
+    if (
+        evaluation is None
+        or len(evaluation.label) == 0
+        or len(evaluation.output) != len(evaluation.label)
+    ):
+        raise RuntimeError("evaluation artifact could not be safely reloaded")
 
 
 def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
@@ -148,6 +178,14 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             message=f"load failed: {load_result.message}",
         )
 
+    validation_root = ROOT / "build" / "validation" / "public-cross-source"
+    validation_root.mkdir(parents=True, exist_ok=True)
+    output_root = Path(
+        tempfile.mkdtemp(
+            prefix=f"{fixture['name']}-",
+            dir=validation_root,
+        )
+    )
     try:
         filter_result = service.execute(
             PreprocessCommand(
@@ -199,7 +237,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         _raise_if_failed(configure_model)
         configure_training = service.execute(
             ConfigureTrainingCommand(
-                output_dir="test_public_output",
+                output_dir=str(output_root),
                 device="cpu",
                 epoch=1,
                 batch_size=8,
@@ -220,15 +258,9 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         )
         _raise_if_failed(saliency_result)
 
-        with (
-            patch("matplotlib.pyplot.savefig"),
-            patch("torch.save"),
-            patch("numpy.savetxt"),
-            patch("os.makedirs"),
-        ):
-            train_result = service.execute(
-                TrainCommand(confirmed=True, interactive=False),
-            )
+        train_result = service.execute(
+            TrainCommand(confirmed=True, interactive=False),
+        )
         _raise_if_failed(train_result)
 
         if train_result.state.training.run_count <= 0:
@@ -241,11 +273,11 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
                 message="training produced no trainer",
             )
         history = service.execute(
-            QueryStateCommand(query="training_history", include_objects=True),
+            QueryStateCommand(query="training_history"),
         )
         _raise_if_failed(history)
-        rows = cast(list[dict[str, Any]], history.runtime.get("rows", []))
-        if not rows:
+        rows = history.diagnostics.get("rows")
+        if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
             return SmokeResult(
                 name=str(fixture["name"]),
                 filename=str(fixture["filename"]),
@@ -254,8 +286,11 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
                 dataset_count=dataset_count,
                 message="training history did not include a run record",
             )
-        record = rows[0]["record"]
-        if RecordKey.LOSS not in record.train or RecordKey.ACC not in record.train:
+        metrics = rows[0].get("metrics")
+        train_metrics = metrics.get("train") if isinstance(metrics, dict) else None
+        if not isinstance(train_metrics, dict) or (
+            RecordKey.LOSS not in train_metrics or RecordKey.ACC not in train_metrics
+        ):
             return SmokeResult(
                 name=str(fixture["name"]),
                 filename=str(fixture["filename"]),
@@ -264,6 +299,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
                 dataset_count=dataset_count,
                 message="training record missing loss/acc metrics",
             )
+        _reload_real_training_artifacts(output_root)
 
         return SmokeResult(
             name=str(fixture["name"]),
@@ -271,7 +307,8 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             source_family=str(fixture["source_family"]),
             status="passed",
             dataset_count=dataset_count,
-            message="one-epoch CPU smoke passed",
+            message="one-epoch CPU smoke and safe artifact reload passed",
+            artifacts_reloaded=True,
         )
     except Exception as exc:
         return SmokeResult(
@@ -282,6 +319,9 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             dataset_count=0,
             message=f"{type(exc).__name__}: {exc}",
         )
+    finally:
+        service.close()
+        shutil.rmtree(output_root, ignore_errors=True)
 
 
 def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
@@ -397,12 +437,24 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
         for case_id in REQUIRED_PUBLIC_SMOKE_CASE_IDS
         if case_id in results_by_id and results_by_id[case_id]["status"] == "missing"
     )
+    missing_artifact_reload_case_ids = sorted(
+        case_id
+        for case_id, required_protocol in REQUIRED_PUBLIC_SMOKE_PROTOCOLS.items()
+        if required_protocol == "training"
+        and case_id in results_by_id
+        and results_by_id[case_id]["status"] == "passed"
+        and not results_by_id[case_id].get("artifacts_reloaded", False)
+    )
     passed_required_case_ids = sorted(
         case_id
         for case_id, required_protocol in REQUIRED_PUBLIC_SMOKE_PROTOCOLS.items()
         if case_id in results_by_id
         and results_by_id[case_id]["status"] == "passed"
         and results_by_id[case_id]["protocol"] == required_protocol
+        and (
+            required_protocol != "training"
+            or results_by_id[case_id].get("artifacts_reloaded", False)
+        )
     )
     all_required_passed = (
         len(passed_required_case_ids) == len(REQUIRED_PUBLIC_SMOKE_CASE_IDS)
@@ -410,6 +462,7 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
         and not wrong_protocol_case_ids
         and not failed_required_case_ids
         and not missing_fixture_case_ids
+        and not missing_artifact_reload_case_ids
     )
     return {
         "repo_root": str(repo_root),
@@ -425,6 +478,7 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
             "passed_required_case_ids": passed_required_case_ids,
             "missing_required_case_ids": missing_required_case_ids,
             "missing_fixture_case_ids": missing_fixture_case_ids,
+            "missing_artifact_reload_case_ids": missing_artifact_reload_case_ids,
             "failed_required_case_ids": failed_required_case_ids,
             "wrong_protocol_case_ids": wrong_protocol_case_ids,
             "all_required_passed": all_required_passed,
@@ -442,12 +496,13 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
     lines = [
         "# Public Cross-Source Training Smoke",
         "",
-        "| Fixture | Source family | Protocol | Status | Datasets | Message |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Fixture | Source family | Protocol | Status | Artifacts reloaded | Datasets | Message |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for result in snapshot["results"]:
         lines.append(
-            "| {filename} | {source_family} | {protocol} | {status} | {dataset_count} | {message} |".format(
+            "| {filename} | {source_family} | {protocol} | {status} | {artifacts_reloaded} | {dataset_count} | {message} |".format(
+                artifacts_reloaded=result.get("artifacts_reloaded", False),
                 **result,
             )
         )

@@ -347,7 +347,7 @@ def _epoch_ready_state_with_missing_import_defaults() -> ApplicationStateSnapsho
                 "supervised_ready": False,
                 "supervised_blocker_codes": ["missing_class_labels"],
                 "supervised_blockers": [
-                    "No class labels are available for supervised epoch defaults."
+                    "No class labels are available for supervised EEG epoch defaults."
                 ],
                 "class_map": {},
                 "default_epoch_events": [],
@@ -400,7 +400,7 @@ def test_concrete_epoch_also_supersedes_missing_reviewed_class_defaults() -> Non
                 "supervised_ready": False,
                 "supervised_blocker_codes": ["missing_reviewed_target"],
                 "supervised_blockers": [
-                    "No reviewed class target is available for supervised epoch "
+                    "No reviewed class target is available for supervised EEG epoch "
                     "defaults."
                 ],
                 "class_map": {},
@@ -433,7 +433,7 @@ def test_concrete_epoch_does_not_override_other_typed_blockers(
                 "supervised_blocker_codes": [blocker_code],
                 # Deliberately reuse old display text: policy must trust the code.
                 "supervised_blockers": [
-                    "No class labels are available for supervised epoch defaults."
+                    "No class labels are available for supervised EEG epoch defaults."
                 ],
             },
         ),
@@ -443,7 +443,7 @@ def test_concrete_epoch_does_not_override_other_typed_blockers(
 
     assert capability.enabled is False
     assert capability.reasons == [
-        "No class labels are available for supervised epoch defaults."
+        "No class labels are available for supervised EEG epoch defaults."
     ]
 
 
@@ -463,7 +463,7 @@ def test_legacy_handoff_without_typed_codes_remains_readable_and_fail_closed() -
 
     assert capability.enabled is False
     assert capability.reasons == [
-        "No class labels are available for supervised epoch defaults."
+        "No class labels are available for supervised EEG epoch defaults."
     ]
 
 
@@ -510,8 +510,8 @@ def test_import_default_blockers_remain_before_epoch_creation() -> None:
 
     assert capability.enabled is False
     assert capability.reasons == [
-        "Create epochs before generating datasets.",
-        "No class labels are available for supervised epoch defaults.",
+        "Create EEG epochs before building the training dataset.",
+        "No class labels are available for supervised EEG epoch defaults.",
     ]
     assert projection.recommended_command == "create_epoch"
 
@@ -522,27 +522,27 @@ def test_invalid_epoch_contract_remains_fail_closed_with_exact_reason() -> None:
         (
             replace(base.epoch, epoch_count=0),
             [
-                "Create epochs before generating datasets.",
-                "No class labels are available for supervised epoch defaults.",
+                "Create EEG epochs before building the training dataset.",
+                "No class labels are available for supervised EEG epoch defaults.",
             ],
         ),
         (
             replace(base.epoch, available=False),
             [
-                "Create epochs before generating datasets.",
-                "No class labels are available for supervised epoch defaults.",
+                "Create EEG epochs before building the training dataset.",
+                "No class labels are available for supervised EEG epoch defaults.",
             ],
         ),
         (
             replace(base.epoch, exists=False),
             [
-                "Create epochs before generating datasets.",
-                "No class labels are available for supervised epoch defaults.",
+                "Create EEG epochs before building the training dataset.",
+                "No class labels are available for supervised EEG epoch defaults.",
             ],
         ),
         (
             replace(base.epoch, event_names=[], event_ids=None),
-            ["Epoch class label mapping is incomplete or invalid."],
+            ["EEG epoch class-label mapping is incomplete or invalid."],
         ),
         (
             replace(base.epoch, event_names=["left"], event_ids={"left": 0}),
@@ -562,7 +562,7 @@ def test_invalid_epoch_contract_remains_fail_closed_with_exact_reason() -> None:
                 event_names=["left", "right"],
                 event_ids={"left": 0, "right": 0},
             ),
-            ["Epoch class label mapping is incomplete or invalid."],
+            ["EEG epoch class-label mapping is incomplete or invalid."],
         ),
         (
             replace(
@@ -570,7 +570,7 @@ def test_invalid_epoch_contract_remains_fail_closed_with_exact_reason() -> None:
                 event_names=["left", "right"],
                 event_ids={"left": 0, "other": 1},
             ),
-            ["Epoch class label mapping is incomplete or invalid."],
+            ["EEG epoch class-label mapping is incomplete or invalid."],
         ),
     )
 
@@ -598,6 +598,8 @@ def test_zero_epoch_payload_cannot_generate_dataset_without_import_blocker() -> 
     projection = _projection(state)
 
     assert capability.enabled is False
-    assert capability.reasons == ["Create epochs before generating datasets."]
+    assert capability.reasons == [
+        "Create EEG epochs before building the training dataset."
+    ]
     assert projection.blocked_command == "generate_dataset"
     assert projection.blocked_reasons == tuple(capability.reasons)

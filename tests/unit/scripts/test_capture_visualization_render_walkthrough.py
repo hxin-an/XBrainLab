@@ -4,11 +4,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from PIL import Image
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtWidgets import QLabel, QMainWindow, QVBoxLayout, QWidget
 
 from scripts.dev import capture_visualization_render_walkthrough as capture_script
 from scripts.dev.capture_visualization_render_walkthrough import (
@@ -17,14 +18,17 @@ from scripts.dev.capture_visualization_render_walkthrough import (
     THREE_D_TAB_SPECS,
     _artifact_metadata_for_runtime,
     _artifact_path,
+    _capture_matplotlib_window,
     _claim_boundary_for_runtime,
     _command_payload,
+    _compose_native_framebuffer,
     _content_addressed_screenshot_path,
     _control_label_pair_gaps,
     _explanation_context_from_panel,
     _matplotlib_layout_evidence,
     _normalize_png_artifact,
     _prepare_tiny_trained_state,
+    _provenance_context_matches,
     _screenshot_region_evidence,
     _three_d_runtime_contract,
     _validate_screenshot,
@@ -40,12 +44,27 @@ from XBrainLab.backend.application.results import ErrorType
 
 
 def test_explanation_context_comes_from_information_control(qapp) -> None:
-    expected = "Grouped by true class label · Mean across evaluated epochs"
-    info_control = QLabel()
-    info_control.setToolTip(expected)
-    panel = SimpleNamespace(explanation_info_button=info_control)
+    expected = (
+        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+        "True class · Mean over EEG epochs"
+    )
+    provenance = QLabel(expected)
+    panel = SimpleNamespace(explanation_provenance_label=provenance)
 
     assert _explanation_context_from_panel(panel) == expected
+
+
+def test_visualization_provenance_contract_requires_result_identity() -> None:
+    aggregation = "True class · Mean over EEG epochs"
+    assert _provenance_context_matches(
+        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · " + aggregation,
+        aggregation,
+    )
+    assert not _provenance_context_matches(aggregation, aggregation)
+    assert not _provenance_context_matches(
+        "Fold 1 (EEGNet) · Run 1 · " + aggregation,
+        aggregation,
+    )
 
 
 def test_wait_for_saliency_render_observes_worker_completion(qapp) -> None:
@@ -170,6 +189,82 @@ def test_three_d_runtime_contract_requires_interactive_render_on_xcb() -> None:
     assert contract["expected_outcome"] == "rendered"
     assert contract["interactive_display"] is True
     assert contract["qt_platform"] == "xcb"
+    assert contract["capture_method"] == "vtk_framebuffer_composite"
+
+
+def test_native_framebuffer_composite_places_render_in_plotter_geometry(
+    tmp_path,
+) -> None:
+    screenshot = tmp_path / "window.png"
+    Image.new("RGB", (200, 120), (24, 28, 32)).save(screenshot)
+    framebuffer = np.zeros((30, 40, 3), dtype=np.uint8)
+    framebuffer[:, :, 0] = 180
+    framebuffer[:, :, 1] = 70
+    framebuffer[:, :, 2] = 45
+
+    _compose_native_framebuffer(
+        screenshot,
+        framebuffer,
+        region_geometry={"x": 20, "y": 10, "width": 80, "height": 60},
+        window_size={"width": 200, "height": 120},
+    )
+
+    with Image.open(screenshot) as image:
+        assert image.getpixel((10, 10)) == (24, 28, 32)
+        assert image.getpixel((60, 40)) == (180, 70, 45)
+
+
+def test_matplotlib_window_capture_composes_canvas_without_losing_shell(
+    qapp,
+    tmp_path,
+) -> None:
+    class FramebufferCanvas(QWidget):
+        def draw(self) -> None:
+            return None
+
+        def buffer_rgba(self) -> np.ndarray:
+            frame = np.zeros((60, 160, 4), dtype=np.uint8)
+            frame[:, :, 0] = 180
+            frame[:, :, 1] = 70
+            frame[:, :, 2] = 45
+            frame[:, :, 3] = 255
+            return frame
+
+    window = QMainWindow()
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    header = QLabel("Visualization shell")
+    header.setStyleSheet("background: rgb(40, 45, 50); color: white;")
+    header.setFixedHeight(30)
+    canvas = FramebufferCanvas()
+    canvas.setStyleSheet("background: rgb(16, 18, 20);")
+    canvas.setMinimumSize(160, 160)
+    footer = QLabel("Application status")
+    footer.setStyleSheet("background: rgb(35, 40, 45); color: white;")
+    footer.setFixedHeight(30)
+    layout.addWidget(header)
+    layout.addWidget(canvas, 1)
+    layout.addWidget(footer)
+    window.setCentralWidget(content)
+    window.resize(240, 280)
+    window.show()
+    qapp.processEvents()
+    geometry = capture_script._widget_geometry(canvas, window)
+    screenshot = tmp_path / "matplotlib-window.png"
+
+    capture_code = _capture_matplotlib_window(
+        window,
+        canvas,
+        screenshot,
+        canvas_geometry=geometry,
+        validate_complete=False,
+    )
+
+    assert capture_code == 0
+    assert canvas.isVisible()
+    with Image.open(screenshot) as image:
+        assert image.getpixel((120, 120)) == (180, 70, 45)
+        assert image.getpixel((20, 15)) != (180, 70, 45)
 
 
 def test_three_d_artifact_claims_follow_the_actual_runtime() -> None:
@@ -314,7 +409,8 @@ def _base_payload():
             {
                 "tab": "Saliency Map",
                 "explanation_context": (
-                    "Grouped by true class label · Mean across evaluated epochs"
+                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "True class · Mean over EEG epochs"
                 ),
                 "screenshot": "map.png",
                 "ok": True,
@@ -329,8 +425,8 @@ def _base_payload():
             {
                 "tab": "Spectrogram",
                 "explanation_context": (
-                    "Grouped by true class label · Mean magnitude across evaluated "
-                    "epochs and channels"
+                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "True class · Mean magnitude over EEG epochs and channels"
                 ),
                 "screenshot": "spectrogram.png",
                 "ok": True,
@@ -345,7 +441,8 @@ def _base_payload():
             {
                 "tab": "Topographic Map",
                 "explanation_context": (
-                    "Grouped by true class label · Mean across evaluated epochs and time"
+                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "True class · Mean over EEG epochs and time"
                 ),
                 "screenshot": "topomap.png",
                 "ok": True,
@@ -431,7 +528,7 @@ def _interactive_payload_with_screenshots(tmp_path):
         "pyvista_off_screen": False,
         "interactive_display": True,
         "expected_outcome": "rendered",
-        "capture_method": "xcb_screen_grab",
+        "capture_method": "vtk_framebuffer_composite",
     }
     payload["blocked_renders"] = []
     screenshot = tmp_path / "3d-interactive.png"
@@ -470,7 +567,7 @@ def _interactive_payload_with_screenshots(tmp_path):
                 "chromatic_fraction": 0.4,
                 "sentinel_fraction": 0.0,
             },
-            "capture_method": "xcb_screen_grab",
+            "capture_method": "vtk_framebuffer_composite",
         }
     ]
     return payload
@@ -516,9 +613,9 @@ def test_blocked_reason_capture_does_not_concatenate_unrelated_labels(qtbot):
 
 
 def test_artifact_path_prefers_repo_relative_paths():
-    path = ROOT / "artifacts" / "ui" / "visualization-render" / "plot.png"
+    path = ROOT / "build" / "dev-artifacts" / "visualization-render" / "plot.png"
 
-    assert _artifact_path(path) == "artifacts/ui/visualization-render/plot.png"
+    assert _artifact_path(path) == "build/dev-artifacts/visualization-render/plot.png"
 
 
 def test_stable_artifact_payload_masks_runtime_only_values():

@@ -12,6 +12,10 @@ from typing import Any
 
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.public_diagnostics import (
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+)
 
 
 class InteractionStatus(str, Enum):
@@ -35,6 +39,16 @@ class InteractionOutcome:
 
     status: InteractionStatus
     message: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "message",
+            public_diagnostic_text(
+                self.message,
+                layout=DiagnosticTextLayout.SINGLE_LINE,
+            ),
+        )
 
     @property
     def is_completed(self) -> bool:
@@ -88,7 +102,14 @@ class InteractionCompletionEvent:
                     f"Interaction completion {field_name} cannot be empty."
                 )
             object.__setattr__(self, field_name, value.strip())
-        object.__setattr__(self, "message", " ".join(str(self.message or "").split()))
+        object.__setattr__(
+            self,
+            "message",
+            public_diagnostic_text(
+                self.message or "",
+                layout=DiagnosticTextLayout.SINGLE_LINE,
+            ),
+        )
 
 
 InteractionCompletionCallback = Callable[[InteractionCompletionEvent], None]

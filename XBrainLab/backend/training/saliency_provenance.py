@@ -207,7 +207,8 @@ def _fingerprint_numpy_array_content(
         np.nditer(
             value,
             flags=["buffered", "external_loop", "zerosize_ok"],
-            op_flags=[["readonly", "contig"]],  # pyright: ignore[reportArgumentType]
+            # NumPy accepts ``contig`` here although its typing omits the flag.
+            op_flags=cast(Any, [["readonly", "contig"]]),
             order="C",
             buffersize=buffer_elements,
         ),
@@ -314,8 +315,9 @@ def _iter_torch_tensor_chunks(
     trailing_slices = (slice(None),) * (value.ndim - split_dimension - 1)
     for prefix in prefixes:
         for start in range(0, shape[split_dimension], slice_length):
-            selection = (
-                *prefix,
+            prefix_indices = tuple(int(index) for index in prefix)
+            selection: tuple[int | slice, ...] = (
+                *prefix_indices,
                 slice(start, min(start + slice_length, shape[split_dimension])),
                 *trailing_slices,
             )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from unittest.mock import patch
@@ -20,11 +21,193 @@ from tests.unit.backend.training.test_training_plan import (
     y,  # noqa: F401
 )
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecord
+from XBrainLab.backend.training.record import artifact_store as artifact_store_module
+from XBrainLab.backend.training.record.artifact_store import (
+    load_model_state_dict,
+    read_json_npz_artifact,
+    write_json_npz_artifact,
+)
 from XBrainLab.backend.utils import set_seed
+from XBrainLab.backend.utils.filesystem_identity import FilesystemIdentityError
+
+
+class _ReplacingDirectoryIdentity:
+    def __init__(self) -> None:
+        self.validation_count = 0
+
+    def assert_matches(self, _directory=None) -> None:
+        self.validation_count += 1
+        if self.validation_count >= 2:
+            raise FilesystemIdentityError(
+                "Directory or ancestor identity changed before filesystem use."
+            )
 
 
 def _read_manifest(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_artifact_write_revalidates_before_opening_replaced_directory(
+    tmp_path: Path,
+) -> None:
+    identity = _ReplacingDirectoryIdentity()
+
+    with pytest.raises(FilesystemIdentityError, match="identity changed"):
+        write_json_npz_artifact(
+            tmp_path / "record",
+            artifact_type="test.artifact",
+            payload={},
+            arrays={"values": np.array([1.0])},
+            directory_identity=identity,  # type: ignore[arg-type]
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_artifact_manifest_symlink_is_rejected(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    store.mkdir()
+    manifest = store / "record"
+    write_json_npz_artifact(
+        manifest,
+        artifact_type="test.artifact",
+        payload={"value": 1},
+        arrays={"values": np.array([1.0])},
+    )
+    outside_manifest = tmp_path / "outside-manifest.json"
+    manifest.replace(outside_manifest)
+    manifest.symlink_to(outside_manifest)
+
+    with pytest.raises(FilesystemIdentityError, match="regular artifact file"):
+        read_json_npz_artifact(
+            manifest,
+            expected_artifact_type="test.artifact",
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_artifact_numeric_payload_symlink_is_rejected(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    store.mkdir()
+    manifest = store / "record"
+    arrays_path = store / "record.npz"
+    write_json_npz_artifact(
+        manifest,
+        artifact_type="test.artifact",
+        payload={"value": 1},
+        arrays={"values": np.array([1.0])},
+        arrays_filename=arrays_path.name,
+    )
+    outside_arrays = tmp_path / "outside-arrays.npz"
+    arrays_path.replace(outside_arrays)
+    arrays_path.symlink_to(outside_arrays)
+
+    with pytest.raises(FilesystemIdentityError, match="regular artifact file"):
+        read_json_npz_artifact(
+            manifest,
+            expected_artifact_type="test.artifact",
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_artifact_manifest_hardlink_is_rejected(tmp_path: Path) -> None:
+    manifest = tmp_path / "record"
+    write_json_npz_artifact(
+        manifest,
+        artifact_type="test.artifact",
+        payload={"value": 1},
+        arrays={"values": np.array([1.0])},
+    )
+    os.link(manifest, tmp_path / "manifest-alias")
+
+    with pytest.raises(FilesystemIdentityError, match="multiple hard links"):
+        read_json_npz_artifact(
+            manifest,
+            expected_artifact_type="test.artifact",
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_artifact_numeric_payload_hardlink_is_rejected(tmp_path: Path) -> None:
+    manifest = tmp_path / "record"
+    arrays_path = tmp_path / "record.npz"
+    write_json_npz_artifact(
+        manifest,
+        artifact_type="test.artifact",
+        payload={"value": 1},
+        arrays={"values": np.array([1.0])},
+        arrays_filename=arrays_path.name,
+    )
+    os.link(arrays_path, tmp_path / "arrays-alias.npz")
+
+    with pytest.raises(FilesystemIdentityError, match="multiple hard links"):
+        read_json_npz_artifact(
+            manifest,
+            expected_artifact_type="test.artifact",
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_artifact_write_does_not_follow_existing_temporary_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"must remain unchanged")
+    malicious_temp = tmp_path / "arrays-temp"
+    malicious_temp.symlink_to(outside)
+    temporary_paths = iter([malicious_temp, tmp_path / "manifest-temp"])
+    monkeypatch.setattr(
+        artifact_store_module,
+        "_temporary_path",
+        lambda _target: next(temporary_paths),
+    )
+
+    with pytest.raises(FilesystemIdentityError, match="temporary entry"):
+        write_json_npz_artifact(
+            tmp_path / "record",
+            artifact_type="test.artifact",
+            payload={},
+            arrays={"values": np.array([1.0])},
+        )
+
+    assert outside.read_bytes() == b"must remain unchanged"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_model_checkpoint_symlink_is_rejected(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    store.mkdir()
+    outside_checkpoint = tmp_path / "outside-checkpoint"
+    outside_checkpoint.write_bytes(b"must not be opened through a symlink")
+    checkpoint = store / "model"
+    checkpoint.symlink_to(outside_checkpoint)
+
+    with pytest.raises(FilesystemIdentityError, match="regular artifact file"):
+        load_model_state_dict(checkpoint)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_model_checkpoint_hardlink_is_rejected(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    store.mkdir()
+    outside_checkpoint = tmp_path / "outside-checkpoint"
+    outside_checkpoint.write_bytes(b"must not be opened through a hard link")
+    checkpoint = store / "model"
+    os.link(outside_checkpoint, checkpoint)
+
+    with pytest.raises(FilesystemIdentityError, match="multiple hard links"):
+        load_model_state_dict(checkpoint)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
+def test_model_checkpoint_non_regular_file_is_rejected(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "model"
+    os.mkfifo(checkpoint)
+
+    with pytest.raises(FilesystemIdentityError, match="regular artifact file"):
+        load_model_state_dict(checkpoint)
 
 
 def test_eval_record_uses_versioned_json_and_non_pickle_npz(tmp_path: Path) -> None:

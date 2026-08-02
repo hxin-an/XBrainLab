@@ -638,7 +638,7 @@ class WorkflowUiHandoffHost:
             status_bar.showMessage(
                 f"Opening {_PANEL_LABEL[panel]}..."
                 if self._navigation_pending_panel is panel
-                else f"{_PANEL_LABEL[panel]} is open."
+                else f"Opened {_PANEL_LABEL[panel]} panel."
             )
 
     @staticmethod
@@ -752,7 +752,7 @@ class WorkflowUiHandoffHost:
 
         status_bar = self._main_window.statusBar()
         if status_bar is not None:
-            status_bar.showMessage(f"{_PANEL_LABEL[panel]} is open.")
+            status_bar.showMessage(f"Opened {_PANEL_LABEL[panel]} panel.")
         if (
             pending is None
             or pending.generation != generation
@@ -841,7 +841,7 @@ class WorkflowUiHandoffHost:
             return
         fields = ", ".join(decision_field_labels(request.decision_fields))
         status_bar.showMessage(
-            f"{_PANEL_LABEL[route.panel]} is open. Review: {fields}."
+            f"Opened {_PANEL_LABEL[route.panel]} panel. Review: {fields}."
         )
 
     def _open_data_import(

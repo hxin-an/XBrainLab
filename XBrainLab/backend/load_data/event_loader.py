@@ -247,6 +247,7 @@ def _timestamp_channel_names(item: dict[str, Any], raw_mne: Any) -> tuple[str, .
     raw_names = item.get("ch_names", ())
     if raw_names in (None, ""):
         return ()
+    names: tuple[str, ...]
     if isinstance(raw_names, str):
         names = (raw_names.strip(),) if raw_names.strip() else ()
     elif isinstance(raw_names, (list, tuple, set)):

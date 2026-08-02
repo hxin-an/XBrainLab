@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-07-04`
+最後更新：`2026-07-30`
 
 ## 這份文件的用途
 
@@ -28,16 +28,17 @@
 | local LLM 下載需受容量邊界控制 | active | 可下載模型，但單模型原則 10GB 內、總 cache 原則 20GB 內；27B+ 需使用者明確同意。 |
 | local LLM 不使用中國模型 | active | 不使用中國公司或中國來源模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等不列入 primary / fallback 選型。 |
 | 資料匯入目標是 Data Interpretation System | active | 使用者提供資料位置後，系統應建立可預覽、可驗證、可重跑的資料解讀；不以單純 load file / attach label 心智模型作為終局設計。 |
-| MCP 從 active roadmap 移除 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；既有 MCP code/tests/artifacts 只保留為歷史探索或相容性證據。未來若要恢復，需另開決策重新定義 scope、security、session ownership、client matrix 和 validation cost。 |
+| MCP 從 active roadmap 移除 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；既有 MCP code/tests/artifacts 只保留為歷史探索或相容性證據。只有使用者明確要求時才 opt in；未來若要恢復，需另開決策重新定義 scope、security、session ownership、client matrix 和 validation cost。 |
 | Roadmap 五階段定型 | active | 產品主線固定為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。阻礙使用或理解的 UI/UX 屬於 Desktop MVP blocker；美感、一致性和低風險 polish 屬於 Product Polish / Release Candidate。 |
-| Desktop MVP Delivery Flow | active | Branch 規則和 handoff 規則統一：從 `stabilize/desktop-mvp` 切短 task branch，通過 task-branch gate 後合回 stabilization line；只有 stabilization line 通過 handoff candidate gate 才能交給使用者手測；`main` merge 等使用者 acceptance 或明確 release-candidate gate。 |
-| User bug report triggers audit | active | 使用者回報的是 audit trigger，不是唯一 symptom。Desktop MVP 期間，agent 應主動盤點產品 bug、code quality、architecture drift、test quality、performance/resource 和 UI artifact 問題，形成 blocker queue 後再分支修復。 |
+| Product-Quality Closure Delivery Flow | active | Current integration line 是 `stabilize/product-quality-closure`。`docs/agent_goals/product_quality_closure_goal.md` 與 product-quality audit ledger 共同定義 closure；只有同一個 clean pushed exact commit 通過 handoff candidate gate，才可交給使用者做 Windows acceptance。 |
+| Desktop MVP Delivery Flow | superseded | `stabilize/desktop-mvp` 是較早 delivery flow，保留作決策歷史，不再是 current branch、task base、merge destination 或 validation authority。 |
+| User bug report triggers audit | active | 使用者回報的是 audit trigger，不是唯一 symptom。Product-quality closure 期間，agent 應主動盤點相鄰產品 bug、code quality、architecture drift、test quality、performance/resource 和 UI artifact 問題，並回寫 current audit ledger；不另建 `AQ-*`、`Prep Gate` 或 `Repair Loop` queue。 |
 
 ## 目前工作方向
 
 | 方向 | 狀態 | 說明 |
 | --- | --- | --- |
-| UI / Assistant / Scripts 共用 Application Service | confirmed | 後端重構目標不是把所有邏輯塞進 `BackendFacade`，而是建立共用 command API，讓 UI、assistant tools、scripts 都呼叫同一批 backend workflow。 |
+| UI / Assistant / Scripts 共用 Application Service | confirmed | `BackendFacade` 已物理移除，也不是 wrapper 或 compatibility target。UI、assistant tools、scripts 應共用 `ApplicationService / Command API`，不得建立等價第二入口。 |
 | UI / Agent command surface unification | active | UI 和 agent 對同一 backend workflow 應共用 state、capability policy、blocked reason 和 typed command result，不各自維護第二套判斷。 |
 
 ## 舊 ADR 處理

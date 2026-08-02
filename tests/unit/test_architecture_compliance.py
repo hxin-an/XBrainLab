@@ -4,14 +4,19 @@ from pathlib import Path
 from tests import architecture_compliance
 from tests.architecture_compliance import (
     check_agent_confirmation_contract_evidence,
+    check_agent_controller_lifecycle_aliases,
+    check_agent_manager_publication_state_ownership,
     check_agent_resource_receipt_boundary,
+    check_application_controller_boundary,
     check_application_service_ownership_boundaries,
+    check_application_shutdown_lifecycle_ownership,
     check_assistant_presentation_ownership,
     check_assistant_runtime_selection_ownership,
     check_assistant_turn_scope_ownership,
     check_backend_facade_test_usage,
     check_backend_llm_imports,
     check_concrete_llm_tool_result_contracts,
+    check_dataset_product_port_boundary,
     check_docs_current_truth_overclaims,
     check_headless_verifier_direct_study_state,
     check_llm_agent_confirmation_weak_pending_assertions,
@@ -27,6 +32,8 @@ from tests.architecture_compliance import (
     check_montage_command_ownership,
     check_pending_interaction_compatibility_api,
     check_pipeline_state_weak_string_assertions,
+    check_preprocess_product_port_boundary,
+    check_primary_ui_publication_refresh_boundary,
     check_product_runtime_backend_facade_usage,
     check_product_runtime_mock_dependencies,
     check_product_success_backend_facade_tests,
@@ -57,9 +64,402 @@ from tests.architecture_compliance import (
     check_ui_post_command_controller_echoes,
     check_ui_post_command_local_refreshes,
     check_ui_refresh_false_commands,
+    check_visualization_product_port_boundary,
     check_visualization_saliency_publication_boundary,
     check_weak_test_names,
 )
+
+
+def test_agent_controller_lifecycle_alias_guard_rejects_product_and_test_aliases(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/controller.py",
+        """
+class LLMController:
+    def start(self):
+        self._active_generation_id = 1
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "tests/unit/test_controller.py",
+        """
+def test_alias(harness):
+    harness.controller._retry_count = 1
+""",
+    )
+
+    violations = check_agent_controller_lifecycle_aliases(tmp_path)
+
+    assert len(violations) == 2
+    assert any("_active_generation_id" in violation for violation in violations)
+    assert any("_retry_count" in violation for violation in violations)
+
+
+def test_agent_controller_lifecycle_alias_guard_allows_explicit_owners_and_worker(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/controller.py",
+        """
+class LLMController:
+    def start(self):
+        self._turn_orchestrator.active_generation_id = 1
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "tests/unit/test_controller.py",
+        """
+def test_owner(controller, worker):
+    controller._tool_attempt_session.retry_count = 1
+    worker._active_generation_id = 2
+""",
+    )
+
+    assert check_agent_controller_lifecycle_aliases(tmp_path) == []
+
+
+def test_product_agent_controller_lifecycle_has_no_compatibility_aliases() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_agent_controller_lifecycle_aliases(root) == []
+
+
+def test_agent_manager_publication_state_guard_rejects_aliases_and_public_storage(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/agent_manager.py",
+        """
+class AgentManager:
+    def inspect(self):
+        return self._pending_assistant_training_terminal
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        ("XBrainLab/ui/components/assistant_application_publication_coordinator.py"),
+        """
+class AssistantApplicationPublicationCoordinator:
+    def __init__(self):
+        self.pending_publication = None
+        self.training_watch = None
+""",
+    )
+
+    violations = check_agent_manager_publication_state_ownership(tmp_path)
+
+    assert any("_pending_assistant_training_terminal" in item for item in violations)
+    assert any("pending_publication" in item for item in violations)
+    assert any("training_watch" in item for item in violations)
+
+
+def test_product_agent_manager_publication_state_ownership_is_clean() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_agent_manager_publication_state_ownership(root) == []
+
+
+def test_primary_ui_publication_guard_rejects_split_refresh_truth(
+    tmp_path: Path,
+) -> None:
+    for panel_name, class_name in (
+        ("dataset", "DatasetPanel"),
+        ("preprocess", "PreprocessPanel"),
+        ("training", "TrainingPanel"),
+    ):
+        _write_product_file(
+            tmp_path,
+            f"XBrainLab/ui/panels/{panel_name}/panel.py",
+            f"""
+class {class_name}:
+    def __init__(self, controller=None):
+        self.controller = controller
+
+    def _setup_bridges(self):
+        self._create_refresh_bridge(self.controller, "data_changed")
+""",
+        )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/application_capabilities.py",
+        """
+from XBrainLab.ui.refresh_coordinator import refresh_after_command
+
+def execute_application_command(context, command):
+    result = command.execute()
+    refresh_after_command(context, result)
+    return result
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/refresh_coordinator.py",
+        """
+def refresh_after_command(context, result):
+    return refresh_panel(context)
+
+def refresh_after_observer(context, event_name=None):
+    return refresh_panel(context)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/sidebar.py",
+        """
+class DatasetSidebar:
+    def _update_after_command_result(self, result):
+        self.panel.update_panel()
+""",
+    )
+
+    violations = check_primary_ui_publication_refresh_boundary(tmp_path)
+
+    assert any(
+        "DatasetPanel must declare publication_port" in item for item in violations
+    )
+    assert any(
+        "PreprocessPanel must declare publication_port" in item for item in violations
+    )
+    assert any(
+        "TrainingPanel must declare publication_port" in item for item in violations
+    )
+    assert any("command-result refresh" in item for item in violations)
+    assert any("command-result refresh helper" in item for item in violations)
+    assert any("real Study guard" in item for item in violations)
+
+
+def test_current_primary_ui_publication_refresh_boundary_is_clean() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_primary_ui_publication_refresh_boundary(root) == []
+
+
+def test_primary_ui_publication_guard_rejects_agent_refresh_suppression(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/agent_manager.py",
+        """
+from XBrainLab.ui.refresh_coordinator import (
+    begin_command_refresh_suppression,
+    complete_command_refresh_suppression,
+)
+
+class AgentManager:
+    def started(self):
+        begin_command_refresh_suppression(self.main_window)
+
+    def completed(self, result):
+        complete_command_refresh_suppression(
+            self.main_window,
+            result.changed_state,
+        )
+""",
+    )
+
+    violations = check_primary_ui_publication_refresh_boundary(tmp_path)
+
+    assert any(
+        "AgentManager must not own application refresh suppression" in item
+        for item in violations
+    )
+
+
+def test_primary_ui_publication_guard_rejects_agent_delivery_acknowledgement(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/agent_manager.py",
+        """
+class AgentManager:
+    def __init__(self):
+        self._application_publication_bridge = QtObserverBridge(
+            self.service,
+            "view_publication_changed",
+            self,
+            require_slot_acknowledgement=True,
+        )
+
+    def render(self, publication):
+        self.service.acknowledge_view_publication_delivery(publication.revision)
+
+    def retry(self, publication):
+        self.service.reject_view_publication_delivery(publication)
+""",
+    )
+
+    violations = check_primary_ui_publication_refresh_boundary(tmp_path)
+
+    assert any(
+        "DesktopApplicationPublicationRenderer is the sole desktop "
+        "acknowledgement owner" in item
+        for item in violations
+    )
+
+
+def test_primary_ui_publication_guard_rejects_unbounded_shared_retry(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/application_publication_renderer.py",
+        """
+class ApplicationPublicationRenderLedger:
+    def queue(self, publication):
+        if publication.revision <= self._last_rendered_revision:
+            return True
+        self._timer.start(0)
+        return True
+
+    def _record_failed_attempt(self, publication):
+        self._timer.start(PANEL_PUBLICATION_RENDER_RETRY_INTERVAL_MS)
+
+    def cleanup(self):
+        self._timer.stop()
+""",
+    )
+
+    violations = check_primary_ui_publication_refresh_boundary(tmp_path)
+
+    assert "ApplicationPublicationRenderLedger has no bounded delayed retry" in (
+        violations
+    )
+
+
+def test_primary_panel_product_bootstrap_guard_rejects_controller_bundle_wiring(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/main_window.py",
+        """
+_PANEL_SPECS = (
+    _PanelSpec("dataset_panel", "Dataset", "dataset", "DatasetPanel", ("dataset",)),
+    _PanelSpec(
+        "preprocess_panel",
+        "Preprocess",
+        "preprocess",
+        "PreprocessPanel",
+        ("preprocess", "dataset"),
+    ),
+    _PanelSpec(
+        "training_panel",
+        "Training",
+        "training",
+        "TrainingPanel",
+        ("training", "dataset"),
+    ),
+)
+
+class MainWindow:
+    def init_panels(self):
+        self._workflow_controllers = bootstrap(self.study)
+
+    def _materialize_panel(self, index):
+        spec = _PANEL_SPECS[index]
+        controllers = self._workflow_controllers
+        if spec.attr == "dataset_panel":
+            return DatasetPanel(controllers.dataset, self)
+        if spec.attr == "preprocess_panel":
+            return PreprocessPanel(
+                controllers.preprocess,
+                controllers.dataset,
+                self,
+            )
+        if spec.attr == "training_panel":
+            return TrainingPanel(controllers.training, controllers.dataset, self)
+""",
+    )
+    for panel_name, class_name in (
+        ("dataset", "DatasetPanel"),
+        ("preprocess", "PreprocessPanel"),
+        ("training", "TrainingPanel"),
+    ):
+        _write_product_file(
+            tmp_path,
+            f"XBrainLab/ui/panels/{panel_name}/panel.py",
+            f"""
+class {class_name}:
+    def __init__(self, controller=None, parent=None, *, publication_port=None):
+        if controller is None:
+            controller = get_controller_for_compatibility_context(
+                parent,
+                parent.study,
+                "{panel_name}",
+            )
+""",
+        )
+
+    violations = architecture_compliance.check_primary_panel_product_bootstrap_boundary(
+        tmp_path,
+    )
+
+    assert any(
+        "Dataset panel spec must have no controller requirements" in item
+        for item in violations
+    )
+    assert any(
+        "Preprocess panel spec must have no controller requirements" in item
+        for item in violations
+    )
+    assert any(
+        "MainWindow init_panels must defer compatibility bootstrap" in item
+        for item in violations
+    )
+    assert any(
+        "Dataset product construction must inject publication_port" in item
+        for item in violations
+    )
+    assert any(
+        "Preprocess product construction must inject publication_port" in item
+        for item in violations
+    )
+    assert any(
+        "DatasetPanel compatibility lookup must be gated" in item for item in violations
+    )
+    assert any(
+        "PreprocessPanel compatibility lookup must be gated" in item
+        for item in violations
+    )
+    assert any(
+        "Training panel spec must have no controller requirements" in item
+        for item in violations
+    )
+    assert any(
+        "MainWindow must not retain or resolve a workflow controller bundle" in item
+        for item in violations
+    )
+    for port_name in (
+        "query_port",
+        "publication_port",
+        "action_port",
+        "transient_port",
+    ):
+        assert any(
+            f"Training product construction must inject {port_name}" in item
+            for item in violations
+        )
+    assert any(
+        "TrainingPanel compatibility lookup must be gated" in item
+        for item in violations
+    )
+
+
+def test_repository_primary_panels_use_narrow_product_bootstrap() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert (
+        architecture_compliance.check_primary_panel_product_bootstrap_boundary(root)
+        == []
+    )
 
 
 def _write_backend_file(root: Path, source: str) -> None:
@@ -1244,6 +1644,167 @@ def test_product_tool_envelope_guard_accepts_strict_execution_and_scorer(
     assert check_product_tool_envelope_boundary(tmp_path) == []
 
 
+def test_dataset_interpretation_action_guard_rejects_handler_regrowth(
+    tmp_path: Path,
+) -> None:
+    delegate_names = (
+        "import_data",
+        "review_current_import",
+        "import_folder_source",
+        "import_bids_source",
+        "reload_interpretation_recipe",
+        "_execute_interpretation_command_async",
+        "_interaction_failure_outcome",
+        "_save_interpretation_recipe",
+        "_recipe_save_block_reason",
+    )
+    delegates = "\n".join(
+        (
+            f"    def {name}(self, *args, **kwargs):\n"
+            f"        return self._data_interpretation.{name}(*args, **kwargs)\n"
+        )
+        for name in delegate_names
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py",
+        """
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class _InterpretationReviewState:
+    payload: dict
+
+@dataclass(frozen=True)
+class _PublishedInterpretationReview:
+    payload: dict
+
+class DataInterpretationActionCoordinator:
+    pass
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/actions.py",
+        f"""
+from dataclasses import dataclass
+from XBrainLab.backend.application.commands import ApplyInterpretationCommand
+
+@dataclass(frozen=True)
+class _InterpretationReviewState:
+    payload: dict
+
+class DatasetActionHandler:
+    def __init__(self):
+        self._data_interpretation = object()
+
+{delegates}
+    def _apply_interpretation_async(self):
+        return ApplyInterpretationCommand(candidate_id="candidate", confirmed=True)
+""",
+    )
+
+    violations = (
+        architecture_compliance.check_dataset_data_interpretation_action_ownership(
+            tmp_path
+        )
+    )
+
+    assert any("ApplyInterpretationCommand" in item for item in violations)
+    assert any("_apply_interpretation_async" in item for item in violations)
+    assert any("_InterpretationReviewState" in item for item in violations)
+    assert any("compatibility lock preflight" in item for item in violations)
+
+
+def test_dataset_interpretation_action_guard_rejects_non_thin_facade(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py",
+        """
+class _InterpretationReviewState:
+    pass
+
+class _PublishedInterpretationReview:
+    pass
+
+class DataInterpretationActionCoordinator:
+    pass
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/actions.py",
+        """
+class DatasetActionHandler:
+    def __init__(self):
+        self._data_interpretation = object()
+
+    def import_data(self):
+        self._show_status("starting")
+        return self._data_interpretation.import_data()
+""",
+    )
+
+    violations = (
+        architecture_compliance.check_dataset_data_interpretation_action_ownership(
+            tmp_path
+        )
+    )
+
+    assert any("import_data" in item and "thin delegate" in item for item in violations)
+
+
+def test_dataset_interpretation_action_guard_rejects_recipe_reload_concentration(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py",
+        """
+class _InterpretationReviewState:
+    pass
+
+class _PublishedInterpretationReview:
+    pass
+
+class DataInterpretationActionCoordinator:
+    def _compatibility_locked_preflight_blocked(self):
+        return self._compatibility_controller_value()
+
+    def _continue_reloaded_interpretation_recipe(self, result):
+        return result
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/data_interpretation_recipe_reload_coordinator.py",
+        """
+class DataInterpretationRecipeReloadCoordinator:
+    pass
+""",
+    )
+
+    violations = (
+        architecture_compliance.check_dataset_data_interpretation_action_ownership(
+            tmp_path
+        )
+    )
+
+    assert any("recipe reload workflow" in item for item in violations)
+    assert any("must compose" in item for item in violations)
+
+
+def test_product_dataset_interpretation_action_ownership_is_focused() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert (
+        architecture_compliance.check_dataset_data_interpretation_action_ownership(root)
+        == []
+    )
+
+
 def test_agent_resource_receipt_guard_rejects_tokenless_adapter_contract(
     tmp_path: Path,
 ) -> None:
@@ -1265,7 +1826,7 @@ def test_agent_resource_receipt_guard_rejects_tokenless_adapter_contract(
         "XBrainLab/ui/panels/training/sidebar.py": (
             'diagnostics.get("resource_preflight")\n'
         ),
-        "XBrainLab/ui/panels/dataset/actions.py": (
+        "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py": (
             'payload.get("scope_fingerprint")\ntoken = payload["confirmation_token"]\n'
         ),
     }
@@ -1538,6 +2099,304 @@ def test_product_application_service_ownership_boundaries_are_clean() -> None:
     assert check_application_service_ownership_boundaries(root) == []
 
 
+def test_application_shutdown_lifecycle_guard_rejects_service_owned_state(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+class ApplicationService:
+    def __init__(self):
+        self._closed = False
+        self._shutdown_fenced = False
+
+    def _begin_close(self):
+        self._closed = True
+
+    def _terminal_saliency_release_obligation(self):
+        return None
+""",
+    )
+
+    violations = check_application_shutdown_lifecycle_ownership(tmp_path)
+
+    assert any("'_closed'" in violation for violation in violations)
+    assert any("'_shutdown_fenced'" in violation for violation in violations)
+    assert any("'_begin_close'" in violation for violation in violations)
+    assert any(
+        "'_terminal_saliency_release_obligation'" in violation
+        for violation in violations
+    )
+
+
+def test_application_shutdown_lifecycle_guard_rejects_runtime_private_alias(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        "class ApplicationService:\n    pass\n",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/runtime.py",
+        """
+def service_is_open(service):
+    return getattr(service, "_closed", False) is False
+""",
+    )
+
+    violations = check_application_shutdown_lifecycle_ownership(tmp_path)
+
+    assert any("runtime.py" in violation for violation in violations)
+    assert any("'_closed'" in violation for violation in violations)
+
+
+def test_application_shutdown_lifecycle_guard_allows_runtime_public_lifetime_read(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        "class ApplicationService:\n    pass\n",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/runtime.py",
+        """
+def service_is_open(service):
+    return getattr(service, "is_closed", True) is False
+""",
+    )
+
+    assert check_application_shutdown_lifecycle_ownership(tmp_path) == []
+
+
+def test_product_application_shutdown_lifecycle_ownership_is_clean() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_application_shutdown_lifecycle_ownership(root) == []
+
+
+def test_application_controller_guard_rejects_all_controller_paths(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+from XBrainLab.backend.controller.training_controller import TrainingController
+from .controller_adapters import TrainingControllerAdapter
+
+def compose(study):
+    adapter = TrainingControllerAdapter(study)
+    return study.get_controller("training"), TrainingController, adapter
+""",
+    )
+
+    violations = check_application_controller_boundary(tmp_path)
+
+    assert any("controller module" in item for item in violations)
+    assert any("TrainingControllerAdapter" in item for item in violations)
+    assert any("get_controller" in item for item in violations)
+
+
+def test_repository_application_layer_has_no_controller_dependencies() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_application_controller_boundary(root) == []
+
+
+def test_dataset_product_port_guard_rejects_controller_and_observer_paths(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+from .controller_adapters import DatasetControllerAdapter
+
+class ApplicationService:
+    def __init__(self, study):
+        self.dataset = DatasetControllerAdapter(study)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/data_compatibility_service.py",
+        """
+class DataCompatibilityCommandService:
+    def mutate(self, study):
+        dataset = study.get_controller("dataset")
+        self.dataset.notify("data_changed")
+        return dataset
+""",
+    )
+
+    violations = check_dataset_product_port_boundary(tmp_path)
+
+    assert any("DatasetControllerAdapter" in item for item in violations)
+    assert any("Study.get_controller('dataset')" in item for item in violations)
+    assert any("Dataset observer semantics" in item for item in violations)
+
+
+def test_dataset_product_port_guard_allows_domain_port_delegation(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+from XBrainLab.backend.services.dataset_state_service import DatasetStateService
+
+class ApplicationService:
+    def __init__(self, study):
+        self.dataset = DatasetStateService(study)
+""",
+    )
+
+    assert check_dataset_product_port_boundary(tmp_path) == []
+
+
+def test_repository_dataset_product_family_uses_domain_port() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_dataset_product_port_boundary(root) == []
+
+
+def test_visualization_product_port_guard_rejects_controller_composition(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/controller_adapters.py",
+        """
+from XBrainLab.backend.controller.visualization_controller import (
+    VisualizationController,
+)
+
+class VisualizationControllerAdapter:
+    def __init__(self, study):
+        self.controller = study.get_controller("visualization")
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+from .controller_adapters import VisualizationControllerAdapter
+
+class ApplicationService:
+    def __init__(self, study):
+        self.visualization = VisualizationControllerAdapter(study)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/visualization_import.py",
+        """
+import XBrainLab.backend.controller.visualization_controller
+""",
+    )
+
+    violations = check_visualization_product_port_boundary(tmp_path)
+
+    assert any(
+        "imports the visualization controller module" in item for item in violations
+    )
+    assert any("VisualizationController" in item for item in violations)
+    assert any("VisualizationControllerAdapter" in item for item in violations)
+    assert any("Study.get_controller('visualization')" in item for item in violations)
+
+
+def test_visualization_product_port_guard_allows_manager_domain_service(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+from XBrainLab.backend.services.visualization_state_service import (
+    VisualizationProductPort,
+)
+
+class ApplicationService:
+    def __init__(self, study):
+        self.visualization: VisualizationProductPort = (
+            study.visualization_state_service
+        )
+""",
+    )
+
+    assert check_visualization_product_port_boundary(tmp_path) == []
+
+
+def test_repository_visualization_product_family_uses_domain_port() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_visualization_product_port_boundary(root) == []
+
+
+def test_preprocess_product_port_guard_rejects_controller_composition(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/controller_adapters.py",
+        """
+from XBrainLab.backend.controller.preprocess_controller import PreprocessController
+
+class PreprocessControllerAdapter:
+    def __init__(self, study):
+        self.controller = study.get_controller("preprocess")
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+from .controller_adapters import PreprocessControllerAdapter
+
+class ApplicationService:
+    def __init__(self, study):
+        self.preprocess = PreprocessControllerAdapter(study)
+""",
+    )
+
+    violations = check_preprocess_product_port_boundary(tmp_path)
+
+    assert any("PreprocessController" in item for item in violations)
+    assert any("PreprocessControllerAdapter" in item for item in violations)
+    assert any("Study.get_controller('preprocess')" in item for item in violations)
+    assert any("Study-owned preprocess service" in item for item in violations)
+
+
+def test_preprocess_product_port_guard_allows_study_owned_domain_service(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        """
+from XBrainLab.backend.services.preprocess_state_service import PreprocessProductPort
+
+class ApplicationService:
+    def __init__(self, study):
+        self.study = study
+        self.preprocess: PreprocessProductPort = self.study.preprocess_state_service
+""",
+    )
+
+    assert check_preprocess_product_port_boundary(tmp_path) == []
+
+
+def test_repository_preprocess_product_family_uses_study_owned_port() -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    assert check_preprocess_product_port_boundary(root) == []
+
+
 def test_montage_command_guard_rejects_analysis_owned_mutation(
     tmp_path: Path,
 ) -> None:
@@ -1721,6 +2580,9 @@ def test_agent_coordinators_are_constructor_owned_without_lazy_fallback():
             root / "XBrainLab" / "llm" / "agent" / "tool_attempt_coordinator.py"
         ),
     )
+    turn_session_source = (
+        root / "XBrainLab" / "llm" / "agent" / "turn_orchestrator.py"
+    ).read_text(encoding="utf-8")
 
     controller_class = next(
         node
@@ -1772,6 +2634,13 @@ def test_agent_coordinators_are_constructor_owned_without_lazy_fallback():
     assert "get_tool_availability" not in controller_source
     assert "_handle_verification_failure" not in controller_source
     assert "_verification_failure_message" not in controller_source
+    assert "SessionField" not in controller_source
+    assert "SessionField" not in turn_session_source
+    assert "_tool_attempt_coordinator.reset_turn" not in controller_source
+    assert "_recent_tool_calls" not in attempt_source
+    assert "def reset_turn" not in attempt_source
+    assert "record_tool_proposal" in turn_session_source
+    assert "self._tool_attempt_session.record_tool_proposal" in controller_source
     assert "context: ToolAvailabilityContext" in coordinator_source
     assert "_get_tool_attempt_context" not in coordinator_source
     attempt_class = next(
@@ -3256,12 +4125,13 @@ def test_product_success_study_state_guard_allows_command_state_truth(
 def test_walkthrough(test_app):
     state = _application_state(test_app.study)
     assert state["raw"]["count"] == 1
-    split_context = _query_diagnostics(
-        test_app.study,
-        "dataset_generation_context",
-        include_objects=True,
+    service = get_application_service(test_app.study)
+    split_context = service.get_dataset_split_context(
+        DatasetSplitContextRequest(
+            publication_generation=service.get_view_publication().generation,
+        ),
     )
-    assert split_context["epoch_available"] is True
+    assert split_context.context.epoch_available is True
 """,
         encoding="utf-8",
     )
@@ -3707,6 +4577,86 @@ def _handle_result(self, result):
     assert len(violations) == 1
     assert "_handle_result" in violations[0]
     assert "mark_refresh_dirty" in violations[0]
+
+
+def test_post_command_refresh_guard_follows_training_callback_call_chain(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+class TrainingSidebar:
+    def run(self):
+        def _handle_result(result):
+            self._handle_start_training_result(result)
+
+        self._execute_action_async(
+            TrainCommand(),
+            on_result=_handle_result,
+        )
+
+    def _handle_start_training_result(self, result):
+        if result.failed:
+            return
+        reconcile = getattr(
+            self.panel,
+            "reconcile_training_terminal_outcome",
+            None,
+        )
+        if callable(reconcile):
+            reconcile()
+        self._apply_running_controls()
+
+    def _apply_running_controls(self):
+        self.btn_stop.setEnabled(True)
+""",
+    )
+
+    violations = check_ui_post_command_local_refreshes(tmp_path)
+
+    assert any("reconcile_training_terminal_outcome" in item for item in violations)
+    assert any("btn_stop.setEnabled" in item for item in violations)
+
+
+def test_post_command_refresh_guard_flags_training_sync_result_control_update(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+class TrainingSidebar:
+    def stop_training(self):
+        result = self._execute_action(StopTrainingCommand())
+        if result is None or result.failed:
+            return
+        self.btn_stop.setEnabled(False)
+""",
+    )
+
+    violations = check_ui_post_command_local_refreshes(tmp_path)
+
+    assert any("btn_stop.setEnabled" in item for item in violations)
+
+
+def test_post_command_refresh_guard_allows_training_result_feedback_and_busy_state(
+    tmp_path,
+):
+    _write_ui_file(
+        tmp_path,
+        """
+class TrainingSidebar:
+    def run(self):
+        def _handle_result(result):
+            self._finish_command_in_flight()
+            self._show_status(result.message)
+
+        self._execute_action_async(
+            TrainCommand(),
+            on_result=_handle_result,
+        )
+
+    def _finish_command_in_flight(self):
+        self._command_in_flight = False
+""",
+    )
+
+    assert check_ui_post_command_local_refreshes(tmp_path) == []
 
 
 def test_post_command_refresh_guard_allows_async_read_only_query_refresh_false(
@@ -4824,7 +5774,7 @@ def _select_response_action(self, presentation_id):
     assert "controller.consume_response_actions" in violations[0]
 
 
-def test_direct_controller_mutation_allowlist_accepts_exact_receiver_and_callsite(
+def test_direct_controller_mutation_guard_rejects_obsolete_chat_action_consumption(
     tmp_path,
 ):
     _write_product_file(
@@ -4836,7 +5786,10 @@ def _select_response_action(self, presentation_id):
 """,
     )
 
-    assert check_ui_direct_controller_mutations(tmp_path) == []
+    violations = check_ui_direct_controller_mutations(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.consume_response_actions" in violations[0]
 
 
 def test_direct_controller_mutation_allowlist_rejects_wrong_callsite(tmp_path):
@@ -5252,6 +6205,116 @@ def _legacy_controller_from_parent(self, parent):
     assert "study.get_controller" in violations[0]
 
 
+def test_dataset_split_publication_guard_rejects_retired_live_object_paths(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/query_state_service.py",
+        """
+class QueryStateCommandService:
+    def handle_query_state(self, command):
+        if command.query == "dataset_generation_context":
+            return self.study.epoch_data
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py",
+        """
+class DataSplittingDialog:
+    def __init__(self, parent, controller=None):
+        self.epoch_data = controller.get_epoch_data()
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/training/sidebar.py",
+        """
+class TrainingSidebar:
+    def split_data(self, result):
+        return local_result_payload(result)["dataset_generator"]
+""",
+    )
+
+    violations = architecture_compliance.check_dataset_split_publication_boundary(
+        tmp_path,
+    )
+
+    assert any("dataset_generation_context is retired" in item for item in violations)
+    assert any("must not accept a controller parameter" in item for item in violations)
+    assert any("must not access live epoch_data" in item for item in violations)
+    assert any("must not use local_result_payload" in item for item in violations)
+    assert any("must not access live dataset_generator" in item for item in violations)
+
+
+def test_repository_dataset_split_publication_boundary_is_detached() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+
+    assert (
+        architecture_compliance.check_dataset_split_publication_boundary(root_dir) == []
+    )
+
+
+def test_epoch_dialog_publication_guard_rejects_live_ui_data_paths(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/dialogs/preprocess/epoching_dialog.py",
+        """
+class EpochingDialog:
+    def __init__(self, parent, data_list):
+        self.data_list = data_list
+        self.epoch_context = build_epoching_context(data_list)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/preprocess/sidebar.py",
+        """
+class PreprocessSidebar:
+    def _preprocessed_data_list_for_epoching(self):
+        return []
+
+    def open_epoching(self, result):
+        data_list = local_result_payload(result)["preprocessed_data_list"]
+        QueryStateCommand(query="data_lists", include_objects=True)
+        return EpochingDialog(self, data_list)
+""",
+    )
+
+    violations = architecture_compliance.check_epoch_dialog_publication_boundary(
+        tmp_path,
+    )
+
+    assert any(
+        "must not accept live EEG data parameters" in item for item in violations
+    )
+    assert any(
+        "without reading or deriving from live EEG objects" in item
+        for item in violations
+    )
+    assert any(
+        "_preprocessed_data_list_for_epoching is retired" in item for item in violations
+    )
+    assert any("must use only the typed detached" in item for item in violations)
+    assert any(
+        "must not request live application objects" in item for item in violations
+    )
+    assert any(
+        "must receive detached epoch_context by keyword" in item for item in violations
+    )
+
+
+def test_repository_epoch_dialog_publication_boundary_is_detached() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+
+    assert (
+        architecture_compliance.check_epoch_dialog_publication_boundary(root_dir) == []
+    )
+
+
 def test_mutable_object_boundary_guard_reports_exact_new_product_violations(
     tmp_path: Path,
 ) -> None:
@@ -5295,7 +6358,7 @@ class NewBoundaryPanel:
     ]
 
 
-def test_mutable_object_boundary_guard_allows_exact_existing_debt_symbol(
+def test_mutable_object_boundary_guard_rejects_retired_dataset_read_debt(
     tmp_path: Path,
 ) -> None:
     _write_product_file(
@@ -5311,8 +6374,13 @@ def test_mutable_object_boundary_guard_allows_exact_existing_debt_symbol(
         return local_result_payload(result)
 """,
     )
+    violations = architecture_compliance.check_mutable_object_boundaries(tmp_path)
 
-    assert architecture_compliance.check_mutable_object_boundaries(tmp_path) == []
+    assert len(violations) == 2
+    assert any("include_objects use is not allowlisted" in item for item in violations)
+    assert any(
+        "local_result_payload use is not allowlisted" in item for item in violations
+    )
 
 
 def test_mutable_object_boundary_guard_rejects_growth_inside_allowlisted_symbol(
@@ -5332,6 +6400,10 @@ def test_mutable_object_boundary_guard_rejects_growth_inside_allowlisted_symbol(
     violations = architecture_compliance.check_mutable_object_boundaries(tmp_path)
 
     assert violations == [
+        "XBrainLab/ui/panels/dataset/panel.py:3 "
+        "[DatasetPanel._query_loaded_data_list_for_render] "
+        "include_objects use is not allowlisted: "
+        "QueryStateCommand(query='data_lists', include_objects=True)",
         "XBrainLab/ui/panels/dataset/panel.py:4 "
         "[DatasetPanel._query_loaded_data_list_for_render] "
         "include_objects use is not allowlisted: "
@@ -5346,6 +6418,383 @@ def test_repository_mutable_object_boundary_debt_is_fully_enumerated() -> None:
         architecture_compliance.check_mutable_object_boundaries(
             root_dir,
             validate_allowlist=True,
+        )
+        == []
+    )
+
+
+def test_training_history_projection_guard_rejects_live_product_objects(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/query_state_service.py",
+        """
+class QueryStateCommandService:
+    def handle_query_state(self, command):
+        if command.query == "training_history":
+            return self.state_builder.training_history(
+                include_objects=command.include_objects,
+            )
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/training_history.py",
+        """
+class TrainingHistoryRow:
+    def to_dict(self):
+        return {
+            "identity": self.identity,
+            "metrics": self.metrics,
+            "plan": self.plan,
+            "record": self.record,
+        }
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/training/panel.py",
+        """
+class TrainingPanel:
+    def _history_for_render(self):
+        return QueryStateCommand(
+            query="training_history",
+            include_objects=True,
+        )
+
+    def on_history_selection_changed(self, record):
+        self.current_plotting_record = record
+""",
+    )
+
+    violations = architecture_compliance.check_training_history_projection_boundary(
+        tmp_path,
+    )
+
+    assert any("must not pass include_objects" in item for item in violations)
+    assert any("must not serialize live key 'plan'" in item for item in violations)
+    assert any("must not serialize live key 'record'" in item for item in violations)
+    assert any("record-based training history UI state" in item for item in violations)
+
+
+def test_repository_training_history_projection_boundary_is_detached() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+
+    assert (
+        architecture_compliance.check_training_history_projection_boundary(root_dir)
+        == []
+    )
+
+
+def test_training_history_projection_guard_rejects_live_validation_consumers(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "scripts/dev/run_public_cross_source_training_smoke.py",
+        """
+def verify(service):
+    return service.execute(
+        QueryStateCommand(
+            query="training_history",
+            include_objects=True,
+        )
+    )
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "tests/integration/pipeline/test_training.py",
+        """
+def test_training(service):
+    result = service.execute(
+        QueryStateCommand(
+            query="training_history",
+            include_objects=True,
+        )
+    )
+    assert result.ok
+""",
+    )
+
+    violations = architecture_compliance.check_training_history_projection_boundary(
+        tmp_path,
+    )
+
+    assert len(violations) == 2
+    assert all(
+        "product validation must read detached training-history diagnostics" in item
+        for item in violations
+    )
+
+
+def test_dataset_detached_read_boundary_rejects_object_opt_in_and_ui_storage(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/query_state_service.py",
+        """
+class QueryStateCommandService:
+    def handle_query_state(self, command):
+        query = command.query
+        if query == "data_lists":
+            payload = {"loaded_data_list": self.study.loaded_data_list}
+            if command.include_objects:
+                payload["preprocessed_data_list"] = self.study.preprocessed_data_list
+            return "ready", payload
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/panel.py",
+        """
+class DatasetPanel:
+    def update_panel(self):
+        result = QueryStateCommand(query="data_lists", include_objects=True)
+
+    def _update_panel_content(self):
+        item.setData(Qt.ItemDataRole.UserRole, data)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/external_label_import_coordinator.py",
+        """
+class ExternalLabelImportCoordinator:
+    def target_files_from_table_rows(self, rows):
+        item = self.panel.table.item(rows[0], 0)
+        return [item.data(Qt.ItemDataRole.UserRole)]
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/dialogs/dataset/channel_selection_dialog.py",
+        """
+class ChannelSelectionDialog:
+    def __init__(self, parent, data_list):
+        self.channels = data_list[0].get_mne().ch_names
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/dialogs/preprocess/rereference_dialog.py",
+        """
+class RereferenceDialog:
+    def __init__(self, parent, data_list):
+        self.channels = data_list[0].get_mne().ch_names
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py",
+        """
+class PreprocessPlotter:
+    def plot(self, data):
+        raw = data.get_mne()
+        return raw.get_data()
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/preprocess/data_query.py",
+        """
+def query_preprocess_render_lists(context):
+    command = QueryStateCommand(query="data_lists", include_objects=True)
+    return local_result_payload(execute(context, command))
+""",
+    )
+
+    violations = architecture_compliance.check_dataset_detached_read_boundary(tmp_path)
+
+    assert any("get_loaded_data_rows" in item for item in violations)
+    assert any("include_objects opt-in" in item for item in violations)
+    assert any("mutable object key" in item for item in violations)
+    assert any("must not request mutable objects" in item for item in violations)
+    assert any("detached row identity" in item for item in violations)
+    assert any(
+        "label_import_targets detached projection" in item for item in violations
+    )
+    assert any("must not recover live EEG objects" in item for item in violations)
+    assert any("must not read UserRole payloads" in item for item in violations)
+    assert any("label_import_targets command query" in item for item in violations)
+    assert any("detached channel names" in item for item in violations)
+    assert any("RereferenceDialog" in item for item in violations)
+    assert any("immutable PreprocessRenderPublication" in item for item in violations)
+    assert any(
+        "must not request mutable data-list objects" in item for item in violations
+    )
+
+
+def test_repository_dataset_read_boundary_is_detached() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+
+    assert architecture_compliance.check_dataset_detached_read_boundary(root_dir) == []
+
+
+def test_external_label_coordinator_guard_rejects_host_round_trip_and_selection(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/external_label_import_coordinator.py",
+        """
+class ExternalLabelImportCoordinator:
+    def import_label(self):
+        return self._host._get_target_files_for_import()
+
+    def target_files_from_table_rows(self, rows):
+        self._host._last_target_file_indices = rows
+        return []
+
+    def _query_label_import_targets(self):
+        return QueryStateCommand(query="label_import_targets")
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/actions.py",
+        """
+class DatasetActionHandler:
+    def __init__(self):
+        self._last_target_file_indices = []
+""",
+    )
+
+    violations = architecture_compliance.check_dataset_detached_read_boundary(tmp_path)
+
+    assert any("round-trips" in item for item in violations)
+    assert any("must own it" in item for item in violations)
+    assert any("single owner" in item for item in violations)
+
+
+def test_visualization_publication_refresh_guard_rejects_broad_runtime_paths(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/visualization/panel.py",
+        """
+class VisualizationPanel:
+    def __init__(
+        self,
+        controller,
+        parent=None,
+        *,
+        application_runtime=None,
+        **kwargs,
+    ):
+        self._visualization_controller = controller
+        self._create_bridge(
+            controller,
+            CONTROLLER_STATE_CHANGED_EVENT,
+            self._on_controller_state_changed,
+        )
+
+    def _on_controller_state_changed(self):
+        return refresh_after_observer(self, event_name="state_changed")
+
+    def _on_application_view_publication_changed(self, publication):
+        self.update_panel()
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/main_window.py",
+        """
+_PANEL_SPECS = (
+    _PanelSpec(
+        "visualization_panel",
+        "Visualization",
+        "XBrainLab.ui.panels.visualization.panel",
+        "VisualizationPanel",
+        ("visualization",),
+    ),
+)
+
+class MainWindow:
+    def _materialize_panel(self, spec, resolved_panel_class):
+        if spec.attr == "visualization_panel":
+            return resolved_panel_class(
+                controller=self.controllers.visualization,
+                application_runtime=self.application_runtime,
+            )
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/controller_compatibility_bootstrap.py",
+        """
+class CompatibilityWorkflowControllers:
+    @property
+    def visualization(self):
+        return self._controller("visualization")
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/refresh_coordinator.py",
+        """
+_OBSERVER_EVENT_REFRESH_ROUTES = {
+    "state_changed": (
+        "visualization_panel",
+        _ChangedState(visualization_changed=True),
+    ),
+}
+
+def _panel_names_for(changed):
+    panel_names = []
+    if changed.visualization_changed:
+        panel_names.append("visualization_panel")
+    return tuple(panel_names)
+
+def _panel_names_for_observer_event(event_name, changed):
+    return ("visualization_panel",)
+""",
+    )
+
+    violations = (
+        architecture_compliance.check_visualization_publication_refresh_boundary(
+            tmp_path,
+        )
+    )
+
+    assert any("broad constructor parameter" in item for item in violations)
+    assert any("must declare narrow port query_port" in item for item in violations)
+    assert any(
+        "must declare narrow port publication_port" in item for item in violations
+    )
+    assert any("must declare narrow port action_port" in item for item in violations)
+    assert any("stores broad controller attribute" in item for item in violations)
+    assert any(
+        "forbidden refresh path refresh_after_observer" in item for item in violations
+    )
+    assert any("non-application publication event" in item for item in violations)
+    assert any("no monotonic application revision gate" in item for item in violations)
+    assert any(
+        "no queued application publication refresh" in item for item in violations
+    )
+    assert any("must have no controller requirements" in item for item in violations)
+    assert any("must inject query_port" in item for item in violations)
+    assert any("must inject publication_port" in item for item in violations)
+    assert any("must inject action_port" in item for item in violations)
+    assert any("must remain physically removed" in item for item in violations)
+    assert any(
+        "changed-state refresh must exclude Visualization" in item
+        for item in violations
+    )
+    assert any(
+        "observer refresh must exclude Visualization" in item for item in violations
+    )
+
+
+def test_repository_visualization_uses_narrow_publication_refresh_boundary() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+
+    assert (
+        architecture_compliance.check_visualization_publication_refresh_boundary(
+            root_dir,
         )
         == []
     )

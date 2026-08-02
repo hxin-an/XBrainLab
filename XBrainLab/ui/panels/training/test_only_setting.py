@@ -14,6 +14,10 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.training import TestOnlyOption, parse_device_name
+from XBrainLab.ui.components.user_error_presentation import (
+    UnexpectedErrorContext,
+    present_unexpected_error,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.dialogs.training.device_setting_dialog import DeviceSettingDialog
@@ -106,8 +110,18 @@ class TestOnlySettingWindow(BaseDialog):
                 int(self.bs_entry.text()),
             )
             self.accept()
-        except Exception as e:
-            QMessageBox.warning(self, "Validation Error", str(e))
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Enter a positive whole-number batch size and review the "
+                "test settings.",
+            )
+        except Exception:
+            present_unexpected_error(
+                self,
+                UnexpectedErrorContext.TRAINING_TEST_SETTINGS,
+            )
 
     def get_result(self):
         """Return the configured ``TestOnlyOption``.

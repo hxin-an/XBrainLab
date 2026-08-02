@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import json
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, cast
 
@@ -16,7 +16,6 @@ from XBrainLab.backend.application import (
     CreateEpochCommand,
     EvaluateCommand,
     GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
@@ -51,6 +50,14 @@ from XBrainLab.backend.training.input_contract import (
     normalize_strict_boolean,
     normalize_training_input,
 )
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES,
+    PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+    PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+    public_diagnostic_value,
+)
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
@@ -69,6 +76,12 @@ class CapabilityPolicyUnavailableError(RuntimeError):
 
 
 CapabilityPolicyUnavailable = CapabilityPolicyUnavailableError
+
+_ASSISTANT_DIRECT_LOAD_DISABLED_MESSAGE = (
+    "Direct assistant file loading is unavailable because the legacy loader "
+    "cannot preserve an authorized filesystem identity through file parsing. "
+    "Use scan_source and the Data Interpretation workflow instead."
+)
 
 
 class HostAuthorizedToolParameter(str):
@@ -247,6 +260,133 @@ class ToolAvailabilityContext:
     capabilities: CapabilityPolicy | None = None
 
 
+_PUBLIC_TOOL_IDENTIFIER_MAX_BYTES = 1024
+_PUBLIC_TOOL_MESSAGE_MAX_BYTES = 64 * 1024
+_PUBLIC_TOOL_METADATA_MAX_BYTES = 4096
+
+
+def _bounded_public_text(value: str, max_bytes: int) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    marker = PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER.encode("utf-8")
+    prefix = encoded[: max(0, max_bytes - len(marker))].decode(
+        "utf-8",
+        errors="ignore",
+    )
+    return f"{prefix}{PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER}"
+
+
+def _public_text_field(
+    value: object,
+    *,
+    max_bytes: int,
+    fallback: str,
+    layout: DiagnosticTextLayout = DiagnosticTextLayout.SINGLE_LINE,
+) -> str:
+    if type(value) is not str:
+        return fallback
+    return _bounded_public_text(
+        public_diagnostic_text(
+            value,
+            layout=layout,
+        ),
+        max_bytes,
+    )
+
+
+def _public_optional_text_field(
+    value: object,
+    *,
+    max_bytes: int = _PUBLIC_TOOL_METADATA_MAX_BYTES,
+) -> str | None:
+    if value is None or type(value) is not str:
+        return None
+    return _public_text_field(value, max_bytes=max_bytes, fallback="")
+
+
+def _public_mapping_field(
+    value: object,
+    *,
+    none_allowed: bool,
+) -> dict[str, Any] | None:
+    if value is None and none_allowed:
+        return None
+    if type(value) is not dict:
+        return None if none_allowed else {}
+    projected = public_diagnostic_value(value)
+    if type(projected) is not dict:
+        return None if none_allowed else {}
+    return projected
+
+
+def _public_changed_state_field(value: object) -> dict[str, bool]:
+    projected = _public_mapping_field(value, none_allowed=False)
+    if type(projected) is not dict:
+        return {}
+    return {
+        key: item
+        for key, item in dict.items(projected)
+        if type(key) is str and type(item) is bool
+    }
+
+
+def _public_unsupported_result_type(value: object) -> str:
+    value_type = type(value)
+    for supported_type, public_name in (
+        (str, "str"),
+        (dict, "dict"),
+        (list, "list"),
+        (tuple, "tuple"),
+        (set, "set"),
+        (bool, "bool"),
+        (int, "int"),
+        (float, "float"),
+        (bytes, "bytes"),
+        (type(None), "NoneType"),
+    ):
+        if value_type is supported_type:
+            return public_name
+    return "unsupported"
+
+
+def _serialized_public_payload_size(payload: dict[str, Any]) -> int:
+    return len(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+
+
+def _fit_public_tool_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if _serialized_public_payload_size(payload) <= PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES:
+        return payload
+
+    replacements: tuple[tuple[str, Any], ...] = (
+        ("raw_result", PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER),
+        ("diagnostics", {}),
+        ("state", None),
+        ("capability", None),
+        ("changed_state", {}),
+        ("blocked_reason", None),
+    )
+    for field_name, replacement in replacements:
+        payload[field_name] = replacement
+        if (
+            _serialized_public_payload_size(payload)
+            <= PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES
+        ):
+            return payload
+
+    payload["message"] = _bounded_public_text(
+        payload["message"],
+        _PUBLIC_TOOL_METADATA_MAX_BYTES,
+    )
+    return payload
+
+
 @dataclass(frozen=True)
 class ToolCommandResult:
     """Agent-facing structured result for ApplicationService-backed tools."""
@@ -267,7 +407,59 @@ class ToolCommandResult:
     changed_state: dict[str, bool] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.ok:
+        object.__setattr__(self, "ok", self.ok if type(self.ok) is bool else False)
+        object.__setattr__(
+            self,
+            "tool_name",
+            _public_text_field(
+                self.tool_name,
+                max_bytes=_PUBLIC_TOOL_IDENTIFIER_MAX_BYTES,
+                fallback=PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "command_name",
+            _public_optional_text_field(
+                self.command_name,
+                max_bytes=_PUBLIC_TOOL_IDENTIFIER_MAX_BYTES,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "message",
+            _public_text_field(
+                self.message,
+                max_bytes=_PUBLIC_TOOL_MESSAGE_MAX_BYTES,
+                fallback=PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
+                layout=DiagnosticTextLayout.PRESERVE_LINES,
+            ),
+        )
+        for field_name in ("error_type", "error_code", "recovery_action"):
+            object.__setattr__(
+                self,
+                field_name,
+                _public_optional_text_field(getattr(self, field_name)),
+            )
+        object.__setattr__(
+            self,
+            "recoverable",
+            self.recoverable if type(self.recoverable) is bool else False,
+        )
+        object.__setattr__(
+            self,
+            "blocked_reason",
+            _public_optional_text_field(
+                self.blocked_reason,
+                max_bytes=_PUBLIC_TOOL_MESSAGE_MAX_BYTES,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "changed_state",
+            _public_changed_state_field(self.changed_state),
+        )
+        if self.ok is True:
             return
         projection = public_safe_result_projection(
             message=self.message,
@@ -310,7 +502,7 @@ class ToolCommandResult:
             blocked_reason=reason,
             state=state,
             capability=availability.to_dict(),
-            diagnostics=dict(diagnostics or {}),
+            diagnostics=(dict.copy(diagnostics) if type(diagnostics) is dict else {}),
         )
 
     @classmethod
@@ -342,8 +534,10 @@ class ToolCommandResult:
             recoverable=recoverable,
             state=state,
             capability=capability,
-            diagnostics=dict(diagnostics or {}),
-            changed_state=dict(changed_state or {}),
+            diagnostics=(dict.copy(diagnostics) if type(diagnostics) is dict else {}),
+            changed_state=(
+                dict.copy(changed_state) if type(changed_state) is dict else {}
+            ),
         )
 
     @classmethod
@@ -384,9 +578,11 @@ class ToolCommandResult:
         state: dict[str, Any] | None = None,
     ) -> ToolCommandResult:
         """Convert an explicit non-ApplicationService tool result."""
-        diagnostics = dict(result.diagnostics)
-        if not diagnostics and isinstance(result.payload, dict):
-            diagnostics = dict(result.payload)
+        diagnostics = (
+            dict.copy(result.diagnostics) if type(result.diagnostics) is dict else {}
+        )
+        if not diagnostics and type(result.payload) is dict:
+            diagnostics = dict.copy(result.payload)
         return cls(
             ok=result.ok,
             tool_name=tool_name,
@@ -412,7 +608,11 @@ class ToolCommandResult:
                 else None
             ),
             diagnostics=diagnostics,
-            changed_state=dict(result.changed_state),
+            changed_state=(
+                dict.copy(result.changed_state)
+                if type(result.changed_state) is dict
+                else {}
+            ),
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -425,7 +625,7 @@ class ToolCommandResult:
             capability=self.capability,
             diagnostics=self.diagnostics,
         )
-        return {
+        payload = {
             "ok": self.ok,
             "tool_name": self.tool_name,
             "command_name": self.command_name,
@@ -441,6 +641,32 @@ class ToolCommandResult:
             "changed_state": self.changed_state,
             "raw_result": projection.raw_result,
         }
+        safe_payload = public_diagnostic_value(payload)
+        if type(safe_payload) is not dict:
+            safe_payload = {}
+        contract_payload: dict[str, Any] = {}
+        for field_name, default in (
+            ("ok", False),
+            ("tool_name", PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER),
+            ("command_name", None),
+            ("message", PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER),
+            ("error_type", None),
+            ("error_code", None),
+            ("recovery_action", None),
+            ("recoverable", False),
+            ("blocked_reason", None),
+            ("state", None),
+            ("capability", None),
+            ("diagnostics", {}),
+            ("changed_state", {}),
+            ("raw_result", PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER),
+        ):
+            contract_payload[field_name] = dict.get(
+                safe_payload,
+                field_name,
+                default,
+            )
+        return _fit_public_tool_payload(contract_payload)
 
 
 def build_agent_tool_policy(
@@ -474,6 +700,12 @@ def _build_agent_tool_policy_from_publication(
     for tool_name, command_name in TOOL_TO_COMMAND.items():
         capability = app_policy.get(command_name)
         tool_policy[tool_name] = _from_capability(tool_name, command_name, capability)
+    tool_policy["load_data"] = replace(
+        tool_policy["load_data"],
+        enabled=False,
+        reasons=(_ASSISTANT_DIRECT_LOAD_DISABLED_MESSAGE,),
+        can_auto_execute=False,
+    )
 
     has_raw_data = state.active_dataset.has_raw_data
     tool_policy["list_files"] = ToolAvailability(
@@ -573,9 +805,9 @@ def normalize_tool_result(
     runtime: ApplicationToolRuntime | None = None,
 ) -> ToolCommandResult | UiRequest:
     """Convert a real tool return value into a structured agent result."""
-    if isinstance(raw_result, ToolCommandResult):
+    if type(raw_result) is ToolCommandResult:
         return raw_result
-    if isinstance(raw_result, UiRequest):
+    if type(raw_result) is UiRequest:
         return raw_result
 
     if availability is None:
@@ -589,14 +821,14 @@ def normalize_tool_result(
             availability = None
 
     capability = availability.to_dict() if availability else None
-    if isinstance(raw_result, CommandResult):
+    if type(raw_result) is CommandResult:
         return ToolCommandResult.from_command_result(
             tool_name,
             raw_result,
             capability=capability,
         )
 
-    if not isinstance(raw_result, ToolResult):
+    if type(raw_result) is not ToolResult:
         return ToolCommandResult.failure(
             tool_name,
             "The assistant tool returned an invalid result contract.",
@@ -613,7 +845,7 @@ def normalize_tool_result(
             capability=capability,
             error_type="contract",
             recoverable=False,
-            diagnostics={"returned_type": type(raw_result).__name__},
+            diagnostics={"returned_type": _public_unsupported_result_type(raw_result)},
         )
     return ToolCommandResult.from_tool_result(
         tool_name,
@@ -668,6 +900,35 @@ def execute_application_tool_command(
                 "boundary": "application_tool_runtime",
                 "mapped_product_tool": True,
             },
+        )
+
+    if tool_name == "load_data":
+        if availability is None:
+            try:
+                availability = get_tool_availability(
+                    study,
+                    tool_name,
+                    runtime=application_runtime,
+                )
+            except CapabilityPolicyUnavailableError:
+                availability = None
+        return ToolCommandResult.failure(
+            tool_name,
+            _ASSISTANT_DIRECT_LOAD_DISABLED_MESSAGE,
+            command_name=CommandName.LOAD_DATA.value,
+            state=(
+                state
+                if state is not None
+                else _state_snapshot_dict(study, runtime=application_runtime)
+            ),
+            capability=availability.to_dict() if availability else None,
+            error_type="precondition",
+            error_code="assistant_direct_load_disabled",
+            recovery_action=(
+                "Use scan_source, preview_interpretation, "
+                "validate_interpretation, and apply_interpretation."
+            ),
+            recoverable=False,
         )
 
     input_error: str | None = None
@@ -792,23 +1053,9 @@ def build_reload_interpretation_recipe_command(
     )
 
 
-def build_load_data_command(params: dict[str, Any]) -> LoadDataCommand | None:
-    """Translate legacy direct-load arguments through one canonical owner."""
-    paths = params.get("paths")
-    if not isinstance(paths, list) or not paths:
-        return None
-    expanded_paths = _expand_load_paths([str(path) for path in paths])
-    if not expanded_paths:
-        return None
-    return LoadDataCommand(
-        paths=expanded_paths,
-        allow_append=_boolean_param(params, "allow_append", default=True),
-        resource_preflight_confirmed=_boolean_param(
-            params,
-            "resource_preflight_confirmed",
-        ),
-        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
-    )
+def build_load_data_command(params: dict[str, Any]) -> None:
+    """Keep legacy direct loading closed at the assistant command boundary."""
+    del params
 
 
 def build_attach_labels_command(
@@ -827,6 +1074,7 @@ def build_attach_labels_command(
         mapping=normalized_mapping,
         label_paths=list(dict.fromkeys(normalized_mapping.values())),
         label_format=_optional_str(params.get("label_format")),
+        selected_event_names=_optional_str_list(params.get("selected_event_names")),
         resource_preflight_confirmed=_boolean_param(
             params,
             "resource_preflight_confirmed",
@@ -888,7 +1136,8 @@ def _command_for_tool(
         return build_reload_interpretation_recipe_command(params)
 
     if tool_name == "load_data":
-        return build_load_data_command(params)
+        build_load_data_command(params)
+        return None
 
     if tool_name == "attach_labels":
         return build_attach_labels_command(params)
@@ -1046,10 +1295,29 @@ def _command_for_tool(
         return VisualizeCommand(view=_optional_str(params.get("view")))
 
     if tool_name == "saliency":
-        saliency_params = params.get("params")
+        nested_saliency_params = params.get("params")
+        saliency_params = (
+            dict(nested_saliency_params)
+            if isinstance(nested_saliency_params, dict)
+            else {}
+        )
+        for parameter_name in (
+            "nt_samples",
+            "nt_samples_batch_size",
+            "stdevs",
+        ):
+            if parameter_name in params:
+                saliency_params[parameter_name] = params[parameter_name]
         return SaliencyCommand(
             method=_optional_str(params.get("method")),
-            params=dict(saliency_params) if isinstance(saliency_params, dict) else None,
+            params=saliency_params or None,
+            resource_preflight_confirmed=_boolean_param(
+                params,
+                "resource_preflight_confirmed",
+            ),
+            resource_preflight_token=_optional_str(
+                params.get("resource_preflight_token")
+            ),
         )
 
     if tool_name == "clear_dataset":
@@ -1061,27 +1329,9 @@ def _command_for_tool(
             params=dict(params.get("params", {}))
             if isinstance(params.get("params"), dict)
             else {},
-            include_objects=_boolean_param(params, "include_objects"),
         )
 
     return None
-
-
-def _expand_load_paths(paths: list[str]) -> list[str]:
-    """Expand directory arguments before routing load_data to ApplicationService."""
-    expanded_paths: list[str] = []
-    for path in paths:
-        if os.path.isdir(path):
-            try:
-                for filename in sorted(os.listdir(path)):
-                    full_path = os.path.join(path, filename)
-                    if os.path.isfile(full_path):
-                        expanded_paths.append(full_path)
-            except OSError:
-                continue
-        else:
-            expanded_paths.append(path)
-    return expanded_paths
 
 
 def _optional_str(value: Any) -> str | None:
@@ -1089,6 +1339,13 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text or None
+
+
+def _optional_str_list(value: Any) -> list[str] | None:
+    if not isinstance(value, (list, tuple)):
+        return None
+    normalized = [str(item).strip() for item in value if str(item).strip()]
+    return list(dict.fromkeys(normalized)) or None
 
 
 def _optional_float(value: Any) -> float | None:

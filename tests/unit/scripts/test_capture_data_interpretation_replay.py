@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from scripts.dev.capture_data_interpretation_replay import (
     apply_replay_review_choices,
+    artifact_file_manifest,
     build_replay_geometry_review,
     build_visible_text_review,
     dataset_sidebar_state,
@@ -23,6 +24,8 @@ from scripts.dev.capture_data_interpretation_replay import (
     pairing_rows_state_for_step,
     request_window_close,
     source_event_field_matches,
+    source_file_manifest,
+    source_fingerprint,
     table_state,
     tree_rows,
     tree_state,
@@ -30,6 +33,39 @@ from scripts.dev.capture_data_interpretation_replay import (
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
+
+
+def test_replay_fingerprint_covers_current_data_import_presentation_source() -> None:
+    source_files = source_file_manifest()
+    paths = {record["path"] for record in source_files}
+
+    assert "scripts/dev/capture_data_interpretation_replay.py" in paths
+    assert "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py" in paths
+    assert "XBrainLab/ui/dialogs/dataset/event_value_decision_editor.py" in paths
+    assert "XBrainLab/ui/dialogs/dataset/review_import_step.py" in paths
+    assert "XBrainLab/ui/components/info_panel.py" in paths
+    assert "XBrainLab/ui/components/info_panel_service.py" in paths
+    assert all(record["sha256"] for record in source_files)
+    assert source_fingerprint(source_files) != source_fingerprint(
+        [{"path": "different.py", "sha256": "0" * 64}]
+    )
+
+
+def test_artifact_file_manifest_hashes_every_replay_screenshot(tmp_path: Path) -> None:
+    screenshots = {
+        "preview": tmp_path / "preview.png",
+        "remap": tmp_path / "remap.png",
+        "applied": tmp_path / "applied.png",
+    }
+    for name, path in screenshots.items():
+        path.write_bytes(f"{name}-content".encode())
+
+    manifest = artifact_file_manifest(screenshots, artifact_root=tmp_path)
+
+    assert set(manifest) == set(screenshots)
+    assert all(record["relative_path"].endswith(".png") for record in manifest.values())
+    assert all(len(record["sha256"]) == 64 for record in manifest.values())
+    assert all(record["byte_size"] > 0 for record in manifest.values())
 
 
 def test_apply_replay_review_choices_only_changes_visible_matching_controls(
@@ -89,6 +125,72 @@ def test_apply_replay_review_choices_only_changes_visible_matching_controls(
         dialog.event_tree
     )
     assert dialog.get_result()["choices"].get("event_roles", {}) == {}
+
+
+def test_apply_replay_review_choices_completes_observed_label_values(qtbot) -> None:
+    decisions = {
+        value: {
+            "role": "unknown",
+            "keep_event": None,
+            "use_as_class": None,
+            "suggested_name": name,
+            "decision": "unresolved",
+            "count": 3,
+        }
+        for value, name in (("left", "Left hand"), ("right", "Right hand"))
+    }
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-2_raw.fif"],
+            "label_carriers": ["/tmp/source/events.tsv"],
+        },
+        preview={
+            "selected_eeg_files": ["/tmp/source/sub-01_task-mi_run-2_raw.fif"],
+            "label_carrier_preview": [
+                {
+                    "path": "/tmp/source/events.tsv",
+                    "name": "events.tsv",
+                    "format": "TSV",
+                    "selected_label_field": "trial_type",
+                    "role": "class cue labels",
+                    "value_decisions": decisions,
+                    "unresolved_values": ["left", "right"],
+                }
+            ],
+        },
+        validation_decision={"decision": "blocked"},
+    )
+    qtbot.addWidget(dialog)
+
+    replay_choices = apply_replay_review_choices(dialog)
+
+    value_decisions = replay_choices["label_carrier_choices"]["/tmp/source/events.tsv"][
+        "value_decisions"
+    ]
+    assert {
+        value: {
+            "role": payload["role"],
+            "keep_event": payload["keep_event"],
+            "use_as_class": payload["use_as_class"],
+            "class_name": payload["class_name"],
+        }
+        for value, payload in value_decisions.items()
+    } == {
+        "left": {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "Left hand",
+        },
+        "right": {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "Right hand",
+        },
+    }
 
 
 def test_confirmed_apply_failure_fails_the_replay_validator() -> None:

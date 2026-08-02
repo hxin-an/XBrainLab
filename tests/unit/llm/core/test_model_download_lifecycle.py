@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
 import threading
 import time
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 
@@ -24,6 +26,23 @@ from XBrainLab.llm.core.model_download_lifecycle import (
     ModelStatusInspectionResult,
     _ModelCacheCleanupWorker,
 )
+
+PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+PRIMARY_MODEL_REVISION = (
+    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
+)
+VALID_TEST_WEIGHT_BYTES = 300_000_000
+
+
+def _write_complete_model_cache(cache_dir: Path) -> Path:
+    model_root = cache_dir / f"models--{PRIMARY_MODEL_ID.replace('/', '--')}"
+    snapshot = model_root / "snapshots" / PRIMARY_MODEL_REVISION
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+    with (snapshot / "model.safetensors").open("wb") as stream:
+        stream.truncate(VALID_TEST_WEIGHT_BYTES)
+    return model_root
 
 
 class _FakeDownloader(QObject):
@@ -217,6 +236,92 @@ def test_cancel_cleanup_uses_immutable_target_and_preserves_other_model(
     assert model_a_path.exists() is False
     assert model_b_path.exists() is True
     assert (model_b_path / "model.bin").read_bytes() == b"installed"
+
+
+def test_failed_download_cleans_only_target_before_terminal_publication(
+    qtbot,
+    tmp_path,
+) -> None:
+    downloader = _FakeDownloader()
+    lifecycle = ModelDownloadLifecycle(downloader=downloader)
+    terminals: list[tuple[bool, str]] = []
+    cleanup_results: list[ModelCacheCleanupResult] = []
+    lifecycle.terminal.connect(lambda ok, message: terminals.append((ok, message)))
+    lifecycle.cache_cleanup_finished.connect(cleanup_results.append)
+    assert lifecycle.start_download(PRIMARY_MODEL_ID, str(tmp_path)) is True
+    assert downloader.target is not None
+    target_path = Path(downloader.target.cache_candidates[0])
+    target_path.mkdir()
+    (target_path / "model.safetensors.incomplete").write_bytes(b"partial")
+    unrelated_path = tmp_path / "models--vendor--other"
+    unrelated_path.mkdir()
+    (unrelated_path / "keep.bin").write_bytes(b"keep")
+
+    entered_cleanup = threading.Event()
+    release_cleanup = threading.Event()
+    original_rmtree = shutil.rmtree
+
+    def slow_rmtree(path: str) -> None:
+        assert Path(path) == target_path
+        entered_cleanup.set()
+        release_cleanup.wait(timeout=2.0)
+        original_rmtree(path)
+
+    with patch(
+        "XBrainLab.llm.core.model_download_lifecycle.shutil.rmtree",
+        side_effect=slow_rmtree,
+    ):
+        downloader.complete(
+            status=ModelDownloadStatus.FAILED,
+            message="Model download failed.",
+        )
+        qtbot.waitUntil(entered_cleanup.is_set, timeout=1000)
+
+        assert terminals == []
+        assert lifecycle.is_idle() is False
+        assert target_path.exists() is True
+
+        release_cleanup.set()
+        qtbot.waitUntil(lambda: bool(terminals), timeout=2000)
+
+    assert terminals == [(False, "Model download failed.")]
+    assert len(cleanup_results) == 1
+    assert cleanup_results[0].reason is ModelCacheCleanupReason.FAILED_DOWNLOAD
+    assert target_path.exists() is False
+    assert (unrelated_path / "keep.bin").read_bytes() == b"keep"
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ModelDownloadStatus.FAILED, ModelDownloadStatus.CANCELLED],
+)
+def test_unsuccessful_download_preserves_complete_cache_present_at_admission(
+    qtbot,
+    tmp_path,
+    status: ModelDownloadStatus,
+) -> None:
+    model_root = _write_complete_model_cache(tmp_path)
+    downloader = _FakeDownloader()
+    lifecycle = ModelDownloadLifecycle(downloader=downloader)
+    cleanup_results: list[ModelCacheCleanupResult] = []
+    lifecycle.cache_cleanup_finished.connect(cleanup_results.append)
+
+    assert lifecycle.start_download(PRIMARY_MODEL_ID, str(tmp_path)) is True
+    assert downloader.target is not None
+    assert downloader.target.complete_cache_at_start is True
+
+    with qtbot.waitSignal(lifecycle.terminal, timeout=1000) as blocker:
+        downloader.complete(
+            status=status,
+            message="Model download failed.",
+        )
+
+    assert blocker.args == [False, "Model download failed."]
+    assert cleanup_results == []
+    assert model_root.exists() is True
+    assert (
+        model_root / "snapshots" / PRIMARY_MODEL_REVISION / "model.safetensors"
+    ).stat().st_size == VALID_TEST_WEIGHT_BYTES
 
 
 def test_cache_root_resolve_failure_emits_exactly_once_and_thread_terminates(

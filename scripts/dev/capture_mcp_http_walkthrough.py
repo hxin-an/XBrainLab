@@ -23,7 +23,7 @@ from XBrainLab.mcp.http_server import build_http_server
 from XBrainLab.mcp.server import PROTOCOL_VERSION
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "mcp"
+DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "mcp"
 
 
 def main() -> int:

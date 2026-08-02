@@ -108,6 +108,38 @@ def test_timestamp_placement_blocks_mne_excluded_class_description(
     assert "BadTrial" in reviewed["placement_review"]["summary"]
 
 
+def test_trial_order_placement_blocks_without_resolved_target_events(
+    tmp_path: Path,
+) -> None:
+    carrier = {
+        "path": str((tmp_path / "labels.mat").resolve()),
+        "format": "MAT labels",
+        "selected_label_field": "classlabel",
+        "selected_anchor": "trial order",
+        "selected_target_event_codes": [],
+        "label_row_count": 10,
+        "placement_method": "eeg_event",
+        "time_model": "trial_order",
+        "granularity": "trial",
+    }
+    internal_events = {
+        "candidate_label_events": [
+            {"event_code": "768", "event_count": 10},
+            {"event_code": "769", "event_count": 5},
+            {"event_code": "770", "event_count": 5},
+        ]
+    }
+
+    review = annotate_label_carrier_placements([carrier], internal_events)[0][
+        "placement_review"
+    ]
+
+    assert review["status"] == "blocked"
+    assert review["decision_code"] == "sequence_target_events_required"
+    assert review["target_events"] == []
+    assert "explicit target EEG event" in review["summary"]
+
+
 def test_shared_carrier_scopes_duplicate_basenames_by_full_target_path(
     tmp_path: Path,
 ) -> None:

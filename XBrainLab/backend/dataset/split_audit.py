@@ -763,20 +763,20 @@ def _indices_for_groups(
     all_mask = np.ones_like(dataset.train_mask, dtype=bool)
     if key == "subject":
         subject_values = np.asarray(epoch_data.get_subject_list_by_mask(all_mask))
-        group_set = {int(group) for group in groups}
+        subject_group_set = {int(group) for group in groups}
         return [
             int(idx)
             for idx, value in enumerate(subject_values.tolist())
-            if int(value) in group_set
+            if int(value) in subject_group_set
         ]
 
     subjects = np.asarray(epoch_data.get_subject_list_by_mask(all_mask))
     sessions = np.asarray(epoch_data.get_session_list_by_mask(all_mask))
-    group_set = {(int(subject), int(session)) for subject, session in groups}
+    session_group_set = {(int(subject), int(session)) for subject, session in groups}
     return [
         int(idx)
         for idx, pair in enumerate(
             zip(subjects.tolist(), sessions.tolist(), strict=False),
         )
-        if (int(pair[0]), int(pair[1])) in group_set
+        if (int(pair[0]), int(pair[1])) in session_group_set
     ]

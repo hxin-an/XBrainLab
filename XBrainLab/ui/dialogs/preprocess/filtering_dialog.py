@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -170,6 +171,7 @@ class FilteringDialog(BaseDialog):
         spin.setDecimals(2)
         spin.setValue(value)
         spin.setFixedWidth(120)
+        spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         return spin
 
     def toggle_notch(self, checked: bool) -> None:

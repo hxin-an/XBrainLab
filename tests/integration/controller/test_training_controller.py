@@ -70,7 +70,11 @@ class TestTrainingControllerLifecycle:
         # 3. Set Mock Data (Simulate having datasets)
         # We Mock the internal study datasets check for this specific test
         # purely to verify the controller logic, not the study logic (which is tested elsewhere)
-        with patch.object(training_controller, "has_datasets", return_value=True):
+        with patch.object(
+            training_controller._training_state,
+            "has_datasets",
+            return_value=True,
+        ):
             assert training_controller.validate_ready()
             assert not training_controller.get_missing_requirements()
 
@@ -175,12 +179,20 @@ class TestTrainingHistory:
 
         # Case 1: Training is running -> Should raise error
         with (
-            patch.object(training_controller, "is_training", return_value=True),
+            patch.object(
+                training_controller._training_state,
+                "is_training",
+                return_value=True,
+            ),
             pytest.raises(RuntimeError),
         ):
             training_controller.clear_history()
 
         # Case 2: Idle -> Should clear
-        with patch.object(training_controller, "is_training", return_value=False):
+        with patch.object(
+            training_controller._training_state,
+            "is_training",
+            return_value=False,
+        ):
             training_controller.clear_history()
             mock_trainer.clear_history.assert_called_once()

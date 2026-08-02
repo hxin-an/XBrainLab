@@ -1,6 +1,6 @@
 # Data Import Wizard Screenshots
 
-status: current release-candidate UI evidence
+status: tracked dirty checkpoint for visual review; not release-candidate evidence
 generator: `scripts/dev/capture_data_import_wizard_steps.py`
 environment: Qt xcb capture on a 1600x1400 Xvfb screen
 supports: Data Import wizard step layout, Load Labels, Match Labels source/placement modes, Review and Import visual review
@@ -10,19 +10,27 @@ next_human_or_runtime_gate: manual Windows click-through on representative EEG/l
 This folder keeps only canonical review images for the current wizard design.
 Exploratory drafts and superseded discussion variants should not be kept here.
 
-Regenerate the canonical full-dialog evidence with:
+Generate final candidate evidence outside this tracked folder with:
 
 ```bash
+HANDOFF_EVIDENCE_ROOT="/mnt/d/XBrainLabEvidence/$(git rev-parse HEAD)"
 QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1600x1400x24' \
-  poetry run python scripts/dev/capture_data_import_wizard_steps.py
-QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1600x1400x24' \
-  poetry run python scripts/dev/capture_data_import_match_label_placement_modes.py
+  poetry run python scripts/dev/capture_data_import_wizard_steps.py \
+  --output-dir "$HANDOFF_EVIDENCE_ROOT/ui/data-import-wizard-steps"
+```
+
+Validate this tracked checkpoint without rewriting it:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run python \
+  scripts/dev/capture_data_import_wizard_steps.py \
+  --output-dir artifacts/ui/data-import-wizard-steps --validate-only
 ```
 
 - `01-choose-eeg-data.png`
 - `02-load-labels-many.png`
 - `03-review-metadata.png`
-- `04-match-labels-internal-suggested-events-full.png`
+- `04-match-labels-internal-advanced-760px.png`
 - `04-match-labels-final-loaded-label-files.png`
 - `04-match-labels-bids-events.png`
 - `04-match-labels-conversion-fallback.png`

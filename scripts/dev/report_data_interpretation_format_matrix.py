@@ -40,7 +40,7 @@ from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger as xbrainlab_logger
 
-ARTIFACT_DIR = ROOT / "artifacts" / "data_interpretation"
+ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "data-interpretation"
 ARTIFACT_JSON = "format-capability-matrix.json"
 ARTIFACT_MARKDOWN = "format-capability-matrix.md"
 WORKFLOW_STAGES = ("scan", "preview", "validate", "apply")

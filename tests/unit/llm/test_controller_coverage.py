@@ -1,5 +1,6 @@
 """Coverage tests for LLMController — ReAct loop, tool execution, finalization."""
 
+from typing import Any
 from unittest.mock import MagicMock
 
 from XBrainLab.llm.agent.confirmation import (
@@ -54,7 +55,7 @@ def _allowed_context(tool_name: str):
     )
 
 
-def _make_ctrl():
+def _make_ctrl() -> Any:
     """Create a LLMController stub that bypasses __init__ but has required attrs."""
     from PyQt6.QtCore import QObject
 
@@ -68,10 +69,16 @@ def _make_ctrl():
     from XBrainLab.llm.agent.tool_execution_coordinator import (
         ToolExecutionCoordinator,
     )
+    from XBrainLab.llm.agent.turn_orchestrator import (
+        AssistantToolAttemptSession,
+        AssistantTurnOrchestrator,
+    )
 
     ctrl = LLMController.__new__(LLMController)
     # Call QObject.__init__ so that Qt internals are initialised (hasattr etc.)
     QObject.__init__(ctrl)
+    ctrl._turn_orchestrator = AssistantTurnOrchestrator()
+    ctrl._tool_attempt_session = AssistantToolAttemptSession()
     # This white-box fixture bypasses the product constructor, so it must opt in
     # to the same shutdown invariant instead of relying on close() fallbacks.
     ctrl._initialize_shutdown_lifecycle()
@@ -84,9 +91,9 @@ def _make_ctrl():
     ctrl.status_update = MagicMock()
     ctrl.processing_finished = MagicMock()
     ctrl.turn_finished = MagicMock()
-    ctrl._active_host_turn_id = 1
-    ctrl._active_host_turn_generation = 1
-    ctrl._active_tool_publication = PromptToolPublication.empty()
+    ctrl._turn_orchestrator.host_turn_id = 1
+    ctrl._turn_orchestrator.host_turn_generation = 1
+    ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
     ctrl.sig_generate = MagicMock()
     ctrl.assembler = MagicMock()
     ctrl.assembler.get_generation_request.return_value = (
@@ -104,28 +111,31 @@ def _make_ctrl():
     ctrl.interaction_resolved = MagicMock()
     ctrl.error_occurred = MagicMock()
     ctrl.current_response = ""
-    ctrl._generation_id = 0
-    ctrl._active_generation_id = None
-    ctrl._active_generation_dispatch_phase = None
-    ctrl._generation_dispatch_in_progress = False
-    ctrl._visible_response_sent = False
-    ctrl._last_tool_summary = None
-    ctrl._last_tool_summary_kind = AssistantResponseKind.MESSAGE
-    ctrl._retry_count = 0
+    ctrl._turn_orchestrator.generation_sequence = 0
+    ctrl._turn_orchestrator.active_generation_id = None
+    ctrl._turn_orchestrator.dispatch_phase = None
+    ctrl._turn_orchestrator.dispatch_in_progress = False
+    ctrl._tool_attempt_session.visible_response_sent = False
+    ctrl._tool_attempt_session.last_tool_summary = None
+    ctrl._tool_attempt_session.last_tool_summary_kind = AssistantResponseKind.MESSAGE
+    ctrl._tool_attempt_session.retry_count = 0
     ctrl._strict_envelope_recovery_policy = StrictEnvelopeRecoveryPolicy(
         max_recovery_attempts=3,
     )
     ctrl.is_processing = True
-    ctrl._tool_failure_count = 0
+    ctrl._tool_attempt_session.tool_failure_count = 0
     ctrl._max_tool_failures = 3
-    ctrl._successful_tool_count = 0
-    ctrl._active_turn_scope = AssistantTurnScope.SINGLE_ACTION
-    ctrl._tool_execution_count = 0
+    ctrl._tool_attempt_session.successful_tool_count = 0
+    ctrl._turn_orchestrator.scope = AssistantTurnScope.SINGLE_ACTION
+    ctrl._tool_attempt_session.execution_count = 0
     ctrl._max_tool_executions = 5
-    ctrl._turn_cancelled = False
+    ctrl._turn_orchestrator.cancelled = False
     ctrl._pending_interactions = PendingInteractionCoordinator()
     ctrl._rag_lifecycle = MagicMock()
-    ctrl._loop_break_count = 0
+    ctrl._turn_orchestrator.rag_sequence = 0
+    ctrl._turn_orchestrator.active_rag_turn_id = None
+    ctrl._turn_orchestrator.waiting_for_rag = False
+    ctrl._tool_attempt_session.loop_break_count = 0
     ctrl._max_loop_breaks = 2
     ctrl.registry = MagicMock()
     ctrl.study = MagicMock()
@@ -169,7 +179,7 @@ class TestControllerChunkBuffer:
 
     def test_short_response_buffered(self):
         ctrl = _make_ctrl()
-        ctrl._active_generation_id = 1
+        ctrl._turn_orchestrator.active_generation_id = 1
         ctrl._on_chunk_received(1, "Hi")
         assert ctrl.current_response == "Hi"
         ctrl.generation_event.emit.assert_called_once_with(
@@ -194,7 +204,7 @@ class TestControllerBrokenJsonRetry:
             CommandParser.parse_product(broken),
         )
         assert result is True
-        assert ctrl._retry_count == 1
+        assert ctrl._tool_attempt_session.retry_count == 1
         ctrl.generation_event.emit.assert_not_called()
         request = ctrl.sig_generate.emit.call_args.args[0]
         assert request.generation_id == 1
@@ -208,7 +218,7 @@ class TestControllerBrokenJsonRetry:
             CommandParser.parse_product("response"),
         )
         assert result is True
-        assert ctrl._retry_count == 1
+        assert ctrl._tool_attempt_session.retry_count == 1
         ctrl.generation_event.emit.assert_not_called()
 
 
@@ -331,7 +341,7 @@ class TestControllerConfirmation:
             context=_blocked_context("load_data", "gated"),
         )
         ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl._tool_failure_count = 2
+        ctrl._tool_attempt_session.tool_failure_count = 2
 
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool

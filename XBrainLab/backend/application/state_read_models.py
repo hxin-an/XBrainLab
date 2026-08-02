@@ -16,6 +16,9 @@ class TrainingStateReadModel:
     def is_training(self) -> bool:
         return self._training_runtime.is_training()
 
+    def get_progress_text(self) -> str:
+        return self._training_runtime.progress_text()
+
     def get_formatted_history(self) -> list[dict[str, Any]]:
         holders = self._training_runtime.training_plan_holders()
         current_index = self._training_runtime.current_training_plan_index()
@@ -33,6 +36,8 @@ class TrainingStateReadModel:
                     {
                         "plan": plan,
                         "record": record,
+                        "plan_index": plan_idx,
+                        "run_index": run_idx,
                         "group_name": f"Group {plan_idx + 1}",
                         "run_name": f"{run_idx + 1}",
                         "model_name": str(model_name),
