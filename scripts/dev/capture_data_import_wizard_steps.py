@@ -814,7 +814,7 @@ def _capture(
                 widget,
                 first_frame,
                 spec,
-                logical_name=output_path.name,
+                logical_name=spec.filename,
             )
             _settle_window_for_capture(widget)
             _save_window_capture(_grab_window(widget), output_path)
@@ -822,7 +822,7 @@ def _capture(
                 widget,
                 output_path,
                 spec,
-                logical_name=output_path.name,
+                logical_name=spec.filename,
             )
             _assert_consecutive_complete_frames(first_frame, output_path)
         except RuntimeError as exc:

@@ -28,6 +28,40 @@ def test_default_data_import_evidence_uses_dev_artifact_namespace() -> None:
     )
 
 
+def test_nested_placement_capture_keeps_full_logical_artifact_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = capture_script._placement_mode_capture_specs()[0]
+    logical_names: list[str | None] = []
+
+    monkeypatch.setattr(
+        capture_script, "_settle_window_for_capture", lambda _widget: None
+    )
+    monkeypatch.setattr(capture_script, "_grab_window", lambda _widget: object())
+    monkeypatch.setattr(
+        capture_script,
+        "_save_window_capture",
+        lambda _pixmap, _path: None,
+    )
+    monkeypatch.setattr(
+        capture_script,
+        "_assert_complete_capture_frame",
+        lambda _widget, _path, _spec, *, logical_name=None: logical_names.append(
+            logical_name
+        ),
+    )
+    monkeypatch.setattr(
+        capture_script,
+        "_assert_consecutive_complete_frames",
+        lambda _first, _second: 0.0,
+    )
+
+    capture_script._capture(object(), tmp_path / spec.filename, spec)
+
+    assert logical_names == [spec.filename, spec.filename]
+
+
 def test_placement_mode_states_are_bound_in_the_root_manifest(tmp_path: Path) -> None:
     specs = capture_script._canonical_capture_specs()
     placement_specs = capture_script._placement_mode_capture_specs()
