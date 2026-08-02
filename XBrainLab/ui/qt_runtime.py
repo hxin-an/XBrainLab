@@ -2,11 +2,41 @@
 
 from __future__ import annotations
 
+import gc
 import os
 from collections.abc import MutableMapping
+from typing import Any
 
 QT_PLATFORM_ENV = "QT_QPA_PLATFORM"
 XBRAINLAB_QT_PLATFORM_ENV = "XBRAINLAB_QT_PLATFORM"
+
+
+def drain_qt_runtime_after_event_loop(app: Any, *, cycles: int = 3) -> None:
+    """Release deferred Qt wrappers before Python interpreter teardown.
+
+    Qt shutdown can queue additional ``DeferredDelete`` events while child
+    widgets, threads, and native-backed canvases are being released.  Draining
+    those events while ``QApplication`` is still alive prevents their wrappers
+    from being finalized later in an undefined interpreter-shutdown order.
+    """
+    if cycles < 1:
+        raise ValueError("Qt cleanup requires at least one drain cycle.")
+
+    # Import only after the platform environment has been configured.  This
+    # module is intentionally imported before PyQt by the desktop entry point.
+    from PyQt6.QtCore import QEvent  # noqa: PLC0415 - platform must be configured first
+
+    for _ in range(cycles):
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        gc.collect()
+
+
+def run_qt_event_loop(app: Any) -> int:
+    """Run the desktop event loop and drain native wrappers before returning."""
+    exit_code = int(app.exec())
+    drain_qt_runtime_after_event_loop(app)
+    return exit_code
 
 
 def configure_qt_platform_for_runtime(

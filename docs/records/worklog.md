@@ -16719,3 +16719,23 @@
 - claim boundary：
   - This is a validated gate repair, not a handoff verdict. The canonical manifest must restart
     from the repaired clean pushed commit and complete every remaining registered gate.
+
+### 2026-08-03 Qt event-loop teardown contract
+
+- completed：
+  - Investigated the canonical `chatpanel-local-recovery` gate whose scenario and artifacts passed
+    but whose process exited with `SIGSEGV` during interpreter teardown.
+  - Added one shared post-event-loop cleanup contract that drains Qt deferred deletes while
+    `QApplication` is still alive, then runs Python garbage collection. The desktop `run.py` and
+    every `BoundedQtShutdown` walkthrough now use that same ordering.
+  - Added red-first coverage for deferred-delete ordering, the bounded walkthrough integration,
+    and the desktop entry-point contract.
+- validation：
+  - Focused Qt/assistant shutdown lifecycle -> `70 passed`.
+  - Complete developer-script suite -> `1121 passed`.
+  - One dirty-source exact Granite recovery completed the full blocked/retry/cancel workflow and
+    exited without a native crash; strict sealing correctly rejected it because the repair was not
+    yet committed.
+- claim boundary：
+  - This is a validated repair checkpoint, not a handoff verdict. Repeated exact Granite recovery
+    and the complete canonical manifest must pass from the clean pushed repair commit.

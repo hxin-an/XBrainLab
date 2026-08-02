@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from typing import Any
+from unittest.mock import patch
 
 from scripts.dev.bounded_qt_shutdown import BoundedQtShutdown
 
@@ -14,6 +15,12 @@ class _App:
 
     def quit(self) -> None:
         self.quit_count += 1
+
+    def sendPostedEvents(self, _receiver, _event_type) -> None:
+        pass
+
+    def processEvents(self) -> None:
+        pass
 
 
 class _Window:
@@ -123,3 +130,24 @@ def test_event_loop_exit_before_terminal_shutdown_is_failure() -> None:
 
     assert state["status"] == "failed"
     assert state["shutdown"]["status"] == "interrupted"
+
+
+def test_event_loop_reconciliation_drains_deferred_qt_cleanup() -> None:
+    app = _App()
+    state: dict[str, Any] = {"status": "passed", "failure_reason": ""}
+    shutdown = BoundedQtShutdown(
+        app=app,
+        window=_Window(),
+        manager_provider=lambda: _Manager(state="closed"),
+        state=state,
+        schedule=lambda _delay, _callback: None,
+        now=lambda: 10.0,
+    )
+    state["shutdown"] = {"status": "completed", "detail": ""}
+
+    with patch(
+        "scripts.dev.bounded_qt_shutdown.drain_qt_runtime_after_event_loop",
+    ) as drain:
+        shutdown.reconcile_after_event_loop()
+
+    drain.assert_called_once_with(app)

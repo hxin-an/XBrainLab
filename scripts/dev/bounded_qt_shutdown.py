@@ -6,6 +6,8 @@ from collections.abc import Callable, MutableMapping
 from contextlib import suppress
 from typing import Any
 
+from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
+
 
 class BoundedQtShutdown:
     """Keep the event loop alive until the window and assistant both close."""
@@ -45,11 +47,11 @@ class BoundedQtShutdown:
 
     def reconcile_after_event_loop(self) -> None:
         """Fail closed if Qt exited before both native owners were terminal."""
-        if (self._state.get("shutdown") or {}).get("status") != "closing":
-            return
-        detail = "Qt event loop exited before assistant shutdown was observable."
-        self._state["shutdown"] = {"status": "interrupted", "detail": detail}
-        self._mark_failed(detail)
+        if (self._state.get("shutdown") or {}).get("status") == "closing":
+            detail = "Qt event loop exited before assistant shutdown was observable."
+            self._state["shutdown"] = {"status": "interrupted", "detail": detail}
+            self._mark_failed(detail)
+        drain_qt_runtime_after_event_loop(self._app)
 
     def _poll(self) -> None:
         manager = self._manager_provider()

@@ -19,7 +19,10 @@ from typing import Protocol
 # Ensure the project root is importable when running the script directly.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+from XBrainLab.ui.qt_runtime import (
+    configure_qt_platform_for_runtime,
+    run_qt_event_loop,
+)
 
 configure_qt_platform_for_runtime()
 
@@ -238,7 +241,7 @@ def main() -> None:
     if startup_geometry_diagnostics_enabled():
         logger.info(widget_geometry_diagnostic_line("main_window.after_show", window))
 
-    sys.exit(app.exec())
+    raise SystemExit(run_qt_event_loop(app))
 
 
 if __name__ == "__main__":

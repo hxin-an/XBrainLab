@@ -209,6 +209,8 @@ NTFS junction/reparse acceptance。Section 3 的 real command-spine smoke 和 de
 Section 4 必須共同覆蓋 success、confirmation approve/reject、blocked/error、retry、cancel、
 RAG re-admission、long session 和 bounded shutdown。Deterministic tests 或 host-composed UI
 不能單獨替代 exact Granite artifacts；exact Granite artifact 也不能外推成 raw-model accuracy。
+所有 desktop 與 bounded walkthrough 退出路徑必須在 `QApplication` 尚存活時處理 Qt deferred
+deletes；artifact 內容 PASS 但 process return code 非 0 仍視為 gate failure。
 
 Section 5 的主 agent 必須逐張檢查 full-window、narrow width、100/125/150% scale、Assistant dock、
 loading/empty/error/blocked/terminal、primary action、text fit、scroll、dialog geometry、provenance

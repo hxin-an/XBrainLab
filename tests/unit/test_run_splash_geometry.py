@@ -1,5 +1,7 @@
 """Tests for startup splash placement and main-window presentation."""
 
+import inspect
+
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QMainWindow
 
@@ -8,6 +10,7 @@ from run import (
     _create_splash_pixmap,
     _present_main_window,
     _show_centered_splash,
+    main,
 )
 
 
@@ -107,3 +110,10 @@ def test_main_window_is_presented_after_splash_finishes(qapp, qtbot, monkeypatch
     assert qapp.activeWindow() is window
     assert splash.finished_with is window
     assert calls[:2] == ["raise", "activate"]
+
+
+def test_main_drains_qt_runtime_after_event_loop_before_exiting():
+    source = inspect.getsource(main)
+
+    assert "raise SystemExit(run_qt_event_loop(app))" in source
+    assert "sys.exit(app.exec())" not in source
