@@ -16703,3 +16703,19 @@
     intentionally deferred after its per-surface source-identity refresh exceeded the bounded
     timeout on the large dirty tree. Final screenshots, Granite/RAG evidence and the canonical
     handoff dossier must be regenerated from the clean pushed exact commit.
+
+### 2026-08-03 Exact-source handoff manifest cache contract
+
+- completed：
+  - Froze and pushed the first clean exact-source closure candidate, then generated and manually
+    reviewed the complete Data Import wizard artifact set from that commit.
+  - The canonical manifest correctly rejected the candidate when complete regression attempted
+    to load the pinned Granite tokenizer from the WSL-home default instead of the supplied D-drive
+    cache. Bound complete regression to the same offline, redacted model/RAG cache contract as the
+    other local-runtime gates.
+- validation：
+  - The new contract failed before the registry repair, then passed with all six Granite context
+    boundary integration cases; the complete developer-script suite passed `1120` tests.
+- claim boundary：
+  - This is a validated gate repair, not a handoff verdict. The canonical manifest must restart
+    from the repaired clean pushed commit and complete every remaining registered gate.

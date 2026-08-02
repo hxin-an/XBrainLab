@@ -392,7 +392,7 @@ _GATE_SPECS = (
             f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/complete-regression.json",
         ),
         timeout_seconds=7200,
-        environment=_QT_MNE,
+        environment=_QT_MNE_LOCAL_RUNTIME,
         outcome=_COMPLETE_REGRESSION_OUTCOME,
         required_artifact_paths=("pytest-attestations/complete-regression.json",),
         pytest_attestation_path="pytest-attestations/complete-regression.json",

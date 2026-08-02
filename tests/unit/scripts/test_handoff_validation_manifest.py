@@ -132,7 +132,15 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
     assert spec.environment.as_dict() == {
         "QT_QPA_PLATFORM": "offscreen",
         "MNE_DONTWRITE_HOME": "true",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "XBRAINLAB_MODEL_CACHE_DIR": MODEL_CACHE_DIR_TOKEN,
+        "XBRAINLAB_RAG_CACHE_DIR": RAG_CACHE_DIR_TOKEN,
     }
+    assert spec.environment.redacted_path_names == (
+        "XBRAINLAB_MODEL_CACHE_DIR",
+        "XBRAINLAB_RAG_CACHE_DIR",
+    )
     assert spec.outcome.allowed_return_codes == (0,)
     assert spec.outcome.require_pytest_attestation is True
     assert spec.outcome.forbidden_pytest_outcomes == (

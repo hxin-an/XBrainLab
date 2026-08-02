@@ -154,9 +154,11 @@ poetry run -- python scripts/dev/run_handoff_validation_manifest.py \
 ```
 
 兩個 cache argument 都是必填，必須解析為 `/mnt/d/...` 的 absolute D-mounted path。Recorder
-會先移除 inherited `XBRAINLAB_MODEL_CACHE_DIR` / `XBRAINLAB_RAG_CACHE_DIR`，再對 real Granite、
-RAG 和 local-LLM walkthrough gates 明確注入兩個 path，避免回落到 Windows C 槽或 WSL home
-default。Recorder 的 check `environment` policy 只記錄 mount 和 resolved-path SHA-256 的
+會先移除 inherited `XBRAINLAB_MODEL_CACHE_DIR` / `XBRAINLAB_RAG_CACHE_DIR`，再對所有會載入
+local-runtime assets 的 registered gates 明確注入兩個 path；這包含 complete regression 內的
+Granite tokenizer integration、real Granite、RAG 和 local-LLM walkthrough，避免回落到 Windows
+C 槽或 WSL home default。Recorder 的 check `environment` policy 只記錄 mount 和
+resolved-path SHA-256 的
 redacted identity，不把 injected cache path 寫入該欄位。這個 identity 證明每個 gate 使用同一組
 明確 cache policy，但不代表 cache content 本身正確；model/revision、RAG artifact，以及 gate
 自行產生的 logs/output 仍依各自 evidence contract 驗證。
