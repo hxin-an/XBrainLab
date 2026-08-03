@@ -1,6 +1,7 @@
 """Dataset panel for managing EEG data loading, metadata, and table display."""
 
 import re
+from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any, cast
 
@@ -76,6 +77,15 @@ from .sidebar import DatasetSidebar
 _METADATA_AVAILABILITY_UNAVAILABLE = (
     "Metadata editing availability is unavailable right now."
 )
+
+
+@dataclass(frozen=True)
+class _DatasetRowsQueryOutcome:
+    """Detached table rows or a classified read-side failure."""
+
+    rows: list[dict[str, Any]] | None
+    retryable: bool = False
+    message: str = ""
 
 
 class _DatasetMetadataEditDelegate(QStyledItemDelegate):
@@ -207,12 +217,9 @@ class DatasetPanel(BasePanel):
     def _render_application_publication(
         self,
         publication: ApplicationViewPublication,
-    ) -> None:
+    ) -> bool:
         self._application_view_publication = publication
-        if self.update_panel() is False:
-            raise RuntimeError(
-                "Dataset publication could not read its detached table rows."
-            )
+        return self.update_panel() is not False
 
     def _commit_application_publication(
         self,
@@ -659,14 +666,24 @@ class DatasetPanel(BasePanel):
         render_generation = (
             int(publication.generation) if publication is not None else None
         )
-        queried_rows = self._query_loaded_data_list_for_render(
+        query_outcome = self._query_loaded_data_list_for_render(
             expected_publication_generation=render_generation,
         )
+        queried_rows = query_outcome.rows
+        if queried_rows is None and product_context and query_outcome.retryable:
+            logger.debug(
+                "Dataset table publication %s is waiting for a stable application "
+                "snapshot: %s",
+                render_generation,
+                query_outcome.message,
+            )
+            return False
         if queried_rows is None and product_context:
             logger.error(
                 "Dataset table rows are unavailable for application generation %s; "
-                "the publication remains pending.",
+                "the publication remains pending: %s",
                 render_generation,
+                query_outcome.message or "No detached rows were returned.",
             )
             self._show_dataset_empty_state(
                 title="Dataset view unavailable",
@@ -877,7 +894,7 @@ class DatasetPanel(BasePanel):
         self,
         *,
         expected_publication_generation: int | None = None,
-    ) -> list[dict[str, Any]] | None:
+    ) -> _DatasetRowsQueryOutcome:
         result = execute_application_command(
             self,
             QueryStateCommand(query="data_lists"),
@@ -885,18 +902,41 @@ class DatasetPanel(BasePanel):
             expected_publication_generation=expected_publication_generation,
         )
         if result is None:
-            return None
+            return _DatasetRowsQueryOutcome(
+                rows=None,
+                message="Application runtime is unavailable.",
+            )
         if result.failed:
+            diagnostics = result.diagnostics
+            retryable = result.recoverable and (
+                diagnostics.get("application_busy") is True
+                or diagnostics.get("stale_publication") is True
+            )
+            if retryable:
+                logger.debug(
+                    "Dataset data-list query deferred: %s",
+                    result.message,
+                )
+                return _DatasetRowsQueryOutcome(
+                    rows=None,
+                    retryable=True,
+                    message=result.message,
+                )
             logger.error(
                 "Dataset data-list query failed: %s",
                 result.message,
             )
-            return None
+            return _DatasetRowsQueryOutcome(rows=None, message=result.message)
         data_rows = result.diagnostics.get("raw_rows")
         if not isinstance(data_rows, list):
             logger.error("Dataset data-list query returned no detached row list.")
-            return None
-        return [dict(row) for row in data_rows if isinstance(row, dict)]
+            return _DatasetRowsQueryOutcome(
+                rows=None,
+                message="The query returned no detached row list.",
+            )
+        return _DatasetRowsQueryOutcome(
+            rows=[dict(row) for row in data_rows if isinstance(row, dict)],
+        )
 
     def _clear_table_render_identity(self) -> None:
         self._table_publication_generation = None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
@@ -344,6 +345,66 @@ def test_dataset_query_failure_stays_pending_until_rows_can_be_rendered(
         assert panel.data_surface.currentWidget() is panel.empty_state
         assert panel.empty_state_title.text() == "Dataset view unavailable"
         assert panel.empty_state_title.text() != "No EEG data loaded"
+
+        query_result.failed = False
+        query_result.diagnostics = {"raw_rows": []}
+        qtbot.waitUntil(lambda: panel._last_application_revision == revision)
+
+    assert panel._application_render_ledger.pending_publication is None
+    assert panel.empty_state_title.text() == "No EEG data loaded"
+
+
+@pytest.mark.parametrize(
+    ("diagnostics", "message"),
+    (
+        (
+            {"application_busy": True},
+            "Application state is changing. Retry this query shortly.",
+        ),
+        (
+            {"stale_publication": True},
+            "Workflow state changed while this confirmed action was pending.",
+        ),
+    ),
+)
+def test_dataset_retryable_query_failure_preserves_visible_rows_without_error_log(
+    qtbot,
+    caplog,
+    diagnostics,
+    message,
+) -> None:
+    """A busy application read is normal publication backpressure, not data loss."""
+    port = _PublicationPort()
+    panel = DatasetPanel(controller=Observable(), publication_port=port)
+    qtbot.addWidget(panel)
+    panel.sidebar.update_sidebar = MagicMock()
+    panel.table.setRowCount(1)
+    panel.data_surface.setCurrentWidget(panel.table)
+    revision = port.publication.revision + 2
+    query_result = MagicMock(
+        failed=True,
+        recoverable=True,
+        message=message,
+        diagnostics=diagnostics,
+    )
+
+    caplog.set_level(logging.ERROR)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        execute = MagicMock(return_value=query_result)
+        monkeypatch.setattr(
+            "XBrainLab.ui.panels.dataset.panel.execute_application_command",
+            execute,
+        )
+
+        _publish_revision(port, revision)
+        qtbot.waitUntil(lambda: execute.call_count >= 1)
+
+        assert panel._last_application_revision == 0
+        assert panel._application_render_ledger.pending_publication is not None
+        assert panel.data_surface.currentWidget() is panel.table
+        assert panel.table.rowCount() == 1
+        assert "Dataset data-list query failed" not in caplog.text
+        assert "Dataset application publication render failed" not in caplog.text
 
         query_result.failed = False
         query_result.diagnostics = {"raw_rows": []}

@@ -1431,7 +1431,11 @@ def test_dataset_panel_metadata_cells_fail_closed_without_product_capability(
         patch.object(
             panel,
             "_query_loaded_data_list_for_render",
-            return_value=[data],
+            return_value=SimpleNamespace(
+                rows=[data],
+                retryable=False,
+                message="",
+            ),
         ),
         patch.object(
             panel,
@@ -1478,7 +1482,11 @@ def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtb
         patch.object(
             panel,
             "_query_loaded_data_list_for_render",
-            return_value=[data],
+            return_value=SimpleNamespace(
+                rows=[data],
+                retryable=False,
+                message="",
+            ),
         ),
         patch.object(
             panel,

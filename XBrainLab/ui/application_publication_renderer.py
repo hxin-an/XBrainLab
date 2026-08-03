@@ -31,7 +31,7 @@ class ApplicationPublicationRenderLedger(QObject):
         self,
         *,
         panel_name: str,
-        render_publication: Callable[[ApplicationViewPublication], None],
+        render_publication: Callable[[ApplicationViewPublication], bool | None],
         commit_publication: Callable[[ApplicationViewPublication], None],
         parent: QObject,
     ) -> None:
@@ -125,11 +125,17 @@ class ApplicationPublicationRenderLedger(QObject):
 
         self._render_in_progress = True
         try:
-            self._render_publication(publication)
+            rendered = self._render_publication(publication)
         except Exception:
             self._record_failed_attempt(publication, render_exception=True)
         else:
-            if not self.record_rendered(publication):
+            if rendered is False:
+                self._record_failed_attempt(
+                    publication,
+                    render_exception=False,
+                    report_failure=False,
+                )
+            elif not self.record_rendered(publication):
                 self._record_failed_attempt(publication, render_exception=False)
         finally:
             self._render_in_progress = False
@@ -139,11 +145,12 @@ class ApplicationPublicationRenderLedger(QObject):
         publication: ApplicationViewPublication,
         *,
         render_exception: bool,
+        report_failure: bool = True,
     ) -> None:
         current = self._pending_publication
         if current is not None and current.revision == publication.revision:
             self._attempts += 1
-            if self._should_log_failed_attempt():
+            if report_failure and self._should_log_failed_attempt():
                 log_failure = logger.exception if render_exception else logger.error
                 log_failure(
                     "%s application publication render failed for revision %s "

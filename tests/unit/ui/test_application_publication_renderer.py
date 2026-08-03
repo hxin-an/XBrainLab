@@ -13,6 +13,7 @@ from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
 from XBrainLab.ui.application_publication_renderer import (
     DESKTOP_PUBLICATION_RENDER_MAX_ATTEMPTS,
     PANEL_PUBLICATION_RENDER_RECOVERY_INTERVAL_MS,
+    ApplicationPublicationRenderLedger,
     DesktopApplicationPublicationRenderer,
 )
 from XBrainLab.ui.components.info_panel_service import InfoPanelService
@@ -41,6 +42,41 @@ def test_initial_revision_requires_visible_renderer_acknowledgement(qtbot) -> No
     render.assert_called_once_with(initial)
 
     renderer.cleanup()
+    service.close()
+
+
+def test_panel_ledger_retries_deferred_render_without_logging_failure(
+    qtbot,
+    caplog,
+) -> None:
+    service = ApplicationService(Study())
+    initial = service.get_view_publication()
+    publication = replace(initial, revision=initial.revision + 1)
+    render = MagicMock(side_effect=[False, True])
+    commit = MagicMock()
+    owner = QObject()
+    ledger = ApplicationPublicationRenderLedger(
+        panel_name="Dataset",
+        render_publication=render,
+        commit_publication=commit,
+        parent=owner,
+    )
+
+    ledger.queue(publication)
+    ledger.timer.stop()
+    ledger._attempt_render()
+
+    assert ledger.pending_publication == publication
+    assert ledger.timer.isActive() is True
+    assert "application publication render failed" not in caplog.text
+
+    ledger.timer.stop()
+    ledger._attempt_render()
+
+    assert ledger.pending_publication is None
+    assert ledger.last_rendered_revision == publication.revision
+    commit.assert_called_once_with(publication)
+    ledger.cleanup()
     service.close()
 
 
