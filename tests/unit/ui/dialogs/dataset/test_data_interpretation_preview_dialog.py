@@ -4863,6 +4863,22 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
     assert "Label placement is ambiguous" in action_text
     assert "Saved recipe choices were reapplied." not in action_text
     assert "Saved recipe choices were reapplied." in _tree_text(dialog.review_tree)
+    action_bottom = dialog.review_actions_panel.mapTo(
+        dialog,
+        dialog.review_actions_panel.rect().bottomLeft(),
+    ).y()
+    review_top = dialog.import_review_card.mapTo(
+        dialog,
+        dialog.import_review_card.rect().topLeft(),
+    ).y()
+    assert action_bottom < review_top
+    for summary_label in dialog.import_review_card.findChildren(
+        QLabel,
+        "DataImportReviewSummary",
+    ):
+        assert summary_label.height() >= summary_label.heightForWidth(
+            max(1, summary_label.width())
+        )
     assert not any(
         button.text() == "Fix Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)

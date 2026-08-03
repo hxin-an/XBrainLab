@@ -617,6 +617,46 @@ def test_label_field_repreview_reopens_match_labels_instead_of_applying(
     apply_review.assert_not_called()
 
 
+def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> None:
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {"confirmed": False, "choices": {}}
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    critical = MagicMock()
+    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    review_state = replace(
+        _review_state(),
+        decision={
+            "candidate_id": "candidate-1",
+            "decision": "blocked",
+            "blocked_reasons": ["EEG data has not been selected."],
+        },
+    )
+
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="file",
+        choices={},
+        label_sources=[],
+        review_state=review_state,
+    )
+
+    assert outcome.status is InteractionStatus.BLOCKED
+    critical.assert_not_called()
+
+
 def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> None:
     handler = DatasetActionHandler(MagicMock())
     execute = MagicMock(
@@ -1781,7 +1821,8 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
 
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: len(commands) == 2, timeout=2000)
-    qtbot.waitUntil(lambda: status.call_count == 1, timeout=2000)
+    qtbot.wait(50)
+    status.assert_not_called()
     assert commands[0].resource_preflight_confirmed is False
     assert commands[0].resource_preflight_token is None
     assert commands[1].resource_preflight_confirmed is True
@@ -1841,7 +1882,7 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
 
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: len(terminal) == 1, timeout=2000)
-    qtbot.waitUntil(lambda: status.call_count == 1, timeout=2000)
+    status.assert_not_called()
 
     assert len(commands) == 2
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED

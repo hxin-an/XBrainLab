@@ -9,10 +9,11 @@ from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
     QDockWidget,
+    QFileDialog,
+    QFrame,
     QHeaderView,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -384,15 +385,7 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
         ):
             panel.table.setItem(0, column, QTableWidgetItem(text))
         panel.data_surface.setCurrentWidget(panel.table)
-        with patch(
-            "XBrainLab.ui.panels.dataset.panel.get_application_view_publication",
-            return_value=dataset_publication(
-                generation=2,
-                raw=True,
-                preprocessed=True,
-            ),
-        ):
-            panel.show_post_import_next_action()
+        panel._schedule_table_column_fit()
         qtbot.wait(10)
         active_info_panel = panel.sidebar.info_panel
         qtbot.wait(10)
@@ -401,15 +394,6 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
         assert active_info_panel.isVisibleTo(panel)
         assert_widget_fits_panel(active_info_panel, panel)
         assert_info_cells_fit(active_info_panel)
-        assert panel.post_import_action_button.isVisibleTo(panel)
-        assert_widget_fits_panel(panel.post_import_action_button, panel)
-        assert (
-            panel.post_import_action_button.fontMetrics().horizontalAdvance(
-                panel.post_import_action_button.text()
-            )
-            + 24
-            <= panel.post_import_action_button.contentsRect().width()
-        )
         for button in (
             panel.sidebar.import_btn,
             panel.sidebar.import_folder_btn,
@@ -587,7 +571,7 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         patch(
             "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
             return_value=(["/path/to/file.set"], "Filter"),
-        ),
+        ) as mock_file_dialog,
         patch(
             "XBrainLab.ui.panels.dataset.actions.QMessageBox.information",
         ) as mock_info,
@@ -596,6 +580,10 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         ) as mock_warning,
     ):
         panel.action_handler.import_data()
+        assert (
+            mock_file_dialog.call_args.kwargs["options"]
+            & QFileDialog.Option.DontUseNativeDialog
+        )
         mock_controller.import_files.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Interpretation Blocked"
@@ -968,109 +956,15 @@ def test_dataset_summary_uses_one_vertical_scroll_owner_at_short_high_dpi_shell(
         app.setFont(original_font)
 
 
-def test_dataset_panel_post_import_action_uses_one_contextual_destination(
+def test_dataset_panel_has_no_post_import_interruption_bar(
     mock_main_window,
     mock_controller,
     qtbot,
 ):
     panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
     qtbot.addWidget(panel)
-    cast(Any, mock_main_window).switch_page = MagicMock(return_value=True)
-    publication = SimpleNamespace(
-        usable=True,
-        state=SimpleNamespace(
-            active_dataset=SimpleNamespace(
-                has_raw_data=True,
-                has_preprocessed_data=False,
-                has_epoch_data=False,
-                has_datasets=False,
-            )
-        ),
-    )
 
-    with patch(
-        "XBrainLab.ui.panels.dataset.panel.get_application_view_publication",
-        return_value=publication,
-    ):
-        panel.show_post_import_next_action()
-
-    assert not panel.post_import_action_bar.isHidden()
-    assert panel.post_import_action_button.text() == "Continue to Preprocess"
-    assert len(panel.post_import_action_bar.findChildren(QPushButton)) == 1
-
-    panel.post_import_action_button.click()
-
-    cast(Any, mock_main_window).switch_page.assert_called_once_with(1)
-    assert panel.post_import_action_bar.isHidden()
-
-
-def test_dataset_panel_post_import_action_reflows_in_narrow_content(
-    mock_main_window,
-    mock_controller,
-    qtbot,
-):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    publication = dataset_publication(generation=2, raw=True)
-
-    with patch(
-        "XBrainLab.ui.panels.dataset.panel.get_application_view_publication",
-        return_value=publication,
-    ):
-        panel.show_post_import_next_action()
-
-    panel.resize(620, 520)
-    panel.show()
-    qtbot.wait(0)
-
-    assert panel.post_import_action_button.text() == "Continue to Preprocess"
-    assert panel.post_import_action_label.wordWrap()
-    assert (
-        panel.post_import_action_button.geometry().top()
-        > panel.post_import_action_label.geometry().bottom()
-    )
-    assert (
-        panel.post_import_action_button.geometry().right()
-        <= panel.post_import_action_bar.contentsRect().right()
-    )
-    assert (
-        panel.post_import_action_button.geometry().bottom()
-        <= panel.post_import_action_bar.contentsRect().bottom()
-    )
-
-
-def test_dataset_panel_post_import_action_tracks_refresh_and_reset_publication(
-    mock_main_window,
-    mock_controller,
-    qtbot,
-):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    raw = dataset_publication(generation=2, raw=True)
-    preprocessed = dataset_publication(generation=3, raw=True, preprocessed=True)
-    reset = dataset_publication(generation=4)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.dataset.panel.get_application_view_publication",
-            side_effect=[raw, preprocessed, reset],
-        ),
-        patch(
-            "XBrainLab.ui.panels.dataset.panel.is_application_runtime_deferred",
-            return_value=False,
-        ),
-    ):
-        panel.show_post_import_next_action()
-        assert panel.post_import_action_button.text() == "Continue to Preprocess"
-
-        panel.update_panel()
-        assert panel.post_import_action_button.text() == "Create EEG Epochs"
-        assert not panel.post_import_action_bar.isHidden()
-
-        panel.update_panel()
-
-    assert panel.post_import_action_bar.isHidden()
-    assert panel._post_import_target_index is None
+    assert panel.findChild(QFrame, "DatasetPostImportAction") is None
 
 
 def test_dataset_panel_apply_loader_refuses_real_study(

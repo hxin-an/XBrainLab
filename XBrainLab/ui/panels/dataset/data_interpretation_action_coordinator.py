@@ -267,6 +267,7 @@ class DataInterpretationActionCoordinator:
             "Choose EEG Source for Interpretation",
             "",
             filter_str,
+            options=self._bindings.file_dialog().Option.DontUseNativeDialog,
         )
         if not filepaths:
             return InteractionOutcome.cancelled("No EEG source was selected.")
@@ -501,6 +502,10 @@ class DataInterpretationActionCoordinator:
             self.panel,
             "Choose Folder or BIDS Root for Interpretation",
             "",
+            options=(
+                self._bindings.file_dialog().Option.ShowDirsOnly
+                | self._bindings.file_dialog().Option.DontUseNativeDialog
+            ),
         )
         if not source_path:
             return
@@ -527,6 +532,10 @@ class DataInterpretationActionCoordinator:
             self.panel,
             "Choose BIDS Folder for Import",
             "",
+            options=(
+                self._bindings.file_dialog().Option.ShowDirsOnly
+                | self._bindings.file_dialog().Option.DontUseNativeDialog
+            ),
         )
         if not source_path:
             return
@@ -664,11 +673,6 @@ class DataInterpretationActionCoordinator:
             str(review_state.decision.get("decision")) == "blocked"
             and updated_choices == choices
         ):
-            self._bindings.message_box().critical(
-                self.panel,
-                "Interpretation blocked",
-                self._decision_reason(review_state.decision),
-            )
             return InteractionOutcome.blocked(
                 self._decision_reason(review_state.decision)
             )
@@ -1019,11 +1023,6 @@ class DataInterpretationActionCoordinator:
             validated_state: _InterpretationReviewState,
         ) -> InteractionOutcome:
             if str(validated_state.decision.get("decision")) == "blocked":
-                self._bindings.message_box().critical(
-                    self.panel,
-                    "Interpretation blocked",
-                    self._decision_reason(validated_state.decision),
-                )
                 return InteractionOutcome.blocked(
                     self._decision_reason(validated_state.decision)
                 )
@@ -1138,18 +1137,7 @@ class DataInterpretationActionCoordinator:
                 )
 
             def _finish(recipe_message: str = "") -> None:
-                self._show_status(
-                    " ".join(
-                        part for part in [apply_result.message, recipe_message] if part
-                    ),
-                )
-                show_next_action = getattr(
-                    self.panel,
-                    "show_post_import_next_action",
-                    None,
-                )
-                if callable(show_next_action):
-                    show_next_action()
+                del recipe_message
 
             if bool(dialog_result.get("save_recipe", False)):
                 if not self._save_interpretation_recipe(on_complete=_finish):

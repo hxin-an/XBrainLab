@@ -1040,6 +1040,10 @@ class DataInterpretationPreviewDialog(
     def _card(title: str) -> tuple[QFrame, QVBoxLayout]:
         card = QFrame()
         card.setObjectName("DataImportCard")
+        card.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
@@ -1782,6 +1786,18 @@ class DataInterpretationPreviewDialog(
             # previous step's geometry until the report is toggled.
             self._sync_review_dialog_geometry()
             self._sync_scroll_policy()
+            QTimer.singleShot(0, self._settle_review_step_layout)
+
+    def _settle_review_step_layout(self) -> None:
+        """Finish wrapped final-step geometry after the visible width is known."""
+        if (
+            not hasattr(self, "step_stack")
+            or self.step_stack.currentIndex() != self.step_stack.count() - 1
+        ):
+            return
+        self._sync_review_import_row_heights()
+        self._sync_review_dialog_geometry()
+        self._sync_scroll_policy()
 
     def _sync_review_dialog_geometry(self) -> None:
         """Compact the final review while preserving the working-step size."""

@@ -9,8 +9,6 @@ from PyQt6.QtCore import QModelIndex, Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QBoxLayout,
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -128,7 +126,6 @@ class DatasetPanel(BasePanel):
     _FILE_ONLY_TABLE_WIDTH = 240
     _COMPACT_COLUMNS = (0, 3, 6)
     _ROW_IDENTITY_ROLE = int(Qt.ItemDataRole.UserRole) + 1
-    _COMPACT_ACTION_BREAKPOINT = 760
 
     def __init__(
         self,
@@ -282,51 +279,6 @@ class DatasetPanel(BasePanel):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        self.post_import_action_bar = QFrame()
-        self.post_import_action_bar.setObjectName("DatasetPostImportAction")
-        self.post_import_action_bar.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Maximum,
-        )
-        self.post_import_layout = QHBoxLayout(self.post_import_action_bar)
-        self.post_import_layout.setContentsMargins(12, 8, 12, 8)
-        self.post_import_layout.setSpacing(10)
-        self.post_import_action_label = QLabel("Import complete")
-        self.post_import_action_label.setObjectName("DatasetPostImportLabel")
-        self.post_import_action_label.setWordWrap(True)
-        self.post_import_action_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Maximum,
-        )
-        self.post_import_layout.addWidget(self.post_import_action_label)
-        self.post_import_action_button = QPushButton()
-        self.post_import_action_button.setObjectName("DatasetPostImportButton")
-        self.post_import_action_button.setStyleSheet(Stylesheets.BTN_PRIMARY)
-        self.post_import_action_button.setSizePolicy(
-            QSizePolicy.Policy.Maximum,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.post_import_action_button.clicked.connect(
-            self._open_post_import_destination
-        )
-        self.post_import_layout.addWidget(self.post_import_action_button)
-        self.post_import_action_bar.setStyleSheet(
-            f"""
-            QFrame#DatasetPostImportAction {{
-                background-color: {Theme.BACKGROUND_MID};
-                border-bottom: 1px solid {Theme.BORDER};
-            }}
-            QLabel#DatasetPostImportLabel {{
-                color: {Theme.TEXT_PRIMARY};
-                font-weight: 600;
-            }}
-            """
-        )
-        self.post_import_action_bar.hide()
-        self._post_import_action_requested = False
-        self._post_import_target_index: int | None = None
-        content_layout.addWidget(self.post_import_action_bar)
-
         # --- Left Side: File List Table ---
         self.table = QTableWidget()
         self.table.setColumnCount(7)
@@ -412,100 +364,8 @@ class DatasetPanel(BasePanel):
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
         if hasattr(self, "table"):
-            self._update_post_import_action_layout()
             self._fit_table_columns_to_viewport()
             self._schedule_table_column_fit()
-
-    def show_post_import_next_action(self) -> None:
-        """Expose one workflow action after a successful reviewed import."""
-        self._post_import_action_requested = True
-        publication = get_application_view_publication(self)
-        self._sync_post_import_action(publication)
-
-    def _sync_post_import_action(self, publication) -> None:
-        """Keep the offered destination aligned with the current publication."""
-        if not self._post_import_action_requested:
-            return
-        if publication is None or not publication.usable:
-            self._clear_post_import_action()
-            return
-        active = publication.state.active_dataset
-        if active.has_epoch_data or active.has_datasets:
-            button_text, target_index = "Configure Training", 2
-        elif active.has_preprocessed_data:
-            button_text, target_index = "Create EEG Epochs", 1
-        elif active.has_raw_data:
-            button_text, target_index = "Continue to Preprocess", 1
-        else:
-            self._clear_post_import_action()
-            return
-        self._post_import_target_index = target_index
-        self.post_import_action_button.setText(button_text)
-        self.post_import_action_bar.show()
-        self._update_post_import_action_layout()
-        self._schedule_table_column_fit()
-
-    def _open_post_import_destination(self) -> None:
-        target = self._post_import_target_index
-        self._clear_post_import_action()
-        switch_page = getattr(self.main_window, "switch_page", None)
-        if target is not None and callable(switch_page):
-            switch_page(target)
-
-    def _clear_post_import_action(self) -> None:
-        """Clear an offer that no longer belongs to the visible workflow state."""
-        self.post_import_action_bar.hide()
-        self._post_import_action_requested = False
-        self._post_import_target_index = None
-
-    def _update_post_import_action_layout(self) -> None:
-        """Stack the next action when the dataset content column is narrow."""
-        if not hasattr(self, "post_import_layout"):
-            return
-        available_width = self.post_import_action_bar.width()
-        if self.width() > 0:
-            available_width = min(available_width, self.width())
-        if available_width <= 0 and hasattr(self, "content_column"):
-            available_width = self.content_column.width()
-        self.post_import_action_label.setText(
-            "Imported"
-            if self.width() < self._COMPACT_ACTION_BREAKPOINT
-            else "Import complete"
-        )
-        margins = self.post_import_layout.contentsMargins()
-        inline_width = (
-            margins.left()
-            + margins.right()
-            + self.post_import_layout.spacing()
-            + self.post_import_action_label.sizeHint().width()
-            + self.post_import_action_button.sizeHint().width()
-        )
-        stacked = available_width < inline_width
-        direction = (
-            QBoxLayout.Direction.TopToBottom
-            if stacked
-            else QBoxLayout.Direction.LeftToRight
-        )
-        if self.post_import_layout.direction() != direction:
-            self.post_import_layout.setDirection(direction)
-        self.post_import_layout.setStretch(0, 0 if stacked else 1)
-        self.post_import_layout.setStretch(1, 0)
-        self.post_import_layout.setAlignment(
-            self.post_import_action_label,
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-        )
-        button_alignment = (
-            Qt.AlignmentFlag.AlignLeft
-            if stacked
-            else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.post_import_layout.setAlignment(
-            self.post_import_action_button,
-            button_alignment,
-        )
-        self.post_import_layout.invalidate()
-        self.post_import_layout.activate()
-        self.post_import_action_bar.updateGeometry()
 
     def _schedule_table_column_fit(self) -> None:
         """Refit once Qt has settled row headers and scrollbars."""
@@ -640,7 +500,6 @@ class DatasetPanel(BasePanel):
             self.sidebar.update_sidebar()
 
         if is_application_runtime_deferred(self):
-            self._clear_post_import_action()
             self._clear_table_render_identity()
             self.table.clearContents()
             self.table.setRowCount(0)
@@ -654,7 +513,6 @@ class DatasetPanel(BasePanel):
             self._publication_port is not None or has_real_application_context(self)
         )
         if product_context and (publication is None or not publication.usable):
-            self._clear_post_import_action()
             self._clear_table_render_identity()
             self.table.clearContents()
             self.table.setRowCount(0)
@@ -700,7 +558,6 @@ class DatasetPanel(BasePanel):
         self.table.blockSignals(True)  # Prevent itemChanged triggering during update
         self.table.setRowCount(0)
 
-        self._sync_post_import_action(publication)
         self._table_publication_generation = render_generation
         controller = self.controller
         if queried_rows is not None:

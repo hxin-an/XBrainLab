@@ -88,7 +88,28 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             summary_label = QLabel(row["summary"])
             summary_label.setObjectName("DataImportReviewSummary")
             summary_label.setWordWrap(True)
-            summary_label.setMinimumHeight(status_height)
+            summary_label.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Minimum,
+            )
+            summary_label.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            summary_width_floor = 220
+            text_bounds = summary_label.fontMetrics().boundingRect(
+                QRect(0, 0, summary_width_floor, 10_000),
+                int(
+                    Qt.AlignmentFlag.AlignLeft
+                    | Qt.AlignmentFlag.AlignVCenter
+                    | Qt.TextFlag.TextWordWrap
+                ),
+                summary_label.text(),
+            )
+            summary_minimum_height = max(
+                status_height,
+                text_bounds.height() + 10,
+            )
+            summary_label.setMinimumHeight(summary_minimum_height)
             summary_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
@@ -122,7 +143,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 )
             self._review_import_rows_layout.setRowMinimumHeight(
                 row_index,
-                status_height,
+                summary_minimum_height,
             )
         self._review_import_rows_layout.setColumnMinimumWidth(0, 118)
         self._review_import_rows_layout.setColumnMinimumWidth(1, 132)
@@ -569,7 +590,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         if self.decision == "blocked" and not self._review_ready_for_recheck():
             return (
                 "Review and Import",
-                "Cannot import yet",
+                "Import requirements are incomplete",
                 "Blocking items must be resolved before the data can be imported.",
                 "Resolve the action items below, then import.",
             )
@@ -854,6 +875,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     ) -> QFrame:
         row = QFrame()
         row.setObjectName("DataImportActionCard")
+        row.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
         layout = QVBoxLayout(row)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(5)
@@ -1201,16 +1226,9 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             self.confirmation_label.setText(
                 "Replacement files selected. Apply remap to recheck this recipe."
             )
-        elif recheck_kind == "event_values":
+        elif recheck_kind in {"event_values", "interpretation_choices"}:
             self.decision_label.setText("Ready to recheck and import.")
-            self.confirmation_label.setText(
-                "Event value choices are complete. Apply to verify and import them."
-            )
-        elif recheck_kind == "interpretation_choices":
-            self.decision_label.setText("Ready to recheck and import.")
-            self.confirmation_label.setText(
-                "The visible import choices are complete. Apply to verify them."
-            )
+            self.confirmation_label.clear()
         else:
             self.decision_label.setText(self._decision_text())
             self.confirmation_label.setText(self._confirmation_text())
@@ -1478,9 +1496,9 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                     "Choose a replacement label/event carrier, then apply the remap "
                     "to recheck this saved recipe."
                 )
-            return "This interpretation is blocked and cannot be applied."
+            return ""
         if self.decision == "needs_confirmation":
             return ""
         if self.decision == "safe":
             return ""
-        return "Review this interpretation before applying."
+        return ""
