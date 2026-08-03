@@ -370,6 +370,9 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     panel, _ctrl = _make_panel(qtbot)
 
     assert panel.tabs.count() == 4
+    assert not any(
+        group.title() == "EXPLANATION PLOTS" for group in panel.findChildren(QGroupBox)
+    )
     assert panel.plan_combo.itemText(0) == "Select a plan"
     assert [
         panel.method_combo.itemText(i) for i in range(panel.method_combo.count())

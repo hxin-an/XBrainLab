@@ -357,11 +357,7 @@ class VisualizationPanel(BasePanel):
         self.saliency_action_bar.setVisible(False)
         left_layout.addWidget(self.saliency_action_bar)
 
-        # 3. Plots Group
-        plots_group = QGroupBox("EXPLANATION PLOTS")
-        plots_layout = QVBoxLayout(plots_group)
-        plots_layout.setContentsMargins(10, 20, 10, 10)
-
+        # 3. Explanation canvas
         self._explanation_context_text = ""
 
         # Tabs
@@ -388,8 +384,7 @@ class VisualizationPanel(BasePanel):
         self.tabs.addTab(self.tab_3d, "3D Plot")
         self._last_active_saliency_view = self.tab_map
 
-        plots_layout.addWidget(self.tabs)
-        left_layout.addWidget(plots_group, stretch=1)
+        left_layout.addWidget(self.tabs, stretch=1)
         main_layout.addWidget(left_widget, stretch=1)
 
         # --- Right Side: Sidebar ---
