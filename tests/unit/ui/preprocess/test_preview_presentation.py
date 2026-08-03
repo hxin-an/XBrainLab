@@ -28,9 +28,12 @@ def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
     widget._set_preview_interactive(True, state="loaded")
 
     assert widget.signal_legend.isVisibleTo(widget)
-    assert widget.loaded_signal_legend_text.text() == "Loaded EEG"
-    assert widget.current_signal_legend_text.text() == "Signal"
-    assert not widget.event_legend.isVisible()
+    assert widget.loaded_signal_legend_text.text() == "Raw signal"
+    assert widget.current_signal_legend_text.text() == "Preprocessed signal"
+    assert widget.event_legend_text.text() == "Events"
+    assert widget.excluded_legend_text.text() == "Excluded"
+    assert widget.event_legend.isVisibleTo(widget)
+    assert widget.excluded_legend.isVisibleTo(widget)
 
     events = [
         (0.1, "left"),
@@ -43,11 +46,13 @@ def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
     qtbot.wait(0)
 
     assert widget.event_legend.isVisibleTo(widget)
-    assert widget.event_legend_text.text() == "EEG events: 2 types"
+    assert widget.event_legend_text.text() == "Events"
+    assert "2 event types" in widget.event_legend.toolTip()
     assert "left" in widget.event_legend.toolTip()
     assert "right" in widget.event_legend.toolTip()
     assert widget.excluded_legend.isVisibleTo(widget)
-    assert widget.excluded_legend_text.text() == "Excluded: 2 segments"
+    assert widget.excluded_legend_text.text() == "Excluded"
+    assert "2 excluded segments" in widget.excluded_legend.toolTip()
     assert "BAD_artifact" in widget.excluded_legend.toolTip()
     assert "0.2 s" in widget.excluded_legend.toolTip()
     assert len(widget.findChildren(QLabel, "PreprocessEventLegendText")) == 1
@@ -73,8 +78,10 @@ def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
 
     widget.clear_time_event_markers()
 
-    assert not widget.event_legend.isVisible()
-    assert not widget.excluded_legend.isVisible()
+    assert widget.event_legend.isVisibleTo(widget)
+    assert widget.excluded_legend.isVisibleTo(widget)
+    assert widget.event_legend.toolTip() == ""
+    assert widget.excluded_legend.toolTip() == ""
     assert widget.signal_legend.isVisibleTo(widget)
 
 
@@ -113,9 +120,12 @@ def test_preprocess_signal_legend_fits_constrained_preview_width(qtbot) -> None:
     qtbot.wait(0)
 
     assert widget.signal_legend.isVisibleTo(widget)
-    assert widget.signal_legend.geometry().right() <= (
-        widget.plot_content.contentsRect().right()
+    legend_bottom_right = widget.signal_legend.mapTo(
+        widget.plot_content,
+        widget.signal_legend.rect().bottomRight(),
     )
+    assert legend_bottom_right.x() <= widget.plot_content.contentsRect().right()
+    assert widget.legend_wrap_row.isVisibleTo(widget)
     for label in (
         widget.loaded_signal_legend_text,
         widget.current_signal_legend_text,
@@ -124,6 +134,31 @@ def test_preprocess_signal_legend_fits_constrained_preview_width(qtbot) -> None:
     ):
         assert label.isVisibleTo(widget)
         assert label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
+
+
+def test_preprocess_signal_legend_shares_the_control_row_when_space_allows(
+    qtbot,
+) -> None:
+    widget = PreviewWidget()
+    qtbot.addWidget(
+        widget,
+        before_close_func=lambda owned: owned.prepare_for_shutdown(),
+    )
+    widget.resize(1100, 620)
+    widget.show()
+    widget._set_preview_interactive(True, state="loaded")
+    qtbot.wait(0)
+
+    assert not widget.legend_wrap_row.isVisibleTo(widget)
+    control_center = widget.chan_combo.mapTo(
+        widget.controls_legend_container,
+        widget.chan_combo.rect().center(),
+    ).y()
+    legend_center = widget.signal_legend.mapTo(
+        widget.controls_legend_container,
+        widget.signal_legend.rect().center(),
+    ).y()
+    assert abs(control_center - legend_center) <= 2
 
 
 def test_preprocess_psd_hides_time_only_event_legends(qtbot) -> None:

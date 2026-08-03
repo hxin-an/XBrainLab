@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QSlider,
     QStackedWidget,
     QTabWidget,
@@ -277,10 +278,15 @@ class PreviewWidget(QWidget):
 
         plot_content_layout.addWidget(self.plot_tabs)
 
-        # 2. Controls (Channel, Y-Scale)
-        ctrl_layout = QHBoxLayout()
+        # 2. Controls and the visual legend share one responsive row.
+        self.controls_legend_container = QWidget()
+        controls_legend_layout = QVBoxLayout(self.controls_legend_container)
+        controls_legend_layout.setContentsMargins(0, 0, 0, 0)
+        controls_legend_layout.setSpacing(6)
+        self.ctrl_layout = QHBoxLayout()
+        self.ctrl_layout.setContentsMargins(0, 0, 0, 0)
         self.channel_label = QLabel("Channel:")
-        ctrl_layout.addWidget(self.channel_label)
+        self.ctrl_layout.addWidget(self.channel_label)
         self.chan_combo = QComboBox()
         self.chan_combo.setMinimumWidth(100)
         self.chan_combo.setStyleSheet(Stylesheets.COMBO_BOX)
@@ -288,24 +294,26 @@ class PreviewWidget(QWidget):
         channel_model = self.chan_combo.model()
         if channel_model is not None:
             channel_model.rowsInserted.connect(self._on_channels_inserted)
-        ctrl_layout.addWidget(self.chan_combo)
+        self.ctrl_layout.addWidget(self.chan_combo)
 
-        ctrl_layout.addSpacing(20)
+        self.ctrl_layout.addSpacing(20)
         self.yscale_label = QLabel("Y-Scale (uV):")
-        ctrl_layout.addWidget(self.yscale_label)
+        self.ctrl_layout.addWidget(self.yscale_label)
         self.yscale_spin = QDoubleSpinBox()
         self.yscale_spin.setRange(0, 5000)
         self.yscale_spin.setValue(0)  # 0 = Auto
         self.yscale_spin.setSpecialValueText("Auto")
         self.yscale_spin.setSingleStep(10)
         self.yscale_spin.valueChanged.connect(self._on_plot_param_changed)
-        ctrl_layout.addWidget(self.yscale_spin)
-
-        ctrl_layout.addStretch()
-        plot_content_layout.addLayout(ctrl_layout)
+        self.ctrl_layout.addWidget(self.yscale_spin)
+        self.ctrl_layout.addSpacing(20)
 
         self.signal_legend = QWidget()
         self.signal_legend.setObjectName("PreprocessSignalLegend")
+        self.signal_legend.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Fixed,
+        )
         signal_legend_layout = QHBoxLayout(self.signal_legend)
         signal_legend_layout.setContentsMargins(0, 0, 0, 0)
         signal_legend_layout.setSpacing(20)
@@ -321,7 +329,7 @@ class PreviewWidget(QWidget):
             "background: transparent; border: none; "
             f"border-top: 1px dashed {Theme.CHART_ORIGINAL_DATA};"
         )
-        self.loaded_signal_legend_text = QLabel("Loaded EEG")
+        self.loaded_signal_legend_text = QLabel("Raw signal")
         self.loaded_signal_legend_text.setObjectName("PreprocessLoadedLegendText")
         loaded_legend_layout.addWidget(loaded_swatch)
         loaded_legend_layout.addWidget(self.loaded_signal_legend_text)
@@ -337,7 +345,7 @@ class PreviewWidget(QWidget):
             "background: transparent; border: none; "
             f"border-top: 2px solid {Theme.CHART_PRIMARY};"
         )
-        self.current_signal_legend_text = QLabel("Signal")
+        self.current_signal_legend_text = QLabel("Preprocessed signal")
         self.current_signal_legend_text.setObjectName("PreprocessCurrentLegendText")
         current_legend_layout.addWidget(current_swatch)
         current_legend_layout.addWidget(self.current_signal_legend_text)
@@ -353,11 +361,10 @@ class PreviewWidget(QWidget):
         event_swatch.setStyleSheet(
             f"background-color: {Theme.ACCENT_SUCCESS}; border: none;"
         )
-        self.event_legend_text = QLabel()
+        self.event_legend_text = QLabel("Events")
         self.event_legend_text.setObjectName("PreprocessEventLegendText")
         event_legend_layout.addWidget(event_swatch)
         event_legend_layout.addWidget(self.event_legend_text)
-        self.event_legend.hide()
 
         self.excluded_legend = QWidget(self.signal_legend)
         self.excluded_legend.setObjectName("PreprocessExcludedLegend")
@@ -370,18 +377,30 @@ class PreviewWidget(QWidget):
         excluded_swatch.setStyleSheet(
             f"background-color: {Theme.ACCENT_ERROR}; border: none;"
         )
-        self.excluded_legend_text = QLabel()
+        self.excluded_legend_text = QLabel("Excluded")
         self.excluded_legend_text.setObjectName("PreprocessExcludedLegendText")
         excluded_legend_layout.addWidget(excluded_swatch)
         excluded_legend_layout.addWidget(self.excluded_legend_text)
-        self.excluded_legend.hide()
         signal_legend_layout.addWidget(self.loaded_signal_legend)
         signal_legend_layout.addWidget(self.current_signal_legend)
         signal_legend_layout.addWidget(self.event_legend)
         signal_legend_layout.addWidget(self.excluded_legend)
         signal_legend_layout.addStretch()
         self.signal_legend.hide()
-        plot_content_layout.addWidget(self.signal_legend)
+        self.ctrl_layout.addWidget(self.signal_legend)
+        self.ctrl_layout.addStretch()
+        controls_legend_layout.addLayout(self.ctrl_layout)
+
+        self.legend_wrap_row = QWidget()
+        self.legend_wrap_row.setObjectName("PreprocessSignalLegendWrapRow")
+        self.legend_wrap_layout = QHBoxLayout(self.legend_wrap_row)
+        self.legend_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        self.legend_wrap_layout.setSpacing(0)
+        self.legend_wrap_layout.addStretch()
+        self.legend_wrap_row.hide()
+        controls_legend_layout.addWidget(self.legend_wrap_row)
+        self._signal_legend_inline = True
+        plot_content_layout.addWidget(self.controls_legend_container)
 
         # 3. Time Navigation
         time_nav_layout = QHBoxLayout()
@@ -890,12 +909,9 @@ class PreviewWidget(QWidget):
             marker.hide()
         for region in getattr(self, "time_excluded_regions", []):
             region.hide()
-        self.event_legend_text.clear()
         self.event_legend.setToolTip("")
-        self.excluded_legend_text.clear()
         self.excluded_legend.setToolTip("")
-        self.event_legend.hide()
-        self.excluded_legend.hide()
+        self._refresh_event_legend_visibility()
 
     def show_time_event_markers(
         self,
@@ -957,15 +973,14 @@ class PreviewWidget(QWidget):
             )
         )
         if not event_descriptions:
-            self.event_legend_text.clear()
             self.event_legend.setToolTip("")
-            self.event_legend.hide()
         else:
-            self.event_legend_text.setText(
-                f"EEG events: {len(event_descriptions)} "
-                f"{'type' if len(event_descriptions) == 1 else 'types'}"
+            event_count = len(event_descriptions)
+            self.event_legend.setToolTip(
+                f"{event_count} event "
+                f"{'type' if event_count == 1 else 'types'}: "
+                + ", ".join(event_descriptions)
             )
-            self.event_legend.setToolTip(", ".join(event_descriptions))
 
         excluded_events = [
             (description, duration)
@@ -973,16 +988,12 @@ class PreviewWidget(QWidget):
             if self._is_excluded_annotation(description)
         ]
         if not excluded_events:
-            self.excluded_legend_text.clear()
             self.excluded_legend.setToolTip("")
-            self.excluded_legend.hide()
         else:
             count = len(excluded_events)
-            self.excluded_legend_text.setText(
-                f"Excluded: {count} {'segment' if count == 1 else 'segments'}"
-            )
             self.excluded_legend.setToolTip(
-                ", ".join(
+                f"{count} excluded {'segment' if count == 1 else 'segments'}: "
+                + ", ".join(
                     self._event_tooltip(description, duration)
                     for description, duration in excluded_events
                 )
@@ -997,12 +1008,61 @@ class PreviewWidget(QWidget):
             getattr(self, "_preview_state", "empty") == "loaded"
             and self.plot_tabs.currentIndex() == 0
         )
-        self.event_legend.setVisible(
-            time_preview_active and bool(self.event_legend_text.text().strip())
+        self.event_legend.setVisible(time_preview_active)
+        self.excluded_legend.setVisible(time_preview_active)
+        self._sync_signal_legend_layout()
+
+    def _sync_signal_legend_layout(self) -> None:
+        """Keep the legend inline when it fits and wrap it as one intact group."""
+        if not hasattr(self, "controls_legend_container"):
+            return
+        available_width = max(
+            self.controls_legend_container.contentsRect().width(),
+            self.contentsRect().width() - 40,
         )
-        self.excluded_legend.setVisible(
-            time_preview_active and bool(self.excluded_legend_text.text().strip())
+        if available_width <= 0:
+            return
+        control_widgets = (
+            self.channel_label,
+            self.chan_combo,
+            self.yscale_label,
+            self.yscale_spin,
         )
+        control_width = sum(
+            max(widget.minimumSizeHint().width(), widget.minimumWidth())
+            for widget in control_widgets
+        )
+        layout_spacing = max(self.ctrl_layout.spacing(), 0)
+        required_inline_width = (
+            control_width
+            + self.signal_legend.sizeHint().width()
+            + 40
+            + layout_spacing * len(control_widgets)
+            + 12
+        )
+        use_inline = available_width >= required_inline_width
+        legend_requested = not self.signal_legend.isHidden()
+        if use_inline == self._signal_legend_inline:
+            self.legend_wrap_row.setVisible(not use_inline and legend_requested)
+            return
+
+        if use_inline:
+            self.legend_wrap_layout.removeWidget(self.signal_legend)
+            self.ctrl_layout.insertWidget(
+                max(0, self.ctrl_layout.count() - 1),
+                self.signal_legend,
+            )
+            self.legend_wrap_row.hide()
+        else:
+            self.ctrl_layout.removeWidget(self.signal_legend)
+            self.legend_wrap_layout.insertWidget(0, self.signal_legend)
+            self.legend_wrap_row.setVisible(legend_requested)
+        self._signal_legend_inline = use_inline
+        self.controls_legend_container.updateGeometry()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._sync_signal_legend_layout()
 
     @staticmethod
     def _event_marker_parts(
