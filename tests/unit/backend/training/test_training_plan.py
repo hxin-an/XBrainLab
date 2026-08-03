@@ -33,6 +33,7 @@ from XBrainLab.backend.training.training_plan import (
     TrainingOption,
     TrainingPlanHolder,
     TrainRecord,
+    publish_prepared_saliency_updates,
 )
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
@@ -1082,6 +1083,80 @@ def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder)
         evaluation_split="test",
     )
     assert record.eval_record is sentinel
+
+
+def test_saliency_uses_validation_when_test_split_misses_a_model_class(
+    base_holder,
+):
+    """A held-out split without every class cannot produce complete saliency."""
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    record.eval_record = EvalRecord(
+        np.array([0, 0]),
+        np.array([[0.8, 0.2], [0.7, 0.3]]),
+        {},
+        {},
+        {},
+        {},
+        {},
+        evaluation_split="test",
+    )
+    record.evaluation_records = {
+        "test": record.eval_record,
+        "validation": EvalRecord(
+            np.array([0, 1]),
+            np.array([[0.8, 0.2], [0.3, 0.7]]),
+            {},
+            {},
+            {},
+            {},
+            {},
+            evaluation_split="validation",
+        ),
+    }
+    _bind_selected_evaluation_checkpoint(base_holder, record)
+    prepared = _prepared_saliency_record()
+    prepared.evaluation_split = "validation"
+    prepared.gradient = {0: np.ones((1, 1, 2)), 1: np.ones((1, 1, 2))}
+    train_loader = object()
+    validation_loader = object()
+    test_loader = object()
+
+    with (
+        patch.object(
+            base_holder,
+            "get_loader",
+            return_value=(train_loader, validation_loader, test_loader),
+        ),
+        patch.object(
+            base_holder,
+            "get_eval_pair",
+            return_value=("model", validation_loader),
+        ) as get_eval_pair,
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            return_value=prepared,
+        ) as evaluate_with_saliency,
+    ):
+        plan = base_holder.prepare_saliency_update_plan(
+            {"_methods": ["Gradient"]},
+            records=[record],
+        )
+        update = base_holder.compute_saliency_update(plan)
+
+    assert update.eval_records[0][2] is prepared
+    get_eval_pair.assert_called_once_with(record, validation_loader, None)
+    evaluate_with_saliency.assert_called_once_with(
+        "model",
+        validation_loader,
+        {"_methods": ["Gradient"]},
+        evaluation_split="validation",
+    )
+    publish_prepared_saliency_updates([update])
+    assert record.eval_record.evaluation_split == "test"
+    assert record.evaluation_records["validation"] is prepared
+    assert record.get_saliency_eval_record() is prepared
 
 
 def test_saliency_update_binds_epoch_identity_before_publication(base_holder):

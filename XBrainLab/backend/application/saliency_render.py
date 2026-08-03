@@ -292,9 +292,16 @@ class SaliencyRenderPublisher:
         if request.run.run_index >= len(runs):
             raise self._target_error("The selected training run is no longer available")
         run = runs[request.run.run_index]
+        saliency_record_getter = getattr(
+            type(run),
+            "get_saliency_eval_record",
+            None,
+        )
         record_getter = getattr(run, "get_eval_record", None)
         eval_record = (
-            record_getter()
+            saliency_record_getter(run)
+            if callable(saliency_record_getter)
+            else record_getter()
             if callable(record_getter)
             else getattr(run, "eval_record", None)
         )

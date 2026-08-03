@@ -995,6 +995,8 @@ class VisualizationPanel(BasePanel):
 
     def _compute_saliency_from_action_bar(self) -> None:
         """Compute saliency for the current run using a product-friendly default."""
+        if self._training_is_running():
+            return
         current_widget = self.tabs.currentWidget() if hasattr(self, "tabs") else None
         if self._saliency_settings_review_required:
             self._require_saliency_settings_review(
@@ -1162,6 +1164,15 @@ class VisualizationPanel(BasePanel):
         if not hasattr(self, "saliency_action_bar"):
             return
         method_name = method_name or "Gradient"
+        if self._training_is_running():
+            self._saliency_action_requires_recompute = False
+            self.saliency_action_title.setText("Training in progress")
+            self.saliency_action_detail.setText(
+                "Saliency can be computed after training finishes."
+            )
+            self._set_saliency_action_busy(False)
+            self.saliency_action_bar.setVisible(True)
+            return
         if self._saliency_settings_review_required:
             self._saliency_action_requires_recompute = False
             self.saliency_action_title.setText(_SALIENCY_SETTINGS_REVIEW_TITLE)
@@ -1207,7 +1218,9 @@ class VisualizationPanel(BasePanel):
     def _set_saliency_action_busy(self, busy: bool) -> None:
         if not hasattr(self, "compute_saliency_btn"):
             return
-        self.compute_saliency_btn.setEnabled(not busy)
+        training_is_running = self._training_is_running()
+        self.compute_saliency_btn.setVisible(not training_is_running)
+        self.compute_saliency_btn.setEnabled(not busy and not training_is_running)
         self.compute_saliency_btn.setText(
             "Computing..."
             if busy
@@ -1215,6 +1228,14 @@ class VisualizationPanel(BasePanel):
             if self._saliency_action_requires_recompute
             else "Compute Saliency"
         )
+
+    def _training_is_running(self) -> bool:
+        """Read training liveness only from the accepted Application publication."""
+        publication = self._application_view_publication
+        if publication is None or not publication.usable:
+            return False
+        state = publication.state
+        return bool(state.training.is_running or state.active_training.is_running)
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
@@ -1795,8 +1816,6 @@ class VisualizationPanel(BasePanel):
             )
         elif phase is PostTrainingSaliencyPhase.FAILED:
             title = "Automatic saliency failed"
-            if status.message:
-                logger.error("Automatic saliency failed: %s", status.message)
             detail = self._terminal_saliency_detail(
                 "Automatic saliency failed to complete.",
                 method_name,

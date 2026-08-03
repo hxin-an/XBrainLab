@@ -7,7 +7,7 @@ training runs.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -164,9 +164,18 @@ class VisualizationController(Observable):
         # Filter for plans with valid eval records
         records: list[EvalRecord] = []
         for p in plans:
-            r = p.get_eval_record()
+            saliency_record_getter = getattr(
+                type(p),
+                "get_saliency_eval_record",
+                None,
+            )
+            r = (
+                saliency_record_getter(p)
+                if callable(saliency_record_getter)
+                else p.get_eval_record()
+            )
             if r is not None:
-                records.append(r)
+                records.append(cast(EvalRecord, r))
 
         if not records:
             return None

@@ -219,9 +219,19 @@ def _application_query_with_saliency_state(
     plan_index: int = 0,
     run_index: int = 0,
     additional_coverages: tuple[SaliencyMethodCoverageSnapshot, ...] = (),
+    training_is_running: bool = False,
 ) -> CommandResult:
+    empty_state = ApplicationStateSnapshot.empty()
     state = replace(
-        ApplicationStateSnapshot.empty(),
+        empty_state,
+        training=replace(
+            empty_state.training,
+            is_running=training_is_running,
+        ),
+        active_training=replace(
+            empty_state.active_training,
+            is_running=training_is_running,
+        ),
         visualization=VisualizationStateSnapshot(
             saliency_available=coverage.available,
             saliency_coverage=[
@@ -978,6 +988,43 @@ def test_visualization_panel_reports_active_background_saliency_without_recomput
     assert "has not been computed" not in message
     assert panel.compute_saliency_btn.text() == "Computing..."
     assert panel.compute_saliency_btn.isEnabled() is False
+
+
+def test_visualization_panel_hides_compute_saliency_while_training(qtbot):
+    panel, ctrl = _make_panel(qtbot)
+    trainer = _make_trainer("EEGNet", repeats=1)
+    trainer.get_plans.return_value[
+        0
+    ].get_eval_record.return_value = _make_eval_record_without_saliency()
+    ctrl.get_trainers.return_value = [trainer]
+    panel.refresh_combos()
+    missing = SaliencyMethodCoverageSnapshot(
+        method="Gradient",
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=0,
+                display_name="left",
+                available=False,
+            ),
+        ],
+    )
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            PostTrainingSaliencyStatus.idle(),
+            missing,
+            training_is_running=True,
+        ),
+    )
+    panel._application_summary_dirty = False
+
+    with patch.object(panel, "_start_saliency_compute") as start_compute:
+        panel.on_update()
+        panel._compute_saliency_from_action_bar()
+
+    start_compute.assert_not_called()
+    assert panel.compute_saliency_btn.isHidden()
+    assert panel.saliency_action_title.text() == "Training in progress"
 
 
 @pytest.mark.parametrize(

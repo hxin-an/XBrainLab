@@ -131,7 +131,7 @@ def publish_prepared_saliency_updates(
         for update, params in zip(updates, holder_params, strict=True):
             update.holder.saliency_params = params
             for record, _previous_eval_record, eval_record in update.eval_records:
-                record._replace_primary_evaluation_record(eval_record)
+                record._replace_saliency_evaluation_record(eval_record)
 
 
 class SharedMemoryDataset(torch_data.Dataset):
@@ -928,11 +928,23 @@ class TrainingPlanHolder:
         prepared_eval_records: list[tuple[TrainRecord, EvalRecord, EvalRecord]] = []
         for train_record, previous_eval_record in plan.records:
             self._raise_if_saliency_plan_stale(plan, should_cancel=should_cancel)
-            target, target_loader = self.get_eval_pair(
+            saliency_split = self._select_saliency_evaluation_split(
                 train_record,
-                val_loader,
-                test_loader,
+                val_loader=val_loader,
+                test_loader=test_loader,
             )
+            if saliency_split == "validation":
+                target, target_loader = self.get_eval_pair(
+                    train_record,
+                    val_loader,
+                    None,
+                )
+            else:
+                target, target_loader = self.get_eval_pair(
+                    train_record,
+                    val_loader,
+                    test_loader,
+                )
             try:
                 # Target selection may call backend code that observes mutable
                 # training records. Revalidate the captured identity before
@@ -1001,6 +1013,73 @@ class TrainingPlanHolder:
             plan=plan,
             eval_records=tuple(prepared_eval_records),
         )
+
+    def _select_saliency_evaluation_split(
+        self,
+        train_record: TrainRecord,
+        *,
+        val_loader: torch_data.DataLoader | None,
+        test_loader: torch_data.DataLoader | None,
+    ) -> str:
+        """Prefer test data, falling back only when class coverage is incomplete."""
+        evaluation_records = getattr(train_record, "evaluation_records", {})
+        known_incomplete: list[str] = []
+        unknown_coverage: list[str] = []
+        for split, loader in (("test", test_loader), ("validation", val_loader)):
+            if loader is None:
+                continue
+            eval_record = (
+                evaluation_records.get(split)
+                if isinstance(evaluation_records, dict)
+                else None
+            )
+            coverage = self._has_complete_model_class_coverage(eval_record)
+            if coverage is True:
+                if split != "test" and test_loader is not None:
+                    logger.info(
+                        "Test split lacks complete model-class coverage; "
+                        "using validation data for saliency on %s.",
+                        train_record.get_name(),
+                    )
+                return split
+            if coverage is False:
+                known_incomplete.append(split)
+            else:
+                unknown_coverage.append(split)
+
+        # Older checkpoints may not contain split-specific metric records. Keep
+        # their established test-first behavior instead of guessing coverage.
+        if unknown_coverage:
+            return unknown_coverage[0]
+        if known_incomplete:
+            raise FinalEvaluationUnavailableError(
+                "Saliency requires an evaluation split containing every model "
+                "class; the available test and validation results have incomplete "
+                "class coverage."
+            )
+        raise FinalEvaluationUnavailableError(
+            "Saliency unavailable: no validation or test split is configured."
+        )
+
+    @staticmethod
+    def _has_complete_model_class_coverage(
+        eval_record: EvalRecord | None,
+    ) -> bool | None:
+        """Return complete/incomplete coverage, or unknown for legacy records."""
+        if eval_record is None:
+            return None
+        outputs = np.asarray(getattr(eval_record, "output", None))
+        labels = np.asarray(getattr(eval_record, "label", None)).reshape(-1)
+        if outputs.ndim != 2 or outputs.shape[1] <= 0:
+            return None
+        if labels.size == 0:
+            return False
+        try:
+            present_classes = np.unique(labels.astype(np.int64, copy=False))
+        except (TypeError, ValueError):
+            return None
+        expected_classes = np.arange(outputs.shape[1], dtype=np.int64)
+        return bool(np.array_equal(present_classes, expected_classes))
 
     def prepare_saliency_update(
         self,

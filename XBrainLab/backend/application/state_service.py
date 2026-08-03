@@ -591,16 +591,30 @@ class StateSnapshotService:
                 except Exception as exc:
                     read_errors.append(f"{run_context}.eval_record: {exc}")
                     eval_record = None
+                try:
+                    saliency_record_getter = getattr(
+                        type(run),
+                        "get_saliency_eval_record",
+                        None,
+                    )
+                    saliency_record = (
+                        saliency_record_getter(run)
+                        if callable(saliency_record_getter)
+                        else eval_record
+                    )
+                except Exception as exc:
+                    read_errors.append(f"{run_context}.saliency_record: {exc}")
+                    saliency_record = eval_record
                 if is_finished:
                     finished_runs += 1
                 if eval_record is not None:
                     metrics_available = True
-                if is_finished and eval_record is not None:
+                if is_finished and saliency_record is not None:
                     try:
                         saliency_coverage.append(
                             replace(
                                 self.saliency_coverage_projector.project_run(
-                                    eval_record,
+                                    saliency_record,
                                     plan_index=plan_index,
                                     run_index=run_index,
                                     label_items=label_items,

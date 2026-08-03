@@ -16826,3 +16826,23 @@
   - Repeated exact-Granite long-session behavior is now clean-source evidence. The complete canonical
     manifest still needs to pass from the final clean pushed commit before handoff-ready can be
     claimed.
+
+### 2026-08-03 Saliency training guard and class-coverage fallback
+
+- completed：
+  - Hid the manual Compute Saliency action while training is active and made the click path fail
+    closed against a stale visible control.
+  - Traced the OpenNeuro P300 failure to one cross-validation test split containing only class 0.
+    Saliency now prefers test data but uses validation when it is the first held-out split with full
+    model-class coverage.
+  - Kept primary test metrics unchanged when saliency is sourced from validation; Visualization now
+    reads the split-specific saliency record and retains its provenance.
+- validation：
+  - Training/saliency unit, UI, record compatibility and ApplicationService lifecycle suites passed;
+    the real P300 artifacts select test for folds 0-3 and validation for fold 4 as intended.
+  - MainWindow training refresh runtime passed, and the interactive Visualization walkthrough
+    rendered Saliency Map, Spectrogram, Topographic Map and 3D Plot without uncaught exceptions.
+- claim boundary：
+  - This checkpoint fixes the reproduced P300 failure. Final Windows click-through remains a human
+    acceptance step; one existing shutdown observer timing test remains flaky only when run after the
+    complete lifecycle module and passes repeatedly in isolation.

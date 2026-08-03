@@ -539,13 +539,42 @@ class TrainRecord:
     def _replace_primary_evaluation_record(self, eval_record: EvalRecord) -> None:
         """Replace the compatibility record and its matching split entry."""
         self.eval_record = eval_record
+        evaluation_records = self._evaluation_record_store()
         split = (
             str(getattr(eval_record, "evaluation_split", None) or "unknown")
             .strip()
             .casefold()
         )
         if split in EVALUATION_SPLITS:
-            self.evaluation_records[split] = eval_record
+            evaluation_records[split] = eval_record
+
+    def _replace_saliency_evaluation_record(self, eval_record: EvalRecord) -> None:
+        """Store saliency on its source split without changing primary metrics."""
+        split = (
+            str(getattr(eval_record, "evaluation_split", None) or "unknown")
+            .strip()
+            .casefold()
+        )
+        if split not in EVALUATION_SPLITS:
+            self._replace_primary_evaluation_record(eval_record)
+            return
+        evaluation_records = self._evaluation_record_store()
+        primary_split = (
+            str(getattr(self.eval_record, "evaluation_split", None) or "unknown")
+            .strip()
+            .casefold()
+        )
+        evaluation_records[split] = eval_record
+        if primary_split == split:
+            self.eval_record = eval_record
+
+    def _evaluation_record_store(self) -> dict[str, EvalRecord]:
+        """Return the split record store, initializing legacy instances lazily."""
+        evaluation_records = getattr(self, "evaluation_records", None)
+        if not isinstance(evaluation_records, dict):
+            evaluation_records = {}
+            self.evaluation_records = evaluation_records
+        return evaluation_records
 
     def set_evaluation_records(
         self,
@@ -1057,4 +1086,31 @@ class TrainRecord:
             The :class:`EvalRecord` instance, or ``None``.
 
         """
+        return self.eval_record
+
+    def get_saliency_eval_record(self) -> EvalRecord | None:
+        """Return the split record containing saliency without changing metrics."""
+        evaluation_records = self._evaluation_record_store()
+        candidates = [
+            self.eval_record,
+            evaluation_records.get("test"),
+            evaluation_records.get("validation"),
+            evaluation_records.get("training"),
+        ]
+        seen: set[int] = set()
+        for candidate in candidates:
+            if candidate is None or id(candidate) in seen:
+                continue
+            seen.add(id(candidate))
+            if any(
+                bool(getattr(candidate, attribute, None))
+                for attribute in (
+                    "gradient",
+                    "gradient_input",
+                    "smoothgrad",
+                    "smoothgrad_sq",
+                    "vargrad",
+                )
+            ):
+                return candidate
         return self.eval_record
