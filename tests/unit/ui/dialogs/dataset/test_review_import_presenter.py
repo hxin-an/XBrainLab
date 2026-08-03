@@ -25,6 +25,7 @@ def _submission_facts(
     has_remap_options: bool = False,
     has_complete_remap_choices: bool = False,
     event_values_ready_for_recheck: bool = False,
+    interpretation_choices_ready_for_recheck: bool = False,
 ) -> SubmissionFacts:
     return SubmissionFacts(
         decision=decision,
@@ -33,6 +34,9 @@ def _submission_facts(
         has_remap_options=has_remap_options,
         has_complete_remap_choices=has_complete_remap_choices,
         event_values_ready_for_recheck=event_values_ready_for_recheck,
+        interpretation_choices_ready_for_recheck=(
+            interpretation_choices_ready_for_recheck
+        ),
     )
 
 
@@ -101,6 +105,17 @@ def _submission_facts(
                 can_submit_for_backend_review=False,
                 confirmed_on_accept=False,
                 recheck_kind=None,
+            ),
+        ),
+        (
+            _submission_facts(
+                decision="blocked",
+                interpretation_choices_ready_for_recheck=True,
+            ),
+            SubmissionProjection(
+                can_submit_for_backend_review=True,
+                confirmed_on_accept=True,
+                recheck_kind="interpretation_choices",
             ),
         ),
     ],

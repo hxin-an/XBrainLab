@@ -4,16 +4,32 @@ import inspect
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow
 
 from run import (
+    _configure_application_identity,
     _configure_product_window_lifetime,
+    _configure_qt_application_attributes,
     _create_centered_splash,
     _create_splash_pixmap,
     _present_main_window,
     _show_centered_splash,
     main,
 )
+
+
+def test_application_identity_never_exposes_run_py_as_window_owner(qapp):
+    _configure_application_identity(qapp)
+
+    assert qapp.applicationName() == "XBrainLab"
+    assert qapp.applicationDisplayName() == "XBrainLab"
+    assert qapp.organizationName() == "XBrainLab"
+
+
+def test_qt_application_attributes_keep_file_dialogs_in_qt():
+    _configure_qt_application_attributes()
+
+    assert QApplication.testAttribute(Qt.ApplicationAttribute.AA_DontUseNativeDialogs)
 
 
 class _SplashStub:

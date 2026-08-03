@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-SubmissionRecheckKind = Literal["remap", "event_values"]
+SubmissionRecheckKind = Literal["remap", "event_values", "interpretation_choices"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +18,7 @@ class SubmissionFacts:
     has_remap_options: bool
     has_complete_remap_choices: bool
     event_values_ready_for_recheck: bool
+    interpretation_choices_ready_for_recheck: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +46,12 @@ def project_submission(facts: SubmissionFacts) -> SubmissionProjection:
             and not facts.has_unresolved_required_decisions
         ):
             recheck_kind = "event_values"
+        elif (
+            facts.decision == "blocked"
+            and facts.interpretation_choices_ready_for_recheck
+            and not facts.has_unresolved_required_decisions
+        ):
+            recheck_kind = "interpretation_choices"
 
     can_submit = bool(
         not facts.resource_blocked

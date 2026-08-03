@@ -83,11 +83,12 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 QSizePolicy.Policy.Fixed,
             )
             status_label.setFixedWidth(132)
-            status_height = max(status_label.fontMetrics().height() + 10, 26)
+            status_height = max(status_label.fontMetrics().height() + 14, 30)
             status_label.setFixedHeight(status_height)
             summary_label = QLabel(row["summary"])
             summary_label.setObjectName("DataImportReviewSummary")
             summary_label.setWordWrap(True)
+            summary_label.setMinimumHeight(status_height)
             summary_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
@@ -154,8 +155,23 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             summary = item.widget()
             if not isinstance(summary, QLabel) or summary.width() <= 0:
                 continue
-            required_height = summary.heightForWidth(summary.width())
+            text_bounds = summary.fontMetrics().boundingRect(
+                QRect(0, 0, summary.width(), 10_000),
+                int(
+                    Qt.AlignmentFlag.AlignLeft
+                    | Qt.AlignmentFlag.AlignVCenter
+                    | Qt.TextFlag.TextWordWrap
+                ),
+                summary.text(),
+            )
+            required_height = max(
+                summary.heightForWidth(summary.width()),
+                text_bounds.height(),
+                summary.fontMetrics().height() + 14,
+            )
             if required_height > 0:
+                if summary.minimumHeight() != required_height:
+                    summary.setMinimumHeight(required_height)
                 layout.setRowMinimumHeight(
                     row,
                     max(layout.rowMinimumHeight(row), required_height),
@@ -434,6 +450,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             event_values_ready_for_recheck=(
                 self._event_value_decisions_ready_for_recheck()
             ),
+            interpretation_choices_ready_for_recheck=bool(self._edited_choices()),
         )
 
     def _submission_projection(self) -> SubmissionProjection:
@@ -1188,6 +1205,11 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             self.decision_label.setText("Ready to recheck and import.")
             self.confirmation_label.setText(
                 "Event value choices are complete. Apply to verify and import them."
+            )
+        elif recheck_kind == "interpretation_choices":
+            self.decision_label.setText("Ready to recheck and import.")
+            self.confirmation_label.setText(
+                "The visible import choices are complete. Apply to verify them."
             )
         else:
             self.decision_label.setText(self._decision_text())

@@ -4686,6 +4686,59 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert abs(restored_center.y() - working_center.y()) <= 1
 
 
+def test_collapsed_review_geometry_is_stable_before_and_after_report_roundtrip(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [
+                "/tmp/source/A01T.gdf",
+                "/tmp/source/A02T.gdf",
+                "/tmp/source/A03T.gdf",
+            ],
+        },
+        preview={
+            "summary": "Found 3 EEG files.",
+            "metadata_preview": [
+                {
+                    "file": f"A0{index}T.gdf",
+                    "subject": {"value": f"A0{index}", "decision": "safe"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "", "decision": "safe"},
+                    "run": {"value": "", "decision": "safe"},
+                }
+                for index in range(1, 4)
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    initial_size = dialog.size()
+    initial_rows = {
+        label.text(): label.size()
+        for label in dialog.findChildren(QLabel, "DataImportReviewSummary")
+        if label.isVisibleTo(dialog)
+    }
+
+    dialog.import_report_toggle.click()
+    qtbot.wait(0)
+    dialog.import_report_toggle.click()
+    qtbot.wait(0)
+
+    assert dialog.size() == initial_size
+    assert {
+        label.text(): label.size()
+        for label in dialog.findChildren(QLabel, "DataImportReviewSummary")
+        if label.isVisibleTo(dialog)
+    } == initial_rows
+
+
 def test_collapsed_review_opened_before_show_removes_trailing_scroll_gutter(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

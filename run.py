@@ -185,6 +185,21 @@ def _configure_product_window_lifetime(window: QWidget) -> None:
     window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
 
+def _configure_application_identity(app: QApplication) -> None:
+    """Give every native Qt surface the product identity, never ``run.py``."""
+    app.setOrganizationName("XBrainLab")
+    app.setApplicationName("XBrainLab")
+    app.setApplicationDisplayName("XBrainLab")
+
+
+def _configure_qt_application_attributes() -> None:
+    """Keep dialogs inside Qt instead of spawning fragile WSL native surfaces."""
+    QApplication.setAttribute(
+        Qt.ApplicationAttribute.AA_DontUseNativeDialogs,
+        True,
+    )
+
+
 def main() -> None:
     """Parse CLI arguments, create the application, and show the main window.
 
@@ -204,7 +219,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    _configure_qt_application_attributes()
     app = QApplication(sys.argv)
+    _configure_application_identity(app)
 
     # --- Splash Screen (shown while heavy imports load) ---
     settings = QSettings("XBrainLab", "XBrainLab")

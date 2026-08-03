@@ -1776,6 +1776,12 @@ class DataInterpretationPreviewDialog(
         # Deferring this resize paints one frame at the previous step's height.
         self._sync_review_dialog_geometry()
         self._sync_scroll_policy()
+        if final_step:
+            # The first pass establishes the final viewport height; settle once
+            # more synchronously so wrapped summary rows do not paint using the
+            # previous step's geometry until the report is toggled.
+            self._sync_review_dialog_geometry()
+            self._sync_scroll_policy()
 
     def _sync_review_dialog_geometry(self) -> None:
         """Compact the final review while preserving the working-step size."""
@@ -1800,7 +1806,10 @@ class DataInterpretationPreviewDialog(
             page_layout.activate()
         content_height = self._step_content_height(current_page)
         chrome_height = max(self.height() - viewport.height(), 150)
-        desired_height = max(content_height + chrome_height + 8, 520)
+        # Keep one stable compact baseline. The first layout pass can understate
+        # wrapped review rows by a few pixels; using that transient height makes
+        # the text look compressed until the report is expanded and collapsed.
+        desired_height = max(content_height + chrome_height + 8, 560)
         target_height = min(desired_height, self._review_restore_size.height())
         if target_height != self.height():
             self.resize_preserving_center(QSize(self.width(), target_height))

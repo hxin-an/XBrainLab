@@ -100,6 +100,19 @@ class _LabelSourceLifecycleDriver:
     errors: list[str] = field(default_factory=list)
 
 
+@dataclass
+class _AutoDetectedLabelDriver:
+    """Drive the ordinary multi-GDF flow without manually repairing defaults."""
+
+    timer: QTimer
+    phase: int = 0
+    dialog: DataInterpretationPreviewDialog | None = None
+    dialogs: list[DataInterpretationPreviewDialog] = field(default_factory=list)
+    trace: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    unexpected_messages: list[str] = field(default_factory=list)
+
+
 def _select_combo_data(combo: QComboBox, value: str) -> None:
     index = combo.findData(value)
     if index < 0:
@@ -357,6 +370,70 @@ def _wait_for_interpretation_publication(
             f"active_threads={thread_pool.activeThreadCount()}, "
             f"max_threads={thread_pool.maxThreadCount()}."
         )
+
+
+def _start_auto_detected_label_driver() -> _AutoDetectedLabelDriver:
+    driver = _AutoDetectedLabelDriver(timer=QTimer())
+    driver.timer.setInterval(5)
+
+    def _fail(message: str, modal: QWidget | None) -> None:
+        driver.errors.append(message)
+        driver.timer.stop()
+        if isinstance(modal, QDialog):
+            modal.reject()
+
+    def _poll() -> None:
+        modal = QApplication.activeModalWidget()
+        try:
+            if isinstance(modal, QMessageBox):
+                driver.unexpected_messages.append(
+                    f"{modal.windowTitle()}: {modal.text()}"
+                )
+                _fail(driver.unexpected_messages[-1], modal)
+                return
+            if not isinstance(modal, DataInterpretationPreviewDialog):
+                return
+            driver.dialog = modal
+            if modal not in driver.dialogs:
+                driver.dialogs.append(modal)
+            if driver.phase < 4:
+                if modal.step_stack.currentIndex() != driver.phase:
+                    return
+                if driver.phase == 2:
+                    for row in range(modal.file_tree.topLevelItemCount()):
+                        item = modal.file_tree.topLevelItem(row)
+                        if item is not None:
+                            item.setText(1, Path(item.text(0)).stem)
+                if not modal.next_button.isEnabled():
+                    _fail(
+                        f"Next is disabled at {modal._step_titles[driver.phase]}",
+                        modal,
+                    )
+                    return
+                driver.trace.append(modal._step_titles[driver.phase])
+                driver.phase += 1
+                QTest.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                return
+            if modal.step_stack.currentIndex() != 4:
+                return
+            if not modal.apply_button.isEnabled():
+                _fail(
+                    "Confirm and Import is disabled for suggested defaults: "
+                    f"facts={modal._submission_facts()!r}; "
+                    f"choices={modal.get_result().get('choices')!r}; "
+                    f"placement={modal._review_label_placement_text()!r}",
+                    modal,
+                )
+                return
+            driver.trace.append("Confirm and Import")
+            driver.phase = 5
+            QTest.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
+        except Exception as exc:
+            _fail(f"{type(exc).__name__}: {exc}", modal)
+
+    driver.timer.timeout.connect(_poll)
+    driver.timer.start()
+    return driver
 
 
 def _visible_label_source_titles(
@@ -735,6 +812,54 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     assert carrier["path"] == str(external_label)
     assert carrier["selected_label_field"] == "classlabel"
     assert set(carrier["selected_target_event_codes"]) == EXPECTED_TARGET_EVENT_CODES
+
+
+def test_multi_gdf_auto_detected_labels_import_without_blocked_dialog(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ordinary three-GDF path must submit its visible suggested mapping."""
+    selected = [FIXTURE_ROOT / f"A0{index}T.gdf" for index in (1, 2, 3)]
+    if not all(path.exists() for path in selected):
+        pytest.skip("Checked-in multi-GDF fixtures are unavailable.")
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileNames",
+        staticmethod(lambda *_args, **_kwargs: ([str(path) for path in selected], "")),
+    )
+
+    host = _DatasetHost(Study())
+    qtbot.addWidget(host)
+    controller = host.study.get_controller("dataset")
+    panel = DatasetPanel(controller=controller, parent=host)
+    host.dataset_panel = panel
+    host.stack.addWidget(panel)
+    host.resize(1180, 760)
+    host.show()
+    panel.update_panel()
+    qtbot.wait(0)
+
+    runtime = application_ui_runtime(panel)
+    assert runtime is not None
+    driver = _start_auto_detected_label_driver()
+    QTest.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+
+    _wait_for_interpretation_publication(
+        qtbot,
+        driver,
+        runtime,
+        timeout=60_000,
+    )
+    driver.timer.stop()
+
+    assert driver.errors == []
+    assert driver.unexpected_messages == []
+    assert driver.phase == 5
+    assert runtime.get_view_publication().state.raw.files == [
+        path.name for path in selected
+    ]
+    assert len(host.study.loaded_data_list) == 3
 
 
 def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
