@@ -581,6 +581,9 @@ def _make_detached_history_entry(
                 RecordKey.ACC: [0.75, 0.79][:epoch_count],
                 RecordKey.AUC: [0.65, 0.7][:epoch_count],
             },
+            "test": {
+                RecordKey.ACC: [0.77],
+            },
         },
     }
 
@@ -609,6 +612,10 @@ def test_training_history_signature_covers_every_rendered_metric_and_detail() ->
         (
             "validation",
             (RecordKey.ACC, RecordKey.LOSS, RecordKey.AUC),
+        ),
+        (
+            "test",
+            (RecordKey.ACC,),
         ),
     ):
         for key in keys:
@@ -673,8 +680,8 @@ def test_training_publication_updates_visible_cells_and_selected_log_before_comm
     assert panel._on_application_view_publication_changed(changed)
     qtbot.waitUntil(lambda: panel._last_application_revision == changed.revision)
 
-    assert panel.history_table.item(0, 9).text() == "0.0025"
-    assert panel.history_table.item(0, 10).text() == "00:01:15"
+    assert panel.history_table.item(0, 10).text() == "0.0025"
+    assert panel.history_table.item(0, 11).text() == "00:01:15"
     visible_log = panel.log_text.toPlainText()
     assert "auc=0.91" in visible_log
     assert "auc=0.87" in visible_log

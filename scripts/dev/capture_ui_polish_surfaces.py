@@ -723,6 +723,9 @@ def _training_history_rows(
                         "accuracy": [78.4 + index * 0.3],
                         "auc": [],
                     },
+                    "test": {
+                        "accuracy": [] if is_running else [77.8 + index * 0.4],
+                    },
                 },
             }
         )
@@ -1192,10 +1195,13 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             raise RuntimeError(f"{filename} has a contradictory empty Data Summary.")
         if not semantics["key_columns_fit"]:
             raise RuntimeError(f"{filename} clips Group, Run, Model, or Status text.")
-        if semantics["horizontal_scroll_maximum"] != 0:
+        if not semantics["all_visible_text_fits"]:
             raise RuntimeError(
-                f"{filename} unnecessarily scrolls Training History horizontally."
+                f"{filename} clips Training History header or cell text."
             )
+        horizontal_scroll = int(semantics["horizontal_scroll_maximum"])
+        if horizontal_scroll > 0 and not semantics["horizontal_scroll_visible"]:
+            raise RuntimeError(f"{filename} hides its required horizontal scrollbar.")
         expected_visible_rows = list(
             range(min(expected_rows, widget.history_table.MAX_VISIBLE_ROWS))
         )
@@ -1478,6 +1484,7 @@ def _training_history_semantics(panel: TrainingPanel) -> dict[str, Any]:
         "key_columns_fit": key_columns_fit,
         "all_visible_text_fits": all_visible_text_fits,
         "horizontal_scroll_maximum": horizontal_scroll.maximum(),
+        "horizontal_scroll_visible": horizontal_scroll.isVisible(),
         "all_columns_visible_without_scroll": (
             horizontal_scroll.maximum() == 0 and header.length() <= viewport.width()
         ),

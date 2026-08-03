@@ -54,6 +54,7 @@ class TrainingHistoryRow:
     validation_loss: tuple[MetricValue, ...]
     validation_accuracy: tuple[MetricValue, ...]
     validation_auc: tuple[MetricValue, ...]
+    test_accuracy: tuple[MetricValue, ...]
 
     def to_dict(self) -> dict[str, Any]:
         """Return a detached, strictly JSON-safe row."""
@@ -82,6 +83,9 @@ class TrainingHistoryRow:
                     _LOSS_KEY: list(self.validation_loss),
                     _ACCURACY_KEY: list(self.validation_accuracy),
                     _AUC_KEY: list(self.validation_auc),
+                },
+                "test": {
+                    _ACCURACY_KEY: list(self.test_accuracy),
                 },
             },
         }
@@ -128,7 +132,10 @@ def _project_training_history_row(
     epoch = _record_epoch(record, source_row)
     max_epochs = _maximum_epochs(plan, record, source_row)
     is_current_run = bool(source_row.get("is_current_run", False))
-    train_metrics, validation_metrics = _metric_sources(source_row, record)
+    train_metrics, validation_metrics, test_metrics = _metric_sources(
+        source_row,
+        record,
+    )
     status = _training_status(
         plan,
         record,
@@ -167,6 +174,7 @@ def _project_training_history_row(
         validation_loss=_copy_metric_series(validation_metrics, _LOSS_KEY),
         validation_accuracy=_copy_metric_series(validation_metrics, _ACCURACY_KEY),
         validation_auc=_copy_metric_series(validation_metrics, _AUC_KEY),
+        test_accuracy=_copy_metric_series(test_metrics, _ACCURACY_KEY),
     )
 
 
@@ -280,11 +288,36 @@ def _training_status_detail(
 def _metric_sources(
     source_row: Mapping[str, Any],
     record: Any,
-) -> tuple[Any, Any]:
+) -> tuple[Any, Any, Any]:
     metrics = source_row.get("metrics")
     if isinstance(metrics, Mapping):
-        return metrics.get("train", {}), metrics.get("validation", {})
-    return getattr(record, "train", {}), getattr(record, "val", {})
+        return (
+            metrics.get("train", {}),
+            metrics.get("validation", {}),
+            metrics.get("test", {}),
+        )
+    return (
+        getattr(record, "train", {}),
+        getattr(record, "val", {}),
+        _final_test_metrics(record),
+    )
+
+
+def _final_test_metrics(record: Any) -> dict[str, list[float]]:
+    """Return the completed held-out test summary without exposing live objects."""
+    evaluation_records = getattr(record, "evaluation_records", None)
+    if not isinstance(evaluation_records, Mapping):
+        return {}
+    test_record = evaluation_records.get("test")
+    if test_record is None or getattr(test_record, "evaluation_split", None) != "test":
+        return {}
+    get_accuracy = getattr(test_record, "get_acc", None)
+    if not callable(get_accuracy):
+        return {}
+    accuracy = _finite_float(get_accuracy())
+    if accuracy is None:
+        return {}
+    return {_ACCURACY_KEY: [accuracy * 100.0]}
 
 
 def _copy_metric_series(source: Any, key: str) -> tuple[MetricValue, ...]:

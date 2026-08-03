@@ -15,6 +15,7 @@ def _history_row(
     status="Running",
     epoch=1,
     max_epochs=10,
+    test_accuracy=None,
 ):
     return {
         "identity": {
@@ -44,6 +45,9 @@ def _history_row(
                 "accuracy": [0.75],
                 "auc": [],
             },
+            "test": {
+                "accuracy": [] if test_accuracy is None else [test_accuracy],
+            },
         },
     }
 
@@ -56,7 +60,8 @@ def history_table(qtbot):
 
 
 def test_init_ui(history_table):
-    assert history_table.columnCount() == 11
+    assert history_table.columnCount() == 12
+    assert history_table.horizontalHeaderItem(9).text() == "Test Acc"
     assert history_table.selectionMode() == QTableWidget.SelectionMode.SingleSelection
 
 
@@ -107,6 +112,26 @@ def test_finished_history_uses_completed_product_status(history_table):
     assert history_table.item(0, 3).text() == "Completed"
 
 
+def test_test_accuracy_distinguishes_pending_unavailable_and_completed(
+    history_table,
+):
+    history_table.update_history(
+        [
+            _history_row(run_name="Running", status="Running"),
+            _history_row(run_name="No test", status="Completed"),
+            _history_row(
+                run_name="Final test",
+                status="Completed",
+                test_accuracy=87.5,
+            ),
+        ]
+    )
+
+    assert history_table.item(0, 9).text() == "—"
+    assert history_table.item(1, 9).text() == "N/A"
+    assert history_table.item(2, 9).text() == "87.50%"
+
+
 def test_key_columns_expand_for_group_run_model_and_status_text(
     history_table,
     qtbot,
@@ -139,7 +164,7 @@ def test_key_columns_expand_for_group_run_model_and_status_text(
     assert history_table.horizontalScrollBar().maximum() > 0
 
 
-def test_standard_history_width_fits_without_horizontal_scrolling(
+def test_standard_history_width_scrolls_to_reach_all_metrics(
     history_table,
     qtbot,
 ):
@@ -159,8 +184,16 @@ def test_standard_history_width_fits_without_horizontal_scrolling(
     )
     qtbot.wait(0)
 
-    assert history_table.horizontalScrollBar().maximum() == 0
-    assert history_table.horizontalHeader().length() <= history_table.viewport().width()
+    scrollbar = history_table.horizontalScrollBar()
+    assert scrollbar.maximum() > 0
+    assert scrollbar.isVisible()
+
+    scrollbar.setValue(scrollbar.maximum())
+    qtbot.wait(0)
+    last_index = history_table.model().index(0, history_table.columnCount() - 1)
+    assert (
+        history_table.viewport().rect().intersects(history_table.visualRect(last_index))
+    )
 
 
 def test_empty_history_uses_the_stable_history_viewport(
@@ -180,6 +213,11 @@ def test_empty_history_uses_the_stable_history_viewport(
         + (
             history_table.verticalHeader().defaultSectionSize()
             * history_table.MAX_VISIBLE_ROWS
+        )
+        + (
+            history_table.horizontalScrollBar().sizeHint().height()
+            if history_table.horizontalScrollBar().maximum() > 0
+            else 0
         )
         + (2 * history_table.frameWidth())
     )

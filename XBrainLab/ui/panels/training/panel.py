@@ -391,6 +391,7 @@ class TrainingPanel(BasePanel):
         signatures: list[tuple[object, ...]] = []
         for row in rows:
             train_metrics, validation_metrics = cls._history_metrics(row)
+            test_metrics = cls._history_test_metrics(row)
             signatures.append(
                 (
                     cls._history_identity(row),
@@ -413,6 +414,7 @@ class TrainingPanel(BasePanel):
                     cls._series_signature(validation_metrics, RecordKey.ACC),
                     cls._series_signature(validation_metrics, RecordKey.LOSS),
                     cls._series_signature(validation_metrics, RecordKey.AUC),
+                    cls._series_signature(test_metrics, RecordKey.ACC),
                 )
             )
         return tuple(signatures)
@@ -1320,6 +1322,14 @@ class TrainingPanel(BasePanel):
             train_metrics if isinstance(train_metrics, dict) else {},
             validation_metrics if isinstance(validation_metrics, dict) else {},
         )
+
+    @staticmethod
+    def _history_test_metrics(row) -> dict:
+        metrics = row.get("metrics", {}) if isinstance(row, dict) else {}
+        if not isinstance(metrics, dict):
+            return {}
+        test_metrics = metrics.get("test", {})
+        return test_metrics if isinstance(test_metrics, dict) else {}
 
     @staticmethod
     def _history_identity(row_or_identity) -> tuple[int, int] | None:

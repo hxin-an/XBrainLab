@@ -624,12 +624,28 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 and start_enabled
                 and not stop_enabled
             )
+        horizontal_scroll = contract.get("horizontal_scroll_maximum")
+        scroll_contract_valid = (
+            isinstance(horizontal_scroll, int)
+            and not isinstance(horizontal_scroll, bool)
+            and horizontal_scroll >= 0
+            and (
+                (
+                    horizontal_scroll == 0
+                    and contract.get("all_columns_visible_without_scroll") is True
+                )
+                or (
+                    horizontal_scroll > 0
+                    and contract.get("horizontal_scroll_visible") is True
+                    and contract.get("all_columns_visible_without_scroll") is False
+                )
+            )
+        )
         if (
             not coherent
             or contract.get("key_columns_fit") is not True
             or contract.get("all_visible_text_fits") is not True
-            or contract.get("all_columns_visible_without_scroll") is not True
-            or contract.get("horizontal_scroll_maximum") != 0
+            or not scroll_contract_valid
         ):
             return (
                 False,
@@ -660,7 +676,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
         required_cell_names = {
             f"Training History cell row {row}: {column}"
             for row in ((1, 2, 3) if expected_running else (1, 2))
-            for column in ("Group", "Run", "Model", "Status")
+            for column in ("Group", "Run", "Model", "Status", "Test Acc")
         }
         if expected_running:
             required_cell_names.update(

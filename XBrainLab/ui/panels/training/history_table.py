@@ -37,11 +37,11 @@ class TrainingHistoryTable(QTableWidget):
     HEADER_PADDING = 16
     KEY_COLUMN_PADDING = 20
     KEY_COLUMN_MAX_WIDTHS = (220, 180, 190, 120)
-    BASE_COLUMN_WIDTHS = (76, 60, 120, 88, 64, 76, 76, 72, 72, 64, 80)
+    BASE_COLUMN_WIDTHS = (76, 60, 120, 88, 64, 76, 76, 72, 72, 76, 64, 80)
     FLEX_COLUMN_WEIGHTS: ClassVar[dict[int, float]] = {
         2: 0.5,
         3: 0.2,
-        10: 0.3,
+        11: 0.3,
     }
 
     def __init__(self, parent=None):
@@ -79,10 +79,11 @@ class TrainingHistoryTable(QTableWidget):
             "Train Acc",
             "Val Loss",
             "Val Acc",
+            "Test Acc",
             "LR",
             "Time",
         ]
-        self.setColumnCount(11)
+        self.setColumnCount(12)
         self.setHorizontalHeaderLabels(header_labels)
 
         self.setStyleSheet(Stylesheets.HISTORY_TABLE)
@@ -105,7 +106,7 @@ class TrainingHistoryTable(QTableWidget):
             header_font = header.font()
             header_font.setBold(True)
             header.setFont(header_font)
-            for i in range(11):
+            for i in range(self.columnCount()):
                 header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
 
         header_metrics = (
@@ -146,8 +147,8 @@ class TrainingHistoryTable(QTableWidget):
         return self._target_content_height()
 
     def _target_content_height(self) -> int:
-        # Keep the section height stable. At the normal product width every
-        # column fits, so no horizontal gutter reduces the five-row viewport.
+        # Keep five complete rows visible even when the expanded metric set
+        # requires a horizontal scrollbar at narrower product widths.
         header = self.horizontalHeader()
         vertical_header = self.verticalHeader()
         header_height = header.sizeHint().height() if header is not None else 0
@@ -156,9 +157,17 @@ class TrainingHistoryTable(QTableWidget):
             if vertical_header is not None
             else self.ROW_HEIGHT
         )
+        horizontal_scrollbar = self.horizontalScrollBar()
+        scrollbar_height = (
+            horizontal_scrollbar.sizeHint().height()
+            if self._horizontal_scrollbar_expected()
+            and horizontal_scrollbar is not None
+            else 0
+        )
         return (
             header_height
             + (row_height * self.MAX_VISIBLE_ROWS)
+            + scrollbar_height
             + (2 * self.frameWidth())
         )
 
@@ -286,6 +295,7 @@ class TrainingHistoryTable(QTableWidget):
             validation_metrics = (
                 metrics.get("validation", {}) if isinstance(metrics, dict) else {}
             )
+            test_metrics = metrics.get("test", {}) if isinstance(metrics, dict) else {}
 
             def get_last(key, source):
                 values = source.get(key, []) if hasattr(source, "get") else []
@@ -297,20 +307,36 @@ class TrainingHistoryTable(QTableWidget):
                         return 0.0
                 return 0.0
 
+            def get_last_optional(key, source):
+                values = source.get(key, []) if hasattr(source, "get") else []
+                if not values:
+                    return None
+                try:
+                    return float(values[-1])
+                except (ValueError, TypeError):
+                    return None
+
             train_loss = get_last(TrainRecordKey.LOSS, train_metrics)
             train_acc = get_last(TrainRecordKey.ACC, train_metrics)
             val_loss = get_last(RecordKey.LOSS, validation_metrics)
             val_acc = get_last(RecordKey.ACC, validation_metrics)
+            test_acc = get_last_optional(RecordKey.ACC, test_metrics)
             lr = get_last(TrainRecordKey.LR, train_metrics)
 
             val_loss_str = f"{val_loss:.4f}" if val_loss != 0 else "N/A"
             val_acc_str = f"{val_acc:.2f}%" if val_acc != 0 else "N/A"
+            test_acc_str = (
+                f"{test_acc:.2f}%"
+                if test_acc is not None
+                else ("N/A" if status == "Completed" else "—")
+            )
 
             set_item(5, f"{train_loss:.4f}")
             set_item(6, f"{train_acc:.2f}%")
             set_item(7, val_loss_str)
             set_item(8, val_acc_str)
-            set_item(9, f"{lr:.4g}")
+            set_item(9, test_acc_str)
+            set_item(10, f"{lr:.4g}")
 
             time_str = "-"
             start_ts = data.get("start_timestamp")
@@ -322,7 +348,7 @@ class TrainingHistoryTable(QTableWidget):
                 h, m = divmod(m, 60)
                 time_str = f"{h:02d}:{m:02d}:{s:02d}"
 
-            set_item(10, time_str)
+            set_item(11, time_str)
 
         self._fit_key_columns_to_content()
         self._sync_content_height()

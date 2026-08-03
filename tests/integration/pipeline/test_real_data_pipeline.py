@@ -148,9 +148,12 @@ def test_real_data_pipeline(tmp_path):
     assert history_result.ok is True
     assert history_result.diagnostics["row_count"] == 1
     train_metrics = history_result.diagnostics["rows"][0]["metrics"]["train"]
+    test_metrics = history_result.diagnostics["rows"][0]["metrics"]["test"]
 
     assert RecordKey.LOSS in train_metrics
     assert RecordKey.ACC in train_metrics
+    assert len(test_metrics[RecordKey.ACC]) == 1
+    assert 0.0 <= test_metrics[RecordKey.ACC][0] <= 100.0
 
     evaluate_result = service.execute(EvaluateCommand())
     assert evaluate_result.ok is True
