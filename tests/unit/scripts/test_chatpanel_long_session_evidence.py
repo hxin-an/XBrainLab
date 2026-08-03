@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from PIL import Image
 
@@ -15,6 +15,7 @@ from scripts.dev.chatpanel_long_session.evidence import (
     JSON_ARTIFACT,
     MARKDOWN_ARTIFACT,
     REQUIRED_SCREENSHOTS,
+    application_command_result_observation,
     build_seed_archive,
     generation_request_observation,
     publish_evidence_bundle,
@@ -114,7 +115,7 @@ def _strict_payload() -> dict[str, Any]:
         - CHAT_HISTORY_LIVE_WINDOW_ROWS
     )
     first_assistant_text = "Preprocessing makes EEG signals easier to analyze."
-    second_assistant_text = "No data is loaded, so import EEG data next."
+    second_assistant_text = "No data loaded. Next: Scan data source."
     generation_requests = [
         {
             "sequence": 1,
@@ -127,28 +128,21 @@ def _strict_payload() -> dict[str, Any]:
             "request_utf8_bytes": 4096,
             "response_contract": "natural_language",
         },
+    ]
+    application_command_results = [
         {
-            "sequence": 2,
+            "sequence": 1,
             "turn_index": 2,
-            "generation_id": 12,
-            "latest_user_text": FOLLOWUP_PROMPT,
-            "workflow_stage": "No data loaded",
-            "backend_generation": 5,
-            "request_sha256": "2" * 64,
-            "request_utf8_bytes": 4200,
-            "response_contract": "structured_action",
-        },
-        {
-            "sequence": 3,
-            "turn_index": 2,
-            "generation_id": 13,
-            "latest_user_text": FOLLOWUP_PROMPT,
-            "workflow_stage": "No data loaded",
-            "backend_generation": 5,
-            "request_sha256": "3" * 64,
-            "request_utf8_bytes": 4500,
-            "response_contract": "structured_action",
-        },
+            "tool_name": "query_state",
+            "command_name": "query_state",
+            "ok": True,
+            "publication_generation": 5,
+            "publication_revision": 9,
+            "pipeline_stage": "empty",
+            "message_sha256": hashlib.sha256(
+                second_assistant_text.encode("utf-8")
+            ).hexdigest(),
+        }
     ]
     return {
         "schema": ARTIFACT_SCHEMA,
@@ -213,6 +207,7 @@ def _strict_payload() -> dict[str, Any]:
             "real_user_turns": 2,
             "terminal_turns": 2,
             "model_generation_requests": len(generation_requests),
+            "application_command_results": len(application_command_results),
             "prune_events": 1,
             "pruned_rows": expected_pruned,
             "external_state_changes": 1,
@@ -256,7 +251,7 @@ def _strict_payload() -> dict[str, Any]:
                 "terminal_outcome": "completed",
                 "assistant_text": second_assistant_text,
                 "assistant_text_source": "product_runtime",
-                "model_request_count": 2,
+                "model_request_count": 0,
                 "new_tools": [
                     {"name": "query_state", "success": True, "duration_ms": 4.0}
                 ],
@@ -270,6 +265,7 @@ def _strict_payload() -> dict[str, Any]:
             },
         ],
         "generation_requests": generation_requests,
+        "application_command_results": application_command_results,
         "external_state_change": {
             "command_spine": "ApplicationService.execute",
             "command": "reset_session",
@@ -291,8 +287,12 @@ def _strict_payload() -> dict[str, Any]:
             "prompt": FOLLOWUP_PROMPT,
             "expected_pipeline_stage": "empty",
             "expected_workflow_stage": "No data loaded",
-            "observed_workflow_stages": ["No data loaded", "No data loaded"],
-            "observed_backend_generations": [5, 5],
+            "admission_path": "deterministic_read_only",
+            "model_generation_bypassed": True,
+            "observed_pipeline_stage": "empty",
+            "observed_publication_generation": 5,
+            "observed_publication_revision": 9,
+            "assistant_text": second_assistant_text,
             "query_state_success": True,
         },
         "timing": {
@@ -443,6 +443,42 @@ def test_generation_observation_accepts_bounded_natural_language_turn_without_st
     assert observation["response_contract"] == "natural_language"
 
 
+class _ApplicationResult:
+    ok = True
+    tool_name = "query_state"
+    command_name = "query_state"
+    message = "No data loaded. Next: Scan data source."
+    diagnostics: ClassVar[dict[str, int]] = {
+        "publication_generation": 5,
+        "publication_revision": 9,
+    }
+    state: ClassVar[dict[str, str]] = {"pipeline_stage": "empty"}
+
+
+def test_application_command_observation_records_authoritative_read_only_state() -> (
+    None
+):
+    observation = application_command_result_observation(
+        _ApplicationResult(),
+        sequence=1,
+        turn_index=2,
+    )
+
+    assert observation == {
+        "sequence": 1,
+        "turn_index": 2,
+        "tool_name": "query_state",
+        "command_name": "query_state",
+        "ok": True,
+        "publication_generation": 5,
+        "publication_revision": 9,
+        "pipeline_stage": "empty",
+        "message_sha256": hashlib.sha256(
+            _ApplicationResult.message.encode("utf-8")
+        ).hexdigest(),
+    }
+
+
 def test_strict_validator_accepts_complete_bounded_long_session() -> None:
     ok, reason = validate_long_session_evidence(_strict_payload())
 
@@ -521,16 +557,15 @@ def test_strict_validator_requires_real_prune_and_host_archive_identity() -> Non
     assert "archive identity" in reason.lower()
 
 
-def test_strict_validator_requires_post_change_model_observation_and_state_tool() -> (
-    None
-):
+def test_strict_validator_requires_post_change_command_result_and_state_tool() -> None:
     payload = _strict_payload()
-    payload["generation_requests"] = payload["generation_requests"][:1]
+    payload["application_command_results"] = []
+    payload["counts"]["application_command_results"] = 0
 
     ok, reason = validate_long_session_evidence(payload)
 
     assert ok is False
-    assert "follow-up" in reason.lower()
+    assert "command result" in reason.lower()
 
     payload = _strict_payload()
     payload["turns"][1]["new_tools"] = []
@@ -538,6 +573,16 @@ def test_strict_validator_requires_post_change_model_observation_and_state_tool(
     ok, reason = validate_long_session_evidence(payload)
     assert ok is False
     assert "query_state" in reason.lower()
+
+
+def test_strict_validator_rejects_model_generation_for_read_only_state_query() -> None:
+    payload = _strict_payload()
+    payload["turns"][1]["model_request_count"] = 1
+
+    ok, reason = validate_long_session_evidence(payload)
+
+    assert ok is False
+    assert "read-only" in reason.lower()
 
 
 def test_strict_validator_rejects_cross_count_or_missing_idle_ui_observation() -> None:

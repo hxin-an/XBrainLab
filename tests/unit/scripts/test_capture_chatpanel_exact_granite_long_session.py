@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import inspect
 from pathlib import Path
 
@@ -171,3 +172,43 @@ def test_deferred_poll_callbacks_stop_after_driver_finishing(
     driver._finishing = True
 
     getattr(driver, callback_name)()
+
+
+def test_driver_records_authoritative_query_state_result() -> None:
+    from scripts.dev.chatpanel_long_session.runtime import _LongSessionDriver
+    from XBrainLab.llm.tools.application_surface import ToolCommandResult
+
+    driver = object.__new__(_LongSessionDriver)
+    driver._finishing = False
+    driver._active_turn_index = 2
+    driver.application_command_results = []
+
+    driver._record_application_command_result(
+        ToolCommandResult(
+            ok=True,
+            tool_name="query_state",
+            command_name="query_state",
+            message="No data loaded. Next: Scan data source.",
+            state={"pipeline_stage": "empty"},
+            diagnostics={
+                "publication_generation": 5,
+                "publication_revision": 9,
+            },
+        )
+    )
+
+    assert driver.application_command_results == [
+        {
+            "sequence": 1,
+            "turn_index": 2,
+            "tool_name": "query_state",
+            "command_name": "query_state",
+            "ok": True,
+            "publication_generation": 5,
+            "publication_revision": 9,
+            "pipeline_stage": "empty",
+            "message_sha256": hashlib.sha256(
+                b"No data loaded. Next: Scan data source."
+            ).hexdigest(),
+        }
+    ]

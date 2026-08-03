@@ -168,6 +168,50 @@ def generation_request_observation(
     }
 
 
+def application_command_result_observation(
+    result: object,
+    *,
+    sequence: int,
+    turn_index: int,
+) -> dict[str, object]:
+    """Project one authoritative read-only result into path-free evidence."""
+    tool_name = getattr(result, "tool_name", None)
+    command_name = getattr(result, "command_name", None)
+    message = getattr(result, "message", None)
+    diagnostics = _mapping(getattr(result, "diagnostics", None))
+    state = _mapping(getattr(result, "state", None))
+    ok = getattr(result, "ok", None)
+    if type(ok) is not bool:
+        raise ValueError("Application command result omitted its success state.")
+    if not isinstance(tool_name, str) or not tool_name:
+        raise ValueError("Application command result omitted its tool name.")
+    if not isinstance(command_name, str) or not command_name:
+        raise ValueError("Application command result omitted its command name.")
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("Application command result omitted its visible message.")
+    pipeline_stage = state.get("pipeline_stage")
+    if not isinstance(pipeline_stage, str) or not pipeline_stage:
+        raise ValueError("Application command result omitted its pipeline stage.")
+
+    return {
+        "sequence": _positive_int(sequence, "sequence"),
+        "turn_index": _positive_int(turn_index, "turn_index"),
+        "tool_name": tool_name,
+        "command_name": command_name,
+        "ok": ok,
+        "publication_generation": _positive_int(
+            diagnostics.get("publication_generation"),
+            "publication_generation",
+        ),
+        "publication_revision": _positive_int(
+            diagnostics.get("publication_revision"),
+            "publication_revision",
+        ),
+        "pipeline_stage": pipeline_stage,
+        "message_sha256": hashlib.sha256(message.encode("utf-8")).hexdigest(),
+    }
+
+
 def validate_capture_source_identity(
     source: Mapping[str, object],
 ) -> tuple[bool, str]:
@@ -242,25 +286,32 @@ def validate_long_session_evidence(
     )
     if not ok:
         return False, reason
-    ok, reason = _validate_generation_requests(
-        payload.get("generation_requests"),
-        external_change=_mapping(payload.get("external_state_change")),
-    )
+    ok, reason = _validate_generation_requests(payload.get("generation_requests"))
     if not ok:
         return False, reason
     ok, reason = _validate_turns(payload.get("turns"))
     if not ok:
         return False, reason
+    ok, reason = _validate_application_command_results(
+        payload.get("application_command_results"),
+        external_change=_mapping(payload.get("external_state_change")),
+        turns=payload.get("turns"),
+    )
+    if not ok:
+        return False, reason
     ok, reason = _validate_cross_counts(
         counts,
         generation_requests=payload.get("generation_requests"),
+        application_command_results=payload.get("application_command_results"),
         turns=payload.get("turns"),
     )
     if not ok:
         return False, reason
     ok, reason = _validate_current_state_followup(
         _mapping(payload.get("current_state_followup")),
-        generation_requests=payload.get("generation_requests"),
+        application_command_results=payload.get("application_command_results"),
+        external_change=_mapping(payload.get("external_state_change")),
+        turns=payload.get("turns"),
     )
     if not ok:
         return False, reason
@@ -355,6 +406,7 @@ def render_markdown(payload: Mapping[str, object]) -> str:
         f"- seeded archive turns: `{counts.get('seeded_archive_turns', 0)}`",
         f"- real user turns: `{counts.get('real_user_turns', 0)}`",
         f"- model generation requests: `{counts.get('model_generation_requests', 0)}`",
+        f"- application command results: `{counts.get('application_command_results', 0)}`",
         f"- prune events: `{counts.get('prune_events', 0)}`",
         f"- pruned rows: `{counts.get('pruned_rows', 0)}`",
         f"- external state changes: `{counts.get('external_state_changes', 0)}`",
@@ -484,10 +536,10 @@ def _validate_counts(counts: Mapping[str, object]) -> tuple[bool, str]:
     }
     if any(counts.get(key) != value for key, value in expected.items()):
         return False, "Turn, prune, archive, or state-change counts are inconsistent."
+    if counts.get("application_command_results") != 1:
+        return False, "Application command result count is missing or inconsistent."
     model_requests = counts.get("model_generation_requests")
-    if not _is_int_between(
-        model_requests, REAL_USER_TURN_COUNT, MAX_MODEL_GENERATION_REQUESTS
-    ):
+    if not _is_int_between(model_requests, 1, MAX_MODEL_GENERATION_REQUESTS):
         return False, "Model generation request count is missing or unbounded."
     return True, ""
 
@@ -536,22 +588,18 @@ def _validate_external_state_change(change: Mapping[str, object]) -> tuple[bool,
 
 def _validate_generation_requests(
     value: object,
-    *,
-    external_change: Mapping[str, object],
 ) -> tuple[bool, str]:
     requests = [_mapping(item) for item in _list(value)]
-    if not _is_int_between(
-        len(requests), REAL_USER_TURN_COUNT, MAX_MODEL_GENERATION_REQUESTS
-    ):
+    if not _is_int_between(len(requests), 1, MAX_MODEL_GENERATION_REQUESTS):
         return (
             False,
-            "Real model follow-up generation observations are missing or unbounded.",
+            "Real model generation observations are missing or unbounded.",
         )
     if [item.get("sequence") for item in requests] != list(range(1, len(requests) + 1)):
         return False, "Model generation request sequence is not contiguous."
     for request in requests:
         if (
-            request.get("turn_index") not in {1, 2}
+            request.get("turn_index") != 1
             or not _is_positive_int(request.get("generation_id"))
             or not _SHA256.fullmatch(str(request.get("request_sha256") or ""))
             or not _is_int_between(
@@ -564,25 +612,14 @@ def _validate_generation_requests(
         ):
             return False, "A model generation request observation is invalid."
 
-    after = _mapping(external_change.get("after"))
-    first_turn = [item for item in requests if item.get("turn_index") == 1]
-    followup = [item for item in requests if item.get("turn_index") == 2]
-    if not first_turn or any(
+    if any(
         item.get("latest_user_text") != FIRST_PROMPT
         or item.get("workflow_stage") != ""
         or item.get("backend_generation") is not None
         or item.get("response_contract") != "natural_language"
-        for item in first_turn
+        for item in requests
     ):
         return False, "First informational turn exposed workflow-only context."
-    if not followup or any(
-        item.get("latest_user_text") != FOLLOWUP_PROMPT
-        or item.get("workflow_stage") != "No data loaded"
-        or item.get("backend_generation") != after.get("generation")
-        or item.get("response_contract") != "structured_action"
-        for item in followup
-    ):
-        return False, "Follow-up model request omitted the current post-change state."
     return True, ""
 
 
@@ -601,11 +638,6 @@ def _validate_turns(value: object) -> tuple[bool, str]:
             or turn.get("terminal_outcome") != "completed"
             or turn.get("assistant_text_source") != "product_runtime"
             or not str(turn.get("assistant_text") or "").strip()
-            or not _is_int_between(
-                turn.get("model_request_count"),
-                1,
-                MAX_MODEL_GENERATION_REQUESTS,
-            )
             or not _is_number_between(
                 turn.get("elapsed_seconds"),
                 0.0,
@@ -614,6 +646,18 @@ def _validate_turns(value: object) -> tuple[bool, str]:
             )
         ):
             return False, f"Real ChatPanel turn {index} is incomplete or unbounded."
+        model_request_count = turn.get("model_request_count")
+        if index == 1 and not _is_int_between(
+            model_request_count,
+            1,
+            MAX_MODEL_GENERATION_REQUESTS,
+        ):
+            return False, "The explanatory turn did not use bounded model generation."
+        if index == 2 and model_request_count != 0:
+            return (
+                False,
+                "The read-only state query unexpectedly used model generation.",
+            )
         ok, reason = _validate_turn_transcript_delta(
             turn,
             prompt=prompt,
@@ -636,6 +680,39 @@ def _validate_turns(value: object) -> tuple[bool, str]:
         for item in _list(turns[1].get("new_tools"))
     ):
         return False, "Follow-up executed an unrelated workflow tool."
+    return True, ""
+
+
+def _validate_application_command_results(
+    value: object,
+    *,
+    external_change: Mapping[str, object],
+    turns: object,
+) -> tuple[bool, str]:
+    results = [_mapping(item) for item in _list(value)]
+    if len(results) != 1:
+        return False, "Exactly one post-change application command result is required."
+    result = results[0]
+    after = _mapping(external_change.get("after"))
+    turn_records = [_mapping(item) for item in _list(turns)]
+    assistant_text = (
+        str(turn_records[1].get("assistant_text") or "")
+        if len(turn_records) == REAL_USER_TURN_COUNT
+        else ""
+    )
+    if (
+        result.get("sequence") != 1
+        or result.get("turn_index") != 2
+        or result.get("tool_name") != "query_state"
+        or result.get("command_name") != "query_state"
+        or result.get("ok") is not True
+        or result.get("publication_generation") != after.get("generation")
+        or result.get("publication_revision") != after.get("revision")
+        or result.get("pipeline_stage") != after.get("pipeline_stage")
+        or result.get("message_sha256")
+        != hashlib.sha256(assistant_text.encode("utf-8")).hexdigest()
+    ):
+        return False, "Post-change query_state command result is inconsistent."
     return True, ""
 
 
@@ -688,9 +765,11 @@ def _validate_cross_counts(
     counts: Mapping[str, object],
     *,
     generation_requests: object,
+    application_command_results: object,
     turns: object,
 ) -> tuple[bool, str]:
     requests = _list(generation_requests)
+    command_results = _list(application_command_results)
     turn_records = [_mapping(item) for item in _list(turns)]
     observed_turn_requests = sum(
         int(turn.get("model_request_count") or 0) for turn in turn_records
@@ -699,6 +778,8 @@ def _validate_cross_counts(
         requests
     ) or observed_turn_requests != len(requests):
         return False, "Turn and model generation request counts are inconsistent."
+    if counts.get("application_command_results") != len(command_results):
+        return False, "Application command result counts are inconsistent."
     return True, ""
 
 
@@ -717,21 +798,36 @@ def _validate_ui_state(ui_state: Mapping[str, object]) -> tuple[bool, str]:
 def _validate_current_state_followup(
     followup: Mapping[str, object],
     *,
-    generation_requests: object,
+    application_command_results: object,
+    external_change: Mapping[str, object],
+    turns: object,
 ) -> tuple[bool, str]:
-    requests = [
+    results = [
         _mapping(item)
-        for item in _list(generation_requests)
+        for item in _list(application_command_results)
         if _mapping(item).get("turn_index") == 2
     ]
-    stages = [str(item.get("workflow_stage") or "") for item in requests]
-    generations = [item.get("backend_generation") for item in requests]
+    after = _mapping(external_change.get("after"))
+    turn_records = [_mapping(item) for item in _list(turns)]
+    assistant_text = (
+        str(turn_records[1].get("assistant_text") or "")
+        if len(turn_records) == REAL_USER_TURN_COUNT
+        else ""
+    )
+    result = results[0] if len(results) == 1 else {}
     if (
         followup.get("prompt") != FOLLOWUP_PROMPT
         or followup.get("expected_pipeline_stage") != "empty"
         or followup.get("expected_workflow_stage") != "No data loaded"
-        or followup.get("observed_workflow_stages") != stages
-        or followup.get("observed_backend_generations") != generations
+        or followup.get("admission_path") != "deterministic_read_only"
+        or followup.get("model_generation_bypassed") is not True
+        or followup.get("observed_pipeline_stage") != result.get("pipeline_stage")
+        or followup.get("observed_pipeline_stage") != after.get("pipeline_stage")
+        or followup.get("observed_publication_generation")
+        != result.get("publication_generation")
+        or followup.get("observed_publication_revision")
+        != result.get("publication_revision")
+        or followup.get("assistant_text") != assistant_text
         or followup.get("query_state_success") is not True
     ):
         return (

@@ -16798,3 +16798,27 @@
   - This is a validated source checkpoint. Exact Granite long-session evidence and the complete
     canonical manifest still need to pass from the clean pushed commit before handoff-ready can be
     claimed.
+
+### 2026-08-03 Deterministic state-query evidence contract
+
+- completed：
+  - A clean exact-Granite walkthrough proved that the post-reset workflow question correctly uses
+    the controller's deterministic read-only `query_state` admission path instead of spending a
+    second model generation. The previous long-session gate incorrectly rejected that safer product
+    behavior.
+  - Kept product request admission unchanged and changed the evidence boundary to record the real
+    `ToolCommandResult` emitted by the controller. The gate now binds the visible assistant message,
+    pipeline stage, publication generation and publication revision to the post-reset
+    `ApplicationService` publication.
+  - Added fail-closed checks that the explanatory turn uses bounded Granite generation while the
+    state-query turn uses zero model calls and exactly one successful `query_state` result.
+- validation：
+  - Focused long-session evidence and runtime observer regression -> `26 passed`.
+  - Expanded Agent/context/evidence/recovery regression -> `2448 passed`; the six context-boundary
+    cases that initially resolved the wrong default cache all passed after rerunning their seven-test
+    module with the canonical D-drive offline model-cache binding.
+  - Ruff check/format and `git diff --check` -> PASS.
+- claim boundary：
+  - This remains a validated source checkpoint. Repeated exact-Granite long-session capture and the
+    complete canonical manifest still need to pass from the clean pushed commit before handoff-ready
+    can be claimed.

@@ -37,6 +37,7 @@ from scripts.dev.chatpanel_long_session.evidence import (
     REQUIRED_SCREENSHOTS,
     SEED_ROW_COUNT,
     SEED_TURN_COUNT,
+    application_command_result_observation,
     build_seed_archive,
     generation_request_observation,
     publish_evidence_bundle,
@@ -60,6 +61,7 @@ from XBrainLab.backend.controller.chat_controller import (
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.turn import AssistantTurnTerminal
 from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
+from XBrainLab.llm.tools.application_surface import ToolCommandResult
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.components.agent_manager import AgentManager
 
@@ -378,11 +380,13 @@ class _LongSessionDriver:
         }
         self.terminals: list[dict[str, object]] = []
         self.generation_requests: list[dict[str, object]] = []
+        self.application_command_results: list[dict[str, object]] = []
         self.turns: list[dict[str, object]] = []
         self._active_turn_index = 0
         self._turn_started = 0.0
         self._turn_baseline: dict[str, Any] = {}
         self._generation_signal_connected = False
+        self._application_command_signal_connected = False
         self._finishing = False
         self._state: dict[str, Any] = {
             "schema": ARTIFACT_SCHEMA,
@@ -414,6 +418,7 @@ class _LongSessionDriver:
             "prune_events": [],
             "turns": self.turns,
             "generation_requests": self.generation_requests,
+            "application_command_results": self.application_command_results,
             "external_state_change": {},
             "current_state_followup": {},
             "timing": {
@@ -497,6 +502,11 @@ class _LongSessionDriver:
         if not self._generation_signal_connected:
             controller.sig_generate.connect(self._record_generation_request)
             self._generation_signal_connected = True
+        if not self._application_command_signal_connected:
+            controller.application_command_completed.connect(
+                self._record_application_command_result
+            )
+            self._application_command_signal_connected = True
         expected_revision = self._publication_observation().get("revision")
         if self._projection_revision() != expected_revision:
             QTimer.singleShot(_POLL_INTERVAL_MS, self._wait_for_ready)
@@ -525,6 +535,7 @@ class _LongSessionDriver:
         self._turn_baseline = {
             "terminal_count": len(self.terminals),
             "generation_request_count": len(self.generation_requests),
+            "application_command_result_count": len(self.application_command_results),
             "tool_count": len(tools),
             "history_rows": len(self.manager.chat_controller.get_typed_history()),
             "pruned_rows": self.manager.chat_controller.pruned_row_count,
@@ -598,6 +609,10 @@ class _LongSessionDriver:
             len(self.generation_requests)
             - self._turn_baseline["generation_request_count"]
         )
+        application_command_result_count = (
+            len(self.application_command_results)
+            - self._turn_baseline["application_command_result_count"]
+        )
         terminal = self.terminals[-1]
         prompt = FIRST_PROMPT if self._active_turn_index == 1 else FOLLOWUP_PROMPT
         transcript_delta = self._transcript_delta(prompt)
@@ -618,10 +633,21 @@ class _LongSessionDriver:
         if terminal.get("outcome") != "completed" or not turn["assistant_text"]:
             self.fail(f"Real turn {self._active_turn_index} did not complete visibly.")
             return
-        if not 1 <= model_request_count <= MAX_MODEL_GENERATION_REQUESTS:
+        if self._active_turn_index == 1 and not (
+            1 <= model_request_count <= MAX_MODEL_GENERATION_REQUESTS
+        ):
             self.fail(
                 f"Real turn {self._active_turn_index} model calls were unbounded."
             )
+            return
+        if self._active_turn_index == 1 and application_command_result_count != 0:
+            self.fail("Explanatory turn unexpectedly emitted an application result.")
+            return
+        if self._active_turn_index == 2 and model_request_count != 0:
+            self.fail("Read-only state query unexpectedly invoked model generation.")
+            return
+        if self._active_turn_index == 2 and application_command_result_count != 1:
+            self.fail("Read-only state query did not emit exactly one command result.")
             return
 
         if self._active_turn_index == 1:
@@ -774,6 +800,22 @@ class _LongSessionDriver:
         if len(self.generation_requests) > MAX_MODEL_GENERATION_REQUESTS:
             self.fail("Model generation request count exceeded the bounded limit.")
 
+    def _record_application_command_result(self, payload: object) -> None:
+        if self._finishing or not isinstance(payload, ToolCommandResult):
+            return
+        if payload.tool_name != "query_state" or payload.command_name != "query_state":
+            return
+        try:
+            observation = application_command_result_observation(
+                payload,
+                sequence=len(self.application_command_results) + 1,
+                turn_index=self._active_turn_index,
+            )
+        except (TypeError, ValueError) as exc:
+            self.fail(f"Could not observe query_state command result: {exc}")
+            return
+        self.application_command_results.append(observation)
+
     def _record_terminal(self, payload: object) -> None:
         if not isinstance(payload, AssistantTurnTerminal):
             return
@@ -839,8 +881,10 @@ class _LongSessionDriver:
         return True
 
     def _finalize_observations(self) -> None:
-        followup_requests = [
-            item for item in self.generation_requests if item.get("turn_index") == 2
+        followup_results = [
+            item
+            for item in self.application_command_results
+            if item.get("turn_index") == 2
         ]
         raw_new_tools = self.turns[-1].get("new_tools")
         new_tools = raw_new_tools if isinstance(raw_new_tools, list) else []
@@ -851,16 +895,23 @@ class _LongSessionDriver:
             and item.get("name") == "query_state"
             and item.get("success") is True
         ]
+        followup_result = followup_results[0] if len(followup_results) == 1 else {}
+        assistant_text = str(self.turns[-1].get("assistant_text") or "")
+        after = _mapping(self._state["external_state_change"].get("after"))
         self._state["current_state_followup"] = {
             "prompt": FOLLOWUP_PROMPT,
             "expected_pipeline_stage": "empty",
             "expected_workflow_stage": "No data loaded",
-            "observed_workflow_stages": [
-                item.get("workflow_stage") for item in followup_requests
-            ],
-            "observed_backend_generations": [
-                item.get("backend_generation") for item in followup_requests
-            ],
+            "admission_path": "deterministic_read_only",
+            "model_generation_bypassed": True,
+            "observed_pipeline_stage": followup_result.get("pipeline_stage"),
+            "observed_publication_generation": followup_result.get(
+                "publication_generation"
+            ),
+            "observed_publication_revision": followup_result.get(
+                "publication_revision"
+            ),
+            "assistant_text": assistant_text,
             "query_state_success": len(query_tools) == 1,
         }
         self._state["counts"] = {
@@ -870,17 +921,18 @@ class _LongSessionDriver:
             "real_user_turns": len(self.turns),
             "terminal_turns": len(self.terminals),
             "model_generation_requests": len(self.generation_requests),
+            "application_command_results": len(self.application_command_results),
             "prune_events": len(self._state["prune_events"]),
             "pruned_rows": self.manager.chat_controller.pruned_row_count,
             "external_state_changes": 1,
         }
         self._state["outcome"]["current_state_used"] = bool(
-            followup_requests
-            and query_tools
-            and all(
-                item.get("workflow_stage") == "No data loaded"
-                for item in followup_requests
-            )
+            len(followup_results) == 1
+            and len(query_tools) == 1
+            and followup_result.get("publication_generation") == after.get("generation")
+            and followup_result.get("publication_revision") == after.get("revision")
+            and followup_result.get("pipeline_stage") == after.get("pipeline_stage")
+            and followup_result.get("message_sha256") == _text_sha256(assistant_text)
         )
 
     def finish(self) -> None:
