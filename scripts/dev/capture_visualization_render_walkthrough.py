@@ -378,10 +378,7 @@ def _prepare_tiny_trained_state(
             device="cpu",
             output_dir=str(training_output_dir),
         ),
-        SaliencyCommand(
-            method="Gradient",
-            params={"nt_samples": 2, "nt_samples_batch_size": 1, "stdevs": 1.0},
-        ),
+        SaliencyCommand(method="Gradient", params={}),
         ApplyMontageCommand(
             channels=["C3", "C4", "Cz", "Pz"],
             positions=[

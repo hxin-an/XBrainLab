@@ -342,9 +342,10 @@ class Stylesheets:
 
     # Sidebar Container
     SIDEBAR_CONTAINER = f"""
-        QWidget#RightPanel {{
+        #RightPanel {{
             background-color: {Theme.BACKGROUND_MID};
-            border-right: 1px solid {Theme.BACKGROUND_LIGHT};
+            border: none;
+            border-left: 1px solid {Theme.BACKGROUND_LIGHT};
         }}
     """
 

@@ -73,10 +73,16 @@ class SidebarScrollArea(QScrollArea):
             QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored,
         )
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.viewport().setStyleSheet(
+            f"background-color: {Theme.BACKGROUND_MID}; border: none;",
+        )
 
         self.content = QWidget(self)
         self.content.setObjectName("SidebarScrollContent")
         self.content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.content.setStyleSheet(
+            f"background-color: {Theme.BACKGROUND_MID}; border: none;",
+        )
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(10, 20, 10, 20)
         self.content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)

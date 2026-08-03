@@ -131,6 +131,13 @@ def test_compact_top_bar_removes_gap_before_assistant_action(main_window):
     assert main_window.top_bar_spacer.isHidden() is False
 
 
+def test_top_bar_flexible_space_does_not_cover_the_full_width_header(main_window):
+    """The expanding spacer must reveal, not repaint, the TopBar background."""
+    stylesheet = main_window.top_bar_spacer.styleSheet().replace(" ", "")
+
+    assert "background-color:transparent" in stylesheet
+
+
 def test_switch_page_only_updates_target_panel(main_window):
     """Only the selected panel should be refreshed for a page switch."""
     panels = [

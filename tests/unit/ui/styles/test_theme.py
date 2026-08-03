@@ -115,8 +115,10 @@ class TestSidebarStylesheet:
     def test_sidebar_border_targets_only_the_sidebar_owner(self):
         stylesheet = Stylesheets.SIDEBAR_CONTAINER
 
-        assert "QWidget#RightPanel" in stylesheet
+        assert "#RightPanel" in stylesheet
         assert "QWidget {" not in stylesheet
+        assert "border-left:" in stylesheet
+        assert "border-right:" not in stylesheet
 
 
 class TestPrimaryButtonStylesheet:

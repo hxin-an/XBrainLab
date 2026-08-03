@@ -419,6 +419,7 @@ class MainWindow(QMainWindow):
 
         self.top_bar_spacer = QWidget()
         self.top_bar_spacer.setObjectName("TopBarFlexibleSpace")
+        self.top_bar_spacer.setStyleSheet("background-color: transparent;")
         self.top_bar_spacer.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,

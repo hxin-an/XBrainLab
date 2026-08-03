@@ -10,6 +10,16 @@ from XBrainLab.ui.components.info_panel import (
     AggregateInfoPanel,
     SidebarScrollArea,
 )
+from XBrainLab.ui.styles.theme import Theme
+
+
+def test_sidebar_scroll_surface_keeps_the_shared_sidebar_background(qtbot):
+    area = SidebarScrollArea()
+    qtbot.addWidget(area)
+
+    expected = Theme.BACKGROUND_MID.lower()
+    assert expected in area.viewport().styleSheet().lower()
+    assert expected in area.content.styleSheet().lower()
 
 
 def _detached_row(**overrides: object) -> dict[str, object]:

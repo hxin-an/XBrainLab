@@ -39,7 +39,7 @@ from scripts.dev.capture_visualization_render_walkthrough import (
     stable_artifact_payload,
     validate_visualization_render_payload,
 )
-from XBrainLab.backend.application import TrainCommand
+from XBrainLab.backend.application import SaliencyCommand, TrainCommand
 from XBrainLab.backend.application.results import ErrorType
 
 
@@ -1152,6 +1152,11 @@ def test_visualization_training_walkthrough_confirms_training_boundary():
     )
 
     assert ok is True
+    saliency = next(
+        command for command in service.commands if isinstance(command, SaliencyCommand)
+    )
+    assert saliency.method == "Gradient"
+    assert saliency.params == {}
     assert isinstance(service.commands[-1], TrainCommand)
     assert service.commands[-1].confirmed is True
     assert service.commands[-1].interactive is False

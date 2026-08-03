@@ -1165,6 +1165,7 @@ class EvaluationPanel(BasePanel):
         self.right_panel = QWidget()
         self.right_panel.setFixedWidth(INFO_SIDEBAR_WIDTH)
         self.right_panel.setObjectName("RightPanel")
+        self.right_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.right_panel.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
 
         self.right_layout = QVBoxLayout(self.right_panel)
