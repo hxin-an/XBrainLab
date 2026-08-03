@@ -131,7 +131,7 @@ def publish_prepared_saliency_updates(
         for update, params in zip(updates, holder_params, strict=True):
             update.holder.saliency_params = params
             for record, _previous_eval_record, eval_record in update.eval_records:
-                record.eval_record = eval_record
+                record._replace_primary_evaluation_record(eval_record)
 
 
 class SharedMemoryDataset(torch_data.Dataset):
@@ -668,12 +668,23 @@ class TrainingPlanHolder:
                     "Final evaluation unavailable: the evaluation loader is not "
                     "a validation or test split."
                 )
-            eval_record = Evaluator.evaluate(
-                target,
-                target_loader,
-                evaluation_split=evaluation_split,
+            evaluation_records = {}
+            for split, loader in (
+                ("training", train_loader),
+                ("validation", val_loader),
+                ("test", test_loader),
+            ):
+                if loader is None or len(loader) == 0:
+                    continue
+                evaluation_records[split] = Evaluator.evaluate(
+                    target,
+                    loader,
+                    evaluation_split=split,
+                )
+            train_record.set_evaluation_records(
+                evaluation_records,
+                primary_split=evaluation_split,
             )
-            train_record.set_eval_record(eval_record)
 
         train_record.export_checkpoint()
 

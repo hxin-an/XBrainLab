@@ -46,6 +46,9 @@ from .artifact_store import (
 )
 
 EVAL_ARTIFACT_SCHEMA_VERSION = 4
+EVAL_ARTIFACT_BASENAMES = frozenset(
+    {"eval", "eval-training", "eval-validation", "eval-test"}
+)
 SALIENCY_EXPORT_ARTIFACT_SCHEMA_VERSION = 3
 
 
@@ -491,6 +494,7 @@ class EvalRecord:
         self,
         target_path: str,
         *,
+        artifact_basename: str = "eval",
         directory_identity: StableDirectoryIdentity | None = None,
     ) -> None:
         """Export the evaluation record as JSON metadata and numeric NPZ arrays.
@@ -499,6 +503,8 @@ class EvalRecord:
             target_path: Directory where ``eval`` and ``eval.npz`` are saved.
 
         """
+        if artifact_basename not in EVAL_ARTIFACT_BASENAMES:
+            raise ValueError("Unsupported evaluation artifact basename")
         self._require_persistable_saliency_context()
         arrays: dict[str, object] = {
             "label": self.label,
@@ -542,11 +548,11 @@ class EvalRecord:
             ),
         }
         write_json_npz_artifact(
-            os.path.join(target_path, "eval"),
+            os.path.join(target_path, artifact_basename),
             artifact_type=EVALUATION_RECORD_ARTIFACT_TYPE,
             payload=payload,
             arrays=arrays,
-            arrays_filename="eval.npz",
+            arrays_filename=f"{artifact_basename}.npz",
             directory_identity=directory_identity,
         )
 
@@ -555,6 +561,7 @@ class EvalRecord:
         cls,
         target_path: str,
         *,
+        artifact_basename: str = "eval",
         expected_producer_identity: SaliencyProducerIdentity | None = None,
         directory_identity: StableDirectoryIdentity | None = None,
     ) -> EvalRecord | None:
@@ -568,7 +575,9 @@ class EvalRecord:
             exist or cannot be loaded.
 
         """
-        path = os.path.join(target_path, "eval")
+        if artifact_basename not in EVAL_ARTIFACT_BASENAMES:
+            raise ValueError("Unsupported evaluation artifact basename")
+        path = os.path.join(target_path, artifact_basename)
         if not os.path.exists(path):
             return None
 

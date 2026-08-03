@@ -201,3 +201,46 @@ class TestExportLoadRoundTrip:
 
         # Verify eval file exists
         assert os.path.exists(os.path.join(str(tmp_path), "eval"))
+
+    def test_split_prediction_records_round_trip(
+        self,
+        tmp_path,
+        dataset,  # noqa: F811
+        training_option,  # noqa: F811
+        model_holder,  # noqa: F811
+    ) -> None:
+        seed = set_seed(0)
+        model = model_holder.get_model({})
+        with patch.object(TrainRecord, "init_dir"):
+            record = TrainRecord(0, dataset, model, training_option, seed)
+            record.target_path = str(tmp_path)
+            record._artifact_io_path = str(tmp_path)
+
+        records = {
+            split: EvalRecord(
+                np.array([index]),
+                np.array([[0.9, 0.1]]),
+                {},
+                {},
+                {},
+                {},
+                {},
+                evaluation_split=split,
+            )
+            for index, split in enumerate(("training", "validation", "test"))
+        }
+        record.set_evaluation_records(records, primary_split="test")
+        record.export_checkpoint()
+
+        with patch.object(TrainRecord, "init_dir"):
+            restored = TrainRecord(0, dataset, model, training_option, seed)
+            restored.target_path = str(tmp_path)
+            restored._artifact_io_path = str(tmp_path)
+            restored.load()
+
+        assert set(restored.evaluation_records) == {
+            "training",
+            "validation",
+            "test",
+        }
+        assert restored.eval_record is restored.evaluation_records["test"]

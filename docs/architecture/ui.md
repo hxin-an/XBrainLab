@@ -248,6 +248,12 @@ mock / standalone compatibility path 仍可讀 controller getter，但不能成�
 success truth。Training 的 `training_updated` 是唯一分離的 transient progress channel，
 不會改 application revision 或 publication-owned controls。
 
+`EvaluationPanel` 的 Model、Run 與 Split selector 共同建立 generation-bound render request。
+Split 清單只呈現該 repeat 實際保存的 predictions；Average 則使用所有 completed repeats 的
+共同 split。切換 selector 會先清除舊 metrics，再提交 exact split render。`Show percentages`
+只重畫 confusion matrix 的 true-label row normalization，不改 Precision、Recall、F1 或
+Support。
+
 ## Assistant 接線層
 
 Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管理。

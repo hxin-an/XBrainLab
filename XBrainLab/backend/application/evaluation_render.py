@@ -16,34 +16,7 @@ from .errors import PreconditionError
 from .training_runtime import TrainingProjectionReadPort
 from .view_publication import ApplicationViewPublication
 
-HELD_OUT_EVALUATION_SPLITS = frozenset({"test", "validation"})
-TEST_EVALUATION_PROVENANCE = "Final · Test split"
-VALIDATION_EVALUATION_PROVENANCE = "Final · Validation split"
-MIXED_EVALUATION_PROVENANCE = "Final · Held-out splits"
-
-
-def evaluation_provenance_presentation(value: str) -> tuple[str, str]:
-    """Return compact and detailed provenance for an admitted final result."""
-    splits = {
-        item.strip().casefold() for item in str(value or "").split(",") if item.strip()
-    }
-    if splits == {"test"}:
-        return (
-            TEST_EVALUATION_PROVENANCE,
-            "Final evaluation uses the held-out test split.",
-        )
-    if splits == {"validation"}:
-        return (
-            VALIDATION_EVALUATION_PROVENANCE,
-            "Evaluation uses the validation split because no independent test "
-            "split is available.",
-        )
-    if splits and splits <= HELD_OUT_EVALUATION_SPLITS:
-        return (
-            MIXED_EVALUATION_PROVENANCE,
-            "Pooled evaluation combines held-out test and validation results.",
-        )
-    return "", ""
+AVAILABLE_EVALUATION_SPLITS = frozenset({"training", "validation", "test"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +95,7 @@ class EvaluationRenderRequest:
 
     publication_generation: int
     selection: EvaluationSelectionIdentity
+    split: str = "test"
 
     def __post_init__(self) -> None:
         if (
@@ -135,6 +109,10 @@ class EvaluationRenderRequest:
             (EvaluationPlanIdentity, EvaluationRunIdentity),
         ):
             raise TypeError("selection must be an Evaluation plan or run identity")
+        normalized_split = str(self.split or "").strip().casefold()
+        if normalized_split not in AVAILABLE_EVALUATION_SPLITS:
+            raise ValueError("split must be training, validation, or test")
+        object.__setattr__(self, "split", normalized_split)
 
 
 MetricScalar = int | float
@@ -275,7 +253,7 @@ class EvaluationRenderPublisher:
             boundary=before_boundary,
         )
 
-        data = self._copy_render_data(request.selection)
+        data = self._copy_render_data(request.selection, split=request.split)
 
         after_boundary = self._capture_training_boundary()
         after_publication = self._get_publication()
@@ -328,6 +306,8 @@ class EvaluationRenderPublisher:
     def _copy_render_data(
         self,
         selection: EvaluationSelectionIdentity,
+        *,
+        split: str,
     ) -> EvaluationRenderData:
         plans = _iterable_items(
             self._training_runtime.training_plan_holders(),
@@ -353,10 +333,10 @@ class EvaluationRenderPublisher:
             selected_run = runs[selection.run_index]
             if not _run_finished(selected_run):
                 raise self._target_error("The selected training run is not complete")
-            eval_record = getattr(selected_run, "eval_record", None)
+            eval_record = self._record_for_split(selected_run, split)
             if eval_record is None:
-                raise self._target_error(
-                    "The selected training run has no evaluation results"
+                raise self._split_unavailable_error(
+                    f"The selected training run has no saved {split} predictions"
                 )
             labels = getattr(eval_record, "label", None)
             outputs = getattr(eval_record, "output", None)
@@ -364,7 +344,6 @@ class EvaluationRenderPublisher:
                 raise self._target_error(
                     "The selected training run has incomplete evaluation results"
                 )
-            evaluation_split = self._held_out_evaluation_split(eval_record)
             return EvaluationRenderData(
                 labels=np.asarray(labels),
                 outputs=np.asarray(outputs),
@@ -374,23 +353,24 @@ class EvaluationRenderPublisher:
                     plan=selection.plan,
                     run=selection,
                 ),
-                evaluation_split=evaluation_split,
+                evaluation_split=split,
             )
 
-        finished = [
-            run
-            for run in runs
-            if _run_finished(run) and getattr(run, "eval_record", None) is not None
-        ]
+        finished = [run for run in runs if _run_finished(run)]
         if not finished:
             raise self._target_error(
                 "The selected training plan has no completed evaluation results"
             )
-        eval_records = [run.eval_record for run in finished]
-        splits = {self._held_out_evaluation_split(record) for record in eval_records}
+        eval_records = [self._record_for_split(run, split) for run in finished]
+        if any(record is None for record in eval_records):
+            raise self._split_unavailable_error(
+                f"The selected aggregate is missing saved {split} predictions "
+                "for one or more finished runs"
+            )
+        selected_records = [record for record in eval_records if record is not None]
         try:
-            labels = np.concatenate([record.label for record in eval_records])
-            outputs = np.concatenate([record.output for record in eval_records])
+            labels = np.concatenate([record.label for record in selected_records])
+            outputs = np.concatenate([record.output for record in selected_records])
             from XBrainLab.backend.training.record import EvalRecord  # noqa: PLC0415
 
             pooled_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
@@ -405,23 +385,38 @@ class EvaluationRenderPublisher:
             metrics=metrics,
             class_labels=_class_labels(finished[0], selected_plan),
             summary_identity=EvaluationSummaryIdentity(plan=selection),
-            evaluation_split=", ".join(sorted(splits)),
+            evaluation_split=split,
         )
 
-    @classmethod
-    def _held_out_evaluation_split(cls, eval_record: Any) -> str:
-        split = (
-            str(getattr(eval_record, "evaluation_split", None) or "unknown")
+    @staticmethod
+    def _record_for_split(run: Any, split: str) -> Any | None:
+        records = getattr(run, "evaluation_records", None)
+        if isinstance(records, Mapping):
+            record = records.get(split)
+            record_split = (
+                str(getattr(record, "evaluation_split", None) or "unknown")
+                .strip()
+                .casefold()
+            )
+            if record is not None and record_split == split:
+                return record
+        legacy_record = getattr(run, "eval_record", None)
+        legacy_split = (
+            str(getattr(legacy_record, "evaluation_split", None) or "unknown")
             .strip()
             .casefold()
         )
-        if split in HELD_OUT_EVALUATION_SPLITS:
-            return split
-        if split == "training":
-            raise cls._final_unavailable_error(
-                "Training-split metrics are diagnostics, not final evaluation"
-            )
-        raise cls._final_unavailable_error("Evaluation split provenance is unavailable")
+        return legacy_record if legacy_split == split else None
+
+    @staticmethod
+    def _split_unavailable_error(message: str) -> PreconditionError:
+        return PreconditionError(
+            f"{message}. Select another available split.",
+            diagnostics={
+                "evaluation_split_unavailable": True,
+                "retryable": False,
+            },
+        )
 
     @staticmethod
     def _final_unavailable_error(message: str) -> PreconditionError:

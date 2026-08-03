@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 from matplotlib.figure import Figure
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -298,16 +298,23 @@ def test_evaluation_controls_are_compact_toolbar(qtbot):
 
     assert panel.model_combo.maximumWidth() <= 360
     assert panel.run_combo.maximumWidth() <= 300
+    assert panel.split_combo.maximumWidth() <= 150
     assert (
         panel.model_combo.sizePolicy().horizontalPolicy()
-        == QSizePolicy.Policy.Expanding
+        == QSizePolicy.Policy.Preferred
     )
     assert (
-        panel.run_combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+        panel.run_combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Preferred
     )
     assert panel.evaluation_controls_bar.is_wrapped() is False
-    assert abs(panel.model_combo.y() - panel.run_combo.y()) <= 4
-    assert panel.chk_percentage.x() < panel.run_combo.x() + panel.run_combo.width() + 80
+    model_pos = panel.model_combo.mapTo(panel.evaluation_controls_bar, QPoint())
+    split_pos = panel.split_combo.mapTo(panel.evaluation_controls_bar, QPoint())
+    percentage_pos = panel.chk_percentage.mapTo(
+        panel.evaluation_controls_bar,
+        QPoint(),
+    )
+    assert abs(model_pos.y() - split_pos.y()) <= 4
+    assert split_pos.x() < percentage_pos.x()
 
 
 def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
@@ -322,10 +329,13 @@ def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
     )
     panel.model_combo.blockSignals(True)
     panel.run_combo.blockSignals(True)
+    panel.split_combo.blockSignals(True)
     panel.model_combo.addItem(long_model, object())
     panel.run_combo.addItem(long_run, object())
+    panel.split_combo.addItem("Validation", "validation")
     panel.model_combo.blockSignals(False)
     panel.run_combo.blockSignals(False)
+    panel.split_combo.blockSignals(False)
 
     panel.show()
     panel.setFixedWidth(520)
@@ -333,9 +343,15 @@ def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
     qtbot.wait(50)
 
     assert panel.evaluation_controls_bar.is_wrapped() is True
-    assert panel.model_combo.y() < panel.run_combo.y()
-    assert panel.chk_percentage.y() > panel.run_combo.geometry().bottom()
-    assert not panel.run_combo.geometry().intersects(panel.chk_percentage.geometry())
+    run_pos = panel.run_combo.mapTo(panel.evaluation_controls_bar, QPoint())
+    split_pos = panel.split_combo.mapTo(panel.evaluation_controls_bar, QPoint())
+    percentage_pos = panel.chk_percentage.mapTo(
+        panel.evaluation_controls_bar,
+        QPoint(),
+    )
+    assert split_pos.y() > run_pos.y()
+    assert panel.chk_percentage.parent() is panel.split_combo.parent()
+    assert split_pos.x() + panel.split_combo.width() <= percentage_pos.x()
     assert panel.chk_percentage.geometry().right() <= (
         panel.evaluation_controls_bar.contentsRect().right()
     )
@@ -350,10 +366,13 @@ def test_evaluation_controls_wrap_before_assistant_dock_clips_common_values(qtbo
     qtbot.addWidget(panel)
     panel.model_combo.blockSignals(True)
     panel.run_combo.blockSignals(True)
+    panel.split_combo.blockSignals(True)
     panel.model_combo.addItem("Fold 2: EEGNet", object())
     panel.run_combo.addItem("Average (Finished Runs)", "average")
+    panel.split_combo.addItem("Test", "test")
     panel.model_combo.blockSignals(False)
     panel.run_combo.blockSignals(False)
+    panel.split_combo.blockSignals(False)
 
     panel.setFixedWidth(640)
     panel.resize(640, 620)
@@ -361,9 +380,15 @@ def test_evaluation_controls_wrap_before_assistant_dock_clips_common_values(qtbo
     qtbot.wait(50)
 
     assert panel.evaluation_controls_bar.is_wrapped() is True
-    assert panel.model_combo.y() < panel.run_combo.y()
-    assert panel.model_combo.elided_current_text() == "Fold 2: EEGNet"
-    assert panel.run_combo.elided_current_text() == "Average (Finished Runs)"
+    model_pos = panel.model_combo.mapTo(panel.evaluation_controls_bar, QPoint())
+    run_pos = panel.run_combo.mapTo(panel.evaluation_controls_bar, QPoint())
+    split_pos = panel.split_combo.mapTo(panel.evaluation_controls_bar, QPoint())
+    assert model_pos.y() == run_pos.y()
+    assert split_pos.y() > model_pos.y()
+    assert panel.model_combo.elided_current_text() != "Fold 2: EEGNet"
+    assert panel.model_combo.toolTip() == "Fold 2: EEGNet"
+    assert panel.run_combo.elided_current_text() != "Average (Finished Runs)"
+    assert panel.run_combo.toolTip() == "Average (Finished Runs)"
 
 
 def test_evaluation_charts_use_tabs_when_assistant_reduces_content_width(qtbot):
@@ -609,6 +634,7 @@ def _serialized_evaluation_result(
     *,
     available: bool = True,
     second_run_finished: bool = False,
+    second_run_splits: tuple[str, ...] = ("training", "validation", "test"),
     model_summary: tuple[EvaluationSummaryIdentity, str] | None = None,
     generation: int = 4,
 ) -> CommandResult:
@@ -628,6 +654,13 @@ def _serialized_evaluation_result(
                     "name": f"Repeat-{run_index}",
                     "finished": run_index == 0 or second_run_finished,
                     "evaluation_split": "test" if run_index == 0 else None,
+                    "evaluation_splits": (
+                        ["training", "validation", "test"]
+                        if run_index == 0
+                        else list(second_run_splits)
+                        if second_run_finished
+                        else []
+                    ),
                 }
                 for run_index in range(2)
             ],
@@ -662,15 +695,19 @@ def _detached_render(request: EvaluationRenderRequest):
         if isinstance(selection, EvaluationRunIdentity)
         else EvaluationSummaryIdentity(plan=selection)
     )
+    support = {"training": 30, "validation": 12, "test": 20}[request.split]
+    metrics = MockEvalRecord().get_per_class_metrics()
+    metrics[0]["support"] = support
+    metrics["macro_avg"]["support"] = support * 2
     return SimpleNamespace(
         request=request,
         data=EvaluationRenderData(
             labels=np.array([0, 1]),
             outputs=np.array([[0.9, 0.1], [0.2, 0.8]]),
-            metrics=MockEvalRecord().get_per_class_metrics(),
+            metrics=metrics,
             class_labels={0: "Left hand", 1: "Right hand"},
             summary_identity=summary_identity,
-            evaluation_split="test",
+            evaluation_split=request.split,
         ),
     )
 
@@ -765,8 +802,14 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
     assert isinstance(panel.run_combo.itemData(0), EvaluationRunIdentity)
     assert panel.metrics_table.rowCount() == 3
     assert panel.metrics_table.item(0, 0).text() == "Left hand"
-    assert panel.provenance_label.text() == "Final · Test split"
-    assert panel.provenance_label.isVisibleTo(panel)
+    assert panel.split_combo.currentData() == "test"
+    assert [
+        panel.split_combo.itemData(i) for i in range(panel.split_combo.count())
+    ] == [
+        "training",
+        "validation",
+        "test",
+    ]
     assert calls == [EvaluateCommand()]
 
     panel.bar_chart.update_plot = MagicMock()
@@ -777,6 +820,104 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
     panel.model_combo.setCurrentIndex(1)
     assert panel.model_combo.currentData() == EvaluationPlanIdentity(plan_index=1)
     assert panel.run_combo.count() == 3
+
+
+def test_evaluation_split_selector_requests_and_renders_the_exact_split(
+    qtbot,
+    monkeypatch,
+):
+    requests = []
+
+    def fake_execute(_panel, _command, **_kwargs):
+        return _serialized_evaluation_result()
+
+    _install_evaluation_read_side(monkeypatch, fake_execute)
+
+    def capture_render(_panel, request, **_kwargs):
+        requests.append(request)
+        return _detached_render(request)
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
+        capture_render,
+    )
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+
+    assert requests[-1].split == "test"
+    training_index = panel.split_combo.findData("training")
+    panel.split_combo.setCurrentIndex(training_index)
+
+    assert requests[-1].split == "training"
+    assert panel.metrics_table.item(0, 4).text() == "30"
+    assert panel._evaluation_render.data.evaluation_split == "training"
+
+
+def test_aggregate_offers_only_splits_saved_for_every_finished_run(
+    qtbot,
+    monkeypatch,
+):
+    def fake_execute(_panel, _command, **_kwargs):
+        return _serialized_evaluation_result(
+            second_run_finished=True,
+            second_run_splits=("test",),
+        )
+
+    _install_evaluation_read_side(monkeypatch, fake_execute)
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+
+    panel.split_combo.setCurrentIndex(panel.split_combo.findData("validation"))
+    assert panel.split_combo.currentData() == "validation"
+
+    aggregate_index = panel.run_combo.findText("Average (Finished Runs)")
+    assert aggregate_index >= 0
+    panel.run_combo.setCurrentIndex(aggregate_index)
+
+    assert [
+        panel.split_combo.itemData(index) for index in range(panel.split_combo.count())
+    ] == ["test"]
+    assert panel.split_combo.currentData() == "test"
+    assert panel._evaluation_render.data.evaluation_split == "test"
+
+
+def test_invalid_evaluation_selection_clears_cached_split_render(qtbot, monkeypatch):
+    def fake_execute(_panel, _command, **_kwargs):
+        return _serialized_evaluation_result()
+
+    _install_evaluation_read_side(monkeypatch, fake_execute)
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    assert panel._evaluation_render is not None
+
+    panel.run_combo.setCurrentIndex(1)
+
+    assert panel._evaluation_render is None
+    panel.matrix_widget.update_plot = MagicMock()
+    panel.chk_percentage.setChecked(True)
+    panel.matrix_widget.update_plot.assert_not_called()
+
+
+def test_show_percentages_redraws_only_the_confusion_matrix(qtbot, monkeypatch):
+    def fake_execute(_panel, _command, **_kwargs):
+        return _serialized_evaluation_result()
+
+    _install_evaluation_read_side(monkeypatch, fake_execute)
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+
+    panel.matrix_widget.update_plot = MagicMock()
+    panel.metrics_table.update_data = MagicMock()
+    panel.bar_chart.update_plot = MagicMock()
+    panel.chk_percentage.setChecked(True)
+
+    panel.matrix_widget.update_plot.assert_called_once()
+    panel.metrics_table.update_data.assert_not_called()
+    panel.bar_chart.update_plot.assert_not_called()
 
 
 def test_evaluation_panel_blocks_non_held_out_render_without_retrying(
@@ -810,7 +951,7 @@ def test_evaluation_panel_blocks_non_held_out_render_without_retrying(
         "Training-split metrics are diagnostics, not final evaluation."
     )
     assert panel.bottom_tabs.isVisible() is False
-    assert panel.provenance_label.isHidden()
+    assert panel.split_combo.currentData() == "test"
 
 
 def test_evaluation_panel_fails_closed_when_application_query_is_blocked(qtbot):

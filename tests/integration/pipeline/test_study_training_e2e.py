@@ -231,6 +231,15 @@ class TestStudyTrainCycle:
         record = plan.train_record_list[0]
         assert TrainRecordKey.LOSS in record.train
         assert len(record.train[TrainRecordKey.LOSS]) == 2  # 2 epochs
+        assert set(record.evaluation_records) == {
+            "training",
+            "validation",
+            "test",
+        }
+        assert all(
+            evaluation.evaluation_split == split
+            for split, evaluation in record.evaluation_records.items()
+        )
 
     def test_full_cycle_sccnet(self, tmp_path):
         study = Study()

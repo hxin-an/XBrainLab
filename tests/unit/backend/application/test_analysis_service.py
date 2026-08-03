@@ -66,6 +66,9 @@ class _Run:
     def __init__(self, finished: bool, *, evaluation_split: str = "test") -> None:
         self._finished = finished
         self.eval_record = _EvalRecord(evaluation_split) if finished else None
+        self.evaluation_records = (
+            {evaluation_split: self.eval_record} if self.eval_record is not None else {}
+        )
 
     def is_finished(self) -> bool:
         return self._finished
@@ -378,12 +381,14 @@ def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
                 "name": "Repeat-0",
                 "finished": True,
                 "evaluation_split": "test",
+                "evaluation_splits": ["test"],
             },
             {
                 "identity": {"plan_index": 0, "run_index": 1},
                 "name": "Repeat-0",
                 "finished": False,
                 "evaluation_split": "unknown",
+                "evaluation_splits": [],
             },
         ],
     }
@@ -405,6 +410,24 @@ def test_analysis_service_reports_validation_fallback_provenance() -> None:
 
     assert diagnostics["evaluation_splits"] == ["test", "validation"]
     assert diagnostics["plans"][0]["evaluation_splits"] == ["test", "validation"]
+
+
+def test_analysis_service_reports_every_saved_split_per_run() -> None:
+    run = _Run(finished=True)
+    run.evaluation_records = {
+        "training": _EvalRecord("training"),
+        "validation": _EvalRecord("validation"),
+        "test": run.eval_record,
+    }
+    service, _visualization = _service(plans=[_Plan("Plan A", [run])])
+
+    _message, diagnostics = _expect_payload(service.handle_evaluate(EvaluateCommand()))
+
+    assert diagnostics["plans"][0]["runs"][0]["evaluation_splits"] == [
+        "test",
+        "training",
+        "validation",
+    ]
 
 
 def test_analysis_service_reports_no_results_without_facade() -> None:

@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ..state_tracker import TrainingStateTracker
 
 TRAIN_RECORD_SCHEMA_VERSION = 1
+EVALUATION_SPLITS = ("training", "validation", "test")
 
 
 def _prepare_figure(
@@ -303,6 +304,7 @@ class TrainRecord:
         self.criterion = self.option.criterion
         self._state_tracker: TrainingStateTracker | None = None
         self.eval_record: EvalRecord | None = None
+        self.evaluation_records: dict[str, EvalRecord] = {}
         for key in RecordKey():
             setattr(self, "best_val_" + key + "_model", None)
         self.train: dict[str, list[float | None]] = {i: [] for i in TrainRecordKey()}
@@ -532,7 +534,39 @@ class TrainRecord:
 
         """
         with self._state_mutation():
-            self.eval_record = eval_record
+            self._replace_primary_evaluation_record(eval_record)
+
+    def _replace_primary_evaluation_record(self, eval_record: EvalRecord) -> None:
+        """Replace the compatibility record and its matching split entry."""
+        self.eval_record = eval_record
+        split = (
+            str(getattr(eval_record, "evaluation_split", None) or "unknown")
+            .strip()
+            .casefold()
+        )
+        if split in EVALUATION_SPLITS:
+            self.evaluation_records[split] = eval_record
+
+    def set_evaluation_records(
+        self,
+        records: dict[str, EvalRecord],
+        *,
+        primary_split: str,
+    ) -> None:
+        """Publish split-specific predictions and the primary held-out record."""
+        normalized_primary = str(primary_split).strip().casefold()
+        normalized = {
+            str(split).strip().casefold(): record
+            for split, record in records.items()
+            if record is not None
+        }
+        if normalized_primary not in normalized:
+            raise ValueError("Primary evaluation split is missing")
+        if any(split not in EVALUATION_SPLITS for split in normalized):
+            raise ValueError("Unsupported evaluation split")
+        with self._state_mutation():
+            self.evaluation_records = normalized
+            self.eval_record = normalized[normalized_primary]
 
     def export_checkpoint(self) -> None:
         """Save the current training state, best models, and evaluation record to disk.
@@ -549,6 +583,14 @@ class TrainRecord:
             if self.eval_record:
                 self.eval_record.export(
                     target_path,
+                    directory_identity=identity,
+                )
+            for split, eval_record in self.evaluation_records.items():
+                if eval_record is self.eval_record:
+                    continue
+                eval_record.export(
+                    target_path,
+                    artifact_basename=f"eval-{split}",
                     directory_identity=identity,
                 )
 
@@ -653,6 +695,23 @@ class TrainRecord:
                     target_path,
                     directory_identity=identity,
                 )
+                self.evaluation_records = {}
+                if self.eval_record is not None:
+                    split = (
+                        str(self.eval_record.evaluation_split or "unknown")
+                        .strip()
+                        .casefold()
+                    )
+                    if split in EVALUATION_SPLITS:
+                        self.evaluation_records[split] = self.eval_record
+                for split in EVALUATION_SPLITS:
+                    loaded = EvalRecord.load(
+                        target_path,
+                        artifact_basename=f"eval-{split}",
+                        directory_identity=identity,
+                    )
+                    if loaded is not None:
+                        self.evaluation_records[split] = loaded
 
     def get_model_output(self) -> str:
         """Return a formatted string summary of the training history.

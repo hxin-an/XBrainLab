@@ -170,6 +170,14 @@ also stores whether its data came from test, validation, or training fallback. S
 may be saved before training, but recomputation is restricted to finished records so it cannot
 open the test split before checkpoint selection is complete.
 
+After checkpoint selection, each completed run persists separate inference records for every
+non-empty `training`, `validation`, and `test` loader. `EvaluationRenderRequest` binds one exact
+plan/run-or-aggregate/split identity. A single run never reads another run's predictions, and an
+aggregate is available only when every completed run has the requested split; aggregation pools
+only those same-split predictions before computing the existing metrics. The legacy `eval`
+artifact remains the primary held-out record for compatibility and saliency, while additional
+records use split-qualified artifacts.
+
 2026-07-11 non-blocking view/lifecycle hardening added `ApplicationViewPublication` as the
 shared read model for UI, assistant, and headless preflight. A reader opportunistically rebuilds
 and atomically publishes state/capabilities when the Study command lock is idle, so background

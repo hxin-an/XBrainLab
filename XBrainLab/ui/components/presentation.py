@@ -4,18 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QPaintEvent, QResizeEvent
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
     QComboBox,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QStyle,
     QStyleOptionComboBox,
     QStylePainter,
     QTableWidget,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -31,6 +33,14 @@ class ElidingComboBox(QComboBox):
     def elideMode(self) -> Qt.TextElideMode:  # noqa: N802
         """Return the elision mode used for the closed combo selection."""
         return self._elide_mode
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Honor an explicit compact width because the closed text is elided."""
+        hint = super().minimumSizeHint()
+        explicit_minimum = self.minimumWidth()
+        if explicit_minimum > 0:
+            return QSize(explicit_minimum, hint.height())
+        return hint
 
     def elided_current_text(self) -> str:
         """Return the selection text as it is painted at the current width."""
@@ -85,18 +95,27 @@ class ResponsiveControlsBar(QWidget):
         trailing_widgets: Sequence[QWidget] = (),
         *,
         wrap_width: int = 500,
+        greedy_wrap: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._fields = [(self._make_label(text), widget) for text, widget in fields]
         self._trailing_widgets = list(trailing_widgets)
         self._wrap_width = wrap_width
+        self._greedy_wrap = greedy_wrap
         self._wrapped: bool | None = None
         self._layout_mode: str | None = None
-        self._layout = QGridLayout(self)
+        self._greedy_rows: list[QWidget] = []
+        self._greedy_reflowing = False
+        self._settled_reflow_pending = False
+        self._horizontal_spacing = 10
+        self._layout = QVBoxLayout(self) if greedy_wrap else QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 8)
-        self._layout.setHorizontalSpacing(10)
-        self._layout.setVerticalSpacing(8)
+        if isinstance(self._layout, QGridLayout):
+            self._layout.setHorizontalSpacing(self._horizontal_spacing)
+            self._layout.setVerticalSpacing(8)
+        else:
+            self._layout.setSpacing(8)
         # Start from the smallest valid geometry. QWidget's constructor width
         # is a desktop-sized placeholder; building the wide row first lets its
         # layout minimum prevent a narrow parent from ever reaching the stacked
@@ -106,6 +125,11 @@ class ResponsiveControlsBar(QWidget):
     def is_wrapped(self) -> bool:
         """Return whether controls currently use the compact two-row layout."""
         return bool(self._wrapped)
+
+    def refresh_layout(self) -> None:
+        """Reflow after a child changes its preferred presentation width."""
+        self._layout_mode = None
+        self._apply_layout(self.width())
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         """Allow the parent to cross the wrap threshold before reflow occurs."""
@@ -117,6 +141,13 @@ class ResponsiveControlsBar(QWidget):
         super().resizeEvent(event)
         width = event.size().width() if event is not None else self.width()
         self._apply_layout(width)
+        if self._greedy_wrap and not self._settled_reflow_pending:
+            self._settled_reflow_pending = True
+            QTimer.singleShot(0, self._refresh_settled_layout)
+
+    def _refresh_settled_layout(self) -> None:
+        self._settled_reflow_pending = False
+        self.refresh_layout()
 
     @staticmethod
     def _make_label(text: str) -> QLabel:
@@ -125,6 +156,9 @@ class ResponsiveControlsBar(QWidget):
         return label
 
     def _apply_layout(self, width: int) -> None:
+        if self._greedy_wrap:
+            self._apply_greedy_layout(width)
+            return
         wrapped = width < self._wrap_width
         stacked_trailing = wrapped and width < 360 and bool(self._trailing_widgets)
         layout_mode = "stacked" if stacked_trailing else "wrapped" if wrapped else "row"
@@ -187,6 +221,87 @@ class ResponsiveControlsBar(QWidget):
             )
             column += 1
         self._layout.setColumnStretch(column, 1)
+        self._layout.invalidate()
+        self.updateGeometry()
+
+    def _apply_greedy_layout(self, width: int) -> None:
+        if self._greedy_reflowing:
+            return
+        self._greedy_reflowing = True
+        try:
+            self._apply_greedy_layout_now(width)
+        finally:
+            self._greedy_reflowing = False
+
+    def _apply_greedy_layout_now(self, width: int) -> None:
+        """Pack atomic label/control groups without clipping at narrow widths."""
+        units: list[tuple[tuple[QWidget, ...], int]] = []
+        spacing = self._horizontal_spacing
+        for label, control in self._fields:
+            # Packing is based on the usable compressed width. Preferred widths
+            # may contain a long current selection and would trigger wrapping
+            # even though ElidingComboBox can render it safely.
+            control_width = max(control.minimumWidth(), 1)
+            units.append(
+                ((label, control), label.sizeHint().width() + spacing + control_width)
+            )
+        units.extend(
+            ((widget,), widget.sizeHint().width()) for widget in self._trailing_widgets
+        )
+        available = max(
+            width
+            - self._layout.contentsMargins().left()
+            - self._layout.contentsMargins().right(),
+            1,
+        )
+        rows: list[list[tuple[QWidget, ...]]] = [[]]
+        row_width = 0
+        for widgets, unit_width in units:
+            candidate = unit_width if not rows[-1] else row_width + spacing + unit_width
+            if rows[-1] and candidate > available:
+                rows.append([])
+                row_width = 0
+            rows[-1].append(widgets)
+            row_width = (
+                unit_width if row_width == 0 else row_width + spacing + unit_width
+            )
+
+        layout_mode = "greedy:" + ",".join(str(len(row)) for row in rows)
+        if self._layout_mode == layout_mode:
+            return
+        self._layout_mode = layout_mode
+        self._wrapped = len(rows) > 1
+        if not isinstance(self._layout, QVBoxLayout):
+            raise TypeError("Greedy controls require a vertical row layout")
+        product_widgets = [item for pair in self._fields for item in pair]
+        product_widgets.extend(self._trailing_widgets)
+        for row_widget in self._greedy_rows:
+            row_layout = row_widget.layout()
+            if row_layout is not None:
+                for widget in product_widgets:
+                    row_layout.removeWidget(widget)
+            self._layout.removeWidget(row_widget)
+            row_widget.deleteLater()
+        for widget in product_widgets:
+            widget.setParent(self)
+        self._greedy_rows = []
+
+        for row in rows:
+            row_widget = QWidget(self)
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(spacing)
+            for widgets in row:
+                for widget in widgets:
+                    row_layout.addWidget(
+                        widget,
+                        alignment=Qt.AlignmentFlag.AlignLeft
+                        | Qt.AlignmentFlag.AlignVCenter,
+                    )
+            row_layout.addStretch(1)
+            self._layout.addWidget(row_widget)
+            row_widget.show()
+            self._greedy_rows.append(row_widget)
         self._layout.invalidate()
         self.updateGeometry()
 

@@ -155,6 +155,30 @@ def test_export(tmp_path):
     assert loaded.saliency_integrity_manifest["manifest_sha256"]
 
 
+def test_export_supports_a_named_prediction_split_artifact(tmp_path) -> None:
+    record = EvalRecord(
+        np.array([0, 1]),
+        np.array([[0.8, 0.2], [0.1, 0.9]]),
+        {},
+        {},
+        {},
+        {},
+        {},
+        evaluation_split="validation",
+    )
+
+    record.export(str(tmp_path), artifact_basename="eval-validation")
+    loaded = EvalRecord.load(
+        str(tmp_path),
+        artifact_basename="eval-validation",
+    )
+
+    assert loaded is not None
+    assert loaded.evaluation_split == "validation"
+    assert (tmp_path / "eval-validation").exists()
+    assert (tmp_path / "eval-validation.npz").exists()
+
+
 def test_export_csv(tmp_path):
     csv_file = str(tmp_path / "output.csv")
     gradient = {"123": "test"}

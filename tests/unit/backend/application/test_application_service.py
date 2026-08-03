@@ -4068,6 +4068,7 @@ def test_evaluate_command_returns_typed_service_backed_summary():
                     "name": "Repeat-0",
                     "finished": True,
                     "evaluation_split": "test",
+                    "evaluation_splits": ["test"],
                 }
             ],
         }

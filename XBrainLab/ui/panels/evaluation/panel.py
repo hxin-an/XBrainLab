@@ -30,9 +30,6 @@ from XBrainLab.backend.application import (
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
 )
-from XBrainLab.backend.application.evaluation_render import (
-    evaluation_provenance_presentation,
-)
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.serialization import serialize_json_value
 from XBrainLab.backend.application.state import EvaluationStateSnapshot
@@ -87,6 +84,11 @@ INFO_SIDEBAR_WIDTH = 260
 COMPACT_INFO_SIDEBAR_WIDTH = 220
 COMPACT_INFO_SIDEBAR_BREAKPOINT = 540
 logger = logging.getLogger(__name__)
+EVALUATION_SPLIT_OPTIONS = (
+    ("training", "Train"),
+    ("validation", "Validation"),
+    ("test", "Test"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +96,7 @@ class _EvaluationRunChoice:
     identity: EvaluationRunIdentity
     name: str
     finished: bool
+    splits: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,6 +264,9 @@ class EvaluationPanel(BasePanel):
         previous_run_identity = (
             self.run_combo.currentData() if hasattr(self, "run_combo") else None
         )
+        previous_split = (
+            self.split_combo.currentData() if hasattr(self, "split_combo") else None
+        )
         if self._application_summary_dirty or (
             self._evaluation_summary is None and self._evaluation_error is None
         ):
@@ -302,6 +308,7 @@ class EvaluationPanel(BasePanel):
                 self.on_model_changed(
                     selected_index,
                     preferred_run_identity=previous_run_identity,
+                    preferred_split=previous_split,
                 )
             else:
                 self.plot_stack.setCurrentIndex(1)
@@ -609,11 +616,27 @@ class EvaluationPanel(BasePanel):
                     raise ValueError("Evaluation run name is invalid")
                 if not isinstance(finished, bool):
                     raise TypeError("Evaluation run completion must be boolean")
+                raw_splits = raw_run.get("evaluation_splits")
+                if raw_splits is None:
+                    raw_splits = [raw_run.get("evaluation_split")]
+                if not isinstance(raw_splits, list):
+                    raise TypeError("Evaluation run splits must be a list")
+                splits = tuple(
+                    split
+                    for split, _label in EVALUATION_SPLIT_OPTIONS
+                    if split
+                    in {
+                        str(value).strip().casefold()
+                        for value in raw_splits
+                        if value is not None
+                    }
+                )
                 runs.append(
                     _EvaluationRunChoice(
                         identity=run_identity,
                         name=run_name.strip(),
                         finished=finished,
+                        splits=splits,
                     )
                 )
             choices.append(
@@ -672,8 +695,12 @@ class EvaluationPanel(BasePanel):
         self.run_combo.setEnabled(False)
         self.run_combo.setToolTip(message)
         self.run_combo.blockSignals(False)
+        self.split_combo.blockSignals(True)
+        self.split_combo.clear()
+        self.split_combo.setEnabled(False)
+        self.split_combo.setToolTip(message)
+        self.split_combo.blockSignals(False)
         self.chk_percentage.setEnabled(False)
-        self._set_evaluation_provenance("")
         self._clear_metric_views()
         self.summary_text.clear()
         self.no_data_label.setText(message)
@@ -685,6 +712,8 @@ class EvaluationPanel(BasePanel):
         self.model_combo.setToolTip("")
         self.run_combo.setEnabled(True)
         self.run_combo.setToolTip("")
+        self.split_combo.setEnabled(True)
+        self.split_combo.setToolTip("")
         self.chk_percentage.setEnabled(True)
         self.bottom_tabs.setVisible(True)
 
@@ -696,7 +725,12 @@ class EvaluationPanel(BasePanel):
         self.bar_chart.update_plot({})
         self.metrics_table.update_data({})
 
-    def on_model_changed(self, index, preferred_run_identity=None):
+    def on_model_changed(
+        self,
+        index,
+        preferred_run_identity=None,
+        preferred_split=None,
+    ):
         """Handle model selection change."""
         if index < 0:
             return
@@ -733,7 +767,62 @@ class EvaluationPanel(BasePanel):
             self.run_combo.setCurrentIndex(selected_index)
 
         self.run_combo.blockSignals(False)
+        self._sync_split_options(preferred_split=preferred_split)
         self.update_views()
+
+    def _on_run_changed(self, _index: int) -> None:
+        preferred_split = self.split_combo.currentData()
+        self._sync_split_options(preferred_split=preferred_split)
+        self.update_views()
+
+    def _available_splits_for_selection(
+        self,
+        selection: EvaluationPlanIdentity | EvaluationRunIdentity,
+    ) -> tuple[str, ...]:
+        if isinstance(selection, EvaluationRunIdentity):
+            run = self._run_choice(selection)
+            return run.splits if run is not None and run.finished else ()
+        plan = self._plan_choice(selection)
+        if plan is None:
+            return ()
+        finished = [run for run in plan.runs if run.finished]
+        if not finished:
+            return ()
+        common = set(finished[0].splits)
+        for run in finished[1:]:
+            common.intersection_update(run.splits)
+        return tuple(
+            split for split, _label in EVALUATION_SPLIT_OPTIONS if split in common
+        )
+
+    def _sync_split_options(self, *, preferred_split=None) -> None:
+        selection = self.run_combo.currentData()
+        splits = (
+            self._available_splits_for_selection(selection)
+            if isinstance(selection, (EvaluationPlanIdentity, EvaluationRunIdentity))
+            else ()
+        )
+        self.split_combo.blockSignals(True)
+        self.split_combo.clear()
+        labels = dict(EVALUATION_SPLIT_OPTIONS)
+        for split in splits:
+            self.split_combo.addItem(labels[split], split)
+        selected_split = (
+            preferred_split
+            if preferred_split in splits
+            else "test"
+            if "test" in splits
+            else splits[0]
+            if splits
+            else None
+        )
+        if selected_split is not None:
+            self.split_combo.setCurrentIndex(self.split_combo.findData(selected_split))
+        self.split_combo.setEnabled(bool(splits))
+        self.split_combo.setToolTip(
+            "" if splits else "No saved predictions are available for this selection."
+        )
+        self.split_combo.blockSignals(False)
 
     def _plan_choice(
         self,
@@ -762,11 +851,12 @@ class EvaluationPanel(BasePanel):
     def update_views(self):
         """Update Matrix and Table based on current selection."""
         selection = self.run_combo.currentData()
+        split = self.split_combo.currentData()
         if not isinstance(
             selection,
             (EvaluationPlanIdentity, EvaluationRunIdentity),
-        ):
-            self._set_evaluation_provenance("")
+        ) or not isinstance(split, str):
+            self._evaluation_render = None
             self._clear_metric_views()
             return
 
@@ -774,23 +864,24 @@ class EvaluationPanel(BasePanel):
         if isinstance(selection, EvaluationRunIdentity):
             run_choice = self._run_choice(selection)
             if run_choice is None or not run_choice.finished:
+                self._evaluation_render = None
                 self._clear_metric_views()
                 self._update_summary_if_visible(summary_identity)
                 return
 
-        render = self._render_for_selection(selection)
+        self._clear_metric_views()
+        render = self._render_for_selection(selection, split=split)
         if render is None:
+            self._evaluation_render = None
             self._clear_metric_views()
             self._update_summary_if_visible(summary_identity)
             return
         render_data = render.data
-        provenance_text, provenance_tooltip = evaluation_provenance_presentation(
-            render_data.evaluation_split
-        )
-        self._set_evaluation_provenance(
-            provenance_text,
-            tooltip=provenance_tooltip,
-        )
+        if render_data.evaluation_split != split:
+            self._show_evaluation_render_unavailable(
+                "The selected split changed while Evaluation was updating."
+            )
+            return
         self.plot_stack.setCurrentIndex(0)
         self.bottom_tabs.setVisible(True)
         show_pct = self.chk_percentage.isChecked()
@@ -804,6 +895,8 @@ class EvaluationPanel(BasePanel):
     def _render_for_selection(
         self,
         selection: EvaluationPlanIdentity | EvaluationRunIdentity,
+        *,
+        split: str,
     ) -> EvaluationRenderPublication | None:
         generation = self._application_generation
         if generation is None:
@@ -811,6 +904,7 @@ class EvaluationPanel(BasePanel):
         request = EvaluationRenderRequest(
             publication_generation=generation,
             selection=selection,
+            split=split,
         )
         cached = self._evaluation_render
         if cached is not None and cached.request == request:
@@ -825,7 +919,10 @@ class EvaluationPanel(BasePanel):
                 runtime=cast(ApplicationUiRuntime, query_port),
             )
         except ApplicationError as exc:
-            if exc.diagnostics.get("evaluation_final_unavailable") is True:
+            if (
+                exc.diagnostics.get("evaluation_final_unavailable") is True
+                or exc.diagnostics.get("evaluation_split_unavailable") is True
+            ):
                 self._show_evaluation_render_unavailable(str(exc))
                 return None
             logger.error("Evaluation render publication failed.", exc_info=True)
@@ -851,21 +948,20 @@ class EvaluationPanel(BasePanel):
     def _show_evaluation_render_unavailable(self, message: str) -> None:
         """Show one stable, user-facing reason for inadmissible final metrics."""
         self._evaluation_render = None
-        self._set_evaluation_provenance("")
         self._clear_metric_views()
         self.no_data_label.setText(message)
         self.plot_stack.setCurrentIndex(1)
         self.bottom_tabs.setVisible(False)
 
-    def _set_evaluation_provenance(
-        self,
-        text: str,
-        *,
-        tooltip: str = "",
-    ) -> None:
-        self.provenance_label.setText(text)
-        self.provenance_label.setToolTip(tooltip)
-        self.provenance_label.setVisible(bool(text))
+    def _on_percentage_toggled(self, _checked: bool) -> None:
+        """Redraw only the matrix; summary metrics remain raw values."""
+        render = self._evaluation_render
+        if render is None:
+            return
+        self.matrix_widget.update_plot(
+            render.data,
+            show_percentage=self.chk_percentage.isChecked(),
+        )
 
     def cleanup(self) -> None:
         """Cancel queued renders and release the publication subscription."""
@@ -1067,17 +1163,19 @@ class EvaluationPanel(BasePanel):
 
         # Model Selection
         self.model_combo = ElidingComboBox()
-        self.model_combo.setMinimumWidth(180)
-        self.model_combo.setMaximumWidth(360)
+        self.model_combo.setMinimumWidth(110)
+        self.model_combo.setMaximumWidth(240)
         self.model_combo.setMinimumContentsLength(20)
         self.model_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.model_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Fixed,
         )
-        self.model_combo.setStyleSheet(Stylesheets.COMBO_BOX)
+        self.model_combo.setStyleSheet(
+            f"{Stylesheets.COMBO_BOX}\nQComboBox {{ min-width: 100px; }}"
+        )
         model_view = self.model_combo.view()
         if model_view is not None:
             model_view.setTextElideMode(Qt.TextElideMode.ElideRight)
@@ -1085,47 +1183,60 @@ class EvaluationPanel(BasePanel):
 
         # Run Selection
         self.run_combo = ElidingComboBox()
-        self.run_combo.setMinimumWidth(180)
-        self.run_combo.setMaximumWidth(300)
+        self.run_combo.setMinimumWidth(110)
+        self.run_combo.setMaximumWidth(240)
         self.run_combo.setMinimumContentsLength(18)
         self.run_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.run_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Fixed,
         )
-        self.run_combo.setStyleSheet(Stylesheets.COMBO_BOX)
+        self.run_combo.setStyleSheet(
+            f"{Stylesheets.COMBO_BOX}\nQComboBox {{ min-width: 100px; }}"
+        )
         run_view = self.run_combo.view()
         if run_view is not None:
             run_view.setTextElideMode(Qt.TextElideMode.ElideRight)
-        self.run_combo.currentIndexChanged.connect(self.update_views)
+        self.run_combo.currentIndexChanged.connect(self._on_run_changed)
+
+        # Prediction split selection
+        self.split_combo = ElidingComboBox()
+        self.split_combo.setMinimumWidth(80)
+        self.split_combo.setMaximumWidth(130)
+        self.split_combo.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.split_combo.setStyleSheet(
+            f"{Stylesheets.COMBO_BOX}\nQComboBox {{ min-width: 70px; }}"
+        )
+        self.split_combo.currentIndexChanged.connect(self.update_views)
 
         # Options
-        self.chk_percentage = QCheckBox("Percent")
+        self.chk_percentage = QCheckBox("Show percentages")
         self.chk_percentage.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.chk_percentage.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
         self.chk_percentage.setMinimumWidth(self.chk_percentage.sizeHint().width())
-        self.chk_percentage.toggled.connect(self.update_views)
-
-        self.provenance_label = QLabel()
-        self.provenance_label.setObjectName("EvaluationProvenance")
-        self.provenance_label.setStyleSheet(
-            f"color: {Theme.TEXT_MUTED}; padding-left: 4px;"
+        self.chk_percentage.setToolTip(
+            "Normalize each true-label row to 100%. Other evaluation metrics "
+            "are unchanged."
         )
-        self.provenance_label.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.provenance_label.hide()
+        self.chk_percentage.toggled.connect(self._on_percentage_toggled)
 
         self.evaluation_controls_bar = ResponsiveControlsBar(
-            [("Model", self.model_combo), ("Run", self.run_combo)],
-            [self.chk_percentage, self.provenance_label],
-            wrap_width=600,
+            [
+                ("Model", self.model_combo),
+                ("Run", self.run_combo),
+                ("Split", self.split_combo),
+            ],
+            [self.chk_percentage],
+            wrap_width=760,
+            greedy_wrap=True,
         )
         self.evaluation_controls_bar.setObjectName("EvaluationControlsBar")
         plots_layout.addWidget(self.evaluation_controls_bar)
@@ -1191,8 +1302,24 @@ class EvaluationPanel(BasePanel):
 
     def _update_responsive_layout(self) -> None:
         self._update_info_sidebar_width()
+        self._update_percentage_label()
+        self.evaluation_controls_bar.refresh_layout()
         self._update_chart_layout()
         self._update_height_layout()
+
+    def _update_percentage_label(self) -> None:
+        """Use the documented compact label only at constrained widths."""
+        if not hasattr(self, "evaluation_controls_bar"):
+            return
+        text = (
+            "Show %"
+            if self.evaluation_controls_bar.width() < 680
+            else "Show percentages"
+        )
+        if self.chk_percentage.text() == text:
+            return
+        self.chk_percentage.setText(text)
+        self.chk_percentage.setMinimumWidth(self.chk_percentage.sizeHint().width())
 
     def _update_info_sidebar_width(self) -> None:
         """Keep the fixed summary visible when the assistant narrows the page."""

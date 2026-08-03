@@ -285,7 +285,10 @@ def test_evaluation_ignores_new_revision_when_only_last_error_changes(
         "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
         render_for_current_generation,
     )
-    render = panel._render_for_selection(EvaluationPlanIdentity(plan_index=0))
+    render = panel._render_for_selection(
+        EvaluationPlanIdentity(plan_index=0),
+        split="test",
+    )
 
     assert render is None
     assert requested_generations == [5]

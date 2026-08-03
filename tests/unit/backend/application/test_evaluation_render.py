@@ -14,7 +14,6 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationRenderRequest,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
-    evaluation_provenance_presentation,
 )
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
@@ -51,10 +50,16 @@ class _Dataset:
 
 
 class _EvalRecord:
-    def __init__(self, labels: np.ndarray, outputs: np.ndarray) -> None:
+    def __init__(
+        self,
+        labels: np.ndarray,
+        outputs: np.ndarray,
+        *,
+        evaluation_split: str = "test",
+    ) -> None:
         self.label = labels
         self.output = outputs
-        self.evaluation_split = "test"
+        self.evaluation_split = evaluation_split
         self.metrics = {
             0: {
                 "precision": np.float64(1.0),
@@ -78,6 +83,7 @@ class _Run:
     def __init__(self, labels: np.ndarray, outputs: np.ndarray) -> None:
         self.dataset = _Dataset()
         self.eval_record = _EvalRecord(labels, outputs)
+        self.evaluation_records = {"test": self.eval_record}
 
     @staticmethod
     def is_finished() -> bool:
@@ -214,6 +220,55 @@ def test_plan_publication_pools_only_finished_evaluation_arrays() -> None:
     assert publication.data.metrics["macro_avg"]["support"] == 2
 
 
+def test_run_publication_selects_the_requested_saved_split() -> None:
+    run = _Run(np.array([0]), np.array([[0.9, 0.1]]))
+    run.evaluation_records["training"] = _EvalRecord(
+        np.array([1, 1]),
+        np.array([[0.1, 0.9], [0.2, 0.8]]),
+        evaluation_split="training",
+    )
+    publisher = _publisher(_Runtime([_Plan([run])]))
+    identity = EvaluationRunIdentity(
+        plan=EvaluationPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+
+    publication = publisher.publish(
+        EvaluationRenderRequest(
+            publication_generation=3,
+            selection=identity,
+            split="training",
+        )
+    )
+
+    assert publication.data.evaluation_split == "training"
+    assert publication.data.labels.tolist() == [1, 1]
+    assert publication.data.outputs.tolist() == [[0.1, 0.9], [0.2, 0.8]]
+
+
+def test_plan_publication_never_mixes_splits_when_aggregating() -> None:
+    first = _Run(np.array([0]), np.array([[0.8, 0.2]]))
+    second = _Run(np.array([1]), np.array([[0.1, 0.9]]))
+    first.evaluation_records["validation"] = _EvalRecord(
+        np.array([0]),
+        np.array([[0.7, 0.3]]),
+        evaluation_split="validation",
+    )
+    publisher = _publisher(_Runtime([_Plan([first, second])]))
+
+    with pytest.raises(PreconditionError) as raised:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(plan_index=0),
+                split="validation",
+            )
+        )
+
+    assert raised.value.diagnostics["evaluation_split_unavailable"] is True
+    assert raised.value.diagnostics["retryable"] is False
+
+
 @pytest.mark.parametrize("evaluation_split", ["training", "unknown", ""])
 def test_render_rejects_metrics_without_held_out_provenance(
     evaluation_split: str,
@@ -234,19 +289,9 @@ def test_render_rejects_metrics_without_held_out_provenance(
         )
 
     assert raised.value.diagnostics == {
-        "evaluation_final_unavailable": True,
+        "evaluation_split_unavailable": True,
         "retryable": False,
     }
-
-
-def test_evaluation_provenance_presentation_distinguishes_held_out_splits() -> None:
-    assert evaluation_provenance_presentation("test")[0] == "Final · Test split"
-    assert evaluation_provenance_presentation("validation")[0] == (
-        "Final · Validation split"
-    )
-    assert evaluation_provenance_presentation("test, validation")[0] == (
-        "Final · Held-out splits"
-    )
 
 
 @pytest.mark.parametrize(

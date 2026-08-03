@@ -39,6 +39,7 @@ class _EvaluationRunSummary(TypedDict):
     name: str
     finished: bool
     evaluation_split: str
+    evaluation_splits: list[str]
 
 
 class _EvaluationPlanSummary(TypedDict):
@@ -115,6 +116,7 @@ class AnalysisCommandService:
                                 )
                                 or "unknown"
                             ),
+                            "evaluation_splits": self._run_evaluation_splits(run),
                         }
                         for run_index, run in enumerate(runs)
                     ],
@@ -416,15 +418,37 @@ class AnalysisCommandService:
 
     @staticmethod
     def _evaluation_splits(runs: list[Any]) -> list[str]:
-        """Return explicit final-evaluation provenance for completed runs."""
+        """Return every saved prediction split across completed runs."""
         splits = {
-            str(
-                getattr(getattr(run, "eval_record", None), "evaluation_split", None)
-                or "unknown"
-            )
+            split
             for run in runs
+            for split in AnalysisCommandService._run_evaluation_splits(run)
         }
         return sorted(splits)
+
+    @staticmethod
+    def _run_evaluation_splits(run: Any) -> list[str]:
+        records = getattr(run, "evaluation_records", None)
+        if isinstance(records, dict):
+            saved = {
+                str(split).strip().casefold()
+                for split, record in records.items()
+                if record is not None
+                and str(split).strip().casefold() in {"training", "validation", "test"}
+            }
+            if saved:
+                return sorted(saved)
+        legacy_record = getattr(run, "eval_record", None)
+        if legacy_record is None:
+            return []
+        legacy_split = (
+            str(getattr(legacy_record, "evaluation_split", None) or "unknown")
+            .strip()
+            .casefold()
+        )
+        return (
+            [legacy_split] if legacy_split in {"training", "validation", "test"} else []
+        )
 
     @classmethod
     def _json_safe(cls, value: Any) -> Any:

@@ -668,7 +668,9 @@ def test_training_plan_holder_train_one_repeat(base_holder):
 
 
 @pytest.mark.timeout(15)
-def test_training_uses_validation_per_epoch_and_test_only_after_selection(base_holder):
+def test_training_saves_predictions_for_each_available_split_after_selection(
+    base_holder,
+):
     train_loader, val_loader, test_loader = base_holder.get_loader()
     assert train_loader is not None
     assert val_loader is not None
@@ -689,8 +691,8 @@ def test_training_uses_validation_per_epoch_and_test_only_after_selection(base_h
         timeline.append("select_checkpoint")
         return original_get_eval_pair(*args, **kwargs)
 
-    def final_test(*args, **kwargs):
-        timeline.append("final_test")
+    def split_evaluation(*args, **kwargs):
+        timeline.append(f"evaluate_{kwargs['evaluation_split']}")
         return original_evaluate(*args, **kwargs)
 
     with (
@@ -712,23 +714,29 @@ def test_training_uses_validation_per_epoch_and_test_only_after_selection(base_h
         patch.object(
             Evaluator,
             "evaluate",
-            side_effect=final_test,
+            side_effect=split_evaluation,
         ) as final_evaluate,
     ):
         base_holder.train_one_repeat(record)
 
     assert evaluate_metrics.call_count == 2
     assert all(call.args[1] is val_loader for call in evaluate_metrics.call_args_list)
-    final_evaluate.assert_called_once()
-    assert final_evaluate.call_args.args[1] is test_loader
+    assert [call.args[1] for call in final_evaluate.call_args_list] == [
+        train_loader,
+        val_loader,
+        test_loader,
+    ]
     assert timeline == [
         "validation",
         "validation",
         "select_checkpoint",
-        "final_test",
+        "evaluate_training",
+        "evaluate_validation",
+        "evaluate_test",
     ]
     assert record.eval_record is not None
     assert record.eval_record.evaluation_split == "test"
+    assert set(record.evaluation_records) == {"training", "validation", "test"}
     assert not hasattr(record, "test")
     assert all(not values for values in record._legacy_test_history.values())
 
@@ -775,10 +783,13 @@ def test_training_plan_holder_train_one_repeat_empty_training_data(base_holder):
 def test_training_plan_holder_train_one_repeat_eval(base_holder):
     train_record = base_holder.train_record_list[0]
 
-    with patch.object(train_record, "set_eval_record") as set_eval_record_mock:
+    with patch.object(
+        train_record,
+        "set_evaluation_records",
+    ) as set_evaluation_records_mock:
         base_holder.train_one_repeat(train_record)
 
-        set_eval_record_mock.assert_called_once()
+        set_evaluation_records_mock.assert_called_once()
 
 
 @pytest.mark.timeout(10)
@@ -950,7 +961,13 @@ def test_train_one_repeat_uses_basic_evaluation_without_saliency(base_holder):
     ):
         base_holder.train_one_repeat(record)
 
-    mock_evaluate.assert_called_once()
+    assert [
+        call.kwargs["evaluation_split"] for call in mock_evaluate.call_args_list
+    ] == [
+        "training",
+        "validation",
+        "test",
+    ]
     mock_saliency.assert_not_called()
     assert record.eval_record is sentinel
 
@@ -978,7 +995,13 @@ def test_train_one_repeat_keeps_saliency_out_of_training_thread_when_configured(
     ):
         base_holder.train_one_repeat(record)
 
-    mock_evaluate.assert_called_once()
+    assert [
+        call.kwargs["evaluation_split"] for call in mock_evaluate.call_args_list
+    ] == [
+        "training",
+        "validation",
+        "test",
+    ]
     mock_saliency.assert_not_called()
     assert record.eval_record is sentinel
 
