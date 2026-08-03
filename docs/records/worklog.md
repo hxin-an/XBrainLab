@@ -16817,8 +16817,12 @@
   - Expanded Agent/context/evidence/recovery regression -> `2448 passed`; the six context-boundary
     cases that initially resolved the wrong default cache all passed after rerunning their seven-test
     module with the canonical D-drive offline model-cache binding.
+  - Three consecutive exact-Granite long-session captures from clean pushed source
+    `e14e6b16b4926b2c17bb74b66ebae6c0d604523f` passed strict artifact revalidation. Every run
+    observed one real model generation, one deterministic `query_state` command result, the matching
+    post-reset publication, completed UI state and completed Qt shutdown.
   - Ruff check/format and `git diff --check` -> PASS.
 - claim boundary：
-  - This remains a validated source checkpoint. Repeated exact-Granite long-session capture and the
-    complete canonical manifest still need to pass from the clean pushed commit before handoff-ready
-    can be claimed.
+  - Repeated exact-Granite long-session behavior is now clean-source evidence. The complete canonical
+    manifest still needs to pass from the final clean pushed commit before handoff-ready can be
+    claimed.
