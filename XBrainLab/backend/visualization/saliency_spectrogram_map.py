@@ -4,29 +4,21 @@ import logging
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from matplotlib.colors import Normalize, PowerNorm
-from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
 from .base import Visualizer
-from .saliency_semantics import SALIENCY_RED_BLUE_CMAP
+from .saliency_semantics import (
+    SALIENCY_RED_BLUE_CMAP,
+    attribution_colormap,
+    style_attribution_colorbar,
+)
 
 logger = logging.getLogger(__name__)
 
 _ROBUST_LOWER_PERCENTILE = 1.0
 _ROBUST_UPPER_PERCENTILE = 99.0
 _POWER_SCALE_DYNAMIC_RANGE = 1_000.0
-
-
-def _compact_colorbar_tick(value: float, _position: int) -> str:
-    """Return readable colorbar text for tiny saliency magnitudes."""
-    abs_value = abs(value)
-    if abs_value == 0:
-        return "0"
-    if 0.01 <= abs_value < 100:
-        return f"{value:.2f}".rstrip("0").rstrip(".")
-    return f"{value:.1e}"
 
 
 class SaliencySpectrogramMapViz(Visualizer):
@@ -250,6 +242,7 @@ class SaliencySpectrogramMapViz(Visualizer):
         self.spectrogram_diagnostics = tuple(diagnostics)
         self.spectrogram_display_scale = dict(scale_details)
         logger.info("Attribution spectrogram shared display scale: %s", scale_details)
+        display_cmap = attribution_colormap(SALIENCY_RED_BLUE_CMAP)
         fig.subplots_adjust(
             left=0.10,
             right=0.86,
@@ -279,15 +272,12 @@ class SaliencySpectrogramMapViz(Visualizer):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
             plot_axes.append(ax)
 
-            cmap = plt.get_cmap(SALIENCY_RED_BLUE_CMAP).copy()
-            cmap.set_bad("#777777")
-            cmap.set_over(cmap(1.0))
             image = ax.imshow(
                 saliency,
                 origin="lower",
                 interpolation="nearest",
                 aspect="auto",
-                cmap=cmap,
+                cmap=display_cmap,
                 norm=shared_norm,
                 extent=(
                     time_min,
@@ -315,13 +305,11 @@ class SaliencySpectrogramMapViz(Visualizer):
                 orientation="vertical",
                 fraction=0.035,
                 pad=0.04,
-                format=FuncFormatter(_compact_colorbar_tick),
                 extend=(
                     "max"
                     if int(scale_details.get("over_range_count") or 0) > 0
                     else "neither"
                 ),
             )
-            colorbar.ax.tick_params(labelsize=7, pad=1)
-            colorbar.set_label(colorbar_label, fontsize=8)
+            style_attribution_colorbar(colorbar, label=colorbar_label)
         return fig

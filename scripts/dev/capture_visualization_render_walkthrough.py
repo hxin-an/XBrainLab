@@ -523,9 +523,9 @@ def _capture_render_tab(
 
 
 def _explanation_context_from_panel(panel: Any) -> str:
-    """Read aggregation semantics from the visible compact provenance label."""
-    provenance = getattr(panel, "explanation_provenance_label", None)
-    text = getattr(provenance, "text", None)
+    """Read aggregation semantics from the explanation tabs tooltip."""
+    tabs = getattr(panel, "tabs", None)
+    text = getattr(tabs, "toolTip", None)
     if not callable(text):
         raise RuntimeError("Visualization aggregation information is unavailable.")
     context = str(text()).strip()

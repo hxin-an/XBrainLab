@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from PyQt6.QtCore import QEvent, Qt, QThread
-from PyQt6.QtGui import QIcon, QStandardItemModel
+from PyQt6.QtCore import QEvent, QThread
+from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -15,10 +15,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QStyle,
     QTabWidget,
-    QToolButton,
-    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -370,30 +367,6 @@ class VisualizationPanel(BasePanel):
         # Tabs
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(Stylesheets.TAB_WIDGET_CLEAN)
-        self.explanation_info_button = QToolButton(self.tabs)
-        self.explanation_info_button.setObjectName("ExplanationAggregationInfo")
-        self.explanation_info_button.setAccessibleName("Plot aggregation details")
-        self.explanation_info_button.setAutoRaise(True)
-        self.explanation_info_button.setFixedSize(24, 24)
-        self.explanation_info_button.setCursor(
-            Qt.CursorShape.PointingHandCursor,
-        )
-        style = self.style()
-        self.explanation_info_button.setIcon(
-            style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
-            if style is not None
-            else QIcon()
-        )
-        self.explanation_info_button.setToolTip(
-            "How the selected explanation plot is grouped and aggregated."
-        )
-        self.explanation_info_button.clicked.connect(
-            self._show_explanation_context_tooltip,
-        )
-        self.tabs.setCornerWidget(
-            self.explanation_info_button,
-            Qt.Corner.TopRightCorner,
-        )
         # Signal connected at the end of init_ui to avoid early triggering
 
         # Get trainers for initialization (empty initially)
@@ -415,16 +388,6 @@ class VisualizationPanel(BasePanel):
         self.tabs.addTab(self.tab_3d, "3D Plot")
         self._last_active_saliency_view = self.tab_map
 
-        self.explanation_provenance_label = QLabel()
-        self.explanation_provenance_label.setObjectName("VisualizationProvenance")
-        self.explanation_provenance_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.explanation_provenance_label.setWordWrap(True)
-        self.explanation_provenance_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
-        )
-        plots_layout.addWidget(self.explanation_provenance_label)
         plots_layout.addWidget(self.tabs)
         left_layout.addWidget(plots_group, stretch=1)
         main_layout.addWidget(left_widget, stretch=1)
@@ -813,10 +776,7 @@ class VisualizationPanel(BasePanel):
             plan_label=self._selected_plan_label(),
             run_label=self._selected_run_label(),
         )
-        self.explanation_provenance_label.setText(self._explanation_context_text)
-        self.explanation_provenance_label.setToolTip(self._explanation_context_text)
         self.tabs.setToolTip(self._explanation_context_text)
-        self.explanation_info_button.setToolTip(self._explanation_context_text)
 
     def _selected_dataset_label(self) -> str:
         """Return the dataset identity bound to the selected finished result."""
@@ -841,16 +801,6 @@ class VisualizationPanel(BasePanel):
             self.run_combo.currentText()
             if isinstance(self.run_combo.currentData(), SaliencyRunIdentity)
             else ""
-        )
-
-    def _show_explanation_context_tooltip(self) -> None:
-        """Expose the compact aggregation semantics near the active tab."""
-        QToolTip.showText(
-            self.explanation_info_button.mapToGlobal(
-                self.explanation_info_button.rect().bottomLeft(),
-            ),
-            self.explanation_info_button.toolTip(),
-            self.explanation_info_button,
         )
 
     def on_update(self):
@@ -2217,7 +2167,7 @@ class VisualizationPanel(BasePanel):
         self._runs_by_plan = {}
         self.plan_combo.blockSignals(False)
         self.run_combo.blockSignals(False)
-        if hasattr(self, "explanation_provenance_label"):
+        if hasattr(self, "tabs"):
             self._refresh_explanation_context()
 
     @staticmethod

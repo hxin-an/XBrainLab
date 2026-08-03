@@ -380,23 +380,18 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
 
 
-def test_visualization_panel_shows_compact_aggregation_provenance(qtbot):
+def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(qtbot):
     panel, _ctrl = _make_panel(qtbot)
 
     assert not hasattr(panel, "explanation_context")
-    assert not panel.explanation_info_button.isHidden()
-    assert panel.explanation_info_button.accessibleName() == "Plot aggregation details"
-    assert panel.explanation_provenance_label.text() == (
-        "True class · Mean over EEG epochs"
-    )
+    assert not hasattr(panel, "explanation_info_button")
+    assert not hasattr(panel, "explanation_provenance_label")
     assert panel.tabs.toolTip() == "True class · Mean over EEG epochs"
-    assert panel.explanation_info_button.toolTip() == panel.tabs.toolTip()
 
     panel.tabs.setCurrentIndex(1)
     assert panel.tabs.toolTip() == (
         "True class · Mean magnitude over EEG epochs and channels"
     )
-    assert panel.explanation_info_button.toolTip() == panel.tabs.toolTip()
 
     panel.tabs.setCurrentIndex(2)
     assert panel.tabs.toolTip() == "True class · Mean over EEG epochs and time"
@@ -418,10 +413,9 @@ def test_visualization_panel_shows_compact_aggregation_provenance(qtbot):
     with patch.object(panel, "on_update"):
         panel.tabs.setCurrentIndex(0)
 
-    assert panel.explanation_provenance_label.text() == (
+    assert panel.tabs.toolTip() == (
         "motor-imagery · Fold 1 (EEGNet) · Run 1 · True class · Mean over EEG epochs"
     )
-    assert panel.explanation_provenance_label.wordWrap()
 
     _publish_panel_state(
         panel,
@@ -438,10 +432,8 @@ def test_visualization_panel_shows_compact_aggregation_provenance(qtbot):
         ),
     )
 
-    assert panel.explanation_provenance_label.text().startswith(
-        "motor-imagery · Fold 1 (EEGNet) · Run 1"
-    )
-    assert "new-current-file.edf" not in panel.explanation_provenance_label.text()
+    assert panel.tabs.toolTip().startswith("motor-imagery · Fold 1 (EEGNet) · Run 1")
+    assert "new-current-file.edf" not in panel.tabs.toolTip()
 
 
 def test_visualization_panel_clears_result_identity_after_publication_rejection(qtbot):
@@ -462,15 +454,13 @@ def test_visualization_panel_clears_result_identity_after_publication_rejection(
     panel._refresh_explanation_context()
     publication = panel._application_view_publication
     assert publication is not None
-    assert "motor-imagery" in panel.explanation_provenance_label.text()
+    assert "motor-imagery" in panel.tabs.toolTip()
 
     assert (
         panel._accept_application_publication(replace(publication, stale=True)) is False
     )
 
-    assert panel.explanation_provenance_label.text() == (
-        "True class · Mean over EEG epochs"
-    )
+    assert panel.tabs.toolTip() == "True class · Mean over EEG epochs"
     assert "motor-imagery" not in panel.tabs.toolTip()
 
 

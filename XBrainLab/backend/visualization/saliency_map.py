@@ -5,7 +5,11 @@ from typing import Any
 import numpy as np
 
 from .base import Visualizer
-from .saliency_semantics import saliency_color_scale
+from .saliency_semantics import (
+    attribution_colormap,
+    saliency_color_scale,
+    style_attribution_colorbar,
+)
 
 
 class SaliencyMapViz(Visualizer):
@@ -54,6 +58,7 @@ class SaliencyMapViz(Visualizer):
             [saliency for _label_key, _label_name, saliency in display_by_label],
             absolute=absolute,
         )
+        display_cmap = attribution_colormap(cmap)
         plot_axes = []
         image = None
         for plot_index, (_label_key, label_name, saliency) in enumerate(
@@ -65,7 +70,7 @@ class SaliencyMapViz(Visualizer):
             image = ax.imshow(
                 saliency,
                 aspect="auto",
-                cmap=cmap,
+                cmap=display_cmap,
                 vmin=color_min,
                 vmax=color_max,
                 interpolation="none",
@@ -103,7 +108,7 @@ class SaliencyMapViz(Visualizer):
                 fraction=0.035,
                 pad=0.04,
             )
-            colorbar.ax.tick_params(labelsize=7, pad=1)
+            style_attribution_colorbar(colorbar)
         fig.subplots_adjust(
             left=0.10,
             right=0.88,

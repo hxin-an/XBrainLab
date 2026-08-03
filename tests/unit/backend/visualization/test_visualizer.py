@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
 from XBrainLab.backend.dataset import Epochs
@@ -752,6 +753,7 @@ def test_saliency_spectrogram_shares_robust_scale_across_classes():
     for image in images:
         assert image.get_clim() == pytest.approx(shared_limits)
         assert image.get_cmap().name == "coolwarm"
+        assert image.get_cmap() is images[0].get_cmap()
     assert shared_limits[0] == 0.0
     assert shared_limits[1] > 0.0
     assert observed_stft_dtypes == [np.dtype(np.float32), np.dtype(np.float32)]
@@ -769,6 +771,70 @@ def test_saliency_spectrogram_shares_robust_scale_across_classes():
             for frequency_bin in diagnostic["frequency_bins"]
         )
     plt.close(fig)
+
+
+def test_map_and_spectrogram_share_attribution_palette_and_colorbar_style():
+    epochs = Epochs(get_preprocessed_data_list(2))
+    epochs.label_map = {0: "left", 1: "right"}
+    epochs.event_id = {"left": 0, "right": 1}
+    epochs.sfreq = 128.0
+    sample_count = 193
+    time = np.arange(sample_count) / epochs.sfreq
+    base_signal = np.sin(2 * np.pi * 10 * time)
+    gradient = {
+        0: np.broadcast_to(
+            base_signal[None, None, :],
+            (2, len(ch_names), sample_count),
+        ).copy(),
+        1: np.broadcast_to(
+            (2 * base_signal)[None, None, :],
+            (2, len(ch_names), sample_count),
+        ).copy(),
+    }
+    eval_record = _bound_eval_record(
+        epochs,
+        np.array([0, 1, 0, 1]),
+        np.ones((4, 2)),
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+
+    map_figure = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+        "Gradient",
+        False,
+    )
+    spectrogram_figure = VisualizerType.SaliencySpectrogramMap.value(
+        eval_record,
+        epochs,
+    ).get_plt("Gradient")
+    map_image = next(axis.images[0] for axis in map_figure.axes if axis.images)
+    spectrogram_image = next(
+        axis.images[0] for axis in spectrogram_figure.axes if axis.images
+    )
+
+    assert map_image.get_cmap().name == spectrogram_image.get_cmap().name == "coolwarm"
+    np.testing.assert_allclose(
+        map_image.get_cmap().get_bad(),
+        spectrogram_image.get_cmap().get_bad(),
+    )
+    map_tick_sizes = {
+        label.get_fontsize() for label in map_figure.axes[-1].get_yticklabels()
+    }
+    spectrogram_tick_sizes = {
+        label.get_fontsize() for label in spectrogram_figure.axes[-1].get_yticklabels()
+    }
+    assert map_tick_sizes == spectrogram_tick_sizes == {7.0}
+    assert isinstance(map_figure.axes[-1].yaxis.get_major_formatter(), FuncFormatter)
+    assert isinstance(
+        spectrogram_figure.axes[-1].yaxis.get_major_formatter(),
+        FuncFormatter,
+    )
+
+    plt.close(map_figure)
+    plt.close(spectrogram_figure)
 
 
 def test_saliency_spectrogram_robust_scale_is_not_owned_by_one_outlier():

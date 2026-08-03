@@ -9,7 +9,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from PIL import Image
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QLabel, QMainWindow, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
 from scripts.dev import capture_visualization_render_walkthrough as capture_script
 from scripts.dev.capture_visualization_render_walkthrough import (
@@ -48,8 +48,9 @@ def test_explanation_context_comes_from_information_control(qapp) -> None:
         "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
         "True class · Mean over EEG epochs"
     )
-    provenance = QLabel(expected)
-    panel = SimpleNamespace(explanation_provenance_label=provenance)
+    tabs = QTabWidget()
+    tabs.setToolTip(expected)
+    panel = SimpleNamespace(tabs=tabs)
 
     assert _explanation_context_from_panel(panel) == expected
 
