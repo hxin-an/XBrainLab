@@ -16755,3 +16755,24 @@
 - claim boundary：
   - This is a validated repair checkpoint, not a handoff verdict. Repeated exact Granite recovery
     and the complete canonical manifest must pass from the clean pushed repair commit.
+
+### 2026-08-03 Top-level native window disposal
+
+- completed：
+  - Traced the remaining intermittent post-artifact `SIGSEGV` to top-level windows that were
+    closed but not destroyed before Python interpreter teardown.
+  - Made the desktop entry point opt into Qt delete-on-close ownership and made every bounded
+    Assistant walkthrough explicitly delete its terminal window, drain deferred-delete events,
+    and only then quit the event loop.
+  - Kept `MainWindow` itself free of implicit delete-on-close behavior so component and shutdown
+    tests can still observe the accepted-close transition without accessing deleted wrappers.
+- validation：
+  - Red-first disposal-order contracts -> PASS.
+  - Bounded shutdown, desktop entry-point, MainWindow/Assistant shutdown, and adjacent native
+    Visualization lifecycle tests -> `115 passed` plus `12 passed` for entry-point/runtime helpers.
+  - One dirty-source Granite 3.3 2B training-completion walkthrough completed training,
+    evaluation, saliency, visualization, terminal Assistant cleanup, and process teardown without
+    a native crash. Strict evidence sealing rejected only the intentionally dirty source tree.
+- claim boundary：
+  - This remains a repair checkpoint until repeated walkthroughs and the canonical manifest pass
+    from the clean pushed exact commit; one clean native exit does not establish flake closure.

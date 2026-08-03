@@ -180,6 +180,11 @@ def _present_main_window(
     QTimer.singleShot(0, lambda: _request_main_window_activation(app, window))
 
 
+def _configure_product_window_lifetime(window: QWidget) -> None:
+    """Destroy native child resources before the interpreter tears down."""
+    window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+
 def main() -> None:
     """Parse CLI arguments, create the application, and show the main window.
 
@@ -237,6 +242,7 @@ def main() -> None:
     study = Study()
 
     window = MainWindow(study)
+    _configure_product_window_lifetime(window)
     _present_main_window(app, splash, window)
     if startup_geometry_diagnostics_enabled():
         logger.info(widget_geometry_diagnostic_line("main_window.after_show", window))

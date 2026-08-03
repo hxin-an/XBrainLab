@@ -67,6 +67,13 @@ class BoundedQtShutdown:
             lifecycle_state = "closed"
 
         if not window_visible and lifecycle_state == "closed":
+            # ``close()`` hides a top-level QWidget but does not necessarily
+            # destroy its native children. Dispose it while QApplication still
+            # owns the event loop so Qt, plotting, and model wrappers are not
+            # finalized later in interpreter-shutdown order.
+            with suppress(RuntimeError):
+                self._window.deleteLater()
+            drain_qt_runtime_after_event_loop(self._app)
             self._state["shutdown"] = {"status": "completed", "detail": ""}
             self._app.quit()
             return
