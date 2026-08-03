@@ -1,8 +1,10 @@
-"""Background worker utilities for offloading tasks to QThreadPool."""
+"""Background worker utilities for Qt and Python-owned execution threads."""
 
 import logging
 import sys
 import traceback
+from threading import Thread
+from typing import Any
 
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal
 
@@ -27,8 +29,35 @@ class WorkerSignals(QObject):
     progress = pyqtSignal(int)
 
 
+def _run_worker_task(worker: Any) -> None:
+    """Execute one worker callback through the shared signal contract."""
+    try:
+        result = worker.fn(*worker.args, **worker.kwargs)
+    except Exception:
+        logger.error("Worker task failed", exc_info=True)
+        exctype, value = sys.exc_info()[:2]
+        _safe_emit(worker, "error", (exctype, value, traceback.format_exc()))
+    else:
+        _safe_emit(worker, "result", result)
+    finally:
+        _safe_emit(worker, "finished")
+
+
+def _safe_emit(worker: Any, signal_name: str, *args: Any) -> None:
+    """Emit a worker signal unless Qt already destroyed its wrapper."""
+    try:
+        signal = getattr(worker.signals, signal_name)
+        signal.emit(*args)
+    except RuntimeError:
+        logger.debug(
+            "Skipped worker %s signal because Qt deleted the signal wrapper.",
+            signal_name,
+            exc_info=True,
+        )
+
+
 class Worker(QRunnable):
-    """Worker thread for offloading heavy tasks via QThreadPool.
+    """Worker for lightweight callbacks dispatched through ``QThreadPool``.
 
     Wraps a callable with arguments and emits signals for completion,
     errors, and results.
@@ -52,36 +81,43 @@ class Worker(QRunnable):
         """
         super().__init__()
 
-        # Store constructor arguments (re-used for processing)
         self.fn = fn
         self.args = args
         self.kwargs = kwargs
         self.signals = WorkerSignals()
 
-    def run(self):
-        """Execute the callback and emit result or error signals."""
-        try:
-            result = self.fn(*self.args, **self.kwargs)
-        except Exception:
-            # Emit error signal
-            logger.error("Worker task failed", exc_info=True)
-            exctype, value = sys.exc_info()[:2]
-            self._safe_emit("error", (exctype, value, traceback.format_exc()))
-        else:
-            # Return the result of the processing
-            self._safe_emit("result", result)
-        finally:
-            # Done
-            self._safe_emit("finished")
+    def run(self) -> None:
+        _run_worker_task(self)
 
-    def _safe_emit(self, signal_name: str, *args) -> None:
-        """Emit a worker signal unless Qt already destroyed the receiver wrapper."""
-        try:
-            signal = getattr(self.signals, signal_name)
-            signal.emit(*args)
-        except RuntimeError:
-            logger.debug(
-                "Skipped worker %s signal because Qt deleted the signal wrapper.",
-                signal_name,
-                exc_info=True,
-            )
+
+class PythonThreadWorker:
+    """Run native-heavy callbacks in a Python-owned thread.
+
+    Qt-created pooled threads enter Python through SIP. Long scientific calls can
+    repeatedly release the GIL while running there, which has produced native
+    crashes in the WSL/PyQt runtime. A ``threading.Thread`` owns a regular Python
+    thread state while preserving the same queued Qt signal delivery contract.
+    """
+
+    def __init__(self, fn, *args, name: str, **kwargs):
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = WorkerSignals()
+        self._thread = Thread(target=self.run, name=name, daemon=False)
+
+    @property
+    def name(self) -> str:
+        return self._thread.name
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def run(self) -> None:
+        _run_worker_task(self)
+
+    def is_alive(self) -> bool:
+        return self._thread.is_alive()
+
+    def join(self, timeout: float | None = None) -> None:
+        self._thread.join(timeout=timeout)

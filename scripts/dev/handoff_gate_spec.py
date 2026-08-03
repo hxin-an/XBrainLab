@@ -725,6 +725,7 @@ _GATE_SPECS = (
             f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/native-lifecycle-tests.json",
             "--",
             "--capture=sys",
+            "tests/integration/ui/test_preprocess_async_filter_lifecycle.py",
             "tests/integration/ui/test_preprocess_native_lifecycle.py",
             "tests/integration/ui/test_native_render_lifecycle.py",
             "-q",

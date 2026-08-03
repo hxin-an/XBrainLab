@@ -990,11 +990,13 @@ def execute_application_command_async(
     expected_publication_generation: int | None = None,
     runtime: ApplicationUiRuntime | None = None,
 ) -> bool:
-    """Execute an ApplicationService command through QThreadPool for UI flows.
+    """Execute an ApplicationService command outside the GUI thread.
 
     The backend command still runs through the same ApplicationService contract,
-    but expensive work is offloaded from the GUI thread. Result handling and UI
-    refresh are delivered through Qt signals on the receiver thread.
+    but expensive work is offloaded from the GUI thread. Native-heavy preprocess
+    commands use a Python-owned thread; other commands retain the Qt worker pool.
+    Result handling and UI refresh are delivered through Qt signals on the receiver
+    thread.
 
     Returns ``False`` when no application runtime is available so callers can show
     an explicit blocked state or use an intentional read-only compatibility adapter.
@@ -1033,6 +1035,9 @@ def execute_application_command_async(
         refresh=False,
         busy_target=busy_target,
         allow_during_shutdown=allow_during_shutdown,
+        python_thread_name=(
+            "XBrainLab-preprocess" if command.name is CommandName.PREPROCESS else None
+        ),
     ).start()
     completion_callbacks.mark_started(started)
     return started

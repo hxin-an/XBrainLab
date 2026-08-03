@@ -13,7 +13,7 @@ from PyQt6.QtCore import QObject, QThreadPool, pyqtSlot
 from XBrainLab.backend.application.commands import Command
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.core.worker import Worker
+from XBrainLab.ui.core.worker import PythonThreadWorker, Worker
 from XBrainLab.ui.refresh_coordinator import (
     refresh_after_command,
     suppress_observer_refresh_during_command,
@@ -224,7 +224,7 @@ class AsyncCommandHandle:
         self,
         *,
         context: Any,
-        worker: Worker,
+        worker: Worker | PythonThreadWorker,
         registry: AsyncCommandRegistry,
     ) -> None:
         self.context = context
@@ -291,6 +291,10 @@ class QtApplicationCommandRunner:
         | None = None,
         thread_pool_factory: Callable[[], QThreadPool | None] | None = None,
         worker_factory: Callable[[Callable[[], CommandResult]], Worker] | None = None,
+        python_worker_factory: (
+            Callable[[Callable[[], CommandResult], str], PythonThreadWorker] | None
+        ) = None,
+        python_thread_name: str | None = None,
         registry: AsyncCommandRegistry | None = None,
     ) -> None:
         self.context = context
@@ -306,6 +310,10 @@ class QtApplicationCommandRunner:
         self.cleanup_factory = cleanup_factory or AsyncCommandCleanup
         self.thread_pool_factory = thread_pool_factory or QThreadPool.globalInstance
         self.worker_factory = worker_factory or Worker
+        self.python_worker_factory = python_worker_factory or (
+            lambda execute, name: PythonThreadWorker(execute, name=name)
+        )
+        self.python_thread_name = python_thread_name
         self.registry = registry or application_command_registry()
 
     def start(self) -> bool:
@@ -314,7 +322,7 @@ class QtApplicationCommandRunner:
         suppression = None
         suppression_entered = False
         busy_acquired = False
-        worker: Worker | None = None
+        worker: Worker | PythonThreadWorker | None = None
         handle: AsyncCommandHandle | None = None
         worker_finished = False
 
@@ -354,7 +362,11 @@ class QtApplicationCommandRunner:
                 suppression.__enter__()
                 suppression_entered = True
 
-            worker = self.worker_factory(self.execute)
+            worker = (
+                self.python_worker_factory(self.execute, self.python_thread_name)
+                if self.python_thread_name is not None
+                else self.worker_factory(self.execute)
+            )
             handle = AsyncCommandHandle(
                 context=self.context,
                 worker=worker,
@@ -386,8 +398,11 @@ class QtApplicationCommandRunner:
             worker.signals.error.connect(cleanup_receiver.handle_error)
             worker.signals.finished.connect(cleanup_receiver.handle_finished)
 
-            thread_pool = _require_thread_pool(self.thread_pool_factory)
-            thread_pool.start(worker)
+            if isinstance(worker, PythonThreadWorker):
+                worker.start()
+            else:
+                thread_pool = _require_thread_pool(self.thread_pool_factory)
+                thread_pool.start(worker)
         except Exception as exc:
             finish_worker()
             logger.warning(

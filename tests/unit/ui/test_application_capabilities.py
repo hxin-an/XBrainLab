@@ -20,6 +20,8 @@ from XBrainLab.backend.application import (
     Command,
     CommandName,
     CommandResult,
+    PreprocessCommand,
+    PreprocessOperation,
     QueryStateCommand,
     ResetSessionCommand,
     get_application_service,
@@ -751,6 +753,53 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
     assert callbacks == [result]
     assert refresh_calls == []
     assert busy_states == [True, False]
+    assert application_command_registry().active_count(widget) == 0
+
+
+def test_async_preprocess_uses_python_owned_worker_instead_of_qt_pool(
+    qtbot,
+    monkeypatch,
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    cast(Any, widget).set_busy = lambda _busy: None
+    command = PreprocessCommand(
+        operation=PreprocessOperation.BANDPASS,
+        low_freq=1.0,
+        high_freq=40.0,
+    )
+    result = CommandResult.success_result(
+        command_name=command.name.value,
+        message="filtered",
+        state=None,
+        changed_state=ChangedState(preprocessed_changed=True),
+    )
+    execution_threads: list[threading.Thread] = []
+    callbacks: list[CommandResult] = []
+
+    def execute(received_command: Command) -> CommandResult:
+        assert received_command is command
+        execution_threads.append(threading.current_thread())
+        return result
+
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        MagicMock(side_effect=AssertionError("preprocess used the Qt thread pool")),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        command,
+        on_result=callbacks.append,
+        runtime=_ApplicationRuntimeFake(execute=execute),
+    )
+
+    assert started is True
+    qtbot.waitUntil(lambda: callbacks == [result], timeout=2_000)
+    assert len(execution_threads) == 1
+    assert execution_threads[0] is not threading.main_thread()
+    assert execution_threads[0].name == "XBrainLab-preprocess"
     assert application_command_registry().active_count(widget) == 0
 
 
