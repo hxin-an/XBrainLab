@@ -121,11 +121,11 @@ def _strict_payload() -> dict[str, Any]:
             "turn_index": 1,
             "generation_id": 11,
             "latest_user_text": FIRST_PROMPT,
-            "workflow_stage": "Ready for preprocessing",
-            "backend_generation": 4,
+            "workflow_stage": "",
+            "backend_generation": None,
             "request_sha256": "1" * 64,
             "request_utf8_bytes": 4096,
-            "response_contract": "structured_action",
+            "response_contract": "natural_language",
         },
         {
             "sequence": 2,
@@ -414,6 +414,33 @@ def test_generation_observation_fails_closed_without_workflow_context() -> None:
         assert "workflow publication" in str(exc).lower()
     else:  # pragma: no cover - assertion branch
         raise AssertionError("Missing workflow context must fail closed.")
+
+
+def test_generation_observation_accepts_bounded_natural_language_turn_without_state() -> (
+    None
+):
+    request = _Request()
+    request.response_contract = type(  # type: ignore[assignment]
+        "Contract",
+        (),
+        {"value": "natural_language"},
+    )()
+    request.to_model_messages = lambda: [  # type: ignore[method-assign]
+        {"role": "system", "content": "bounded informational policy"},
+        {"role": "user", "content": FIRST_PROMPT},
+    ]
+
+    observation = generation_request_observation(
+        request,
+        sequence=1,
+        turn_index=1,
+        backend_generation=None,
+    )
+
+    assert observation["latest_user_text"] == FIRST_PROMPT
+    assert observation["workflow_stage"] == ""
+    assert observation["backend_generation"] is None
+    assert observation["response_contract"] == "natural_language"
 
 
 def test_strict_validator_accepts_complete_bounded_long_session() -> None:

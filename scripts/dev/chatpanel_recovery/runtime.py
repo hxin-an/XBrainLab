@@ -379,6 +379,8 @@ class _RecoveryWalkthroughDriver:
         QTimer.singleShot(250, self._wait_for_ready)
 
     def _wait_for_ready(self) -> None:
+        if self._terminal_started:
+            return
         if self._expired("waiting for exact Granite readiness"):
             return
         manager = self.window.agent_manager
@@ -450,6 +452,8 @@ class _RecoveryWalkthroughDriver:
         QTimer.singleShot(_POLL_INTERVAL_MS, self._wait_for_blocked_turn)
 
     def _wait_for_blocked_turn(self) -> None:
+        if self._terminal_started:
+            return
         if self._expired("waiting for the blocked visualization turn"):
             return
         if not self._turn_reached_terminal():
@@ -499,6 +503,8 @@ class _RecoveryWalkthroughDriver:
         QTimer.singleShot(250, self._wait_for_training_recovery)
 
     def _wait_for_training_recovery(self) -> None:
+        if self._terminal_started:
+            return
         if self._expired("waiting for terminal training recovery"):
             return
         service = get_application_service(self.study)
@@ -608,6 +614,8 @@ class _RecoveryWalkthroughDriver:
         QTimer.singleShot(_POLL_INTERVAL_MS, self._wait_for_retry)
 
     def _wait_for_retry(self) -> None:
+        if self._terminal_started:
+            return
         if self._expired("waiting for Retry recovery"):
             return
         if not self._turn_reached_terminal():
@@ -654,6 +662,8 @@ class _RecoveryWalkthroughDriver:
         QTimer.singleShot(25, self._wait_for_cancellable_turn)
 
     def _wait_for_cancellable_turn(self) -> None:
+        if self._terminal_started:
+            return
         if self._expired("waiting for a cancellable exact-model turn"):
             return
         if len(self.terminals) > self._turn_baseline.get("terminal_count", 0):
@@ -742,6 +752,8 @@ class _RecoveryWalkthroughDriver:
         QTimer.singleShot(25, self._wait_for_cancelled_terminal)
 
     def _wait_for_cancelled_terminal(self) -> None:
+        if self._terminal_started:
+            return
         if self._expired("waiting for the cancelled terminal"):
             return
         if not self._turn_reached_terminal():

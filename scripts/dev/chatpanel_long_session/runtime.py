@@ -470,6 +470,8 @@ class _LongSessionDriver:
             self.fail(f"Timed out after {self.timeout_seconds}s during capture.")
 
     def _wait_for_ready(self) -> None:
+        if self._finishing:
+            return
         if self._expired("waiting for exact Granite readiness"):
             return
         ready, _reason = assistant_surface_ready(self.manager)
@@ -570,6 +572,8 @@ class _LongSessionDriver:
         return self._capture("prune_boundary")
 
     def _wait_for_turn_terminal(self) -> None:
+        if self._finishing:
+            return
         if self._expired(f"waiting for real turn {self._active_turn_index}"):
             return
         if time.monotonic() - self._turn_started > MAX_TURN_SECONDS:
@@ -722,6 +726,8 @@ class _LongSessionDriver:
         QTimer.singleShot(_POLL_INTERVAL_MS, self._wait_for_external_publication)
 
     def _wait_for_external_publication(self) -> None:
+        if self._finishing:
+            return
         if self._expired("waiting for external ApplicationService publication"):
             return
         change = self._state["external_state_change"]
@@ -743,7 +749,18 @@ class _LongSessionDriver:
                 "latest_tool_publication",
                 None,
             )
-            backend_generation = int(getattr(publication, "backend_generation", 0) or 0)
+            raw_backend_generation = getattr(
+                publication,
+                "backend_generation",
+                None,
+            )
+            backend_generation = (
+                raw_backend_generation
+                if isinstance(raw_backend_generation, int)
+                and not isinstance(raw_backend_generation, bool)
+                and raw_backend_generation > 0
+                else None
+            )
             observation = generation_request_observation(
                 request,
                 sequence=len(self.generation_requests) + 1,

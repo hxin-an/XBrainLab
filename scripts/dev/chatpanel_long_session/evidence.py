@@ -109,7 +109,7 @@ def generation_request_observation(
     *,
     sequence: int,
     turn_index: int,
-    backend_generation: int,
+    backend_generation: int | None,
 ) -> dict[str, object]:
     """Project one real worker request into bounded, path-free evidence."""
     to_model_messages = getattr(request, "to_model_messages", None)
@@ -124,10 +124,26 @@ def generation_request_observation(
 
     latest_user_text = _latest_user_text(messages)
     workflow_stage = _workflow_stage(messages)
+    response_contract = getattr(request, "response_contract", None)
+    response_contract_value = str(
+        getattr(response_contract, "value", response_contract) or ""
+    )
     if not latest_user_text:
         raise ValueError("Generation request omitted the latest user turn.")
-    if not workflow_stage:
+    if response_contract_value == "structured_action" and not workflow_stage:
         raise ValueError("Generation request omitted workflow publication context.")
+    if workflow_stage:
+        observed_backend_generation: int | None = _positive_int(
+            backend_generation,
+            "backend_generation",
+        )
+    elif backend_generation is None:
+        observed_backend_generation = None
+    else:
+        raise ValueError(
+            "Generation request reported a backend generation without workflow "
+            "publication context."
+        )
 
     encoded = json.dumps(
         messages,
@@ -145,15 +161,10 @@ def generation_request_observation(
         ),
         "latest_user_text": latest_user_text,
         "workflow_stage": workflow_stage,
-        "backend_generation": _positive_int(
-            backend_generation,
-            "backend_generation",
-        ),
+        "backend_generation": observed_backend_generation,
         "request_sha256": hashlib.sha256(encoded).hexdigest(),
         "request_utf8_bytes": len(encoded),
-        "response_contract": str(
-            getattr(response_contract, "value", response_contract) or ""
-        ),
+        "response_contract": response_contract_value,
     }
 
 
@@ -542,32 +553,33 @@ def _validate_generation_requests(
         if (
             request.get("turn_index") not in {1, 2}
             or not _is_positive_int(request.get("generation_id"))
-            or not _is_positive_int(request.get("backend_generation"))
             or not _SHA256.fullmatch(str(request.get("request_sha256") or ""))
             or not _is_int_between(
                 request.get("request_utf8_bytes"),
                 1,
                 MAX_CHAT_MODEL_REQUEST_UTF8_BYTES,
             )
-            or request.get("response_contract") != "structured_action"
+            or request.get("response_contract")
+            not in {"natural_language", "structured_action"}
         ):
             return False, "A model generation request observation is invalid."
 
-    before = _mapping(external_change.get("before"))
     after = _mapping(external_change.get("after"))
     first_turn = [item for item in requests if item.get("turn_index") == 1]
     followup = [item for item in requests if item.get("turn_index") == 2]
     if not first_turn or any(
         item.get("latest_user_text") != FIRST_PROMPT
-        or item.get("workflow_stage") != "Ready for preprocessing"
-        or item.get("backend_generation") != before.get("generation")
+        or item.get("workflow_stage") != ""
+        or item.get("backend_generation") is not None
+        or item.get("response_contract") != "natural_language"
         for item in first_turn
     ):
-        return False, "First real-model turn omitted the pre-change publication."
+        return False, "First informational turn exposed workflow-only context."
     if not followup or any(
         item.get("latest_user_text") != FOLLOWUP_PROMPT
         or item.get("workflow_stage") != "No data loaded"
         or item.get("backend_generation") != after.get("generation")
+        or item.get("response_contract") != "structured_action"
         for item in followup
     ):
         return False, "Follow-up model request omitted the current post-change state."

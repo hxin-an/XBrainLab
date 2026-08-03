@@ -64,6 +64,26 @@ def test_recovery_driver_uses_typed_started_generation_after_turn_baseline() -> 
     )
 
 
+@pytest.mark.parametrize(
+    "callback_name",
+    (
+        "_wait_for_ready",
+        "_wait_for_blocked_turn",
+        "_wait_for_training_recovery",
+        "_wait_for_retry",
+        "_wait_for_cancellable_turn",
+        "_wait_for_cancelled_terminal",
+    ),
+)
+def test_recovery_poll_callbacks_stop_after_terminal_started(
+    callback_name: str,
+) -> None:
+    driver = object.__new__(_RecoveryWalkthroughDriver)
+    driver._terminal_started = True
+
+    getattr(driver, callback_name)()
+
+
 def test_entrypoint_remains_a_thin_composition_root() -> None:
     module = inspect.getmodule(main)
     assert module is not None

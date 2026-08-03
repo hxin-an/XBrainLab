@@ -723,6 +723,62 @@ def test_standalone_explanation_does_not_inherit_prior_workflow_exchange() -> No
     assert "current workflow" not in str(messages[1:]).lower()
 
 
+def test_long_history_cannot_displace_current_workflow_publication() -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=41,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    assembler = ContextAssembler(
+        ToolRegistry(),
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    history = [
+        {
+            "role": "user" if index % 2 == 0 else "assistant",
+            "content": (
+                f"Archived checkpoint {index}: obsolete workflow prose. "
+                + ("long-history " * 100)
+            ),
+        }
+        for index in range(498)
+    ]
+    history.append(
+        {
+            "role": "user",
+            "content": (
+                "Check what is ready in the current XBrainLab workflow. "
+                "Use the state query tool if needed, then answer briefly."
+            ),
+        }
+    )
+
+    request = assembler.get_generation_request(history)
+
+    messages = request.to_model_messages()
+    context = _untrusted_context(messages)
+    workflow = _context_item(context, "workflow_decision")["data"]
+    assert workflow["workflow_stage"] == "Ready for preprocessing"
+    assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
+    assert (
+        len(
+            json.dumps(
+                messages,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        )
+        <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
+    )
+
+
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:
     assembler = ContextAssembler(ToolRegistry(), Study())
     history = [

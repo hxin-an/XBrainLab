@@ -16776,3 +16776,25 @@
 - claim boundary：
   - This remains a repair checkpoint until repeated walkthroughs and the canonical manifest pass
     from the clean pushed exact commit; one clean native exit does not establish flake closure.
+
+### 2026-08-03 Long-session evidence and terminal polling contract
+
+- completed：
+  - Traced the long-session manifest timeout to an evidence-contract mismatch: the first bounded
+    EEG explanation is intentionally a natural-language turn with no workflow publication, while
+    the gate incorrectly required structured workflow context on every model request.
+  - Kept the product privacy boundary unchanged and updated the evidence contract to require no
+    workflow-only state on that informational turn, while still requiring the latest
+    ApplicationService publication on the post-reset workflow query.
+  - Added terminal guards to every delayed poll callback in the long-session and recovery drivers
+    so a failed walkthrough cannot touch deleted Qt wrappers or remain alive until recorder timeout.
+  - Added a 498-row history regression proving that bounded conversation history cannot displace
+    the current workflow publication from a real structured request.
+- validation：
+  - Focused red-first evidence, driver teardown and context-budget suite -> `105 passed`.
+  - Expanded Agent/context/evidence/recovery regression -> `1389 passed`.
+  - Ruff check/format and `git diff --check` -> PASS.
+- claim boundary：
+  - This is a validated source checkpoint. Exact Granite long-session evidence and the complete
+    canonical manifest still need to pass from the clean pushed commit before handoff-ready can be
+    claimed.

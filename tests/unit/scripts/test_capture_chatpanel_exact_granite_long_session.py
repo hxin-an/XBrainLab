@@ -152,3 +152,22 @@ def test_entrypoint_is_thin_and_does_not_import_heavy_runtime_at_module_load() -
     assert "mne" not in source.lower()
     assert "chatpanel_long_session.runtime" not in source
     assert "sys.dont_write_bytecode = True" in source
+
+
+@pytest.mark.parametrize(
+    "callback_name",
+    (
+        "_wait_for_ready",
+        "_wait_for_turn_terminal",
+        "_wait_for_external_publication",
+    ),
+)
+def test_deferred_poll_callbacks_stop_after_driver_finishing(
+    callback_name: str,
+) -> None:
+    from scripts.dev.chatpanel_long_session.runtime import _LongSessionDriver
+
+    driver = object.__new__(_LongSessionDriver)
+    driver._finishing = True
+
+    getattr(driver, callback_name)()
