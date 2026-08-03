@@ -602,7 +602,7 @@ class PreprocessSidebar(QWidget):
         self._show_status(message)
 
     def _handle_epoch_command_success(self, result: Any) -> None:
-        self._show_epoch_success(result)
+        self._show_status(f"{result.message} Preprocessing is now locked.")
 
     def _run_preprocess_compatibility_call(
         self,

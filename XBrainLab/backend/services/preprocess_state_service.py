@@ -73,6 +73,7 @@ class PreprocessProductPort(PreprocessStateReadPort, Protocol):
         selected_events: Mapping[str, int] | Sequence[str] | None,
         tmin: float,
         tmax: float,
+        allow_boundary_drop: bool = False,
     ) -> bool: ...
 
     def apply_montage(
@@ -228,6 +229,7 @@ class PreprocessStateService(Observable):
         selected_events: Mapping[str, int] | Sequence[str] | None,
         tmin: float,
         tmax: float,
+        allow_boundary_drop: bool = False,
     ) -> bool:
         result = self._apply_processor(
             self._processor("TimeEpoch"),
@@ -235,6 +237,7 @@ class PreprocessStateService(Observable):
             selected_events,
             tmin,
             tmax,
+            allow_boundary_drop,
         )
         if result:
             self.study.lock_dataset()

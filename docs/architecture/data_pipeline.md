@@ -175,6 +175,13 @@ read study.preprocessed_data_list
 
 `Epochs` 是 dataset generation 前的統一資料容器。
 
+Time Epoching 在 `ApplicationService` 進入 MNE materialization 前先檢查所選事件與每段
+recording 的邊界。若只有不超過所選事件 `1%` 的尾端／起始事件無法容納完整 window，系統會
+建立其餘 epochs，並在 command message、diagnostics 與 preprocessing history 明確記錄排除
+數量；這不是靜默丟棄。若排除比例超過 `1%`，或全部事件都會被排除，則阻擋並要求調整
+window 或 event selection。直接呼叫底層 `TimeEpoch` 時仍預設禁止 boundary drop，避免繞過
+Application Service 的安全判定。
+
 它會：
 
 - 要求輸入資料已經是 epoch，不是 continuous raw。

@@ -95,12 +95,14 @@ class PreprocessController(Observable):
         selected_events: Mapping[str, int] | Sequence[str] | None,
         tmin: float,
         tmax: float,
+        allow_boundary_drop: bool = False,
     ) -> bool:
         return self._preprocess_state.apply_epoching(
             baseline,
             selected_events,
             tmin,
             tmax,
+            allow_boundary_drop,
         )
 
     def apply_montage(

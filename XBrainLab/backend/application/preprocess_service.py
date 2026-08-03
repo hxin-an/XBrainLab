@@ -10,6 +10,7 @@ from XBrainLab.backend.preprocessor.normalize import (
     NORMALIZATION_RUNTIME_KEY,
     NORMALIZATION_SCOPE,
 )
+from XBrainLab.backend.preprocessor.time_epoch import summarize_epoch_boundaries
 from XBrainLab.backend.services.dataset_state_service import DatasetChannelSelectionPort
 from XBrainLab.backend.services.preprocess_state_service import PreprocessProductPort
 
@@ -30,6 +31,8 @@ from .resource_guard import RISK_UNKNOWN, ResourceChecker
 from .state import ApplicationStateSnapshot, InterpretationStateSnapshot
 
 HandlerResult = str | tuple[str, dict[str, Any]]
+
+EPOCH_BOUNDARY_AUTO_EXCLUDE_MAX_RATIO = 0.01
 
 
 class PreprocessCommandService:
@@ -150,23 +153,68 @@ class PreprocessCommandService:
                     "resource_preflight": resource_check.to_diagnostics(),
                 },
             )
-        self.preprocess.apply_epoching(
-            command.baseline,
+        boundary_summary = summarize_epoch_boundaries(
+            preprocessed_data,
             event_ids,
-            command.t_min,
-            command.t_max,
+            tmin=command.t_min,
+            tmax=command.t_max,
         )
+        boundary_diagnostics = boundary_summary.to_diagnostics()
+        if boundary_summary.excluded_event_count:
+            if boundary_summary.remaining_event_count <= 0:
+                raise PreconditionError(
+                    "The selected epoch window exceeds recording bounds for every "
+                    "selected event. Shorten the epoch window before creating epochs.",
+                    diagnostics={"epoch_boundary_check": boundary_diagnostics},
+                )
+            if boundary_summary.excluded_ratio > EPOCH_BOUNDARY_AUTO_EXCLUDE_MAX_RATIO:
+                raise PreconditionError(
+                    "The selected epoch window would exclude "
+                    f"{boundary_summary.excluded_event_count} of "
+                    f"{boundary_summary.selected_event_count} selected events "
+                    "because they are too close to a recording boundary. Shorten "
+                    "the epoch window or review the selected events.",
+                    diagnostics={"epoch_boundary_check": boundary_diagnostics},
+                )
+        if boundary_summary.excluded_event_count:
+            self.preprocess.apply_epoching(
+                command.baseline,
+                event_ids,
+                command.t_min,
+                command.t_max,
+                True,
+            )
+        else:
+            self.preprocess.apply_epoching(
+                command.baseline,
+                event_ids,
+                command.t_min,
+                command.t_max,
+            )
         message = f"Created EEG epochs from {command.t_min}s to {command.t_max}s."
+        diagnostics: dict[str, Any] = {
+            "epoch_boundary_check": boundary_diagnostics,
+        }
+        if boundary_summary.excluded_event_count:
+            message += (
+                f" Excluded {boundary_summary.excluded_event_count} boundary "
+                "event(s) that could not contain the complete window."
+            )
         applied = self._applied_deferred_normalization_count()
-        if not applied:
+        if not applied and not boundary_summary.excluded_event_count:
             return message
-        return (
-            message,
+        if not applied:
+            return message, diagnostics
+        diagnostics.update(
             {
                 "normalization_scope": NORMALIZATION_SCOPE,
                 "deferred_normalization_applied_count": applied,
                 "recording_statistics_used": False,
-            },
+            }
+        )
+        return (
+            message,
+            diagnostics,
         )
 
     def _event_ids_for_epoch_command(

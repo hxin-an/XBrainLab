@@ -68,7 +68,10 @@ def test_teacher_dataset_preflight_real_application_workflows() -> None:
         check["source_sample_label_digest"] == check["stored_sample_label_digest"]
         for check in timing_checks
     )
-    assert results["openneuro_p300_bids"]["observations"]["epoch_count"] == 2_245
+    assert results["openneuro_p300_bids"]["observations"]["epoch_count"] == 2_243
+    assert (
+        results["openneuro_p300_bids"]["observations"]["boundary_events_excluded"] == 2
+    )
     assert results["openneuro_p300_bids"]["observations"]["epoch_event_ids"] == [
         "noise",
         "oddball",

@@ -358,8 +358,8 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
                 )
             epoch = active_service.execute(
                 CreateEpochCommand(
-                    t_min=-0.1,
-                    t_max=0.04,
+                    t_min=-0.2,
+                    t_max=0.5,
                     event_ids=["noise", "oddball", "standard"],
                 )
             )
@@ -390,7 +390,13 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
                 "supervised_ready": bool(handoff.get("supervised_ready", False)),
                 "epoch_count": int(epoch.state.epoch.epoch_count),
                 "epoch_event_ids": sorted(epoch.state.epoch.event_ids),
-                "epoch_window_seconds": [-0.1, 0.04],
+                "epoch_window_seconds": [-0.2, 0.5],
+                "boundary_events_excluded": int(
+                    epoch.diagnostics.get("epoch_boundary_check", {}).get(
+                        "excluded_event_count",
+                        0,
+                    )
+                ),
             }
             result["observations"] = observations
             expected = {
@@ -413,9 +419,10 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
                 "default_epoch_events": ["noise", "oddball", "standard"],
                 "epoch_handoff_ready": True,
                 "supervised_ready": True,
-                "epoch_count": 2_245,
+                "epoch_count": 2_243,
                 "epoch_event_ids": ["noise", "oddball", "standard"],
-                "epoch_window_seconds": [-0.1, 0.04],
+                "epoch_window_seconds": [-0.2, 0.5],
+                "boundary_events_excluded": 2,
             }
             mismatches = [
                 f"{name}: expected {expected_value!r}, got {observations.get(name)!r}"
@@ -433,7 +440,9 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
             result["message"] = (
                 "Three BIDS runs, three run-specific event carriers, and "
                 "2,245 reviewed class events imported with exact source "
-                "sample/label agreement and a successful epoch handoff."
+                "sample/label agreement. A -0.2 to 0.5 second epoch window "
+                "created 2,243 epochs after reporting and excluding two "
+                "recording-boundary events."
             )
             return result
     except Exception as exc:

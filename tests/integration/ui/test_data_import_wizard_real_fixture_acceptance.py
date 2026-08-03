@@ -1063,6 +1063,7 @@ def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
         _parent: QWidget,
         title: str,
         _directory: str,
+        **_kwargs: Any,
     ) -> str:
         chooser_calls.append(title)
         return str(OPENNEURO_P300_ROOT)

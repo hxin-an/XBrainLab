@@ -5,7 +5,10 @@ import numpy as np
 import pytest
 
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.backend.preprocessor.time_epoch import TimeEpoch
+from XBrainLab.backend.preprocessor.time_epoch import (
+    TimeEpoch,
+    summarize_epoch_boundaries,
+)
 
 
 class TestTimeEpoch:
@@ -104,6 +107,40 @@ class TestTimeEpoch:
             )
 
         raw.set_mne.assert_not_called()
+
+    def test_time_epoch_can_exclude_reviewed_boundary_event(self, mock_raw):
+        raw, _, event_id = mock_raw
+        raw.get_event_list.return_value = (
+            np.array(
+                [
+                    [1000, 0, event_id["Event1"]],
+                    [9500, 0, event_id["Event1"]],
+                ]
+            ),
+            event_id,
+        )
+        time_epoch = TimeEpoch([raw])
+
+        summary = summarize_epoch_boundaries(
+            [raw],
+            ["Event1"],
+            tmin=0.0,
+            tmax=1.0,
+        )
+        time_epoch._data_preprocess(
+            raw,
+            selected_event_names=["Event1"],
+            tmin=0.0,
+            tmax=1.0,
+            baseline=None,
+            allow_boundary_drop=True,
+        )
+
+        assert summary.selected_event_count == 2
+        assert summary.excluded_event_count == 1
+        assert summary.remaining_event_count == 1
+        args, _ = raw.set_mne.call_args
+        assert len(args[0]) == 1
 
     def test_time_epoch_rejects_when_mne_drops_every_selected_event(self, mock_raw):
         raw, _, event_id = mock_raw
