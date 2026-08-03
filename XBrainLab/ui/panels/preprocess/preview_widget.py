@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFrame,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -307,10 +306,9 @@ class PreviewWidget(QWidget):
 
         self.signal_legend = QWidget()
         self.signal_legend.setObjectName("PreprocessSignalLegend")
-        signal_legend_layout = QGridLayout(self.signal_legend)
+        signal_legend_layout = QHBoxLayout(self.signal_legend)
         signal_legend_layout.setContentsMargins(0, 0, 0, 0)
-        signal_legend_layout.setHorizontalSpacing(20)
-        signal_legend_layout.setVerticalSpacing(4)
+        signal_legend_layout.setSpacing(20)
 
         self.loaded_signal_legend = QWidget(self.signal_legend)
         loaded_legend_layout = QHBoxLayout(self.loaded_signal_legend)
@@ -339,7 +337,7 @@ class PreviewWidget(QWidget):
             "background: transparent; border: none; "
             f"border-top: 2px solid {Theme.CHART_PRIMARY};"
         )
-        self.current_signal_legend_text = QLabel("Current preview")
+        self.current_signal_legend_text = QLabel("Signal")
         self.current_signal_legend_text.setObjectName("PreprocessCurrentLegendText")
         current_legend_layout.addWidget(current_swatch)
         current_legend_layout.addWidget(self.current_signal_legend_text)
@@ -377,11 +375,11 @@ class PreviewWidget(QWidget):
         excluded_legend_layout.addWidget(excluded_swatch)
         excluded_legend_layout.addWidget(self.excluded_legend_text)
         self.excluded_legend.hide()
-        signal_legend_layout.addWidget(self.loaded_signal_legend, 0, 0)
-        signal_legend_layout.addWidget(self.current_signal_legend, 0, 1)
-        signal_legend_layout.addWidget(self.event_legend, 1, 0)
-        signal_legend_layout.addWidget(self.excluded_legend, 1, 1)
-        signal_legend_layout.setColumnStretch(2, 1)
+        signal_legend_layout.addWidget(self.loaded_signal_legend)
+        signal_legend_layout.addWidget(self.current_signal_legend)
+        signal_legend_layout.addWidget(self.event_legend)
+        signal_legend_layout.addWidget(self.excluded_legend)
+        signal_legend_layout.addStretch()
         self.signal_legend.hide()
         plot_content_layout.addWidget(self.signal_legend)
 

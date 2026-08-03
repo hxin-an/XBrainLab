@@ -29,7 +29,7 @@ def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
 
     assert widget.signal_legend.isVisibleTo(widget)
     assert widget.loaded_signal_legend_text.text() == "Loaded EEG"
-    assert widget.current_signal_legend_text.text() == "Current preview"
+    assert widget.current_signal_legend_text.text() == "Signal"
     assert not widget.event_legend.isVisible()
 
     events = [
@@ -60,6 +60,16 @@ def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
         != widget.time_event_markers[3].pen.color().name()
     )
     assert widget.time_excluded_regions[0].isVisible()
+    legend_y_positions = {
+        legend.mapTo(widget.signal_legend, legend.rect().topLeft()).y()
+        for legend in (
+            widget.loaded_signal_legend,
+            widget.current_signal_legend,
+            widget.event_legend,
+            widget.excluded_legend,
+        )
+    }
+    assert len(legend_y_positions) == 1
 
     widget.clear_time_event_markers()
 
