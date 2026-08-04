@@ -14,6 +14,7 @@ from XBrainLab.backend.application.saliency_policy import (
     baseline_saliency_params,
     normalize_saliency_params,
     recommended_saliency_params_for_method,
+    saliency_command_params_from_configured,
     selected_saliency_methods_from_params,
 )
 from XBrainLab.backend.visualization import (
@@ -69,6 +70,39 @@ def test_advanced_profile_defaults_to_advanced_methods():
     assert params["_methods"] == list(ADVANCED_SALIENCY_METHODS)
     for method in ADVANCED_SALIENCY_METHODS:
         assert params[method]["nt_samples"] == 5
+
+
+def test_configured_params_round_trip_to_public_command_shape() -> None:
+    configured, _requested_method = normalize_saliency_params(
+        "SmoothGrad",
+        {
+            "profile": "advanced",
+            "methods": ["SmoothGrad"],
+            "SmoothGrad": {"nt_samples": 7, "stdevs": 0.25},
+        },
+    )
+
+    command_params = saliency_command_params_from_configured(configured)
+
+    assert command_params == {
+        "profile": "advanced",
+        "methods": ["SmoothGrad"],
+        "SmoothGrad": {
+            "nt_samples": 7,
+            "nt_samples_batch_size": None,
+            "stdevs": 0.25,
+        },
+    }
+    assert "_methods" not in command_params
+    assert "_profile" not in command_params
+    assert "SmoothGrad_Squared" not in command_params
+    assert "VarGrad" not in command_params
+    renormalized, requested_method = normalize_saliency_params(
+        "SmoothGrad",
+        command_params,
+    )
+    assert requested_method == "SmoothGrad"
+    assert renormalized == configured
 
 
 def test_flat_params_apply_only_to_requested_advanced_method():

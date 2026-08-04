@@ -1358,6 +1358,73 @@ def test_visualization_panel_configured_saliency_requires_explicit_action(
     assert command.params == configured_params
 
 
+def test_visualization_panel_converts_stored_saliency_params_before_compute(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                methods=[SaliencyMethodCoverageSnapshot(method="SmoothGrad")],
+            ),
+        ),
+    )
+    configured_params = {
+        "_profile": "advanced",
+        "_methods": ["SmoothGrad"],
+        "SmoothGrad": {
+            "nt_samples": 7,
+            "nt_samples_batch_size": None,
+            "stdevs": 0.25,
+        },
+        "SmoothGrad_Squared": {
+            "nt_samples": 5,
+            "nt_samples_batch_size": None,
+            "stdevs": 1.0,
+        },
+        "VarGrad": {
+            "nt_samples": 5,
+            "nt_samples_batch_size": None,
+            "stdevs": 1.0,
+        },
+    }
+    panel.last_saliency_query = CommandResult.success_result(
+        command_name="saliency",
+        message="Saliency summary ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "saliency_summary",
+            "params": configured_params,
+        },
+    )
+    panel.method_combo.setCurrentText("SmoothGrad")
+    starts = []
+    monkeypatch.setattr(
+        panel,
+        "_start_saliency_compute",
+        lambda **kwargs: starts.append(kwargs) or True,
+    )
+
+    panel._compute_saliency_from_action_bar()
+
+    assert len(starts) == 1
+    assert starts[0]["params"] == {
+        "profile": "advanced",
+        "methods": ["SmoothGrad"],
+        "SmoothGrad": {
+            "nt_samples": 7,
+            "nt_samples_batch_size": None,
+            "stdevs": 0.25,
+        },
+    }
+
+
 def test_staged_saliency_settings_run_only_from_explicit_compute(
     qtbot,
     monkeypatch,

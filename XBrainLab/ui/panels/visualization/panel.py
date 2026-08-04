@@ -38,6 +38,7 @@ from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.saliency_policy import (
     is_recommended_saliency_method,
     recommended_saliency_params_for_method,
+    saliency_command_params_from_configured,
     selected_saliency_methods_from_params,
 )
 from XBrainLab.backend.application.state import (
@@ -1943,7 +1944,11 @@ class VisualizationPanel(BasePanel):
         if diagnostics.get("payload_type") != "saliency_summary":
             return {}
         params = diagnostics.get("params")
-        return dict(params) if isinstance(params, dict) else {}
+        return (
+            saliency_command_params_from_configured(params)
+            if isinstance(params, dict)
+            else {}
+        )
 
     def _has_service_saliency_summary(self) -> bool:
         diagnostics: dict[str, object] = (

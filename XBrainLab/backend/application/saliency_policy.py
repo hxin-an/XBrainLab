@@ -80,6 +80,28 @@ def selected_saliency_methods_from_params(
     }
 
 
+def saliency_command_params_from_configured(
+    params: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Convert authoritative stored params back to the public command shape."""
+    raw = dict(params)
+    if "_methods" not in raw and "_profile" not in raw:
+        return raw
+
+    selected_methods = _validated_saliency_methods(raw.get("_methods"))
+    command_params: dict[str, Any] = {"methods": selected_methods}
+    profile = raw.get("_profile")
+    if profile is not None:
+        command_params["profile"] = profile
+    for method in selected_methods:
+        if method not in ADVANCED_SALIENCY_METHODS:
+            continue
+        method_params = raw.get(method)
+        if isinstance(method_params, Mapping):
+            command_params[method] = dict(method_params)
+    return command_params
+
+
 def normalize_saliency_params(
     method: str | None,
     params: Mapping[str, Any] | None,
