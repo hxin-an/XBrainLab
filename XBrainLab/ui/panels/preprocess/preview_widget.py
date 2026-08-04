@@ -333,6 +333,10 @@ class PreviewWidget(QWidget):
         self.loaded_signal_legend_text.setObjectName("PreprocessLoadedLegendText")
         loaded_legend_layout.addWidget(loaded_swatch)
         loaded_legend_layout.addWidget(self.loaded_signal_legend_text)
+        self.loaded_signal_legend.setToolTip(
+            "Raw signal is baseline-aligned for visual comparison only. "
+            "The underlying EEG data is unchanged."
+        )
 
         self.current_signal_legend = QWidget(self.signal_legend)
         current_legend_layout = QHBoxLayout(self.current_signal_legend)

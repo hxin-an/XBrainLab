@@ -116,6 +116,35 @@ def test_time_domain_renders_detached_signal_and_events(mock_widget) -> None:
     mock_widget.show_time_event_markers.assert_called_once_with([(1.5, "cue", 0.2)])
 
 
+def test_time_domain_aligns_raw_baseline_without_changing_filtered_signal(
+    mock_widget,
+) -> None:
+    """A large recording offset must not flatten the filtered preview."""
+    current = _series(scale=20.0)
+    raw_offset_microvolts = 250_000.0
+    original = SignalSeries(
+        time_seconds=current.time_seconds,
+        values_volts=current.values_volts + raw_offset_microvolts / 1e6,
+        sampling_frequency=current.sampling_frequency,
+    )
+    publication = _publication(current=current, original=original)
+    plotter = PreprocessPlotter(mock_widget)
+
+    plotter.plot_sample_data(publication)
+
+    _, plotted_raw = mock_widget.time_original_curve.setData.call_args.args
+    _, plotted_current = mock_widget.time_current_curve.setData.call_args.args
+    assert np.median(plotted_raw) == pytest.approx(
+        np.median(plotted_current),
+        abs=1e-9,
+    )
+    assert np.ptp(plotted_raw) == pytest.approx(np.ptp(original.values_volts * 1e6))
+    assert plotted_current == pytest.approx(current.values_volts * 1e6)
+    assert np.median(original.values_volts * 1e6) == pytest.approx(
+        raw_offset_microvolts
+    )
+
+
 def test_frequency_domain_uses_each_series_sampling_frequency(mock_widget) -> None:
     current = _series(sampling_frequency=100.0)
     original = _series(sampling_frequency=50.0, samples=250)

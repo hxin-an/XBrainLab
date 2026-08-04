@@ -29,6 +29,8 @@ def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
 
     assert widget.signal_legend.isVisibleTo(widget)
     assert widget.loaded_signal_legend_text.text() == "Raw signal"
+    assert "baseline-aligned" in widget.loaded_signal_legend.toolTip()
+    assert "unchanged" in widget.loaded_signal_legend.toolTip()
     assert widget.current_signal_legend_text.text() == "Preprocessed signal"
     assert widget.event_legend_text.text() == "Events"
     assert widget.excluded_legend_text.text() == "Excluded"

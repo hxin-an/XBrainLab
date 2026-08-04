@@ -28,6 +28,22 @@ class PreprocessPlotter:
         self._plot_generation = 0
         self._is_plotting = False
 
+    @staticmethod
+    def _align_original_baseline_for_preview(
+        original_microvolts: np.ndarray,
+        current_microvolts: np.ndarray,
+    ) -> np.ndarray:
+        """Align the raw trace baseline for overlay without mutating signal data."""
+        original_finite = original_microvolts[np.isfinite(original_microvolts)]
+        current_finite = current_microvolts[np.isfinite(current_microvolts)]
+        if original_finite.size == 0 or current_finite.size == 0:
+            return original_microvolts
+        return (
+            original_microvolts
+            - float(np.median(original_finite))
+            + float(np.median(current_finite))
+        )
+
     def _calc_psd_task(
         self,
         signal: np.ndarray,
@@ -114,9 +130,13 @@ class PreprocessPlotter:
             )
 
             if original is not None and original_microvolts is not None:
+                original_preview_microvolts = self._align_original_baseline_for_preview(
+                    original_microvolts,
+                    current_microvolts,
+                )
                 self.widget.time_original_curve.setData(
                     original.time_seconds,
-                    original_microvolts,
+                    original_preview_microvolts,
                 )
             self.widget.time_current_curve.setData(
                 current.time_seconds,
