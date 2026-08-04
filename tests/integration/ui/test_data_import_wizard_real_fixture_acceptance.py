@@ -193,6 +193,7 @@ class _WizardDriver:
     skip_labels: bool = False
     resolve_bids_values: bool = False
     resolve_openneuro_values: bool = False
+    resolve_openneuro_trial_types: bool = False
     expect_blocked: bool = False
     awaiting_label_field_refresh: bool = False
     dialog_count: int = 0
@@ -375,6 +376,60 @@ def _complete_bids_event_values(dialog: DataInterpretationPreviewDialog) -> None
     if not editor.is_complete():
         raise AssertionError(
             f"BIDS event-value decisions remain incomplete: {editor.unresolved_values()!r}"
+        )
+
+
+def _complete_openneuro_trial_types(
+    dialog: DataInterpretationPreviewDialog,
+) -> None:
+    """Review the coarse BIDS trial_type field through visible controls."""
+    if dialog.rule_label_field_combo.currentData() != "trial_type":
+        raise AssertionError("OpenNeuro trial_type is not the selected label field.")
+    editor = dialog.event_value_editor
+    if editor is None or not editor.isVisibleTo(dialog):
+        raise AssertionError("OpenNeuro trial_type decisions are not visible.")
+    values = [
+        label.text()
+        for label in editor.findChildren(QLabel)
+        if label.objectName() == "DataImportValueDecisionValue"
+    ]
+    role_selectors = editor.findChildren(QComboBox, "EventValueRoleSelector")
+    use_selectors = editor.findChildren(QComboBox, "EventValueUseSelector")
+    class_editors = editor.findChildren(QLineEdit, "EventValueClassNameEditor")
+    if not (
+        set(values) == {"response", "stimulus"}
+        and len(values)
+        == len(role_selectors)
+        == len(use_selectors)
+        == len(class_editors)
+        == 2
+    ):
+        raise AssertionError(
+            "Unexpected OpenNeuro trial_type controls: "
+            f"values={values!r}, roles={len(role_selectors)}, "
+            f"uses={len(use_selectors)}, classes={len(class_editors)}."
+        )
+    decisions = {
+        "response": ("response", "event", ""),
+        "stimulus": ("stimulus", "class", "stimulus"),
+    }
+    for raw_value, role_selector, use_selector, class_editor in zip(
+        values,
+        role_selectors,
+        use_selectors,
+        class_editors,
+        strict=True,
+    ):
+        role, use, class_name = decisions[raw_value]
+        dialog.scroll_area.ensureWidgetVisible(use_selector)
+        _select_combo_data(role_selector, role)
+        _select_combo_data(use_selector, use)
+        if class_name:
+            _replace_line_edit_text(class_editor, class_name)
+    if not editor.is_complete():
+        raise AssertionError(
+            "OpenNeuro trial_type decisions remain incomplete: "
+            f"{editor.unresolved_values()!r}"
         )
 
 
@@ -583,6 +638,7 @@ def _start_wizard_driver(
     skip_labels: bool = False,
     resolve_bids_values: bool = False,
     resolve_openneuro_values: bool = False,
+    resolve_openneuro_trial_types: bool = False,
     expect_blocked: bool = False,
 ) -> _WizardDriver:
     driver = _WizardDriver(
@@ -590,6 +646,7 @@ def _start_wizard_driver(
         skip_labels=skip_labels,
         resolve_bids_values=resolve_bids_values,
         resolve_openneuro_values=resolve_openneuro_values,
+        resolve_openneuro_trial_types=resolve_openneuro_trial_types,
         expect_blocked=expect_blocked,
     )
     # Human-scale actions must leave one event-loop turn for combo popups,
@@ -731,6 +788,9 @@ def _start_wizard_driver(
                 return
 
             if driver.phase == 3:
+                if driver.resolve_openneuro_trial_types:
+                    _complete_openneuro_trial_types(modal)
+                    driver.trace.append("review OpenNeuro trial_type values")
                 if (
                     driver.resolve_openneuro_values
                     and driver.dialog_count == 1
@@ -1133,6 +1193,45 @@ def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
         f"after {driver.max_heartbeat_gap_context}."
     )
     assert panel.data_surface.currentWidget() is panel.table
+    assert panel.table.rowCount() == 3
+
+
+def test_openneuro_p300_import_bids_trial_type_excludes_na_and_applies(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The visible trial_type flow must not block on sparse BIDS n/a rows."""
+    _require_manifest_group("openneuro-ds003061-p300")
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        staticmethod(
+            lambda _parent, _title, _directory, **_kwargs: str(OPENNEURO_P300_ROOT)
+        ),
+    )
+    _host, panel, runtime = _build_dataset_panel(qtbot)
+    driver = _start_wizard_driver(resolve_openneuro_trial_types=True)
+
+    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(
+        qtbot,
+        driver,
+        runtime,
+        panel,
+        timeout=300_000,
+        expected_rows=3,
+    )
+
+    assert driver.phase == 5
+    assert driver.errors == []
+    assert "review OpenNeuro trial_type values" in driver.trace
+    publication = runtime.get_view_publication()
+    assert publication.state.raw.count == 3
+    assert publication.state.interpretation.class_map == {"stimulus": "stimulus"}
+    assert publication.state.interpretation.epoch_handoff["default_epoch_events"] == [
+        "stimulus"
+    ]
     assert panel.table.rowCount() == 3
 
 

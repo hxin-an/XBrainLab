@@ -420,9 +420,9 @@ def _review_one_run(
         if row["schema_issue_codes"]:
             placement_status = "blocked"
         elif not row["selected_label"]:
-            placement_status = "blocked"
-            placement_code = "selected_label_unknown"
-            placement_message = "selected label is empty or n/a"
+            placement_status = "excluded"
+            placement_code = "selected_label_missing"
+            placement_message = "selected label is empty or BIDS n/a"
         elif (
             not isinstance(value_decision, dict)
             or value_decision.get("decision") != RESOLVED

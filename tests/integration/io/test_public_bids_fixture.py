@@ -25,6 +25,8 @@ MNE_BIDS_EEG_DIR = MNE_BIDS_ROOT / "sub-01" / "ses-eeg" / "eeg"
 MNE_BIDS_EEG = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_eeg.vhdr"
 MNE_BIDS_EVENTS = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_events.tsv"
 MNE_BIDS_CHANNELS = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_channels.tsv"
+OPENNEURO_P300_ROOT = PUBLIC_DATA_DIR / "openneuro-ds003061-p300"
+OPENNEURO_P300_EEG_DIR = OPENNEURO_P300_ROOT / "sub-001" / "eeg"
 
 
 def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
@@ -210,3 +212,82 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
         "show_stimulus",
         "start_experiment",
     }
+
+
+def test_openneuro_p300_trial_type_excludes_missing_rows_and_imports() -> None:
+    """A valid BIDS label column may contain sparse canonical n/a values."""
+    eeg_files = sorted(OPENNEURO_P300_EEG_DIR.glob("*_eeg.set"))
+    events_files = sorted(OPENNEURO_P300_EEG_DIR.glob("*_events.tsv"))
+    if len(eeg_files) != 3 or len(events_files) != 3:
+        pytest.skip(
+            "OpenNeuro P300 fixture not downloaded; run "
+            "scripts/dev/fetch_public_eeg_fixtures.py first."
+        )
+
+    decisions = {
+        "stimulus": {
+            "role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "stimulus",
+        },
+        "response": {
+            "role": "response",
+            "keep_event": True,
+            "use_as_class": False,
+        },
+    }
+    service = ApplicationService()
+    scan = service.execute(
+        ScanSourceCommand(source_path=str(OPENNEURO_P300_ROOT), source_hint="bids")
+    )
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(path.resolve()) for path in eeg_files],
+                "label_carrier_choices": {
+                    str(path.resolve()): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "duration_field": "duration",
+                        "time_model": "seconds",
+                        "placement_method": "time_field",
+                        "value_decisions": decisions,
+                    }
+                    for path in events_files
+                },
+            }
+        )
+    )
+    validation = service.execute(ValidateInterpretationCommand())
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert scan.ok is True
+    assert preview.ok is True
+    runs = preview.diagnostics["preview"]["bids"]["event_validation"]["runs"]
+    assert [run["placement"]["status"] for run in runs] == [
+        "ready_with_exclusions",
+        "ready",
+        "ready_with_exclusions",
+    ]
+    assert [run["placement"]["usable_event_count"] for run in runs] == [
+        860,
+        862,
+        858,
+    ]
+    assert [run["placement"]["excluded_event_count"] for run in runs] == [3, 0, 2]
+    assert validation.diagnostics["validation_decision"]["blocked_reasons"] == []
+    assert applied.ok is True
+    assert applied.state.raw.count == 3
+    assert applied.state.interpretation.class_map == {"stimulus": "stimulus"}
+    assert applied.state.interpretation.epoch_handoff["default_epoch_events"] == [
+        "stimulus"
+    ]
+    assert [
+        row["excluded_reasons"]
+        for row in applied.diagnostics["label_apply"]["bids_placement"]
+    ] == [
+        {"selected_label_missing": 3},
+        {},
+        {"selected_label_missing": 2},
+    ]

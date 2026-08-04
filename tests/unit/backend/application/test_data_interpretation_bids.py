@@ -230,6 +230,74 @@ def test_strict_bids_blocks_partial_timestamp_placement_before_apply(
     assert applied.state.raw.count == 0
 
 
+def test_strict_bids_excludes_missing_selected_labels_without_blocking_import(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bids"
+    eeg_path, events_path = _write_bids_run(
+        root,
+        run="1",
+        event_rows=[
+            ("1", "0", "stimulus", "standard"),
+            ("2", "0", "n/a", "ignore"),
+        ],
+    )
+    service = ApplicationService()
+    assert service.execute(
+        ScanSourceCommand(source_path=str(root), source_hint="bids")
+    ).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier_choices": {
+                    str(events_path): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "duration_field": "duration",
+                        "time_model": "seconds",
+                        "placement_method": "time_field",
+                        "value_decisions": {
+                            "stimulus": {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "stimulus",
+                            }
+                        },
+                    }
+                },
+            }
+        )
+    )
+    validation = service.execute(ValidateInterpretationCommand())
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert preview.ok is True
+    run = preview.diagnostics["preview"]["bids"]["event_validation"]["runs"][0]
+    assert run["placement"]["status"] == "ready_with_exclusions"
+    assert run["placement"]["usable_event_count"] == 1
+    assert run["placement"]["excluded_event_count"] == 1
+    assert run["placement"]["excluded_rows"] == [
+        {
+            "row": 3,
+            "code": "selected_label_missing",
+            "message": "selected label is empty or BIDS n/a",
+            "raw_onset": "2",
+            "raw_duration": "0",
+            "selected_label": "",
+        }
+    ]
+    decision = validation.diagnostics["validation_decision"]
+    assert decision["decision"] == "safe"
+    assert decision["blocked_reasons"] == []
+    assert applied.ok is True
+    assert applied.state.raw.count == 1
+    assert applied.diagnostics["label_apply"]["bids_placement"][0][
+        "excluded_reasons"
+    ] == {"selected_label_missing": 1}
+
+
 def test_strict_bids_legal_special_values_remain_schema_evidence_but_block_apply(
     tmp_path: Path,
 ) -> None:
