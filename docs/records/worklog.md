@@ -16846,3 +16846,21 @@
   - This checkpoint fixes the reproduced P300 failure. Final Windows click-through remains a human
     acceptance step; one existing shutdown observer timing test remains flaky only when run after the
     complete lifecycle module and passes repeatedly in isolation.
+
+### 2026-08-04 Data-load feedback and class-name clarity
+
+- completed：
+  - The reviewed import apply stage now publishes `Loading EEG data...` to the desktop status bar
+    before EEG payload loading begins.
+  - Kept internal-event assignment bidirectional while replacing `Not used` presentation with the
+    neutral `EEG event only / other events` language.
+  - Removed artifact/ignored semantics from editable class-name suggestions; users can still type a
+    reviewed class name directly, while event exclusion remains a separate action.
+- validation：
+  - Data Interpretation async flow and adjacent decision/wizard UI suites -> `166 passed`.
+  - Ruff and `git diff --check` -> PASS.
+  - Xvfb/xcb Match Labels artifact reviewed at
+    `build/dev-artifacts/import-loading-class-name-checkpoint/04-match-labels-internal-advanced-760px.png`.
+- claim boundary：
+  - This is a focused UI checkpoint; final status-bar timing and text remain part of Windows human
+    acceptance during the next real dataset import.

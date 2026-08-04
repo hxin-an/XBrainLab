@@ -71,8 +71,8 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             self._add_event_section_spacing(9)
             self._add_event_section_title("Other EEG events")
             other_help = self._event_section_help(
-                "These events are available in the EEG files but are not currently "
-                "used as class labels.",
+                "These EEG events remain available and can be added as training "
+                "labels.",
             )
             not_used_table = self._internal_other_events_table(not_used_rows)
             self.event_layout.addWidget(not_used_table)
@@ -217,7 +217,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         for row_index, row in enumerate(rows, start=1):
             code = str(row.get("code") or "").strip()
             self._grid_text(grid, row_index, 0, code, primary=True)
-            self._grid_text(grid, row_index, 1, "Not used for training")
+            self._grid_text(grid, row_index, 1, "EEG event only")
             self._grid_text(grid, row_index, 2, str(row.get("coverage") or ""))
             button = self._internal_event_action_button(
                 "Use for training",
@@ -337,12 +337,13 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         training = self._event_code_list_text(row["code"] for row in candidate_rows)
         excluded = self._event_code_list_text(row["code"] for row in not_used_rows)
         if training and excluded:
-            return f"Selection preview: train on {training}; not used: {excluded}."
+            return f"Selection preview: train on {training}; other events: {excluded}."
         if training:
             return f"Selection preview: train on {training}."
         if excluded:
             return (
-                f"Selection preview: no training labels selected; not used: {excluded}."
+                "Selection preview: no training labels selected; "
+                f"other events: {excluded}."
             )
         return "Selection preview: no EEG events are selected yet."
 

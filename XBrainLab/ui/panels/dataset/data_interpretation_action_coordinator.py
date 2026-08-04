@@ -1151,6 +1151,7 @@ class DataInterpretationActionCoordinator:
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome:
+            self._show_status("Loading EEG data...")
             apply_command = ApplyInterpretationCommand(
                 candidate_id=candidate_id,
                 confirmed=dialog_result.get("confirmed") is True,

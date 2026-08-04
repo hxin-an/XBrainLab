@@ -4363,8 +4363,6 @@ class DataInterpretationPreviewDialog(
             "rest",
             "target",
             "non-target",
-            "artifact",
-            "ignored",
         ]
         normalized_current = current_value.replace("_", " ").strip().lower()
         values = (

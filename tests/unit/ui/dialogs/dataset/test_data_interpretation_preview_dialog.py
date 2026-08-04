@@ -1041,9 +1041,9 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
     assert "Source evidence" not in visible_text
     assert "Use this when class labels are stored as EEG events." not in visible_text
     assert "Other EEG events" in visible_text
-    assert "not currently used as class labels" in visible_text
+    assert "can be added as training labels" in visible_text
     assert "Selection preview: train on 769, 770" in visible_text
-    assert "not used: 768, 1023" in visible_text
+    assert "other events: 768, 1023" in visible_text
     assert "Event names need review" in visible_text
     assert "769" in visible_text
     assert "770" in visible_text
@@ -1052,7 +1052,8 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
     assert "288 events · 3/3 files" in visible_text
     assert "6 events · 3/3 files" in visible_text
     assert "768" in visible_text
-    assert "Not used for training" in visible_text
+    assert "EEG event only" in visible_text
+    assert "Not used for training" not in visible_text
     assert dialog.event_group.title() == ""
     assert dialog.event_group.maximumHeight() > 1000
 
@@ -1066,6 +1067,13 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
     class_selector.setCurrentText("Left hand")
 
     assert dialog.get_result()["choices"]["class_map"] == {"769": "left hand"}
+
+
+def test_class_name_suggestions_do_not_mix_in_non_class_event_uses() -> None:
+    choices = dict(DataInterpretationPreviewDialog._class_label_choices(""))
+
+    assert "Artifact" not in choices
+    assert "Ignored" not in choices
 
 
 def test_match_labels_advanced_details_fit_at_752_and_explain_evidence(qtbot):

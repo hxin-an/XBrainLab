@@ -721,6 +721,26 @@ def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
     qtbot.waitUntil(lambda: observed_generations == [17], timeout=1000)
 
 
+def test_apply_shows_loading_status_before_dataset_payload_is_loaded(monkeypatch):
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    statuses: list[str] = []
+    monkeypatch.setattr(handler, "_show_status", statuses.append)
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_execute_interpretation_command_async",
+        MagicMock(return_value=InteractionOutcome.accepted("scheduled")),
+    )
+
+    outcome = handler._data_interpretation._apply_interpretation_async(
+        _review_state(publication_generation=17),
+        {"confirmed": True, "save_recipe": False},
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert statuses == ["Loading EEG data..."]
+
+
 def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
     monkeypatch,
 ) -> None:
@@ -1822,7 +1842,10 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: len(commands) == 2, timeout=2000)
     qtbot.wait(50)
-    status.assert_not_called()
+    assert status.call_args_list == [
+        (("Loading EEG data...",),),
+        (("Loading EEG data...",),),
+    ]
     assert commands[0].resource_preflight_confirmed is False
     assert commands[0].resource_preflight_token is None
     assert commands[1].resource_preflight_confirmed is True
@@ -1882,7 +1905,10 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
 
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: len(terminal) == 1, timeout=2000)
-    status.assert_not_called()
+    assert status.call_args_list == [
+        (("Loading EEG data...",),),
+        (("Loading EEG data...",),),
+    ]
 
     assert len(commands) == 2
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
