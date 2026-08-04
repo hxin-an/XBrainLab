@@ -60,6 +60,10 @@ CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE = (
     "state. Refresh the workflow and try again."
 )
 TRAINING_PROGRESS_UPDATED_EVENT = "training_updated"
+_PYTHON_OWNED_COMMAND_THREADS: dict[CommandName, str] = {
+    CommandName.PREPROCESS: "XBrainLab-preprocess",
+    CommandName.TRAIN: "XBrainLab-training-start",
+}
 
 
 class ControllerCompatibilityUnavailableError(RuntimeError):
@@ -994,7 +998,8 @@ def execute_application_command_async(
 
     The backend command still runs through the same ApplicationService contract,
     but expensive work is offloaded from the GUI thread. Native-heavy preprocess
-    commands use a Python-owned thread; other commands retain the Qt worker pool.
+    and training-admission commands use a Python-owned thread; other commands
+    retain the Qt worker pool.
     Result handling and UI refresh are delivered through Qt signals on the receiver
     thread.
 
@@ -1035,9 +1040,7 @@ def execute_application_command_async(
         refresh=False,
         busy_target=busy_target,
         allow_during_shutdown=allow_during_shutdown,
-        python_thread_name=(
-            "XBrainLab-preprocess" if command.name is CommandName.PREPROCESS else None
-        ),
+        python_thread_name=_PYTHON_OWNED_COMMAND_THREADS.get(command.name),
     ).start()
     completion_callbacks.mark_started(started)
     return started

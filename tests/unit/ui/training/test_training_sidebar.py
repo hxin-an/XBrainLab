@@ -244,6 +244,30 @@ def test_train_result_before_publication_leaves_state_controls_unchanged(sidebar
     assert sidebar.btn_stop.isEnabled() is True
 
 
+def test_start_training_busy_scope_does_not_disable_entire_panel(sidebar):
+    dispatched: list[dict[str, Any]] = []
+
+    def dispatch(_context, _command, **kwargs):
+        dispatched.append(kwargs)
+        return True
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+            side_effect=dispatch,
+        ),
+    ):
+        sidebar.start_training_ui_action()
+
+    assert len(dispatched) == 1
+    assert dispatched[0]["busy_target"] is sidebar
+    assert dispatched[0]["busy_target"] is not sidebar.panel
+
+
 def test_train_result_after_running_publication_does_not_reapply_state(sidebar):
     sidebar.on_training_started(refresh_ready=False)
 

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from PyQt6 import sip
-from PyQt6.QtCore import QCoreApplication, QThread
+from PyQt6.QtCore import QCoreApplication, QThread, QTimer
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import (
@@ -24,6 +24,7 @@ from XBrainLab.backend.application import (
     PreprocessOperation,
     QueryStateCommand,
     ResetSessionCommand,
+    TrainCommand,
     get_application_service,
 )
 from XBrainLab.backend.application.epoch_context import EpochDialogContext
@@ -800,6 +801,57 @@ def test_async_preprocess_uses_python_owned_worker_instead_of_qt_pool(
     assert len(execution_threads) == 1
     assert execution_threads[0] is not threading.main_thread()
     assert execution_threads[0].name == "XBrainLab-preprocess"
+    assert application_command_registry().active_count(widget) == 0
+
+
+def test_async_training_uses_python_owned_worker_and_keeps_gui_responsive(
+    qtbot,
+    monkeypatch,
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    cast(Any, widget).set_busy = lambda _busy: None
+    command = TrainCommand(confirmed=True, append=False)
+    result = CommandResult.success_result(
+        command_name=command.name.value,
+        message="Training started.",
+        state=None,
+        changed_state=ChangedState(training_changed=True),
+    )
+    release_execution = threading.Event()
+    execution_threads: list[threading.Thread] = []
+    callbacks: list[CommandResult] = []
+    heartbeat: list[bool] = []
+
+    def execute(received_command: Command) -> CommandResult:
+        assert received_command is command
+        execution_threads.append(threading.current_thread())
+        if not release_execution.wait(timeout=1.0):
+            raise TimeoutError("training admission was not released")
+        return result
+
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        MagicMock(side_effect=AssertionError("training used the Qt thread pool")),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        command,
+        on_result=callbacks.append,
+        runtime=_ApplicationRuntimeFake(execute=execute),
+    )
+
+    assert started is True
+    qtbot.waitUntil(lambda: len(execution_threads) == 1, timeout=1_000)
+    QCoreApplication.instance().processEvents()
+    QTimer.singleShot(0, lambda: heartbeat.append(True))
+    qtbot.waitUntil(lambda: heartbeat == [True], timeout=1_000)
+    release_execution.set()
+    qtbot.waitUntil(lambda: callbacks == [result], timeout=2_000)
+    assert execution_threads[0] is not threading.main_thread()
+    assert execution_threads[0].name == "XBrainLab-training-start"
     assert application_command_registry().active_count(widget) == 0
 
 

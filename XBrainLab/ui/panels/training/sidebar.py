@@ -308,6 +308,14 @@ class TrainingSidebar(QWidget):
         # Initial check
         self.check_ready_to_train()
 
+    def set_busy(self, busy: bool) -> None:
+        """Prevent duplicate starts without disabling the whole Training page."""
+        if busy:
+            self.btn_start.setEnabled(False)
+            self.btn_start.setToolTip("Training is being prepared.")
+            return
+        self.check_ready_to_train()
+
     def _compatibility_controller_value(
         self,
         fallback: Callable[[], Any],
@@ -1334,7 +1342,7 @@ class TrainingSidebar(QWidget):
         unknown_retried: bool = False,
         expected_publication_generation: int | None = None,
     ) -> bool:
-        """Dispatch one backend-owned training attempt through QThreadPool."""
+        """Dispatch one backend-owned training attempt outside the GUI thread."""
         command = TrainCommand(
             confirmed=True,
             resource_preflight_confirmed=resource_preflight_confirmed,
@@ -1363,14 +1371,14 @@ class TrainingSidebar(QWidget):
                 command,
                 on_result=_handle_result,
                 on_error=_handle_error,
-                busy_target=self.panel,
+                busy_target=self,
             )
         else:
             started = self._execute_action_async(
                 command,
                 on_result=_handle_result,
                 on_error=_handle_error,
-                busy_target=self.panel,
+                busy_target=self,
                 expected_publication_generation=expected_publication_generation,
             )
         if started:

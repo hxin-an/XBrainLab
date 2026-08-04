@@ -198,6 +198,10 @@ def test_training_panel_recovers_after_async_cuda_oom(
 
     qtbot.mouseClick(panel.sidebar.btn_start, Qt.MouseButton.LeftButton)
 
+    assert panel.isEnabled() is True
+    assert host.isEnabled() is True
+    assert panel.sidebar.btn_start.isEnabled() is False
+
     qtbot.waitUntil(
         lambda: (
             study.trainer is not None
