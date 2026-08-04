@@ -1,29 +1,29 @@
 # XBrainLab Now
 
-最後更新：`2026-07-31`
+最後更新：`2026-08-04`
 
-這頁只保存 active delivery context、近期施工順序和 exit condition。Finding status 以
-[Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 為準，不在這裡複製
-第二份 queue。
+這頁只保存 active delivery context、近期施工順序和 exit condition。舊
+[Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 保留為此次 main checkpoint
+的歷史 ledger，不再作為新的 active queue。
 
 ## 目前焦點
 
-**Close product-quality findings on one integration line, rebuild exact-commit evidence, then
-decide whether a Windows handoff candidate exists.**
+**以已合併的 `main` GUI checkpoint 為單一基線，先穩定老師可用的資料流程，再完成效能與
+簡化 Assistant prototype。**
 
-目前不是 handoff-ready。`ux/assistant-product-v1@3869aaef` 只作 baseline；所有 closure work
-都在 `stabilize/product-quality-closure`。
+目前不是 release 或 Assistant handoff-ready。真人資料驗收只涵蓋 Graz 2a GDF 與 OpenNeuro
+ds003061 P300 BIDS 各一個資料集；其餘格式、自動化 evidence 與舊 Agent gate 不可外推。
 
 ## Active Delivery Context
 
 | 項目 | Current value |
 | --- | --- |
-| Worktree | `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1` |
-| Branch | `stabilize/product-quality-closure` |
+| Worktree | 以目前 `main` checkout 的 `git rev-parse --show-toplevel` 為準。 |
+| Branch | `main` |
 | Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，baseline only |
-| Goal | `docs/agent_goals/product_quality_closure_goal.md` |
-| Ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
-| Current classification | `checkpoint` / closure in progress |
+| Goal | 老師試用前 GUI/data stabilization；其後是 performance 與 simplified Assistant prototype。 |
+| Historical ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
+| Current classification | merged development checkpoint；not release / not Assistant-ready |
 
 不要從舊文件推論 registered worktree 數量。需要 inventory 時執行
 `git worktree list --porcelain`；其他 worktree 不得被誤認成 active candidate，也不得覆寫其
@@ -33,13 +33,12 @@ owner 的 dirty changes。
 
 | 順序 | 工作 | Exit signal |
 | --- | --- | --- |
-| 1 | Close code-controllable P0/P1 findings | Ledger 中相關 row 有 implementation、focused regression、same-class sweep 和主 agent verification；不能只改 status。 |
-| 2 | Preserve architecture boundaries | Product path 維持 `ApplicationService / Command API`；`BackendFacade` 保持物理移除；UI、agent、headless 不建立第二套 capability/state truth。 |
-| 3 | Rebuild functional evidence | Real ApplicationService FIF-to-visualization smoke、deterministic oracle、strict fixture manifest 和 required multi-dataset gates 從 current source 通過。 |
-| 4 | Rebuild assistant and UI evidence | Exact Granite / secure offline RAG、error/retry/cancel/long-session，以及 full/narrow/DPI screenshots 綁定相同 source identity，並由主 agent 檢查。 |
-| 5 | Close docs/repository findings | Canonical current、planning、validation、handoff 和 skill truth 一致；stale baseline/historical totals 不再呈現成 current result。 |
-| 6 | Final exact-commit gate | 同一 clean pushed commit 跑 handoff dashboard、static checks、regression、MkDocs、reviewer re-gates；generated report identity 完整吻合。 |
-| 7 | Windows acceptance | 只有前一步成立後才能稱 Windows handoff candidate；真人 acceptance 完成前不合併 `main`、不稱 product complete。 |
+| 1 | Stabilize teacher-facing GUI/data flow | 針對 GDF、BIDS 與老師新增資料逐一走 import -> preprocess -> epoch -> training；發現 blocker 就用 focused regression 修正。 |
+| 2 | Measure and polish performance | 對 load、publication refresh、plots、preprocess 與 training startup 記錄 latency / UI heartbeat；不以主觀「看起來快」結案。 |
+| 3 | Simplify Assistant prototype | 移除要求使用者先理解 Single step / Workflow 的心智負擔；由自然語言決定執行範圍，重要操作仍遵守 confirmation policy。 |
+| 4 | Recalibrate Agent gates | 盤點並修改舊 prompt/tool/gate assumptions；建立與目前 Assistant UX、Granite 2B、真實 GUI state 一致的可重跑 gate。 |
+| 5 | Expand dataset acceptance | 每新增一個真人資料集都記錄來源、格式、label semantics、可完成步驟與限制；不同副檔名不冒充不同資料集。 |
+| 6 | Candidate gate | 在明確候選 commit 跑 relevant regression、multi-dataset、UI artifact、static/docs 與真人 Windows acceptance，再決定 release claim。 |
 
 ## Evidence Rule
 
@@ -71,8 +70,8 @@ checkpoint evidence。
 6. Final report 明確列出 Windows DPI/multi-monitor、interactive 3D、teacher datasets 和
    long-session 等剩餘人工風險。
 
-達成以上條件後，狀態只能提升為 **Windows handoff candidate**。真人 acceptance 之前仍不是
-product complete。
+達成以上條件後，狀態才能提升為下一個 **Windows handoff candidate**。目前 `main` 只是已接受
+的開發 checkpoint，仍不是 product complete。
 
 ## 本輪不做
 

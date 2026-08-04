@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-07-20`
+最後更新：`2026-08-04`
 
 ## 這份文件的用途
 
@@ -14,6 +14,33 @@
 - 主要 evidence 入口在哪裡
 - 還不能宣稱完成的是什麼
 - 下一手 owner 應該看哪裡
+
+## 2026-08-04 Main Development Checkpoint
+
+### 狀態
+
+- 使用者決定把目前 `stabilize/product-quality-closure` 收斂到 `main`，讓後續修復不再分散於
+  長期 integration branch。
+- 這是 development checkpoint，不是 release、product completion 或 Assistant acceptance。
+
+### 已可宣稱
+
+- Graz 2a GDF（A01T/A02T/A03T）已完成一個資料集 family 的真人 GUI 流程測試。
+- OpenNeuro ds003061 P300 BIDS 已完成一個公開 BIDS dataset 的真人 GUI 流程測試；`trial_type`
+  中合法的 BIDS `n/a` 會被排除，不再阻止其他有效事件匯入。
+
+### 不能宣稱完成
+
+- 不能宣稱所有 GDF、所有 BIDS、full BIDS validator 或其他格式已通過真人驗收。
+- Assistant 尚未準備好；目前 agent 架構、互動體驗與 Granite 2B 行為仍需收斂。
+- 舊 Agent gate 尚未依目前簡化心智模型重新校準，不能用其 PASS 作產品品質結論。
+- 載入、refresh、preprocess、plotting 與 training 的效能仍需量測和打磨。
+
+### 下一手重點
+
+- 先完成老師試用需要的 GUI/data blocker，再做效能量測與 simplified Assistant prototype。
+- 後續每個 candidate 仍需以實際資料集、可見 UI artifact 與 Windows 真人操作確認，不把
+  自動化 gate 外推成完成聲明。
 
 ## 2026-07-19 Desktop MVP Candidate Closure
 

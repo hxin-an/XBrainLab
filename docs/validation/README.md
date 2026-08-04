@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-02`
+最後更新：`2026-08-04`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -10,15 +10,15 @@
 | 項目 | Current truth |
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
-| Active branch | `stabilize/product-quality-closure` |
+| Active branch | `main` |
 | Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，baseline only |
-| Closure state | In progress；not handoff-ready；not product complete |
+| Closure state | Merged development checkpoint；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
-| Required authority | `docs/agent_goals/product_quality_closure_goal.md` and [Product Quality Audit](../records/product_quality_audit_2026-07-30.md) |
+| Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
 
-`ux/assistant-product-v1@3869aaef` 的 clean PASS evidence 不能代表目前 closure branch。
-在 active branch 形成 clean pushed exact commit 並完成本頁 gates 之前，沒有 current final
-test total 或 handoff verdict。
+`ux/assistant-product-v1@3869aaef` 或舊 stabilization branch 的 PASS evidence 不能代表目前
+`main`。目前可用的人工作品 evidence 僅限 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS
+各一個資料集；這不是 format-wide acceptance，也不包含 Assistant 或效能完成判定。
 
 ## Evidence 原則
 
@@ -55,7 +55,7 @@ Final evidence 至少要記錄：
 
 Final report 必須逐欄確認：
 
-1. report branch 是 `stabilize/product-quality-closure`；
+1. report branch / commit 是當次明確指定的 candidate，並能追溯到最終 `main` 整合點；
 2. report commit 唯一對應 pushed candidate SHA，final handoff report 另記錄
    `git rev-parse HEAD` 的 full SHA；
 3. source tree clean，或只剩規則明確允許且未 stage 的 repo-root `settings.json`；
@@ -96,7 +96,8 @@ artifacts 仍是必須另行檢查的 evidence。
 - `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence；
 - `handoff-ready`：只有全部 gate 從同一 clean pushed commit 完成後才可使用。
 
-目前狀態是 `checkpoint`。
+目前狀態是已合併到 `main` 的 development `checkpoint`。這個分類只表示後續開發基線已收斂，
+不表示 Assistant、效能、資料格式或 release gate 已完成。
 
 ## Current UI Checkpoint
 
@@ -121,15 +122,14 @@ DPI/multi-monitor acceptance.
 ## Delivery Flow
 
 ```text
-ux/assistant-product-v1@3869aaef
-  baseline only
-  -> stabilize/product-quality-closure
-      audit slices and checkpoint evidence
-  -> one clean pushed exact commit
-      generated handoff profile + artifact review + reviewer re-gates
-  -> Windows handoff candidate
-  -> human Windows acceptance
-  -> main merge decision
+main development checkpoint
+  -> teacher-facing GUI/data fixes on short task branches
+  -> performance measurement and polish
+  -> simplified Assistant prototype + recalibrated Agent gates
+  -> one explicit candidate commit
+      relevant regression + multi-dataset + artifact + reviewer gates
+  -> Windows human acceptance
+  -> release / next-main checkpoint decision
 ```
 
 完整報告欄位和 task-slice 規則看 repo-root

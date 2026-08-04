@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-02`
+最後更新：`2026-08-04`
 
 這頁只回答三件事：目前在哪一條整合線、現在能相信什麼、離 handoff 還缺什麼。
 短期施工看 [Now](planning/now.md)，驗證規則看
@@ -8,20 +8,21 @@
 
 ## 一句話
 
-XBrainLab 正在 `stabilize/product-quality-closure` 做 product-quality closure。
-這條整合線仍有 audit findings 和 exact-commit evidence 要完成，目前不是
-handoff-ready，也不能排 Windows acceptance 或宣稱 product complete。
+XBrainLab 已把目前可執行的 Desktop GUI checkpoint 整合到 `main`，作為後續開發的單一
+基線。真人手測目前只支撐 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集；
+Assistant 尚未準備好，效能與舊 Agent gate 仍需重整，因此不能宣稱 product complete、
+Assistant ready 或廣泛資料格式相容。
 
 ## Current Integration Context
 
 | 項目 | Current truth |
 | --- | --- |
-| Active worktree | `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1` |
-| Active branch | `stabilize/product-quality-closure` |
+| Active worktree | 以 `git rev-parse --show-toplevel` 為準；不要把舊 registered worktree 當成 current product checkout。 |
+| Active branch | `main` |
 | Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，只作 baseline / provenance，不是目前 candidate。 |
-| Active goal | `docs/agent_goals/product_quality_closure_goal.md` |
+| Active goal | 以 [Now](planning/now.md) 的效能、Assistant prototype 與 gate 重整順序為準。 |
 | Finding ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md) |
-| Delivery state | Closure in progress；not handoff-ready；not product complete。 |
+| Delivery state | Main checkpoint；GUI 可繼續真人測試，但不是 release、Assistant candidate 或 product complete。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。
@@ -32,43 +33,38 @@ handoff-ready，也不能排 Windows acceptance 或宣稱 product complete。
 | --- | --- | --- |
 | Backend | `ApplicationService / Command API` 是 UI、assistant、headless scripts 共用的 product command spine。`BackendFacade` 與 product live-object payload 已物理移除；五個 product panels 由 narrow ports 建立。Shutdown fencing、immutable Assistant publication、external-label import state 與 recipe reload 已有 focused owners，並由 source guards 防止 private state alias / host round-trip 回流。 | Standalone/test compatibility constructors 仍是 P2 cleanup；exact-commit evidence 尚未關閉。不能把 working checkpoint 宣稱為 target architecture fully aligned 或 repo-wide zero-controller。 |
 | UI | Product state-changing render 以 revisioned application publication 為單一真相；command result 只處理 acknowledgement / error / in-flight feedback，Training progress 只走 transient event。五個 workflow panels 保留舊版固定右側 `Data Summary` 表格，不另設常駐 Readiness 區塊。Assistant header 不顯示額外狀態 badge；狀態保留在 tooltip / accessibility metadata，composer 使用固定 action geometry，訊息 bubble 依 viewport 與內容重排。Source guard 會追蹤 async callback call chain，阻止 command result 重改 Start/Stop、readiness 或 terminal state。 | Dirty integration work 和 focused tests 只是 checkpoint；offscreen 100/125/150% DPI 與窄寬度 artifact 已通過 working-checkpoint review，但在 clean exact-source screenshots、happy path、edge gate 及 reviewer re-gate 完成前，不是 Windows handoff candidate。Standalone compatibility observer path仍是 P2 cleanup。 |
-| Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 存在。Selected EEG scope、label-carrier pairing、reviewed placement 和 BIDS task-import boundary 已有實作；working checkpoint 已新增 Graz external labels、PhysioNet internal events 與 public BIDS 的連續 Data Interpretation-to-training gate。 | 這不是 full BIDS validator，也不支撐任意 P300、SSVEP、clinical、XDF、LSL、MOABB 或 proprietary format claim。新的 strict gate 仍須從 final clean exact commit 重跑，才可成為 handoff evidence。 |
-| Assistant | Product runtime 是 local-only；產品決策是 exact IBM Granite 3.3 2B，不做 silent model fallback。`AssistantTurnOrchestrator`、`AssistantToolAttemptSession`、RAG process lifecycle、Qt command/runtime/publication coordinators 已分開擁有 turn state、tool-attempt state、process 與 UI delivery；舊 controller writable aliases 已由 AST guard 禁止。Agent tool admission、capability、confirmation、verification 和 structured result 仍由 backend contract 保護。 | Granite/RAG success、confirmation、error、retry、cancel、long-session 與 Windows native teardown 必須在同一 final commit 重建 evidence；host-assisted workflow 不是 raw-model 或 thesis accuracy。 |
+| Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 存在。Selected EEG scope、label-carrier pairing、reviewed placement 和 BIDS task-import boundary 已有實作。真人手測目前只確認 Graz 2a GDF（A01T/A02T/A03T）與 OpenNeuro ds003061 P300 BIDS。 | 一個 GDF dataset family 和一個 BIDS dataset 的手測不能外推為所有 GDF/BIDS、full BIDS validator、任意 P300/SSVEP/clinical/XDF/LSL/MOABB 或 proprietary format 支援。其他自動化資料只算 regression evidence。 |
+| Assistant | Local-only Assistant、IBM Granite 3.3 2B 選項、tool admission、capability、confirmation、verification 和 structured result 的工程骨架存在。 | Assistant 目前尚未準備好給老師使用。互動模型、介面、真實 Granite/RAG 行為與長 session 尚未完成；舊 Agent gate 也尚未依目前簡化產品心智模型重新校準。不得宣稱 Assistant ready、agent accuracy 或 thesis benchmark 完成。 |
 | Privacy / diagnostics | Centralized public diagnostics 會從 default logs、public command/result projection、assistant feedback 和 UI interaction outcome 移除完整私人路徑、常見 subject identifiers 與不安全 control characters；local file sink 有 bounded retention 與 owner-only policy。 | Native Windows/NTFS ACL、junction/reparse replacement、packaged launcher 與 second-account denial仍是平台 acceptance boundary；exact-commit validation 前不能宣稱完整產品 closure。 |
 | Native UI lifecycle | Preprocess close/cancel work 已建立 quiesce / restore checkpoint；`tests/integration/ui/test_preprocess_native_lifecycle.py` 和 `tests/integration/ui/test_native_render_lifecycle.py` 分別保護 Preprocess 與 Visualization native ownership。 | 兩個 gate 不互相替代，也不取代 Windows/WSLg、DPI、interactive 3D、real training close 和長時間操作 acceptance。 |
 | Packaging | Windows launcher / startup automation 存在。 | 不是 signed installer、release approval 或真人 click-through。 |
 | MCP | 既有 code、tests、docs 或 artifacts 只算歷史探索 / compatibility evidence。 | MCP 已退出 active product / thesis roadmap。除非使用者明確要求，不做 MCP hardening、adapter certification 或 handoff gate。 |
 
-## Product-Quality Closure
+## Main Checkpoint Boundary
 
-目前 closure 是否完成，只能由 audit ledger 和 active goal 的 hard gates 判定。局部 checkpoint、
-單一 reviewer PASS、dashboard PASS 或一組 focused tests 都不能把整體狀態改成
-handoff-ready。
+這次合併到 `main` 是使用者明確接受的開發基線收斂，不是 release acceptance。合併理由是
+避免後續修復繼續分散在長期 stabilization branch；它不會把尚未完成的 Assistant、效能或
+格式支援自動提升成完成。
 
-本輪至少還要：
+後續至少要：
 
-1. 關閉所有 code-controllable P0/P1 findings，保留 focused regression 和 same-class guard。
-2. 重跑 real `ApplicationService` happy path、deterministic oracle、strict fixture manifest 和
-   required multi-dataset gates。
-3. 重建 exact Granite / secure offline RAG 的 success、recovery、cancel、long-session evidence，
-   以及 full/narrow/DPI UI artifacts，並由主 agent 逐項檢查。
-4. 從同一個 clean exact commit 跑 Ruff、完整 configured product-source Basedpyright、
-   architecture、complete regression、strict MkDocs 和 handoff quality dashboard。
-5. commit、push、確認 protected local settings 未被 stage，再產生 Windows handoff report。
-
-完成這些自動化條件只會形成 Windows handoff candidate。Product completion 和 merge 到
-`main` 仍需真人 Windows acceptance。
+1. 以 `main` 為基線修正老師試用前發現的 GUI/data workflow blocker。
+2. 針對載入、preprocess、training、publication refresh 與 plotting 做可觀察的效能量測和打磨。
+3. 把 Assistant 收斂成依自然語言理解意圖的簡化 prototype，再校準 prompt、tools、state truth
+   與 confirmation UX。
+4. 重寫舊 Agent gate，使它驗證目前產品心智模型，而不是讓過時 gate 的 PASS 代表品質。
+5. 擴大真人資料集 acceptance；在此之前只保留已實際手測的兩個 dataset claim。
 
 ## Evidence Truth
 
 `artifacts/quality/latest.md` 是可覆寫的 local generated report，不是 canonical truth。
 `ux/assistant-product-v1@3869aaef` 的 PASS report 只證明 baseline；不能代表目前
-`stabilize/product-quality-closure`。
+`main`。舊 `stabilize/product-quality-closure` evidence 只保留為此次整合的 provenance。
 
-Final evidence 必須同時符合：
+未來 release / Assistant candidate evidence 必須同時符合：
 
 - profile 是 `handoff`；
-- branch 是 `stabilize/product-quality-closure`；
+- branch / commit 是當次明確指定的 candidate，且最終整合回 `main`；
 - report commit 唯一對應 `git rev-parse HEAD` 記錄的 pushed candidate exact SHA；
 - worktree clean，或只保留規則明確允許且未 stage 的 protected local settings；
 - 所有 required checks 從該 commit 重跑，沒有用 stale cache、hidden skip、xfail 或 deselection。
@@ -82,15 +78,17 @@ generated evidence；branch、commit 或 dirty state 不吻合時，只能稱為
 - `ApplicationService / Command API` 是 active product command spine。
 - `BackendFacade` 已物理移除，回流必須被 architecture guard 擋下。
 - Product assistant runtime 是 local-only，MCP 不是 active roadmap。
-- Baseline 和 current integration line 已明確分開。
-- Product-quality closure 正在進行，audit ledger 是 finding/status authority。
+- `main` 現在是後續產品工作的單一整合基線。
+- Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集已完成真人 GUI 手測。
 
 ## 不能宣稱
 
-- `ux/assistant-product-v1@3869aaef` 是目前 handoff candidate。
-- product-quality closure 已完成或目前已 handoff-ready。
+- 目前是 release、product-complete 或 Assistant-ready candidate。
+- 所有 GDF、所有 BIDS 或 full BIDS validator 已通過真人驗收。
 - 任一舊 dashboard、walkthrough、reviewer verdict 或手動 test total 代表 current branch。
 - backend target architecture、Data Interpretation 或 Assistant 已 final。
+- 舊 Agent gate 已對齊目前 Assistant 心智模型，或可作為 Assistant 品質結論。
+- 效能已完成打磨，或高階硬體上的流暢度可外推到其他電腦。
 - automated UI / launcher evidence 等於 human Windows acceptance。
 - MCP 是 product、release 或 thesis prerequisite。
 - signed installer、release approval、scientific model-quality 或 thesis-grade agent accuracy。
@@ -101,7 +99,7 @@ generated evidence；branch、commit 或 dirty state 不吻合時，只能稱為
 | --- | --- |
 | 下一步施工 | [planning/now.md](planning/now.md) |
 | Active findings | [records/product_quality_audit_2026-07-30.md](records/product_quality_audit_2026-07-30.md) |
-| Completion contract | `docs/agent_goals/product_quality_closure_goal.md` |
+| 下一個 candidate contract | [planning/now.md](planning/now.md) 與 [validation/README.md](validation/README.md) |
 | 目前架構 | [architecture/README.md](architecture/README.md) |
 | 目標架構 | [target/architecture.md](target/architecture.md) |
 | Evidence 與 handoff gate | [validation/README.md](validation/README.md) |

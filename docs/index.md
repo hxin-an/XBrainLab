@@ -1,37 +1,33 @@
 # XBrainLab 專案控制室
 
-最後更新：`2026-08-02`
+最後更新：`2026-08-04`
 
-XBrainLab 是本地優先的 EEG / BCI 桌面分析工具。Product-quality closure 正在
-`build/worktrees/assistant-product-v1` 的 `stabilize/product-quality-closure` 進行；
-`ux/assistant-product-v1@3869aaef` 只是 baseline。這個入口用來快速判斷現況、缺口和證據。
+XBrainLab 是本地優先的 EEG / BCI 桌面分析工具。目前可執行的 Desktop GUI checkpoint 已
+收斂到 `main`；這個入口用來快速判斷現況、缺口和證據。
 
 !!! warning "目前邊界"
-    Closure in progress；not handoff-ready；not product complete。Automated evidence 不能取代
-    human Windows acceptance。
+    真人資料手測目前只支撐 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集。
+    Assistant 尚未準備好，效能與舊 Agent gate 仍需重整；這不是 release 或 product complete。
 
-!!! danger "Architecture closure 尚未完成"
-    Active audit 的 `ARCH-02`、`ARCH-04`、`ARCH-05` 已有 working-checkpoint implementation、
-    source guard 和 focused re-gate：product composition 不再依賴 controller adapter，revisioned
-    application publication 是 state-changing refresh truth，MainWindow product panels 使用 narrow
-    ports。它們仍要由 `FUNC-06` 的 clean exact-commit handoff evidence 收口；這不代表 target
-    architecture 或 product closure 已完成。
+!!! danger "仍未完成"
+    Assistant 互動與真實 Granite 2B 行為、舊 Agent gate 校準，以及 load / refresh / preprocess /
+    plotting / training 效能仍是 active work。`main` 只代表開發基線已收斂，不代表這些區域完成。
 
 <div class="xlb-signal-list" markdown>
 
 <div markdown>
 <span class="xlb-kicker">Product Status</span>
-Product-quality closure in progress; not handoff-ready.
+Main development checkpoint; not release-ready.
 </div>
 
 <div markdown>
 <span class="xlb-kicker">主要缺口</span>
-Audit findings、same-commit hard gates 和 exact-source artifacts 尚未全部關閉。
+Assistant prototype、Agent gates、performance polish 和更廣泛真人資料驗收。
 </div>
 
 <div markdown>
 <span class="xlb-kicker">Data Import</span>
-Tracked dirty artifact checkpoint; read its manifest identity before use.
+One Graz GDF family and one OpenNeuro P300 BIDS dataset manually exercised.
 </div>
 
 <div markdown>
@@ -46,7 +42,7 @@ local quality dashboard；screenshot index；private docs portal visual review.
 
 <div markdown>
 <span class="xlb-kicker">Next Work</span>
-Close audit findings; generate exact-commit evidence; then decide Windows handoff eligibility.
+Teacher-facing GUI/data fixes, measured performance work, then simplified Assistant prototype.
 </div>
 
 </div>
@@ -55,10 +51,10 @@ Close audit findings; generate exact-commit evidence; then decide Windows handof
 
 | Area | Current Read | Best Evidence | Next Work |
 | --- | --- | --- | --- |
-| Product readiness | Product-quality closure in progress; not handoff-ready or product complete. | [Current](current.md), [Now](planning/now.md), [Audit](records/product_quality_audit_2026-07-30.md) | Close code-controllable findings and rebuild all hard gates from one clean pushed commit. |
-| Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` and product live-object result payloads are physically removed. `ARCH-02/04/05` have verified working-checkpoint repairs and guards, with exact-commit closure still pending under `FUNC-06`. | [Architecture](architecture/README.md), [Active Audit](records/product_quality_audit_2026-07-30.md) | Regenerate the registered architecture/runtime gates through the canonical exact-commit runner; keep target/P2 cleanup separate. |
-| Data Import | `scan -> preview -> validate -> apply -> recipe` is a bounded implementation baseline. Tracked screenshots are dirty checkpoint evidence. | [Data Interpretation target](target/data_interpretation_system.md), [Validation](validation/README.md) | Read the artifact manifest and rebuild the wizard set from the final exact source. |
-| Validation | No current final total exists until the handoff profile is regenerated on the clean closure commit. | [Validation](validation/README.md); generated `artifacts/quality/latest.md` header | Verify profile, branch, reported SHA against the full pushed SHA, and dirty state before reading any PASS or total as current. |
+| Product readiness | `main` is the accepted development checkpoint, not a release or completed product. | [Current](current.md), [Now](planning/now.md) | Stabilize teacher-facing GUI/data use, then performance and Assistant. |
+| Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` and product live-object result payloads are physically removed. | [Architecture](architecture/README.md), [Historical Audit](records/product_quality_audit_2026-07-30.md) | Preserve these boundaries while addressing measured product issues; keep P2 cleanup separate. |
+| Data Import | `scan -> preview -> validate -> apply -> recipe` is a bounded baseline. Manual acceptance currently covers one Graz GDF family and one OpenNeuro P300 BIDS dataset. | [Data Interpretation target](target/data_interpretation_system.md), [Validation](validation/README.md) | Add dataset-by-dataset acceptance without turning format coverage into broad support claims. |
+| Validation | Historical dashboards and old Agent gates are not current product verdicts. | [Validation](validation/README.md); generated `artifacts/quality/latest.md` header | Recalibrate Agent gates and build the next candidate evidence from one explicit commit. |
 
 ## Evidence Shortcuts
 
@@ -97,7 +93,7 @@ Close audit findings; generate exact-commit evidence; then decide Windows handof
 
 - **Next work**
 
-    看 product-quality closure、active integration context、exact-commit gate 和 handoff boundary。
+    看老師試用前 GUI/data stabilization、效能打磨、Assistant prototype 與 gate 重整順序。
 
     [打開 Now](planning/now.md)
 

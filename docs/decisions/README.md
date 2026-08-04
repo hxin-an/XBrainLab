@@ -30,7 +30,7 @@
 | 資料匯入目標是 Data Interpretation System | active | 使用者提供資料位置後，系統應建立可預覽、可驗證、可重跑的資料解讀；不以單純 load file / attach label 心智模型作為終局設計。 |
 | MCP 從 active roadmap 移除 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；既有 MCP code/tests/artifacts 只保留為歷史探索或相容性證據。只有使用者明確要求時才 opt in；未來若要恢復，需另開決策重新定義 scope、security、session ownership、client matrix 和 validation cost。 |
 | Roadmap 五階段定型 | active | 產品主線固定為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。阻礙使用或理解的 UI/UX 屬於 Desktop MVP blocker；美感、一致性和低風險 polish 屬於 Product Polish / Release Candidate。 |
-| Product-Quality Closure Delivery Flow | active | Current integration line 是 `stabilize/product-quality-closure`。`docs/agent_goals/product_quality_closure_goal.md` 與 product-quality audit ledger 共同定義 closure；只有同一個 clean pushed exact commit 通過 handoff candidate gate，才可交給使用者做 Windows acceptance。 |
+| Product-Quality Closure Delivery Flow | superseded 2026-08-04 | `stabilize/product-quality-closure` 已依使用者決定收斂到 `main` 作 development checkpoint。這不代表 release 或 product completion；後續以短 task branch 回到 `main`，並由 current Now / Validation 定義下一個 candidate gate。 |
 | Desktop MVP Delivery Flow | superseded | `stabilize/desktop-mvp` 是較早 delivery flow，保留作決策歷史，不再是 current branch、task base、merge destination 或 validation authority。 |
 | User bug report triggers audit | active | 使用者回報的是 audit trigger，不是唯一 symptom。Product-quality closure 期間，agent 應主動盤點相鄰產品 bug、code quality、architecture drift、test quality、performance/resource 和 UI artifact 問題，並回寫 current audit ledger；不另建 `AQ-*`、`Prep Gate` 或 `Repair Loop` queue。 |
 
