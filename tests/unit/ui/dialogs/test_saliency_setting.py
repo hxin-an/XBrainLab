@@ -311,6 +311,44 @@ class TestSaliencySettingMethods:
         assert result["SmoothGrad"]["nt_samples_batch_size"] is None
         assert result["SmoothGrad"]["stdevs"] == 0.25
 
+    def test_accept_converts_configured_internal_selection_to_public_shape(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.ui.dialogs.visualization.saliency_setting_dialog import (
+            SaliencySettingDialog,
+        )
+
+        configured = {
+            "_profile": "advanced",
+            "_methods": ["VarGrad"],
+            "SmoothGrad": {"nt_samples": 5},
+            "SmoothGrad_Squared": {"nt_samples": 5},
+            "VarGrad": {
+                "nt_samples": 9,
+                "nt_samples_batch_size": None,
+                "stdevs": 0.5,
+            },
+        }
+        dialog = SaliencySettingDialog(None, configured)
+        qtbot.addWidget(dialog)
+
+        with patch("PyQt6.QtWidgets.QDialog.accept"):
+            dialog.accept()
+
+        result = dialog.get_result()
+        assert result["profile"] == "advanced"
+        assert result["methods"] == ["VarGrad"]
+        assert result["VarGrad"] == {
+            "nt_samples": 9,
+            "nt_samples_batch_size": None,
+            "stdevs": 0.5,
+        }
+        assert "_methods" not in result
+        assert "_profile" not in result
+        assert "SmoothGrad" not in result
+        assert "SmoothGrad_Squared" not in result
+
     def test_accept(self, dialog):
         with patch("PyQt6.QtWidgets.QDialog.accept"):
             dialog.accept()

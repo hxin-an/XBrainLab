@@ -105,6 +105,26 @@ def test_configured_params_round_trip_to_public_command_shape() -> None:
     assert renormalized == configured
 
 
+def test_recommended_configured_params_round_trip_to_public_command_shape() -> None:
+    configured, _requested_method = normalize_saliency_params(
+        "Gradient",
+        baseline_saliency_params(),
+    )
+
+    command_params = saliency_command_params_from_configured(configured)
+
+    assert command_params == {
+        "profile": "recommended",
+        "methods": list(RECOMMENDED_SALIENCY_METHODS),
+    }
+    renormalized, requested_method = normalize_saliency_params(
+        "Gradient",
+        command_params,
+    )
+    assert requested_method == "Gradient"
+    assert renormalized == configured
+
+
 def test_flat_params_apply_only_to_requested_advanced_method():
     params, requested_method = normalize_saliency_params(
         "SmoothGrad",
