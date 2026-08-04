@@ -806,6 +806,7 @@ class DataInterpretationActionCoordinator:
                     str(exc),
                 )
                 return InteractionOutcome.blocked(str(exc))
+            self._show_status("Import review ready.")
             return self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
@@ -820,6 +821,7 @@ class DataInterpretationActionCoordinator:
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome | None:
+            self._show_status("Preparing import review...")
             return self._execute_interpretation_command_async(
                 ReviewInterpretationCommand(
                     source_path=source_path,

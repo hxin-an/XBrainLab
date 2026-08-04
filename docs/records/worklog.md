@@ -16850,6 +16850,8 @@
 ### 2026-08-04 Data-load feedback and class-name clarity
 
 - completed：
+  - File, folder and BIDS entry points now publish `Preparing import review...` while the shared
+    scan/preview command runs, then `Import review ready.` immediately before the wizard opens.
   - The reviewed import apply stage now publishes `Loading EEG data...` to the desktop status bar
     before EEG payload loading begins.
   - Kept internal-event assignment bidirectional while replacing `Not used` presentation with the

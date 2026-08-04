@@ -1288,6 +1288,8 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     cast(Any, panel).study = Study()
     cast(Any, panel).set_busy = lambda _busy: None
     handler = DatasetActionHandler(panel)
+    statuses: list[str] = []
+    monkeypatch.setattr(handler, "_show_status", statuses.append)
     continue_flow = MagicMock()
     monkeypatch.setattr(
         handler._data_interpretation,
@@ -1332,6 +1334,7 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
 
     assert started is not None
     assert started.status is InteractionStatus.ACCEPTED
+    assert statuses == ["Preparing import review..."]
     assert elapsed < 0.1
     assert worker_started.wait(timeout=1.0)
     QTimer.singleShot(0, lambda: heartbeat.append(True))
@@ -1339,6 +1342,7 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
 
     worker_release.set()
     qtbot.waitUntil(lambda: continue_flow.call_count == 1, timeout=1000)
+    assert statuses == ["Preparing import review...", "Import review ready."]
 
 
 def test_review_warning_confirmation_retries_before_opening_preview(
