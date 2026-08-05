@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
+
 if TYPE_CHECKING:
     from .evaluation_render import EvaluationSummaryIdentity
 
@@ -348,7 +350,7 @@ class ConfigureTrainingCommand:
     optimizer: str = "adam"
     optimizer_params: dict[str, Any] = field(default_factory=dict)
     save_checkpoints_every: int = 0
-    output_dir: str = "./output"
+    output_dir: str = DEFAULT_TRAINING_OUTPUT_DIR
     evaluation_option: str | None = None
     model_name: str | None = None
     model_params: dict[str, Any] = field(default_factory=dict)

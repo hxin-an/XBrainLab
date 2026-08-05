@@ -227,7 +227,7 @@ class TestTrainingSettingDefaultValues:
         assert window.optim == torch.optim.Adam
         assert window.optim_params == {}  # No lr in params
         assert window.use_cpu is True
-        assert window.output_dir == "./output"
+        assert window.output_dir == "./output/runs"
 
     def test_confirm_creates_valid_training_option(self, qtbot):
         """Test that confirming with defaults creates valid TrainingOption."""

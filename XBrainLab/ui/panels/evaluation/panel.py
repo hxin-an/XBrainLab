@@ -83,6 +83,8 @@ COMPACT_HEIGHT_BREAKPOINT = 600
 INFO_SIDEBAR_WIDTH = 260
 COMPACT_INFO_SIDEBAR_WIDTH = 220
 COMPACT_INFO_SIDEBAR_BREAKPOINT = 540
+EVALUATION_RENDER_RETRY_INTERVAL_MS = 75
+EVALUATION_RENDER_RETRY_MAX_ATTEMPTS = 8
 logger = logging.getLogger(__name__)
 EVALUATION_SPLIT_OPTIONS = (
     ("training", "Train"),
@@ -186,8 +188,16 @@ class EvaluationPanel(BasePanel):
         self._model_summary_identity: EvaluationSummaryIdentity | None = None
         self._model_summary_text = ""
         self._application_summary_dirty = True
+        self._evaluation_render_retry_request: EvaluationRenderRequest | None = None
+        self._evaluation_render_retry_attempts = 0
 
         super().__init__(parent=parent, controller=None)
+
+        self._evaluation_render_retry_timer = QTimer(self)
+        self._evaluation_render_retry_timer.setSingleShot(True)
+        self._evaluation_render_retry_timer.timeout.connect(
+            self._retry_evaluation_render
+        )
 
         self._application_render_ledger = ApplicationPublicationRenderLedger(
             panel_name="Evaluation",
@@ -239,9 +249,13 @@ class EvaluationPanel(BasePanel):
     def _render_application_publication(
         self,
         publication: ApplicationViewPublication,
-    ) -> None:
+    ) -> bool:
         self._application_view_publication = publication
-        self.update_panel()
+        try:
+            self.update_panel()
+        except _RetryEvaluationPublicationRenderError:
+            return False
+        return True
 
     def update_panel(self):
         """Refresh Evaluation and commit a direct render only after success."""
@@ -923,7 +937,20 @@ class EvaluationPanel(BasePanel):
                 exc.diagnostics.get("evaluation_final_unavailable") is True
                 or exc.diagnostics.get("evaluation_split_unavailable") is True
             ):
+                self._clear_evaluation_render_retry()
                 self._show_evaluation_render_unavailable(str(exc))
+                return None
+            if (
+                exc.diagnostics.get("evaluation_render_stale") is True
+                and exc.diagnostics.get("retryable") is True
+            ):
+                self._evaluation_render = None
+                self.mark_refresh_dirty()
+                if self._application_render_ledger.render_in_progress:
+                    raise _RetryEvaluationPublicationRenderError(
+                        "Evaluation render changed during publication delivery."
+                    ) from None
+                self._schedule_evaluation_render_retry(request)
                 return None
             logger.error("Evaluation render publication failed.", exc_info=True)
             self.mark_refresh_dirty()
@@ -942,8 +969,46 @@ class EvaluationPanel(BasePanel):
             return None
         if publication is None or publication.request != request:
             return None
+        self._clear_evaluation_render_retry()
         self._evaluation_render = publication
         return publication
+
+    def _schedule_evaluation_render_retry(
+        self,
+        request: EvaluationRenderRequest,
+    ) -> None:
+        """Retry one transient stale read without surfacing a product error."""
+        if request != self._evaluation_render_retry_request:
+            self._evaluation_render_retry_request = request
+            self._evaluation_render_retry_attempts = 0
+        if (
+            self._evaluation_render_retry_attempts
+            >= EVALUATION_RENDER_RETRY_MAX_ATTEMPTS
+        ):
+            return
+        self._evaluation_render_retry_attempts += 1
+        self._evaluation_render_retry_timer.start(EVALUATION_RENDER_RETRY_INTERVAL_MS)
+
+    def _retry_evaluation_render(self) -> None:
+        """Retry only while the user is still viewing the same render target."""
+        request = self._evaluation_render_retry_request
+        if request is None:
+            return
+        selection = self.run_combo.currentData()
+        split = self.split_combo.currentData()
+        if (
+            request.publication_generation != self._application_generation
+            or request.selection != selection
+            or request.split != split
+        ):
+            self._clear_evaluation_render_retry()
+            return
+        self.update_views()
+
+    def _clear_evaluation_render_retry(self) -> None:
+        self._evaluation_render_retry_timer.stop()
+        self._evaluation_render_retry_request = None
+        self._evaluation_render_retry_attempts = 0
 
     def _show_evaluation_render_unavailable(self, message: str) -> None:
         """Show one stable, user-facing reason for inadmissible final metrics."""
@@ -965,6 +1030,7 @@ class EvaluationPanel(BasePanel):
 
     def cleanup(self) -> None:
         """Cancel queued renders and release the publication subscription."""
+        self._clear_evaluation_render_retry()
         self._application_render_ledger.cleanup()
         if hasattr(self, "matrix_widget"):
             self.matrix_widget.cleanup()

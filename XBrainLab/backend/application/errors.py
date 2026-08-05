@@ -16,6 +16,7 @@ from XBrainLab.backend.exceptions import (
     XBrainLabError,
 )
 from XBrainLab.backend.services.label_import_errors import AtomicLabelApplyError
+from XBrainLab.backend.utils.filesystem_identity import LegacyOutputNamespaceError
 from XBrainLab.backend.utils.public_diagnostics import (
     PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
     public_diagnostic_text,
@@ -102,6 +103,17 @@ def map_exception(exc: Exception) -> ApplicationError:
                 "phase": exc.phase,
                 "state_preserved": not exc.state_unknown,
             },
+        )
+    if type(exc) is LegacyOutputNamespaceError:
+        return ApplicationError(
+            message=(
+                "The selected training output folder contains results from an "
+                "older XBrainLab version. Choose a different output folder or "
+                "archive the existing results before starting training."
+            ),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            diagnostics={"legacy_training_output_namespace": True},
         )
     if type(exc) is UnsupportedFormatError:
         return ApplicationError(

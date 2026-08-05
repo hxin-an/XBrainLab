@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.training import TestOnlyOption, parse_device_name
+from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -104,7 +105,7 @@ class TestOnlySettingWindow(BaseDialog):
         """
         try:
             self.training_option = TestOnlyOption(
-                self.output_dir or "./output",
+                self.output_dir or DEFAULT_TRAINING_OUTPUT_DIR,
                 self.use_cpu if self.use_cpu is not None else True,
                 self.gpu_idx if self.gpu_idx is not None else 0,
                 int(self.bs_entry.text()),

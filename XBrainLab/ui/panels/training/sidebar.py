@@ -1169,7 +1169,11 @@ class TrainingSidebar(QWidget):
                 optimizer=optimizer_name,
                 optimizer_params=dict(getattr(option, "optim_params", {}) or {}),
                 save_checkpoints_every=getattr(option, "checkpoint_epoch", 0),
-                output_dir=getattr(option, "output_dir", "./output"),
+                output_dir=getattr(
+                    option,
+                    "output_dir",
+                    ConfigureTrainingCommand().output_dir,
+                ),
                 evaluation_option=getattr(
                     getattr(option, "evaluation_option", None),
                     "value",

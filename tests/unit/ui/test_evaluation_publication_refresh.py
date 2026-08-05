@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 from PyQt6.QtWidgets import QWidget
 
-from XBrainLab.backend.application import EvaluateCommand
+from XBrainLab.backend.application import ApplicationError, EvaluateCommand
 from XBrainLab.backend.application.commands import Command
 from XBrainLab.backend.application.evaluation_render import (
     EvaluationPlanIdentity,
@@ -34,7 +35,10 @@ from XBrainLab.backend.training_state_contract import (
     TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils.observer import Observable
-from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.panels.evaluation.panel import (
+    EvaluationPanel,
+    _RetryEvaluationPublicationRenderError,
+)
 
 
 def _publication(
@@ -601,6 +605,115 @@ def test_evaluation_render_exception_retries_internally_and_commits_on_success(
 
     assert panel._last_application_revision == 5
     assert panel._application_render_ledger.pending_publication is None
+
+
+def test_evaluation_stale_render_retries_without_error_log(
+    qtbot,
+    monkeypatch,
+    caplog,
+) -> None:
+    port = _EvaluationApplicationPort()
+    panel = _panel(qtbot, port)
+    panel.update_panel()
+    selection = EvaluationPlanIdentity(plan_index=0)
+    panel._application_generation = port.publication.generation
+    panel.run_combo.clear()
+    panel.run_combo.addItem("Average", selection)
+    panel.split_combo.clear()
+    panel.split_combo.addItem("Test", "test")
+    attempts = 0
+
+    def stale_then_available(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ApplicationError(
+                "Evaluation results changed while render data was being read.",
+                diagnostics={
+                    "evaluation_render_stale": True,
+                    "retryable": True,
+                },
+            )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
+        stale_then_available,
+    )
+    caplog.set_level(logging.ERROR)
+
+    assert panel._render_for_selection(selection, split="test") is None
+    assert panel._evaluation_render_retry_timer.isActive()
+    qtbot.waitUntil(lambda: attempts == 2)
+
+    assert not [
+        record
+        for record in caplog.records
+        if "Evaluation render publication failed" in record.getMessage()
+    ]
+
+
+def test_evaluation_publication_ledger_silently_retries_stale_render(
+    qtbot,
+    caplog,
+) -> None:
+    port = _EvaluationApplicationPort()
+    panel = _panel(qtbot, port)
+    panel.update_panel()
+    caplog.set_level(logging.ERROR)
+    panel.update_panel = MagicMock(
+        side_effect=_RetryEvaluationPublicationRenderError("stale render")
+    )
+    port.publication = _publication(generation=5, revision=5)
+
+    port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
+    qtbot.waitUntil(lambda: panel.update_panel.call_count >= 2)
+    panel.cleanup()
+
+    assert not [
+        record
+        for record in caplog.records
+        if "Evaluation application publication render failed" in record.getMessage()
+    ]
+
+
+def test_evaluation_cleanup_cancels_stale_render_retry(
+    qtbot,
+    monkeypatch,
+) -> None:
+    port = _EvaluationApplicationPort()
+    panel = _panel(qtbot, port)
+    panel.update_panel()
+    selection = EvaluationPlanIdentity(plan_index=0)
+    panel._application_generation = port.publication.generation
+    panel.run_combo.clear()
+    panel.run_combo.addItem("Average", selection)
+    panel.split_combo.clear()
+    panel.split_combo.addItem("Test", "test")
+    attempts = 0
+
+    def always_stale(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise ApplicationError(
+            "Evaluation results changed while render data was being read.",
+            diagnostics={
+                "evaluation_render_stale": True,
+                "retryable": True,
+            },
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
+        always_stale,
+    )
+
+    assert panel._render_for_selection(selection, split="test") is None
+    assert panel._evaluation_render_retry_timer.isActive()
+    panel.cleanup()
+    qtbot.wait(100)
+
+    assert attempts == 1
+    assert not panel._evaluation_render_retry_timer.isActive()
 
 
 def test_evaluation_exhausted_revision_recovers_from_newer_publication(qtbot) -> None:
