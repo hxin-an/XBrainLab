@@ -65,6 +65,8 @@ def test_ci_public_fixture_cache_is_bounded_and_invalidated_by_manifest() -> Non
 def test_ci_exposes_one_stable_fail_closed_merge_gate() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
+    assert "fetch-depth: 0" not in workflow
+    assert "fetch-depth: 2" in workflow
     assert "merge-gate:" in workflow
     assert "name: CI Merge Gate" in workflow
     assert "needs: [changes, docs-only, lint, test, public-dataset-gate]" in workflow

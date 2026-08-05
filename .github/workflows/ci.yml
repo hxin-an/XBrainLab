@@ -30,7 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # The repository history is large. Two generations include the PR
+          # merge parents without downloading the complete object history.
+          fetch-depth: 2
 
       - name: Detect product-relevant changes
         id: scope
