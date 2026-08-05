@@ -1998,6 +1998,8 @@ class ApplicationService(Observable):
     ) -> CommandResult:
         """Map one handler failure and fail closed when post-state is uncertain."""
         app_error = map_exception(exc)
+        if app_error.error_type is ErrorType.INTERNAL:
+            logger.exception("%s command failed unexpectedly", name.value)
         public_message = str(app_error)
         failure_diagnostics = {
             **app_error.diagnostics,

@@ -12,6 +12,7 @@ TRAINING_MODEL_NAMES = ("EEGNet", "ShallowConvNet", "SCCNet")
 TRAINING_OPTIMIZER_NAMES = ("adam", "sgd", "adamw")
 TRAINING_DEVICE_NAMES = ("cpu", "cuda")
 TRAINING_EVALUATION_NAMES = ("val_loss", "val_auc", "val_acc", "last_epoch")
+DEFAULT_TRAINING_OUTPUT_DIR = "./output/runs"
 
 
 class TrainingInputContractError(ValueError):

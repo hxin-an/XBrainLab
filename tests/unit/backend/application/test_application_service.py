@@ -105,6 +105,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingStateToken,
     TrainingTerminalOutcome,
 )
+from XBrainLab.backend.utils.filesystem_identity import LegacyOutputNamespaceError
 from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
 
 THREAD_WATCHDOG_SECONDS = 5.0
@@ -1811,6 +1812,52 @@ def test_handler_failure_does_not_execute_hostile_exception_metaclass() -> None:
     assert result.message == "An unexpected application error occurred."
     assert result.diagnostics["exception_type"] == "Exception"
     assert "Mary Example" not in repr(result.to_public_dict())
+
+
+def test_unexpected_handler_failure_is_logged_at_the_command_boundary() -> None:
+    service = ApplicationService(Study())
+
+    class InjectedTrainingFailure(Exception):
+        pass
+
+    def fail(_command: ConfigureTrainingCommand) -> Any:
+        raise InjectedTrainingFailure("injected training configuration failure")
+
+    service._command_handlers[CommandName.CONFIGURE_TRAINING] = fail
+
+    with patch(
+        "XBrainLab.backend.application.service.logger.exception",
+    ) as log_exception:
+        result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
+
+    assert result.failed is True
+    assert result.message == "An unexpected application error occurred."
+    log_exception.assert_called_once_with(
+        "%s command failed unexpectedly",
+        CommandName.CONFIGURE_TRAINING.value,
+    )
+
+
+def test_legacy_training_output_namespace_is_an_actionable_precondition() -> None:
+    service = ApplicationService(Study())
+
+    def fail(_command: TrainCommand) -> Any:
+        raise LegacyOutputNamespaceError("private legacy namespace detail")
+
+    service._command_handlers[CommandName.TRAIN] = fail
+    service._ensure_command_allowed = MagicMock()
+
+    result = service.execute(TrainCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.message == (
+        "The selected training output folder contains results from an older "
+        "XBrainLab version. Choose a different output folder or archive the "
+        "existing results before starting training."
+    )
+    assert "private legacy namespace detail" not in repr(result.to_public_dict())
 
 
 def test_explicit_state_unknown_handler_failure_fails_closed_when_state_is_readable() -> (

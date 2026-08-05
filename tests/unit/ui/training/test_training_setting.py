@@ -48,7 +48,7 @@ class TestTrainingSetting:
         assert window.lr_entry.text() == "0.001"
         assert window.checkpoint_entry.text() == "0"
         assert window.repeat_entry.text() == "1"
-        assert window.output_dir == "./output"
+        assert window.output_dir == "./output/runs"
         assert window.optim == torch.optim.Adam  # Real Adam class
         assert window.opt_label.text() == "Adam"
         assert window.use_cpu is True

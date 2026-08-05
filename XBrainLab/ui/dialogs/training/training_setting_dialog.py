@@ -27,6 +27,7 @@ from XBrainLab.backend.training import (
     parse_device_name,
     parse_optim_name,
 )
+from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
 from XBrainLab.backend.training.utils import (
     get_device_count,
     get_optimizer_classes,
@@ -77,7 +78,7 @@ class TrainingSettingDialog(BaseDialog):
 
         self.training_option: TrainingOption | None = None
         self.initial_option = initial_option
-        self.output_dir = "./output"
+        self.output_dir = DEFAULT_TRAINING_OUTPUT_DIR
         self.optim_classes = get_optimizer_classes()
         self.optim = self.optim_classes.get("Adam")
         self.optim_params: dict[str, Any] = {}
