@@ -1,6 +1,6 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-07-30`
+最後更新：`2026-08-05`
 
 這份文件是給任何進入本 repo 的 coding agent 的最短入口。
 
@@ -47,14 +47,13 @@ MCP 已從 active roadmap 移除。不要把 MCP hardening、MCP client certific
 
 ## 目前整合線
 
-- active integration worktree：
-  `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1`
-- active integration branch：`stabilize/product-quality-closure`
-- `ux/assistant-product-v1@3869aaef` 只是真實存在的 baseline，不是目前 candidate。
-- product-quality closure 仍在進行中；目前不是 handoff-ready，也不能排 Windows acceptance。
-- 本輪完成條件以
-  `docs/agent_goals/product_quality_closure_goal.md` 和
-  `docs/records/product_quality_audit_2026-07-30.md` 為準。
+- `main` 是唯一產品基線；實際 checkout 以 `git rev-parse --show-toplevel` 為準。
+- 每項工作從最新 `main` 建立一條短 task branch，經 focused validation、push、PR 與
+  exact-head CI gate 後才回到 `main`。
+- `ux/assistant-product-v1@3869aaef` 與舊 stabilization branches 只作 provenance，不是目前
+  candidate、task base 或 merge destination。
+- 目前不是 handoff-ready；active priority 與完成條件以 `docs/planning/now.md` 和
+  `docs/validation/README.md` 為準。
 
 不要把 branch 名稱、registered worktree 數量或測試總數從舊文件複製成 current truth。
 worktree inventory 要從 `git worktree list --porcelain` 取得；最終測試總數只能來自同一個
@@ -103,6 +102,11 @@ clean exact commit 產生的 handoff evidence。
 13. Qt、PyTorch、MNE 或其他可能 native abort 的驗證必須使用 `prlimit --core=0`，並設定明確
     timeout。不得用 `fork_context=true` 扇出長對話；worker 應接收 bounded prompt、必要路徑與
     驗收條件，不複製整段聊天。
+14. 開始下一個 task branch 前，前一個 branch 必須已合併、關閉或明確標為保留中的
+    checkpoint；不得無意識地把新 branch 疊在未合併 branch 上。合併一律經 PR，且只接受
+    exact-head CI run 已 `completed/success` 的結果。CI pending、failed、缺少 exact-head run
+    都必須 fail closed；不得以 `gh pr merge --auto` 代替這項檢查，因 repository 未必設定
+    required checks。
 
 ## Handoff-ready 規則
 
@@ -232,6 +236,6 @@ baseline、dirty-worktree 或不同 SHA 的 dashboard 不能作為目前 closure
 - `.agents/legacy/*`
 - `/mnt/d/repos/XBrainLab`
 
-目前 active integration worktree 是：
+目前 active repo 是：
 
-- `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1`
+- `/mnt/d/workspace_v2/projects/lab/xbrainlab`
