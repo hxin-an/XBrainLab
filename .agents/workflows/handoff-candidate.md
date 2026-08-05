@@ -1,6 +1,6 @@
 # Handoff Candidate Workflow
 
-最後更新：`2026-07-30`
+最後更新：`2026-08-05`
 
 這份 workflow 用於任何準備交給使用者手測的修復、功能或整合 branch。
 
@@ -9,36 +9,29 @@ artifact 和同類掃描抓掉明顯 bug，再請使用者做 acceptance。
 
 ## Current Delivery Flow
 
-目前 product-quality closure 的 integration 與 handoff 只走這條交付線：
+目前 integration 與 handoff 只走這條交付線：
 
 ```text
-ux/assistant-product-v1@3869aaef
-  baseline only
-  -> build/worktrees/assistant-product-v1
-      stabilize/product-quality-closure
-      audit slices + checkpoint validation
-  -> one clean exact commit
-      generated handoff evidence + main-agent review
-  -> Windows handoff candidate
-  -> user manual acceptance
-      main merge gate
-  -> main
+main
+  -> short task branch
+  -> focused validation + pushed exact commit + PR
+  -> exact-head CI completed/success
+  -> Windows handoff candidate when the full handoff gate is required
+  -> user acceptance or explicitly agreed merge gate
+  -> PR merge to main
+  -> local main fast-forwarded and remote containment verified
 ```
 
 含義：
 
-- `ux/assistant-product-v1@3869aaef` 是 provenance baseline，不是目前 candidate，也不能拿它的
-  dashboard totals 代表 closure 結果。
-- active integration worktree 是
-  `/mnt/d/workspace_v2/projects/lab/xbrainlab/build/worktrees/assistant-product-v1`，branch 是
-  `stabilize/product-quality-closure`。
-- audit slice 或 task branch 只能證明局部修復可整合；不等於可以請使用者手測。
+- `main` 是目前唯一產品基線；舊 stabilization branches 只作 provenance。
+- task branch 只能證明局部修復可整合；不等於可以請使用者手測。
 - 使用者回報的 bug 是 audit trigger，不是唯一 symptom；agent 要主動找產品 bug、
   code quality issue、test gap、architecture drift 和可見 UI regression。
-- product-quality closure 尚未完成，目前分類固定是 `checkpoint`。
-- `handoff-ready` 只能從 active integration branch 的 clean exact commit 宣稱，且必須完成
-  本 workflow。
+- `handoff-ready` 只能從 clean exact commit 宣稱，且必須完成本 workflow。
 - `main` merge 要等使用者 acceptance，或明確同意的 release-candidate gate。
+- merge 前還必須確認 PR exact-head 的 CI run 已完成且成功；沒有 branch protection 時也不得略過。
+- 前一個 task branch 未合併、關閉或明確保留前，不得再從它切下一個 task branch。
 
 ## 0. Classification
 
@@ -52,10 +45,9 @@ ux/assistant-product-v1@3869aaef
 
 ## 0.1 Product-Quality Audit Gate
 
-在開始第一個修復分支前，或使用者要求「全面盤點」、「不要讓我一個一個回報 bug」時，
-必須從 active integration branch 讀
-`docs/records/product_quality_audit_2026-07-30.md` 和
-`docs/agent_goals/product_quality_closure_goal.md`，再做 product-quality audit。
+使用者要求「全面盤點」或「不要讓我一個一個回報 bug」時，先讀 `docs/current.md`、
+`docs/planning/now.md` 與 `docs/validation/README.md` 的 current truth，再做 product-quality
+audit。舊 dated audit / goal 只能用來追溯歷史 finding，不得直接當成 active queue。
 
 這不是只找同類 bug，而是找會阻礙 Desktop MVP handoff 的問題：
 
@@ -84,7 +76,7 @@ ux/assistant-product-v1@3869aaef
 
 ## 0.5 Slice / Task-Branch Gate
 
-任何修復 slice 或 task branch 整合回 `stabilize/product-quality-closure` 前，至少要有：
+任何修復 slice 或 task branch 整合回 `main` 前，至少要有：
 
 - focused regression：重現或保護本分支要修的問題。
 - same-class sweep：搜尋同類 call sites、screens、state flow 或 data flow。

@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-04`
+最後更新：`2026-08-05`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -128,9 +128,15 @@ main development checkpoint
   -> simplified Assistant prototype + recalibrated Agent gates
   -> one explicit candidate commit
       relevant regression + multi-dataset + artifact + reviewer gates
+  -> pushed PR whose exact-head CI Merge Gate completed successfully
   -> Windows human acceptance
-  -> release / next-main checkpoint decision
+  -> explicit merge decision
+  -> merge through PR, fast-forward local main, verify remote containment
 ```
+
+`push`、local PASS 或 pending CI 都不等於可合併。PR 必須以目前 head SHA 取得完成且成功的
+`CI Merge Gate`；不得使用 `gh pr merge --auto` 代替檢查，因未受保護的 branch 可能在 CI
+仍執行時立即合併。
 
 完整報告欄位和 task-slice 規則看 repo-root
 `.agents/workflows/handoff-candidate.md`。

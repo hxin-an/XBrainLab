@@ -41,6 +41,10 @@ user explicitly asks for that operation.
   both together.
 - If the worktree is already dirty, work with existing changes; do not overwrite or
   normalize unrelated files.
+- Before creating another task branch, dispose of the current branch by merging it,
+  closing it, or explicitly recording it as a retained checkpoint. Do not stack a
+  new branch on an unmerged task branch unless an integration stack was explicitly
+  agreed in advance.
 
 Recommended branch names:
 
@@ -51,49 +55,55 @@ Recommended branch names:
 - `docs/<area>` for docs-only work.
 - `wip/<area>` for checkpoints not ready for PR.
 
-## Current Product-Quality Closure Flow
+## Current Delivery Flow
 
-The active integration worktree is
-`build/worktrees/assistant-product-v1`, on
-`stabilize/product-quality-closure`. Branch governance and handoff governance are
-one flow:
+The current product baseline is `main`. Teacher-facing fixes and bounded product
+work use short branches and return through one explicit PR flow:
 
 ```text
-ux/assistant-product-v1@3869aaef
-  baseline only
-  -> stabilize/product-quality-closure
-      bounded audit slices and checkpoint evidence
-  -> one clean pushed exact commit
-      handoff candidate gate
-  -> user Windows acceptance
-      explicitly agreed main merge gate
+main
+  -> one short task branch
+      focused regression + same-class sweep + relevant gate
+  -> pushed exact commit + PR
+  -> exact-head CI completed/success
+  -> user acceptance or explicitly agreed merge gate
+  -> merge to main
+  -> fetch + fast-forward local main + verify remote containment
 ```
 
 Rules:
 
 - Confirm the branch and worktree from Git before acting; do not copy branch
   inventory from records or old plans.
-- Treat `stabilize/product-quality-closure` as the current shared integration
-  line. Preserve existing dirty work and use bounded ownership; do not switch
-  branches or create a task branch unless the user or main agent requests it.
-- A deliberately split task branch owns one finding, one evidence gap, or one
-  boundary cleanup. It returns to the integration line only after focused
-  regression, same-class sweep, relevant tests/artifacts, commit, and push.
-- Current closure authority is
-  `docs/agent_goals/product_quality_closure_goal.md` plus
-  `docs/records/product_quality_audit_2026-07-30.md`. Do not create a parallel
-  `AQ-*`, `Prep Gate`, or `Repair Loop` task system.
-- A merged slice or validated checkpoint does not make the product ready for
-  manual testing. Only the clean exact integration commit may enter the handoff
-  candidate gate.
-- `main` receives the integration line only after user acceptance or an
-  explicitly agreed release-candidate gate.
+- A task branch owns one primary objective. A merge-blocking CI compatibility fix
+  may join the same PR only when it is the minimum change required to execute that
+  PR's required gate, and must be called out in the PR.
+- Do not start another task branch from an unmerged task branch. Return to updated
+  `main` first, unless an explicit integration stack records the dependency and
+  merge order.
+- A validated checkpoint is pushed and opened as a PR; `push` alone is not merge.
+- `main` receives the PR only after user acceptance or an explicitly agreed merge
+  gate and the exact-head CI rule below.
 - If a change cannot be kept reviewable, split it before implementation or
   report it as a checkpoint with explicit remaining risk.
 
-The former `stabilize/desktop-mvp` flow is superseded history. It may remain in
-dated records for provenance, but it is not the current integration branch, task
-base, merge destination, or validation authority.
+## Exact-Head PR Merge Gate
+
+Before merging a PR:
+
+1. Read the PR head SHA and base branch; the base must be the intended `main`.
+2. Find the latest `CI` workflow run whose `headSha` exactly equals the PR head.
+3. Require that run to be `completed` with conclusion `success`.
+4. Require every reported non-skipped PR check to be completed and successful.
+5. If CI is pending, wait. If it failed, inspect and fix it. If infrastructure
+   failed, rerun it and still require the rerun to pass.
+6. Merge through the PR, then fetch, switch to local `main`, fast-forward only,
+   and verify that `origin/main` contains the PR head SHA.
+
+Fail closed when an exact-head CI run is absent, pending, cancelled, stale, or
+failed. Do not use `gh pr merge --auto`: without protected required checks GitHub
+can merge immediately while CI is still pending. Do not bypass this rule because
+local tests passed.
 
 ## Long-Running Closure Checkpoints
 

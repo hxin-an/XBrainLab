@@ -23,7 +23,15 @@ def test_ci_has_required_public_dataset_gate() -> None:
     assert (
         "scripts/dev/report_data_interpretation_format_matrix.py --strict" in workflow
     )
-    assert "tests/integration/io/test_public_bids_fixture.py" in workflow
+    assert (
+        "tests/integration/io/test_public_bids_fixture.py::"
+        "test_public_mne_bids_import_apply_recipe_and_epoch" in workflow
+    )
+    assert (
+        "tests/integration/io/test_public_bids_fixture.py::"
+        "test_openneuro_p300_trial_type_excludes_missing_rows_and_imports"
+        not in workflow
+    )
     assert "Run public BIDS visible UI wizard format matrix" in workflow
     assert (
         "QT_QPA_PLATFORM=offscreen poetry run -- python -m "
@@ -52,3 +60,17 @@ def test_ci_public_fixture_cache_is_bounded_and_invalidated_by_manifest() -> Non
     assert "path: tests/fixtures/data/public" in workflow
     assert "hashFiles('scripts/dev/fetch_public_eeg_fixtures.py')" in workflow
     assert ".github/workflows/ci.yml|pyproject.toml" in workflow
+
+
+def test_ci_exposes_one_stable_fail_closed_merge_gate() -> None:
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "merge-gate:" in workflow
+    assert "name: CI Merge Gate" in workflow
+    assert "needs: [changes, docs-only, lint, test, public-dataset-gate]" in workflow
+    assert "CHANGE_SCOPE_RESULT: ${{ needs.changes.result }}" in workflow
+    assert "PRODUCT_CHANGED: ${{ needs.changes.outputs.product }}" in workflow
+    assert '[[ "$LINT_RESULT" == "success" ]] || exit 1' in workflow
+    assert '[[ "$TEST_RESULT" == "success" ]] || exit 1' in workflow
+    assert '[[ "$PUBLIC_DATASET_RESULT" == "success" ]] || exit 1' in workflow
+    assert '[[ "$DOCS_ONLY_RESULT" == "success" ]] || exit 1' in workflow

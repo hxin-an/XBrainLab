@@ -262,7 +262,7 @@ jobs:
             tests/integration/io/test_io_integration.py::TestIOIntegration::test_application_service_import_public_real_formats \
             tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_non_existent_file \
             tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_invalid_extension \
-            tests/integration/io/test_public_bids_fixture.py \
+            tests/integration/io/test_public_bids_fixture.py::test_public_mne_bids_import_apply_recipe_and_epoch \
             tests/integration/pipeline/test_public_cross_source_training_smoke.py \
             -q
 
@@ -282,3 +282,31 @@ jobs:
             public-cross-source-smoke.json
             test-results/*.json
           if-no-files-found: warn
+
+  merge-gate:
+    name: CI Merge Gate
+    needs: [changes, docs-only, lint, test, public-dataset-gate]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the applicable validation path
+        env:
+          CHANGE_SCOPE_RESULT: ${{ needs.changes.result }}
+          PRODUCT_CHANGED: ${{ needs.changes.outputs.product }}
+          DOCS_ONLY_RESULT: ${{ needs.docs-only.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          PUBLIC_DATASET_RESULT: ${{ needs.public-dataset-gate.result }}
+        run: |
+          if [[ "$CHANGE_SCOPE_RESULT" != "success" ]]; then
+            echo "Change-scope detection did not succeed: $CHANGE_SCOPE_RESULT"
+            exit 1
+          fi
+
+          if [[ "$PRODUCT_CHANGED" == "true" ]]; then
+            [[ "$LINT_RESULT" == "success" ]] || exit 1
+            [[ "$TEST_RESULT" == "success" ]] || exit 1
+            [[ "$PUBLIC_DATASET_RESULT" == "success" ]] || exit 1
+          else
+            [[ "$DOCS_ONLY_RESULT" == "success" ]] || exit 1
+          fi
