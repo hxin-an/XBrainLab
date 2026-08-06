@@ -14,6 +14,9 @@ from XBrainLab.backend.application.data_interpretation_candidate import (
 from XBrainLab.backend.application.data_interpretation_pairing import (
     resolve_label_file_pairing,
 )
+from XBrainLab.backend.application.data_interpretation_public_projection import (
+    project_label_carrier_plan,
+)
 from XBrainLab.backend.application.data_interpretation_recipe import (
     ImportRecipe,
     choices_from_import_recipe,
@@ -522,8 +525,8 @@ def test_post_load_state_keeps_unproven_placement_blocked_across_projections() -
     updated_recipe = state.resolve_recipe(None)
     [carrier] = updated_candidate.label_carrier_plan
     assert carrier["placement_review"]["status"] == "blocked"
-    assert (
-        updated_preview["label_carrier_preview"] == updated_candidate.label_carrier_plan
+    assert updated_preview["label_carrier_preview"] == project_label_carrier_plan(
+        updated_candidate.label_carrier_plan
     )
     assert updated_decision is not None
     assert updated_decision.decision == "blocked"
@@ -890,3 +893,34 @@ def test_internal_event_handoff_requires_trials_for_each_selected_class() -> Non
     assert handoff["usable_class_labels"] == ["Left hand"]
     assert handoff["supervised_ready"] is False
     assert handoff["supervised_blocker_codes"] == ["insufficient_usable_classes"]
+
+
+def test_epoch_handoff_compacts_bids_event_evidence() -> None:
+    event_rows = [
+        {"row": index, "onset": float(index), "value": str(index % 2)}
+        for index in range(50)
+    ]
+    applied = AppliedInterpretation(
+        interpretation_id="interpretation-bids",
+        candidate_id="candidate-bids",
+        source_path="/tmp/xbrainlab/bids",
+        source_kind="bids",
+        loaded_files=["/tmp/xbrainlab/bids/sub-01_task-test_eeg.set"],
+        bids={
+            "is_bids": True,
+            "event_validation": {
+                "runs": [
+                    {
+                        "file": "/tmp/xbrainlab/bids/sub-01_task-test_eeg.set",
+                        "row_evidence": event_rows,
+                    }
+                ]
+            },
+        },
+    )
+
+    handoff = DataInterpretationSessionState._epoch_handoff(None, applied)
+
+    [run] = handoff["bids"]["event_validation"]["runs"]
+    assert "row_evidence" not in run
+    assert run["row_evidence_count"] == len(event_rows)

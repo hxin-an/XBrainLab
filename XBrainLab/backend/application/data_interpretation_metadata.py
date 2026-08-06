@@ -12,6 +12,8 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any, cast
 
+from .data_interpretation_path_identity import normalized_path_identity
+
 SAFE = "safe"
 NEEDS_CONFIRMATION = "needs_confirmation"
 BIDS_METADATA_READ_BUDGET_BYTES = 1_048_576
@@ -371,8 +373,12 @@ def bids_scope_summary(
     layout: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Summarize BIDS entities and sidecars for the selected EEG scope."""
-    selected = {str(Path(item).resolve()) for item in selected_eeg_files}
-    rows = [row for row in layout if str(row.get("file")) in selected]
+    selected = {normalized_path_identity(item) for item in selected_eeg_files}
+    rows = [
+        row
+        for row in layout
+        if normalized_path_identity(str(row.get("file") or "")) in selected
+    ]
     return {
         "eeg_file_count": len(rows),
         "subjects": _unique_strings(row.get("subject") for row in rows),

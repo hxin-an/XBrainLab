@@ -1018,6 +1018,9 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             "duration_numeric_rows",
             "label_code_count",
             "matched_code_count",
+            "missing_code_count",
+            "code_mapping_count",
+            "unlabeled_eeg_event_count",
         ):
             values = [
                 value
@@ -1105,6 +1108,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         )
         code_count = self._int_value(review.get("label_code_count"))
         matched_count = self._int_value(review.get("matched_code_count"))
+        missing_count = self._int_value(review.get("missing_code_count"))
         matched_codes = [
             str(item).strip()
             for item in review.get("matched_codes", []) or []
@@ -1115,6 +1119,13 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             for item in review.get("missing_codes", []) or []
             if str(item).strip()
         ]
+        missing_count_text = (
+            str(missing_count)
+            if missing_count is not None
+            else str(len(missing_codes))
+            if missing_codes
+            else "None"
+        )
         return [
             (
                 "Code field",
@@ -1128,7 +1139,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             ),
             (
                 "Missing codes",
-                str(len(missing_codes)) if missing_codes else "None",
+                missing_count_text,
                 self._list_preview(missing_codes, limit=6)
                 or "Every label code is present in EEG events.",
             ),

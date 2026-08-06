@@ -58,10 +58,17 @@ class AdmittedResourceReader:
     admitted_files: dict[str, AdmittedFileIdentity]
     dependent_files: dict[str, tuple[str, ...]] = field(default_factory=dict)
     recording_bounds: dict[str, AdmittedRecordingBounds] = field(default_factory=dict)
+    canonical_path_aliases: dict[str, str] = field(default_factory=dict)
+
+    def canonical_key(self, path: str | Path) -> str:
+        """Return an admitted canonical path without redundant filesystem walks."""
+        resource_path = Path(path)
+        lexical_key = _lexical_path_key(resource_path)
+        return self.canonical_path_aliases.get(lexical_key) or _path_key(resource_path)
 
     def admits(self, path: str | Path) -> bool:
         """Return whether this exact resolved file belongs to the admitted scope."""
-        return _path_key(Path(path)) in self.admitted_files
+        return self.canonical_key(path) in self.admitted_files
 
     @classmethod
     def from_resource_preflight(
@@ -71,7 +78,9 @@ class AdmittedResourceReader:
         *,
         dependent_files: Mapping[str, Iterable[str | Path]] | None = None,
     ) -> AdmittedResourceReader:
-        expected = {_path_key(Path(path)) for path in paths}
+        requested_paths = [Path(path) for path in paths]
+        canonical_paths = [_path_key(path) for path in requested_paths]
+        expected = set(canonical_paths)
         admitted_bytes = _preflight_file_bytes(preflight, expected)
         missing = sorted(expected - admitted_bytes.keys())
         if missing:
@@ -113,6 +122,10 @@ class AdmittedResourceReader:
                 preflight,
                 admitted=set(admitted),
             ),
+            canonical_path_aliases=_canonical_aliases(
+                requested_paths,
+                canonical_paths,
+            ),
         )
 
     def with_dependent_files(
@@ -131,6 +144,7 @@ class AdmittedResourceReader:
                 explicit_dependencies,
             ),
             recording_bounds=dict(self.recording_bounds),
+            canonical_path_aliases=dict(self.canonical_path_aliases),
         )
 
     def recording_bounds_for(
@@ -138,7 +152,7 @@ class AdmittedResourceReader:
         path: str | Path,
     ) -> AdmittedRecordingBounds | None:
         """Return trustworthy header bounds for an admitted continuous recording."""
-        return self.recording_bounds.get(_path_key(Path(path)))
+        return self.recording_bounds.get(self.canonical_key(path))
 
     def assert_unchanged(
         self,
@@ -149,7 +163,7 @@ class AdmittedResourceReader:
     ) -> None:
         """Fail closed when a parser input was not admitted or has changed."""
         resource_path = Path(path)
-        key = _path_key(resource_path)
+        key = self.canonical_key(resource_path)
         admitted = self.admitted_files.get(key)
         if admitted is None:
             raise _resource_error(
@@ -162,7 +176,7 @@ class AdmittedResourceReader:
                 details={"purpose": purpose},
             )
         try:
-            observed = _current_identity(resource_path)
+            observed = _current_identity(Path(key))
         except PreconditionError as exc:
             diagnostics = dict(exc.diagnostics)
             diagnostics.update(
@@ -212,7 +226,7 @@ class AdmittedResourceReader:
         pending = [Path(path) for path in paths]
         while pending:
             path = pending.pop(0)
-            key = _path_key(path)
+            key = self.canonical_key(path)
             if key in seen:
                 continue
             seen.add(key)
@@ -499,3 +513,25 @@ def _resource_error(
 
 def _path_key(path: Path) -> str:
     return os.path.normcase(str(path.expanduser().resolve()))
+
+
+def _lexical_path_key(path: Path) -> str:
+    """Normalize path text without querying filesystem metadata."""
+    return os.path.normcase(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def _canonical_aliases(
+    requested_paths: Iterable[Path],
+    canonical_paths: Iterable[str],
+) -> dict[str, str]:
+    """Cache only paths already canonical; symlink aliases remain re-resolved."""
+    aliases: dict[str, str] = {}
+    for requested_path, canonical_path in zip(
+        requested_paths,
+        canonical_paths,
+        strict=True,
+    ):
+        lexical_path = _lexical_path_key(requested_path)
+        if lexical_path == canonical_path:
+            aliases[lexical_path] = canonical_path
+    return aliases

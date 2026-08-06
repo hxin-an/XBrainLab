@@ -3762,6 +3762,12 @@ def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):
     assert "Needs review" in review_text
     assert not dialog.apply_button.isEnabled()
 
+    metadata_item, _original_metadata = dialog._metadata_items[0]
+    metadata_item.setText(3, "updated-task")
+    dialog._sync_apply_state()
+
+    assert not dialog.apply_button.isEnabled()
+
 
 def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):
     dialog = DataInterpretationPreviewDialog(

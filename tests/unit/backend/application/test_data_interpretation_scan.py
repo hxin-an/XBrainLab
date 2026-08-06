@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -210,11 +211,16 @@ def test_bids_preflight_scope_discovers_all_scan_materialization_paths_without_t
     _write_valid_bids_description(tmp_path)
     eeg_file = tmp_path / "sub-01" / "eeg" / "sub-01_task-mi_eeg.fif"
     events_file = tmp_path / "sub-01" / "eeg" / "sub-01_task-mi_events.tsv"
+    events_json = tmp_path / "sub-01" / "eeg" / "sub-01_task-mi_events.json"
     channels_file = tmp_path / "sub-01" / "eeg" / "sub-01_task-mi_channels.tsv"
     participants_file = tmp_path / "participants.tsv"
     eeg_file.parent.mkdir(parents=True)
     eeg_file.write_bytes(b"header only")
     events_file.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
+    events_json.write_text(
+        json.dumps({"trial_type": {"Description": "Task condition"}}),
+        encoding="utf-8",
+    )
     channels_file.write_text("name\tstatus\nC3\tgood\n", encoding="utf-8")
     participants_file.write_text("participant_id\nsub-01\n", encoding="utf-8")
 
@@ -236,6 +242,7 @@ def test_bids_preflight_scope_discovers_all_scan_materialization_paths_without_t
         str((tmp_path / "dataset_description.json").resolve()),
         str(participants_file.resolve()),
         str(channels_file.resolve()),
+        str(events_json.resolve()),
     ]
     assert set(scope.paths) == {
         str(eeg_file.resolve()),
@@ -243,6 +250,7 @@ def test_bids_preflight_scope_discovers_all_scan_materialization_paths_without_t
         str((tmp_path / "dataset_description.json").resolve()),
         str(participants_file.resolve()),
         str(channels_file.resolve()),
+        str(events_json.resolve()),
     }
 
 

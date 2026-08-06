@@ -212,9 +212,14 @@ def _content_file_identity(
     resource_reader: AdmittedResourceReader | None,
     admitted_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    path_key = (
+        resource_reader.canonical_key(path)
+        if resource_reader is not None and resource_reader.admits(path)
+        else _path_key(path)
+    )
     if admitted_identity is not None:
         return {
-            "path": _path_key(path),
+            "path": path_key,
             "role": role,
             "file_bytes": int(admitted_identity["file_bytes"]),
             "sha256": str(admitted_identity["sha256"]),
@@ -224,7 +229,7 @@ def _content_file_identity(
     # files that belong to its exact admitted scope.
     guard = (
         resource_reader.guard([path], purpose="reviewed label content fingerprint")
-        if resource_reader is not None and resource_reader.admits(path)
+        if resource_reader is not None and path_key in resource_reader.admitted_files
         else nullcontext()
     )
     try:
@@ -242,7 +247,7 @@ def _content_file_identity(
             },
         ) from exc
     return {
-        "path": _path_key(path),
+        "path": path_key,
         "role": role,
         "file_bytes": file_bytes,
         "sha256": sha256,

@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-05`
+最後更新：`2026-08-06`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -98,6 +98,20 @@ artifacts 仍是必須另行檢查的 evidence。
 
 目前狀態是已合併到 `main` 的 development `checkpoint`。這個分類只表示後續開發基線已收斂，
 不表示 Assistant、效能、資料格式或 release gate 已完成。
+
+## BIDS Match Labels Performance Checkpoint
+
+`perf/bids-match-label-preview` 針對 OpenNeuro ds003061 P300 三個 runs 的 Match Labels
+延遲做了 bounded optimization。相同 scan、相同已 admit BIDS scope 且資源風險為 safe 時，首次
+Preview 沿用 Scan 的 bounded discovery/admission；每次重用前仍重新檢查可用 RAM 與檔案身分，
+warning、unknown、blocking、scope 變更或檔案變更都會回到完整 preflight。Apply 仍執行完整
+content freshness validation。
+
+同機實測 current checkpoint：Scan `5.9s`；首次 Preview `4.3s`；後續 Preview `2.0-2.1s`。
+公開 diagnostics 約 `0.20 MB`，Application state 約 `0.14 MB`；最佳化前重複 Preview 約
+`8-11s`、diagnostics 約 `8.2 MB`。三-run P300 的 `2,245` 個 reviewed class events 與來源
+sample/label 完全一致，`-0.2..0.5s` 建立 `2,243` epochs 並明確排除兩個 recording-boundary
+events。這是 task-branch checkpoint，不是 Windows 真人 acceptance 或 full BIDS compliance claim。
 
 ## Current UI Checkpoint
 

@@ -41,6 +41,9 @@ from .data_interpretation_placement import (
 from .data_interpretation_placement import (
     placement_confirmation_items as _placement_confirmation_items,
 )
+from .data_interpretation_public_projection import (
+    project_interpretation_candidate,
+)
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .data_interpretation_scan import ScanResult
 from .eeglab_set_preflight import eeglab_external_data_dependency
@@ -82,6 +85,10 @@ class InterpretationCandidate:
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
 
+    def to_public_dict(self) -> dict[str, Any]:
+        """Return a bounded projection for UI, agent, and diagnostics clients."""
+        return project_interpretation_candidate(_serialize(self))
+
 
 @dataclass(frozen=True)
 class InterpretationResourceScope:
@@ -94,6 +101,7 @@ class InterpretationResourceScope:
     label_carriers: list[str] = dc_field(default_factory=list)
     bids_events_json_files: list[str] = dc_field(default_factory=list)
     bids_channels_files: list[str] = dc_field(default_factory=list)
+    bids: dict[str, Any] = dc_field(default_factory=dict)
 
     @property
     def paths(self) -> list[str]:
@@ -164,6 +172,7 @@ def resolve_interpretation_resource_scope(
             active_label_carriers,
         ),
         bids_channels_files=_selected_bids_channels_files(bids),
+        bids=bids,
     )
 
 
@@ -174,10 +183,15 @@ def build_interpretation_candidate(
     choices: dict[str, Any] | None = None,
     bids_events_json_reader: BidsEventsJsonReader | None = None,
     resource_reader: AdmittedResourceReader | None = None,
+    resource_scope: InterpretationResourceScope | None = None,
+    admitted_content_identities: dict[str, dict[str, Any]] | None = None,
 ) -> InterpretationCandidate:
     """Build a candidate interpretation from a scan result and user choices."""
     choices = dict(choices or {})
-    resource_scope = resolve_interpretation_resource_scope(scan, choices)
+    resource_scope = resource_scope or resolve_interpretation_resource_scope(
+        scan,
+        choices,
+    )
     if resource_reader is not None:
         resource_reader = resource_reader.with_dependent_files(
             resource_scope.eeg_dependencies_by_file,
@@ -223,7 +237,7 @@ def build_interpretation_candidate(
         label_carrier_source != "embedded_events" and not skip_labels
     )
     active_label_carriers = list(resource_scope.label_carriers)
-    bids = _bids_for_selected_scope(scan.bids, selected_files)
+    bids = dict(resource_scope.bids)
     if (
         scan.source_kind == "bids"
         and scan.bids.get("is_bids")
@@ -448,9 +462,12 @@ def build_interpretation_candidate(
         eeg_parser_dependencies=resource_scope.eeg_dependencies_by_file,
         bids_events_json_files=resource_scope.bids_events_json_files,
         bids_channels_files=resource_scope.bids_channels_files,
-        admitted_file_identities=sidecar_reader.content_identities(
-            resource_scope.bids_events_json_files,
-        ),
+        admitted_file_identities={
+            **dict(admitted_content_identities or {}),
+            **sidecar_reader.content_identities(
+                resource_scope.bids_events_json_files,
+            ),
+        },
         class_map=class_map,
         event_roles=event_roles,
         run_event_mappings=run_event_mappings,

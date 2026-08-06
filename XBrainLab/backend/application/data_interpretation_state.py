@@ -40,6 +40,10 @@ from .data_interpretation_placement import (
     placement_blocked_reasons,
     placement_confirmation_items,
 )
+from .data_interpretation_public_projection import (
+    project_bids_review,
+    project_label_carrier_plan,
+)
 from .epoch_handoff_blockers import (
     EpochHandoffBlocker,
     EpochHandoffBlockerCode,
@@ -242,7 +246,7 @@ class DataInterpretationSessionState:
                 "Validate the Data Import review before opening it."
             )
 
-        candidate_payload = candidate.to_dict()
+        candidate_payload = candidate.to_public_dict()
         choices = candidate_payload.get("choices", {})
         return {
             "source_path": scan.source_path,
@@ -346,7 +350,7 @@ class DataInterpretationSessionState:
                 if applied is not None
                 else []
             ),
-            bids=dict(
+            bids=project_bids_review(
                 applied_review.bids
                 if applied_review is not None
                 else candidate.bids
@@ -359,7 +363,7 @@ class DataInterpretationSessionState:
                 if applied is not None
                 else {}
             ),
-            label_carrier_plan=[dict(item) for item in label_carrier_plan],
+            label_carrier_plan=project_label_carrier_plan(label_carrier_plan),
             format_capabilities=[dict(item) for item in format_capabilities],
             event_roles=dict(event_roles),
             class_map=dict(class_map),
@@ -1020,7 +1024,7 @@ class DataInterpretationSessionState:
             handoff["event_label_aliases"] = event_label_aliases
         bids = getattr(source, "bids", {}) or {}
         if isinstance(bids, dict) and bids:
-            handoff["bids"] = dict(bids)
+            handoff["bids"] = project_bids_review(bids)
         if internal_event_selection:
             handoff["internal_event_selection"] = internal_event_selection
         if label_imports:

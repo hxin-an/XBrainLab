@@ -2901,3 +2901,155 @@ def test_apply_metadata_and_label_import_recipe_state_stay_together(
     assert snapshot.has_recipe is True
     assert snapshot.label_import_count == 1
     assert snapshot.label_imports[0]["class_map"] == {"left": "left hand"}
+
+
+def test_repeated_safe_preview_reuses_admission_after_identity_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    service.handle_scan_source(ScanSourceCommand(source_path=str(eeg_path)))
+    choices = {"selected_eeg_files": [str(eeg_path.resolve())]}
+    service.handle_preview_interpretation(PreviewInterpretationCommand(choices=choices))
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+    _message, payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(choices=choices)
+        )
+    )
+
+    assert checks == 0
+    assert payload["resource_preflight"]["admission_cache_reused"] is True
+
+
+def test_first_safe_preview_reuses_matching_scan_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text(
+        json.dumps({"Name": "Preview cache", "BIDSVersion": "1.9.0"}),
+        encoding="utf-8",
+    )
+    eeg_path = eeg_dir / "sub-01_task-mi_eeg.fif"
+    events_path = eeg_dir / "sub-01_task-mi_events.tsv"
+    eeg_path.write_bytes(b"stable EEG header")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\n0\t1\tleft\n",
+        encoding="utf-8",
+    )
+    service, _dataset = _service()
+    service.handle_scan_source(
+        ScanSourceCommand(source_path=str(bids_root), source_hint="bids")
+    )
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "discover_source_preflight_scope",
+        lambda **_kwargs: pytest.fail("matching BIDS scan scope was rediscovered"),
+    )
+
+    _message, payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(
+                choices={"selected_eeg_files": [str(eeg_path.resolve())]}
+            )
+        )
+    )
+
+    assert checks == 0
+    assert payload["resource_preflight"]["admission_cache_reused"] is True
+
+
+def test_scan_does_not_cache_warning_resource_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    checks = 0
+
+    def _warning_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return _resource_preflight("warning", paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _warning_check,
+    )
+    service.handle_scan_source(ScanSourceCommand(source_path=str(eeg_path)))
+
+    with pytest.raises(resource_guard.ResourceConfirmationRequiredError):
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(
+                choices={"selected_eeg_files": [str(eeg_path.resolve())]}
+            )
+        )
+
+    assert checks == 2
+
+
+def test_repeated_preview_discards_admission_when_source_content_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"first EEG header")
+    service, _dataset = _service()
+    service.handle_scan_source(ScanSourceCommand(source_path=str(eeg_path)))
+    choices = {"selected_eeg_files": [str(eeg_path.resolve())]}
+    service.handle_preview_interpretation(PreviewInterpretationCommand(choices=choices))
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+    eeg_path.write_bytes(b"other EEG header")
+
+    _message, payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(choices=choices)
+        )
+    )
+
+    assert checks == 1
+    assert payload["resource_preflight"]["admission_cache_reused"] is False

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -181,6 +182,32 @@ def test_reader_exposes_admitted_recording_bounds_without_loading_signal_data(
     assert bounds.sampling_frequency_hz == 100.0
     rebound = reader.with_dependent_files({})
     assert rebound.recording_bounds_for(fif_path) == bounds
+
+
+def test_reader_reuses_an_admitted_canonical_path_without_resolving_again(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = (tmp_path / "events.tsv").resolve()
+    path.write_text("onset\tvalue\n0\tleft\n", encoding="utf-8")
+    reader = AdmittedResourceReader.from_resource_preflight(
+        [str(path)],
+        _preflight([str(path)], monkeypatch),
+    )
+    original_resolve = Path.resolve
+    resolve_calls = 0
+
+    def _counted_resolve(self, *args, **kwargs):
+        nonlocal resolve_calls
+        resolve_calls += 1
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", _counted_resolve)
+
+    reader.assert_unchanged(path, purpose="BIDS events table")
+    reader.assert_unchanged(path, purpose="BIDS events table")
+
+    assert resolve_calls == 0
 
 
 def test_guard_expands_explicit_brainvision_parser_dependencies(
