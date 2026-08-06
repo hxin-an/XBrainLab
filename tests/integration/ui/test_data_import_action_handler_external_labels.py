@@ -698,6 +698,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
         title: str,
         _directory: str,
         _filter_text: str,
+        **_kwargs: Any,
     ) -> tuple[list[str], str]:
         chooser_calls.append(title)
         if title == "Choose EEG Source for Interpretation":
@@ -889,6 +890,7 @@ def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
         title: str,
         _directory: str,
         _filter_text: str,
+        **_kwargs: Any,
     ) -> tuple[list[str], str]:
         chooser_calls.append(title)
         if title == "Choose EEG Source for Interpretation":

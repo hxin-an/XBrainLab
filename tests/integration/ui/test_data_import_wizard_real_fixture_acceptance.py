@@ -835,7 +835,13 @@ def _start_wizard_driver(
 
             if driver.expect_blocked:
                 if modal.apply_button.isEnabled():
-                    _fail("Blocked BIDS review unexpectedly enabled Apply.", modal)
+                    _fail(
+                        "Blocked BIDS review unexpectedly enabled Apply: "
+                        f"facts={modal._submission_facts()!r}, "
+                        f"choices={modal._edited_choices()!r}, "
+                        f"actions={modal.preview.get('action_items')!r}.",
+                        modal,
+                    )
                     return
                 driver.blocked_reasons = [
                     str(reason)
@@ -989,6 +995,7 @@ def test_public_file_formats_run_five_steps_and_apply_without_labels(
         title: str,
         _directory: str,
         _filter_text: str,
+        **_kwargs: Any,
     ) -> tuple[list[str], str]:
         chooser_calls.append(title)
         return [str(case.source)], ""
@@ -1057,6 +1064,7 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
         _parent: QWidget,
         title: str,
         _directory: str,
+        **_kwargs: Any,
     ) -> str:
         chooser_calls.append(title)
         return str(case.source)
@@ -1254,6 +1262,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
         _parent: QWidget,
         title: str,
         _directory: str,
+        **_kwargs: Any,
     ) -> str:
         chooser_calls.append(title)
         return next(chooser_paths)

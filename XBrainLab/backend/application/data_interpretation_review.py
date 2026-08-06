@@ -13,6 +13,10 @@ from .data_interpretation_path_identity import (
     path_basename,
     resolve_scan_path,
 )
+from .data_interpretation_public_projection import (
+    project_bids_review,
+    project_label_carrier_plan,
+)
 from .errors import PreconditionError
 
 
@@ -100,7 +104,7 @@ def build_interpretation_preview(
         source_selection=_source_selection_text(candidate),
         selected_eeg_files=list(candidate.selected_eeg_files),
         action_items=_build_action_items(candidate),
-        label_carrier_preview=[dict(item) for item in candidate.label_carrier_plan],
+        label_carrier_preview=project_label_carrier_plan(candidate.label_carrier_plan),
         metadata_preview=metadata_preview,
         format_capabilities=[dict(item) for item in candidate.format_capabilities],
         warnings=list(candidate.warnings),
@@ -111,7 +115,7 @@ def build_interpretation_preview(
             "invalidate downstream preprocessing, EEG epochs, datasets, training, "
             "and saliency for the current session.",
         ],
-        bids=dict(getattr(candidate, "bids", {}) or {}),
+        bids=project_bids_review(getattr(candidate, "bids", {}) or {}),
         event_roles=dict(candidate.event_roles),
         class_map=dict(candidate.class_map),
         class_map_source=str(getattr(candidate, "class_map_source", "") or ""),
@@ -481,6 +485,7 @@ def target_step_for_interpretation_text(text: str) -> str:
             "no external label file",
             "no label file",
             "no events.tsv carrier",
+            "events.tsv was not found",
             "label source did not contain",
             "label source is empty",
             "label carrier was not found",

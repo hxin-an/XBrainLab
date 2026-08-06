@@ -278,16 +278,8 @@ def test_strict_bids_excludes_missing_selected_labels_without_blocking_import(
     assert run["placement"]["status"] == "ready_with_exclusions"
     assert run["placement"]["usable_event_count"] == 1
     assert run["placement"]["excluded_event_count"] == 1
-    assert run["placement"]["excluded_rows"] == [
-        {
-            "row": 3,
-            "code": "selected_label_missing",
-            "message": "selected label is empty or BIDS n/a",
-            "raw_onset": "2",
-            "raw_duration": "0",
-            "selected_label": "",
-        }
-    ]
+    assert run["placement"]["excluded_row_count"] == 1
+    assert "excluded_rows" not in run["placement"]
     decision = validation.diagnostics["validation_decision"]
     assert decision["decision"] == "safe"
     assert decision["blocked_reasons"] == []

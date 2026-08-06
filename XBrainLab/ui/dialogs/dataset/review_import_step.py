@@ -471,8 +471,57 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             event_values_ready_for_recheck=(
                 self._event_value_decisions_ready_for_recheck()
             ),
-            interpretation_choices_ready_for_recheck=bool(self._edited_choices()),
+            interpretation_choices_ready_for_recheck=(
+                self._edited_choices_can_resolve_blocker()
+            ),
         )
+
+    def _edited_choices_can_resolve_blocker(self) -> bool:
+        """Only recheck edits that target at least one current blocker."""
+        choices = self._edited_choices()
+        if not choices:
+            return False
+
+        edited_targets: set[str] = set()
+        if choices.get("metadata_overrides"):
+            edited_targets.add("Review Metadata")
+        if any(
+            choices.get(key)
+            for key in (
+                "class_map",
+                "event_roles",
+                "excluded_label_carriers",
+                "label_carrier",
+                "internal_event_selection",
+                "run_event_mappings",
+                "required_label_carriers",
+                "label_carrier_choices",
+            )
+        ):
+            edited_targets.add("Match Labels")
+        if not edited_targets:
+            return False
+
+        action_items = self.preview.get("action_items") or self.validation_decision.get(
+            "action_items"
+        )
+        blocking_targets = {
+            str(item.get("target_step") or "Review and Import")
+            for item in action_items or []
+            if isinstance(item, dict)
+            and str(item.get("severity") or "").strip().lower() == "blocked"
+        }
+        if not blocking_targets:
+            blocking_targets = {
+                target_step_for_review_text(str(reason))
+                for reason in (
+                    self.validation_decision.get("blocked_reasons")
+                    or self.preview.get("blocked_reasons")
+                    or []
+                )
+                if str(reason).strip()
+            }
+        return bool(blocking_targets) and blocking_targets.issubset(edited_targets)
 
     def _submission_projection(self) -> SubmissionProjection:
         return project_submission(self._submission_facts())

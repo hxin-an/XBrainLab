@@ -16866,3 +16866,31 @@
 - claim boundary：
   - This is a focused UI checkpoint; final status-bar timing and text remain part of Windows human
     acceptance during the next real dataset import.
+
+### 2026-08-06 BIDS Match Labels latency and payload bounds
+
+- completed：
+  - Traced the three-run OpenNeuro P300 delay to repeated BIDS directory discovery on WSL `/mnt/d`
+    and multi-megabyte duplicate per-event evidence in diagnostics and application publications.
+  - Reused only unchanged, safe, exact-scope BIDS scan admissions; warning, unknown, blocking,
+    changed-file and changed-scope paths still perform the full resource preflight.
+  - Added bounded public Data Interpretation projections while retaining exact aggregate counts and
+    the full internal candidate required by apply, recipe and epoch semantics.
+- validation：
+  - Data Interpretation backend regression -> `350 passed`; public BIDS/runtime/format wizard ->
+    `14 passed`; real-fixture visible wizard -> `11 passed`; focused review/dialog/external-label UI
+    -> `135 passed`.
+  - Strict dataset matrix -> `20/20` lifecycle cases, `14/14` required formats and `7/7` external
+    label-placement contracts; cross-source IO/pipeline -> `40 passed`; strict cross-source runner
+    -> `4/4` required cases.
+  - Real three-run P300 -> exact `2,245` imported class events and `2,243` epochs after two explicit
+    boundary exclusions. Scan measured `5.99s`, first Preview `4.39s`, and repeat Preview
+    `1.99-2.12s`.
+  - The same-class UI sweep repaired stale Qt file-dialog test doubles and confirmed that edits must
+    cover every blocking target; unrelated metadata edits no longer enable a BIDS import whose
+    `events.tsv` is missing.
+  - Reviewed xcb artifact:
+    `build/dev-artifacts/bids-match-label-performance/04-match-labels-bids-events.png`.
+- claim boundary：
+  - This is a validated task-branch checkpoint. It does not claim arbitrary BIDS compatibility or
+    Windows-native usability acceptance; those remain separate handoff evidence.

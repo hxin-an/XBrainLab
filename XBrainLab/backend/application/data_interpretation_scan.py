@@ -9,6 +9,7 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
+from .data_interpretation_bids_resources import bids_events_json_resource_paths
 from .data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
@@ -472,7 +473,12 @@ def discover_source_preflight_scope(
         label_sources=[str(item) for item in normalized_label_sources],
         label_carriers=label_carriers,
         label_carrier_sources=label_carrier_sources,
-        metadata_files=_bids_metadata_resource_paths(bids),
+        metadata_files=_dedupe_strings(
+            [
+                *_bids_metadata_resource_paths(bids),
+                *bids_events_json_resource_paths(label_carriers),
+            ]
+        ),
         all_files=[str(item) for item in all_files],
         bids=bids,
         skipped_nested_bids_roots=[str(item) for item in skipped_nested_bids_roots],
