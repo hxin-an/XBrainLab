@@ -211,7 +211,7 @@ def test_data_import_unexpected_exception_keeps_failed_outcome_without_leaking(
     monkeypatch.setattr(
         actions.QFileDialog,
         "getOpenFileNames",
-        lambda *_args: (["/selected/source.edf"], ""),
+        lambda *_args, **_kwargs: (["/selected/source.edf"], ""),
     )
     monkeypatch.setattr(
         handler._data_interpretation,
