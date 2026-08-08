@@ -301,13 +301,15 @@ def test_direct_real_adapter_preserves_canonical_result_metadata() -> None:
 
     assert direct_result.command_name == "configure_training"
     assert direct_result.state is not None
-    assert direct_result.state["training"]["model_name"] == "EEGNet"
+    assert direct_result.state["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert direct_result.capability is not None
     assert direct_result.changed_state["training_changed"] is True
     assert isinstance(direct_result.payload, dict)
     assert direct_result.payload["status"] == "ok"
     assert direct_result.payload["command_name"] == "configure_training"
-    assert direct_result.payload["state"]["training"]["model_name"] == "EEGNet"
+    assert (
+        direct_result.payload["state"]["training"]["model_name"] == "EEGNet (XBrainLab)"
+    )
     assert direct_result.payload["changed_state"]["training_changed"] is True
     assert isinstance(normalized, ToolCommandResult)
     assert normalized.command_name == direct_result.command_name
@@ -391,7 +393,7 @@ def test_direct_adapter_recovers_authoritative_publication_after_post_execute_fa
     assert result.ok is False
     assert len(execute_calls) == 1
     assert result.state is not None
-    assert result.state["training"]["model_name"] == "EEGNet"
+    assert result.state["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert result.changed_state["state_unknown"] is False
     assert result.diagnostics["state_source"] == "authoritative_publication"
     assert result.diagnostics["publication_generation"] >= 1

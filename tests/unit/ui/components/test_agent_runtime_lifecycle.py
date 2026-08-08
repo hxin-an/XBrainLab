@@ -1079,13 +1079,13 @@ def test_incomplete_training_handoff_commits_one_backend_command(
         ]
         assert len(configure_commands) == 1
         command = cast(ConfigureTrainingCommand, configure_commands[0])
-        assert command.model_name == "EEGNet"
+        assert command.model_name == "braindecode.eegnet"
         assert command.epoch == 12
         assert command.batch_size == 32
         assert command.learning_rate == 0.001
         state = get_application_service(harness.study).get_state().training
         assert state.has_model is True
-        assert state.model_name == "EEGNet"
+        assert state.model_name == "EEGNet (Braindecode)"
         assert state.has_training_option is True
         assert harness.engine.generation_calls == 0
         assert harness.manager.chat_controller.messages == [

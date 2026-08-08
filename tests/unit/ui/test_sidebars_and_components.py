@@ -1412,7 +1412,7 @@ class TestTrainingSidebar:
         )
         qtbot.addWidget(selected)
         assert selected.model_combo is not None
-        assert selected.model_combo.currentText() == "SCCNet"
+        assert selected.model_combo.currentText() == "SCCNet (XBrainLab)"
 
         unknown = ModelSelectionDialog(
             None,

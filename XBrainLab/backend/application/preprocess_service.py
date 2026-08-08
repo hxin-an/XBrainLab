@@ -164,7 +164,7 @@ class PreprocessCommandService:
             if boundary_summary.remaining_event_count <= 0:
                 raise PreconditionError(
                     "The selected epoch window exceeds recording bounds for every "
-                    "selected event. Shorten the epoch window before creating epochs.",
+                    "selected event. Shorten the EEG epoch window before continuing.",
                     diagnostics={"epoch_boundary_check": boundary_diagnostics},
                 )
             if boundary_summary.excluded_ratio > EPOCH_BOUNDARY_AUTO_EXCLUDE_MAX_RATIO:

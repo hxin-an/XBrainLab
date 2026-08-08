@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
+from XBrainLab.backend.training_contract import DEFAULT_TRAINING_OUTPUT_DIR
 
 if TYPE_CHECKING:
     from .evaluation_render import EvaluationSummaryIdentity

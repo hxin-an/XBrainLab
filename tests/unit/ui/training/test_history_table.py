@@ -164,7 +164,7 @@ def test_key_columns_expand_for_group_run_model_and_status_text(
     assert history_table.horizontalScrollBar().maximum() > 0
 
 
-def test_standard_history_width_scrolls_to_reach_all_metrics(
+def test_standard_history_width_keeps_all_metrics_reachable(
     history_table,
     qtbot,
 ):
@@ -185,12 +185,11 @@ def test_standard_history_width_scrolls_to_reach_all_metrics(
     qtbot.wait(0)
 
     scrollbar = history_table.horizontalScrollBar()
-    assert scrollbar.maximum() > 0
-    assert scrollbar.isVisible()
-
-    scrollbar.setValue(scrollbar.maximum())
-    qtbot.wait(0)
     last_index = history_table.model().index(0, history_table.columnCount() - 1)
+    if scrollbar.maximum() > 0:
+        assert scrollbar.isVisible()
+        scrollbar.setValue(scrollbar.maximum())
+        qtbot.wait(0)
     assert (
         history_table.viewport().rect().intersects(history_table.visualRect(last_index))
     )

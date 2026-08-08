@@ -224,7 +224,7 @@ def test_normalization_failure_still_completes_application_command(
     assert outcome.result.raw_result is None
     assert outcome.result.state is not pre_execution_state
     assert outcome.result.state is not None
-    assert outcome.result.state["training"]["model_name"] == "EEGNet"
+    assert outcome.result.state["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert outcome.result.diagnostics["state_source"] == ("authoritative_publication")
     assert outcome.result.diagnostics["incident_id"]
     assert len(runtime.commands) == 1

@@ -205,7 +205,7 @@ class TestToolExecutor:
         assert isinstance(result, ToolCommandResult)
         assert result.ok is True
         training = get_application_service(study).get_state().training
-        assert training.model_name == "EEGNet"
+        assert training.model_name == "EEGNet (XBrainLab)"
         assert training.training_option["epoch"] == 2
         assert training.training_option["batch_size"] == 4
         assert training.training_option["learning_rate"] == 1.0

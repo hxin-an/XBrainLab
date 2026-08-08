@@ -1388,7 +1388,7 @@ def test_application_tool_command_returns_structured_result_for_model_config():
         error_type="none",
         raw_status="ok",
     )
-    assert _state(result)["training"]["model_name"] == "EEGNet"
+    assert _state(result)["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert result.raw_result["changed_state"]["training_changed"] is True
     assert result.changed_state["training_changed"] is True
 
@@ -1421,7 +1421,7 @@ def test_application_tool_command_preserves_host_authorized_training_output_dir(
         raw_status="ok",
     )
     training_state = result.raw_result["state"]["training"]["training_option"]
-    assert result.raw_result["state"]["training"]["model_name"] == "EEGNet"
+    assert result.raw_result["state"]["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert str(output_dir) not in training_state["output_dir"]
     assert "[REDACTED_PATH]" in training_state["output_dir"]
     assert training_state["evaluation_option"] == "Best validation AUC"
@@ -1449,7 +1449,7 @@ def test_application_tool_command_accepts_backend_valid_learning_rate_one():
         raw_status="ok",
     )
     training_state = _state(result)["training"]
-    assert training_state["model_name"] == "EEGNet"
+    assert training_state["model_name"] == "EEGNet (XBrainLab)"
     assert training_state["training_option"]["epoch"] == 2
     assert training_state["training_option"]["batch_size"] == 4
     assert training_state["training_option"]["learning_rate"] == 1.0

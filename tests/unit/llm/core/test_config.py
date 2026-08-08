@@ -85,6 +85,7 @@ class TestDefaults:
                 {"XDG_DATA_HOME": str(xdg_data_home)},
                 clear=True,
             ),
+            patch("XBrainLab.platform_paths.platform.system", return_value="Linux"),
             patch.object(config_module, "__file__", str(frozen_config)),
         ):
             cfg = LLMConfig(device="cpu")

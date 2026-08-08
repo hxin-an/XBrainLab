@@ -221,6 +221,7 @@ class TestSaliency3DEngine:
             eval_record = MagicMock()
             eval_record.gradient = {0: np.ones((2, 3, 5))}
             epoch_data = MagicMock()
+            epoch_data.normalized = False
             epoch_data.event_id = {"769": 769}
             epoch_data.get_montage_position.return_value = [
                 (0.0, 0.0, 0.0),
@@ -281,6 +282,7 @@ class TestSaliency3DEngine:
                 )
             }
             epoch_data = MagicMock()
+            epoch_data.normalized = False
             epoch_data.event_id = {"769": 769}
             epoch_data.get_montage_position.return_value = [
                 (0.0, 0.0, 0.0),

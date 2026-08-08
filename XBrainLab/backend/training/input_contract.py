@@ -7,16 +7,19 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from XBrainLab.backend.model_catalog_contract import (
+from XBrainLab.backend.training_contract import (
+    DEFAULT_TRAINING_OUTPUT_DIR as _DEFAULT_TRAINING_OUTPUT_DIR,
+)
+from XBrainLab.backend.training_contract import (
     TRAINING_MODEL_NAMES as _TRAINING_MODEL_NAMES,
 )
 
 REQUIRED_TRAINING_FIELDS = ("epoch", "batch_size", "learning_rate")
 TRAINING_MODEL_NAMES = _TRAINING_MODEL_NAMES
+DEFAULT_TRAINING_OUTPUT_DIR = _DEFAULT_TRAINING_OUTPUT_DIR
 TRAINING_OPTIMIZER_NAMES = ("adam", "sgd", "adamw")
 TRAINING_DEVICE_NAMES = ("cpu", "cuda")
 TRAINING_EVALUATION_NAMES = ("val_loss", "val_auc", "val_acc", "last_epoch")
-DEFAULT_TRAINING_OUTPUT_DIR = "./output/runs"
 
 
 class TrainingInputContractError(ValueError):

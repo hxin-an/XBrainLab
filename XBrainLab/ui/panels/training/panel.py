@@ -486,7 +486,7 @@ class TrainingPanel(BasePanel):
         # --- Left Column: Training Status (Main Content) ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(20, 12, 20, 12)
+        left_layout.setContentsMargins(20, 8, 20, 8)
         left_layout.setSpacing(0)
 
         # Training Plots Group

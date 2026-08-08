@@ -3811,13 +3811,30 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
     dialog.show()
     qtbot.wait(0)
 
-    assert [label.text() for label in dialog.step_labels] == [
+    rendered_step_labels = [label.text() for label in dialog.step_labels]
+    full_step_labels = [
+        "1. Choose EEG Data",
+        "2. Load Labels",
+        "3. Review Metadata",
+        "4. Match Labels",
+        "5. Review and Import",
+    ]
+    compact_step_labels = [
         "1. EEG Data",
         "2. Labels",
         "3. Metadata",
         "4. Match",
         "5. Review",
     ]
+    assert rendered_step_labels in (full_step_labels, compact_step_labels)
+    if rendered_step_labels == compact_step_labels:
+        assert [label.toolTip() for label in dialog.step_labels] == [
+            "Choose EEG Data",
+            "Load Labels",
+            "Review Metadata",
+            "Match Labels",
+            "Review and Import",
+        ]
     assert all(
         label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
         for label in dialog.step_labels

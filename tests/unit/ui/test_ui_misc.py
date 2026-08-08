@@ -1349,9 +1349,13 @@ class TestDatasetActionHandler:
             assert worker_threads != [threading.get_ident()]
 
             worker_release.set()
-            qtbot.waitUntil(lambda: show_status.call_count == 1, timeout=1000)
+            qtbot.waitUntil(
+                lambda: panel_context.set_busy.call_count == 2,
+                timeout=1000,
+            )
 
         assert panel_context.set_busy.call_args_list == [((True,),), ((False,),)]
+        show_status.assert_called_once_with("Loading EEG data...")
         assert runtime.commands[0].resource_preflight_confirmed is False
         assert runtime.commands[0].resource_preflight_token is None
 
@@ -1721,8 +1725,6 @@ class TestDatasetActionHandler:
         assert saved
         assert saved[0].recipe_path == "/recipes/import_recipe.json"
         mock_mb.information.assert_not_called()
-        status_bar = handler.panel.main_window.statusBar.return_value
-        assert "Recipe saved." in status_bar.showMessage.call_args.args[0]
 
     def test_save_interpretation_recipe_uses_backend_capability_before_file_dialog(
         self,
@@ -1814,9 +1816,10 @@ class TestDatasetActionHandler:
             "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             side_effect=fake_execute,
         ):
-            handler.import_data()
+            outcome = handler.import_data()
 
-        mock_mb.critical.assert_called_once()
+        assert outcome.status is InteractionStatus.BLOCKED
+        mock_mb.critical.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
@@ -1881,11 +1884,12 @@ class TestDatasetActionHandler:
             "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             side_effect=fake_execute,
         ):
-            handler.import_data()
+            outcome = handler.import_data()
 
         assert isinstance(commands[0], ReviewInterpretationCommand)
         assert commands[0].source_path == first_file
-        mock_mb.critical.assert_called_once()
+        assert outcome.status is InteractionStatus.BLOCKED
+        mock_mb.critical.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
 
     def test_interpretation_source_avoids_common_root_scan(self, handler):

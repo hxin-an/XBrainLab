@@ -107,7 +107,7 @@ class ModelSelectionDialog(BaseDialog):
             self.on_model_select(selected_model_name)
         self.fit_to_content(
             minimum_width=640,
-            minimum_height=440,
+            minimum_height=452,
             maximum_height=620,
         )
 
@@ -423,7 +423,7 @@ class ModelSelectionDialog(BaseDialog):
         """Resize normal content high enough so the scroll area is not a gutter."""
         self.fit_to_content(
             minimum_width=640,
-            minimum_height=440,
+            minimum_height=452,
             maximum_height=620,
         )
 

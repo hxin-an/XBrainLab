@@ -1822,8 +1822,13 @@ class ChatPanel(QWidget):
         self.suggestion_prompt_widget.setMinimumHeight(prompt_height)
         self.suggestion_prompt_widget.updateGeometry()
         self.empty_state_layout.invalidate()
+        self.empty_state_layout.activate()
         self.empty_state_widget.setMinimumHeight(
-            self.empty_state_layout.minimumSize().height()
+            max(
+                self.empty_state_layout.minimumSize().height(),
+                self.empty_state_layout.sizeHint().height(),
+            )
+            + 8
         )
         self.empty_state_widget.updateGeometry()
         self._fit_response_action_labels(transcript_surface_width)
