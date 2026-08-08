@@ -959,6 +959,29 @@ class TestChatPanelInit:
         assert panel.retry_runtime_btn.text() == "Retry local assistant"
         assert panel.setup_btn.text() == "Settings"
 
+    def test_standard_dock_stacks_recovery_actions_when_native_hints_do_not_fit(
+        self,
+        qtbot,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            panel.retry_runtime_btn.sizeHint = lambda: QSize(240, 42)
+            panel.setup_btn.sizeHint = lambda: QSize(240, 42)
+            panel.resize(420, 760)
+            panel.set_runtime_state("failed")
+            panel.show()
+            qtbot.wait(20)
+            panel._reflow_chat_content()
+
+        assert (
+            panel.runtime_action_layout.direction() == QBoxLayout.Direction.TopToBottom
+        )
+        assert panel.retry_runtime_btn.text() == "Retry local assistant"
+        assert panel.setup_btn.text() == "Settings"
+
     def test_runtime_and_workflow_copy_refit_after_font_metrics_change(
         self,
         chat_panel,

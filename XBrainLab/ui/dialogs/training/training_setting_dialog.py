@@ -6,7 +6,7 @@ device, output directory, evaluation strategy, and repeat count.
 
 from typing import Any
 
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtCore import QEvent, QRect, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QStyle,
+    QStyleOptionComboBox,
     QVBoxLayout,
 )
 
@@ -165,9 +167,33 @@ class TrainingSettingDialog(BaseDialog):
                 min(available_dialog_width - fixed_dialog_width, 440),
                 240,
             )
+            probe_width = max(
+                self.evaluation_combo.width(),
+                self.evaluation_combo.sizeHint().width(),
+                240,
+            )
+            option = QStyleOptionComboBox()
+            option.initFrom(self.evaluation_combo)
+            option.rect = QRect(
+                0,
+                0,
+                probe_width,
+                max(self.evaluation_combo.sizeHint().height(), 1),
+            )
+            option.currentText = self.evaluation_combo.currentText()
+            style = self.evaluation_combo.style()
+            native_chrome_width = 0
+            if style is not None:
+                edit_rect = style.subControlRect(
+                    QStyle.ComplexControl.CC_ComboBox,
+                    option,
+                    QStyle.SubControl.SC_ComboBoxEditField,
+                    self.evaluation_combo,
+                )
+                native_chrome_width = max(probe_width - edit_rect.width(), 0)
             evaluation_width = max(
                 self.evaluation_combo.sizeHint().width(),
-                widest_item + 52,
+                widest_item + native_chrome_width + 2,
             )
             input_column_width = min(
                 max(input_column_width, evaluation_width),

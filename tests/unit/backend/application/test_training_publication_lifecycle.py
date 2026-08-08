@@ -442,6 +442,58 @@ def test_newer_training_publication_preserves_older_pending_delivery() -> None:
     assert new in attempts
 
 
+def test_newer_terminal_for_same_run_supersedes_unrendered_revision() -> None:
+    old = _training_event(
+        token_generation=10,
+        run_id=1,
+        publication_generation=42,
+    )
+    new = _training_event(
+        token_generation=11,
+        run_id=1,
+        publication_generation=43,
+    )
+    coordinator = _coordinator(
+        publish_training_terminal=lambda event: event == new,
+    )
+
+    assert coordinator.publish_training_terminal(old) is False
+    assert coordinator.training_delivery_state().pending_count == 1
+
+    assert coordinator.publish_training_terminal(new) is True
+
+    state = coordinator.training_delivery_state()
+    assert state.pending_count == 0
+    assert state.delivered_count == 1
+    coordinator.close()
+
+
+def test_later_token_for_delivered_run_is_acknowledged_without_redelivery() -> None:
+    delivered: list[TrainingLifecycleEvent] = []
+    coordinator = _coordinator(
+        publish_training_terminal=lambda event: delivered.append(event) or True,
+    )
+    first = _training_event(
+        token_generation=12,
+        run_id=1,
+        publication_generation=44,
+    )
+    later = _training_event(
+        token_generation=13,
+        run_id=1,
+        publication_generation=44,
+    )
+
+    assert coordinator.publish_training_terminal(first) is True
+    assert coordinator.publish_training_terminal(later) is True
+
+    state = coordinator.training_delivery_state()
+    assert delivered == [first]
+    assert state.pending_count == 0
+    assert state.delivered_count == 1
+    coordinator.close()
+
+
 def test_persistent_failure_exhausts_autonomous_retry_without_hanging() -> None:
     attempts: list[TrainingLifecycleEvent] = []
     coordinator = _coordinator(

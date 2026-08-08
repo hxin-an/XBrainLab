@@ -56,11 +56,17 @@ class TestPanelControllerBinding:
 
     def test_training_start_event_updates_ui(self, training_panel):
         """Test 'training_started' event updates sidebar."""
-        training_panel.sidebar = MagicMock()
+        sidebar = training_panel.sidebar
 
-        training_panel._on_training_started()
+        with patch.object(
+            sidebar,
+            "on_training_started",
+            wraps=sidebar.on_training_started,
+        ) as on_training_started:
+            training_panel._on_training_started()
 
-        training_panel.sidebar.on_training_started.assert_called_once()
+        on_training_started.assert_called_once()
+        assert training_panel.sidebar is sidebar
         assert "started" in training_panel.log_text.toPlainText()
 
     def test_training_update_event_clears_empty_history(self, training_panel):

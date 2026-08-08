@@ -1925,9 +1925,34 @@ class ChatPanel(QWidget):
         )
         self.empty_state_widget.updateGeometry()
         self._fit_response_action_labels(transcript_surface_width)
+        for button in (self.retry_runtime_btn, self.setup_btn):
+            full_label = button.property("assistantFullLabel")
+            if isinstance(full_label, str) and full_label:
+                button.setText(full_label)
+                button.ensurePolished()
+        runtime_state_layout = self.runtime_state_widget.layout()
+        runtime_action_width = self.runtime_state_widget.width()
+        if runtime_state_layout is not None:
+            runtime_margins = runtime_state_layout.contentsMargins()
+            runtime_action_width -= runtime_margins.left() + runtime_margins.right()
+        runtime_action_width = max(runtime_action_width, 1)
+        visible_runtime_actions = [
+            button
+            for button in (self.retry_runtime_btn, self.setup_btn)
+            if not button.isHidden()
+        ]
+        required_runtime_action_width = sum(
+            button.sizeHint().width() for button in visible_runtime_actions
+        ) + self.runtime_action_layout.spacing() * max(
+            len(visible_runtime_actions) - 1,
+            0,
+        )
         self.runtime_action_layout.setDirection(
             QBoxLayout.Direction.TopToBottom
-            if container_width < 360
+            if (
+                container_width < 360
+                or required_runtime_action_width > runtime_action_width
+            )
             else QBoxLayout.Direction.LeftToRight
         )
         self._layout_suggestion_prompts(2 if container_width >= 520 else 1)

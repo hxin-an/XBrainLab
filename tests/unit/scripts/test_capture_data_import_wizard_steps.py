@@ -427,6 +427,34 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
     assert report_issues == {"Optional session values were inferred"}
 
 
+def test_review_import_releases_stale_conservative_summary_row_height(qtbot):
+    dialog = capture_script._review_import_dialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.show()
+    dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+    qtbot.wait(20)
+
+    summary = dialog._review_summary_value_labels["Resource check"]
+    layout = dialog._review_import_rows_layout
+    summary_item = next(
+        layout.itemAt(index)
+        for index in range(layout.count())
+        if layout.itemAt(index).widget() is summary
+    )
+    row, _column, _row_span, _column_span = layout.getItemPosition(
+        layout.indexOf(summary_item.widget())
+    )
+    stale_height = summary.minimumHeight() + 40
+    summary.setMinimumHeight(stale_height)
+    layout.setRowMinimumHeight(row, stale_height)
+
+    dialog._sync_review_import_row_heights()
+
+    assert summary.minimumHeight() < stale_height
+    assert layout.rowMinimumHeight(row) == summary.minimumHeight()
+
+
 def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
     dialog = capture_script._review_import_dialog()
     qtbot.addWidget(dialog)

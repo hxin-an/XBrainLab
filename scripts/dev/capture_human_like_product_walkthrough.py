@@ -2239,17 +2239,38 @@ def _label_text_line_probes(
     metrics = label.fontMetrics()
     horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
     vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
-    # Keep the layout in Qt logical pixels. Passing a live QWidget as the paint
-    # device makes QTextLayout use the native device DPI on Windows while the
-    # contents rectangle remains device-independent, which falsely reports
-    # otherwise visible labels as horizontally clipped at 125%/150% scaling.
+    if not label.wordWrap():
+        text_width = max(metrics.horizontalAdvance(text), 1)
+        line_height = max(metrics.height(), 1)
+        name = label.objectName() or f"QLabel({text!r})"
+        if text_width > content_rect.width():
+            raise RuntimeError(
+                f"{surface_name} label text is horizontally clipped: {name} "
+                f"needs {text_width}px, has {content_rect.width()}px."
+            )
+        if line_height > content_rect.height():
+            raise RuntimeError(
+                f"{surface_name} label text is vertically clipped: {name} "
+                f"needs {line_height}px, has {content_rect.height()}px."
+            )
+        if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
+            local_x = content_rect.x() + content_rect.width() - text_width
+        elif horizontal_alignment == Qt.AlignmentFlag.AlignHCenter:
+            local_x = content_rect.x() + (content_rect.width() - text_width) // 2
+        else:
+            local_x = content_rect.x()
+        if vertical_alignment == Qt.AlignmentFlag.AlignBottom:
+            local_y = content_rect.y() + content_rect.height() - line_height
+        elif vertical_alignment == Qt.AlignmentFlag.AlignTop:
+            local_y = content_rect.y()
+        else:
+            local_y = content_rect.y() + (content_rect.height() - line_height) // 2
+        probe = QRect(local_x - 3, local_y - 3, text_width + 6, line_height + 6)
+        return [(probe.intersected(content_rect), text_width)]
+
     layout = QTextLayout(text, label.font())
     options = QTextOption()
-    options.setWrapMode(
-        QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
-        if label.wordWrap()
-        else QTextOption.WrapMode.NoWrap
-    )
+    options.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
     layout.setTextOption(options)
     layout.beginLayout()
     lines = []
@@ -2285,8 +2306,6 @@ def _label_text_line_probes(
     for line, line_height in zip(lines, line_heights, strict=True):
         natural_width = line.naturalTextWidth()
         text_width = max(ceil(natural_width), 1)
-        if not label.wordWrap() and natural_width > content_rect.width():
-            raise RuntimeError(f"{surface_name} label text is horizontally clipped.")
         if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
             local_x = content_rect.x() + content_rect.width() - text_width
         elif horizontal_alignment == Qt.AlignmentFlag.AlignHCenter:

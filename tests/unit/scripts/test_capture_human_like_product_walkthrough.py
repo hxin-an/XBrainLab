@@ -3267,6 +3267,34 @@ def test_text_paint_guard_honors_label_alignment_and_contents_margins(
     )
 
 
+def test_unwrapped_label_probe_uses_widget_logical_font_metrics(
+    qtbot,
+    monkeypatch,
+) -> None:
+    label = QLabel("Interpretation summary is ready for review.")
+    qtbot.addWidget(label)
+    label.resize(560, 44)
+    label.setContentsMargins(32, 4, 24, 4)
+    label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    def reject_device_independent_layout(*_args, **_kwargs):
+        raise AssertionError("unwrapped labels must use the widget's logical metrics")
+
+    monkeypatch.setattr(
+        walkthrough_module, "QTextLayout", reject_device_independent_layout
+    )
+
+    probes = walkthrough_module._label_text_line_probes(
+        label,
+        label.text(),
+        surface_name="Aligned interpretation summary",
+    )
+
+    assert len(probes) == 1
+    _probe, expected_width = probes[0]
+    assert expected_width == label.fontMetrics().horizontalAdvance(label.text())
+
+
 def test_text_paint_guard_honors_word_wrap_and_rejects_real_label_clipping(
     qtbot,
     tmp_path,

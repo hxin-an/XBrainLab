@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from PyQt6.QtCore import QPoint, QRect, QSize
-from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QLabel
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialogButtonBox,
+    QLabel,
+    QProxyStyle,
+    QStyle,
+)
 
 import scripts.dev.capture_ui_reviewer_fixes as capture_script
 from XBrainLab.backend.application.preprocess_render import (
@@ -328,6 +334,37 @@ def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:
 
     evaluation = next(row for row in check["rows"] if row["label"] == "Evaluation")
     assert evaluation["contained_in_dialog"] is True
+    assert evaluation["input_text_clipped"] is False
+
+
+def test_training_setting_reserves_native_combo_edit_field_chrome(qapp) -> None:
+    class NarrowEditFieldStyle(QProxyStyle):
+        def subControlRect(self, control, option, sub_control, widget=None):
+            rect = super().subControlRect(control, option, sub_control, widget)
+            if (
+                control == QStyle.ComplexControl.CC_ComboBox
+                and sub_control == QStyle.SubControl.SC_ComboBoxEditField
+            ):
+                rect.setWidth(max(rect.width() - 190, 0))
+            return rect
+
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.evaluation_combo is not None
+        native_style = NarrowEditFieldStyle()
+        native_style.setParent(dialog.evaluation_combo)
+        dialog.evaluation_combo.setStyle(native_style)
+        dialog._fit_dialog_to_content()
+        _settle(qapp, dialog)
+
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=1.5,
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+    evaluation = next(row for row in check["rows"] if row["label"] == "Evaluation")
     assert evaluation["input_text_clipped"] is False
 
 

@@ -186,17 +186,13 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 summary.text(),
             )
             required_height = max(
-                summary.heightForWidth(summary.width()),
                 text_bounds.height(),
                 summary.fontMetrics().height() + 14,
             )
             if required_height > 0:
                 if summary.minimumHeight() != required_height:
                     summary.setMinimumHeight(required_height)
-                layout.setRowMinimumHeight(
-                    row,
-                    max(layout.rowMinimumHeight(row), required_height),
-                )
+                layout.setRowMinimumHeight(row, required_height)
         layout.activate()
 
     @staticmethod
