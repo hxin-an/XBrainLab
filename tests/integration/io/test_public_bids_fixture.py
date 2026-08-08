@@ -28,6 +28,8 @@ MNE_BIDS_CHANNELS = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_channels.tsv"
 OPENNEURO_P300_ROOT = PUBLIC_DATA_DIR / "openneuro-ds003061-p300"
 OPENNEURO_P300_EEG_DIR = OPENNEURO_P300_ROOT / "sub-001" / "eeg"
 
+pytestmark = pytest.mark.optional_public_fixture
+
 
 def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
     """Downloaded MNE-BIDS fixture should exercise folder-level import."""

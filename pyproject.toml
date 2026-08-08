@@ -180,6 +180,7 @@ norecursedirs = ["XBrainLab", ".git", "__pycache__", "*.egg-info"]
 markers = [
     "timeout: Mark test with a timeout.",
     "platform_contract: Test validates an explicit OS-specific contract.",
+    "optional_public_fixture: Test requires downloaded public fixture data owned by a dedicated gate.",
 ]
 filterwarnings = [
     "ignore::pytest.PytestUnknownMarkWarning",

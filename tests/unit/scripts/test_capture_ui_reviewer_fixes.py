@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
-from PyQt6.QtCore import QPoint, QRect
+from PyQt6.QtCore import QPoint, QRect, QSize
 from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QLabel
 
 import scripts.dev.capture_ui_reviewer_fixes as capture_script
@@ -309,6 +309,26 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert all(row["horizontal_gap_px"] >= 0 for row in check["rows"])
     assert all(row["label_text_clipped"] is False for row in check["rows"])
     assert all(row["overlap"] is False for row in check["rows"])
+
+
+def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.evaluation_combo is not None
+        dialog.evaluation_combo.sizeHint = lambda: QSize(1200, 36)
+        dialog._fit_dialog_to_content()
+        _settle(qapp, dialog)
+
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=1.5,
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+    evaluation = next(row for row in check["rows"] if row["label"] == "Evaluation")
+    assert evaluation["contained_in_dialog"] is True
+    assert evaluation["input_text_clipped"] is False
 
 
 def test_training_setting_geometry_guard_rejects_overlap(qapp) -> None:

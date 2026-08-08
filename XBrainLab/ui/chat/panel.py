@@ -469,8 +469,10 @@ class ChatPanel(QWidget):
         self.retry_runtime_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.retry_runtime_btn.setStyleSheet(RUNTIME_PRIMARY_ACTION_STYLE)
         self.retry_runtime_btn.ensurePolished()
-        self.retry_runtime_btn.setMinimumWidth(
-            self.retry_runtime_btn.sizeHint().width()
+        self.retry_runtime_btn.setMinimumWidth(0)
+        self.retry_runtime_btn.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
         )
         self.retry_runtime_btn.clicked.connect(
             lambda _checked=False: self._request_runtime_retry()
@@ -490,7 +492,11 @@ class ChatPanel(QWidget):
         )
         self.setup_btn.setStyleSheet(RUNTIME_PRIMARY_ACTION_STYLE)
         self.setup_btn.ensurePolished()
-        self.setup_btn.setMinimumWidth(self.setup_btn.sizeHint().width())
+        self.setup_btn.setMinimumWidth(0)
+        self.setup_btn.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         self.setup_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setup_btn.clicked.connect(self.open_settings_requested)
         self.setup_btn.setVisible(False)
@@ -1585,11 +1591,13 @@ class ChatPanel(QWidget):
         """Synchronize recovery-card geometry before the next Qt paint cycle."""
         action_layout = self.runtime_actions.layout()
         if action_layout is not None:
-            action_layout.activate()
             for button in (self.retry_runtime_btn, self.setup_btn):
                 button.setText(str(button.property("assistantFullLabel")))
                 button.ensurePolished()
-                button.setMinimumWidth(button.sizeHint().width())
+                button.setMinimumWidth(0)
+            action_layout.invalidate()
+            action_layout.activate()
+            for button in (self.retry_runtime_btn, self.setup_btn):
                 self._fit_button_label(button)
             action_layout.activate()
             self.runtime_actions.setMinimumHeight(action_layout.sizeHint().height())
@@ -1599,8 +1607,6 @@ class ChatPanel(QWidget):
             self.runtime_state_widget.setMinimumHeight(
                 state_layout.sizeHint().height() + 4
             )
-        self.runtime_actions.adjustSize()
-        self.runtime_state_widget.adjustSize()
         self.runtime_actions.updateGeometry()
         self.runtime_state_widget.updateGeometry()
 

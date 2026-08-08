@@ -78,6 +78,8 @@ REQUIRE_REAL_FIXTURES = (
     os.environ.get("XBRAINLAB_REQUIRE_REAL_FIXTURES", "").strip() == "1"
 )
 
+pytestmark = pytest.mark.optional_public_fixture
+
 
 @dataclass(frozen=True)
 class _PublicFileAcceptanceCase:

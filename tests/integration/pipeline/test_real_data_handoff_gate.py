@@ -200,6 +200,7 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
         _close_service(service)
 
 
+@pytest.mark.optional_public_fixture
 def test_public_bids_reaches_epoch_and_dataset_generation_readiness() -> None:
     """A different public source must materialize BIDS timing into real epochs."""
     if not PUBLIC_BIDS_EEG.exists() or not PUBLIC_BIDS_EVENTS.exists():
@@ -296,6 +297,7 @@ def test_public_bids_reaches_epoch_and_dataset_generation_readiness() -> None:
         _close_service(service)
 
 
+@pytest.mark.optional_public_fixture
 def test_physionet_internal_events_reach_real_training_through_interpretation_spine(
     tmp_path: Path,
 ) -> None:

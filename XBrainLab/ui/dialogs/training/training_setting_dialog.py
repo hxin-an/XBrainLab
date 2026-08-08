@@ -6,7 +6,7 @@ device, output directory, evaluation strategy, and repeat count.
 
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QSize, Qt
+from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
@@ -18,8 +18,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
-    QStyle,
-    QStyleOptionComboBox,
     QVBoxLayout,
 )
 
@@ -156,19 +154,25 @@ class TrainingSettingDialog(BaseDialog):
                 ),
                 default=0,
             )
-            style_option = QStyleOptionComboBox()
-            self.evaluation_combo.initStyleOption(style_option)
-            native_contents_size = self.evaluation_combo.style().sizeFromContents(
-                QStyle.ContentsType.CT_ComboBox,
-                style_option,
-                QSize(widest_item, metrics.height()),
-                self.evaluation_combo,
+            fixed_dialog_width = 36 + label_column_width + 12 + 12 + 72
+            screen = self.screen()
+            available_dialog_width = (
+                max(screen.availableGeometry().width() - 48, 1)
+                if screen is not None
+                else 800
+            )
+            input_width_ceiling = max(
+                min(available_dialog_width - fixed_dialog_width, 440),
+                240,
             )
             evaluation_width = max(
                 self.evaluation_combo.sizeHint().width(),
-                native_contents_size.width() + 8,
+                widest_item + 52,
             )
-            input_column_width = max(input_column_width, evaluation_width)
+            input_column_width = min(
+                max(input_column_width, evaluation_width),
+                input_width_ceiling,
+            )
             self.evaluation_combo.setMinimumWidth(input_column_width)
         if form_layout is not None:
             form_layout.setColumnMinimumWidth(0, label_column_width)

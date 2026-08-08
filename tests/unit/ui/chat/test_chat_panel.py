@@ -1054,6 +1054,26 @@ class TestChatPanelInit:
             panel.retry_runtime_btn.geometry().bottom()
         )
 
+    def test_runtime_recovery_actions_ignore_inflated_native_size_hints(
+        self,
+        qtbot,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            for control in (panel.retry_runtime_btn, panel.setup_btn):
+                control.sizeHint = lambda: QSize(520, 42)
+            panel.resize(280, 620)
+            panel.set_runtime_state("failed")
+            panel.show()
+            qtbot.wait(20)
+
+        for control in (panel.retry_runtime_btn, panel.setup_btn):
+            _assert_inside_panel_on_all_sides(panel, control)
+            assert control.minimumWidth() == 0
+
     def test_runtime_notice_strips_markdown_emphasis(self, qtbot):
         with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
             from XBrainLab.ui.chat.panel import ChatPanel

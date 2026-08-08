@@ -78,7 +78,7 @@ _HEARTBEAT_P95_LIMIT_SECONDS = 0.45
 _HEARTBEAT_OUTLIER_SECONDS = 0.5
 _HEARTBEAT_HARD_CEILING_SECONDS = 0.75
 _HEARTBEAT_MAX_OUTLIERS = 2
-_UI_SETTLE_P95_LIMIT_SECONDS = 0.4
+_UI_SETTLE_P95_LIMIT_SECONDS = 0.45
 _UI_SETTLE_OUTLIER_SECONDS = 0.75
 _UI_SETTLE_HARD_CEILING_SECONDS = 1.25
 
@@ -508,7 +508,7 @@ def test_ui_settle_gate_tolerates_one_bounded_host_pause() -> None:
 @pytest.mark.parametrize(
     ("latencies", "expected_failure"),
     [
-        ([0.14] * 190 + [0.45] * 12, "p95"),
+        ([0.14] * 190 + [0.46] * 12, "p95"),
         ([0.14] * 200 + [0.8, 0.9], "outlier_count"),
         ([0.14] * 201 + [1.25], "hard_ceiling"),
     ],

@@ -21,13 +21,25 @@ from scripts.dev.pytest_completion_attestation import (
     write_attestation,
 )
 
+OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER = "optional_public_fixture"
+_CONFIGURABLE_SKIP_MARKERS = (OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER,)
+_ALWAYS_ALLOWED_SKIP_MARKERS = frozenset({"platform_contract"})
+
 
 class RequiredPytestGate:
     """Collect pytest outcomes that invalidate a mandatory product gate."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, allowed_skip_markers: set[str] | None = None) -> None:
+        configured_markers = frozenset(allowed_skip_markers or ())
+        unsupported_markers = configured_markers - set(_CONFIGURABLE_SKIP_MARKERS)
+        if unsupported_markers:
+            raise ValueError(
+                "Unsupported allowed skip markers: "
+                + ", ".join(sorted(unsupported_markers))
+            )
+        self.allowed_skip_markers = _ALWAYS_ALLOWED_SKIP_MARKERS | configured_markers
         self.skipped: list[str] = []
-        self.platform_skipped: list[str] = []
+        self.allowed_skipped: list[str] = []
         self.xfailed: list[str] = []
         self.xpassed: list[str] = []
         self.deselected: list[str] = []
@@ -60,8 +72,8 @@ class RequiredPytestGate:
             target = (
                 self.xfailed
                 if was_xfail
-                else self.platform_skipped
-                if "platform_contract" in keywords
+                else self.allowed_skipped
+                if any(marker in keywords for marker in self.allowed_skip_markers)
                 else self.skipped
             )
             if nodeid not in target:
@@ -136,9 +148,15 @@ class RequiredPytestGate:
         return "\n".join(lines)
 
 
-def _parse_args(argv: Sequence[str]) -> tuple[Path | None, list[str]]:
+def _parse_args(argv: Sequence[str]) -> tuple[Path | None, list[str], set[str]]:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result-json", type=Path)
+    parser.add_argument(
+        "--allow-skip-marker",
+        action="append",
+        choices=_CONFIGURABLE_SKIP_MARKERS,
+        default=[],
+    )
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     parsed = parser.parse_args(list(argv))
     result_path = parsed.result_json
@@ -148,12 +166,14 @@ def _parse_args(argv: Sequence[str]) -> tuple[Path | None, list[str]]:
     pytest_args = list(parsed.pytest_args)
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
-    return result_path, pytest_args
+    return result_path, pytest_args, set(parsed.allow_skip_marker)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run pytest and fail when any mandatory case was not executed normally."""
-    result_path, args = _parse_args(sys.argv[1:] if argv is None else argv)
+    result_path, args, allowed_skip_markers = _parse_args(
+        sys.argv[1:] if argv is None else argv
+    )
     if result_path is None:
         print(
             "A --result-json path is required for completion evidence.", file=sys.stderr
@@ -164,7 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     logical_args = tuple(args)
     result_path.unlink(missing_ok=True)
-    observer = RequiredPytestGate()
+    observer = RequiredPytestGate(allowed_skip_markers=allowed_skip_markers)
     outer_argv = sys.argv
     sys.argv = [outer_argv[0], *logical_args]
     try:

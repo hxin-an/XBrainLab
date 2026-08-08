@@ -48,6 +48,8 @@ MNE_BIDS_EEG_DIR = MNE_BIDS_ROOT / "sub-01" / "ses-eeg" / "eeg"
 MNE_BIDS_EEG = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_eeg.vhdr"
 MNE_BIDS_EVENTS = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_events.tsv"
 
+pytestmark = pytest.mark.optional_public_fixture
+
 
 @pytest.fixture(autouse=True)
 def mock_ui_blocking() -> Iterator[None]:

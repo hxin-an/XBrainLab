@@ -1832,12 +1832,7 @@ class DataInterpretationPreviewDialog(
         # the text look compressed until the report is expanded and collapsed.
         desired_height = max(content_height + chrome_height + 8, 560)
         restore_height = self._review_restore_size.height()
-        # A native font can make the settled review a few pixels taller than it
-        # is on Linux. Never force the collapsed step below the working dialog
-        # height: that turns an otherwise complete review into a needless
-        # scrollbar on Windows. The content-derived desired height still keeps
-        # genuinely compact reviews compact.
-        collapsed_ceiling = max(1, restore_height)
+        collapsed_ceiling = max(560, restore_height - 48)
         if self.import_report_card.isHidden():
             # Native title bars can clamp the working dialog to the screen's
             # available height. Keep the collapsed review observably compact
@@ -1853,16 +1848,20 @@ class DataInterpretationPreviewDialog(
             overflow = content_height - projected_viewport_height + 4
             if overflow > 0:
                 target_height = min(target_height + overflow, collapsed_ceiling)
+            projected_viewport_height = max(
+                original_viewport_height + target_height - original_height,
+                1,
+            )
+            # The previous step leaves the stack at its working-page fixed
+            # height. Release that constraint before resizing the top-level
+            # dialog so native Windows geometry cannot clamp the compact step.
+            self._sync_scroll_policy_for_height(projected_viewport_height)
         if target_height != self.height():
             self.resize_preserving_center(QSize(self.width(), target_height))
         if self.import_report_card.isHidden():
             # Native Windows geometry notifications can arrive after this
             # method returns. Apply the policy to the projected viewport now so
             # the final step never paints one stale, scrollable frame.
-            projected_viewport_height = max(
-                original_viewport_height + target_height - original_height,
-                1,
-            )
             self._sync_scroll_policy_for_height(projected_viewport_height)
 
     def _step_content_height(self, current_page: QWidget) -> int:

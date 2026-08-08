@@ -106,6 +106,7 @@ def test_data_import_wizard_opens_all_steps_for_format_matrix(
     assert "Found" in str(preview.diagnostics["preview"].get("summary", ""))
 
 
+@pytest.mark.optional_public_fixture
 def test_public_bids_wizard_completes_through_visible_next_and_apply_buttons(
     qtbot,
 ) -> None:

@@ -216,6 +216,7 @@ class TestIOIntegration:
         assert summary["gdf_duplicate_channel_files"] == []
         assert summary["gdf_duplicate_channel_details"] == []
 
+    @pytest.mark.optional_public_fixture
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
     def test_load_public_real_formats(self, filepath):
         """Load small public EEG fixtures from different sources and formats."""
@@ -231,6 +232,7 @@ class TestIOIntegration:
 
         _assert_real_data_shape(raw)
 
+    @pytest.mark.optional_public_fixture
     def test_openneuro_bids_channels_apply_to_real_mne_raw(self):
         """Real BIDS sidecar semantics must survive the product load/apply helpers."""
         if not os.path.exists(OPENNEURO_P300_EEG):
@@ -271,6 +273,7 @@ class TestIOIntegration:
         assert applied[0]["channel_units"]["Temp"] == "n/a"
         assert "Temp" in applied[0]["unmapped_unit_channels"]
 
+    @pytest.mark.optional_public_fixture
     def test_sleep_edf_infers_prefixed_types_without_renaming_channels(self):
         """MNE EDF prefix inference must not change the product channel identity."""
         if not os.path.exists(SLEEP_EDFX_PSG):
@@ -299,6 +302,7 @@ class TestIOIntegration:
         assert detail["method"] == "mne_edf_infer_types"
         assert detail["defaulted_to_eeg_channels"] == ["Marker"]
 
+    @pytest.mark.optional_public_fixture
     def test_chbmit_duplicate_channel_names_keep_mne_unique_identity(self):
         """EDF inference must retain MNE's duplicate-name compatibility."""
         if not os.path.exists(CHBMIT_EDF):
@@ -314,6 +318,7 @@ class TestIOIntegration:
         assert "T8-P8" not in raw.get_mne().ch_names
         assert len(raw.get_mne().ch_names) == len(set(raw.get_mne().ch_names))
 
+    @pytest.mark.optional_public_fixture
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
     def test_application_service_import_public_real_formats(self, filepath):
         """Exercise the command import entrypoint across downloaded public EEG fixtures."""

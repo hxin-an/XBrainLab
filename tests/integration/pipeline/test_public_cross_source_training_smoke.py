@@ -25,6 +25,8 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
 from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
 
+pytestmark = pytest.mark.optional_public_fixture
+
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DATA_DIR = ROOT / "fixtures" / "data" / "public"
 

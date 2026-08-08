@@ -356,8 +356,17 @@ MAIN_NAVIGATION_TITLES = (
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
-MAX_PERSISTENT_IDLE_QT_THREADS = 16
+# The product caps Qt's global pool at 16 workers. Linux exposes enough native
+# identity and wait-channel evidence to distinguish those dormant workers from
+# active or unrelated threads, so use the product ceiling rather than a
+# machine-specific count observed in one CI run.
+MAX_LINUX_DORMANT_QT_THREADS = 16
+MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS = 8
 MAX_PERSISTENT_CUDA_RUNTIME_THREADS = 32
+LINUX_DORMANT_QT_WAIT_CHANNELS = frozenset(
+    {"futex_do_wait", "futex_wait", "futex_wait_queue"}
+)
+LINUX_PYTHON_THREAD_NAME_PATTERN = re.compile(r"python(?:\d+(?:\.\d+)*)?")
 GEOMETRY_WIDTH_TOLERANCE_PX = 8
 WALKTHROUGH_EVENT_ROWS = tuple(
     f"{0.1 + index * 0.55:.2f}\t0.2\t{'left' if index % 2 == 0 else 'right'}"
@@ -2230,28 +2239,6 @@ def _label_text_line_probes(
     metrics = label.fontMetrics()
     horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
     vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
-    if not label.wordWrap():
-        text_width = max(metrics.horizontalAdvance(text), 1)
-        line_height = metrics.lineSpacing()
-        if text_width > content_rect.width():
-            raise RuntimeError(f"{surface_name} label text is horizontally clipped.")
-        if line_height > content_rect.height():
-            raise RuntimeError(f"{surface_name} label text is vertically clipped.")
-        if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
-            local_x = content_rect.right() - text_width + 1
-        elif horizontal_alignment == Qt.AlignmentFlag.AlignHCenter:
-            local_x = content_rect.x() + (content_rect.width() - text_width) // 2
-        else:
-            local_x = content_rect.x()
-        if vertical_alignment == Qt.AlignmentFlag.AlignBottom:
-            local_y = content_rect.bottom() - line_height + 1
-        elif vertical_alignment == Qt.AlignmentFlag.AlignTop:
-            local_y = content_rect.y()
-        else:
-            local_y = content_rect.y() + (content_rect.height() - line_height) // 2
-        probe = QRect(local_x - 3, local_y - 3, text_width + 6, line_height + 6)
-        return [(probe.intersected(content_rect), text_width)]
-
     # Keep the layout in Qt logical pixels. Passing a live QWidget as the paint
     # device makes QTextLayout use the native device DPI on Windows while the
     # contents rectangle remains device-independent, which falsely reports
@@ -3209,7 +3196,9 @@ def build_resource_smoke_summary(
     boundary = (
         "Coarse process smoke only: current RSS catches large retained-memory "
         "regressions, while max RSS is recorded as a high-water diagnostic and "
-        "does not prove the absence of leaks."
+        "does not prove the absence of leaks. On macOS, bounded anonymous OS "
+        "threads are reported as limited-introspection evidence only when Qt "
+        "and Python report no active work."
     )
     if resource_notes is None:
         return {
@@ -3247,11 +3236,12 @@ def build_resource_smoke_summary(
         failed.append("resource thread identity evidence is incomplete")
     extra_live_ids = after_live_ids - start_live_ids
     extra_os_ids = after_os_ids - start_os_ids
-    persistent_runtime_ids, unexpected_extra_os_ids = (
+    persistent_runtime_ids, unexpected_extra_os_ids, limited_introspection_ids = (
         _classify_persistent_runtime_threads(
             after_close,
             extra_os_ids,
             qt_active_threads=after_qt_threads,
+            known_live_python_ids=extra_live_ids,
         )
     )
     unexpected_extra_live_ids = extra_live_ids - persistent_runtime_ids
@@ -3316,6 +3306,11 @@ def build_resource_smoke_summary(
         "extra_os_thread_ids": sorted(extra_os_ids),
         "persistent_runtime_os_thread_ids": sorted(persistent_runtime_ids),
         "unexpected_extra_os_thread_ids": sorted(unexpected_extra_os_ids),
+        "limited_introspection_os_thread_ids": sorted(limited_introspection_ids),
+        "limited_introspection_os_thread_limit": (
+            MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS
+        ),
+        "linux_dormant_qt_thread_limit": MAX_LINUX_DORMANT_QT_THREADS,
         "python_thread_tolerance": RESOURCE_THREAD_TOLERANCE,
         "after_close_qt_active_threads": after_qt_threads,
         "rss_growth_kb": current_rss_growth_kb,
@@ -3331,7 +3326,8 @@ def _classify_persistent_runtime_threads(
     extra_os_ids: set[int],
     *,
     qt_active_threads: int,
-) -> tuple[set[int], set[int]]:
+    known_live_python_ids: set[int],
+) -> tuple[set[int], set[int], set[int]]:
     """Separate bounded idle runtime pools from unknown post-close workers."""
     raw_records = after_close.get("os_thread_records", [])
     records = {
@@ -3341,7 +3337,6 @@ def _classify_persistent_runtime_threads(
     }
     cuda_initialized = bool(after_close.get("cuda_runtime_initialized", False))
     platform_name = str(after_close.get("platform_name", "")).strip().lower()
-    qt_max_threads = max(_resource_int(after_close, "qt_max_threads"), 0)
     idle_qt_ids: set[int] = set()
     cuda_runtime_ids: set[int] = set()
     unexpected_ids: set[int] = set()
@@ -3349,8 +3344,10 @@ def _classify_persistent_runtime_threads(
     # macOS does not expose Linux /proc thread names or wait channels. The
     # collector still emits one blank record per OS thread because /proc is
     # absent, so treat records with no identity evidence as anonymous. Qt's
-    # global pool may retain a bounded inactive worker set after a burst; only
-    # attribute that bounded delta when the pool reports zero active work.
+    # global pool may retain a bounded inactive worker set after a burst. The
+    # current maxThreadCount can be lower than the already-created worker set,
+    # so use a narrow observed-platform cap while requiring zero active work
+    # and rejecting any thread that Python can still prove is live.
     darwin_records_are_anonymous = platform_name == "darwin" and all(
         not str(records.get(native_id, {}).get("name", "")).strip()
         and not str(records.get(native_id, {}).get("wait_channel", "")).strip()
@@ -3361,8 +3358,8 @@ def _classify_persistent_runtime_threads(
         if (
             darwin_records_are_anonymous
             and qt_active_threads == 0
-            and len(extra_os_ids)
-            <= min(max(qt_max_threads, 0), MAX_PERSISTENT_IDLE_QT_THREADS)
+            and not (extra_os_ids & known_live_python_ids)
+            and len(extra_os_ids) <= MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS
         )
         else set()
     )
@@ -3378,12 +3375,13 @@ def _classify_persistent_runtime_threads(
         name = str(record.get("name", ""))
         wait_channel = str(record.get("wait_channel", ""))
         if (
-            (
+            platform_name == "linux"
+            and (
                 name == "Thread (pooled)"
-                or (platform_name == "linux" and name.startswith("python"))
+                or LINUX_PYTHON_THREAD_NAME_PATTERN.fullmatch(name) is not None
             )
             and qt_active_threads == 0
-            and wait_channel.startswith("futex_wait")
+            and wait_channel in LINUX_DORMANT_QT_WAIT_CHANNELS
         ):
             # Some Linux CI builds preserve Qt's native thread name, while
             # others expose the process name ("python") for the same inactive
@@ -3412,14 +3410,18 @@ def _classify_persistent_runtime_threads(
     # destroying already-created idle workers. Bound the retained pool by a
     # product-level ceiling instead of comparing it with the *current*
     # concurrency setting, while still requiring zero active workers above.
-    if len(idle_qt_ids) > MAX_PERSISTENT_IDLE_QT_THREADS:
+    if (
+        not darwin_records_are_anonymous
+        and len(idle_qt_ids) > MAX_LINUX_DORMANT_QT_THREADS
+    ):
         unexpected_ids.update(idle_qt_ids)
         idle_qt_ids.clear()
     if len(cuda_runtime_ids) > MAX_PERSISTENT_CUDA_RUNTIME_THREADS:
         unexpected_ids.update(cuda_runtime_ids)
         cuda_runtime_ids.clear()
     persistent_ids = idle_qt_ids | cuda_runtime_ids
-    return persistent_ids, unexpected_ids
+    limited_introspection_ids = idle_qt_ids if darwin_records_are_anonymous else set()
+    return persistent_ids, unexpected_ids, limited_introspection_ids
 
 
 def merge_ui_quality_into_pass_fail_summary(
@@ -4421,6 +4423,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
             [
                 f"- smoke checked: `{resource_smoke.get('checked')}`",
                 f"- smoke passed: `{resource_smoke.get('passed')}`",
+                "- limited-introspection OS threads: "
+                f"`{resource_smoke.get('limited_introspection_os_thread_ids', [])}` "
+                f"/ cap `{resource_smoke.get('limited_introspection_os_thread_limit', 'n/a')}`",
                 f"- boundary: {resource_smoke.get('boundary', '')}",
             ]
         )

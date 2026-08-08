@@ -67,6 +67,28 @@ def test_run_shards_executes_every_declared_domain(monkeypatch) -> None:
     ]
 
 
+def test_generic_runner_explicitly_allows_only_optional_public_fixture_skips() -> None:
+    result_path = Path("build/tmp/example-result.json")
+
+    command = run_tests._required_pytest_command(
+        result_path,
+        ("tests/example.py", "-q"),
+    )
+
+    assert command == [
+        sys.executable,
+        "-m",
+        "scripts.dev.run_required_pytest_gate",
+        "--result-json",
+        str(result_path),
+        "--allow-skip-marker",
+        "optional_public_fixture",
+        "--",
+        "tests/example.py",
+        "-q",
+    ]
+
+
 def test_run_shards_reports_failures_after_running_remaining_domains(
     monkeypatch,
 ) -> None:

@@ -26,6 +26,9 @@ from scripts.dev.pytest_completion_attestation import (
     validate_attestation,
     write_attestation,
 )
+from scripts.dev.run_required_pytest_gate import (
+    OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER,
+)
 from scripts.dev.test_runtime_paths import (
     configure_test_temp_root,
     matplotlib_cache_root,
@@ -72,6 +75,7 @@ REGRESSION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 DEFAULT_SHARD_TIMEOUT_SECONDS = 1200
 ROOT = Path(__file__).resolve().parents[2]
+PYTEST_ALLOWED_SKIP_MARKERS = (OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER,)
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,20 @@ def run_pytest(args: Sequence[str]) -> int:
     return run_pytest_attested(args).return_code
 
 
+def _required_pytest_command(result_path: Path, args: Sequence[str]) -> list[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "scripts.dev.run_required_pytest_gate",
+        "--result-json",
+        str(result_path),
+    ]
+    for marker in PYTEST_ALLOWED_SKIP_MARKERS:
+        command.extend(("--allow-skip-marker", marker))
+    command.extend(("--", *args))
+    return command
+
+
 def run_pytest_attested(args: Sequence[str]) -> AttestedPytestRun:
     """Run one shard and fail closed unless its wrapper returns evidence."""
     attestation_dir = ROOT / "build" / "tmp" / "pytest-attestations"
@@ -109,15 +127,7 @@ def run_pytest_attested(args: Sequence[str]) -> AttestedPytestRun:
         delete=True,
     ) as handle:
         result_path = Path(handle.name)
-    python_cmd = [
-        sys.executable,
-        "-m",
-        "scripts.dev.run_required_pytest_gate",
-        "--result-json",
-        str(result_path),
-        "--",
-        *args,
-    ]
+    python_cmd = _required_pytest_command(result_path, args)
     prlimit = shutil.which("prlimit") if os.name == "posix" else None
     cmd = [prlimit, "--core=0", "--", *python_cmd] if prlimit else python_cmd
     print(f"Running: {' '.join(cmd)}")
