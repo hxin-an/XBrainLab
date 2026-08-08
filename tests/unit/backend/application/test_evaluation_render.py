@@ -9,11 +9,13 @@ import pytest
 
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.evaluation_render import (
+    EvaluationCrossFoldIdentity,
     EvaluationPlanIdentity,
     EvaluationRenderPublisher,
     EvaluationRenderRequest,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
+    build_evaluation_cross_fold_choices,
 )
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
@@ -38,8 +40,20 @@ class _EpochData:
 
 
 class _Dataset:
-    def __init__(self) -> None:
-        self.epoch_data = _EpochData()
+    def __init__(
+        self,
+        *,
+        epoch_data: _EpochData | None = None,
+        config: Any | None = None,
+        test_mask: np.ndarray | None = None,
+    ) -> None:
+        self.epoch_data = epoch_data or _EpochData()
+        self.config = config or SimpleNamespace(is_cross_validation=False)
+        self.test_mask = (
+            np.asarray(test_mask, dtype=bool)
+            if test_mask is not None
+            else np.array([True, True])
+        )
 
     def get_epoch_data(self) -> _EpochData:
         return self.epoch_data
@@ -80,8 +94,14 @@ class _EvalRecord:
 
 
 class _Run:
-    def __init__(self, labels: np.ndarray, outputs: np.ndarray) -> None:
-        self.dataset = _Dataset()
+    def __init__(
+        self,
+        labels: np.ndarray,
+        outputs: np.ndarray,
+        *,
+        dataset: _Dataset | None = None,
+    ) -> None:
+        self.dataset = dataset or _Dataset()
         self.eval_record = _EvalRecord(labels, outputs)
         self.evaluation_records = {"test": self.eval_record}
 
@@ -95,8 +115,13 @@ class _Run:
 
 
 class _Plan:
-    def __init__(self, runs: list[_Run]) -> None:
-        self.dataset = _Dataset()
+    def __init__(
+        self,
+        runs: list[_Run],
+        *,
+        dataset: _Dataset | None = None,
+    ) -> None:
+        self.dataset = dataset or (runs[0].dataset if runs else _Dataset())
         self._runs = runs
 
     @staticmethod
@@ -218,6 +243,217 @@ def test_plan_publication_pools_only_finished_evaluation_arrays() -> None:
     assert publication.data.labels.tolist() == [0, 1]
     assert publication.data.outputs.tolist() == [[0.8, 0.2], [0.1, 0.9]]
     assert publication.data.metrics["macro_avg"]["support"] == 2
+
+
+def test_cross_fold_publication_pools_predictions_and_recomputes_metrics() -> None:
+    epoch_data = _EpochData()
+    config = SimpleNamespace(is_cross_validation=True)
+    first_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([True, True, False]),
+    )
+    second_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([False, False, True]),
+    )
+    first_fold = _Plan(
+        [
+            _Run(
+                np.array([0, 1]),
+                np.array([[0.8, 0.2], [0.4, 0.6]]),
+                dataset=first_dataset,
+            )
+        ],
+        dataset=first_dataset,
+    )
+    second_fold = _Plan(
+        [_Run(np.array([1]), np.array([[0.1, 0.9]]), dataset=second_dataset)],
+        dataset=second_dataset,
+    )
+    plans = [first_fold, second_fold]
+    publisher = _publisher(_Runtime(plans))
+    choices = build_evaluation_cross_fold_choices(plans)
+
+    assert len(choices) == 1
+    assert choices[0].display_name == "All Folds"
+    assert choices[0].run_label == "Run 1 (Summary)"
+    assert choices[0].sample_count == 3
+
+    publication = publisher.publish(
+        EvaluationRenderRequest(
+            publication_generation=3,
+            selection=choices[0].identity,
+        )
+    )
+
+    assert publication.data.summary_identity is None
+    assert publication.data.labels.tolist() == [0, 1, 1]
+    assert publication.data.outputs.tolist() == [
+        [0.8, 0.2],
+        [0.4, 0.6],
+        [0.1, 0.9],
+    ]
+    assert publication.data.metrics["macro_avg"]["support"] == 3
+
+    publisher = _publisher(_Runtime(plans))
+    with pytest.raises(PreconditionError, match="only for saved test predictions"):
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=choices[0].identity,
+                split="training",
+            )
+        )
+
+
+def test_cross_fold_choices_keep_repeats_as_distinct_summaries() -> None:
+    epoch_data = _EpochData()
+    config = SimpleNamespace(is_cross_validation=True)
+    first_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([True, False]),
+    )
+    second_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([False, True]),
+    )
+    plans = [
+        _Plan(
+            [
+                _Run(
+                    np.array([0]),
+                    np.array([[0.8, 0.2]]),
+                    dataset=first_dataset,
+                ),
+                _Run(
+                    np.array([0]),
+                    np.array([[0.7, 0.3]]),
+                    dataset=first_dataset,
+                ),
+            ],
+            dataset=first_dataset,
+        ),
+        _Plan(
+            [
+                _Run(
+                    np.array([1]),
+                    np.array([[0.1, 0.9]]),
+                    dataset=second_dataset,
+                ),
+                _Run(
+                    np.array([1]),
+                    np.array([[0.2, 0.8]]),
+                    dataset=second_dataset,
+                ),
+            ],
+            dataset=second_dataset,
+        ),
+    ]
+
+    choices = build_evaluation_cross_fold_choices(plans)
+
+    assert [choice.identity.run_index for choice in choices] == [0, 1]
+    assert [choice.run_label for choice in choices] == [
+        "Run 1 (Summary)",
+        "Run 2 (Summary)",
+    ]
+
+
+def test_cross_fold_publication_requires_the_split_in_every_finished_run() -> None:
+    epoch_data = _EpochData()
+    config = SimpleNamespace(is_cross_validation=True)
+    first_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([True, False]),
+    )
+    second_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([False, True]),
+    )
+    first = _Run(np.array([0]), np.array([[0.8, 0.2]]), dataset=first_dataset)
+    second = _Run(np.array([1]), np.array([[0.1, 0.9]]), dataset=second_dataset)
+    second.evaluation_records = {}
+    second.eval_record = None
+    plans = [
+        _Plan([first], dataset=first_dataset),
+        _Plan([second], dataset=second_dataset),
+    ]
+    publisher = _publisher(_Runtime(plans))
+    identity = EvaluationCrossFoldIdentity(
+        members=(
+            EvaluationRunIdentity(EvaluationPlanIdentity(0), 0),
+            EvaluationRunIdentity(EvaluationPlanIdentity(1), 0),
+        )
+    )
+
+    assert build_evaluation_cross_fold_choices(plans) == ()
+    with pytest.raises(PreconditionError, match="no longer available"):
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=identity,
+            )
+        )
+
+
+def test_cross_fold_choices_reject_overlapping_test_masks() -> None:
+    epoch_data = _EpochData()
+    config = SimpleNamespace(is_cross_validation=True)
+    first_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([True, False]),
+    )
+    second_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([True, False]),
+    )
+    plans = [
+        _Plan(
+            [_Run(np.array([0]), np.array([[0.8, 0.2]]), dataset=first_dataset)],
+            dataset=first_dataset,
+        ),
+        _Plan(
+            [_Run(np.array([1]), np.array([[0.1, 0.9]]), dataset=second_dataset)],
+            dataset=second_dataset,
+        ),
+    ]
+
+    assert build_evaluation_cross_fold_choices(plans) == ()
+
+
+def test_cross_fold_identity_requires_one_run_across_distinct_ordered_folds() -> None:
+    plan_zero = EvaluationPlanIdentity(0)
+    plan_one = EvaluationPlanIdentity(1)
+
+    with pytest.raises(ValueError, match="unique folds"):
+        EvaluationCrossFoldIdentity(
+            members=(
+                EvaluationRunIdentity(plan_zero, 0),
+                EvaluationRunIdentity(plan_zero, 0),
+            )
+        )
+    with pytest.raises(ValueError, match="same run index"):
+        EvaluationCrossFoldIdentity(
+            members=(
+                EvaluationRunIdentity(plan_zero, 0),
+                EvaluationRunIdentity(plan_one, 1),
+            )
+        )
+    with pytest.raises(ValueError, match="canonical fold order"):
+        EvaluationCrossFoldIdentity(
+            members=(
+                EvaluationRunIdentity(plan_one, 0),
+                EvaluationRunIdentity(plan_zero, 0),
+            )
+        )
 
 
 def test_run_publication_selects_the_requested_saved_split() -> None:

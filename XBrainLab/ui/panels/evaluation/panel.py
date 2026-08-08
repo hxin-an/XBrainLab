@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application import (
     ApplicationError,
     EvaluateCommand,
+    EvaluationCrossFoldIdentity,
     EvaluationPlanIdentity,
     EvaluationRenderPublication,
     EvaluationRenderRequest,
@@ -62,6 +63,10 @@ from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
+from XBrainLab.ui.product_language import (
+    fold_display_label,
+    run_display_label,
+)
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
@@ -70,6 +75,9 @@ MODEL_SUMMARY_UNAVAILABLE_TEXT = (
     "Train or refresh the model, then open this tab again."
 )
 MODEL_SUMMARY_DEFERRED_TEXT = "Open Model Summary to load model details."
+MODEL_SUMMARY_CROSS_FOLD_TEXT = (
+    "Model details are available for an individual fold or run."
+)
 MODEL_SUMMARY_BACKGROUND_UNAVAILABLE_TEXT = (
     "Model summary could not start in the background. Try again after the current "
     "operation finishes."
@@ -109,9 +117,27 @@ class _EvaluationPlanChoice:
 
 
 @dataclass(frozen=True, slots=True)
+class _EvaluationCrossFoldChoice:
+    identity: EvaluationCrossFoldIdentity
+    display_name: str
+    run_label: str
+    splits: tuple[str, ...]
+    fold_count: int
+    sample_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluationCrossFoldGroup:
+    display_name: str
+    plan_indexes: tuple[int, ...]
+    choices: tuple[_EvaluationCrossFoldChoice, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _EvaluationSummary:
     available: bool
     plans: tuple[_EvaluationPlanChoice, ...]
+    cross_fold_choices: tuple[_EvaluationCrossFoldChoice, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,8 +333,13 @@ class EvaluationPanel(BasePanel):
             self._show_evaluation_controls_available()
             for i, plan_choice in enumerate(plans):
                 self.model_combo.addItem(
-                    f"Fold {i + 1}: {plan_choice.name}",
+                    fold_display_label(i, plan_choice.name),
                     plan_choice.identity,
+                )
+            for group in self._cross_fold_groups():
+                self.model_combo.addItem(
+                    group.display_name,
+                    group,
                 )
 
             if self.model_combo.count() > 0:
@@ -559,6 +590,10 @@ class EvaluationPanel(BasePanel):
             return False
         try:
             plans = self._parse_plan_choices(diagnostics.get("plans"))
+            cross_fold_choices = self._parse_cross_fold_choices(
+                diagnostics.get("cross_fold_choices", []),
+                plans=plans,
+            )
         except (TypeError, ValueError):
             logger.error("Evaluation summary identities are invalid.", exc_info=True)
             self._evaluation_summary = None
@@ -574,6 +609,7 @@ class EvaluationPanel(BasePanel):
         self._evaluation_summary = _EvaluationSummary(
             available=available,
             plans=plans,
+            cross_fold_choices=cross_fold_choices,
         )
         self._evaluation_error = None
         self._evaluation_render = None
@@ -658,6 +694,95 @@ class EvaluationPanel(BasePanel):
                     identity=plan_identity,
                     name=name.strip(),
                     runs=tuple(runs),
+                )
+            )
+        return tuple(choices)
+
+    @staticmethod
+    def _parse_cross_fold_choices(
+        value: object,
+        *,
+        plans: tuple[_EvaluationPlanChoice, ...],
+    ) -> tuple[_EvaluationCrossFoldChoice, ...]:
+        if not isinstance(value, list):
+            raise TypeError("Evaluation cross-fold choices must be a list")
+        choices: list[_EvaluationCrossFoldChoice] = []
+        seen_identities: set[EvaluationCrossFoldIdentity] = set()
+        for raw_choice in value:
+            if not isinstance(raw_choice, Mapping):
+                raise TypeError("Evaluation cross-fold choice must be a mapping")
+            raw_identity = raw_choice.get("identity")
+            raw_members = (
+                raw_identity.get("members")
+                if isinstance(raw_identity, Mapping)
+                else None
+            )
+            if not isinstance(raw_members, list):
+                raise TypeError("Evaluation cross-fold members must be a list")
+            members: list[EvaluationRunIdentity] = []
+            for raw_member in raw_members:
+                if not isinstance(raw_member, Mapping):
+                    raise TypeError("Evaluation cross-fold member must be a mapping")
+                member = EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(
+                        plan_index=raw_member.get("plan_index"),
+                    ),
+                    run_index=raw_member.get("run_index"),
+                )
+                if member.plan.plan_index >= len(plans):
+                    raise ValueError("Evaluation cross-fold member plan is unavailable")
+                plan = plans[member.plan.plan_index]
+                if member.run_index >= len(plan.runs):
+                    raise ValueError("Evaluation cross-fold member run is unavailable")
+                run = plan.runs[member.run_index]
+                if run.identity != member or not run.finished:
+                    raise ValueError("Evaluation cross-fold member is not complete")
+                members.append(member)
+            identity = EvaluationCrossFoldIdentity(members=tuple(members))
+            if identity in seen_identities:
+                raise ValueError("Evaluation cross-fold identity is duplicated")
+            seen_identities.add(identity)
+            display_name = raw_choice.get("display_name")
+            run_label = raw_choice.get("run_label")
+            raw_splits = raw_choice.get("evaluation_splits")
+            fold_count = raw_choice.get("fold_count")
+            sample_count = raw_choice.get("sample_count")
+            if not isinstance(display_name, str) or not display_name.strip():
+                raise ValueError("Evaluation cross-fold display name is invalid")
+            if not isinstance(run_label, str) or not run_label.strip():
+                raise ValueError("Evaluation cross-fold run label is invalid")
+            if not isinstance(raw_splits, list):
+                raise TypeError("Evaluation cross-fold splits must be a list")
+            normalized_splits = {
+                str(raw_split).strip().casefold() for raw_split in raw_splits
+            }
+            splits = tuple(
+                split
+                for split, _label in EVALUATION_SPLIT_OPTIONS
+                if split in normalized_splits
+            )
+            if splits != ("test",):
+                raise ValueError("Cross-fold summaries must be test-only")
+            if (
+                isinstance(fold_count, bool)
+                or not isinstance(fold_count, int)
+                or fold_count != len(identity.members)
+            ):
+                raise ValueError("Evaluation cross-fold count is invalid")
+            if (
+                isinstance(sample_count, bool)
+                or not isinstance(sample_count, int)
+                or sample_count < 1
+            ):
+                raise ValueError("Evaluation cross-fold sample count is invalid")
+            choices.append(
+                _EvaluationCrossFoldChoice(
+                    identity=identity,
+                    display_name=display_name.strip(),
+                    run_label=run_label.strip(),
+                    splits=splits,
+                    fold_count=fold_count,
+                    sample_count=sample_count,
                 )
             )
         return tuple(choices)
@@ -750,6 +875,22 @@ class EvaluationPanel(BasePanel):
             return
 
         plan_identity = self.model_combo.currentData()
+        if isinstance(plan_identity, _EvaluationCrossFoldGroup):
+            self.run_combo.blockSignals(True)
+            self.run_combo.clear()
+            for choice in plan_identity.choices:
+                self.run_combo.addItem(choice.run_label, choice.identity)
+            selected_index = 0
+            for i in range(self.run_combo.count()):
+                if self.run_combo.itemData(i) == preferred_run_identity:
+                    selected_index = i
+                    break
+            if self.run_combo.count() > 0:
+                self.run_combo.setCurrentIndex(selected_index)
+            self.run_combo.blockSignals(False)
+            self._sync_split_options(preferred_split=preferred_split)
+            self.update_views()
+            return
         if not isinstance(plan_identity, EvaluationPlanIdentity):
             return
         plan_choice = self._plan_choice(plan_identity)
@@ -761,14 +902,13 @@ class EvaluationPanel(BasePanel):
         self.run_combo.clear()
 
         for i, run_choice in enumerate(plan_choice.runs):
-            status = " (Finished)" if run_choice.finished else ""
             self.run_combo.addItem(
-                f"Repeat {i + 1}{status}",
+                run_display_label(i, finished=run_choice.finished),
                 run_choice.identity,
             )
         if any(run_choice.finished for run_choice in plan_choice.runs):
             self.run_combo.addItem(
-                "Average (Finished Runs)",
+                "Summary (Finished Runs)",
                 plan_choice.identity,
             )
 
@@ -791,11 +931,16 @@ class EvaluationPanel(BasePanel):
 
     def _available_splits_for_selection(
         self,
-        selection: EvaluationPlanIdentity | EvaluationRunIdentity,
+        selection: (
+            EvaluationPlanIdentity | EvaluationRunIdentity | EvaluationCrossFoldIdentity
+        ),
     ) -> tuple[str, ...]:
         if isinstance(selection, EvaluationRunIdentity):
             run = self._run_choice(selection)
             return run.splits if run is not None and run.finished else ()
+        if isinstance(selection, EvaluationCrossFoldIdentity):
+            choice = self._cross_fold_choice(selection)
+            return choice.splits if choice is not None else ()
         plan = self._plan_choice(selection)
         if plan is None:
             return ()
@@ -813,7 +958,14 @@ class EvaluationPanel(BasePanel):
         selection = self.run_combo.currentData()
         splits = (
             self._available_splits_for_selection(selection)
-            if isinstance(selection, (EvaluationPlanIdentity, EvaluationRunIdentity))
+            if isinstance(
+                selection,
+                (
+                    EvaluationPlanIdentity,
+                    EvaluationRunIdentity,
+                    EvaluationCrossFoldIdentity,
+                ),
+            )
             else ()
         )
         self.split_combo.blockSignals(True)
@@ -850,6 +1002,39 @@ class EvaluationPanel(BasePanel):
             None,
         )
 
+    def _cross_fold_groups(self) -> tuple[_EvaluationCrossFoldGroup, ...]:
+        summary = self._evaluation_summary
+        if summary is None:
+            return ()
+        grouped: dict[tuple[int, ...], list[_EvaluationCrossFoldChoice]] = {}
+        for choice in summary.cross_fold_choices:
+            key = tuple(member.plan.plan_index for member in choice.identity.members)
+            grouped.setdefault(key, []).append(choice)
+        return tuple(
+            _EvaluationCrossFoldGroup(
+                display_name=choices[0].display_name,
+                plan_indexes=plan_indexes,
+                choices=tuple(choices),
+            )
+            for plan_indexes, choices in grouped.items()
+        )
+
+    def _cross_fold_choice(
+        self,
+        identity: EvaluationCrossFoldIdentity,
+    ) -> _EvaluationCrossFoldChoice | None:
+        summary = self._evaluation_summary
+        if summary is None:
+            return None
+        return next(
+            (
+                choice
+                for choice in summary.cross_fold_choices
+                if choice.identity == identity
+            ),
+            None,
+        )
+
     def _run_choice(
         self,
         identity: EvaluationRunIdentity,
@@ -868,7 +1053,11 @@ class EvaluationPanel(BasePanel):
         split = self.split_combo.currentData()
         if not isinstance(
             selection,
-            (EvaluationPlanIdentity, EvaluationRunIdentity),
+            (
+                EvaluationPlanIdentity,
+                EvaluationRunIdentity,
+                EvaluationCrossFoldIdentity,
+            ),
         ) or not isinstance(split, str):
             self._evaluation_render = None
             self._clear_metric_views()
@@ -908,7 +1097,9 @@ class EvaluationPanel(BasePanel):
 
     def _render_for_selection(
         self,
-        selection: EvaluationPlanIdentity | EvaluationRunIdentity,
+        selection: (
+            EvaluationPlanIdentity | EvaluationRunIdentity | EvaluationCrossFoldIdentity
+        ),
         *,
         split: str,
     ) -> EvaluationRenderPublication | None:
@@ -1045,14 +1236,18 @@ class EvaluationPanel(BasePanel):
 
     @staticmethod
     def _summary_identity(
-        selection: EvaluationPlanIdentity | EvaluationRunIdentity,
-    ) -> EvaluationSummaryIdentity:
+        selection: (
+            EvaluationPlanIdentity | EvaluationRunIdentity | EvaluationCrossFoldIdentity
+        ),
+    ) -> EvaluationSummaryIdentity | None:
         if isinstance(selection, EvaluationRunIdentity):
             return EvaluationSummaryIdentity(
                 plan=selection.plan,
                 run=selection,
             )
-        return EvaluationSummaryIdentity(plan=selection)
+        if isinstance(selection, EvaluationPlanIdentity):
+            return EvaluationSummaryIdentity(plan=selection)
+        return None
 
     def update_model_summary(
         self,
@@ -1077,8 +1272,11 @@ class EvaluationPanel(BasePanel):
 
     def _update_summary_if_visible(
         self,
-        summary_identity: EvaluationSummaryIdentity,
+        summary_identity: EvaluationSummaryIdentity | None,
     ) -> None:
+        if summary_identity is None:
+            self.summary_text.setText(MODEL_SUMMARY_CROSS_FOLD_TEXT)
+            return
         if not self._summary_tab_visible():
             self.summary_text.setText(MODEL_SUMMARY_DEFERRED_TEXT)
             return
@@ -1100,9 +1298,16 @@ class EvaluationPanel(BasePanel):
         if not self._summary_tab_visible():
             return
         selection = self.run_combo.currentData()
+        if isinstance(selection, EvaluationCrossFoldIdentity):
+            self.summary_text.setText(MODEL_SUMMARY_CROSS_FOLD_TEXT)
+            return
         if not isinstance(
             selection,
-            (EvaluationPlanIdentity, EvaluationRunIdentity),
+            (
+                EvaluationPlanIdentity,
+                EvaluationRunIdentity,
+                EvaluationCrossFoldIdentity,
+            ),
         ):
             self.summary_text.clear()
             return
@@ -1249,7 +1454,7 @@ class EvaluationPanel(BasePanel):
 
         # Run Selection
         self.run_combo = ElidingComboBox()
-        self.run_combo.setMinimumWidth(110)
+        self.run_combo.setMinimumWidth(140)
         self.run_combo.setMaximumWidth(240)
         self.run_combo.setMinimumContentsLength(18)
         self.run_combo.setSizeAdjustPolicy(
@@ -1296,7 +1501,7 @@ class EvaluationPanel(BasePanel):
 
         self.evaluation_controls_bar = ResponsiveControlsBar(
             [
-                ("Model", self.model_combo),
+                ("Fold", self.model_combo),
                 ("Run", self.run_combo),
                 ("Split", self.split_combo),
             ],

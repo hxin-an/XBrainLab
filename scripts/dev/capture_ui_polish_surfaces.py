@@ -574,11 +574,11 @@ def _evaluation_controls_panel() -> QWidget:
     panel.model_combo.blockSignals(True)
     panel.run_combo.blockSignals(True)
     panel.split_combo.blockSignals(True)
-    panel.model_combo.addItem(
-        "Fold 1: EEGNet with a deliberately long model label for overflow review",
-        object(),
-    )
-    panel.run_combo.addItem("Repeat 1 (Finished, best validation accuracy)", object())
+    panel.model_combo.clear()
+    panel.run_combo.clear()
+    panel.split_combo.clear()
+    panel.model_combo.addItem("All Folds", object())
+    panel.run_combo.addItem("Run 1 (Summary)", object())
     panel.split_combo.addItem("Test", "test")
     panel.model_combo.blockSignals(False)
     panel.run_combo.blockSignals(False)

@@ -20,6 +20,7 @@ from .evaluation_render import (
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
+    build_evaluation_cross_fold_choices,
     build_evaluation_model_summary,
 )
 from .resource_guard import ResourcePreflightResult
@@ -137,6 +138,10 @@ class AnalysisCommandService:
             "evaluation_splits": sorted(evaluation_splits),
             "training_active": self._get_state().training.is_running,
             "plans": summaries,
+            "cross_fold_choices": [
+                choice.to_dict()
+                for choice in build_evaluation_cross_fold_choices(plans)
+            ],
         }
         if command.summary_identity is not None:
             if not isinstance(command.summary_identity, EvaluationSummaryIdentity):
