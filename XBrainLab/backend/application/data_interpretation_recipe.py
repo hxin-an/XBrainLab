@@ -13,6 +13,7 @@ from .data_interpretation_metadata import (
     FileMetadataResolution,
     file_metadata_from_dict,
 )
+from .data_interpretation_public_projection import project_label_carrier_plan
 
 IMPORT_RECIPE_MAX_BYTES = 1_048_576
 
@@ -59,7 +60,16 @@ class ImportRecipe:
     recipe_trace: list[str] = dc_field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the complete persistence representation."""
         return _serialize(self)
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """Return a bounded representation for command diagnostics and clients."""
+        payload = self.to_dict()
+        payload["label_carrier_plan"] = project_label_carrier_plan(
+            self.label_carrier_plan,
+        )
+        return payload
 
     def write_json(self, path: str) -> None:
         target = Path(path).expanduser()

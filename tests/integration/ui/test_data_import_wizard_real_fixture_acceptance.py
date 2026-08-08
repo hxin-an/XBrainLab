@@ -36,6 +36,9 @@ from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (
+    BidsSubjectSelectionDialog,
+)
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
@@ -303,6 +306,11 @@ def _replace_line_edit_text(editor: QLineEdit, value: str) -> None:
     QTEST.keyClicks(editor, value)
 
 
+def _decision_value_text(label: QLabel) -> str:
+    """Read the semantic value even when the visible label is safely elided."""
+    return str(label.accessibleName() or label.text())
+
+
 def _capture_teacher_ui(
     dialog: DataInterpretationPreviewDialog,
     filename: str,
@@ -338,7 +346,7 @@ def _complete_bids_event_values(dialog: DataInterpretationPreviewDialog) -> None
     if editor is None or not editor.isVisibleTo(dialog):
         raise AssertionError("BIDS Match Labels did not expose event-value decisions.")
     values = [
-        label.text()
+        _decision_value_text(label)
         for label in editor.findChildren(QLabel)
         if label.objectName() == "DataImportValueDecisionValue"
     ]
@@ -389,7 +397,7 @@ def _complete_openneuro_trial_types(
     if editor is None or not editor.isVisibleTo(dialog):
         raise AssertionError("OpenNeuro trial_type decisions are not visible.")
     values = [
-        label.text()
+        _decision_value_text(label)
         for label in editor.findChildren(QLabel)
         if label.objectName() == "DataImportValueDecisionValue"
     ]
@@ -463,7 +471,7 @@ def _advance_openneuro_event_values(
         )
     driver.openneuro_values_started = True
     values = [
-        label.text()
+        _decision_value_text(label)
         for label in editor.findChildren(QLabel)
         if label.objectName() == "DataImportValueDecisionValue"
     ]
@@ -710,6 +718,26 @@ def _start_wizard_driver(
             f"openneuro_stage={driver.openneuro_value_stage}"
         )
         try:
+            if isinstance(modal, BidsSubjectSelectionDialog):
+                selected_subjects = modal.get_result()
+                if not selected_subjects:
+                    _fail("BIDS subject selection has no default subject.", modal)
+                    return
+                if (
+                    modal.continue_button is None
+                    or not modal.continue_button.isEnabled()
+                ):
+                    _fail("BIDS subject selection cannot continue.", modal)
+                    return
+                driver.trace.append(
+                    "select BIDS subjects: " + ", ".join(selected_subjects)
+                )
+                QTEST.mouseClick(
+                    modal.continue_button,
+                    Qt.MouseButton.LeftButton,
+                )
+                return
+
             if isinstance(modal, QMessageBox):
                 if modal.windowTitle() != "Dataset Resource Check":
                     _fail(
@@ -1157,6 +1185,7 @@ def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
     assert chooser_calls == ["Choose BIDS Folder for Import"]
     assert driver.phase == 5
     assert driver.trace == [
+        "select BIDS subjects: 001",
         "Choose EEG Data",
         "Load Labels",
         "Review Metadata",
@@ -1283,6 +1312,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
     blocked_state = runtime.get_view_publication().state
     assert blocked_driver.phase == 5
     assert blocked_driver.trace == [
+        "select BIDS subjects: 01",
         "Choose EEG Data",
         "Load Labels",
         "Review Metadata",
@@ -1304,6 +1334,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
     ]
     assert recovery_driver.phase == 5
     assert recovery_driver.trace == [
+        "select BIDS subjects: 01",
         "Choose EEG Data",
         "Load Labels",
         "Review Metadata",

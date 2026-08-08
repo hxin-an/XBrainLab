@@ -16979,3 +16979,26 @@
 - claim boundary:
   - The failed CI run is diagnostic evidence, not merge evidence. The resulting follow-up commit
     still requires a new successful exact-head run on Linux, macOS and Windows.
+
+### 2026-08-08 Native-CI closure candidate
+
+- completed:
+  - Repaired construction-time Qt event delivery, live-DPI text measurement, Review and Import
+    viewport sizing, Training Setting native-width sizing, and standard-dock Assistant action text.
+  - Kept saved Data Interpretation recipes complete for audit/reload while exposing a separate
+    bounded public diagnostic projection that preserves replay choices, exact aggregate counts,
+    label mappings and content identity.
+  - Replaced a clean-CI BIDS test dependency on ignored public fixtures with a generated real FIF
+    BIDS fixture, and taught the real-fixture walkthrough to drive BIDS subject selection.
+  - Kept local host context-boundary tests offline and deterministic; exact Granite tokenizer and
+    runtime evidence remain separate gates rather than implicit model downloads in ordinary tests.
+- validation:
+  - Complete unit-script suite -> `1148 passed`; complete unit-UI suite -> `2584 passed`.
+  - Integration shards passed after the focused BIDS subject-selection repair; the affected
+    real-fixture wizard module completed with `11 passed`.
+  - Strict dataset and interpretation matrices passed, and strict cross-source training completed
+    `4/4` required cases.
+  - Ruff lint/format, changed-source Basedpyright, MkDocs strict build and `git diff --check` passed.
+- claim boundary:
+  - Local closure does not replace exact-head Linux/macOS/Windows CI or Windows human acceptance.
+    The candidate remains unmerged until the final pushed SHA satisfies the PR merge gate.

@@ -260,7 +260,7 @@ class TestRealToolChain:
         res_model = model_tool.execute(study, model_name="EEGNet")
         res_model = _assert_tool_result(res_model)
         assert res_model.message == "Model configured: EEGNet."
-        assert _state(study)["training"]["model_name"] == "EEGNet"
+        assert _state(study)["training"]["model_name"] == "EEGNet (XBrainLab)"
 
         # Configure
         config_tool = RealConfigureTrainingTool()

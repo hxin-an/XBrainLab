@@ -255,6 +255,11 @@ def approve_product_dialog(widget: QWidget) -> dict[str, Any] | None:
         or normalized_message == "apply interpretation"
     )
     if message_box is not None and is_product_confirmation:
+        event_title = title or (
+            "Confirm action"
+            if normalized_message == "apply interpretation"
+            else "Confirm destructive action"
+        )
         approve_button = next(
             (
                 button
@@ -266,7 +271,7 @@ def approve_product_dialog(widget: QWidget) -> dict[str, Any] | None:
         )
         event = {
             "kind": "confirmation",
-            "title": title,
+            "title": event_title,
             "text": message_box.text(),
             "informative_text": message_box.informativeText(),
             "detailed_text": message_box.detailedText(),

@@ -169,7 +169,7 @@ class TestApplicationServiceTrainingStateIntegration:
 
         assert result.ok is True
         assert result.state.training.has_model is True
-        assert result.state.training.model_name == "EEGNet"
+        assert result.state.training.model_name == "EEGNet (XBrainLab)"
         assert result.state.training.has_training_option is True
         assert result.state.training.training_option == {
             "epoch": 5,

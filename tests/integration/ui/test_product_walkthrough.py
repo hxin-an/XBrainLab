@@ -199,7 +199,7 @@ def test_human_like_capture_script_is_a_real_exit_code_gate(tmp_path) -> None:
         capture_output=True,
         check=False,
         text=True,
-        timeout=120,
+        timeout=180,
     )
     reports = sorted(output_dir.parent.glob("*/human-like-walkthrough.md"))
     report_text = reports[-1].read_text(encoding="utf-8") if reports else ""

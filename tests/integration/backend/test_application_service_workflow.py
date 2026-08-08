@@ -341,10 +341,18 @@ def test_bids_description_payload_is_parsed_only_after_resource_admission(
         )
 
     assert result.ok is True
-    assert ordering[0] == "resource:admission"
+    cache_reused = bool(
+        result.diagnostics["resource_preflight"].get("admission_cache_reused")
+    )
+    if workflow == "preview":
+        assert cache_reused is True
+        assert "resource:admission" not in ordering
+    else:
+        assert cache_reused is False
+        assert ordering[0] == "resource:admission"
     assert ordering.count("description:json.loads") == 1
-    assert "description:open" in ordering[1:]
-    assert "description:read" in ordering[1:]
+    assert "description:open" in ordering
+    assert "description:read" in ordering
     assert ordering.index("description:json.loads") > ordering.index("description:read")
 
 

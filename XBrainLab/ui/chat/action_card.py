@@ -578,8 +578,10 @@ class AssistantConfirmationCard(QFrame):
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
         """Reflow rows from the real scroll viewport, not its pre-show default."""
+        proposal_scroll = getattr(self, "proposal_scroll", None)
         if (
-            watched is self.proposal_scroll.viewport()
+            proposal_scroll is not None
+            and watched is proposal_scroll.viewport()
             and event is not None
             and event.type() is QEvent.Type.Resize
         ):

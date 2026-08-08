@@ -1837,6 +1837,14 @@ class DataInterpretationPreviewDialog(
             target_height = min(desired_height, max(1, restore_height - 48))
         else:
             target_height = min(desired_height, restore_height)
+        if self.import_report_card.isHidden():
+            projected_viewport_height = max(
+                viewport.height() + target_height - self.height(),
+                1,
+            )
+            overflow = content_height - projected_viewport_height + 4
+            if overflow > 0:
+                target_height = min(target_height + overflow, restore_height)
         if target_height != self.height():
             self.resize_preserving_center(QSize(self.width(), target_height))
 

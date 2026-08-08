@@ -2085,6 +2085,11 @@ def _main_window_screen_record(
         output_dir / filename,
         render_pixel_ratio=1.0,
         required_content_widgets=required_content_widgets,
+        text_content_regions=(
+            ("assistant_activity",)
+            if "assistant_activity" in required_content_widgets
+            else ()
+        ),
     )
     evidence.update(capture)
     checks["render_content_ready"] = capture["render_content"]["passed"]

@@ -183,7 +183,7 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     assert res_model.message == "Model configured: EEGNet."
     training_state = _state(study)["training"]
     assert training_state["has_model"] is True
-    assert training_state["model_name"] == "EEGNet"
+    assert training_state["model_name"] == "EEGNet (XBrainLab)"
     assert training_state["has_training_option"] is False
     assert training_state["training_option"] == {}
     assert training_state["missing_requirements"] == [
@@ -214,7 +214,7 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
         "optimizer_params": {},
         "checkpoint_epoch": 0,
         "evaluation_option": "Last Epoch",
-        "output_dir": "./output",
+        "output_dir": "./output/runs",
     }
     assert training_state["missing_requirements"] == ["Data Splitting"]
 

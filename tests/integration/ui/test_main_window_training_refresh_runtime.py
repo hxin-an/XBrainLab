@@ -395,7 +395,7 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
         == 1
     )
     assert evaluation.model_combo.count() == 1
-    assert evaluation.run_combo.currentText() == "Repeat 1 (Finished)"
+    assert evaluation.run_combo.currentText() == "Run 1 (Finished)"
 
     visualization_query = visualization.last_application_query
     assert visualization_query.diagnostics["trainer_count"] == 1

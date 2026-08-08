@@ -116,9 +116,16 @@ The first exact-head run after fixing the required fixture profile proved the pu
 job itself, but its Windows/Linux/macOS general jobs failed on stale display-name assertions, eager
 training imports from Dataset startup, async callback timing, and platform-specific Qt geometry.
 The follow-up checkpoint closed those locally with `2577` UI, `2351` LLM/Assistant, `317`
-architecture/read-side, and `441` focused workflow tests. These are development-run observations,
-not final handoff totals; the latest pushed head still needs one completed successful exact-head CI
-run before merge review.
+architecture/read-side, and `441` focused workflow tests. A later native-CI closure pass also ran the
+complete unit-script (`1148`) and unit-UI (`2584`) suites, all integration shards, the strict
+multi-dataset format matrix, and the `4/4` cross-source training smoke. These are development-run
+observations, not final handoff totals; merge review still requires one completed successful
+exact-head CI run for the final pushed candidate.
+
+Ordinary integration runs use a deterministic offline tokenizer for host-side context admission and
+budget enforcement. They do not claim exact Granite tokenization. Exact pinned-revision chat-template,
+tokenizer and generation behavior belongs to the separate `granite-runtime` and exact-Granite
+walkthrough gates, which run with the explicitly admitted D-drive model cache.
 
 可見 artifacts 位於 `artifacts/ui/bids-subject-selection/`、
 `artifacts/ui/model-catalog-checkpoint/`、`artifacts/ui/training-test-curve/`、

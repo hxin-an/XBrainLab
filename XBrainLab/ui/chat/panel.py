@@ -1276,18 +1276,25 @@ class ChatPanel(QWidget):
 
     def eventFilter(self, watched, event):  # noqa: N802
         """Reflect composer focus on its integrated input surface."""
-        if watched is self.input_field and event.type() in {
-            QEvent.Type.FocusIn,
-            QEvent.Type.FocusOut,
-        }:
-            self.input_widget.setProperty(
+        input_field = getattr(self, "input_field", None)
+        input_widget = getattr(self, "input_widget", None)
+        if (
+            watched is input_field
+            and input_widget is not None
+            and event.type()
+            in {
+                QEvent.Type.FocusIn,
+                QEvent.Type.FocusOut,
+            }
+        ):
+            input_widget.setProperty(
                 "inputFocused",
                 event.type() is QEvent.Type.FocusIn,
             )
-            style = self.input_widget.style()
+            style = input_widget.style()
             if style is not None:
-                style.unpolish(self.input_widget)
-                style.polish(self.input_widget)
+                style.unpolish(input_widget)
+                style.polish(input_widget)
         return super().eventFilter(watched, event)
 
     def _on_send(self):
@@ -1598,11 +1605,10 @@ class ChatPanel(QWidget):
         button.ensurePolished()
         metrics = button.fontMetrics()
         available_width = button.contentsRect().width()
-        decoration_width = max(
-            button.sizeHint().width() - metrics.horizontalAdvance(full_label),
-            0,
-        )
-        text_width = max(available_width - decoration_width, 1)
+        # Qt's contentsRect already reflects the live styled control geometry.
+        # Re-deriving decoration width from sizeHint double-counts stylesheet
+        # padding on Windows-like themes and elides labels that visibly fit.
+        text_width = max(available_width - 24, 1)
         rendered = metrics.elidedText(
             full_label,
             Qt.TextElideMode.ElideRight,

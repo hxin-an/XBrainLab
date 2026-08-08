@@ -186,7 +186,11 @@ class _CodeBlockView(QPlainTextEdit):
             # Windows after a native font or DPI change. A fresh QTextLayout
             # uses the live font and the same pixel tab stop without relying on
             # that platform cache.
-            block_layout = QTextLayout(block.text(), document.defaultFont())
+            block_layout = QTextLayout(
+                block.text(),
+                document.defaultFont(),
+                self.viewport(),
+            )
             block_layout.setTextOption(text_option)
             block_layout.beginLayout()
             line = block_layout.createLine()
@@ -702,10 +706,13 @@ class MessageBubble(QWidget):
 
     def eventFilter(self, watched, event):  # noqa: N802
         """Recalculate geometry after font, style, or DPI-related changes."""
-        if watched in {
-            *self.content_view.text_views,
-            *self.content_view.code_blocks,
-        } and event.type() in {
+        content_view = getattr(self, "content_view", None)
+        watched_views = (
+            {*content_view.text_views, *content_view.code_blocks}
+            if content_view is not None
+            else set()
+        )
+        if watched in watched_views and event.type() in {
             QEvent.Type.FontChange,
             QEvent.Type.ApplicationFontChange,
             QEvent.Type.StyleChange,

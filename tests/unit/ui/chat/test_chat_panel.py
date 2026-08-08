@@ -943,6 +943,24 @@ class TestChatPanelInit:
                 assert "…" in control.text()
                 assert control.toolTip()
 
+    def test_failed_runtime_actions_keep_full_labels_at_standard_dock_width(
+        self,
+        qtbot,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            panel.resize(420, 760)
+            panel.set_runtime_state("failed")
+            panel.show()
+            qtbot.wait(20)
+            panel._reflow_chat_content()
+
+        assert panel.retry_runtime_btn.text() == "Retry local assistant"
+        assert panel.setup_btn.text() == "Settings"
+
     def test_runtime_and_workflow_copy_refit_after_font_metrics_change(
         self,
         chat_panel,

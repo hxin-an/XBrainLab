@@ -369,6 +369,42 @@ def _fit_dialog_to_native_layout(dialog: QWidget, minimum: QSize) -> None:
     dialog.resize(target)
     if isinstance(app, QApplication):
         app.processEvents()
+    if isinstance(dialog, EpochingDialog):
+        screen = dialog.screen()
+        available_height = (
+            max(screen.availableGeometry().height() - 48, 1)
+            if screen is not None
+            else dialog.height() + (6 * 32)
+        )
+        if dialog.height() > available_height:
+            dialog.resize(dialog.width(), available_height)
+            if isinstance(app, QApplication):
+                app.processEvents()
+        controls = tuple(
+            control
+            for control in (
+                dialog.event_list,
+                dialog.tmin_spin,
+                dialog.tmax_spin,
+                dialog.baseline_check,
+                dialog.b_min_spin,
+                dialog.b_max_spin,
+            )
+            if control is not None
+        )
+        for _ in range(6):
+            if all(
+                control.isVisibleTo(dialog)
+                and control.visibleRegion().contains(control.rect())
+                for control in controls
+            ):
+                break
+            next_height = min(dialog.height() + 32, available_height)
+            if next_height <= dialog.height():
+                break
+            dialog.resize(dialog.width(), next_height)
+            if isinstance(app, QApplication):
+                app.processEvents()
 
 
 def _epoching_dialog() -> EpochingDialog:

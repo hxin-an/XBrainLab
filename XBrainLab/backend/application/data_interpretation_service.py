@@ -1388,7 +1388,7 @@ class DataInterpretationCommandService:
             "Interpretation recipe saved.",
             {
                 "payload_type": "import_recipe",
-                "recipe": recipe.to_dict(),
+                "recipe": recipe.to_public_dict(),
                 "recipe_path": command.recipe_path,
             },
         )
@@ -1480,7 +1480,7 @@ class DataInterpretationCommandService:
             "Interpretation recipe reloaded for review.",
             {
                 "payload_type": "recipe_reload_preview",
-                "recipe": recipe.to_dict(),
+                "recipe": recipe.to_public_dict(),
                 "scan_result": scan.to_dict(),
                 "candidate": candidate.to_public_dict(),
                 "preview": preview.to_dict(),

@@ -143,12 +143,18 @@ class TrainingSettingDialog(BaseDialog):
                 )
             )
         form_layout = getattr(self, "form_layout", None)
+        input_column_width = 240
+        if self.evaluation_combo is not None:
+            input_column_width = min(
+                max(input_column_width, self.evaluation_combo.sizeHint().width()),
+                380,
+            )
         if form_layout is not None:
             form_layout.setColumnMinimumWidth(0, label_column_width)
-            form_layout.setColumnMinimumWidth(1, 240)
+            form_layout.setColumnMinimumWidth(1, input_column_width)
         target_width = max(
             520,
-            36 + label_column_width + 12 + 240 + 12 + 72,
+            36 + label_column_width + 12 + input_column_width + 12 + 72,
         )
         layout = self.layout()
         if layout is not None:

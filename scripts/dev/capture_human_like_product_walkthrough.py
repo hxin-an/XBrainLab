@@ -2226,7 +2226,7 @@ def _label_text_line_probes(
     if content_rect.width() <= 0 or content_rect.height() <= 0:
         raise RuntimeError(f"{surface_name} label has no usable contents rectangle.")
 
-    layout = QTextLayout(text, label.font())
+    layout = QTextLayout(text, label.font(), label)
     options = QTextOption()
     options.setWrapMode(
         QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
