@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application import (
     ErrorType,
     SaliencyCommand,
+    SaliencyCrossFoldIdentity,
     SaliencyPlanIdentity,
     SaliencyRenderPublication,
     SaliencyRenderRequest,
@@ -44,6 +45,7 @@ from XBrainLab.backend.application.saliency_policy import (
 from XBrainLab.backend.application.state import (
     EpochStateSnapshot,
     EvaluationStateSnapshot,
+    SaliencyClassCoverageSnapshot,
     SaliencyMethodCoverageSnapshot,
     SaliencyRunCoverageSnapshot,
     VisualizationStateSnapshot,
@@ -78,6 +80,7 @@ from XBrainLab.ui.application_publication_renderer import (
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
+from XBrainLab.ui.product_language import fold_display_label, run_display_label
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
@@ -162,6 +165,30 @@ class _SaliencySettingsTarget:
 
 
 @dataclass(frozen=True, slots=True)
+class _SaliencyCrossFoldChoice:
+    """One backend-admitted cross-fold option rendered by the UI."""
+
+    identity: SaliencyCrossFoldIdentity
+    display_name: str
+    run_label: str
+    methods: tuple[str, ...]
+    source_split: str
+    classes: tuple[SaliencyClassCoverageSnapshot, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _SaliencyCrossFoldGroup:
+    """Selector identity for one admitted cohort of folds."""
+
+    plan_indexes: tuple[int, ...]
+    display_name: str
+
+
+_SaliencyPlanSelection = SaliencyPlanIdentity | _SaliencyCrossFoldGroup
+_SaliencyRunSelection = SaliencyRunIdentity | SaliencyCrossFoldIdentity
+
+
+@dataclass(frozen=True, slots=True)
 class _VisualizationPublicationSignature:
     """Application fields that can change Visualization's rendered state."""
 
@@ -214,8 +241,12 @@ class VisualizationPanel(BasePanel):
 
         """
         self._runs_by_plan: dict[
-            SaliencyPlanIdentity,
-            tuple[tuple[SaliencyRunIdentity, str], ...],
+            _SaliencyPlanSelection,
+            tuple[tuple[_SaliencyRunSelection, str], ...],
+        ] = {}
+        self._cross_fold_choice_by_identity: dict[
+            SaliencyCrossFoldIdentity,
+            _SaliencyCrossFoldChoice,
         ] = {}
         self.last_application_query: CommandResult | None = None
         self.last_saliency_query: CommandResult | None = None
@@ -315,10 +346,10 @@ class VisualizationPanel(BasePanel):
         self.ctrl_layout.setHorizontalSpacing(8)
         self.ctrl_layout.setVerticalSpacing(6)
 
-        # Plan Selector
-        self.plan_label = QLabel("Plan:")
+        # Fold Selector
+        self.plan_label = QLabel("Fold:")
         self.plan_combo = QComboBox()
-        self.plan_combo.addItem("Select a plan")
+        self.plan_combo.addItem("Select a fold")
         self.plan_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
@@ -349,6 +380,13 @@ class VisualizationPanel(BasePanel):
         self.abs_check.setToolTip("Use absolute saliency values")
         self.abs_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.abs_check.stateChanged.connect(self.on_update)
+
+        self.normalize_check = QCheckBox("Normalize")
+        self.normalize_check.setToolTip(
+            "Scale all displayed classes together without changing saved saliency."
+        )
+        self.normalize_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
+        self.normalize_check.stateChanged.connect(self.on_update)
         self._controls_single_row = None
         self._apply_visualization_control_layout(single_row=False)
         left_layout.addWidget(self.ctrl_bar)
@@ -475,7 +513,7 @@ class VisualizationPanel(BasePanel):
             return
         available_width = max(self.ctrl_bar.width(), self.width() - 340)
         self._apply_visualization_control_layout(
-            single_row=available_width >= 720,
+            single_row=available_width >= 780,
         )
 
     def _apply_visualization_control_layout(self, single_row: bool) -> None:
@@ -501,7 +539,8 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.method_label, 0, 4)
             self.ctrl_layout.addWidget(self.method_combo, 0, 5)
             self.ctrl_layout.addWidget(self.abs_check, 0, 6)
-            self.ctrl_layout.setColumnStretch(7, 1)
+            self.ctrl_layout.addWidget(self.normalize_check, 0, 7)
+            self.ctrl_layout.setColumnStretch(8, 1)
             return
 
         self.plan_combo.setMinimumWidth(150)
@@ -518,7 +557,84 @@ class VisualizationPanel(BasePanel):
         self.ctrl_layout.addWidget(self.method_label, 1, 0)
         self.ctrl_layout.addWidget(self.method_combo, 1, 1)
         self.ctrl_layout.addWidget(self.abs_check, 1, 3)
-        self.ctrl_layout.setColumnStretch(4, 1)
+        self.ctrl_layout.addWidget(self.normalize_check, 1, 4)
+        self.ctrl_layout.setColumnStretch(5, 1)
+
+    def _cross_fold_choices_from_query(
+        self,
+    ) -> tuple[_SaliencyCrossFoldChoice, ...]:
+        """Parse backend-admitted summary identities without inferring cohorts."""
+        payload = self._visualization_query_payload()
+        raw_choices = (
+            payload.get("saliency_cross_fold_choices", [])
+            if payload is not None
+            else []
+        )
+        if not isinstance(raw_choices, list):
+            return ()
+        choices: list[_SaliencyCrossFoldChoice] = []
+        for raw_choice in raw_choices:
+            if not isinstance(raw_choice, dict):
+                continue
+            raw_identity = raw_choice.get("identity")
+            raw_members = (
+                raw_identity.get("members") if isinstance(raw_identity, dict) else None
+            )
+            raw_methods = raw_choice.get("methods")
+            raw_classes = raw_choice.get("classes")
+            if not isinstance(raw_members, list) or not isinstance(
+                raw_methods,
+                list,
+            ):
+                continue
+            if not isinstance(raw_classes, list):
+                continue
+            try:
+                members = tuple(
+                    SaliencyRunIdentity(
+                        plan=SaliencyPlanIdentity(
+                            plan_index=int(member["plan_index"]),
+                        ),
+                        run_index=int(member["run_index"]),
+                    )
+                    for member in raw_members
+                    if isinstance(member, dict)
+                )
+                identity = SaliencyCrossFoldIdentity(members=members)
+                methods = tuple(
+                    str(method)
+                    for method in raw_methods
+                    if str(method) in all_saliency_methods
+                )
+                classes = tuple(
+                    SaliencyClassCoverageSnapshot(
+                        class_index=int(item["class_index"]),
+                        display_name=str(item["display_name"]),
+                        event_code=item.get("event_code"),
+                        store_key=item.get("store_key"),
+                        available=True,
+                    )
+                    for item in raw_classes
+                    if isinstance(item, dict)
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not methods or not classes:
+                continue
+            choices.append(
+                _SaliencyCrossFoldChoice(
+                    identity=identity,
+                    display_name=str(raw_choice.get("display_name") or "All Folds"),
+                    run_label=str(
+                        raw_choice.get("run_label")
+                        or f"Run {identity.run_index + 1} (Summary)"
+                    ),
+                    methods=methods,
+                    source_split=str(raw_choice.get("source_split") or "unknown"),
+                    classes=classes,
+                )
+            )
+        return tuple(choices)
 
     def refresh_combos(self):
         """Refresh plan/run identities from one immutable view publication."""
@@ -546,30 +662,50 @@ class VisualizationPanel(BasePanel):
             else ()
         )
         grouped_runs: dict[
-            SaliencyPlanIdentity,
-            list[tuple[SaliencyRunIdentity, str]],
+            _SaliencyPlanSelection,
+            list[tuple[_SaliencyRunSelection, str]],
         ] = {}
-        plan_labels: dict[SaliencyPlanIdentity, str] = {}
+        plan_labels: dict[_SaliencyPlanSelection, str] = {}
         for run_coverage in coverage:
             plan_identity = SaliencyPlanIdentity(run_coverage.plan_index)
             run_identity = SaliencyRunIdentity(
                 plan=plan_identity,
                 run_index=run_coverage.run_index,
             )
-            run_label = run_coverage.run_name or f"Run {run_coverage.run_index + 1}"
+            run_label = run_display_label(run_coverage.run_index)
             grouped_runs.setdefault(plan_identity, []).append((run_identity, run_label))
             model_name = (
                 run_coverage.model_name or published_model_name or "Unknown model"
             )
             plan_labels.setdefault(
                 plan_identity,
-                f"Fold {run_coverage.plan_index + 1} ({model_name})",
+                fold_display_label(run_coverage.plan_index, model_name),
             )
+
+        cross_fold_choices = self._cross_fold_choices_from_query()
+        self._cross_fold_choice_by_identity = {
+            choice.identity: choice for choice in cross_fold_choices
+        }
+        cross_fold_groups: dict[
+            tuple[int, ...],
+            tuple[_SaliencyCrossFoldGroup, list[tuple[_SaliencyRunSelection, str]]],
+        ] = {}
+        for choice in cross_fold_choices:
+            indexes = tuple(
+                member.plan.plan_index for member in choice.identity.members
+            )
+            if indexes not in cross_fold_groups:
+                group = _SaliencyCrossFoldGroup(indexes, choice.display_name)
+                cross_fold_groups[indexes] = (group, [])
+            group, runs = cross_fold_groups[indexes]
+            runs.append((choice.identity, choice.run_label))
+            plan_labels[group] = choice.display_name
+        grouped_runs.update(dict(cross_fold_groups.values()))
 
         self.plan_combo.blockSignals(True)
         self.run_combo.blockSignals(True)
         self.plan_combo.clear()
-        self.plan_combo.addItem("Select a plan")
+        self.plan_combo.addItem("Select a fold")
         self.run_combo.clear()
         self._runs_by_plan = {
             identity: tuple(sorted(runs, key=lambda item: item[0].run_index))
@@ -582,10 +718,16 @@ class VisualizationPanel(BasePanel):
             self.on_update()
             return
 
-        for plan_identity in sorted(
+        plan_order = sorted(
             self._runs_by_plan,
-            key=lambda identity: identity.plan_index,
-        ):
+            key=lambda identity: (
+                1 if isinstance(identity, _SaliencyCrossFoldGroup) else 0,
+                identity.plan_indexes[0]
+                if isinstance(identity, _SaliencyCrossFoldGroup)
+                else identity.plan_index,
+            ),
+        )
+        for plan_identity in plan_order:
             self.plan_combo.addItem(plan_labels[plan_identity], plan_identity)
 
         # If items exist, select first real plan
@@ -621,7 +763,10 @@ class VisualizationPanel(BasePanel):
         self.run_combo.clear()
 
         plan_identity = self.plan_combo.currentData()
-        if isinstance(plan_identity, SaliencyPlanIdentity):
+        if isinstance(
+            plan_identity,
+            (SaliencyPlanIdentity, _SaliencyCrossFoldGroup),
+        ):
             for run_identity, run_label in self._runs_by_plan.get(plan_identity, ()):
                 self.run_combo.addItem(run_label, run_identity)
 
@@ -639,10 +784,26 @@ class VisualizationPanel(BasePanel):
                     break
             self.run_combo.setCurrentIndex(selected_index)
             self.run_combo.blockSignals(False)
+            self._refresh_selection_actions()
             self.on_update()
         else:
             self.run_combo.blockSignals(False)
+            self._refresh_selection_actions()
             self.on_update()  # Trigger update to clear if empty
+
+    def _refresh_selection_actions(self) -> None:
+        """Keep aggregate summaries read-only without hiding plot controls."""
+        cross_fold = isinstance(
+            self.run_combo.currentData(),
+            SaliencyCrossFoldIdentity,
+        )
+        if hasattr(self, "sidebar") and hasattr(self.sidebar, "btn_saliency"):
+            self.sidebar.btn_saliency.setEnabled(not cross_fold)
+            self.sidebar.btn_saliency.setToolTip(
+                "Select one fold to configure or recompute saliency."
+                if cross_fold
+                else "Configure saliency methods and parameters."
+            )
 
     def on_tab_changed(self, index):
         """Handle tab switch."""
@@ -785,7 +946,10 @@ class VisualizationPanel(BasePanel):
             return ""
         return (
             self.plan_combo.currentText()
-            if isinstance(self.plan_combo.currentData(), SaliencyPlanIdentity)
+            if isinstance(
+                self.plan_combo.currentData(),
+                (SaliencyPlanIdentity, _SaliencyCrossFoldGroup),
+            )
             else ""
         )
 
@@ -795,7 +959,10 @@ class VisualizationPanel(BasePanel):
             return ""
         return (
             self.run_combo.currentText()
-            if isinstance(self.run_combo.currentData(), SaliencyRunIdentity)
+            if isinstance(
+                self.run_combo.currentData(),
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
             else ""
         )
 
@@ -823,11 +990,17 @@ class VisualizationPanel(BasePanel):
         plan_identity = self.plan_combo.currentData()
         run_identity = self.run_combo.currentData()
         absolute = self.abs_check.isChecked()
+        normalize = self.normalize_check.isChecked()
 
-        if not isinstance(plan_identity, SaliencyPlanIdentity) or not isinstance(
-            run_identity,
-            SaliencyRunIdentity,
-        ):
+        single_selection = isinstance(
+            plan_identity,
+            SaliencyPlanIdentity,
+        ) and isinstance(run_identity, SaliencyRunIdentity)
+        cross_fold_selection = isinstance(
+            plan_identity,
+            _SaliencyCrossFoldGroup,
+        ) and isinstance(run_identity, SaliencyCrossFoldIdentity)
+        if not single_selection and not cross_fold_selection:
             setup_message = self._setup_only_message()
             if setup_message:
                 self._show_widget_message(current_widget, setup_message)
@@ -835,7 +1008,7 @@ class VisualizationPanel(BasePanel):
             # Clear or show placeholder
             self._show_widget_message(
                 current_widget,
-                "Select a plan and run to continue.",
+                "Select a fold and run to continue.",
             )
             return
 
@@ -916,6 +1089,7 @@ class VisualizationPanel(BasePanel):
             publication_generation=publication.generation,
             run=run_identity,
             method=method_name,
+            normalize=normalize,
         )
         try:
             render_publication = get_saliency_render_publication(
@@ -1745,6 +1919,20 @@ class VisualizationPanel(BasePanel):
         self,
     ) -> dict[str, SaliencyMethodCoverageSnapshot] | None:
         """Read selected-run coverage only from the Application publication."""
+        selection = self.run_combo.currentData()
+        if isinstance(selection, SaliencyCrossFoldIdentity):
+            choice = self._cross_fold_choice_by_identity.get(selection)
+            if choice is None:
+                return None
+            return {
+                method: SaliencyMethodCoverageSnapshot(
+                    method=method,
+                    available=True,
+                    complete=True,
+                    classes=list(choice.classes),
+                )
+                for method in choice.methods
+            }
         run_coverage = self._selected_run_coverage()
         if run_coverage is None:
             return None
@@ -2181,9 +2369,10 @@ class VisualizationPanel(BasePanel):
         self.plan_combo.blockSignals(True)
         self.run_combo.blockSignals(True)
         self.plan_combo.clear()
-        self.plan_combo.addItem("Select a plan")
+        self.plan_combo.addItem("Select a fold")
         self.run_combo.clear()
         self._runs_by_plan = {}
+        self._cross_fold_choice_by_identity = {}
         self.plan_combo.blockSignals(False)
         self.run_combo.blockSignals(False)
         if hasattr(self, "tabs"):

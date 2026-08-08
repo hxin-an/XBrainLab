@@ -97,6 +97,7 @@ class SaliencyTopoMapViz(Visualizer):
             method,
             [data for _label_key, _label_name, data in display_by_label],
             absolute=absolute,
+            normalized=bool(getattr(self.epoch_data, "normalized", False)),
         )
         plot_axes = []
         image = None

@@ -638,6 +638,7 @@ def test_analysis_service_visualize_and_saliency_handlers() -> None:
     )
     assert visualize["payload_type"] == "visualization_summary"
     assert "saliency map" in visualize["available_views"]
+    assert visualize["saliency_cross_fold_choices"] == []
     assert saliency["payload_type"] == "saliency_configuration"
     assert saliency["requested_method"] == "SmoothGrad"
     assert saliency["params"]["_methods"] == ["SmoothGrad"]

@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QLabel, QWidget
 
 from XBrainLab.backend.application import (
     ApplicationViewPublication,
+    SaliencyCrossFoldIdentity,
     SaliencyPlanIdentity,
     SaliencyRenderData,
     SaliencyRenderPublication,
@@ -52,6 +53,7 @@ def _complete_coverage(method: str = "Gradient") -> SaliencyMethodCoverageSnapsh
 
 def _visualization_result(
     *run_coverages: SaliencyRunCoverageSnapshot,
+    cross_fold_choices: tuple[dict[str, object], ...] = (),
 ) -> CommandResult:
     state = replace(
         ApplicationStateSnapshot.empty(),
@@ -67,6 +69,12 @@ def _visualization_result(
         message="Visualization ready.",
         state=state,
         changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "plot_views_available": True,
+            "saliency_cross_fold_choices": list(cross_fold_choices),
+        },
     )
 
 
@@ -735,7 +743,7 @@ class TestRefreshCombos:
 
         assert publication.usable is True
         assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a plan"
+        assert panel.plan_combo.itemText(0) == "Select a fold"
         assert panel.plan_combo.itemData(0) is None
         assert panel.run_combo.count() == 0
         assert panel._runs_by_plan == {}
@@ -779,7 +787,7 @@ class TestRefreshCombos:
         assert [
             panel.plan_combo.itemText(index)
             for index in range(panel.plan_combo.count())
-        ] == ["Select a plan", "Fold 1 (EEGNet)", "Fold 2 (SCCNet)"]
+        ] == ["Select a fold", "Fold 1 (EEGNet)", "Fold 2 (SCCNet)"]
         assert panel.plan_combo.itemData(1) == plan_zero
         assert panel.plan_combo.itemData(2) == plan_one
         assert isinstance(panel.plan_combo.itemData(1), SaliencyPlanIdentity)
@@ -791,7 +799,7 @@ class TestRefreshCombos:
         ]
         assert [
             panel.run_combo.itemText(index) for index in range(panel.run_combo.count())
-        ] == ["Repeat A", "Repeat B"]
+        ] == ["Run 1", "Run 2"]
 
         _select_run(
             panel,
@@ -805,6 +813,84 @@ class TestRefreshCombos:
             SaliencyRunIdentity(plan=plan_one, run_index=1),
         ]
         assert panel.run_combo.findText("Average") == -1
+
+    def test_backend_admitted_cross_fold_summary_preserves_exact_identity(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        cross_choice = {
+            "identity": {
+                "members": [
+                    {"plan_index": 0, "run_index": 0},
+                    {"plan_index": 1, "run_index": 0},
+                ]
+            },
+            "display_name": "All Folds",
+            "run_label": "Run 1 (Summary)",
+            "methods": ["Gradient"],
+            "source_split": "test",
+            "fold_count": 2,
+            "classes": [
+                {
+                    "class_index": 0,
+                    "display_name": "left",
+                    "event_code": 769,
+                    "store_key": 0,
+                }
+            ],
+        }
+        result = _visualization_result(
+            _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+            _run_coverage(plan_index=1, run_index=0, model_name="EEGNet"),
+            cross_fold_choices=(cross_choice,),
+        )
+        publication = _publish_panel_state(panel, result)
+
+        all_folds_index = panel.plan_combo.findText("All Folds")
+        assert all_folds_index > 0
+        panel.plan_combo.blockSignals(True)
+        panel.plan_combo.setCurrentIndex(all_folds_index)
+        panel.plan_combo.blockSignals(False)
+        with patch.object(panel, "on_update"):
+            panel.on_plan_changed(panel.plan_combo.currentText())
+
+        identity = panel.run_combo.currentData()
+        assert isinstance(identity, SaliencyCrossFoldIdentity)
+        assert panel.run_combo.currentText() == "Run 1 (Summary)"
+        assert [member.plan.plan_index for member in identity.members] == [0, 1]
+        coverage = panel._published_coverage_for_selection()
+        assert coverage is not None
+        assert coverage["Gradient"].complete is True
+
+        panel.normalize_check.blockSignals(True)
+        panel.normalize_check.setChecked(True)
+        panel.normalize_check.blockSignals(False)
+        requests: list[SaliencyRenderRequest] = []
+
+        def get_render(_panel, request, **_kwargs):
+            requests.append(request)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=replace(_render_data(), normalized=True, fold_count=2),
+            )
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            side_effect=get_render,
+        ):
+            panel.on_update()
+
+        assert requests == [
+            SaliencyRenderRequest(
+                publication_generation=publication.generation,
+                run=identity,
+                method="Gradient",
+                normalize=True,
+            )
+        ]
 
     def test_preserves_selection_by_identity_across_publication_generation(
         self,
@@ -884,7 +970,7 @@ class TestRefreshCombos:
         assert panel.plan_combo.currentData() == selected_run.plan
         assert panel.plan_combo.currentText() == "Fold 2 (SCCNet v2)"
         assert panel.run_combo.currentData() == selected_run
-        assert panel.run_combo.currentText() == "Updated 2"
+        assert panel.run_combo.currentText() == "Run 2"
 
     @pytest.mark.parametrize(
         ("verified", "stale"),
@@ -915,7 +1001,7 @@ class TestRefreshCombos:
 
         assert panel._application_view_publication is None
         assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a plan"
+        assert panel.plan_combo.itemText(0) == "Select a fold"
         assert panel.run_combo.count() == 0
         assert panel._runs_by_plan == {}
         for view in (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d):
@@ -1021,7 +1107,7 @@ class TestOnUpdate:
         current_widget.update_plot.assert_not_called()
         current_widget.show_error.assert_not_called()
         current_widget.show_message.assert_called_once_with(
-            "Select a plan and run to continue."
+            "Select a fold and run to continue."
         )
 
     def test_without_run_identity_shows_placeholder(
@@ -1052,7 +1138,7 @@ class TestOnUpdate:
         assert panel.run_combo.currentData() is None
         current_widget.update_plot.assert_not_called()
         current_widget.show_message.assert_called_once_with(
-            "Select a plan and run to continue."
+            "Select a fold and run to continue."
         )
 
     def test_missing_publication_with_typed_selection_fails_closed(

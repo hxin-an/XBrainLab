@@ -81,6 +81,7 @@ _EXPORT_MODULES: dict[str, str] = {
     "DatasetSplitRule": ".dataset_split_preview",
     "DatasetSplitSpecification": ".dataset_split_preview",
     # typed visualization render publication
+    "SaliencyCrossFoldIdentity": ".saliency_render",
     "SaliencyPlanIdentity": ".saliency_render",
     "SaliencyRenderData": ".saliency_render",
     "SaliencyRenderPublication": ".saliency_render",
@@ -216,6 +217,7 @@ __all__ = [
     "ResetSessionCommand",
     "ReviewInterpretationCommand",
     "SaliencyCommand",
+    "SaliencyCrossFoldIdentity",
     "SaliencyPlanIdentity",
     "SaliencyRenderData",
     "SaliencyRenderPublication",

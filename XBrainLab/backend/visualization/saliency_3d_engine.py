@@ -338,6 +338,7 @@ class Saliency3DEngine:
             method,
             self.saliency,
             absolute=absolute,
+            normalized=bool(getattr(epoch_data, "normalized", False)),
         )
         self.scalar_bar_range = [color_min, color_max]
 

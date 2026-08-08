@@ -62,6 +62,8 @@ class SaliencySpectrogramMapViz(Visualizer):
     def _build_shared_display_scale(
         cls,
         arrays: list[np.ndarray],
+        *,
+        normalized: bool = False,
     ) -> tuple[Normalize, str, dict[str, float | int | str]]:
         finite_parts = []
         for array in arrays:
@@ -73,6 +75,24 @@ class SaliencySpectrogramMapViz(Visualizer):
         pooled = np.concatenate(finite_parts)
         if float(np.min(pooled)) < -1e-12:
             raise ValueError("Spectrogram magnitude unexpectedly contains negatives.")
+
+        if normalized:
+            over_range_count = int(np.count_nonzero(pooled > 1.0))
+            return (
+                Normalize(vmin=0.0, vmax=1.0, clip=False),
+                "Normalized attribution magnitude",
+                {
+                    "scale": "normalized",
+                    "vmin": 0.0,
+                    "vmax": 1.0,
+                    "data_max": float(np.max(pooled)),
+                    "upper_percentile": 100.0,
+                    "over_range_count": over_range_count,
+                    "over_range_ratio": float(over_range_count / pooled.size),
+                    "lower_reference": 0.0,
+                    "dynamic_range": 1.0,
+                },
+            )
 
         epsilon = float(np.finfo(float).eps)
         data_max = float(np.max(pooled))
@@ -238,6 +258,7 @@ class SaliencySpectrogramMapViz(Visualizer):
         display_arrays = [entry[2] for entry in spectrogram_by_label]
         shared_norm, colorbar_label, scale_details = self._build_shared_display_scale(
             display_arrays,
+            normalized=bool(getattr(self.epoch_data, "normalized", False)),
         )
         self.spectrogram_diagnostics = tuple(diagnostics)
         self.spectrogram_display_scale = dict(scale_details)

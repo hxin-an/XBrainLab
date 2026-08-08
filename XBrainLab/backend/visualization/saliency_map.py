@@ -57,6 +57,7 @@ class SaliencyMapViz(Visualizer):
             method,
             [saliency for _label_key, _label_name, saliency in display_by_label],
             absolute=absolute,
+            normalized=bool(getattr(self.epoch_data, "normalized", False)),
         )
         display_cmap = attribution_colormap(cmap)
         plot_axes = []

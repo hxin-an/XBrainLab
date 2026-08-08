@@ -84,9 +84,16 @@ def saliency_color_scale(
     values: np.ndarray | Iterable[np.ndarray],
     *,
     absolute: bool,
+    normalized: bool = False,
 ) -> tuple[str, float, float]:
     """Return a colormap and limits that preserve each method's sign semantics."""
     nonnegative = absolute or method in NONNEGATIVE_SALIENCY_METHODS
+    if normalized:
+        return (
+            "Reds" if nonnegative else SALIENCY_RED_BLUE_CMAP,
+            0.0 if nonnegative else -1.0,
+            1.0,
+        )
     color_min, color_max = shared_color_limits(
         values,
         nonnegative=nonnegative,

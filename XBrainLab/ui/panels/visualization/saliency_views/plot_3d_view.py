@@ -265,7 +265,7 @@ class Saliency3DPlotWidget(QWidget):
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
 
         # Initial Placeholder
-        lbl = QLabel("Select a plan and method to visualize")
+        lbl = QLabel("Select a fold and method to visualize")
         lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 14px;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)

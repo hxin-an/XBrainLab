@@ -383,7 +383,7 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert not any(
         group.title() == "EXPLANATION PLOTS" for group in panel.findChildren(QGroupBox)
     )
-    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.plan_combo.itemText(0) == "Select a fold"
     assert [
         panel.method_combo.itemText(i) for i in range(panel.method_combo.count())
     ] == (all_saliency_methods)
@@ -581,19 +581,29 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     run_item = layout.itemAtPosition(0, 3)
     method_item = layout.itemAtPosition(1, 1)
     absolute_item = layout.itemAtPosition(1, 3)
+    normalize_item = layout.itemAtPosition(1, 4)
     assert plan_item is not None
     assert run_item is not None
     assert method_item is not None
     assert absolute_item is not None
+    assert normalize_item is not None
     assert plan_item.widget() is panel.plan_combo
     assert run_item.widget() is panel.run_combo
     assert method_item.widget() is panel.method_combo
     assert absolute_item.widget() is panel.abs_check
+    assert normalize_item.widget() is panel.normalize_check
     assert abs(panel.plan_combo.y() - panel.run_combo.y()) <= 8
     assert abs(panel.method_combo.y() - panel.abs_check.y()) <= 8
+    assert abs(panel.method_combo.y() - panel.normalize_check.y()) <= 8
     assert panel.plan_combo.y() < panel.method_combo.y()
 
-    widgets = [panel.plan_combo, panel.run_combo, panel.method_combo, panel.abs_check]
+    widgets = [
+        panel.plan_combo,
+        panel.run_combo,
+        panel.method_combo,
+        panel.abs_check,
+        panel.normalize_check,
+    ]
     rects = [widget.geometry() for widget in widgets]
     for left_index, left_rect in enumerate(rects):
         for right_rect in rects[left_index + 1 :]:
@@ -609,8 +619,15 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     assert panel.plan_combo.y() == panel.run_combo.y()
     assert panel.plan_combo.y() == panel.method_combo.y()
     assert abs(panel.plan_combo.y() - panel.abs_check.y()) <= 8
+    assert abs(panel.plan_combo.y() - panel.normalize_check.y()) <= 8
 
-    widgets = [panel.plan_combo, panel.run_combo, panel.method_combo, panel.abs_check]
+    widgets = [
+        panel.plan_combo,
+        panel.run_combo,
+        panel.method_combo,
+        panel.abs_check,
+        panel.normalize_check,
+    ]
     rects = [widget.geometry() for widget in widgets]
     for left_index, left_rect in enumerate(rects):
         for right_rect in rects[left_index + 1 :]:
@@ -1255,7 +1272,7 @@ def test_visualization_panel_empty_publication_clears_run_selection(qtbot):
     panel.on_update()
 
     current_widget.update_plot.assert_not_called()
-    current_widget.show_message.assert_called_with("Select a plan and run to continue.")
+    current_widget.show_message.assert_called_with("Select a fold and run to continue.")
     assert panel.run_combo.count() == 0
     ctrl.get_trainers.assert_not_called()
     assert panel.saliency_action_bar.isHidden()
@@ -2436,7 +2453,7 @@ def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
     panel.on_update()
 
     current_widget.show_message.assert_called_once_with(
-        "Select a plan and run to continue."
+        "Select a fold and run to continue."
     )
     current_widget.show_error.assert_not_called()
 
@@ -2585,7 +2602,7 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     )
     ctrl.get_trainers.assert_not_called()
     assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.plan_combo.itemText(0) == "Select a fold"
     assert panel.run_combo.count() == 0
     current_widget.show_message.assert_called_once_with(
         "Create EEG epochs, complete training, or configure saliency before "
@@ -2646,7 +2663,7 @@ def test_visualization_panel_refuses_real_study_query_none_controller_fallback(
     ctrl.get_trainers.assert_not_called()
     ctrl.get_averaged_record.assert_not_called()
     assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.plan_combo.itemText(0) == "Select a fold"
     assert panel.run_combo.count() == 0
 
 
@@ -2826,7 +2843,7 @@ def test_visualization_panel_refuses_real_study_query_none_domain_fallback(
     current_widget.update_plot.assert_not_called()
     current_widget.show_error.assert_not_called()
     current_widget.show_message.assert_called_once_with(
-        "Select a plan and run to continue."
+        "Select a fold and run to continue."
     )
 
 

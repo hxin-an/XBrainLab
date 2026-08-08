@@ -25,6 +25,7 @@ from .evaluation_render import (
 )
 from .resource_guard import ResourcePreflightResult
 from .saliency_policy import normalize_saliency_params
+from .saliency_render import build_saliency_cross_fold_choices
 from .saliency_resource import (
     SaliencyResourceAdmission,
     check_saliency_resource_preflight,
@@ -200,6 +201,12 @@ class AnalysisCommandService:
             "montage_available": state.visualization.montage_available,
             "saliency_configured": state.visualization.saliency_configured,
             "saliency_available": state.visualization.saliency_available,
+            "saliency_cross_fold_choices": [
+                choice.to_dict()
+                for choice in build_saliency_cross_fold_choices(
+                    self.training_runtime.training_plan_holders()
+                )
+            ],
         }
         return (
             message,
