@@ -3,10 +3,12 @@ from pathlib import Path
 
 import pytest
 from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from XBrainLab.ui.components.info_panel import (
     INFO_KEY_COLUMN_PADDING,
+    INFO_VALUE_COLUMN_PADDING,
     AggregateInfoPanel,
     SidebarScrollArea,
 )
@@ -250,9 +252,51 @@ def test_info_panel_uses_exact_key_padding_at_fixed_sidebar_high_dpi(qtbot):
         )
         + INFO_KEY_COLUMN_PADDING
     )
-    assert panel.table.columnWidth(0) == required_key_width
+    required_value_width = (
+        max(
+            metrics.horizontalAdvance(item.text())
+            for row in range(panel.table.rowCount())
+            if (item := panel.table.item(row, 1)) is not None
+        )
+        + INFO_VALUE_COLUMN_PADDING
+    )
+    if required_key_width + required_value_width <= viewport.width():
+        assert panel.table.columnWidth(0) == required_key_width
+    else:
+        assert panel.table.columnWidth(0) < required_key_width
     assert panel.table.columnWidth(1) >= metrics.horizontalAdvance("Epochs") + 8
     assert panel.table.columnWidth(0) + panel.table.columnWidth(1) == viewport.width()
+
+
+def test_info_panel_columns_stay_inside_viewport_with_wide_font_metrics(qtbot):
+    panel = AggregateInfoPanel(None)
+    qtbot.addWidget(panel)
+    font = QFont(panel.table.font())
+    font.setPointSizeF(max(font.pointSizeF(), 14.0))
+    font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 3.0)
+    panel.setFont(font)
+    panel.table.setFont(font)
+    panel.update_info(
+        preprocessed_data_list=[
+            _detached_row(
+                epochs_length=120,
+                is_raw=False,
+                event={"labels": ["left", "right"], "count": 120},
+                n_channels=64,
+                sampling_frequency=250.0,
+                epoch_duration_samples=250,
+                tmin=-0.2,
+            )
+        ]
+    )
+    panel.resize(240, 720)
+    panel.show()
+    qtbot.wait(0)
+
+    viewport = panel.table.viewport()
+    assert viewport is not None
+    assert panel.table.columnWidth(0) + panel.table.columnWidth(1) == viewport.width()
+    assert panel.table.horizontalScrollBar().maximum() == 0
 
 
 def test_info_panel_recomputes_columns_when_a_hidden_page_is_shown_again(qtbot):

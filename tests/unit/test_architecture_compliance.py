@@ -1,5 +1,5 @@
 import ast
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from tests import architecture_compliance
 from tests.architecture_compliance import (
@@ -68,6 +68,15 @@ from tests.architecture_compliance import (
     check_visualization_saliency_publication_boundary,
     check_weak_test_names,
 )
+
+
+def test_guard_diagnostic_path_is_repo_relative_posix_on_windows() -> None:
+    root = PureWindowsPath("D:/a/XBrainLab/XBrainLab")
+    source = root / "XBrainLab" / "ui" / "components" / "attach_labels.py"
+
+    assert architecture_compliance._repo_relative_posix(source, root) == (
+        "XBrainLab/ui/components/attach_labels.py"
+    )
 
 
 def test_agent_controller_lifecycle_alias_guard_rejects_product_and_test_aliases(

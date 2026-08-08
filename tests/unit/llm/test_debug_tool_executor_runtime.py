@@ -757,7 +757,11 @@ def test_default_canonical_script_authorizes_declared_paths(
     monkeypatch.setattr(verify_all_tools_headless, "ToolExecutor", _Executor)
 
     assert verify_all_tools_headless.verify_all_tools_script() is False
-    assert str(data_dir) in captured_authorization["text"]
+    prefix = "Canonical repository debug script call: "
+    authorization_text = captured_authorization["text"]
+    assert authorization_text.startswith(prefix)
+    authorization = json.loads(authorization_text.removeprefix(prefix))
+    assert authorization["params"]["directory"] == str(data_dir)
 
 
 @pytest.mark.parametrize(

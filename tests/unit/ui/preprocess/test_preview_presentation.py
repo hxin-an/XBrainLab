@@ -146,7 +146,19 @@ def test_preprocess_signal_legend_shares_the_control_row_when_space_allows(
         widget,
         before_close_func=lambda owned: owned.prepare_for_shutdown(),
     )
-    widget.resize(1100, 620)
+    control_width = sum(
+        max(control.minimumSizeHint().width(), control.minimumWidth())
+        for control in (
+            widget.channel_label,
+            widget.chan_combo,
+            widget.yscale_label,
+            widget.yscale_spin,
+        )
+    )
+    spacing = max(widget.ctrl_layout.spacing(), 0)
+    inline_width = control_width + widget.signal_legend.sizeHint().width() + 80
+    inline_width += spacing * widget.ctrl_layout.count()
+    widget.resize(max(1100, inline_width), 620)
     widget.show()
     widget._set_preview_interactive(True, state="loaded")
     qtbot.wait(0)

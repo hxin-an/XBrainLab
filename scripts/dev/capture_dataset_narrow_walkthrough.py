@@ -551,8 +551,6 @@ def _apply_loaded_state(panel: DatasetPanel) -> None:
         panel.table.setItem(0, column, QTableWidgetItem(text))
     panel.table.blockSignals(False)
     panel.data_surface.setCurrentWidget(panel.table)
-    panel._post_import_action_requested = True
-    panel._sync_post_import_action(publication)
     window = panel.window()
     if not isinstance(window, QMainWindow):
         raise RuntimeError("Dataset capture shell lost its status bar.")
@@ -662,15 +660,6 @@ def _scenario_evidence(
             sidebar.clear_btn,
         )
     ]
-    post_import = (
-        _button_evidence(
-            panel.post_import_action_button,
-            panel,
-            horizontal_padding=24,
-        )
-        if state == "loaded-summary"
-        else None
-    )
     info = (
         _info_evidence(
             active_info_panel,
@@ -738,12 +727,6 @@ def _scenario_evidence(
             item["visible"] and item["inside_scroll_content"] and item["text_fits"]
             for item in action_buttons
         ),
-        "post_import_action_visible": post_import is None
-        or (
-            post_import["visible"]
-            and post_import["inside_panel"]
-            and post_import["text_fits"]
-        ),
         "loaded_summary_readable": info is None or bool(info["passed"]),
         "summary_stays_in_sidebar": state != "loaded-summary"
         or active_info_panel is sidebar.info_panel,
@@ -772,7 +755,6 @@ def _scenario_evidence(
         "horizontal_scroll_maximum": horizontal_scroll,
         "visible_horizontal_scroll_maximum": visible_horizontal_scroll,
         "actions": action_buttons,
-        "post_import_action": post_import,
         "summary": info,
         "state_truth": state_truth,
         "checks": checks,

@@ -1537,6 +1537,7 @@ def test_query_state_service_returns_readonly_summaries() -> None:
                 "accuracy": [],
                 "auc": [],
             },
+            "test": {"accuracy": []},
         },
     }
 

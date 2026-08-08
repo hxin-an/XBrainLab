@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from tests.unit.backend.path_assertions import filesystem_path_key
 from XBrainLab.backend.application.commands import LabelImportPlan
 from XBrainLab.backend.application.data_interpretation import AppliedInterpretation
 from XBrainLab.backend.application.data_interpretation_candidate import (
@@ -367,7 +368,9 @@ def test_label_import_record_updates_applied_and_recipe_state() -> None:
     assert latest_recipe.recipe_trace[-1] == "label_import:timestamp:1"
 
 
-def test_external_label_import_supersedes_a_saved_skip_labels_decision() -> None:
+def test_external_label_import_supersedes_a_saved_skip_labels_decision(
+    tmp_path: Path,
+) -> None:
     state = _state()
     scan = _scan(state.next_id("scan"))
     candidate = _candidate(scan, state.next_id("candidate"))
@@ -385,8 +388,9 @@ def test_external_label_import_supersedes_a_saved_skip_labels_decision() -> None
     )
     state.record_applied(applied)
     state.record_recipe(recipe, recipe_path=None)
-    label_path = "/tmp/xbrainlab/source/external-labels.tsv"
-    target_path = "/tmp/xbrainlab/source/sub-01_raw.fif"
+    source_path = tmp_path / "source"
+    label_path = filesystem_path_key(source_path / "external-labels.tsv")
+    target_path = filesystem_path_key(source_path / "sub-01_raw.fif")
 
     record = state.record_label_import_for_recipe(
         plan=LabelImportPlan(
@@ -582,10 +586,11 @@ def test_external_label_recipe_round_trip_preserves_multi_target_pairing_and_eve
     tmp_path: Path,
 ) -> None:
     state = _state()
-    shared_labels = "/tmp/xbrainlab/source/shared.mat"
+    source_path = tmp_path / "source"
+    shared_labels = filesystem_path_key(source_path / "shared.mat")
     target_paths = [
-        "/tmp/xbrainlab/source/sub01.gdf",
-        "/tmp/xbrainlab/source/sub02.gdf",
+        filesystem_path_key(source_path / "sub01.gdf"),
+        filesystem_path_key(source_path / "sub02.gdf"),
     ]
     scan = replace(
         _scan(state.next_id("scan")),

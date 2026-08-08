@@ -89,7 +89,6 @@ MODEL_SUMMARY_LOAD_FAILED_TEXT = (
 CHART_TABS_BREAKPOINT = 720
 COMPACT_HEIGHT_BREAKPOINT = 600
 INFO_SIDEBAR_WIDTH = 260
-COMPACT_INFO_SIDEBAR_WIDTH = 220
 COMPACT_INFO_SIDEBAR_BREAKPOINT = 540
 EVALUATION_RENDER_RETRY_INTERVAL_MS = 75
 EVALUATION_RENDER_RETRY_MAX_ATTEMPTS = 8
@@ -216,6 +215,7 @@ class EvaluationPanel(BasePanel):
         self._application_summary_dirty = True
         self._evaluation_render_retry_request: EvaluationRenderRequest | None = None
         self._evaluation_render_retry_attempts = 0
+        self._info_in_chart_tabs = False
 
         super().__init__(parent=parent, controller=None)
 
@@ -1572,11 +1572,20 @@ class EvaluationPanel(BasePanel):
             QTimer.singleShot(0, self._update_responsive_layout)
 
     def _update_responsive_layout(self) -> None:
-        self._update_info_sidebar_width()
+        compact_summary = self.contentsRect().width() < COMPACT_INFO_SIDEBAR_BREAKPOINT
+        if compact_summary:
+            self.right_panel.hide()
+        else:
+            self._restore_info_sidebar()
+        layout = self.layout()
+        if layout is not None:
+            layout.activate()
         self._update_percentage_label()
         self.evaluation_controls_bar.refresh_layout()
         self._update_chart_layout()
         self._update_height_layout()
+        if compact_summary:
+            self._move_info_into_chart_tabs()
 
     def _update_percentage_label(self) -> None:
         """Use the documented compact label only at constrained widths."""
@@ -1592,17 +1601,26 @@ class EvaluationPanel(BasePanel):
         self.chk_percentage.setText(text)
         self.chk_percentage.setMinimumWidth(self.chk_percentage.sizeHint().width())
 
-    def _update_info_sidebar_width(self) -> None:
-        """Keep the fixed summary visible when the assistant narrows the page."""
-        if not hasattr(self, "right_panel"):
+    def _move_info_into_chart_tabs(self) -> None:
+        """Keep plots usable when the assistant leaves an extremely narrow page."""
+        if self._info_in_chart_tabs:
             return
-        target_width = (
-            COMPACT_INFO_SIDEBAR_WIDTH
-            if self.contentsRect().width() < COMPACT_INFO_SIDEBAR_BREAKPOINT
-            else INFO_SIDEBAR_WIDTH
-        )
-        if self.right_panel.width() != target_width:
-            self.right_panel.setFixedWidth(target_width)
+        self.right_layout.removeWidget(self.info_panel)
+        self.chart_tabs.addTab(self.info_panel, "Data")
+        self._info_in_chart_tabs = True
+
+    def _restore_info_sidebar(self) -> None:
+        """Return Data Summary to its accepted fixed sidebar at normal widths."""
+        if self._info_in_chart_tabs:
+            index = self.chart_tabs.indexOf(self.info_panel)
+            if index >= 0:
+                self.chart_tabs.removeTab(index)
+            self.info_panel.setParent(self.right_panel)
+            self.right_layout.insertWidget(0, self.info_panel)
+            self.info_panel.show()
+            self._info_in_chart_tabs = False
+        self.right_panel.setFixedWidth(INFO_SIDEBAR_WIDTH)
+        self.right_panel.show()
 
     def _update_height_layout(self) -> None:
         """Show one result surface at a time in the shortest supported window."""

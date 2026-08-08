@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QEvent, Qt, QUrl
-from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import QApplication, QMessageBox, QStyle, QVBoxLayout, QWidget
 
 from XBrainLab.ui.chat.message_bubble import MessageBubble, MessagePresentationKind
@@ -362,6 +362,26 @@ class TestMessageBubble:
         assert code_block.viewport().height() >= (
             code_block.blockCount() * code_block.fontMetrics().lineSpacing()
         )
+
+    def test_cjk_tab_measurement_tracks_a_live_font_change(self, qtbot) -> None:
+        bubble = MessageBubble(
+            "```text\nA資料\tB資料\tC\nsecond line\n```",
+            is_user=False,
+        )
+        qtbot.addWidget(bubble)
+        bubble.show()
+        qtbot.wait(20)
+        code_block = bubble.code_blocks[0]
+        enlarged = QFont(code_block.font())
+        enlarged.setPointSize(max(enlarged.pointSize() + 4, 14))
+
+        code_block.setFont(enlarged)
+        qtbot.wait(20)
+
+        block_layout = code_block.document().begin().layout()
+        assert block_layout is not None
+        qt_layout_width = ceil(block_layout.lineAt(0).naturalTextWidth()) + 24
+        assert code_block.natural_content_width() == qt_layout_width
 
     def test_offscreen_cjk_tab_line_sets_scrollbar_before_user_scrolls(
         self,

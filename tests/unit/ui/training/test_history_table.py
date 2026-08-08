@@ -291,10 +291,22 @@ def test_large_history_caps_height_and_enables_row_scrolling(history_table, qtbo
         history_table.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     )
     assert history_table.verticalScrollBar().maximum() > 0
-    assert history_table.horizontalScrollBar().maximum() == 0
-    assert history_table.horizontalHeader().length() <= history_table.viewport().width()
     viewport = history_table.viewport()
     assert viewport is not None
+    horizontal_scrollbar = history_table.horizontalScrollBar()
+    has_horizontal_overflow = (
+        history_table.horizontalHeader().length() > viewport.width()
+    )
+    assert (horizontal_scrollbar.maximum() > 0) is has_horizontal_overflow
+    if has_horizontal_overflow:
+        assert horizontal_scrollbar.isVisible()
+        horizontal_scrollbar.setValue(horizontal_scrollbar.maximum())
+        qtbot.wait(0)
+        last_index = history_table.model().index(
+            0,
+            history_table.columnCount() - 1,
+        )
+        assert viewport.rect().intersects(history_table.visualRect(last_index))
     for row in range(history_table.MAX_VISIBLE_ROWS):
         assert viewport.rect().contains(
             history_table.visualItemRect(history_table.item(row, 0))
@@ -342,6 +354,11 @@ def test_history_height_stays_fixed_when_vertical_scrollbar_appears(
     history_table.update_history([])
     qtbot.wait(0)
     empty_height = history_table.height()
+    empty_horizontal_scrollbar_height = (
+        history_table.horizontalScrollBar().sizeHint().height()
+        if history_table.horizontalScrollBar().maximum() > 0
+        else 0
+    )
 
     history_table.update_history(
         [
@@ -352,7 +369,15 @@ def test_history_height_stays_fixed_when_vertical_scrollbar_appears(
     qtbot.wait(0)
 
     assert history_table.verticalScrollBar().maximum() > 0
-    assert history_table.height() == empty_height
+    horizontal_scrollbar_height = (
+        history_table.horizontalScrollBar().sizeHint().height()
+        if history_table.horizontalScrollBar().maximum() > 0
+        else 0
+    )
+    assert history_table.height() == history_table.preferred_content_height()
+    assert history_table.height() == (
+        empty_height + horizontal_scrollbar_height - empty_horizontal_scrollbar_height
+    )
     first_hidden = history_table.visualItemRect(
         history_table.item(history_table.MAX_VISIBLE_ROWS, 0)
     )

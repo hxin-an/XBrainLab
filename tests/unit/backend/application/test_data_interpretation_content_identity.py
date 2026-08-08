@@ -3,6 +3,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.backend.path_assertions import (
+    assert_filesystem_path_lists_equal,
+    filesystem_path_key,
+)
 from XBrainLab.backend.application import data_interpretation_content_identity
 from XBrainLab.backend.application.data_interpretation_bids_resources import (
     BidsEventsJsonReader,
@@ -67,7 +71,10 @@ def test_selected_eeg_review_without_content_identity_fails_closed(
         )
 
     assert raised.value.diagnostics["reason"] == ("reviewed_content_identity_missing")
-    assert raised.value.diagnostics["changed_paths"] == [str(eeg.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [eeg],
+    )
     assert raised.value.diagnostics["next_action"] == "preview_and_review_again"
 
 
@@ -94,14 +101,17 @@ def test_review_identity_binds_selected_eeg_and_every_parser_dependency(
     )
     assert identity["parser_dependencies"] == [
         {
-            "path": str(vhdr_path.resolve()),
-            "dependencies": [str(eeg_path.resolve()), str(vmrk_path.resolve())],
+            "path": filesystem_path_key(vhdr_path),
+            "dependencies": [
+                filesystem_path_key(eeg_path),
+                filesystem_path_key(vmrk_path),
+            ],
         }
     ]
     assert {row["path"]: row["role"] for row in identity["files"]} == {
-        str(vhdr_path.resolve()): "selected_eeg",
-        str(eeg_path.resolve()): "eeg_parser_dependency",
-        str(vmrk_path.resolve()): "eeg_parser_dependency",
+        filesystem_path_key(vhdr_path): "selected_eeg",
+        filesystem_path_key(eeg_path): "eeg_parser_dependency",
+        filesystem_path_key(vmrk_path): "eeg_parser_dependency",
     }
 
 
@@ -127,7 +137,7 @@ def test_selected_eeg_identity_streams_content_without_materializing_with_read_b
 
     assert identity["files"] == [
         {
-            "path": str(eeg_path.resolve()),
+            "path": filesystem_path_key(eeg_path),
             "role": "selected_eeg",
             "file_bytes": len(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),
@@ -157,7 +167,10 @@ def test_review_identity_detects_same_size_selected_eeg_rewrite(
     assert raised.value.diagnostics["reason"] == (
         "reviewed_content_or_contract_changed"
     )
-    assert raised.value.diagnostics["changed_paths"] == [str(eeg_path.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [eeg_path],
+    )
 
 
 def test_review_identity_detects_same_size_bids_event_sidecar_rewrite(
@@ -184,7 +197,10 @@ def test_review_identity_detects_same_size_bids_event_sidecar_rewrite(
             label_carrier_plan=[_plan(events)],
         )
 
-    assert raised.value.diagnostics["changed_paths"] == [str(sidecar.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [sidecar],
+    )
     assert raised.value.diagnostics["next_action"] == "preview_and_review_again"
 
 
@@ -215,7 +231,7 @@ def test_review_identity_reuses_parser_admitted_bids_sidecar_digest(
 
     assert identity["files"] == [
         {
-            "path": str(sidecar.resolve()),
+            "path": filesystem_path_key(sidecar),
             "role": "bids_events_json",
             "file_bytes": len(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),
@@ -247,5 +263,8 @@ def test_review_identity_rejects_size_change_before_hashing_expanded_file(
             label_carrier_plan=[_plan(events)],
         )
 
-    assert raised.value.diagnostics["changed_paths"] == [str(events.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [events],
+    )
     assert raised.value.diagnostics["reason"] == "reviewed_content_size_changed"

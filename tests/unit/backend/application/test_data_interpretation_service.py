@@ -9,6 +9,10 @@ from typing import Any, cast
 
 import pytest
 
+from tests.unit.backend.path_assertions import (
+    assert_filesystem_path_lists_equal,
+    assert_filesystem_paths_equal,
+)
 from XBrainLab.backend.application import (
     data_interpretation_internal_events,
     resource_guard,
@@ -862,7 +866,11 @@ def test_review_warning_requires_confirmation_before_materializing_deduped_label
         )
 
     assert materialized == 0
-    assert checked_scopes == [(str(eeg_path.resolve()), str(label_path.resolve()))]
+    assert len(checked_scopes) == 1
+    assert_filesystem_path_lists_equal(
+        checked_scopes[0],
+        [eeg_path, label_path],
+    )
     challenge = _resource_challenge(raised.value)
     assert challenge["command_name"] == "review_interpretation"
 
@@ -2259,7 +2267,10 @@ def test_apply_blocks_exact_candidate_when_reviewed_eeg_or_parser_dependency_cha
         )
 
     assert raised.value.diagnostics["candidate_id"] == candidate_id
-    assert raised.value.diagnostics["changed_paths"] == [str(mutation_target.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [mutation_target],
+    )
     assert import_calls == 0
     assert dataset.imported_paths == []
     assert dataset.clean_count == 0
@@ -2308,7 +2319,10 @@ def test_apply_rolls_back_exact_candidate_when_reviewed_eeg_or_parser_dependency
         )
 
     assert raised.value.diagnostics["candidate_id"] == candidate_id
-    assert raised.value.diagnostics["changed_paths"] == [str(mutation_target.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [mutation_target],
+    )
     assert import_calls == 1
     assert dataset.imported_paths == []
     assert dataset.loaded == []
@@ -2357,7 +2371,7 @@ def test_apply_fails_closed_when_reviewed_external_label_content_changes(
     assert identity["algorithm"] == "sha256"
     assert identity["scope_sha256"]
     [binding] = identity["bindings"]
-    assert binding["path"] == str(label_path.resolve())
+    assert_filesystem_paths_equal(binding["path"], label_path)
     assert binding["format"] == "CSV"
     assert binding["selected_label_field"] == "label"
     assert binding["selected_anchor"] == "event_code"
@@ -2365,10 +2379,13 @@ def test_apply_fails_closed_when_reviewed_external_label_content_changes(
     assert binding["run_class_map"] == {"left": "left"}
     assert binding["value_decisions"]["left"]["decision"] == "resolved"
     files_by_role = {row["role"]: row for row in identity["files"]}
-    assert files_by_role["selected_eeg"]["path"] == str(eeg_path.resolve())
+    assert_filesystem_paths_equal(files_by_role["selected_eeg"]["path"], eeg_path)
     assert files_by_role["selected_eeg"]["file_bytes"] == eeg_path.stat().st_size
     assert files_by_role["selected_eeg"]["sha256"]
-    assert files_by_role["label_carrier"]["path"] == str(label_path.resolve())
+    assert_filesystem_paths_equal(
+        files_by_role["label_carrier"]["path"],
+        label_path,
+    )
     assert files_by_role["label_carrier"]["file_bytes"] == reviewed_size
     assert files_by_role["label_carrier"]["sha256"]
 
@@ -2386,7 +2403,10 @@ def test_apply_fails_closed_when_reviewed_external_label_content_changes(
     assert raised.value.diagnostics["code"] == (
         "interpretation_content_changed_after_review"
     )
-    assert raised.value.diagnostics["changed_paths"] == [str(label_path.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [label_path],
+    )
     assert raised.value.diagnostics["next_action"] == "preview_and_review_again"
     assert dataset.imported_paths == []
     assert dataset.clean_count == 0

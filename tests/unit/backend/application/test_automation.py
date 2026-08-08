@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit.backend.path_assertions import filesystem_path_key
 from XBrainLab.backend.application import (
     ApplicationService,
     AutomationPayloadError,
@@ -432,12 +433,16 @@ def test_automation_public_serializer_redacts_internal_result_and_state(
 
     internal = execution.to_internal_dict()
     public = execution.to_public_dict()
+    internal_text = json.dumps(internal)
+    public_text = json.dumps(public)
+    canonical_source = filesystem_path_key(source)
 
-    assert str(source) in json.dumps(internal)
-    assert str(source) not in json.dumps(public)
-    assert "Clinical Records" not in json.dumps(public)
-    assert "Mary Example" not in json.dumps(public)
-    assert "[REDACTED_PATH]" in json.dumps(public)
+    assert canonical_source in internal_text
+    assert str(source) not in public_text
+    assert canonical_source not in public_text
+    assert "Clinical Records" not in public_text
+    assert "Mary Example" not in public_text
+    assert "[REDACTED_PATH]" in public_text
     assert execution.to_dict() == public
 
 

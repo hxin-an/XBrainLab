@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QStyle,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -49,6 +50,7 @@ from XBrainLab.backend.utils.public_diagnostics import (
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.styles.theme import Theme
+from XBrainLab.ui.table_sizing import scaled_column_widths
 
 from .manual_split_dialog import ManualSplitDialog
 
@@ -362,6 +364,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.tree.setRootIsDecorated(False)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tree.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
         self.tree.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -370,12 +375,8 @@ class DataSplittingPreviewDialog(BaseDialog):
         header = self.tree.header()
         if header is not None:
             header.setStretchLastSection(False)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-            for col in (1, 2, 3):
-                header.setSectionResizeMode(
-                    col,
-                    QHeaderView.ResizeMode.ResizeToContents,
-                )
+            for column in range(self.tree.columnCount()):
+                header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
         results_layout.addWidget(self.tree)
         self._resize_tree_to_rows()
         left_layout.addWidget(results_group)
@@ -872,8 +873,11 @@ class DataSplittingPreviewDialog(BaseDialog):
     def _resize_tree_to_rows(self) -> None:
         if self.tree is None:
             return
+        self._fit_tree_columns_to_viewport()
         header = self.tree.header()
-        header_height = header.sizeHint().height() if header is not None else 28
+        header_height = 0
+        if header is not None:
+            header_height = max(header.height(), header.sizeHint().height())
         row_count = max(1, self.tree.topLevelItemCount())
         max_visible_rows = 8
         visible_rows = min(row_count, max_visible_rows)
@@ -881,7 +885,22 @@ class DataSplittingPreviewDialog(BaseDialog):
         for row in range(visible_rows):
             row_height = self.tree.sizeHintForRow(row)
             row_height_total += row_height if row_height > 0 else 30
-        target_height = max(64, header_height + row_height_total + 8)
+        style = self.tree.style()
+        focus_margin = (
+            style.pixelMetric(
+                QStyle.PixelMetric.PM_FocusFrameVMargin,
+                None,
+                self.tree,
+            )
+            if style is not None
+            else 0
+        )
+        content_buffer = (self.tree.frameWidth() * 2) + (focus_margin * 2)
+        content_buffer += max(self.tree.fontMetrics().leading(), 1)
+        target_height = max(
+            self.tree.fontMetrics().lineSpacing() * 2,
+            header_height + row_height_total + content_buffer,
+        )
         if row_count > max_visible_rows:
             target_height = min(360, target_height)
             self.tree.setVerticalScrollBarPolicy(
@@ -894,6 +913,25 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.tree.setFixedHeight(target_height)
         if self.isVisible():
             self.fit_to_content(minimum_width=920)
+
+    def _fit_tree_columns_to_viewport(self) -> None:
+        if self.tree is None:
+            return
+        viewport = self.tree.viewport()
+        if viewport is None or viewport.width() <= 0:
+            return
+        widths = scaled_column_widths(
+            (180, 80, 110, 80),
+            viewport.width(),
+            min_width=40,
+        )
+        for column, width in enumerate(widths):
+            self.tree.setColumnWidth(column, width)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Recompute row geometry after the platform style has been polished."""
+        super().showEvent(event)
+        QTimer.singleShot(0, self._resize_tree_to_rows)
 
     def confirm(self):
         """Accept a successful preview; the command later owns final generation."""

@@ -70,7 +70,7 @@ def test_placement_mode_states_are_bound_in_the_root_manifest(tmp_path: Path) ->
         path.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (80 + index, 60), (35, 70, 105)).save(path)
     identity = collect_source_identity(capture_script.ROOT)
-    captured_at = datetime(2026, 8, 2, 4, 0, tzinfo=UTC)
+    captured_at = datetime.now(UTC)
     manifest = build_data_import_capture_manifest(
         tmp_path,
         expected_surfaces=[spec.filename for spec in specs],

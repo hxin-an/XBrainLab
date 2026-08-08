@@ -151,7 +151,24 @@ class _CodeBlockView(QPlainTextEdit):
 
     def _sync_tab_stop_distance(self) -> None:
         """Keep tab rendering deterministic across fonts and display scales."""
-        self.setTabStopDistance(float(self.fontMetrics().horizontalAdvance(" ") * 4))
+        target = float(self.fontMetrics().horizontalAdvance(" ") * 4)
+        if abs(self.tabStopDistance() - target) >= 0.5:
+            self.setTabStopDistance(target)
+
+    def event(self, event) -> bool:
+        """Synchronize tab geometry after Qt applies a font or style change."""
+        handled = super().event(event)
+        if event is not None and event.type() in {
+            QEvent.Type.FontChange,
+            QEvent.Type.ApplicationFontChange,
+            QEvent.Type.StyleChange,
+        }:
+            self._sync_tab_stop_distance()
+        return handled
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._sync_tab_stop_distance()
 
     def natural_content_width(self) -> int:
         """Return the unwrapped code width including internal padding."""
@@ -273,6 +290,7 @@ class _MessageContentView(QWidget):
         self._compat_text_view.setStyleSheet(style)
         for view in self.text_views:
             view.setStyleSheet(style)
+            self._sync_text_view_font(view)
 
     def set_content(self, text: str) -> None:
         """Update existing segments when possible to keep streaming stable."""
@@ -309,12 +327,19 @@ class _MessageContentView(QWidget):
         self.setFixedWidth(width)
         heights: list[int] = []
         for view in self.text_views:
+            view.ensurePolished()
             view.setFixedWidth(width)
             document = view.document()
             if document is None:
                 height = 20
             else:
-                document.setTextWidth(width)
+                self._sync_text_view_font(view)
+                viewport = view.viewport()
+                text_width = max(
+                    viewport.width() if viewport is not None else width,
+                    1,
+                )
+                document.setTextWidth(text_width)
                 layout = document.documentLayout()
                 height = (
                     ceil(layout.documentSize().height()) + 8
@@ -376,6 +401,7 @@ class _MessageContentView(QWidget):
                 text_view.setMarkdown(block.text)
                 if self._text_style:
                     text_view.setStyleSheet(self._text_style)
+                    self._sync_text_view_font(text_view)
                 view = text_view
             self._views.append(view)
             self._layout.addWidget(view)
@@ -414,6 +440,14 @@ class _MessageContentView(QWidget):
         view.setContentsMargins(0, 0, 0, 0)
         view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return view
+
+    @staticmethod
+    def _sync_text_view_font(view: QTextBrowser) -> None:
+        """Keep QTextDocument metrics aligned with the polished viewport font."""
+        view.ensurePolished()
+        document = view.document()
+        if document is not None and document.defaultFont() != view.font():
+            document.setDefaultFont(view.font())
 
 
 class MessageBubble(QWidget):
@@ -596,6 +630,12 @@ class MessageBubble(QWidget):
         """
         if container_width <= 0:
             return
+
+        self.ensurePolished()
+        self.bubble_frame.ensurePolished()
+        self.content_view.ensurePolished()
+        for view in (*self.content_view.text_views, *self.content_view.code_blocks):
+            view.ensurePolished()
 
         max_bubble_width = min(
             int(container_width * self._MAX_WIDTH_RATIO),

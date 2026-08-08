@@ -8,6 +8,10 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
+from tests.unit.backend.path_assertions import (
+    assert_filesystem_path_lists_equal,
+    filesystem_path_key,
+)
 from XBrainLab.backend.application.commands import (
     AttachLabelsCommand,
     ImportLabelsCommand,
@@ -198,7 +202,7 @@ def test_attach_warning_receipt_is_exact_and_one_shot(
         )
     )
     assert payload["resource_preflight"]["confirmation_receipt_reused"] is True
-    assert loader_calls == [str(label_path)]
+    assert_filesystem_path_lists_equal(loader_calls, [label_path])
     assert len(dataset.batch_calls) == 1
 
     with pytest.raises(ResourceConfirmationRequiredError) as replayed:
@@ -211,7 +215,7 @@ def test_attach_warning_receipt_is_exact_and_one_shot(
             )
         )
     assert _challenge(replayed.value) != token
-    assert loader_calls == [str(label_path)]
+    assert_filesystem_path_lists_equal(loader_calls, [label_path])
 
 
 def test_attach_warning_receipt_rejects_content_and_configuration_mutation(
@@ -420,7 +424,7 @@ def test_import_warning_receipt_precedes_parser_and_is_one_shot(
     )
     assert payload["success_count"] == 1
     assert payload["resource_preflight"]["confirmation_receipt_reused"] is True
-    assert loader_calls == [str(label_path)]
+    assert_filesystem_path_lists_equal(loader_calls, [label_path])
 
     with pytest.raises(ResourceConfirmationRequiredError):
         service.handle_import_labels(
@@ -430,7 +434,7 @@ def test_import_warning_receipt_precedes_parser_and_is_one_shot(
                 resource_preflight_token=token,
             )
         )
-    assert loader_calls == [str(label_path)]
+    assert_filesystem_path_lists_equal(loader_calls, [label_path])
 
 
 def test_path_import_parses_after_admission_and_preserves_recipe_trace(
@@ -458,13 +462,14 @@ def test_path_import_parses_after_admission_and_preserves_recipe_trace(
     assert payload["success_count"] == 1
     assert payload["resource_preflight"]["risk_level"] == "safe"
     assert payload["label_import"] == {
-        "label_carriers": [str(label_path)],
+        "label_carriers": [filesystem_path_key(label_path)],
         "mode": "sequence",
     }
     assert len(dataset.batch_calls) == 1
-    assert dataset.batch_calls[0][1][str(label_path)].tolist() == [1, 2]
+    canonical_label_path = filesystem_path_key(label_path)
+    assert dataset.batch_calls[0][1][canonical_label_path].tolist() == [1, 2]
     assert interpretation.recorded[0]["file_mapping"] == {
-        str(raw_path): str(label_path)
+        str(raw_path): canonical_label_path
     }
 
 
@@ -555,7 +560,11 @@ def test_npy_materialization_uses_bounded_admitted_stream(
 
     assert payload["success_count"] == 1
     assert len(parser_sources) == 1
-    assert dataset.batch_calls[0][1][str(label_path)].tolist() == [1, 2, 1]
+    assert dataset.batch_calls[0][1][filesystem_path_key(label_path)].tolist() == [
+        1,
+        2,
+        1,
+    ]
 
 
 def test_label_resource_formats_and_estimator_thresholds_have_one_owner() -> None:

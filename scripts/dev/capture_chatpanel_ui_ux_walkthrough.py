@@ -1212,7 +1212,19 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
             continue
         name = button.objectName() or f"{type(button).__name__}_{index}"
         origin = button.mapTo(panel, QPoint(0, 0))
-        inside = human_evidence._widget_inside(panel, button)
+        inside_scroll_content = panel.scroll_area.isAncestorOf(button)
+        if inside_scroll_content:
+            viewport = panel.scroll_area.viewport()
+            if viewport is None:
+                inside = False
+            else:
+                viewport_origin = button.mapTo(viewport, QPoint(0, 0))
+                inside = (
+                    viewport_origin.x() >= 0
+                    and viewport_origin.x() + button.width() <= viewport.width()
+                )
+        else:
+            inside = human_evidence._widget_inside(panel, button)
         text = " ".join(str(button.text() or "").split())
         text_width = button.fontMetrics().horizontalAdvance(text) + 18
         text_rendered = human_evidence._button_renders_text(button)
@@ -1229,6 +1241,7 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
                 "enabled": button.isEnabled(),
                 "bounds": [origin.x(), origin.y(), button.width(), button.height()],
                 "inside_panel": inside,
+                "inside_scroll_content": inside_scroll_content,
                 "text_fits": text_fits,
             }
         )

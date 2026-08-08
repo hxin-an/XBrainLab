@@ -110,6 +110,22 @@ def _safe_gpu_status(gpu_index: int | None = None) -> dict[str, object]:
     }
 
 
+@pytest.fixture
+def safe_cpu_model_load_ram(monkeypatch):
+    """Keep mocked model materialization independent of host memory pressure."""
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "total_bytes": 64 * 1024**3,
+                "available_bytes": 48 * 1024**3,
+                "used_bytes": 16 * 1024**3,
+            }
+        ),
+    )
+
+
 class TestLocalBackendInit:
     def test_init_defaults(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
@@ -292,7 +308,7 @@ class TestLocalBackendLoad:
         assert backend.is_loaded is True
 
     @patch("XBrainLab.llm.core.backends.local.torch", create=True)
-    def test_load_cpu(self, mock_torch):
+    def test_load_cpu(self, mock_torch, safe_cpu_model_load_ram):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
         cfg = _make_config(device="cpu", load_in_4bit=False)
@@ -414,7 +430,7 @@ class TestLocalBackendLoad:
         mock_model.to.assert_called_once_with("cuda:0")
 
     @patch("XBrainLab.llm.core.backends.local.torch", create=True)
-    def test_load_failure(self, mock_torch):
+    def test_load_failure(self, mock_torch, safe_cpu_model_load_ram):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
         cfg = _make_config()

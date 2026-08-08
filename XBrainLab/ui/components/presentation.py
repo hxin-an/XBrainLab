@@ -159,6 +159,9 @@ class ResponsiveControlsBar(QWidget):
         if self._greedy_wrap:
             self._apply_greedy_layout(width)
             return
+        layout = self._layout
+        if not isinstance(layout, QGridLayout):
+            raise TypeError("Non-greedy controls require a grid layout")
         wrapped = width < self._wrap_width
         stacked_trailing = wrapped and width < 360 and bool(self._trailing_widgets)
         layout_mode = "stacked" if stacked_trailing else "wrapped" if wrapped else "row"
@@ -169,21 +172,21 @@ class ResponsiveControlsBar(QWidget):
         widgets = [widget for pair in self._fields for widget in pair]
         widgets.extend(self._trailing_widgets)
         for widget in widgets:
-            self._layout.removeWidget(widget)
+            layout.removeWidget(widget)
         for column in range((len(self._fields) * 2) + len(self._trailing_widgets) + 1):
-            self._layout.setColumnStretch(column, 0)
+            layout.setColumnStretch(column, 0)
 
         if wrapped:
             last_row = len(self._fields) - 1
             trailing_span = max(len(self._trailing_widgets), 1)
             for row, (label, control) in enumerate(self._fields):
-                self._layout.addWidget(label, row, 0)
+                layout.addWidget(label, row, 0)
                 span = trailing_span + 1 if row < last_row or stacked_trailing else 1
-                self._layout.addWidget(control, row, 1, 1, span)
+                layout.addWidget(control, row, 1, 1, span)
             if stacked_trailing:
                 trailing_row = len(self._fields)
                 for offset, widget in enumerate(self._trailing_widgets):
-                    self._layout.addWidget(
+                    layout.addWidget(
                         widget,
                         trailing_row + offset,
                         0,
@@ -194,34 +197,34 @@ class ResponsiveControlsBar(QWidget):
                     )
             else:
                 for column, widget in enumerate(self._trailing_widgets, start=2):
-                    self._layout.addWidget(
+                    layout.addWidget(
                         widget,
                         last_row,
                         column,
                         alignment=Qt.AlignmentFlag.AlignLeft
                         | Qt.AlignmentFlag.AlignVCenter,
                     )
-            self._layout.setColumnStretch(1, 1)
-            self._layout.invalidate()
+            layout.setColumnStretch(1, 1)
+            layout.invalidate()
             self.updateGeometry()
             return
 
         column = 0
         for label, control in self._fields:
-            self._layout.addWidget(label, 0, column)
-            self._layout.addWidget(control, 0, column + 1)
-            self._layout.setColumnStretch(column + 1, 1)
+            layout.addWidget(label, 0, column)
+            layout.addWidget(control, 0, column + 1)
+            layout.setColumnStretch(column + 1, 1)
             column += 2
         for widget in self._trailing_widgets:
-            self._layout.addWidget(
+            layout.addWidget(
                 widget,
                 0,
                 column,
                 alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             )
             column += 1
-        self._layout.setColumnStretch(column, 1)
-        self._layout.invalidate()
+        layout.setColumnStretch(column, 1)
+        layout.invalidate()
         self.updateGeometry()
 
     def _apply_greedy_layout(self, width: int) -> None:

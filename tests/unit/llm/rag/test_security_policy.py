@@ -37,7 +37,12 @@ def _hold_file_lock(lock_path: str, ready, release) -> None:
         release.wait(5.0)
 
 
-def _wait_for_spawned_holder_ready(holder, ready, *, timeout: float = 15.0) -> None:
+def _wait_for_spawned_holder_ready(
+    holder,
+    ready,
+    *,
+    timeout: float = 60.0 if os.name == "nt" else 15.0,
+) -> None:
     """Wait for spawn/import overhead without weakening the lock deadline."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

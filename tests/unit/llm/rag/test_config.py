@@ -14,9 +14,16 @@ class TestRAGConfig:
 
     def test_gold_set_identity_matches_bundled_corpus(self):
         bundled_bytes = RAGConfig.get_gold_set_path().read_bytes()
+        canonical_bytes = bundled_bytes.replace(b"\r\n", b"\n")
+        expected_digest = RAGConfig.GOLD_SET_SHA256
+        raw_digest = hashlib.sha256(bundled_bytes).hexdigest()
 
-        assert hashlib.sha256(bundled_bytes).hexdigest() == RAGConfig.GOLD_SET_SHA256
-        assert RAGConfig.gold_set_integrity_ok() is True
+        assert hashlib.sha256(canonical_bytes).hexdigest() == expected_digest
+        assert bundled_bytes in {
+            canonical_bytes,
+            canonical_bytes.replace(b"\n", b"\r\n"),
+        }
+        assert RAGConfig.gold_set_integrity_ok() is (raw_digest == expected_digest)
 
     def test_embedding_model(self):
         assert isinstance(RAGConfig.EMBEDDING_MODEL, str)

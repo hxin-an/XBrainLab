@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 import torch
 
+from tests.unit.backend.path_assertions import filesystem_path_key
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     ApplicationService,
@@ -2408,6 +2409,7 @@ def test_training_history_query_returns_detached_json_rows(monkeypatch):
                 "accuracy": [75.0, 79.0],
                 "auc": [0.65, 0.72],
             },
+            "test": {"accuracy": []},
         },
     }
     assert returned_row == expected_row
@@ -6555,14 +6557,15 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
     assert import_result.ok is True
     assert import_result.diagnostics["recipe_updated"] is True
     label_import = import_result.diagnostics["label_import"]
+    canonical_label_path = filesystem_path_key(label_path)
     assert label_import["mode"] == "batch"
-    assert label_import["label_carriers"] == [str(label_path)]
+    assert label_import["label_carriers"] == [canonical_label_path]
     assert label_import["selected_event_names"] == ["cue"]
-    assert import_result.state.interpretation.label_carriers == [str(label_path)]
+    assert import_result.state.interpretation.label_carriers == [canonical_label_path]
     assert import_result.state.interpretation.label_import_count == 1
     assert save_result.ok is True
     recipe = save_result.diagnostics["recipe"]
-    assert recipe["label_carriers"] == [str(label_path)]
+    assert recipe["label_carriers"] == [canonical_label_path]
     assert recipe["label_imports"][0]["class_map"] == {"1": "left", "2": "right"}
     assert "label_import:batch:1" in recipe["recipe_trace"]
 

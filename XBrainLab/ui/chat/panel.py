@@ -9,7 +9,7 @@ from contextlib import suppress
 from uuid import uuid4
 from weakref import ReferenceType, ref
 
-from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -459,6 +459,10 @@ class ChatPanel(QWidget):
         self.retry_runtime_btn.setMinimumHeight(34)
         self.retry_runtime_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.retry_runtime_btn.setAccessibleName("Retry local assistant")
+        self.retry_runtime_btn.setProperty(
+            "assistantFullLabel",
+            "Retry local assistant",
+        )
         self.retry_runtime_btn.setToolTip(
             "Try to start the selected local model again."
         )
@@ -476,6 +480,10 @@ class ChatPanel(QWidget):
         self.setup_btn.setMinimumHeight(34)
         self.setup_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setup_btn.setAccessibleName("Open Assistant Settings")
+        self.setup_btn.setProperty(
+            "assistantFullLabel",
+            "Open Assistant Settings",
+        )
         self.setup_btn.setStyleSheet(RUNTIME_PRIMARY_ACTION_STYLE)
         self.setup_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setup_btn.clicked.connect(self.open_settings_requested)
@@ -1504,6 +1512,10 @@ class ChatPanel(QWidget):
             self.setup_btn.setText(
                 "Settings" if is_failed else "Open Assistant Settings"
             )
+            self.setup_btn.setProperty(
+                "assistantFullLabel",
+                self.setup_btn.text(),
+            )
             self.setup_btn.setAccessibleName("Open Assistant Settings")
             self.setup_btn.setStyleSheet(
                 RUNTIME_SECONDARY_ACTION_STYLE
@@ -1561,6 +1573,9 @@ class ChatPanel(QWidget):
         action_layout = self.runtime_actions.layout()
         if action_layout is not None:
             action_layout.activate()
+            for button in (self.retry_runtime_btn, self.setup_btn):
+                self._fit_button_label(button)
+            action_layout.activate()
             self.runtime_actions.setMinimumHeight(action_layout.sizeHint().height())
         state_layout = self.runtime_state_widget.layout()
         if state_layout is not None:
@@ -1572,6 +1587,55 @@ class ChatPanel(QWidget):
         self.runtime_state_widget.adjustSize()
         self.runtime_actions.updateGeometry()
         self.runtime_state_widget.updateGeometry()
+
+    @staticmethod
+    def _fit_button_label(button: QPushButton) -> None:
+        """Elide a native button from its measured decoration and live width."""
+        full_label = button.property("assistantFullLabel")
+        if not isinstance(full_label, str) or not full_label:
+            return
+        button.ensurePolished()
+        metrics = button.fontMetrics()
+        available_width = button.contentsRect().width()
+        if button.sizeHint().width() <= available_width:
+            button.setText(full_label)
+            return
+        decoration_width = max(
+            button.sizeHint().width() - metrics.horizontalAdvance(full_label),
+            0,
+        )
+        text_width = max(available_width - decoration_width, 1)
+        rendered = metrics.elidedText(
+            full_label,
+            Qt.TextElideMode.ElideRight,
+            text_width,
+        )
+        button.setText(rendered)
+        if rendered != full_label and not button.toolTip():
+            button.setToolTip(full_label)
+
+    @staticmethod
+    def _fit_wrapped_label_height(label: QLabel) -> None:
+        """Reserve the Qt-measured height of a wrapped label at its live width."""
+        if label.isHidden() or not label.text():
+            label.setMinimumHeight(0)
+            return
+        label.ensurePolished()
+        width = max(label.contentsRect().width(), 1)
+        needed = (
+            label.fontMetrics()
+            .boundingRect(
+                QRect(0, 0, width, 10_000),
+                int(
+                    Qt.AlignmentFlag.AlignLeft
+                    | Qt.AlignmentFlag.AlignTop
+                    | Qt.TextFlag.TextWordWrap
+                ),
+                label.text(),
+            )
+            .height()
+        )
+        label.setMinimumHeight(max(needed, label.fontMetrics().height()))
 
     def set_status_summary(self, text: str, tooltip: str | None = None) -> None:
         """Update stage-aware assistant guidance from a compact status string."""
@@ -1806,6 +1870,12 @@ class ChatPanel(QWidget):
         )
         for suggestion in self.suggestion_prompt_buttons:
             suggestion.fit_to_width(suggestion_width)
+        for label in (
+            self.empty_state_title,
+            self.empty_state_intro,
+            self.empty_state_next_label,
+        ):
+            self._fit_wrapped_label_height(label)
         visible_suggestions = [
             suggestion
             for suggestion in self.suggestion_prompt_buttons
@@ -1843,6 +1913,15 @@ class ChatPanel(QWidget):
             self.composer_actions,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
         )
+        for label in (
+            self.runtime_state_title,
+            self.runtime_state_detail,
+            self.turn_activity_title,
+            self.turn_activity_step,
+            self.turn_activity_scope,
+            self.turn_activity_cancelability,
+        ):
+            self._fit_wrapped_label_height(label)
         self._fit_runtime_state_to_contents()
 
     def _complete_chat_reflow(self) -> None:
@@ -1919,13 +1998,23 @@ class ChatPanel(QWidget):
 
     def _fit_response_action_labels(self, container_width: int) -> None:
         """Keep the action verb visible while retaining full accessible text."""
-        available_width = max(container_width - 48, 40)
+        layout = self.response_actions_widget.layout()
+        if layout is not None:
+            layout.activate()
         for button in self.response_actions_widget.findChildren(QToolButton):
             full_label = button.property("assistantFullLabel")
             if not isinstance(full_label, str) or not full_label:
                 continue
-            text_width = max(available_width - 24, 20)
+            button.ensurePolished()
             metrics = button.fontMetrics()
+            decoration_width = max(
+                button.sizeHint().width() - metrics.horizontalAdvance(full_label),
+                0,
+            )
+            button_width = button.contentsRect().width()
+            if button_width <= 0:
+                button_width = container_width
+            text_width = max(button_width - decoration_width, 1)
             words = full_label.rsplit(maxsplit=2)
             if len(words) == 3 and " ".join(words[-2:]).casefold() == (
                 "before continuing"
@@ -2055,6 +2144,13 @@ class ChatPanel(QWidget):
         if not isinstance(message, ChatMessageRecord):
             return
         if self._history_rebuild_active:
+            if (
+                self._response_presentation is not None
+                and self._response_presentation.presentation_id
+                == message.presentation_id
+                and message.action_state is not ChatActionState.ACTIVE
+            ):
+                self.clear_response_actions()
             self._history_rebuild_deltas.append(("updated", message))
             return
         self._apply_rendered_record_update(message)
@@ -2272,6 +2368,7 @@ class ChatPanel(QWidget):
             self._history_rebuild_active
             or self._applying_tail_scroll
             or self._restoring_reader_anchor
+            or self._reader_anchor is not None
         ):
             return
         near_bottom = self._is_near_bottom()

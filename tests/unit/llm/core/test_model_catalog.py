@@ -65,11 +65,23 @@ def test_cache_usage_scan_preserves_normal_hardlink_aware_sizing(
     payload = nested / "weights.bin"
     payload.write_bytes(b"12345")
     try:
-        os.link(payload, cache_dir / "weights-hardlink.bin")
+        hardlink = cache_dir / "weights-hardlink.bin"
+        os.link(payload, hardlink)
     except OSError as exc:  # pragma: no cover - platform privilege boundary
         pytest.skip(f"Hardlinks unavailable: {type(exc).__name__}")
 
-    assert cache_usage_bytes(str(cache_dir)) == 5
+    assert os.path.samefile(payload, hardlink)
+    source_stat = payload.stat()
+    hardlink_stat = hardlink.stat()
+    exposes_shared_inode = bool(
+        source_stat.st_ino
+        and hardlink_stat.st_ino
+        and (source_stat.st_dev, source_stat.st_ino)
+        == (hardlink_stat.st_dev, hardlink_stat.st_ino)
+    )
+    expected_bytes = 5 if exposes_shared_inode else 10
+
+    assert cache_usage_bytes(str(cache_dir)) == expected_bytes
 
 
 def _write_complete_project_cache(model_root: Path) -> None:

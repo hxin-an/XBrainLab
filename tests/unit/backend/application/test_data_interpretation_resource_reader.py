@@ -7,6 +7,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.backend.path_assertions import (
+    assert_filesystem_path_lists_equal,
+    assert_filesystem_paths_equal,
+)
 from XBrainLab.backend.application.data_interpretation_resource_reader import (
     AdmittedResourceReader,
 )
@@ -151,7 +155,7 @@ def test_guard_expands_eeglab_set_to_its_admitted_external_data_file(
     ):
         pass
 
-    assert raised.value.diagnostics["path"] == str(fdt_path)
+    assert_filesystem_paths_equal(raised.value.diagnostics["path"], fdt_path)
     assert raised.value.diagnostics["purpose"] == "embedded EEG event preview"
 
 
@@ -237,7 +241,7 @@ def test_guard_expands_explicit_brainvision_parser_dependencies(
     ):
         pass
 
-    assert raised.value.diagnostics["path"] == str(vmrk_path)
+    assert_filesystem_paths_equal(raised.value.diagnostics["path"], vmrk_path)
     assert raised.value.diagnostics["purpose"] == "embedded EEG event preview"
 
 
@@ -264,5 +268,8 @@ def test_rebinding_parser_dependencies_rejects_a_new_unadmitted_reference(
         )
 
     assert raised.value.diagnostics["code"] == "interpretation_resource_not_admitted"
-    assert raised.value.diagnostics["owner_path"] == str(vhdr_path)
-    assert raised.value.diagnostics["missing_paths"] == [str(changed_eeg_path)]
+    assert_filesystem_paths_equal(raised.value.diagnostics["owner_path"], vhdr_path)
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["missing_paths"],
+        [changed_eeg_path],
+    )

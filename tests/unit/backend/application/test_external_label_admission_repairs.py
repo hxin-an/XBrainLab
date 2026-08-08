@@ -11,6 +11,10 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
+from tests.unit.backend.path_assertions import (
+    assert_filesystem_path_lists_equal,
+    filesystem_path_key,
+)
 from XBrainLab.backend.application import commands as command_contracts
 from XBrainLab.backend.application.automation import command_specs
 from XBrainLab.backend.application.commands import (
@@ -320,8 +324,8 @@ def test_preview_and_import_reuse_one_exact_materialization(
     )
 
     assert result["success_count"] == 1
-    assert hash_calls == [str(label_path)]
-    assert parser_calls == [str(label_path)]
+    assert_filesystem_path_lists_equal(hash_calls, [label_path])
+    assert_filesystem_path_lists_equal(parser_calls, [label_path])
     assert dataset.label_revisions == [1]
     assert len(dataset.batch_calls) == 1
     assert len(interpretation.recorded) == 1
@@ -446,7 +450,7 @@ def test_preview_rejects_an_overlong_public_label_value(
         "field": "unique_label",
         "observed_length": len(overlong),
         "limit": label_import_preview.MAX_LABEL_PREVIEW_TEXT_LENGTH,
-        "path": str(label_path.resolve()),
+        "path": filesystem_path_key(label_path),
         "suggestions": [
             "select the label field that contains compact class or event codes",
             "convert verbose values to bounded class or event codes",
@@ -736,7 +740,7 @@ def test_high_cardinality_first_file_stops_before_second_parser(
     )
     assert raised.value.diagnostics["code"] == expected_code
     assert raised.value.diagnostics["observed_count"] == 257
-    assert parser_calls == [str(first_labels.resolve())]
+    assert_filesystem_path_lists_equal(parser_calls, [first_labels])
     assert dataset.label_revisions == [0, 0]
     assert dataset.batch_calls == []
     assert interpretation.recorded == []

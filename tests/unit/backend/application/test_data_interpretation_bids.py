@@ -9,6 +9,7 @@ import mne
 import numpy as np
 import pytest
 
+from tests.unit.backend.path_assertions import assert_filesystem_path_lists_equal
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -477,7 +478,10 @@ def test_apply_fails_closed_when_reviewed_bids_event_content_changes(
     assert applied.diagnostics["code"] == (
         "interpretation_content_changed_after_review"
     )
-    assert applied.diagnostics["changed_paths"] == [str(events_path)]
+    assert_filesystem_path_lists_equal(
+        applied.diagnostics["changed_paths"],
+        [events_path],
+    )
     assert applied.diagnostics["next_action"] == "preview_and_review_again"
     assert applied.state.raw.count == 0
 

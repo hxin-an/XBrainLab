@@ -178,8 +178,8 @@ def training_option(tmp_path):
 
 @pytest.fixture
 def export_mocker():
-    with patch("torch.save") as mock_save, patch("os.makedirs") as mock_makedirs:
-        yield mock_save, mock_makedirs
+    with patch("torch.save") as mock_save:
+        yield mock_save
 
 
 @pytest.fixture

@@ -6,6 +6,7 @@ import re
 
 import pytest
 from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtWidgets import QBoxLayout
 
 from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 from XBrainLab.ui.chat.action_card import AssistantConfirmationCard
@@ -33,6 +34,43 @@ def _show_card(
 def _row_by_label(card: AssistantConfirmationCard, label: str):
     return next(
         row for row in card.proposal_rows if _visible_text(row.label.text()) == label
+    )
+
+
+def test_compact_actions_share_a_row_when_their_measured_widths_fit(
+    confirmation_card,
+    qtbot,
+) -> None:
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={"batch_size": 16},
+        action_label="Apply reviewed settings",
+        description="Use the reviewed training configuration.",
+        destructive=False,
+        publication_generation=7,
+    )
+    confirmation_card.present(request, current_values={"Batch size": "32"})
+    confirmation_card.ensurePolished()
+    layout = confirmation_card.layout()
+    assert layout is not None
+    card_margins = layout.contentsMargins()
+    button_margins = confirmation_card.button_layout.contentsMargins()
+    measured_width = (
+        card_margins.left()
+        + card_margins.right()
+        + button_margins.left()
+        + button_margins.right()
+        + confirmation_card.primary_button.sizeHint().width()
+        + confirmation_card.secondary_button.sizeHint().width()
+        + confirmation_card.button_layout.spacing()
+    )
+
+    confirmation_card.setFixedWidth(measured_width)
+    confirmation_card.show()
+    qtbot.wait(20)
+
+    assert (
+        confirmation_card.button_layout.direction() == QBoxLayout.Direction.LeftToRight
     )
 
 

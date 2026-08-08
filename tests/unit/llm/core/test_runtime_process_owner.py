@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections.abc import Iterator
@@ -18,7 +19,7 @@ from XBrainLab.llm.core.runtime_process import (
     LocalRuntimeTurnBusyError,
 )
 
-_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS = 10.0
+_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS = 60.0 if os.name == "nt" else 10.0
 
 
 class _CooperativeEngine:

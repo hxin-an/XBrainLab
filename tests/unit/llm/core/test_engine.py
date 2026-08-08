@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.application.resource_guard import ResourceChecker
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
@@ -14,6 +15,22 @@ def mock_config():
     return LLMConfig(
         model_name=LLMConfig.default_local_model_id(),
         inference_mode="local",
+    )
+
+
+@pytest.fixture
+def safe_cpu_model_load_ram(monkeypatch):
+    """Keep mocked model materialization independent of host memory pressure."""
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "total_bytes": 64 * 1024**3,
+                "available_bytes": 48 * 1024**3,
+                "used_bytes": 16 * 1024**3,
+            }
+        ),
     )
 
 
@@ -83,6 +100,7 @@ def test_engine_cleans_real_local_backend_after_partial_model_load(
     model_class,
     tokenizer_class,
     mock_config,
+    safe_cpu_model_load_ram,
 ):
     mock_config.device = "cpu"
     mock_config.load_in_4bit = False
@@ -112,7 +130,12 @@ def test_engine_cleans_real_local_backend_after_partial_model_load(
 
 @patch("transformers.AutoTokenizer")
 @patch("transformers.AutoModelForCausalLM")
-def test_local_backend_load_success(mock_model_cls, mock_tokenizer_cls, mock_config):
+def test_local_backend_load_success(
+    mock_model_cls,
+    mock_tokenizer_cls,
+    mock_config,
+    safe_cpu_model_load_ram,
+):
     backend = LocalBackend(mock_config)
 
     # Mock return values

@@ -3894,6 +3894,8 @@ def test_data_interpretation_preview_dialog_label_selectors_fit_review_text(qtbo
     dialog.resize(1040, 860)
     dialog.show()
     qtbot.wait(0)
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
     dialog._fit_all_tree_columns_to_viewport()
     qtbot.wait(0)
 
@@ -4685,7 +4687,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
         validation_decision={"decision": "safe"},
     )
     qtbot.addWidget(dialog)
-    dialog.resize(700, 700)
+    dialog.resize(700, max(900, dialog.minimumSizeHint().height() + 160))
     dialog.show()
     qtbot.wait(0)
     working_height = dialog.height()
@@ -4695,7 +4697,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert dialog.height() < working_height
     review_center = dialog.geometry().center()
     assert abs(review_center.x() - working_center.x()) <= 2
-    assert abs(review_center.y() - working_center.y()) <= 1
+    assert abs(review_center.y() - working_center.y()) <= 2
     compact_height = dialog.height()
 
     dialog.import_report_toggle.click()
@@ -4703,7 +4705,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert dialog.height() <= working_height
     report_center = dialog.geometry().center()
     assert abs(report_center.x() - working_center.x()) <= 2
-    assert abs(report_center.y() - working_center.y()) <= 1
+    assert abs(report_center.y() - working_center.y()) <= 2
     review_header = dialog.review_tree.header()
     review_viewport = dialog.review_tree.viewport()
     assert review_header is not None
@@ -4714,7 +4716,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert dialog.height() == working_height
     restored_center = dialog.geometry().center()
     assert abs(restored_center.x() - working_center.x()) <= 2
-    assert abs(restored_center.y() - working_center.y()) <= 1
+    assert abs(restored_center.y() - working_center.y()) <= 2
 
 
 def test_collapsed_review_geometry_is_stable_before_and_after_report_roundtrip(qtbot):

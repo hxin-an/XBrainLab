@@ -904,11 +904,10 @@ def test_forged_privacy_marker_cannot_preserve_legacy_private_logs(
     )
     for handler in configured.handlers:
         handler.flush()
+        handler.close()
 
     assert private_path not in log_file.read_text(encoding="utf-8")
     assert marker.read_bytes() == b"xbrainlab-public-diagnostics-v1\n"
-    for handler in configured.handlers:
-        handler.close()
 
 
 def test_public_marker_cannot_preserve_unsanitized_legacy_private_logs(

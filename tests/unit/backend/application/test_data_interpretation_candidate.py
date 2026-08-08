@@ -2,6 +2,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.backend.path_assertions import (
+    assert_filesystem_path_lists_equal,
+    assert_filesystem_paths_equal,
+)
 from XBrainLab.backend.application import data_interpretation_internal_events
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
@@ -986,8 +990,11 @@ def test_candidate_rebinds_changed_brainvision_reference_to_admitted_scope(
         )
 
     assert raised.value.diagnostics["code"] == "interpretation_resource_not_admitted"
-    assert raised.value.diagnostics["owner_path"] == str(vhdr_path)
-    assert raised.value.diagnostics["missing_paths"] == [str(changed_eeg_path)]
+    assert_filesystem_paths_equal(raised.value.diagnostics["owner_path"], vhdr_path)
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["missing_paths"],
+        [changed_eeg_path],
+    )
 
 
 def test_build_interpretation_candidate_filters_metadata_to_selected_files():

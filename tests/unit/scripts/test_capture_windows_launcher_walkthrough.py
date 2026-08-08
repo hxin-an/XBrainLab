@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from pathlib import PureWindowsPath
+from pathlib import PurePosixPath, PureWindowsPath
+
+import pytest
 
 from scripts.dev.capture_windows_launcher_walkthrough import (
-    ACTIVE_WINDOWS_REPO,
     ACTIVE_WSL_REPO,
-    POWERSHELL_LAUNCHER,
     REPO_ROOT,
+    _windows_path,
     extract_log_path,
+    launcher_windows_paths,
     render_markdown,
     startup_geometry_checks,
     windows_log_path_to_wsl,
@@ -23,12 +25,34 @@ def test_launcher_walkthrough_targets_the_active_repository() -> None:
     )
     assert (REPO_ROOT / "pyproject.toml").is_file()
     assert REPO_ROOT.joinpath(*launcher_relative_path).is_file()
-    assert PureWindowsPath(POWERSHELL_LAUNCHER) == PureWindowsPath(
-        ACTIVE_WINDOWS_REPO,
-    ).joinpath(
-        *launcher_relative_path,
+
+
+def test_launcher_windows_paths_are_derived_from_a_wsl_mount() -> None:
+    repo_root = PurePosixPath("/mnt/d/workspace_v2/projects/lab/xbrainlab")
+
+    active_windows_repo, powershell_launcher = launcher_windows_paths(repo_root)
+
+    assert PureWindowsPath(active_windows_repo) == PureWindowsPath(
+        r"D:\workspace_v2\projects\lab\xbrainlab"
     )
-    assert "integrated-manual" not in POWERSHELL_LAUNCHER.lower()
+    assert PureWindowsPath(powershell_launcher) == PureWindowsPath(
+        active_windows_repo,
+    ).joinpath(
+        "scripts",
+        "launchers",
+        "xbrainlab_wsl_launcher.ps1",
+    )
+    assert "integrated-manual" not in powershell_launcher.lower()
+
+
+def test_windows_path_rejects_non_wsl_paths_when_resolution_is_requested() -> None:
+    with pytest.raises(RuntimeError, match=r"Expected a /mnt/<drive>/ path"):
+        _windows_path(
+            PurePosixPath(
+                "/Users/runner/work/XBrainLab/XBrainLab/scripts/launchers/"
+                "xbrainlab_wsl_launcher.ps1"
+            )
+        )
 
 
 def test_active_launcher_sources_do_not_reference_retired_worktrees() -> None:

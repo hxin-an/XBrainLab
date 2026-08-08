@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, QSize, Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
@@ -930,6 +931,47 @@ class TestChatPanelInit:
             )
             assert required_width <= control.contentsRect().width()
 
+    def test_runtime_and_workflow_copy_refit_after_font_metrics_change(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(320, 650)
+        chat_panel.set_runtime_state("failed")
+        chat_panel.set_processing_state(True)
+        chat_panel.set_workflow_status("Waiting for a reviewed decision")
+        chat_panel.show()
+        qtbot.wait(20)
+
+        enlarged = QFont(chat_panel.font())
+        enlarged.setPointSize(max(enlarged.pointSize() + 8, 20))
+        for control in (chat_panel.retry_runtime_btn, chat_panel.setup_btn):
+            control.setStyleSheet("padding: 4px 12px;")
+            control.setFont(enlarged)
+        chat_panel.turn_activity_step.setStyleSheet("")
+        chat_panel.turn_activity_step.setFont(enlarged)
+        chat_panel._reflow_chat_content()
+        qtbot.wait(20)
+
+        for control in (chat_panel.retry_runtime_btn, chat_panel.setup_btn):
+            required_width = (
+                control.fontMetrics().horizontalAdvance(control.text()) + 24
+            )
+            assert required_width <= control.contentsRect().width()
+            if "…" in control.text():
+                assert control.toolTip()
+        status = chat_panel.turn_activity_step
+        required_height = (
+            status.fontMetrics()
+            .boundingRect(
+                QRect(0, 0, max(status.contentsRect().width(), 1), 10_000),
+                int(Qt.TextFlag.TextWordWrap),
+                status.text(),
+            )
+            .height()
+        )
+        assert status.height() >= required_height
+
     @pytest.mark.parametrize("width", [420, 760, 1280])
     def test_runtime_actions_are_fully_inside_state_surface(
         self,
@@ -1092,13 +1134,19 @@ class TestChatPanelInit:
                 ),
             ),
         )
-        qtbot.waitUntil(
-            lambda: chat_panel.response_actions_widget.isHidden() is False,
-            timeout=3_000,
-        )
+        while chat_panel.response_actions_widget.isHidden():
+            assert chat_panel._history_rebuild_active is True
+            chat_panel._history_rebuild_timer.stop()
+            chat_panel._apply_history_rebuild_chunk()
+            chat_panel._history_rebuild_timer.stop()
+
+        assert chat_panel._history_rebuild_active is True
+        assert chat_panel.response_actions_widget.isHidden() is False
 
         assert controller.consume_response_actions(live_record.presentation_id) is True
         assert chat_panel.response_actions_widget.isHidden()
+
+        chat_panel._history_rebuild_timer.start(0)
 
         qtbot.waitUntil(
             lambda: len(chat_panel.chat_content_widget.findChildren(MessageBubble))

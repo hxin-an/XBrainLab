@@ -11,6 +11,7 @@ from typing import Any, cast
 import pytest
 
 import XBrainLab.backend.application.data_load_resource_receipt as receipt_module
+from tests.unit.backend.path_assertions import filesystem_path_key
 from XBrainLab.backend.application import resource_guard
 from XBrainLab.backend.application.commands import (
     AttachLabelsCommand,
@@ -692,15 +693,16 @@ def test_data_compatibility_service_attaches_labels_with_default_event_names(
     assert payload["success_count"] == 1
     assert payload["errors"] == []
     assert payload["resource_preflight"]["risk_level"] == "safe"
-    assert dataset.batch_calls == [
-        (
-            [raw],
-            {str(label_path): pytest.approx([1, 2, 1])},
-            {"/data/sub-01_raw.fif": str(label_path)},
-            {1: "1", 2: "2"},
-            None,
-        ),
-    ]
+    assert len(dataset.batch_calls) == 1
+    targets, label_map, file_mapping, event_names, selected_events = (
+        dataset.batch_calls[0]
+    )
+    canonical_label_path = filesystem_path_key(label_path)
+    assert targets == [raw]
+    assert label_map[canonical_label_path] == pytest.approx([1, 2, 1])
+    assert file_mapping == {"/data/sub-01_raw.fif": canonical_label_path}
+    assert event_names == {1: "1", 2: "2"}
+    assert selected_events is None
 
 
 def test_data_compatibility_service_attach_labels_rejects_missing_target() -> None:
@@ -776,8 +778,9 @@ def test_data_compatibility_service_attach_labels_accepts_full_data_path_without
         dataset.batch_calls[0]
     )
     assert targets == [raw]
-    assert label_map[str(label_path)].tolist() == ["left", "right"]
-    assert file_mapping == {"/data/sub-01_raw.fif": str(label_path)}
+    canonical_label_path = filesystem_path_key(label_path)
+    assert label_map[canonical_label_path].tolist() == ["left", "right"]
+    assert file_mapping == {"/data/sub-01_raw.fif": canonical_label_path}
     assert event_names == {"left": "left", "right": "right"}
     assert selected_events is None
 
@@ -816,11 +819,13 @@ def test_data_compatibility_service_attach_labels_batches_multiple_files_without
         dataset.batch_calls[0]
     )
     assert targets == [raw_1, raw_2]
-    assert label_map[str(label_1)].tolist() == [1, 2]
-    assert label_map[str(label_2)].tolist() == [2, 1]
+    canonical_label_1 = filesystem_path_key(label_1)
+    canonical_label_2 = filesystem_path_key(label_2)
+    assert label_map[canonical_label_1].tolist() == [1, 2]
+    assert label_map[canonical_label_2].tolist() == [2, 1]
     assert file_mapping == {
-        "/data/sub-01_raw.fif": str(label_1),
-        "/data/sub-02_raw.fif": str(label_2),
+        "/data/sub-01_raw.fif": canonical_label_1,
+        "/data/sub-02_raw.fif": canonical_label_2,
     }
     assert event_names == {1: "1", 2: "2"}
     assert selected_events == ["cue"]
@@ -881,5 +886,5 @@ def test_data_compatibility_service_imports_labels_and_updates_recipe(
         "selected_event_names": ["cue"],
     }
     assert interpretation.recorded[0]["file_mapping"] == {
-        "/data/sub-01_raw.fif": str(label_path),
+        "/data/sub-01_raw.fif": filesystem_path_key(label_path),
     }

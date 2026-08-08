@@ -1450,6 +1450,13 @@ def test_worker_traceback_is_sanitized_before_visible_bubble(
         assert "Traceback" not in visible_message
         assert "/private/project" not in visible_message
         assert "secret-token-123" not in visible_message
+        qtbot.waitUntil(
+            lambda: (
+                (bubble := harness.panel._latest_message_bubble()) is not None
+                and bubble.get_text() == visible_message
+            ),
+            timeout=WATCHDOG_MS,
+        )
         bubble = harness.panel._latest_message_bubble()
         assert bubble is not None
         assert bubble.get_text() == visible_message

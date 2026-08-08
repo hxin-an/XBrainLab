@@ -413,42 +413,51 @@ class TestImportLabelDialogBrowse:
             dialog.browse_files()
         assert dialog.file_list.count() == 0
 
-    def test_browse_files_loads_file(self, qtbot):
+    def test_browse_files_loads_file(self, qtbot, tmp_path):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
+        label_path = tmp_path / "labels.txt"
+        expected_path = str(label_path.resolve())
         with (
             patch(
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
             ) as mock_fd,
             patch.object(dialog, "_request_preview") as request_preview,
         ):
-            mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
+            mock_fd.getOpenFileNames.return_value = ([str(label_path)], "")
             dialog.browse_files()
         request_preview.assert_called_once_with()
         assert dialog.file_list.count() == 1
-        assert (
-            dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == "/tmp/labels.txt"
-        )
+        assert dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == expected_path
 
-    def test_browse_files_skips_duplicate(self, qtbot):
+    def test_browse_files_skips_duplicate(self, qtbot, tmp_path):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog._add_label_path("/tmp/labels.txt")
+        label_path = tmp_path / "labels.txt"
+        expected_path = str(label_path.resolve())
+        dialog._add_label_path(str(label_path))
         with (
             patch(
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
             ) as mock_fd,
             patch.object(dialog, "_request_preview") as request_preview,
         ):
-            mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
+            mock_fd.getOpenFileNames.return_value = ([str(label_path)], "")
             dialog.browse_files()
         request_preview.assert_not_called()
         assert dialog.file_list.count() == 1
-        assert dialog.label_paths == ["/tmp/labels.txt"]
+        assert dialog.label_paths == [expected_path]
 
-    def test_browse_files_allows_same_basename_from_different_dirs(self, qtbot):
+    def test_browse_files_allows_same_basename_from_different_dirs(
+        self,
+        qtbot,
+        tmp_path,
+    ):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
+        first_path = tmp_path / "sub01" / "labels.txt"
+        second_path = tmp_path / "sub02" / "labels.txt"
+        expected_paths = [str(first_path.resolve()), str(second_path.resolve())]
         with (
             patch(
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
@@ -456,19 +465,17 @@ class TestImportLabelDialogBrowse:
             patch.object(dialog, "_request_preview"),
         ):
             mock_fd.getOpenFileNames.return_value = (
-                ["/tmp/sub01/labels.txt", "/tmp/sub02/labels.txt"],
+                [str(first_path), str(second_path)],
                 "",
             )
             dialog.browse_files()
 
         assert dialog.file_list.count() == 2
         assert (
-            dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole)
-            == "/tmp/sub01/labels.txt"
+            dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == expected_paths[0]
         )
         assert (
-            dialog.file_list.item(1).data(Qt.ItemDataRole.UserRole)
-            == "/tmp/sub02/labels.txt"
+            dialog.file_list.item(1).data(Qt.ItemDataRole.UserRole) == expected_paths[1]
         )
 
     def test_browse_files_handles_backend_preview_error(self, qtbot, monkeypatch):

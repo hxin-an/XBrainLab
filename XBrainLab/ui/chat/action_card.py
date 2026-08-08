@@ -634,6 +634,9 @@ class AssistantConfirmationCard(QFrame):
 
     def _update_button_layout_direction(self) -> None:
         """Choose the action layout from rendered labels, not a viewport guess."""
+        self.ensurePolished()
+        self.primary_button.ensurePolished()
+        self.secondary_button.ensurePolished()
         card_layout = self.layout()
         card_margins = (
             card_layout.contentsMargins() if card_layout is not None else None
@@ -645,14 +648,10 @@ class AssistantConfirmationCard(QFrame):
             + button_margins.right()
         )
         available_width = max(self.width() - horizontal_padding, 1)
-        required_button_width = max(
-            self.primary_button.sizeHint().width(),
-            self.secondary_button.sizeHint().width(),
-        )
-        # Both expanding buttons receive the same horizontal share. Stack when
-        # either real label would be clipped by that share.
         required_horizontal_width = (
-            required_button_width * 2 + self.button_layout.spacing()
+            self.primary_button.sizeHint().width()
+            + self.secondary_button.sizeHint().width()
+            + self.button_layout.spacing()
         )
         self.button_layout.setDirection(
             QBoxLayout.Direction.TopToBottom

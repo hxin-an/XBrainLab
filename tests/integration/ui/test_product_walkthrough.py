@@ -750,6 +750,7 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
         title: str,
         directory: str,
         file_filter: str,
+        options=None,
     ):
         chooser_calls.append((parent, title, directory, file_filter))
         return ([], "")
@@ -1269,7 +1270,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         _click(qtbot, test_app.training_panel.sidebar.btn_model)
     training_state = _application_state(test_app.study)["training"]
     assert training_state["has_model"] is True
-    assert training_state["model_name"] == "EEGNet"
+    assert training_state["model_name"] == "EEGNet (XBrainLab)"
 
     with patch(
         "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog",

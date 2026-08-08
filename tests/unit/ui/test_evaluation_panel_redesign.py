@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 from matplotlib.figure import Figure
-from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -39,7 +39,10 @@ from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
-from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.panels.evaluation.panel import (
+    INFO_SIDEBAR_WIDTH,
+    EvaluationPanel,
+)
 from XBrainLab.ui.styles.theme import Theme
 
 
@@ -133,6 +136,25 @@ class MockMainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.study = MockStudy()
+
+
+def _mapped_rect(widget: QWidget, ancestor: QWidget) -> QRect:
+    return QRect(widget.mapTo(ancestor, QPoint()), widget.size())
+
+
+def _assert_controls_are_contained_and_disjoint(panel: EvaluationPanel) -> None:
+    bar = panel.evaluation_controls_bar
+    controls = (
+        panel.model_combo,
+        panel.run_combo,
+        panel.split_combo,
+        panel.chk_percentage,
+    )
+    rects = [_mapped_rect(control, bar) for control in controls]
+    for rect in rects:
+        assert bar.contentsRect().contains(rect)
+    for index, rect in enumerate(rects):
+        assert all(not rect.intersects(other) for other in rects[index + 1 :])
 
 
 def test_evaluation_panel_layout(qtbot):
@@ -351,11 +373,8 @@ def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
         QPoint(),
     )
     assert split_pos.y() > run_pos.y()
-    assert panel.chk_percentage.parent() is panel.split_combo.parent()
-    assert split_pos.x() + panel.split_combo.width() <= percentage_pos.x()
-    assert panel.chk_percentage.geometry().right() <= (
-        panel.evaluation_controls_bar.contentsRect().right()
-    )
+    assert percentage_pos.y() >= split_pos.y()
+    _assert_controls_are_contained_and_disjoint(panel)
     assert panel.model_combo.elided_current_text() != long_model
     assert panel.run_combo.elided_current_text() != long_run
     assert panel.model_combo.toolTip() == long_model
@@ -385,8 +404,9 @@ def test_evaluation_controls_wrap_before_assistant_dock_clips_common_values(qtbo
     model_pos = panel.model_combo.mapTo(panel.evaluation_controls_bar, QPoint())
     run_pos = panel.run_combo.mapTo(panel.evaluation_controls_bar, QPoint())
     split_pos = panel.split_combo.mapTo(panel.evaluation_controls_bar, QPoint())
-    assert model_pos.y() == run_pos.y()
+    assert model_pos.y() <= run_pos.y() <= split_pos.y()
     assert split_pos.y() > model_pos.y()
+    _assert_controls_are_contained_and_disjoint(panel)
     assert panel.model_combo.elided_current_text() != model_label
     assert panel.model_combo.toolTip() == model_label
     assert panel.run_combo.elided_current_text() != "Summary (Finished Runs)"
@@ -444,8 +464,8 @@ def test_evaluation_keeps_data_summary_in_fixed_right_sidebar_across_widths(
     assert panel.right_panel.isVisible()
 
 
-def test_evaluation_compact_summary_sidebar_stays_inside_panel(qtbot):
-    """The fixed summary must not be clipped when the assistant narrows content."""
+def test_evaluation_compact_summary_moves_into_results_tabs(qtbot):
+    """Extremely narrow content keeps both the plot and summary readable."""
     panel = EvaluationPanel(parent=None)
     qtbot.addWidget(panel)
 
@@ -453,15 +473,19 @@ def test_evaluation_compact_summary_sidebar_stays_inside_panel(qtbot):
     panel.show()
     qtbot.wait(80)
 
-    assert panel.right_panel.width() < 260
-    assert panel.right_panel.width() >= 200
-    assert panel.right_panel.geometry().right() <= panel.contentsRect().right()
+    assert panel.right_panel.isHidden()
+    assert panel.chart_tabs.indexOf(panel.info_panel) >= 0
+    assert panel.matrix_widget.width() >= 360
 
     panel.resize(760, 700)
     qtbot.wait(80)
 
-    assert panel.right_panel.width() == 260
-    assert panel.right_panel.geometry().right() <= panel.contentsRect().right()
+    assert panel.chart_tabs.indexOf(panel.info_panel) == -1
+    assert panel.info_panel.parentWidget() is panel.right_panel
+    assert panel.right_panel.isVisible()
+    assert panel.right_panel.width() == INFO_SIDEBAR_WIDTH
+    assert panel.contentsRect().contains(panel.right_panel.geometry())
+    assert not panel.left_widget.geometry().intersects(panel.right_panel.geometry())
 
 
 def test_evaluation_preserves_readable_plot_height_at_product_minimum(qtbot):
@@ -475,7 +499,7 @@ def test_evaluation_preserves_readable_plot_height_at_product_minimum(qtbot):
     assert panel.bottom_tabs.isVisible() is False
     assert [
         panel.chart_tabs.tabText(index) for index in range(panel.chart_tabs.count())
-    ] == ["Matrix", "Class", "Metrics", "Model"]
+    ] == ["Matrix", "Class", "Metrics", "Model", "Data"]
     assert panel.chk_percentage.width() >= panel.chk_percentage.sizeHint().width()
     tab_bar = panel.chart_tabs.tabBar()
     assert tab_bar is not None

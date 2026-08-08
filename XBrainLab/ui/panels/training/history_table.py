@@ -36,7 +36,7 @@ class TrainingHistoryTable(QTableWidget):
     ROW_HEIGHT = 30
     HEADER_PADDING = 16
     KEY_COLUMN_PADDING = 20
-    KEY_COLUMN_MAX_WIDTHS = (220, 180, 190, 120)
+    KEY_COLUMN_MAX_CHARACTERS = (28, 20, 22, 14)
     BASE_COLUMN_WIDTHS = (76, 60, 120, 88, 64, 76, 76, 72, 72, 76, 64, 80)
     FLEX_COLUMN_WEIGHTS: ClassVar[dict[int, float]] = {
         2: 0.5,
@@ -378,10 +378,18 @@ class TrainingHistoryTable(QTableWidget):
                     self.fontMetrics().horizontalAdvance(item.text())
                     + self.KEY_COLUMN_PADDING,
                 )
-            if column < len(self.KEY_COLUMN_MAX_WIDTHS):
+            if column < len(self.KEY_COLUMN_MAX_CHARACTERS):
+                # Cap unusually long identity values by a font-relative character
+                # budget. A fixed pixel cap clips ordinary names under Windows DPI
+                # and font metrics even though horizontal scrolling is available.
+                max_width = (
+                    self.fontMetrics().averageCharWidth()
+                    * self.KEY_COLUMN_MAX_CHARACTERS[column]
+                    + self.KEY_COLUMN_PADDING
+                )
                 required_width = min(
                     required_width,
-                    self.KEY_COLUMN_MAX_WIDTHS[column],
+                    max_width,
                 )
             minimum_widths[column] = required_width
             content_widths[column] = max(

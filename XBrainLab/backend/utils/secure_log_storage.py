@@ -146,7 +146,10 @@ def open_regular_log_descriptor(log_file: str, flags: int) -> int:
 
     descriptor = os.open(
         absolute_log_file,
-        flags | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+        flags
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0),
         _OWNER_READ_WRITE,
     )
     try:

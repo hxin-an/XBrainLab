@@ -529,7 +529,11 @@ class TestDataSplittingPreviewDialogSplitters:
         ]
         assert QSizePolicy.Policy.Maximum in right_panel_heights
 
-    def test_step2_results_table_uses_width_without_small_row_scrollbar(self, dlg):
+    def test_step2_results_table_uses_width_without_small_row_scrollbar(
+        self,
+        dlg,
+        qtbot,
+    ):
         rows = tuple(
             DatasetSplitPreviewRow(
                 name=f"Fold_{index}",
@@ -542,6 +546,10 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg._set_preview_state(dlg._preview_generation_id, "succeeded", rows=rows)
         dlg.update_table()
         dlg.show()
+        qtbot.waitUntil(
+            lambda: dlg.tree.verticalScrollBar().maximum() == 0,
+            timeout=1_000,
+        )
 
         assert dlg.tree.topLevelItemCount() == 5
         assert dlg.tree.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
