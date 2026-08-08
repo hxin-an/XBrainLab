@@ -69,6 +69,8 @@ class BidsSubjectSelectionDialog(BaseDialog):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         header = self.subject_table.horizontalHeader()
+        if header is None:
+            raise RuntimeError("BIDS subject table header is unavailable.")
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         for column in (2, 3, 4):

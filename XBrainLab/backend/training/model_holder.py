@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
 import torch
+
+ModelFactory = Callable[..., torch.nn.Module]
 
 
 class ModelHolder:
@@ -14,7 +17,7 @@ class ModelHolder:
     Holds the model class, model parameters, and pretrained weight path.
 
     Attributes:
-        target_model (type): Model class, inherited from `torch.nn.Module`
+        target_model: Model class or factory returning a `torch.nn.Module`.
         model_params_map (dict): Model parameters
         pretrained_weight_path (str): Path to pretrained weight
 
@@ -22,8 +25,8 @@ class ModelHolder:
 
     def __init__(
         self,
-        target_model: type,
-        model_params_map: dict,
+        target_model: ModelFactory,
+        model_params_map: dict[str, Any],
         pretrained_weight_path: str | None = None,
         *,
         model_id: str | None = None,
