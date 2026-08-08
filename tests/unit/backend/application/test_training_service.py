@@ -300,7 +300,7 @@ def test_training_service_configures_model_and_options() -> None:
 
     assert model_message == "Model configured: EEGNet."
     assert training.model_holder is not None
-    assert service.model_name(training.model_holder) == "EEGNet"
+    assert service.model_name(training.model_holder) == "EEGNet (XBrainLab)"
     assert option_message == "Training configured."
     assert training.training_option is not None
     assert option_payload["training_option"] == {
@@ -332,7 +332,7 @@ def test_training_service_maps_case_insensitive_model_without_facade() -> None:
 
     assert message == "Model configured: EEGNET."
     assert training.model_holder is not None
-    assert service.model_name(training.model_holder) == "EEGNet"
+    assert service.model_name(training.model_holder) == "EEGNet (XBrainLab)"
 
 
 def test_training_service_rejects_unknown_model_without_facade() -> None:
@@ -342,6 +342,22 @@ def test_training_service_rejects_unknown_model_without_facade() -> None:
         service.handle_configure_training(
             ConfigureTrainingCommand(model_name="nonexistent_model"),
         )
+
+
+def test_training_service_resolves_braindecode_catalog_model() -> None:
+    service, training = _service()
+
+    message = service.handle_configure_training(
+        ConfigureTrainingCommand(
+            model_name="braindecode.eegnet",
+            model_params={"F1": 12},
+        ),
+    )
+
+    assert message == "Model configured: braindecode.eegnet."
+    assert training.model_holder.model_id == "braindecode.eegnet"
+    assert training.model_holder.display_name == "EEGNet (Braindecode)"
+    assert training.model_holder.model_params_map == {"F1": 12}
 
 
 @pytest.mark.parametrize(

@@ -7,6 +7,9 @@ from typing import Any
 
 def model_name(model_holder: Any) -> str | None:
     """Return the configured model class name without importing model modules."""
+    display_name = getattr(model_holder, "display_name", None)
+    if isinstance(display_name, str) and display_name:
+        return display_name
     target_model = getattr(model_holder, "target_model", None)
     if target_model is None:
         return None

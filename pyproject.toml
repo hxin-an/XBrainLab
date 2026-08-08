@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "XBrainLab"}]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.11,<3.13"
 # Core Science Stack
 numpy = "^1.23.0"
 scipy = "^1.10.0"
@@ -19,6 +19,7 @@ h5py = "^3.10.0"
 # EEG Analysis
 mne = "^1.6.0"
 pymatreader = "^1.0.0"
+braindecode = ">=1.6,<1.7"
 
 # Deep Learning Core (Required for Backend & LLM)
 torch = "^2.11.0"
