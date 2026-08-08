@@ -148,6 +148,7 @@ class TrainingSettingDialog(BaseDialog):
         form_layout = getattr(self, "form_layout", None)
         input_column_width = 240
         if self.evaluation_combo is not None:
+            self.evaluation_combo.ensurePolished()
             metrics = self.evaluation_combo.fontMetrics()
             widest_item = max(
                 (
@@ -193,7 +194,7 @@ class TrainingSettingDialog(BaseDialog):
                 native_chrome_width = max(probe_width - edit_rect.width(), 0)
             evaluation_width = max(
                 self.evaluation_combo.sizeHint().width(),
-                widest_item + native_chrome_width + 2,
+                widest_item + native_chrome_width + 8,
             )
             input_column_width = min(
                 max(input_column_width, evaluation_width),

@@ -176,6 +176,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             summary = item.widget()
             if not isinstance(summary, QLabel) or summary.width() <= 0:
                 continue
+            summary.setMinimumHeight(0)
+            wrapped_height = summary.heightForWidth(summary.width())
             text_bounds = summary.fontMetrics().boundingRect(
                 QRect(0, 0, summary.width(), 10_000),
                 int(
@@ -186,6 +188,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 summary.text(),
             )
             required_height = max(
+                wrapped_height,
                 text_bounds.height(),
                 summary.fontMetrics().height() + 14,
             )

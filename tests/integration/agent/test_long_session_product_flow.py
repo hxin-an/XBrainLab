@@ -607,6 +607,16 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
             return len(paths), []
 
         for turn_index in range(turn_count):
+            # Start each measurement from a newly delivered tick. Otherwise the
+            # gap includes assertions from the preceding turn, which coverage
+            # instrumentation can incorrectly report as product UI starvation.
+            heartbeat_count_before_boundary = len(heartbeat_ticks)
+            qtbot.waitUntil(
+                lambda heartbeat_count_before_boundary=(
+                    heartbeat_count_before_boundary
+                ): len(heartbeat_ticks) > heartbeat_count_before_boundary,
+                timeout=1_000,
+            )
             turn_started = monotonic()
             heartbeat_count_before_turn = len(heartbeat_ticks)
             if turn_index == 0:

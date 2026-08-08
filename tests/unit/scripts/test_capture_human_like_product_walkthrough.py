@@ -741,7 +741,7 @@ def _valid_assistant_runtime_ready_phase() -> dict[str, Any]:
     return {
         "phase": "assistant_runtime_ready",
         "screenshot": "assistant-ready.png",
-        "visible_text": ["Ask about your EEG workflow...", "Send"],
+        "visible_text": ["Ask about EEG...", "Send"],
         "button_state": [{"text": "Send", "enabled": False}],
         "workflow_state": {},
         "notes": {
@@ -753,7 +753,7 @@ def _valid_assistant_runtime_ready_phase() -> dict[str, Any]:
                 "composer_visible": True,
                 "send_button_enabled": False,
                 "send_button_text": "Send",
-                "composer_placeholder": "Ask about your EEG workflow...",
+                "composer_placeholder": "Ask about EEG...",
                 "status_visible": False,
                 "status_text": "",
                 "inline_state_visible": False,
@@ -3048,7 +3048,6 @@ def test_data_import_visual_evidence_rejects_duplicate_or_wrong_step(tmp_path) -
 def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) -> None:
     widget = QWidget()
     qtbot.addWidget(widget)
-    widget.resize(1160, 110)
     full_titles = (
         "Choose EEG Data",
         "Load Labels",
@@ -3057,19 +3056,24 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
         "Review and Import",
     )
     labels: list[QLabel] = []
+    label_left = 10
     for index, title in enumerate(full_titles, start=1):
         label = QLabel(f"{index}. {title}", widget)
-        label.setGeometry(10 + (index - 1) * 220, 8, 210, 34)
+        label_width = label.fontMetrics().horizontalAdvance(label.text()) + 20
+        label.setGeometry(label_left, 8, label_width, 34)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         labels.append(label)
+        label_left += label_width + 10
+    widget.resize(max(label_left + 220, 1160), 110)
     cancel = QPushButton("Cancel", widget)
     cancel.setGeometry(10, 60, 90, 34)
     next_button = QPushButton("Next: Load Labels", widget)
     next_button.setObjectName("DataImportPrimaryButton")
-    next_button.setGeometry(940, 60, 200, 34)
+    primary_left = widget.width() - 220
+    next_button.setGeometry(primary_left, 60, 200, 34)
     apply_button = QPushButton("Confirm and Import", widget)
     apply_button.setObjectName("DataImportPrimaryButton")
-    apply_button.setGeometry(940, 60, 200, 34)
+    apply_button.setGeometry(primary_left, 60, 200, 34)
     apply_button.hide()
     summary = QLabel("Found 1 EEG file and 1 label carrier.", widget)
     summary.setGeometry(300, 44, 300, 18)
@@ -3246,11 +3250,12 @@ def test_text_paint_guard_honors_label_alignment_and_contents_margins(
 ) -> None:
     root = QWidget()
     qtbot.addWidget(root)
-    root.resize(620, 120)
     root.setStyleSheet("background: #202020;")
     label = QLabel("Interpretation summary is ready for review.", root)
-    label.setGeometry(30, 30, 560, 44)
     label.setContentsMargins(32, 4, 24, 4)
+    label_width = label.fontMetrics().horizontalAdvance(label.text()) + 56 + 16
+    label.setGeometry(30, 30, label_width, 44)
+    root.resize(label_width + 60, 120)
     label.setAlignment(alignment | Qt.AlignmentFlag.AlignVCenter)
     label.setStyleSheet("color: #f2f2f2; background: #303030;")
     root.show()
@@ -3273,8 +3278,8 @@ def test_unwrapped_label_probe_uses_widget_logical_font_metrics(
 ) -> None:
     label = QLabel("Interpretation summary is ready for review.")
     qtbot.addWidget(label)
-    label.resize(560, 44)
     label.setContentsMargins(32, 4, 24, 4)
+    label.resize(label.fontMetrics().horizontalAdvance(label.text()) + 56 + 16, 44)
     label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     def reject_device_independent_layout(*_args, **_kwargs):

@@ -205,7 +205,7 @@ def test_assistant_active_turn_capture_is_ready_before_processing(qtbot) -> None
     assert scrollbar.maximum() == 0
     placeholder = assistant_composer_placeholder_evidence(panel)
     assert placeholder["visible"] is True
-    assert placeholder["text"] == "Ask about your EEG workflow..."
+    assert placeholder["text"] == "Ask about EEG..."
     assert placeholder["available_width"] > 0
     assert placeholder["available_height"] > 0
 

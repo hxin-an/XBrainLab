@@ -1409,7 +1409,8 @@ class TrainingSidebar(QWidget):
     ) -> None:
         """Resolve backend resource outcomes on the GUI thread."""
         if not result.failed:
-            self._show_status("Training started")
+            if self._training_start_ack_is_current():
+                self._show_status("Training started")
             return
 
         if is_stale_publication_result(result):
@@ -1479,6 +1480,17 @@ class TrainingSidebar(QWidget):
             "Error",
             f"Failed to start training: {result.message}",
         )
+
+    def _training_start_ack_is_current(self) -> bool:
+        """Reject a command acknowledgement superseded by typed terminal truth."""
+        publication = self._application_publication()
+        if publication is None:
+            return not self._has_product_publication_context()
+        if not bool(getattr(publication, "usable", False)):
+            return False
+        training = getattr(getattr(publication, "state", None), "training", None)
+        outcome = getattr(training, "terminal_outcome", None)
+        return outcome is not None and not bool(getattr(outcome, "is_terminal", True))
 
     def _should_start_training(self, train_capability) -> bool:
         if train_capability is None:

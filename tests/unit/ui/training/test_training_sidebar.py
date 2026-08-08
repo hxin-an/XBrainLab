@@ -318,6 +318,58 @@ def test_duplicate_late_train_results_cannot_overwrite_terminal_publication(side
     assert sidebar.btn_stop.isEnabled() is False
 
 
+def test_late_train_ack_cannot_overwrite_terminal_publication_status(sidebar):
+    terminal_publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            training=SimpleNamespace(
+                terminal_outcome=SimpleNamespace(is_terminal=True),
+            ),
+        ),
+    )
+
+    with (
+        patch.object(
+            sidebar,
+            "_application_publication",
+            return_value=terminal_publication,
+        ),
+        patch.object(sidebar, "_show_status") as show_status,
+    ):
+        sidebar._handle_start_training_result(
+            _training_result(preflight=_training_preflight()),
+            unknown_retried=False,
+        )
+
+    show_status.assert_not_called()
+
+
+def test_current_train_ack_reports_started_from_nonterminal_publication(sidebar):
+    running_publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            training=SimpleNamespace(
+                terminal_outcome=SimpleNamespace(is_terminal=False),
+            ),
+        ),
+    )
+
+    with (
+        patch.object(
+            sidebar,
+            "_application_publication",
+            return_value=running_publication,
+        ),
+        patch.object(sidebar, "_show_status") as show_status,
+    ):
+        sidebar._handle_start_training_result(
+            _training_result(preflight=_training_preflight()),
+            unknown_retried=False,
+        )
+
+    show_status.assert_called_once_with("Training started")
+
+
 def test_completed_command_ack_leaves_readiness_to_publication(sidebar):
     with (
         patch.object(sidebar, "check_ready_to_train") as check_ready,

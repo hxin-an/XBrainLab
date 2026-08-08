@@ -1348,6 +1348,22 @@ def test_shutdown_fence_does_not_wait_for_saliency_terminal_reconciliation() -> 
     service.training_runtime.cancel_saliency_job.assert_called_once_with()
 
 
+def test_close_releases_saliency_delivery_when_automation_cancel_fails() -> None:
+    service = ApplicationService(Study())
+    service.post_training_saliency.cancel = MagicMock(
+        side_effect=RuntimeError("automation cancel failed")
+    )
+    service.training_runtime.cancel_saliency_job = MagicMock()
+    service.training_runtime.discard_saliency_delivery = MagicMock()
+
+    service.close()
+
+    assert service.is_closed is True
+    service.post_training_saliency.cancel.assert_called_once_with()
+    service.training_runtime.cancel_saliency_job.assert_called_once_with()
+    service.training_runtime.discard_saliency_delivery.assert_called_once_with()
+
+
 def test_shutdown_fence_rechecks_command_queued_before_fence(monkeypatch) -> None:
     study = Study()
     service = ApplicationService(study)

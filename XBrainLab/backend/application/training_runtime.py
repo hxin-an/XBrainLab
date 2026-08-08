@@ -163,6 +163,8 @@ class PostTrainingSaliencyRuntimePort(Protocol):
 
     def retry_saliency_delivery(self) -> None: ...
 
+    def discard_saliency_delivery(self) -> None: ...
+
 
 class TrainingRuntimePort(
     TrainingStateReadPort,
@@ -262,6 +264,8 @@ class _TrainingManagerRuntimePort(Protocol):
     ) -> bool: ...
 
     def retry_post_training_saliency_terminal_delivery(self) -> None: ...
+
+    def discard_post_training_saliency_terminal_delivery(self) -> None: ...
 
 
 class _TrainingRuntimeStudy(Protocol):
@@ -547,6 +551,9 @@ class StudyTrainingRuntime:
 
     def retry_saliency_delivery(self) -> None:
         self._manager.retry_post_training_saliency_terminal_delivery()
+
+    def discard_saliency_delivery(self) -> None:
+        self._manager.discard_post_training_saliency_terminal_delivery()
 
 
 __all__ = [

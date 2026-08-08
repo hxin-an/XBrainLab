@@ -178,6 +178,9 @@ class _TrainingManager:
     def retry_post_training_saliency_terminal_delivery(self) -> None:
         self.calls.append(("retry_delivery",))
 
+    def discard_post_training_saliency_terminal_delivery(self) -> None:
+        self.calls.append(("discard_delivery",))
+
     def capture_pipeline_mutation_boundary(self) -> TrainingPipelineMutationBoundary:
         trainer = self.trainer
         read_boundary = (
@@ -329,6 +332,7 @@ def test_training_runtime_forwards_saliency_lifecycle_without_changing_identity(
     runtime.cancel_saliency_job()
     assert runtime.wait_for_saliency_delivery(timeout=0.75) is True
     runtime.retry_saliency_delivery()
+    runtime.discard_saliency_delivery()
 
     assert manager.calls == [
         ("status",),
@@ -343,6 +347,7 @@ def test_training_runtime_forwards_saliency_lifecycle_without_changing_identity(
         ("cancel_job",),
         ("wait_delivery", 0.75),
         ("retry_delivery",),
+        ("discard_delivery",),
     ]
 
 

@@ -1903,6 +1903,19 @@ class TrainingManager:
         """Retry one retained terminal generation without another state event."""
         self._retry_post_training_saliency_terminal_delivery()
 
+    def discard_post_training_saliency_terminal_delivery(self) -> None:
+        """Release retained terminal delivery work during permanent shutdown."""
+        with self._saliency_terminal_delivery_lock:
+            timer = self._saliency_terminal_retry_timer
+            self._saliency_terminal_retry_timer = None
+            self._saliency_terminal_retry_fallback_thread = None
+            self._saliency_terminal_pending.clear()
+            self._saliency_terminal_delivery_active = False
+            self._saliency_terminal_retry_unavailable = False
+            self._saliency_terminal_delivery_idle.set()
+        if timer is not None:
+            timer.cancel()
+
     def _cancel_post_training_saliency(
         self,
         *,

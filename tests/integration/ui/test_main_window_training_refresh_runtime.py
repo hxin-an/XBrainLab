@@ -122,8 +122,16 @@ def runtime_lifecycle(request, qtbot):
     def own(window: Any, service: Any) -> None:
         def close_runtime() -> None:
             service.wait_for_background_tasks(timeout=10.0)
+            if not sip.isdeleted(window):
+                window.close()
+                qtbot.waitUntil(
+                    lambda: sip.isdeleted(window) or not window.isVisible(),
+                    timeout=10_000,
+                )
+            service.close()
+            assert service.is_closed
 
-            def assert_delivery_owners_idle() -> None:
+            def assert_delivery_owners_released() -> None:
                 training = service.training_publications.training_delivery_state()
                 application_saliency = (
                     service.training_publications.saliency_delivery_state()
@@ -145,15 +153,7 @@ def runtime_lifecycle(request, qtbot):
                     f"runtime_saliency={runtime_saliency!r}"
                 )
 
-            qtbot.waitUntil(assert_delivery_owners_idle, timeout=10_000)
-            if not sip.isdeleted(window):
-                window.close()
-                qtbot.waitUntil(
-                    lambda: sip.isdeleted(window) or not window.isVisible(),
-                    timeout=10_000,
-                )
-            service.close()
-            assert service.is_closed
+            qtbot.waitUntil(assert_delivery_owners_released, timeout=10_000)
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
             QCoreApplication.processEvents()
 

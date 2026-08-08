@@ -335,7 +335,7 @@ class ChatPanel(QWidget):
         input_layout.setSpacing(6)
 
         self.input_field = AssistantComposer()
-        self.input_field.setPlaceholderText("Ask about your EEG workflow...")
+        self.input_field.setPlaceholderText("Ask about EEG...")
         self.input_field.setAccessibleName("Assistant message")
         self.input_field.setAccessibleDescription(
             "Ask about the current EEG workflow or describe the next action you need."
@@ -1495,7 +1495,7 @@ class ChatPanel(QWidget):
             self.runtime_actions.setVisible(False)
         elif self._runtime_phase is AssistantRuntimePhase.READY:
             self.input_widget.setVisible(True)
-            self.input_field.setPlaceholderText("Ask about your EEG workflow...")
+            self.input_field.setPlaceholderText("Ask about EEG...")
             self.workflow_run_status_label.setVisible(False)
             self.runtime_progress.setVisible(False)
             self.retry_runtime_btn.setVisible(False)
