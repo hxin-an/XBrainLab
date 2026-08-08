@@ -16894,3 +16894,26 @@
 - claim boundary：
   - This is a validated task-branch checkpoint. It does not claim arbitrary BIDS compatibility or
     Windows-native usability acceptance; those remain separate handoff evidence.
+
+### 2026-08-08 EEG workflow improvements integration candidate
+
+- completed：
+  - Integrated a curated Braindecode model catalog, BIDS subject preselection, published training
+    test accuracy, backend-admitted cross-fold Evaluation summaries, and cross-fold Saliency with
+    detached display normalization on `integration/eeg-workflow-improvements-v1`.
+  - Kept cross-fold summaries fail-closed: the backend admits exact test-only cohort members and
+    compatible Saliency provenance rather than letting the UI infer fold membership.
+  - Corrected the shared model-holder contract so both model classes and adapter factories are
+    typed as callables returning `torch.nn.Module`.
+- validation：
+  - Focused backend -> `74 passed`; focused Qt UI -> `204 passed`; model/BIDS follow-up ->
+    `67 passed`; representative EEGNet pipeline -> `2 passed`.
+  - Public IO/BIDS/cross-source integration -> `40 passed`; strict format matrix -> `20/20`
+    lifecycle cases and `14/14` required formats; strict training runner -> `4/4` required cases.
+  - Ruff and targeted Basedpyright for all changed product Python files -> PASS / `0 errors`.
+  - Main-agent artifact review covered BIDS selection, model settings, test curve, Evaluation
+    cross-fold controls and normalized Saliency Map / Spectrogram.
+- claim boundary：
+  - This is an unmerged integration checkpoint. Exact-head CI and Windows human acceptance remain
+    required; the candidate does not prove scientific accuracy, full BIDS compliance, every
+    Braindecode model, or Assistant readiness.

@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-06`
+最後更新：`2026-08-08`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -10,7 +10,8 @@
 | 項目 | Current truth |
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
-| Active branch | `main` |
+| Product baseline | `main` |
+| Current candidate | `integration/eeg-workflow-improvements-v1`；未合併 checkpoint。 |
 | Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，baseline only |
 | Closure state | Merged development checkpoint；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
@@ -99,6 +100,22 @@ artifacts 仍是必須另行檢查的 evidence。
 目前狀態是已合併到 `main` 的 development `checkpoint`。這個分類只表示後續開發基線已收斂，
 不表示 Assistant、效能、資料格式或 release gate 已完成。
 
+## EEG Workflow Improvements Checkpoint
+
+`integration/eeg-workflow-improvements-v1` 整合五個尚未進入 `main` 的改進：curated
+Braindecode model catalog、BIDS scan 前 subject selection、training test accuracy curve、
+backend-admitted cross-fold Evaluation summary，以及 cross-fold Saliency summary / detached display
+normalization。Local focused backend `74 passed`、focused UI `204 passed`、public IO/BIDS/cross-source
+integration `40 passed`、representative EEGNet pipeline `2 passed`；strict format matrix 為 `20/20`
+lifecycle cases、`14/14` required formats，strict cross-source runner 為 `4/4` required cases。
+
+可見 artifacts 位於 `artifacts/ui/bids-subject-selection/`、
+`artifacts/ui/model-catalog-checkpoint/`、`artifacts/ui/training-test-curve/`、
+`artifacts/ui/evaluation-cross-fold-summary/`，以及 ignored
+`build/dev-artifacts/saliency-cross-fold-normalize/`。這些結果支撐 validated checkpoint，不支撐
+Windows acceptance、scientific accuracy、full Braindecode catalog、full BIDS compliance 或 merge
+approval。候選的 exact-head CI 仍須成功，才可依 PR 規則合併。
+
 ## BIDS Match Labels Performance Checkpoint
 
 `perf/bids-match-label-preview` 針對 OpenNeuro ds003061 P300 三個 runs 的 Match Labels
@@ -115,23 +132,19 @@ events。這是 task-branch checkpoint，不是 Windows 真人 acceptance 或 fu
 
 ## Current UI Checkpoint
 
-The working tree currently has focused, non-final UI evidence for the restored fixed
-`Data Summary` sidebar, Assistant presentation and Data Import replay. The Assistant set covers
-loading, empty, conversation, confirmation, long content, 320/760/1280 widths and 100/125/150%
-offscreen scale. The message layout uses content-aware bubbles, code-block-local horizontal
-scrolling and a stable multi-line composer action column. The visible header status badge is
-intentionally absent; runtime state remains available through typed panel state and accessibility
-metadata. The Data Import set covers preview, remap and applied states with source-manifest and
-fingerprint provenance.
+| Feature | Visible checkpoint | Evidence limit |
+| --- | --- | --- |
+| BIDS subject selection | `artifacts/ui/bids-subject-selection/bids-subject-selection.png` | Shows pre-scan scope selection; no adjacent exact-SHA manifest. |
+| Braindecode model catalog | `artifacts/ui/model-catalog-checkpoint/model-selection-dialog.png` | Shows one selected model; catalog breadth is covered by tests, not this image. |
+| Training test curve | `artifacts/ui/training-test-curve/training-accuracy-test-curve.png` | Shows the final published test-accuracy point; test loss is not plotted. |
+| Evaluation cross-fold controls | `artifacts/ui/evaluation-cross-fold-summary/evaluation-controls-panel.png` | Shows `All Folds` / summary controls, but the plot area is not populated. |
+| Saliency Normalize | `build/dev-artifacts/saliency-cross-fold-normalize/visualization-render-walkthrough.md` | Single-fold offscreen render evidence; it does not prove `All Folds` admission or Windows behavior. |
 
-Current development evidence lives under
-`build/dev-artifacts/assistant-product-closure-current-v6/` and
-`build/dev-artifacts/data-import-current-v9/`. The Data Import evidence records source and
-screenshot hashes, including the applied `Data Summary` source. The seven approved shell/panel captures also pass
-two-consecutive-frame stability and match `tests/baselines/ui/` exactly, including the accepted
-fixed 13-row `Data Summary` and absent visible Readiness block. These are dirty working-checkpoints
-only. They do not replace clean exact-SHA capture, real Granite/RAG evidence or Windows native
-DPI/multi-monitor acceptance.
+These are manifest-less visual checkpoints, not exact-SHA handoff evidence. The strict format matrix
+and `4/4` cross-source training smoke are useful local regression outputs but likewise do not record
+the full Git/evidence identity required by the handoff contract. A final candidate must regenerate
+populated Evaluation / cross-fold Saliency artifacts under an exact-SHA dossier and still requires
+Windows native DPI/multi-monitor acceptance.
 
 ## Delivery Flow
 
