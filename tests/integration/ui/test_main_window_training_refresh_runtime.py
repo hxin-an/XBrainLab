@@ -335,6 +335,13 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     try:
         qtbot.waitUntil(training_terminal_rendered, timeout=10_000)
         assert analysis_publications == []
+        qtbot.waitUntil(
+            lambda: _analysis_panels_show_training_state(
+                window,
+                TrainingOutcomeState.COMPLETED,
+            ),
+            timeout=10_000,
+        )
         _deliver_pending_qt_events()
         terminal_evaluation_query = evaluation._application_generation
         terminal_visualization_query = visualization.last_application_query

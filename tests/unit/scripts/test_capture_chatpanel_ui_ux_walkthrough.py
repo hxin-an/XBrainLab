@@ -168,6 +168,13 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         "restored_action_inert_check": True,
         "live_action_pre_click_region_check": True,
     }
+    collapsed_settings = payload["assistant_settings"]["screens"][0]
+    assert (
+        collapsed_settings["render_content"]["regions"]["heading"][
+            "minimum_color_count"
+        ]
+        == 2
+    )
     assert len(payload["source_files"]) == len(FINGERPRINT_RELATIVE_PATHS)
     assert tuple(screen["file"] for screen in payload["screens"]) == (
         EXPECTED_SCREEN_FILES
@@ -420,6 +427,7 @@ def test_image_content_gate_uses_font_tolerant_profile_only_for_text_regions(
     assert text_profile["passed"] is True
     assert text_profile["regions"]["empty_state"] == {
         **generic["regions"]["empty_state"],
+        "minimum_color_count": 2,
         "passed": True,
     }
 

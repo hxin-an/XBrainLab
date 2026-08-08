@@ -356,6 +356,7 @@ MAIN_NAVIGATION_TITLES = (
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
+MAX_PERSISTENT_IDLE_QT_THREADS = 16
 MAX_PERSISTENT_CUDA_RUNTIME_THREADS = 32
 GEOMETRY_WIDTH_TOLERANCE_PX = 8
 WALKTHROUGH_EVENT_ROWS = tuple(
@@ -2226,7 +2227,11 @@ def _label_text_line_probes(
     if content_rect.width() <= 0 or content_rect.height() <= 0:
         raise RuntimeError(f"{surface_name} label has no usable contents rectangle.")
 
-    layout = QTextLayout(text, label.font(), label)
+    # Keep the layout in Qt logical pixels. Passing a live QWidget as the paint
+    # device makes QTextLayout use the native device DPI on Windows while the
+    # contents rectangle remains device-independent, which falsely reports
+    # otherwise visible labels as horizontally clipped at 125%/150% scaling.
+    layout = QTextLayout(text, label.font())
     options = QTextOption()
     options.setWrapMode(
         QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
@@ -3306,7 +3311,6 @@ def _classify_persistent_runtime_threads(
         for record in raw_records
         if isinstance(record, Mapping) and isinstance(record.get("native_id"), int)
     }
-    qt_max_threads = max(_resource_int(after_close, "qt_max_threads"), 0)
     cuda_initialized = bool(after_close.get("cuda_runtime_initialized", False))
     idle_qt_ids: set[int] = set()
     cuda_runtime_ids: set[int] = set()
@@ -3342,7 +3346,11 @@ def _classify_persistent_runtime_threads(
             continue
         unexpected_ids.add(native_id)
 
-    if len(idle_qt_ids) > qt_max_threads:
+    # QThreadPool may lower maxThreadCount after a burst without immediately
+    # destroying already-created idle workers. Bound the retained pool by a
+    # product-level ceiling instead of comparing it with the *current*
+    # concurrency setting, while still requiring zero active workers above.
+    if len(idle_qt_ids) > MAX_PERSISTENT_IDLE_QT_THREADS:
         unexpected_ids.update(idle_qt_ids)
         idle_qt_ids.clear()
     if len(cuda_runtime_ids) > MAX_PERSISTENT_CUDA_RUNTIME_THREADS:
@@ -4037,10 +4045,11 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         for record in thread_records
         if record["kind"] == "_DummyThread" and not record["backed_by_os_thread"]
     ]
-    max_rss_kb = (
+    max_rss_kb = _ru_maxrss_kb(
         resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         if resource is not None
-        else 0
+        else 0,
+        platform_name=sys.platform,
     )
     current_rss_kb = (
         int(process.memory_info().rss / 1024) if process is not None else max_rss_kb
@@ -4081,6 +4090,14 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         "max_rss_kb": max_rss_kb,
         "current_rss_kb": current_rss_kb,
     }
+
+
+def _ru_maxrss_kb(reported_value: int | float, *, platform_name: str) -> int:
+    """Normalize getrusage's platform-specific high-water unit to KiB."""
+    value = max(int(reported_value), 0)
+    if platform_name == "darwin":
+        return value // 1024
+    return value
 
 
 def _linux_thread_record(native_id: int) -> dict[str, Any]:

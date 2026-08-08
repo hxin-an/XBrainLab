@@ -145,10 +145,23 @@ class TrainingSettingDialog(BaseDialog):
         form_layout = getattr(self, "form_layout", None)
         input_column_width = 240
         if self.evaluation_combo is not None:
-            input_column_width = min(
-                max(input_column_width, self.evaluation_combo.sizeHint().width()),
-                380,
+            metrics = self.evaluation_combo.fontMetrics()
+            widest_item = max(
+                (
+                    metrics.horizontalAdvance(self.evaluation_combo.itemText(index))
+                    for index in range(self.evaluation_combo.count())
+                ),
+                default=0,
             )
+            # The native combo arrow, focus frame, and contents margins need
+            # explicit room after application-font changes. sizeHint() can be
+            # stale until the next native layout pass on Windows.
+            evaluation_width = max(
+                self.evaluation_combo.sizeHint().width(),
+                widest_item + 52,
+            )
+            input_column_width = min(max(input_column_width, evaluation_width), 440)
+            self.evaluation_combo.setMinimumWidth(input_column_width)
         if form_layout is not None:
             form_layout.setColumnMinimumWidth(0, label_column_width)
             form_layout.setColumnMinimumWidth(1, input_column_width)

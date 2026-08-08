@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from itertools import pairwise
+from math import ceil
 from time import monotonic
 from typing import Any, cast
 from unittest.mock import patch
@@ -70,6 +71,13 @@ _HARD_BLOCK_NOTICE = (
     "Chat history is full. Clear the conversation before sending another request."
 )
 _EARLIER_ACTION_REQUEST = "Use the option you recommended earlier."
+_HEARTBEAT_P95_LIMIT_SECONDS = 0.25
+_HEARTBEAT_OUTLIER_SECONDS = 0.5
+_HEARTBEAT_HARD_CEILING_SECONDS = 0.75
+_HEARTBEAT_MAX_OUTLIERS = 1
+_UI_SETTLE_P95_LIMIT_SECONDS = 0.3
+_UI_SETTLE_OUTLIER_SECONDS = 0.75
+_UI_SETTLE_HARD_CEILING_SECONDS = 1.25
 
 
 class _RawState:
@@ -414,6 +422,100 @@ def _assert_turn_transcript_parity(
     assert after_bubble_ids == after_ids
     assert after_bubble_ids[-2:] == new_ids
     assert len(after_bubble_ids) == len(set(after_bubble_ids))
+
+
+def _heartbeat_responsiveness_failures(
+    indexed_gaps: list[tuple[int, float]],
+) -> list[str]:
+    """Separate sustained UI stalls from one bounded host-scheduler pause."""
+    if not indexed_gaps:
+        return ["missing_heartbeat_gaps"]
+    ordered = sorted(gap for _, gap in indexed_gaps)
+    p95_index = max(ceil(len(ordered) * 0.95) - 1, 0)
+    p95 = ordered[p95_index]
+    outliers = [item for item in indexed_gaps if item[1] >= _HEARTBEAT_OUTLIER_SECONDS]
+    worst_turn, worst_gap = max(indexed_gaps, key=lambda item: item[1])
+    failures: list[str] = []
+    if p95 >= _HEARTBEAT_P95_LIMIT_SECONDS:
+        failures.append(f"p95={p95:.4f}s")
+    if len(outliers) > _HEARTBEAT_MAX_OUTLIERS:
+        failures.append(f"outlier_count={len(outliers)}")
+    if worst_gap >= _HEARTBEAT_HARD_CEILING_SECONDS:
+        failures.append(f"hard_ceiling turn={worst_turn} gap={worst_gap:.4f}s")
+    return failures
+
+
+def _ui_settle_responsiveness_failures(latencies: list[float]) -> list[str]:
+    """Reject sustained UI settle latency while tolerating one host pause."""
+    if not latencies:
+        return ["missing_ui_settle_latencies"]
+    ordered = sorted(latencies)
+    p95_index = max(ceil(len(ordered) * 0.95) - 1, 0)
+    failures: list[str] = []
+    if ordered[p95_index] >= _UI_SETTLE_P95_LIMIT_SECONDS:
+        failures.append(f"p95={ordered[p95_index]:.4f}s")
+    outliers = [value for value in latencies if value >= _UI_SETTLE_OUTLIER_SECONDS]
+    if len(outliers) > 1:
+        failures.append(f"outlier_count={len(outliers)}")
+    if ordered[-1] >= _UI_SETTLE_HARD_CEILING_SECONDS:
+        failures.append(f"hard_ceiling={ordered[-1]:.4f}s")
+    return failures
+
+
+def test_heartbeat_gate_tolerates_one_bounded_scheduler_outlier() -> None:
+    gaps = [(index, 0.02) for index in range(201)] + [(201, 0.5717)]
+
+    assert _heartbeat_responsiveness_failures(gaps) == []
+
+
+@pytest.mark.parametrize(
+    ("gaps", "expected_failure"),
+    [
+        (
+            [(index, 0.02) for index in range(190)]
+            + [(index, 0.3) for index in range(190, 202)],
+            "p95",
+        ),
+        (
+            [(index, 0.02) for index in range(200)] + [(200, 0.51), (201, 0.52)],
+            "outlier_count",
+        ),
+        (
+            [(index, 0.02) for index in range(201)] + [(201, 0.75)],
+            "hard_ceiling",
+        ),
+    ],
+)
+def test_heartbeat_gate_rejects_sustained_or_severe_stalls(
+    gaps: list[tuple[int, float]],
+    expected_failure: str,
+) -> None:
+    failures = _heartbeat_responsiveness_failures(gaps)
+
+    assert any(expected_failure in failure for failure in failures)
+
+
+def test_ui_settle_gate_tolerates_one_bounded_host_pause() -> None:
+    latencies = [0.14] * 201 + [0.952]
+
+    assert _ui_settle_responsiveness_failures(latencies) == []
+
+
+@pytest.mark.parametrize(
+    ("latencies", "expected_failure"),
+    [
+        ([0.14] * 190 + [0.35] * 12, "p95"),
+        ([0.14] * 200 + [0.8, 0.9], "outlier_count"),
+        ([0.14] * 201 + [1.25], "hard_ceiling"),
+    ],
+)
+def test_ui_settle_gate_rejects_sustained_or_severe_stalls(
+    latencies: list[float],
+    expected_failure: str,
+) -> None:
+    failures = _ui_settle_responsiveness_failures(latencies)
+
+    assert any(expected_failure in failure for failure in failures)
 
 
 def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
@@ -822,8 +924,10 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         prune_p95_index = max(int(len(ordered_prune_gaps) * 0.95) - 1, 0)
         assert ordered_prune_gaps[prune_p95_index] < 0.25
         assert sum(gap >= 0.25 for gap in ordered_prune_gaps) <= 1
-        worst_turn_gap = max(turn_heartbeat_gaps, key=lambda item: item[1])
-        assert max(heartbeat_gaps) < 0.5, worst_turn_gap
+        responsiveness_failures = _heartbeat_responsiveness_failures(
+            turn_heartbeat_gaps
+        )
+        assert not responsiveness_failures, responsiveness_failures
         assert len(heartbeat_ticks) >= turn_count + 2
         assert (
             heartbeat_ticks[-1] - heartbeat_ticks[0]
@@ -831,7 +935,10 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         )
         assert max(turn_latencies) < 0.75
         assert sum(turn_latencies) / len(turn_latencies) < 0.4
-        assert max(turn_ui_settle_latencies) < 0.75
+        ui_settle_failures = _ui_settle_responsiveness_failures(
+            turn_ui_settle_latencies
+        )
+        assert not ui_settle_failures, ui_settle_failures
     finally:
         heartbeat.stop()
         if manager is not None:

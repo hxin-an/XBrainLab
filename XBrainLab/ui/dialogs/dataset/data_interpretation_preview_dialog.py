@@ -1820,6 +1820,8 @@ class DataInterpretationPreviewDialog(
         viewport = self.scroll_area.viewport()
         if current_page is None or viewport is None or viewport.height() <= 0:
             return
+        original_height = self.height()
+        original_viewport_height = viewport.height()
         page_layout = current_page.layout()
         if page_layout is not None:
             page_layout.activate()
@@ -1830,23 +1832,33 @@ class DataInterpretationPreviewDialog(
         # the text look compressed until the report is expanded and collapsed.
         desired_height = max(content_height + chrome_height + 8, 560)
         restore_height = self._review_restore_size.height()
+        collapsed_ceiling = max(1, restore_height - 48)
         if self.import_report_card.isHidden():
             # Native title bars can clamp the working dialog to the screen's
             # available height. Keep the collapsed review observably compact
             # even when its transient size hint matches that clamped height.
-            target_height = min(desired_height, max(1, restore_height - 48))
+            target_height = min(desired_height, collapsed_ceiling)
         else:
             target_height = min(desired_height, restore_height)
         if self.import_report_card.isHidden():
             projected_viewport_height = max(
-                viewport.height() + target_height - self.height(),
+                original_viewport_height + target_height - original_height,
                 1,
             )
             overflow = content_height - projected_viewport_height + 4
             if overflow > 0:
-                target_height = min(target_height + overflow, restore_height)
+                target_height = min(target_height + overflow, collapsed_ceiling)
         if target_height != self.height():
             self.resize_preserving_center(QSize(self.width(), target_height))
+        if self.import_report_card.isHidden():
+            # Native Windows geometry notifications can arrive after this
+            # method returns. Apply the policy to the projected viewport now so
+            # the final step never paints one stale, scrollable frame.
+            projected_viewport_height = max(
+                original_viewport_height + target_height - original_height,
+                1,
+            )
+            self._sync_scroll_policy_for_height(projected_viewport_height)
 
     def _step_content_height(self, current_page: QWidget) -> int:
         """Return the settled content height for scroll and window sizing."""
@@ -1948,6 +1960,15 @@ class DataInterpretationPreviewDialog(
             return
         viewport_height = viewport.height()
         if viewport_height <= 0:
+            return
+        self._sync_scroll_policy_for_height(viewport_height)
+
+    def _sync_scroll_policy_for_height(self, viewport_height: int) -> None:
+        """Apply scrolling against an actual or projected viewport height."""
+        if not hasattr(self, "scroll_area") or not hasattr(self, "step_stack"):
+            return
+        current = self.step_stack.currentWidget()
+        if current is None or viewport_height <= 0:
             return
         content_height = self._step_content_height(current)
         needs_scroll = content_height > viewport_height + 4

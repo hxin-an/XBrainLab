@@ -38,7 +38,14 @@ if os.name == "posix" and not _CORE_DUMPS_DISABLED:
         "Native render stress refused to load Qt because RLIMIT_CORE=0 failed."
     )
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+def _native_qt_platform(platform_name: str) -> str:
+    """Select the stable Qt plugin for native lifecycle coverage on each OS."""
+    return "cocoa" if platform_name == "darwin" else "offscreen"
+
+
+_NATIVE_QT_PLATFORM = _native_qt_platform(sys.platform)
+os.environ["QT_QPA_PLATFORM"] = _NATIVE_QT_PLATFORM
 os.environ.setdefault("PYVISTA_OFF_SCREEN", "true")
 os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -275,6 +282,7 @@ def _pump_until(
     predicate,
     *,
     timeout_seconds: float = 3.0,
+    collect_garbage: bool = False,
 ) -> None:
     deadline = time.monotonic() + timeout_seconds
     while not predicate():
@@ -282,7 +290,8 @@ def _pump_until(
             raise RuntimeError("Timed out waiting for native render lifecycle cleanup.")
         app.processEvents()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
-        gc.collect()
+        if collect_garbage:
+            gc.collect()
         time.sleep(0.002)
 
 
@@ -581,6 +590,7 @@ def _exercise_product_saliency_tabs(
                     lambda old_ref=previous_plotter_ref: old_ref is not None
                     and old_ref() is None,
                     timeout_seconds=5.0,
+                    collect_garbage=True,
                 )
                 three_d_replaced_interactors_closed += 1
         else:
@@ -830,6 +840,7 @@ def _exercise_saliency_lifecycle(
             lambda canvas_ref=initial_canvas_ref, figure_ref=initial_figure_ref: (
                 canvas_ref() is None and figure_ref() is None
             ),
+            collect_garbage=True,
         )
         metrics["saliency_figures_released"] += 1
 
@@ -885,6 +896,7 @@ def _exercise_saliency_lifecycle(
             lambda canvas_ref=installed_canvas_ref, figure_ref=installed_figure_ref: (
                 canvas_ref() is None and figure_ref() is None
             ),
+            collect_garbage=True,
         )
         metrics["saliency_figures_released"] += 1
 
@@ -918,6 +930,7 @@ def _exercise_saliency_lifecycle(
                 and figure_refs
                 and figure_refs[0]() is None
             ),
+            collect_garbage=True,
         )
         metrics["saliency_workers_released"] += 1
         metrics["saliency_signals_released"] += 1
@@ -1111,6 +1124,7 @@ def _exercise_active_render_close(
         app,
         lambda: _captured_2d_resources_released(two_d_resource_refs),
         timeout_seconds=5.0,
+        collect_garbage=True,
     )
     _pump_until(
         app,
@@ -1121,6 +1135,7 @@ def _exercise_active_render_close(
         app,
         lambda: _interactor_wrapper_released(interactor_ref),
         timeout_seconds=5.0,
+        collect_garbage=True,
     )
 
     cleanup_states = [
@@ -1227,6 +1242,8 @@ def _stress_contract_failures(
     failures = [
         metric for metric in required_true_metrics if result.get(metric) is not True
     ]
+    if result.get("qt_qpa_platform") != _NATIVE_QT_PLATFORM:
+        failures.append("qt_qpa_platform")
     product_cycles = cycles + warmup_cycles
     expected_2d_renders = product_cycles * len(PRODUCT_2D_VIEW_NAMES)
     expected_publications = expected_2d_renders + product_cycles
@@ -1431,6 +1448,7 @@ def run_stress(
     result = {
         "cycles": cycles,
         "fixture": str(fixture),
+        "qt_qpa_platform": app.platformName(),
         "startup_rss_growth_bytes": max(warmed_rss - initial_rss, 0),
         "total_post_startup_rss_growth_bytes": max(final_rss - warmed_rss, 0),
         "active_qthreadpool_workers": (

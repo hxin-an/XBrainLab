@@ -1675,6 +1675,7 @@ def _region_content_evidence(
             "box": [left, top, right, bottom],
             "pixel_count": 0,
             "color_count": 0,
+            "minimum_color_count": minimum_color_count,
             "dominant_color_ratio": 1.0,
             "channel_range": 0,
         }
@@ -1697,6 +1698,7 @@ def _region_content_evidence(
         "box": [left, top, right, bottom],
         "pixel_count": pixel_count,
         "color_count": color_count,
+        "minimum_color_count": minimum_color_count,
         "dominant_color_ratio": round(dominant_ratio, 6),
         "channel_range": channel_range,
     }
@@ -2925,6 +2927,7 @@ def _capture_assistant_settings(
                     }
                 ),
             },
+            text_content_regions=("heading",) if not advanced else (),
         )
         checks["render_content_ready"] = capture["render_content"]["passed"]
         return {

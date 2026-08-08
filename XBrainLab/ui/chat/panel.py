@@ -1604,11 +1604,15 @@ class ChatPanel(QWidget):
         button.setText(full_label)
         button.ensurePolished()
         metrics = button.fontMetrics()
-        available_width = button.contentsRect().width()
-        # Qt's contentsRect already reflects the live styled control geometry.
-        # Re-deriving decoration width from sizeHint double-counts stylesheet
-        # padding on Windows-like themes and elides labels that visibly fit.
-        text_width = max(available_width - 24, 1)
+        available_width = button.width()
+        full_size_hint = button.sizeHint().width()
+        if full_size_hint <= available_width:
+            return
+        decoration_width = max(
+            full_size_hint - metrics.horizontalAdvance(full_label),
+            0,
+        )
+        text_width = max(available_width - decoration_width, 1)
         rendered = metrics.elidedText(
             full_label,
             Qt.TextElideMode.ElideRight,

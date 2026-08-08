@@ -168,6 +168,10 @@ class EpochingDialog(BaseDialog):
         self.event_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.event_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.event_list.setShowGrid(False)
+        event_vertical_header = self.event_list.verticalHeader()
+        if event_vertical_header is not None:
+            event_vertical_header.setDefaultSectionSize(27)
+            event_vertical_header.setMinimumSectionSize(26)
 
         available_events = self.epoch_context.get("available_events") or []
 
@@ -697,7 +701,7 @@ class EpochingDialog(BaseDialog):
         }
         QTableWidget#EpochEventTable::item {
             color: #f2f5f8;
-            padding: 4px 8px;
+            padding: 2px 8px;
             border: none;
         }
         QHeaderView::section {

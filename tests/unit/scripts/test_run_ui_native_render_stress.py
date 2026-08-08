@@ -80,6 +80,7 @@ def _load_core_limit_function(
 def _load_stress_contract_function() -> Callable[..., list[str]]:
     function = _named_function("_stress_contract_failures")
     namespace: dict[str, Any] = {
+        "_NATIVE_QT_PLATFORM": "offscreen",
         "PRODUCT_2D_VIEW_NAMES": ("map", "spectrogram", "topomap"),
     }
     module = ast.Module(body=[function], type_ignores=[])
@@ -121,6 +122,15 @@ def _load_memory_contract_function() -> Callable[..., list[str]]:
     )
 
 
+def _load_native_qt_platform_function() -> Callable[[str], str]:
+    function = _named_function("_native_qt_platform")
+    namespace: dict[str, object] = {}
+    module = ast.Module(body=[function], type_ignores=[])
+    ast.fix_missing_locations(module)
+    exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
+    return cast(Callable[[str], str], namespace["_native_qt_platform"])
+
+
 def _passing_stress_result(
     *,
     cycles: int = 1,
@@ -129,6 +139,7 @@ def _passing_stress_result(
     expected_2d = cycles * 3
     expected_3d_updates = cycles
     result: dict[str, object] = {
+        "qt_qpa_platform": "offscreen",
         "core_dumps_disabled": True,
         "active_render_close_fenced": True,
         "active_render_close_completed": True,
@@ -278,6 +289,41 @@ def test_posix_parent_stops_before_native_imports_when_core_guard_fails():
 
     assert guard is not None
     assert any(isinstance(node, ast.Raise) for node in ast.walk(guard))
+
+
+def test_native_stress_uses_cocoa_on_darwin_and_offscreen_elsewhere() -> None:
+    native_qt_platform = _load_native_qt_platform_function()
+
+    assert native_qt_platform("darwin") == "cocoa"
+    assert native_qt_platform("linux") == "offscreen"
+    assert native_qt_platform("win32") == "offscreen"
+
+
+def test_native_wait_loop_only_collects_garbage_when_explicitly_requested() -> None:
+    function = _named_function("_pump_until")
+    collect_calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "gc"
+        and node.func.attr == "collect"
+    ]
+
+    assert collect_calls
+    assert all(
+        any(
+            isinstance(parent, ast.If)
+            and any(candidate is call for candidate in ast.walk(parent))
+            and any(
+                isinstance(candidate, ast.Name) and candidate.id == "collect_garbage"
+                for candidate in ast.walk(parent.test)
+            )
+            for parent in ast.walk(function)
+        )
+        for call in collect_calls
+    )
 
 
 def test_product_tab_stress_uses_public_panel_publication_path():

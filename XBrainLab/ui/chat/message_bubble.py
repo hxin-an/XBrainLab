@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from math import ceil
 
 from PyQt6.QtCore import QEvent, Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QDesktopServices, QPalette, QTextLayout, QTextOption
+from PyQt6.QtGui import QColor, QDesktopServices, QPalette, QTextOption
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -177,27 +177,17 @@ class _CodeBlockView(QPlainTextEdit):
         if document is None:
             return 24
         rendered_widths: list[float] = []
-        text_option = QTextOption(document.defaultTextOption())
-        text_option.setWrapMode(QTextOption.WrapMode.NoWrap)
-        text_option.setTabStopDistance(self.tabStopDistance())
+        document_layout = document.documentLayout()
         block = document.begin()
         while block.isValid():
-            # QPlainTextDocumentLayout can retain pre-polish tab geometry on
-            # Windows after a native font or DPI change. A fresh QTextLayout
-            # uses the live font and the same pixel tab stop without relying on
-            # that platform cache.
-            block_layout = QTextLayout(
-                block.text(),
-                document.defaultFont(),
-                self.viewport(),
-            )
-            block_layout.setTextOption(text_option)
-            block_layout.beginLayout()
-            line = block_layout.createLine()
-            if line.isValid():
-                line.setLineWidth(1_000_000.0)
-                rendered_widths.append(line.naturalTextWidth())
-            block_layout.endLayout()
+            if document_layout is not None:
+                document_layout.blockBoundingRect(block)
+            block_layout = block.layout()
+            if block_layout is not None:
+                rendered_widths.extend(
+                    block_layout.lineAt(index).naturalTextWidth()
+                    for index in range(block_layout.lineCount())
+                )
             block = block.next()
         return ceil(max(rendered_widths, default=0.0)) + 24
 

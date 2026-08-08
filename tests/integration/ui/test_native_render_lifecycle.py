@@ -22,7 +22,7 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
     env = dict(os.environ)
     env.update(
         {
-            "QT_QPA_PLATFORM": "offscreen",
+            "QT_QPA_PLATFORM": "cocoa" if sys.platform == "darwin" else "offscreen",
             "PYVISTA_OFF_SCREEN": "true",
             "MPLBACKEND": "Agg",
         }
@@ -46,6 +46,9 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
         if line.startswith("UI_NATIVE_STRESS=")
     )
     result = json.loads(result_line.split("=", 1)[1])
+    assert result["qt_qpa_platform"] == (
+        "cocoa" if sys.platform == "darwin" else "offscreen"
+    )
     assert result["active_qthreadpool_workers"] == 0
     assert isinstance(result["core_dumps_disabled"], bool)
     if os.name == "posix":
