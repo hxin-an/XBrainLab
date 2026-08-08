@@ -2227,6 +2227,31 @@ def _label_text_line_probes(
     if content_rect.width() <= 0 or content_rect.height() <= 0:
         raise RuntimeError(f"{surface_name} label has no usable contents rectangle.")
 
+    metrics = label.fontMetrics()
+    horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
+    vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
+    if not label.wordWrap():
+        text_width = max(metrics.horizontalAdvance(text), 1)
+        line_height = metrics.lineSpacing()
+        if text_width > content_rect.width():
+            raise RuntimeError(f"{surface_name} label text is horizontally clipped.")
+        if line_height > content_rect.height():
+            raise RuntimeError(f"{surface_name} label text is vertically clipped.")
+        if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
+            local_x = content_rect.right() - text_width + 1
+        elif horizontal_alignment == Qt.AlignmentFlag.AlignHCenter:
+            local_x = content_rect.x() + (content_rect.width() - text_width) // 2
+        else:
+            local_x = content_rect.x()
+        if vertical_alignment == Qt.AlignmentFlag.AlignBottom:
+            local_y = content_rect.bottom() - line_height + 1
+        elif vertical_alignment == Qt.AlignmentFlag.AlignTop:
+            local_y = content_rect.y()
+        else:
+            local_y = content_rect.y() + (content_rect.height() - line_height) // 2
+        probe = QRect(local_x - 3, local_y - 3, text_width + 6, line_height + 6)
+        return [(probe.intersected(content_rect), text_width)]
+
     # Keep the layout in Qt logical pixels. Passing a live QWidget as the paint
     # device makes QTextLayout use the native device DPI on Windows while the
     # contents rectangle remains device-independent, which falsely reports
@@ -2253,7 +2278,6 @@ def _label_text_line_probes(
     if not lines:
         raise RuntimeError(f"{surface_name} label has no text layout lines.")
 
-    metrics = label.fontMetrics()
     line_heights = [max(ceil(line.height()), metrics.height()) for line in lines]
     required_height = sum(line_heights)
     if label.wordWrap() and required_height > content_rect.height():
@@ -2263,8 +2287,6 @@ def _label_text_line_probes(
             f"needs {required_height}px, has {content_rect.height()}px."
         )
 
-    horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
-    vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
     if vertical_alignment == Qt.AlignmentFlag.AlignBottom:
         local_y = content_rect.y() + content_rect.height() - required_height
     elif vertical_alignment == Qt.AlignmentFlag.AlignTop:
@@ -3312,11 +3334,33 @@ def _classify_persistent_runtime_threads(
         if isinstance(record, Mapping) and isinstance(record.get("native_id"), int)
     }
     cuda_initialized = bool(after_close.get("cuda_runtime_initialized", False))
+    platform_name = str(after_close.get("platform_name", "")).strip().lower()
+    qt_max_threads = max(_resource_int(after_close, "qt_max_threads"), 0)
     idle_qt_ids: set[int] = set()
     cuda_runtime_ids: set[int] = set()
     unexpected_ids: set[int] = set()
 
+    # macOS does not expose Linux /proc thread names or wait channels. Qt's
+    # global pool nevertheless retains bounded, inactive native workers after
+    # a burst. Attribute only the bounded anonymous delta, and only when the
+    # Qt pool reports zero active work; every other platform still requires
+    # explicit per-thread identity evidence.
+    anonymous_idle_qt_ids = (
+        set(extra_os_ids)
+        if (
+            platform_name == "darwin"
+            and not records
+            and qt_active_threads == 0
+            and len(extra_os_ids)
+            <= min(max(qt_max_threads, 0), MAX_PERSISTENT_IDLE_QT_THREADS)
+        )
+        else set()
+    )
+
     for native_id in extra_os_ids:
+        if native_id in anonymous_idle_qt_ids:
+            idle_qt_ids.add(native_id)
+            continue
         record = records.get(native_id)
         if record is None:
             unexpected_ids.add(native_id)
@@ -3324,10 +3368,18 @@ def _classify_persistent_runtime_threads(
         name = str(record.get("name", ""))
         wait_channel = str(record.get("wait_channel", ""))
         if (
-            name == "Thread (pooled)"
+            (
+                name == "Thread (pooled)"
+                or (platform_name == "linux" and name == "python")
+            )
             and qt_active_threads == 0
             and wait_channel.startswith("futex_wait")
         ):
+            # Some Linux CI builds preserve Qt's native thread name, while
+            # others expose the process name ("python") for the same inactive
+            # QThreadPool workers. Identity records plus a futex wait prove the
+            # worker is dormant; the product-level cap below still rejects an
+            # unbounded retained pool.
             idle_qt_ids.add(native_id)
             continue
         if cuda_initialized and name.startswith(("cuda", "pt_autograd_")):
@@ -4068,6 +4120,7 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         cuda_runtime_initialized = False
     return {
         "label": label,
+        "platform_name": sys.platform,
         "pid": os.getpid(),
         "python_threads": len(thread_records),
         "thread_names": [str(record["name"]) for record in thread_records[:12]],

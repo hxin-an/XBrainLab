@@ -335,7 +335,7 @@ class ChatPanel(QWidget):
         input_layout.setSpacing(6)
 
         self.input_field = AssistantComposer()
-        self.input_field.setPlaceholderText("Ask about the current EEG workflow...")
+        self.input_field.setPlaceholderText("Ask about your EEG workflow...")
         self.input_field.setAccessibleName("Assistant message")
         self.input_field.setAccessibleDescription(
             "Ask about the current EEG workflow or describe the next action you need."
@@ -468,6 +468,10 @@ class ChatPanel(QWidget):
         )
         self.retry_runtime_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.retry_runtime_btn.setStyleSheet(RUNTIME_PRIMARY_ACTION_STYLE)
+        self.retry_runtime_btn.ensurePolished()
+        self.retry_runtime_btn.setMinimumWidth(
+            self.retry_runtime_btn.sizeHint().width()
+        )
         self.retry_runtime_btn.clicked.connect(
             lambda _checked=False: self._request_runtime_retry()
         )
@@ -485,6 +489,8 @@ class ChatPanel(QWidget):
             "Open Assistant Settings",
         )
         self.setup_btn.setStyleSheet(RUNTIME_PRIMARY_ACTION_STYLE)
+        self.setup_btn.ensurePolished()
+        self.setup_btn.setMinimumWidth(self.setup_btn.sizeHint().width())
         self.setup_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setup_btn.clicked.connect(self.open_settings_requested)
         self.setup_btn.setVisible(False)
@@ -1483,7 +1489,7 @@ class ChatPanel(QWidget):
             self.runtime_actions.setVisible(False)
         elif self._runtime_phase is AssistantRuntimePhase.READY:
             self.input_widget.setVisible(True)
-            self.input_field.setPlaceholderText("Ask about the current EEG workflow...")
+            self.input_field.setPlaceholderText("Ask about your EEG workflow...")
             self.workflow_run_status_label.setVisible(False)
             self.runtime_progress.setVisible(False)
             self.retry_runtime_btn.setVisible(False)
@@ -1581,6 +1587,9 @@ class ChatPanel(QWidget):
         if action_layout is not None:
             action_layout.activate()
             for button in (self.retry_runtime_btn, self.setup_btn):
+                button.setText(str(button.property("assistantFullLabel")))
+                button.ensurePolished()
+                button.setMinimumWidth(button.sizeHint().width())
                 self._fit_button_label(button)
             action_layout.activate()
             self.runtime_actions.setMinimumHeight(action_layout.sizeHint().height())

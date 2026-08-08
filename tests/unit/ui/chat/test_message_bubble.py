@@ -336,9 +336,17 @@ class TestMessageBubble:
         code_block = bubble.code_blocks[0]
 
         document = code_block.document()
-        block_layout = document.begin().layout()
-        assert block_layout is not None
-        qt_layout_width = ceil(block_layout.lineAt(0).naturalTextWidth()) + 24
+        rendered_widths = []
+        block = document.begin()
+        while block.isValid():
+            block_layout = block.layout()
+            assert block_layout is not None
+            rendered_widths.extend(
+                block_layout.lineAt(index).naturalTextWidth()
+                for index in range(block_layout.lineCount())
+            )
+            block = block.next()
+        qt_layout_width = ceil(max(rendered_widths)) + 24
         assert code_block.natural_content_width() == qt_layout_width
 
         style = code_block.style()
@@ -378,9 +386,18 @@ class TestMessageBubble:
         code_block.setFont(enlarged)
         qtbot.wait(20)
 
-        block_layout = code_block.document().begin().layout()
-        assert block_layout is not None
-        qt_layout_width = ceil(block_layout.lineAt(0).naturalTextWidth()) + 24
+        document = code_block.document()
+        rendered_widths = []
+        block = document.begin()
+        while block.isValid():
+            block_layout = block.layout()
+            assert block_layout is not None
+            rendered_widths.extend(
+                block_layout.lineAt(index).naturalTextWidth()
+                for index in range(block_layout.lineCount())
+            )
+            block = block.next()
+        qt_layout_width = ceil(max(rendered_widths)) + 24
         assert code_block.natural_content_width() == qt_layout_width
 
     def test_offscreen_cjk_tab_line_sets_scrollbar_before_user_scrolls(

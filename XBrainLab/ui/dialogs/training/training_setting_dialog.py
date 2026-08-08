@@ -6,7 +6,7 @@ device, output directory, evaluation strategy, and repeat count.
 
 from typing import Any
 
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtCore import QEvent, QSize, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QStyle,
+    QStyleOptionComboBox,
     QVBoxLayout,
 )
 
@@ -122,12 +124,13 @@ class TrainingSettingDialog(BaseDialog):
 
     def _fit_dialog_to_content(self) -> None:
         """Keep form labels readable without overlapping adjacent controls."""
+        self.ensurePolished()
         labels = self.findChildren(QLabel, "TrainingSettingLabel")
         label_text_width = max(
             (label.fontMetrics().horizontalAdvance(label.text()) for label in labels),
             default=128,
         )
-        label_column_width = min(max(label_text_width + 12, 160), 240)
+        label_column_width = min(max(label_text_width + 24, 160), 260)
         for label in labels:
             label.setWordWrap(True)
             label.setMinimumWidth(label_column_width)
@@ -138,8 +141,8 @@ class TrainingSettingDialog(BaseDialog):
             )
             label.setMinimumHeight(
                 max(
-                    label.fontMetrics().height(),
-                    label.heightForWidth(label_column_width),
+                    label.fontMetrics().lineSpacing() + 4,
+                    label.heightForWidth(label_column_width) + 4,
                 )
             )
         form_layout = getattr(self, "form_layout", None)
@@ -153,14 +156,19 @@ class TrainingSettingDialog(BaseDialog):
                 ),
                 default=0,
             )
-            # The native combo arrow, focus frame, and contents margins need
-            # explicit room after application-font changes. sizeHint() can be
-            # stale until the next native layout pass on Windows.
+            style_option = QStyleOptionComboBox()
+            self.evaluation_combo.initStyleOption(style_option)
+            native_contents_size = self.evaluation_combo.style().sizeFromContents(
+                QStyle.ContentsType.CT_ComboBox,
+                style_option,
+                QSize(widest_item, metrics.height()),
+                self.evaluation_combo,
+            )
             evaluation_width = max(
                 self.evaluation_combo.sizeHint().width(),
-                widest_item + 52,
+                native_contents_size.width() + 8,
             )
-            input_column_width = min(max(input_column_width, evaluation_width), 440)
+            input_column_width = max(input_column_width, evaluation_width)
             self.evaluation_combo.setMinimumWidth(input_column_width)
         if form_layout is not None:
             form_layout.setColumnMinimumWidth(0, label_column_width)

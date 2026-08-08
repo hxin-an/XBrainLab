@@ -73,23 +73,34 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
     assert result["child_finalizers_completed"] is True
     assert result["child_finalizers_exactly_once"] is True
     assert result["two_d_resources_released"] is True
-    assert result["active_3d_engine_close_safe"] is True
-    assert result["active_3d_probe_close_safe"] is True
-    assert result["active_3d_engine_late_callbacks"] == 0
-    assert result["active_3d_probe_late_callbacks"] == 0
-    assert result["active_3d_worker_gui_heartbeat_ticks"] >= 2
     assert result["resources_finalized"] is True
     assert result["product_saliency_warmup_cycles"] == 2
     assert result["product_saliency_measurement_cycles"] == 8
     assert result["product_saliency_cycles"] == 10
-    assert result["product_saliency_publications_served"] >= 40
-    assert result["product_2d_renders_installed"] == 30
-    assert result["product_2d_loading_cleared"] == 30
-    assert result["product_2d_replaced_resources_released"] == 30
+    safe_headless_macos = sys.platform == "darwin" and bool(os.environ.get("CI"))
+    expected_2d_view_names = (
+        ["map", "spectrogram"]
+        if safe_headless_macos
+        else ["map", "spectrogram", "topomap"]
+    )
+    expected_2d_renders = 10 * len(expected_2d_view_names)
+    expected_3d_updates = 0 if safe_headless_macos else 10
+    assert result["native_render_scope"] == (
+        "headless_macos_safe_2d" if safe_headless_macos else "full_native_lifecycle"
+    )
+    assert result["product_2d_view_names"] == expected_2d_view_names
+    assert result["product_saliency_publications_served"] == (
+        expected_2d_renders + expected_3d_updates
+    )
+    assert result["product_2d_renders_installed"] == expected_2d_renders
+    assert result["product_2d_loading_cleared"] == expected_2d_renders
+    assert result["product_2d_replaced_resources_released"] == expected_2d_renders
     assert result["product_map_renders_installed"] == 10
     assert result["product_spectrogram_renders_installed"] == 10
-    assert result["product_topomap_renders_installed"] == 10
-    assert result["product_3d_tab_updates"] == 10
+    assert result["product_topomap_renders_installed"] == (
+        0 if safe_headless_macos else 10
+    )
+    assert result["product_3d_tab_updates"] == expected_3d_updates
     assert result["product_3d_renders_installed"] == 0
     assert result["product_3d_replaced_interactors_closed"] == 0
     assert result["three_d_interactor_closed"] is None
@@ -100,6 +111,24 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
     assert probe["actual_probe_executed"] is False
     assert result["product_3d_status"] == probe["status"]
     assert result["product_3d_block_reason"]
+    if safe_headless_macos:
+        assert result["product_topomap_status"] == "BLOCKED"
+        assert result["product_topomap_block_reason"]
+        assert result["active_3d_worker_status"] == "BLOCKED"
+        assert result["active_3d_worker_block_reason"]
+        assert result["active_3d_engine_close_safe"] is None
+        assert result["active_3d_probe_close_safe"] is None
+        assert result["active_3d_engine_late_callbacks"] is None
+        assert result["active_3d_probe_late_callbacks"] is None
+        assert result["active_3d_worker_gui_heartbeat_ticks"] is None
+    else:
+        assert result["product_topomap_status"] == "PASS"
+        assert result["active_3d_worker_status"] == "PASS"
+        assert result["active_3d_engine_close_safe"] is True
+        assert result["active_3d_probe_close_safe"] is True
+        assert result["active_3d_engine_late_callbacks"] == 0
+        assert result["active_3d_probe_late_callbacks"] == 0
+        assert result["active_3d_worker_gui_heartbeat_ticks"] >= 2
     assert result["product_memory_sample_count"] == 11
     assert len(result["steady_rss_samples_bytes"]) == 9
     assert len(result["steady_rss_cycle_deltas_bytes"]) == 8

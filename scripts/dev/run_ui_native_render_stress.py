@@ -99,6 +99,19 @@ MAX_STEADY_RSS_SLOPE_BYTES_PER_CYCLE = 8 * 1024 * 1024
 MAX_STEADY_RSS_CYCLE_DELTA_BYTES = 64 * 1024 * 1024
 DEFAULT_PRODUCT_WARMUP_CYCLES = 2
 PRODUCT_2D_VIEW_NAMES = ("map", "spectrogram", "topomap")
+HEADLESS_MACOS_SAFE_2D_VIEW_NAMES = ("map", "spectrogram")
+HEADLESS_MACOS_NATIVE_SCOPE = "headless_macos_safe_2d"
+FULL_NATIVE_SCOPE = "full_native_lifecycle"
+
+
+def _native_render_scope(platform_name: str, ci_value: str) -> str:
+    """Bound unsupported headless macOS native surfaces without hiding them."""
+    is_ci = ci_value.strip().casefold() in {"1", "true", "yes"}
+    return (
+        HEADLESS_MACOS_NATIVE_SCOPE
+        if platform_name == "darwin" and is_ci
+        else FULL_NATIVE_SCOPE
+    )
 
 
 def _native_stress_saliency_state() -> ApplicationStateSnapshot:
@@ -477,11 +490,19 @@ def _exercise_product_saliency_tabs(
     runtime: _NativeStressApplicationRuntime,
     process: psutil.Process,
     cycles: int,
+    native_render_scope: str,
 ) -> dict[str, object]:
     """Render every real saliency tab through the public panel path."""
-    views = (panel.tab_map, panel.tab_spectro, panel.tab_topo)
-    if not all(isinstance(view, BaseSaliencyView) for view in views):
+    all_views = (panel.tab_map, panel.tab_spectro, panel.tab_topo)
+    if not all(isinstance(view, BaseSaliencyView) for view in all_views):
         raise RuntimeError("Visualization panel did not expose the real saliency tabs.")
+    safe_headless_macos = native_render_scope == HEADLESS_MACOS_NATIVE_SCOPE
+    view_specs = [
+        ("map", 0, panel.tab_map),
+        ("spectrogram", 1, panel.tab_spectro),
+    ]
+    if not safe_headless_macos:
+        view_specs.append(("topomap", 2, panel.tab_topo))
 
     panel.on_update()
     panel.refresh_combos()
@@ -497,7 +518,20 @@ def _exercise_product_saliency_tabs(
         timeout_seconds=12.0,
     )
 
-    interactive_3d_probe = _probe_interactive_3d_gate()
+    native_block_reason = (
+        "Headless macOS CI does not provide a supported interactive OpenGL "
+        "desktop; topographic and 3D native lifecycle coverage runs on the "
+        "Linux/Windows matrix instead."
+    )
+    interactive_3d_probe = (
+        {
+            "status": "BLOCKED",
+            "actual_probe_executed": False,
+            "reason": native_block_reason,
+        }
+        if safe_headless_macos
+        else _probe_interactive_3d_gate()
+    )
     two_d_installed = 0
     two_d_loading_cleared = 0
     two_d_replaced_resources_released = 0
@@ -510,9 +544,8 @@ def _exercise_product_saliency_tabs(
     product_memory_samples = [_sample_process_memory(app=app, process=process)]
 
     for _cycle in range(cycles):
-        for view_index, (view_name, view) in enumerate(
-            zip(PRODUCT_2D_VIEW_NAMES, views, strict=True),
-        ):
+        for view_name, view_index, view in view_specs:
+            print(f"UI_NATIVE_PHASE=before:{view_name}:{_cycle}", flush=True)
             previous_figure = view.fig
             previous_canvas = view.canvas
             _activate_saliency_tab(panel, view_index)
@@ -552,67 +585,69 @@ def _exercise_product_saliency_tabs(
                         f"{view_name} retained its replaced QTAgg resources."
                     )
                 two_d_replaced_resources_released += 1
+            print(f"UI_NATIVE_PHASE=after:{view_name}:{_cycle}", flush=True)
 
-        previous_plotter = panel.tab_3d.plotter_widget
-        previous_plotter_ref = (
-            weakref.ref(previous_plotter) if previous_plotter is not None else None
-        )
-        publications_before_3d = runtime.render_publications_served
-        _activate_saliency_tab(panel, 3)
-        if interactive_3d_probe["status"] == "PASS":
-            _pump_until(
-                app,
-                lambda old_plotter=previous_plotter: (
-                    panel.tab_3d.native_render_work_idle()
-                    and panel.tab_3d.plotter_widget is not None
-                    and panel.tab_3d.plotter_widget is not old_plotter
-                    and not sip.isdeleted(panel.tab_3d.plotter_widget)
-                    and getattr(
-                        panel.tab_3d.plotter_widget,
-                        "interactor",
-                        None,
+        if not safe_headless_macos:
+            previous_plotter = panel.tab_3d.plotter_widget
+            previous_plotter_ref = (
+                weakref.ref(previous_plotter) if previous_plotter is not None else None
+            )
+            publications_before_3d = runtime.render_publications_served
+            _activate_saliency_tab(panel, 3)
+            if interactive_3d_probe["status"] == "PASS":
+                _pump_until(
+                    app,
+                    lambda old_plotter=previous_plotter: (
+                        panel.tab_3d.native_render_work_idle()
+                        and panel.tab_3d.plotter_widget is not None
+                        and panel.tab_3d.plotter_widget is not old_plotter
+                        and not sip.isdeleted(panel.tab_3d.plotter_widget)
+                        and getattr(panel.tab_3d.plotter_widget, "interactor", None)
+                        is not None
+                        and _three_d_actor_count(panel.tab_3d.plotter_widget) > 0
+                    ),
+                    timeout_seconds=30.0,
+                )
+                three_d_installed += 1
+                if previous_plotter is not None:
+                    _pump_until(
+                        app,
+                        lambda old_plotter=previous_plotter: sip.isdeleted(old_plotter),
+                        timeout_seconds=5.0,
                     )
-                    is not None
-                    and _three_d_actor_count(panel.tab_3d.plotter_widget) > 0
-                ),
-                timeout_seconds=30.0,
+                    previous_plotter = None
+                    _pump_until(
+                        app,
+                        lambda old_ref=previous_plotter_ref: old_ref is not None
+                        and old_ref() is None,
+                        timeout_seconds=5.0,
+                        collect_garbage=True,
+                    )
+                    three_d_replaced_interactors_closed += 1
+            else:
+                _pump_until(
+                    app,
+                    lambda: panel.tab_3d.native_render_work_idle(),
+                    timeout_seconds=3.0,
+                )
+                if panel.tab_3d.plotter_widget is not None:
+                    raise RuntimeError(
+                        "3D created an interactor after its runtime gate was blocked."
+                    )
+                three_d_block_reason = _visible_3d_message(panel.tab_3d) or str(
+                    interactive_3d_probe["reason"]
+                )
+            three_d_tab_updates += (
+                runtime.render_publications_served - publications_before_3d
             )
-            three_d_installed += 1
-            if previous_plotter is not None:
-                _pump_until(
-                    app,
-                    lambda old_plotter=previous_plotter: sip.isdeleted(old_plotter),
-                    timeout_seconds=5.0,
-                )
-                previous_plotter = None
-                _pump_until(
-                    app,
-                    lambda old_ref=previous_plotter_ref: old_ref is not None
-                    and old_ref() is None,
-                    timeout_seconds=5.0,
-                    collect_garbage=True,
-                )
-                three_d_replaced_interactors_closed += 1
         else:
-            _pump_until(
-                app,
-                lambda: panel.tab_3d.native_render_work_idle(),
-                timeout_seconds=3.0,
-            )
-            if panel.tab_3d.plotter_widget is not None:
-                raise RuntimeError(
-                    "3D created an interactor after its runtime gate was blocked."
-                )
-            three_d_block_reason = _visible_3d_message(panel.tab_3d) or str(
-                interactive_3d_probe["reason"]
-            )
-        three_d_tab_updates += (
-            runtime.render_publications_served - publications_before_3d
-        )
+            three_d_block_reason = native_block_reason
         product_memory_samples.append(_sample_process_memory(app=app, process=process))
 
     return {
         "product_saliency_cycles": cycles,
+        "native_render_scope": native_render_scope,
+        "product_2d_view_names": [name for name, _index, _view in view_specs],
         "product_saliency_publications_served": (
             runtime.render_publications_served - publications_before_cycles
         ),
@@ -622,6 +657,10 @@ def _exercise_product_saliency_tabs(
         "product_map_renders_installed": installed_by_view["map"],
         "product_spectrogram_renders_installed": installed_by_view["spectrogram"],
         "product_topomap_renders_installed": installed_by_view["topomap"],
+        "product_topomap_status": "BLOCKED" if safe_headless_macos else "PASS",
+        "product_topomap_block_reason": (
+            native_block_reason if safe_headless_macos else ""
+        ),
         "product_3d_status": interactive_3d_probe["status"],
         "product_3d_tab_updates": three_d_tab_updates,
         "product_3d_renders_installed": three_d_installed,
@@ -764,7 +803,22 @@ def _exercise_active_3d_worker_deletion(
         heartbeat_ticks += worker_heartbeat_ticks
 
     metrics["active_3d_worker_gui_heartbeat_ticks"] = heartbeat_ticks
+    metrics["active_3d_worker_status"] = "PASS"
+    metrics["active_3d_worker_block_reason"] = ""
     return metrics
+
+
+def _blocked_active_3d_worker_metrics(reason: str) -> dict[str, object]:
+    """Publish explicit not-run evidence for unsupported native CI surfaces."""
+    return {
+        "active_3d_worker_status": "BLOCKED",
+        "active_3d_worker_block_reason": reason,
+        "active_3d_engine_close_safe": None,
+        "active_3d_probe_close_safe": None,
+        "active_3d_engine_late_callbacks": None,
+        "active_3d_probe_late_callbacks": None,
+        "active_3d_worker_gui_heartbeat_ticks": None,
+    }
 
 
 def _probe_interactive_3d_gate() -> dict[str, object]:
@@ -1235,8 +1289,6 @@ def _stress_contract_failures(
         "child_finalizers_completed",
         "child_finalizers_exactly_once",
         "two_d_resources_released",
-        "active_3d_engine_close_safe",
-        "active_3d_probe_close_safe",
         "resources_finalized",
     )
     failures = [
@@ -1245,8 +1297,18 @@ def _stress_contract_failures(
     if result.get("qt_qpa_platform") != _NATIVE_QT_PLATFORM:
         failures.append("qt_qpa_platform")
     product_cycles = cycles + warmup_cycles
-    expected_2d_renders = product_cycles * len(PRODUCT_2D_VIEW_NAMES)
-    expected_publications = expected_2d_renders + product_cycles
+    native_render_scope = result.get("native_render_scope", FULL_NATIVE_SCOPE)
+    safe_headless_macos = native_render_scope == HEADLESS_MACOS_NATIVE_SCOPE
+    expected_view_names = (
+        HEADLESS_MACOS_SAFE_2D_VIEW_NAMES
+        if safe_headless_macos
+        else PRODUCT_2D_VIEW_NAMES
+    )
+    if result.get("product_2d_view_names") != list(expected_view_names):
+        failures.append("product_2d_view_names")
+    expected_2d_renders = product_cycles * len(expected_view_names)
+    expected_3d_updates = 0 if safe_headless_macos else product_cycles
+    expected_publications = expected_2d_renders + expected_3d_updates
     if result.get("product_saliency_cycles") != product_cycles:
         failures.append("product_saliency_cycles")
     if result.get("product_saliency_warmup_cycles", 0) != warmup_cycles:
@@ -1263,18 +1325,47 @@ def _stress_contract_failures(
         failures.append("product_2d_replaced_resources_released")
     for view_name in PRODUCT_2D_VIEW_NAMES:
         metric = f"product_{view_name}_renders_installed"
-        if result.get(metric) != product_cycles:
+        expected = product_cycles if view_name in expected_view_names else 0
+        if result.get(metric) != expected:
             failures.append(metric)
-    for worker_kind in ("engine", "probe"):
-        metric = f"active_3d_{worker_kind}_late_callbacks"
-        if result.get(metric) != 0:
-            failures.append(metric)
-    active_3d_heartbeat_ticks = result.get(
-        "active_3d_worker_gui_heartbeat_ticks",
-    )
-    if not isinstance(active_3d_heartbeat_ticks, int) or active_3d_heartbeat_ticks < 2:
-        failures.append("active_3d_worker_gui_heartbeat_ticks")
-    if result.get("product_3d_tab_updates") != product_cycles:
+    if safe_headless_macos:
+        if result.get("product_topomap_status") != "BLOCKED":
+            failures.append("product_topomap_status")
+        if not str(result.get("product_topomap_block_reason", "")).strip():
+            failures.append("product_topomap_block_reason")
+    elif result.get("product_topomap_status") != "PASS":
+        failures.append("product_topomap_status")
+    if result.get("active_3d_worker_status") == "PASS":
+        for worker_kind in ("engine", "probe"):
+            close_metric = f"active_3d_{worker_kind}_close_safe"
+            if result.get(close_metric) is not True:
+                failures.append(close_metric)
+            callback_metric = f"active_3d_{worker_kind}_late_callbacks"
+            if result.get(callback_metric) != 0:
+                failures.append(callback_metric)
+        active_3d_heartbeat_ticks = result.get(
+            "active_3d_worker_gui_heartbeat_ticks",
+        )
+        if (
+            not isinstance(active_3d_heartbeat_ticks, int)
+            or active_3d_heartbeat_ticks < 2
+        ):
+            failures.append("active_3d_worker_gui_heartbeat_ticks")
+    elif result.get("active_3d_worker_status") == "BLOCKED":
+        if not str(result.get("active_3d_worker_block_reason", "")).strip():
+            failures.append("active_3d_worker_block_reason")
+        for metric in (
+            "active_3d_engine_close_safe",
+            "active_3d_probe_close_safe",
+            "active_3d_engine_late_callbacks",
+            "active_3d_probe_late_callbacks",
+            "active_3d_worker_gui_heartbeat_ticks",
+        ):
+            if result.get(metric) is not None:
+                failures.append(metric)
+    else:
+        failures.append("active_3d_worker_status")
+    if result.get("product_3d_tab_updates") != expected_3d_updates:
         failures.append("product_3d_tab_updates")
     if result.get("product_3d_status") == "PASS":
         if result.get("product_3d_renders_installed") != product_cycles:
@@ -1387,6 +1478,10 @@ def run_stress(
     app = existing_app if isinstance(existing_app, QApplication) else QApplication([])
     process = psutil.Process()
     initial_rss = process.memory_info().rss
+    native_render_scope = _native_render_scope(
+        sys.platform,
+        os.environ.get("CI", ""),
+    )
 
     study = Study()
     service = get_application_service(study)
@@ -1419,6 +1514,7 @@ def run_stress(
         runtime=publication_runtime,
         process=process,
         cycles=cycles + warmup_cycles,
+        native_render_scope=native_render_scope,
     )
     product_memory_samples = cast(
         list[dict[str, int]],
@@ -1429,7 +1525,13 @@ def run_stress(
         warmup_cycles=warmup_cycles,
         measurement_cycles=cycles,
     )
-    active_3d_worker_metrics = _exercise_active_3d_worker_deletion(app=app)
+    active_3d_worker_metrics = (
+        _blocked_active_3d_worker_metrics(
+            str(product_saliency_metrics["product_3d_block_reason"])
+        )
+        if native_render_scope == HEADLESS_MACOS_NATIVE_SCOPE
+        else _exercise_active_3d_worker_deletion(app=app)
+    )
     thread_pool = QThreadPool.globalInstance()
     if thread_pool is None:
         raise RuntimeError("Qt global thread pool is unavailable.")

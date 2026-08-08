@@ -82,6 +82,9 @@ def _load_stress_contract_function() -> Callable[..., list[str]]:
     namespace: dict[str, Any] = {
         "_NATIVE_QT_PLATFORM": "offscreen",
         "PRODUCT_2D_VIEW_NAMES": ("map", "spectrogram", "topomap"),
+        "HEADLESS_MACOS_SAFE_2D_VIEW_NAMES": ("map", "spectrogram"),
+        "HEADLESS_MACOS_NATIVE_SCOPE": "headless_macos_safe_2d",
+        "FULL_NATIVE_SCOPE": "full_native_lifecycle",
     }
     module = ast.Module(body=[function], type_ignores=[])
     ast.fix_missing_locations(module)
@@ -151,12 +154,16 @@ def _passing_stress_result(
         "child_finalizers_completed": True,
         "child_finalizers_exactly_once": True,
         "two_d_resources_released": True,
+        "active_3d_worker_status": "PASS",
+        "active_3d_worker_block_reason": "",
         "active_3d_engine_close_safe": True,
         "active_3d_probe_close_safe": True,
         "active_3d_engine_late_callbacks": 0,
         "active_3d_probe_late_callbacks": 0,
         "active_3d_worker_gui_heartbeat_ticks": 2,
         "resources_finalized": True,
+        "native_render_scope": "full_native_lifecycle",
+        "product_2d_view_names": ["map", "spectrogram", "topomap"],
         "product_saliency_cycles": cycles,
         "product_saliency_warmup_cycles": 0,
         "product_saliency_measurement_cycles": cycles,
@@ -184,6 +191,8 @@ def _passing_stress_result(
         "product_map_renders_installed": cycles,
         "product_spectrogram_renders_installed": cycles,
         "product_topomap_renders_installed": cycles,
+        "product_topomap_status": "PASS",
+        "product_topomap_block_reason": "",
         "product_3d_tab_updates": expected_3d_updates,
         "product_3d_status": "SKIP",
         "product_3d_renders_installed": 0,
@@ -210,6 +219,36 @@ def _passing_stress_result(
                 "three_d_interactor_close_successes": cycles,
             }
         )
+    return result
+
+
+def _passing_headless_macos_result(*, cycles: int = 1) -> dict[str, object]:
+    result = _passing_stress_result(cycles=cycles)
+    expected_2d = cycles * 2
+    block_reason = "Headless macOS CI does not provide interactive OpenGL."
+    result.update(
+        {
+            "native_render_scope": "headless_macos_safe_2d",
+            "product_2d_view_names": ["map", "spectrogram"],
+            "product_saliency_publications_served": expected_2d,
+            "product_2d_renders_installed": expected_2d,
+            "product_2d_loading_cleared": expected_2d,
+            "product_2d_replaced_resources_released": expected_2d,
+            "product_topomap_renders_installed": 0,
+            "product_topomap_status": "BLOCKED",
+            "product_topomap_block_reason": block_reason,
+            "product_3d_tab_updates": 0,
+            "product_3d_status": "BLOCKED",
+            "product_3d_block_reason": block_reason,
+            "active_3d_worker_status": "BLOCKED",
+            "active_3d_worker_block_reason": block_reason,
+            "active_3d_engine_close_safe": None,
+            "active_3d_probe_close_safe": None,
+            "active_3d_engine_late_callbacks": None,
+            "active_3d_probe_late_callbacks": None,
+            "active_3d_worker_gui_heartbeat_ticks": None,
+        }
+    )
     return result
 
 
@@ -297,6 +336,23 @@ def test_native_stress_uses_cocoa_on_darwin_and_offscreen_elsewhere() -> None:
     assert native_qt_platform("darwin") == "cocoa"
     assert native_qt_platform("linux") == "offscreen"
     assert native_qt_platform("win32") == "offscreen"
+
+
+def test_native_render_scope_only_bounds_headless_macos_ci() -> None:
+    function = _named_function("_native_render_scope")
+    namespace = {
+        "HEADLESS_MACOS_NATIVE_SCOPE": "headless_macos_safe_2d",
+        "FULL_NATIVE_SCOPE": "full_native_lifecycle",
+    }
+    module = ast.Module(body=[function], type_ignores=[])
+    ast.fix_missing_locations(module)
+    exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
+    native_render_scope = namespace["_native_render_scope"]
+
+    assert native_render_scope("darwin", "true") == "headless_macos_safe_2d"
+    assert native_render_scope("darwin", "") == "full_native_lifecycle"
+    assert native_render_scope("linux", "true") == "full_native_lifecycle"
+    assert native_render_scope("win32", "true") == "full_native_lifecycle"
 
 
 def test_native_wait_loop_only_collects_garbage_when_explicitly_requested() -> None:
@@ -732,6 +788,37 @@ def test_stress_contract_requires_3d_render_for_every_interactive_cycle():
 
     assert "product_3d_tab_updates" in failures
     assert "product_3d_renders_installed" in failures
+
+
+def test_stress_contract_accepts_explicit_headless_macos_blocked_scope():
+    contract_failures = _load_stress_contract_function()
+    result = _passing_headless_macos_result(cycles=3)
+
+    assert contract_failures(result, cycles=3) == []
+
+
+@pytest.mark.parametrize(
+    "metric",
+    [
+        "product_topomap_block_reason",
+        "product_3d_block_reason",
+        "active_3d_worker_block_reason",
+    ],
+)
+def test_headless_macos_contract_requires_a_reason_for_each_blocked_surface(metric):
+    contract_failures = _load_stress_contract_function()
+    result = _passing_headless_macos_result()
+    result[metric] = ""
+
+    assert metric in contract_failures(result, cycles=1)
+
+
+def test_headless_macos_contract_rejects_claimed_unexecuted_worker_metrics():
+    contract_failures = _load_stress_contract_function()
+    result = _passing_headless_macos_result()
+    result["active_3d_engine_close_safe"] = True
+
+    assert "active_3d_engine_close_safe" in contract_failures(result, cycles=1)
 
 
 @pytest.mark.parametrize("status", ["SKIP", "BLOCKED"])

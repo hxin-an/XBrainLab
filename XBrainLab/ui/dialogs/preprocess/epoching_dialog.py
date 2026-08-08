@@ -114,7 +114,7 @@ class EpochingDialog(BaseDialog):
         self.b_max_spin: QDoubleSpinBox | None = None
 
         super().__init__(parent, title="Time Epoching")
-        self.resize(640, 740)
+        self.resize(700, 740)
         self.setStyleSheet(self._dialog_style())
 
     def init_ui(self):

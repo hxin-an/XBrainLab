@@ -741,7 +741,7 @@ def _valid_assistant_runtime_ready_phase() -> dict[str, Any]:
     return {
         "phase": "assistant_runtime_ready",
         "screenshot": "assistant-ready.png",
-        "visible_text": ["Ask about the current EEG workflow...", "Send"],
+        "visible_text": ["Ask about your EEG workflow...", "Send"],
         "button_state": [{"text": "Send", "enabled": False}],
         "workflow_state": {},
         "notes": {
@@ -753,7 +753,7 @@ def _valid_assistant_runtime_ready_phase() -> dict[str, Any]:
                 "composer_visible": True,
                 "send_button_enabled": False,
                 "send_button_text": "Send",
-                "composer_placeholder": "Ask about the current EEG workflow...",
+                "composer_placeholder": "Ask about your EEG workflow...",
                 "status_visible": False,
                 "status_text": "",
                 "inline_state_visible": False,
@@ -4541,6 +4541,186 @@ def test_resource_smoke_accepts_bounded_idle_qt_pool_after_concurrency_drop() ->
 
     assert summary["passed"] is True
     assert summary["persistent_runtime_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
+
+
+def test_resource_smoke_accepts_bounded_linux_pool_with_process_thread_name() -> None:
+    idle_records = [
+        {
+            "native_id": native_id,
+            "name": "python",
+            "wait_channel": "futex_wait_queue",
+        }
+        for native_id in range(21, 27)
+    ]
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 7,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    *idle_records,
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
+
+
+def test_resource_smoke_rejects_running_linux_process_named_threads() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 21],
+                "os_thread_records": [
+                    {"native_id": 21, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["unexpected_extra_os_thread_ids"] == [21]
+
+
+def test_resource_smoke_accepts_bounded_anonymous_qt_pool_on_darwin() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 9,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26, 27, 28],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "qt_active_threads", "qt_max_threads"),
+    [
+        ("linux", 0, 8),
+        ("darwin", 1, 8),
+        ("darwin", 0, 4),
+    ],
+)
+def test_resource_smoke_rejects_unproven_anonymous_runtime_threads(
+    platform_name: str,
+    qt_active_threads: int,
+    qt_max_threads: int,
+) -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": platform_name,
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": qt_max_threads,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": platform_name,
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 7,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26],
+                "os_thread_records": [],
+                "qt_active_threads": qt_active_threads,
+                "qt_max_threads": qt_max_threads,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["unexpected_extra_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
 
 
 def test_resource_smoke_rejects_unattributed_qthread() -> None:

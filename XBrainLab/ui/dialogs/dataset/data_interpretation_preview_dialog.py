@@ -1832,7 +1832,12 @@ class DataInterpretationPreviewDialog(
         # the text look compressed until the report is expanded and collapsed.
         desired_height = max(content_height + chrome_height + 8, 560)
         restore_height = self._review_restore_size.height()
-        collapsed_ceiling = max(1, restore_height - 48)
+        # A native font can make the settled review a few pixels taller than it
+        # is on Linux. Never force the collapsed step below the working dialog
+        # height: that turns an otherwise complete review into a needless
+        # scrollbar on Windows. The content-derived desired height still keeps
+        # genuinely compact reviews compact.
+        collapsed_ceiling = max(1, restore_height)
         if self.import_report_card.isHidden():
             # Native title bars can clamp the working dialog to the screen's
             # available height. Keep the collapsed review observably compact

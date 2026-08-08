@@ -552,8 +552,10 @@ class LocalRuntimeProcessOwner:
             try:
                 available = event_connection.poll(min(_EVENT_POLL_SECONDS, remaining))
                 if not available:
-                    if not self.is_alive:
-                        return None
+                    # On Windows the process handle can become non-live before
+                    # its final pipe payload becomes observable. Keep draining
+                    # until the caller's existing deadline instead of losing a
+                    # clean terminal event and treating shutdown as forced.
                     continue
                 event = event_connection.recv()
             except (EOFError, OSError):

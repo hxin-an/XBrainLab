@@ -314,7 +314,7 @@ def _epoching_internal_events_dialog() -> EpochingDialog:
             "window_evidence": "Suggested from the import label matching step.",
         },
     )
-    _fit_dialog_to_native_layout(dialog, QSize(640, 740))
+    _fit_dialog_to_native_layout(dialog, QSize(720, 740))
     return dialog
 
 

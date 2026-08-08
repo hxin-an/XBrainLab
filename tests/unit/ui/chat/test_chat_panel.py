@@ -246,8 +246,8 @@ class TestChatPanelInit:
         assert not hasattr(chat_panel, "mode_selector_widget")
         assert not hasattr(chat_panel, "mode_section_label")
         assert 52 <= chat_panel.input_field.height() <= 58
-        assert chat_panel.input_field.placeholderText() == (
-            "Ask about the current EEG workflow..."
+        assert (
+            chat_panel.input_field.placeholderText() == "Ask about your EEG workflow..."
         )
         assert chat_panel.input_field.accessibleName() == "Assistant message"
         assert "EEG workflow" in chat_panel.input_field.accessibleDescription()
@@ -674,9 +674,7 @@ class TestChatPanelInit:
         panel.set_runtime_state("ready")
         assert panel.input_field.isEnabled() is True
         assert panel.send_btn.isEnabled() is False
-        assert panel.input_field.placeholderText() == (
-            "Ask about the current EEG workflow..."
-        )
+        assert panel.input_field.placeholderText() == "Ask about your EEG workflow..."
         assert panel.setup_btn.isHidden()
         assert panel.retry_runtime_btn.isHidden()
         assert panel.runtime_progress.isHidden()
@@ -1760,7 +1758,7 @@ class TestChatPanelInit:
             placeholder
         )
 
-        assert placeholder == "Ask about the current EEG workflow..."
+        assert placeholder == "Ask about your EEG workflow..."
         assert chat_panel.input_field.horizontalScrollBarPolicy() == (
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
