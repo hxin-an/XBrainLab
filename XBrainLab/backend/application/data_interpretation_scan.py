@@ -384,6 +384,7 @@ def discover_source_preflight_scope(
     source_path: str,
     source_hint: str = "auto",
     label_sources: list[str] | None = None,
+    selected_bids_subjects: list[str] | tuple[str, ...] | None = None,
 ) -> ScanPreflightScope:
     """Discover an exact bounded scan scope without parsing BIDS TSV rows."""
     if not str(source_path).strip():
@@ -406,12 +407,19 @@ def discover_source_preflight_scope(
         looks_like_bids=looks_like_bids,
     )
     skipped_nested_bids_roots: list[Path] = []
-    files = _candidate_files(
-        resolved,
-        skip_nested_bids_roots=source_kind != "bids",
-        skipped_bids_roots=skipped_nested_bids_roots,
-        budget=scan_budget,
-    )
+    if source_kind == "bids" and selected_bids_subjects:
+        files = _selected_bids_subject_files(
+            scan_root,
+            selected_bids_subjects,
+            budget=scan_budget,
+        )
+    else:
+        files = _candidate_files(
+            resolved,
+            skip_nested_bids_roots=source_kind != "bids",
+            skipped_bids_roots=skipped_nested_bids_roots,
+            budget=scan_budget,
+        )
     strict_bids_files = (
         [item for item in files if _is_raw_bids_eeg_scope_path(item, scan_root)]
         if source_kind == "bids" and looks_like_bids
@@ -484,6 +492,53 @@ def discover_source_preflight_scope(
         skipped_nested_bids_roots=[str(item) for item in skipped_nested_bids_roots],
         discovery_warnings=[*scan_budget.warnings, *source_warnings],
     )
+
+
+def _selected_bids_subject_files(
+    bids_root: Path,
+    selected_subjects: list[str] | tuple[str, ...],
+    *,
+    budget: _ScanBudget,
+) -> list[Path]:
+    """Discover root metadata and only explicitly selected BIDS subjects."""
+    normalized_subjects = _dedupe_strings(
+        [
+            value[4:] if value.casefold().startswith("sub-") else value
+            for raw_value in selected_subjects
+            if (value := str(raw_value).strip())
+        ]
+    )
+    if not normalized_subjects:
+        raise ValueError("Select at least one BIDS subject before continuing.")
+
+    files: list[Path] = []
+    for item in budget.directory_entries(bids_root):
+        admitted = _admit_discovered_child(
+            item,
+            scan_root=bids_root,
+            budget=budget,
+        )
+        if admitted is not None and admitted.is_file() and budget.claim_file(admitted):
+            files.append(admitted)
+
+    missing: list[str] = []
+    for subject in normalized_subjects:
+        subject_dir = bids_root / f"sub-{subject}"
+        if not subject_dir.is_dir():
+            missing.append(f"sub-{subject}")
+            continue
+        files.extend(
+            _candidate_files(
+                subject_dir,
+                budget=budget,
+                scan_root=bids_root,
+            )
+        )
+    if missing:
+        raise ValueError(
+            "Selected BIDS subject folder was not found: " + ", ".join(missing)
+        )
+    return _dedupe_paths(files)
 
 
 def discover_explicit_file_preflight_scope(

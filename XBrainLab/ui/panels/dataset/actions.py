@@ -63,6 +63,7 @@ from XBrainLab.ui.panels.dataset.external_label_import_coordinator import (
 from XBrainLab.ui.status import show_status_message
 
 DataInterpretationPreviewDialog: Any | None = None
+BidsSubjectSelectionDialog: Any | None = None
 EventFilterDialog: Any | None = None
 ImportLabelDialog: Any | None = None
 LabelMappingDialog: Any | None = None
@@ -98,6 +99,17 @@ def _data_interpretation_preview_dialog_class():
     )
 
     return DataInterpretationPreviewDialog
+
+
+def _bids_subject_selection_dialog_class():
+    patched = globals()["BidsSubjectSelectionDialog"]
+    if patched is not None:
+        return patched
+    from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (  # noqa: PLC0415
+        BidsSubjectSelectionDialog,
+    )
+
+    return BidsSubjectSelectionDialog
 
 
 def _event_filter_dialog_class():
@@ -166,6 +178,7 @@ class DatasetActionHandler:
         self._data_interpretation = DataInterpretationActionCoordinator(
             self,
             preview_dialog_class=_data_interpretation_preview_dialog_class,
+            bids_subject_dialog_class=_bids_subject_selection_dialog_class,
             bindings=DataInterpretationActionBindings(
                 message_box=lambda: QMessageBox,
                 file_dialog=lambda: QFileDialog,
