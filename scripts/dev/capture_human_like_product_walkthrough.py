@@ -3286,9 +3286,15 @@ def build_resource_smoke_summary(
             f"start {start_os_threads}, after_close {after_os_threads}."
         )
     if unexpected_extra_os_ids:
+        unexpected_records = [
+            record
+            for record in after_close.get("os_thread_records", [])
+            if isinstance(record, Mapping)
+            and record.get("native_id") in unexpected_extra_os_ids
+        ]
         failed.append(
             "OS thread identities remained after close: "
-            f"{sorted(unexpected_extra_os_ids)}."
+            f"{sorted(unexpected_extra_os_ids)}; records={unexpected_records}."
         )
     if after_qt_threads > 0:
         failed.append(f"Qt thread pool still active after close: {after_qt_threads}.")
@@ -3340,16 +3346,20 @@ def _classify_persistent_runtime_threads(
     cuda_runtime_ids: set[int] = set()
     unexpected_ids: set[int] = set()
 
-    # macOS does not expose Linux /proc thread names or wait channels. Qt's
-    # global pool nevertheless retains bounded, inactive native workers after
-    # a burst. Attribute only the bounded anonymous delta, and only when the
-    # Qt pool reports zero active work; every other platform still requires
-    # explicit per-thread identity evidence.
+    # macOS does not expose Linux /proc thread names or wait channels. The
+    # collector still emits one blank record per OS thread because /proc is
+    # absent, so treat records with no identity evidence as anonymous. Qt's
+    # global pool may retain a bounded inactive worker set after a burst; only
+    # attribute that bounded delta when the pool reports zero active work.
+    darwin_records_are_anonymous = platform_name == "darwin" and all(
+        not str(records.get(native_id, {}).get("name", "")).strip()
+        and not str(records.get(native_id, {}).get("wait_channel", "")).strip()
+        for native_id in extra_os_ids
+    )
     anonymous_idle_qt_ids = (
         set(extra_os_ids)
         if (
-            platform_name == "darwin"
-            and not records
+            darwin_records_are_anonymous
             and qt_active_threads == 0
             and len(extra_os_ids)
             <= min(max(qt_max_threads, 0), MAX_PERSISTENT_IDLE_QT_THREADS)
@@ -3370,7 +3380,7 @@ def _classify_persistent_runtime_threads(
         if (
             (
                 name == "Thread (pooled)"
-                or (platform_name == "linux" and name == "python")
+                or (platform_name == "linux" and name.startswith("python"))
             )
             and qt_active_threads == 0
             and wait_channel.startswith("futex_wait")

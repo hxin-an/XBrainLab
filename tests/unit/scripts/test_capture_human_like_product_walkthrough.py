@@ -4547,7 +4547,7 @@ def test_resource_smoke_accepts_bounded_linux_pool_with_process_thread_name() ->
     idle_records = [
         {
             "native_id": native_id,
-            "name": "python",
+            "name": "python3.11",
             "wait_channel": "futex_wait_queue",
         }
         for native_id in range(21, 27)
@@ -4672,6 +4672,57 @@ def test_resource_smoke_accepts_bounded_anonymous_qt_pool_on_darwin() -> None:
         26,
         27,
         28,
+    ]
+
+
+def test_resource_smoke_accepts_bounded_blank_proc_records_on_darwin() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "", "wait_channel": ""}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 9,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 10,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+                "os_thread_records": [
+                    {"native_id": native_id, "name": "", "wait_channel": ""}
+                    for native_id in [10, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 9,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
     ]
 
 
