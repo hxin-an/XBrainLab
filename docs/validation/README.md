@@ -255,12 +255,15 @@ loading/empty/error/blocked/terminal、primary action、text fit、scroll、dial
 ignored/external root，不覆寫 tracked artifact。
 
 Section 7 的 required denominator 不得用缺 fixture、刪 case、skip、xfail 或 deselection 縮小。
+`required-ci` profile 固定包含三個 OpenNeuro ds003061 P300 runs；完整 pinned profile 約
+`205 MB`，下載與 verify-only 必須先成功，P300 測試不得以缺 fixture skip 通過。
 `real-data-interpretation-training` 必須整檔執行
 `tests/integration/pipeline/test_real_data_handoff_gate.py`，不可只挑一個較容易的 node。它證明
-Graz 2a 外部 MAT labels、PhysioNet EEGMMIDB 內建 events 與 public MNE-BIDS events.tsv
+Graz 2a 外部 MAT labels、PhysioNet EEGMMIDB 內建 events、public MNE-BIDS events.tsv 與
+OpenNeuro P300 `.set + events.tsv`
 都能沿 current `scan -> preview -> validate -> apply` spine 進入後續 workflow；這仍不等於
 full BIDS validator 或任意 EEG source 支援。
-Extended OpenNeuro、Sleep-EDF 和 CHB-MIT teacher fixture tests 是 optional acceptance evidence，
+Sleep-EDF 和 CHB-MIT teacher fixture tests 是 optional acceptance evidence，
 不混入 mandatory public IO gate。不同副檔名不等於不同 dataset source；同一 source 的轉檔
 只算 format coverage。這組 gate 不支撐 full BIDS validator、任意 clinical/proprietary format
 或 scientific accuracy。

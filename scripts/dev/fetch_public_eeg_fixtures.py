@@ -14,7 +14,7 @@ from urllib.parse import quote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
-CI_REQUIRED_MAX_BYTES = 20 * 1024 * 1024
+CI_REQUIRED_MAX_BYTES = 220 * 1024 * 1024
 TEACHER_PREFLIGHT_MAX_BYTES = 320 * 1024 * 1024
 DEFAULT_FIXTURE_PROFILE = "required-ci"
 MNE_BIDS_TINY_NAME = "mne-bids-tiny-eeg"
@@ -607,9 +607,10 @@ CI_REQUIRED_GROUP_NAMES = frozenset(
         "mne-testing-cnt",
         "mne-testing-brainvision",
         MNE_BIDS_TINY_NAME,
+        OPENNEURO_P300_NAME,
     }
 )
-CI_REQUIRED_MANIFEST_SHA256 = "6bf657aafd35c832a521ef52b076adeae5ab7864d40c71d0cd29f8391e047e8c"  # pragma: allowlist secret
+CI_REQUIRED_MANIFEST_SHA256 = "f7bb9c3938cdaad72cc6843ee6ba1c22d403ff5ec6c5432fc51459de0d44983e"  # pragma: allowlist secret
 TEACHER_PREFLIGHT_GROUP_NAMES = frozenset(
     {
         *CI_REQUIRED_GROUP_NAMES,

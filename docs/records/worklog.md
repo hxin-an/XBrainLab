@@ -16916,6 +16916,9 @@
   - Ruff and targeted Basedpyright for all changed product Python files -> PASS / `0 errors`.
   - Red-first model-ID / CV-cohort regressions -> `4 failed`, then `4 passed`; expanded Dataset,
     ApplicationService, Evaluation, Saliency and Training UI regression -> `316 passed`.
+  - Closed an exact-head CI fixture-contract failure by adding the three-run OpenNeuro P300 dataset
+    to the pinned `required-ci` profile instead of permitting its mandatory integration test to skip;
+    the local mandatory public suite then completed with `37 passed / 0 skipped`.
   - Main-agent artifact review covered BIDS selection, model settings, test curve, Evaluation
     cross-fold controls and normalized Saliency Map / Spectrogram.
 - claim boundary：

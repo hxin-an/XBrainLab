@@ -82,6 +82,7 @@ def test_required_ci_profile_is_small_pinned_and_source_diverse():
         "mne-testing-cnt",
         "mne-testing-brainvision",
         MNE_BIDS_TINY_NAME,
+        OPENNEURO_P300_NAME,
     }.issubset(CI_REQUIRED_GROUP_NAMES)
     assert 0 < fixture_profile_size_bytes(groups) <= CI_REQUIRED_MAX_BYTES
     assert all(
