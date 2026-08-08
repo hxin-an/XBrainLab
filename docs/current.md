@@ -26,7 +26,7 @@ Assistant ready 或廣泛資料格式相容。
 | Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，只作 baseline / provenance，不是目前 candidate。 |
 | Active goal | 先關閉五項 EEG workflow integration candidate，再依 [Now](planning/now.md) 推進效能與 Assistant。 |
 | Finding ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md) |
-| Delivery state | Unmerged integration checkpoint；尚未 push / exact-head CI / Windows acceptance，不是 handoff-ready。 |
+| Delivery state | Pushed unmerged integration checkpoint；尚未通過 exact-head CI / Windows acceptance，不是 handoff-ready。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。

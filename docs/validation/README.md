@@ -11,7 +11,7 @@
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
-| Current candidate | `integration/eeg-workflow-improvements-v1`；未合併 checkpoint。 |
+| Current candidate | `integration/eeg-workflow-improvements-v1`；已 push、未合併 checkpoint。 |
 | Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，baseline only |
 | Closure state | Merged development checkpoint；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
