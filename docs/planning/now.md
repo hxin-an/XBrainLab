@@ -21,7 +21,7 @@ ds003061 P300 BIDS 各一個資料集；其餘格式、自動化 evidence 與舊
 | Worktree | 以目前 `main` checkout 的 `git rev-parse --show-toplevel` 為準。 |
 | Product baseline | `main` |
 | Candidate branch | `integration/eeg-workflow-improvements-v1`；五項 EEG workflow 改進的未合併整合候選。 |
-| Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，baseline only |
+| Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b` |
 | Goal | 老師試用前 GUI/data stabilization；其後是 performance 與 simplified Assistant prototype。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
 | Current classification | merged development checkpoint；not release / not Assistant-ready |

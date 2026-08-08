@@ -23,7 +23,7 @@ Assistant ready 或廣泛資料格式相容。
 | Active worktree | 以 `git rev-parse --show-toplevel` 為準；不要把舊 registered worktree 當成 current product checkout。 |
 | Product baseline | `main` |
 | Current candidate | `integration/eeg-workflow-improvements-v1`；尚未合併，不是 release。 |
-| Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，只作 baseline / provenance，不是目前 candidate。 |
+| Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b`。 |
 | Active goal | 先關閉五項 EEG workflow integration candidate，再依 [Now](planning/now.md) 推進效能與 Assistant。 |
 | Finding ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md) |
 | Delivery state | Pushed unmerged integration checkpoint；尚未通過 exact-head CI / Windows acceptance，不是 handoff-ready。 |
