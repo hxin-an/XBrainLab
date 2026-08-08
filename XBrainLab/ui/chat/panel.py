@@ -1218,10 +1218,6 @@ class ChatPanel(QWidget):
             self.send_btn.setText("Waiting")
             self.send_btn.setAccessibleName("Waiting for your decision")
             self.send_btn.setIcon(QIcon())
-            self.send_btn.setFixedSize(
-                COMPOSER_ACTION_WIDTH,
-                COMPOSER_ACTION_HEIGHT,
-            )
             self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             self.send_btn.setToolTip(self._turn_presentation.cancelability_text)
             self.send_btn.setStyleSheet(SEND_BUTTON_LOCKED_STYLE)
@@ -1230,10 +1226,6 @@ class ChatPanel(QWidget):
             self.send_btn.setText("Stop")
             self.send_btn.setAccessibleName("Stop current request")
             self.send_btn.setIcon(QIcon())
-            self.send_btn.setFixedSize(
-                COMPOSER_ACTION_WIDTH,
-                COMPOSER_ACTION_HEIGHT,
-            )
             self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             self.send_btn.setToolTip("Stop this request before an action starts.")
             self.send_btn.setStyleSheet(SEND_BUTTON_PROCESSING_STYLE)
@@ -1245,10 +1237,6 @@ class ChatPanel(QWidget):
                 "Stopping current request" if stopping else "Assistant is working"
             )
             self.send_btn.setIcon(QIcon())
-            self.send_btn.setFixedSize(
-                COMPOSER_ACTION_WIDTH,
-                COMPOSER_ACTION_HEIGHT,
-            )
             self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             self.send_btn.setToolTip(
                 "Waiting for the local assistant to stop."
@@ -1264,10 +1252,6 @@ class ChatPanel(QWidget):
             self.send_btn.setText("Send")
             self.send_btn.setAccessibleName("Send request")
             self.send_btn.setIcon(QIcon())
-            self.send_btn.setFixedSize(
-                COMPOSER_ACTION_WIDTH,
-                COMPOSER_ACTION_HEIGHT,
-            )
             self.send_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             self.send_btn.setToolTip("Send request")
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
@@ -1275,6 +1259,7 @@ class ChatPanel(QWidget):
                 self.debug_mode is not None or bool(self.input_field.text().strip())
             )
 
+        self._fit_composer_action_width()
         self.input_field.setEnabled(not self.is_processing and runtime_ready)
         self.send_btn.setEnabled(send_enabled)
         for button in getattr(self, "suggestion_prompt_buttons", ()):
@@ -1610,6 +1595,20 @@ class ChatPanel(QWidget):
         self.runtime_actions.updateGeometry()
         self.runtime_state_widget.updateGeometry()
 
+    def _fit_composer_action_width(self) -> None:
+        """Reserve native button chrome and the current state label at any DPI."""
+        self.send_btn.ensurePolished()
+        required_width = max(
+            COMPOSER_ACTION_WIDTH,
+            self.send_btn.sizeHint().width(),
+            self.send_btn.fontMetrics().horizontalAdvance(self.send_btn.text()) + 24,
+        )
+        self.composer_actions.setFixedSize(
+            required_width,
+            COMPOSER_ACTION_HEIGHT,
+        )
+        self.send_btn.setFixedSize(required_width, COMPOSER_ACTION_HEIGHT)
+
     @staticmethod
     def _fit_button_label(button: QPushButton) -> None:
         """Elide a native button from its measured decoration and live width."""
@@ -1883,6 +1882,10 @@ class ChatPanel(QWidget):
         )
         for surface, maximum_width in surface_widths:
             surface.setFixedWidth(min(transcript_surface_width, maximum_width))
+            surface_layout = surface.layout()
+            if surface_layout is not None:
+                surface_layout.invalidate()
+                surface_layout.activate()
 
         empty_margins = self.empty_state_layout.contentsMargins()
         suggestion_width = max(
@@ -1971,6 +1974,14 @@ class ChatPanel(QWidget):
         ):
             self._fit_wrapped_label_height(label)
         self._fit_runtime_state_to_contents()
+        turn_layout = self.turn_activity_widget.layout()
+        if turn_layout is not None:
+            turn_layout.invalidate()
+            turn_layout.activate()
+            self.turn_activity_widget.setMinimumHeight(
+                max(turn_layout.minimumSize().height(), turn_layout.sizeHint().height())
+            )
+            self.turn_activity_widget.updateGeometry()
 
     def _complete_chat_reflow(self) -> None:
         """Commit shared geometry after surfaces and bubbles have been fitted."""

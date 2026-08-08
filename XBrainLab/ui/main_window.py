@@ -654,8 +654,10 @@ class MainWindow(QMainWindow):
         """Reserve the current styled font width for the Assistant entry point."""
         if not hasattr(self, "ai_btn"):
             return
-        required_width = (
-            self.ai_btn.fontMetrics().horizontalAdvance(self.ai_btn.text()) + 32
+        self.ai_btn.ensurePolished()
+        required_width = max(
+            self.ai_btn.sizeHint().width(),
+            self.ai_btn.fontMetrics().horizontalAdvance(self.ai_btn.text()) + 32,
         )
         if self.ai_btn.minimumWidth() != required_width:
             self.ai_btn.setMinimumWidth(required_width)

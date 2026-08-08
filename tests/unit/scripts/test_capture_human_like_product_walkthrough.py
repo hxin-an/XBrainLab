@@ -3076,7 +3076,9 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
     apply_button.setGeometry(primary_left, 60, 200, 34)
     apply_button.hide()
     summary = QLabel("Found 1 EEG file and 1 label carrier.", widget)
-    summary.setGeometry(300, 44, 300, 18)
+    summary_width = summary.fontMetrics().horizontalAdvance(summary.text()) + 20
+    summary_height = summary.fontMetrics().lineSpacing() + 4
+    summary.setGeometry(300, 44, summary_width, summary_height)
     summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
     state = cast(Any, widget)
     state.step_labels = labels

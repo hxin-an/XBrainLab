@@ -39,6 +39,7 @@ class AssistantSuggestionCard(QPushButton):
         self._subtitle = subtitle
         self.setObjectName("AssistantSuggestionPrompt")
         self.setProperty("accent", accent)
+        self.setProperty("assistantCustomContent", True)
         self.setStyleSheet(SUGGESTION_PROMPT_STYLE)
         self.setMinimumHeight(52)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)

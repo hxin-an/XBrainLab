@@ -715,6 +715,8 @@ def _label_text_exceeds_bounds(label: QLabel) -> bool:
 
 def _button_renders_text(button: QAbstractButton) -> bool:
     """Return whether Qt paints the button text in its current presentation."""
+    if button.property("assistantCustomContent") is True:
+        return False
     return not (
         isinstance(button, QToolButton)
         and button.toolButtonStyle() is Qt.ToolButtonStyle.ToolButtonIconOnly

@@ -6,7 +6,7 @@ device, output directory, evaluation strategy, and repeat count.
 
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QRect, Qt
+from PyQt6.QtCore import QEvent, QRect, QSize, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
@@ -126,6 +126,8 @@ class TrainingSettingDialog(BaseDialog):
         """Keep form labels readable without overlapping adjacent controls."""
         self.ensurePolished()
         labels = self.findChildren(QLabel, "TrainingSettingLabel")
+        for label in labels:
+            label.ensurePolished()
         label_text_width = max(
             (label.fontMetrics().horizontalAdvance(label.text()) for label in labels),
             default=128,
@@ -184,6 +186,7 @@ class TrainingSettingDialog(BaseDialog):
             option.currentText = self.evaluation_combo.currentText()
             style = self.evaluation_combo.style()
             native_chrome_width = 0
+            native_content_width = 0
             if style is not None:
                 edit_rect = style.subControlRect(
                     QStyle.ComplexControl.CC_ComboBox,
@@ -192,9 +195,16 @@ class TrainingSettingDialog(BaseDialog):
                     self.evaluation_combo,
                 )
                 native_chrome_width = max(probe_width - edit_rect.width(), 0)
+                native_content_width = style.sizeFromContents(
+                    QStyle.ContentsType.CT_ComboBox,
+                    option,
+                    QSize(widest_item, metrics.height()),
+                    self.evaluation_combo,
+                ).width()
             evaluation_width = max(
                 self.evaluation_combo.sizeHint().width(),
                 widest_item + native_chrome_width + 8,
+                native_content_width,
             )
             input_column_width = min(
                 max(input_column_width, evaluation_width),

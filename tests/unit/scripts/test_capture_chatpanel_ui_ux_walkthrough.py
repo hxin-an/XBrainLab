@@ -5,6 +5,7 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtWidgets import QLabel
 
@@ -543,6 +544,40 @@ def test_send_button_renders_its_visible_command_text(qapp) -> None:
     )
     assert send_record["text_rendered"] is True
     assert send_record["text_fits"] is True
+
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_custom_suggestion_card_is_measured_through_its_child_labels(qapp) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 650)
+    panel.set_runtime_state("ready")
+    panel.show()
+    qapp.processEvents()
+
+    card = panel.suggestion_prompt_buttons[0]
+    assert card.property("assistantCustomContent") is True
+    assert human_evidence._button_renders_text(card) is False
+    assert human_evidence._label_text_exceeds_bounds(card.title_label) is False
+    assert human_evidence._label_text_exceeds_bounds(card.subtitle_label) is False
+
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+@pytest.mark.parametrize("label", ["Send", "Waiting", "Stopping", "Working"])
+def test_composer_action_reserves_current_state_label(qapp, label: str) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 520)
+    panel.send_btn.setText(label)
+    panel._fit_composer_action_width()
+
+    required = panel.send_btn.fontMetrics().horizontalAdvance(label) + 24
+    assert panel.send_btn.width() >= required
+    assert panel.composer_actions.width() == panel.send_btn.width()
 
     panel.close()
     panel.deleteLater()
