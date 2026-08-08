@@ -404,6 +404,7 @@ def test_analysis_service_publishes_only_admitted_cross_fold_runs() -> None:
         def __init__(self, mask: list[bool]) -> None:
             self.epoch_data = epoch_data
             self.config = config
+            self.cross_validation_cohort_id = "cohort-1"
             self.test_mask = np.asarray(mask, dtype=bool)
 
         def get_epoch_data(self):

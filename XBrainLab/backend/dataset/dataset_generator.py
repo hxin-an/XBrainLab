@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import numpy as np
 
@@ -301,11 +302,16 @@ class DatasetGenerator:
         """
         group_idx = 0
         remaining_mask = None
+        cross_validation_cohort_id = (
+            uuid4().hex if self.config.is_cross_validation else None
+        )
         while (remaining_mask is None) or (
             self.config.is_cross_validation and remaining_mask.any()
         ):
             dataset = Dataset(self.epoch_data, self.config)
             dataset.set_name(f"{name_prefix}_{group_idx}")
+            if cross_validation_cohort_id is not None:
+                dataset.set_cross_validation_cohort_id(cross_validation_cohort_id)
             if dataset_hook:
                 dataset_hook(dataset)
             clean_mask = dataset.get_remaining_mask()

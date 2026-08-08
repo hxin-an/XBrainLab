@@ -108,6 +108,9 @@ backend-admitted cross-fold Evaluation summary，以及 cross-fold Saliency summ
 normalization。Local focused backend `74 passed`、focused UI `204 passed`、public IO/BIDS/cross-source
 integration `40 passed`、representative EEGNet pipeline `2 passed`；strict format matrix 為 `20/20`
 lifecycle cases、`14/14` required formats，strict cross-source runner 為 `4/4` required cases。
+Independent source review additionally found and closed stable model-ID loss at the Training UI
+boundary and subject-cohort conflation in cross-fold summaries; their red-first regressions and
+expanded adjacent suite passed before this checkpoint was updated.
 
 可見 artifacts 位於 `artifacts/ui/bids-subject-selection/`、
 `artifacts/ui/model-catalog-checkpoint/`、`artifacts/ui/training-test-curve/`、

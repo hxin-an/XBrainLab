@@ -1147,7 +1147,10 @@ class TrainingSidebar(QWidget):
         fields: dict[str, Any] = {}
         if model_holder is not None:
             fields.update(
-                model_name=model_holder.target_model.__name__,
+                model_name=(
+                    getattr(model_holder, "model_id", None)
+                    or model_holder.target_model.__name__
+                ),
                 model_params=dict(model_holder.model_params_map),
                 pretrained_weight_path=model_holder.pretrained_weight_path,
             )

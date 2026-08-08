@@ -46,6 +46,7 @@ class _Dataset:
         epoch_data: _EpochData | None = None,
         config: Any | None = None,
         test_mask: np.ndarray | None = None,
+        cross_validation_cohort_id: str = "cohort-1",
     ) -> None:
         self.epoch_data = epoch_data or _EpochData()
         self.config = config or SimpleNamespace(is_cross_validation=False)
@@ -54,6 +55,7 @@ class _Dataset:
             if test_mask is not None
             else np.array([True, True])
         )
+        self.cross_validation_cohort_id = cross_validation_cohort_id
 
     def get_epoch_data(self) -> _EpochData:
         return self.epoch_data
@@ -361,6 +363,35 @@ def test_cross_fold_choices_keep_repeats_as_distinct_summaries() -> None:
         "Run 1 (Summary)",
         "Run 2 (Summary)",
     ]
+
+
+def test_cross_fold_choices_do_not_merge_distinct_subject_cohorts() -> None:
+    epoch_data = _EpochData()
+    config = SimpleNamespace(is_cross_validation=True)
+    first_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([True, False]),
+        cross_validation_cohort_id="subject-1",
+    )
+    second_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([False, True]),
+        cross_validation_cohort_id="subject-2",
+    )
+    plans = [
+        _Plan(
+            [_Run(np.array([0]), np.array([[0.8, 0.2]]), dataset=first_dataset)],
+            dataset=first_dataset,
+        ),
+        _Plan(
+            [_Run(np.array([1]), np.array([[0.1, 0.9]]), dataset=second_dataset)],
+            dataset=second_dataset,
+        ),
+    ]
+
+    assert build_evaluation_cross_fold_choices(plans) == ()
 
 
 def test_cross_fold_publication_requires_the_split_in_every_finished_run() -> None:

@@ -94,10 +94,12 @@ class _Holder:
         *,
         plan_index: int,
         test_mask: tuple[bool, ...],
+        cross_validation_cohort_id: str = "cohort-1",
     ) -> None:
         self.dataset = SimpleNamespace(
             epoch_data=epoch_data,
             config=config,
+            cross_validation_cohort_id=cross_validation_cohort_id,
             get_epoch_data=lambda: epoch_data,
             test_mask=np.asarray(test_mask),
         )
@@ -178,6 +180,14 @@ def test_cross_fold_choices_require_matching_verified_runs_and_split() -> None:
         == ()
     )
     assert build_saliency_cross_fold_choices(_fold_holders(second_repeat=1)) == ()
+
+
+def test_cross_fold_choices_reject_distinct_subject_cohorts() -> None:
+    first, second = _fold_holders()
+    first.dataset.cross_validation_cohort_id = "subject-1"
+    second.dataset.cross_validation_cohort_id = "subject-2"
+
+    assert build_saliency_cross_fold_choices((first, second)) == ()
 
 
 def test_cross_fold_render_pools_out_of_fold_epochs_and_normalizes_shared() -> None:

@@ -22,7 +22,9 @@ from XBrainLab.backend.application.resource_guard import (
     RISK_WARNING,
     ResourcePreflightResult,
 )
+from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training.model_holder import ModelHolder
 from XBrainLab.ui.application_capabilities import CommandReviewContext
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 from XBrainLab.ui.refresh_coordinator import refresh_after_command
@@ -122,6 +124,20 @@ def _training_preflight(
         ),
         diagnostics=diagnostics,
     )
+
+
+def test_configure_training_command_preserves_catalog_model_id() -> None:
+    spec = get_model_spec("braindecode.eegnet")
+    holder = ModelHolder(
+        spec.factory,
+        {},
+        model_id=spec.model_id,
+        display_name=spec.display_name,
+    )
+
+    command = TrainingSidebar._configure_training_command(model_holder=holder)
+
+    assert command.model_name == "braindecode.eegnet"
 
 
 def test_init_ui(sidebar):

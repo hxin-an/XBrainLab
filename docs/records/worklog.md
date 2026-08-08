@@ -16905,12 +16905,17 @@
     compatible Saliency provenance rather than letting the UI infer fold membership.
   - Corrected the shared model-holder contract so both model classes and adapter factories are
     typed as callables returning `torch.nn.Module`.
+  - Closed two independent-review P1 findings: Training now preserves the stable catalog model ID
+    through the UI command boundary, and generated CV datasets carry an explicit cohort identity so
+    subject-specific folds cannot be pooled into one Evaluation or Saliency summary.
 - validation：
   - Focused backend -> `74 passed`; focused Qt UI -> `204 passed`; model/BIDS follow-up ->
     `67 passed`; representative EEGNet pipeline -> `2 passed`.
   - Public IO/BIDS/cross-source integration -> `40 passed`; strict format matrix -> `20/20`
     lifecycle cases and `14/14` required formats; strict training runner -> `4/4` required cases.
   - Ruff and targeted Basedpyright for all changed product Python files -> PASS / `0 errors`.
+  - Red-first model-ID / CV-cohort regressions -> `4 failed`, then `4 passed`; expanded Dataset,
+    ApplicationService, Evaluation, Saliency and Training UI regression -> `316 passed`.
   - Main-agent artifact review covered BIDS selection, model settings, test curve, Evaluation
     cross-fold controls and normalized Saliency Map / Spectrogram.
 - claim boundary：
