@@ -1714,6 +1714,7 @@ def image_content_evidence(
     full_frame = _region_content_evidence(
         image,
         (0, 0, image.width, image.height),
+        minimum_color_count=2 if text_region_names else 8,
     )
     regions = {
         name: _region_content_evidence(

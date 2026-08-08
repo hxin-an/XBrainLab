@@ -34,6 +34,8 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QStyle,
+    QStyleOptionComboBox,
     QVBoxLayout,
     QWidget,
 )
@@ -613,6 +615,11 @@ def _apply_training_setting_font_scale(
             "}"
         )
     dialog._fit_dialog_to_content()
+    layout = dialog.layout()
+    if layout is not None:
+        layout.activate()
+    target = dialog.sizeHint().expandedTo(dialog.minimumSizeHint())
+    dialog.resize(dialog.size().expandedTo(target))
 
 
 def _observe_training_setting_geometry(
@@ -731,7 +738,21 @@ def _control_text_is_clipped(widget: QWidget) -> bool:
             or metrics.lineSpacing() > available_height
         )
     if isinstance(widget, QComboBox):
-        available_width = max(contents.width() - 30, 0)
+        option = QStyleOptionComboBox()
+        option.initFrom(widget)
+        option.currentText = widget.currentText()
+        style = widget.style()
+        edit_rect = (
+            style.subControlRect(
+                QStyle.ComplexControl.CC_ComboBox,
+                option,
+                QStyle.SubControl.SC_ComboBoxEditField,
+                widget,
+            )
+            if style is not None
+            else contents
+        )
+        available_width = max(edit_rect.width(), 0)
         return metrics.horizontalAdvance(text) > available_width
     if isinstance(widget, QLineEdit):
         available_width = max(contents.width() - 12, 0)

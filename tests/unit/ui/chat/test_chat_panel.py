@@ -2847,6 +2847,11 @@ class TestChatPanelCallbacks:
 
         action = chat_panel.response_actions_widget.findChild(QToolButton)
         assert action is not None
+        wide_font = QFont(action.font())
+        wide_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 3.0)
+        action.setFont(wide_font)
+        chat_panel._reflow_chat_content()
+        qtbot.wait(0)
         assert chat_panel.size().width() == 320
         assert chat_panel.size().height() == height
         assert chat_panel.scroll_area.verticalScrollBar().maximum() > 0

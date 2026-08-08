@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Any, Protocol, cast
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -46,6 +46,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ChannelSelectionDialog: Any | None = None
 _SIDEBAR_WIDTH = 260
+_ACTION_TEXT_HORIZONTAL_PADDING = 30
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
 )
@@ -257,7 +258,85 @@ class DatasetSidebar(QWidget):
         layout.addWidget(exec_group)
 
         layout.addStretch()
+        self._action_buttons = (
+            self.import_btn,
+            self.import_folder_btn,
+            self.import_bids_btn,
+            self.reload_recipe_btn,
+            self.smart_parse_btn,
+            self.import_label_btn,
+            self.chan_select_btn,
+            self.clear_btn,
+        )
+        for button in self._action_buttons:
+            full_label = button.text()
+            button.setProperty("datasetFullLabel", full_label)
+            button.setAccessibleName(full_label)
         self._apply_startup_bootstrap_state()
+        self._fit_action_labels()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Refit action labels after the fixed sidebar viewport settles."""
+        super().resizeEvent(event)
+        self._fit_action_labels()
+        QTimer.singleShot(0, self._fit_action_labels)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Apply native style metrics after first polish."""
+        super().showEvent(event)
+        self._fit_action_labels()
+
+    def changeEvent(self, event: QEvent | None) -> None:  # noqa: N802
+        """Refit labels when the application font or native style changes."""
+        super().changeEvent(event)
+        if (
+            event is not None
+            and event.type()
+            in {
+                QEvent.Type.FontChange,
+                QEvent.Type.ApplicationFontChange,
+                QEvent.Type.StyleChange,
+            }
+            and hasattr(self, "_action_buttons")
+        ):
+            self._fit_action_labels()
+            QTimer.singleShot(0, self._fit_action_labels)
+
+    def _fit_action_labels(self) -> None:
+        """Elide labels inside the fixed product width and retain full tooltips."""
+        for button in getattr(self, "_action_buttons", ()):
+            if button.isHidden():
+                continue
+            full_label = button.property("datasetFullLabel")
+            if not isinstance(full_label, str) or not full_label:
+                continue
+            metrics = button.fontMetrics()
+            text_width = max(
+                button.contentsRect().width() - _ACTION_TEXT_HORIZONTAL_PADDING,
+                1,
+            )
+            rendered = metrics.elidedText(
+                full_label,
+                Qt.TextElideMode.ElideRight,
+                text_width,
+            )
+            while 1 < text_width < metrics.horizontalAdvance(rendered):
+                overflow = metrics.horizontalAdvance(rendered) - text_width
+                text_width = max(text_width - overflow - 1, 1)
+                rendered = metrics.elidedText(
+                    full_label,
+                    Qt.TextElideMode.ElideRight,
+                    text_width,
+                )
+            button.setText(rendered)
+
+            tooltip_prefix = f"{full_label}\n\n"
+            tooltip = button.toolTip()
+            if tooltip.startswith(tooltip_prefix):
+                tooltip = tooltip[len(tooltip_prefix) :]
+            button.setToolTip(
+                tooltip_prefix + tooltip if rendered != full_label else tooltip
+            )
 
     def _apply_startup_bootstrap_state(self) -> None:
         """Present the known empty-workspace actions before command runtime startup."""
@@ -326,6 +405,7 @@ class DatasetSidebar(QWidget):
         if self.controller is not None or has_real_application_context(self):
             if self._uses_startup_bootstrap_state():
                 self._apply_startup_bootstrap_state()
+                self._fit_action_labels()
                 return
             # Update Info Panel handled by Service
 
@@ -559,6 +639,7 @@ class DatasetSidebar(QWidget):
             )
             self.clear_btn.setEnabled(clear_enabled)
             self.clear_btn.setToolTip(clear_tooltip)
+            self._fit_action_labels()
 
     # --- Actions moved from Panel ---
 

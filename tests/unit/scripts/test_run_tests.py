@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -203,7 +205,84 @@ def test_shard_runtime_args_keep_ci_evidence_isolated(
         "--cov=XBrainLab",
         "--cov-append",
         "--cov-report=",
+        "--cov-fail-under=0",
     )
+
+
+def test_main_owns_one_complete_coverage_lifecycle(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def record_command(args, **kwargs):
+        assert kwargs == {"cwd": run_tests.ROOT, "check": False}
+        calls.append(tuple(args))
+        return subprocess.CompletedProcess(args, 0)
+
+    def fake_dispatch(command, sink):
+        assert command == "all"
+        assert sink is None
+        calls.append(("dispatch",))
+
+    monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
+    monkeypatch.setattr(run_tests.subprocess, "run", record_command)
+    monkeypatch.setattr(run_tests, "_dispatch", fake_dispatch)
+
+    assert run_tests.main(["all"]) == 0
+    assert calls == [
+        (sys.executable, "-m", "coverage", "erase"),
+        ("dispatch",),
+        (sys.executable, "-m", "coverage", "report"),
+    ]
+
+
+def test_main_does_not_report_partial_coverage_after_shard_failure(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def record_command(args, **kwargs):
+        calls.append(tuple(args))
+        return subprocess.CompletedProcess(args, 0)
+
+    def fail_dispatch(command, sink):
+        calls.append(("dispatch",))
+        raise SystemExit(1)
+
+    monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
+    monkeypatch.setattr(run_tests.subprocess, "run", record_command)
+    monkeypatch.setattr(run_tests, "_dispatch", fail_dispatch)
+
+    assert run_tests.main(["all"]) == 1
+    assert calls == [
+        (sys.executable, "-m", "coverage", "erase"),
+        ("dispatch",),
+    ]
+
+
+@pytest.mark.parametrize("failing_command", ["erase", "report"])
+def test_main_fails_closed_for_unusable_coverage_data(
+    monkeypatch,
+    tmp_path,
+    failing_command,
+) -> None:
+    result_path = tmp_path / "all.json"
+    dispatched = False
+
+    def run_coverage(args, **kwargs):
+        return_code = 1 if args[-1] == failing_command else 0
+        return subprocess.CompletedProcess(args, return_code)
+
+    def fake_dispatch(command, sink):
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
+    monkeypatch.setattr(run_tests.subprocess, "run", run_coverage)
+    monkeypatch.setattr(run_tests, "_dispatch", fake_dispatch)
+
+    assert run_tests.main(["all", "--result-json", str(result_path)]) == 1
+    assert dispatched is (failing_command == "report")
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["exit_code"] == 1
 
 
 def test_ci_uses_the_isolated_test_runner() -> None:

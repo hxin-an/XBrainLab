@@ -424,6 +424,23 @@ def test_image_content_gate_uses_font_tolerant_profile_only_for_text_regions(
     }
 
 
+def test_image_content_gate_accepts_semantic_text_only_empty_state(tmp_path) -> None:
+    path = tmp_path / "text-only-empty-state.png"
+    image = Image.new("RGB", (240, 180), "#202020")
+    ImageDraw.Draw(image).rectangle((40, 82, 199, 97), fill="#eeeeee")
+    image.save(path)
+
+    evidence = image_content_evidence(
+        path,
+        required_regions={"empty_state": (0, 0, 240, 180)},
+        text_region_names=("empty_state",),
+    )
+
+    assert evidence["passed"] is True
+    assert evidence["full_frame"]["color_count"] == 2
+    assert evidence["regions"]["empty_state"]["passed"] is True
+
+
 def test_scaled_child_regions_maps_logical_geometry_to_physical_pixels(
     qapp,
 ) -> None:

@@ -5,7 +5,7 @@ from typing import Any, cast
 import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint
-from PyQt6.QtWidgets import QAbstractButton
+from PyQt6.QtWidgets import QAbstractButton, QApplication
 
 from scripts.dev.app_polish_capture_contract import (
     APP_POLISH_SURFACES,
@@ -33,6 +33,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _epoching_internal_events_dialog,
     _evaluation_controls_panel,
     _publish_capture,
+    _settle_capture_widget,
     _surface_contract,
     _training_history_few_rows,
     _training_history_many_rows,
@@ -60,6 +61,9 @@ def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> 
     assert dialog.tree is not None
     assert dialog.tree.topLevelItemCount() == 5
     dialog.show()
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    _settle_capture_widget(app, dialog)
     _assert_capture_geometry("data-splitting-preview-dialog.png", dialog)
     semantics = _data_splitting_preview_semantics(dialog)
     assert semantics["split_unit"] == "K Fold"

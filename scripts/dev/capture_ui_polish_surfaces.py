@@ -170,12 +170,7 @@ def main(argv: list[str] | None = None) -> int:
             widget = factory()
             try:
                 widget.show()
-                for _ in range(3):
-                    app.processEvents()
-                    widget.repaint()
-                    time.sleep(0.015)
-                if isinstance(widget, ChatPanel):
-                    _settle_chat_panel_capture(app, widget)
+                _settle_capture_widget(app, widget)
                 _assert_capture_geometry(filename, widget)
                 frame_readiness = _capture(widget, staging_dir / filename)
                 surface_contracts[filename] = _surface_contract(
@@ -319,10 +314,7 @@ def _epoching_internal_events_dialog() -> EpochingDialog:
             "window_evidence": "Suggested from the import label matching step.",
         },
     )
-    dialog.adjustSize()
-    dialog.resize(
-        QSize(max(640, dialog.sizeHint().width()), max(740, dialog.sizeHint().height()))
-    )
+    _fit_dialog_to_native_layout(dialog, QSize(640, 740))
     return dialog
 
 
@@ -358,11 +350,25 @@ def _epoching_bids_interval_duration_dialog() -> EpochingDialog:
             },
         },
     )
-    dialog.adjustSize()
-    dialog.resize(
-        QSize(max(700, dialog.sizeHint().width()), max(780, dialog.sizeHint().height()))
-    )
+    _fit_dialog_to_native_layout(dialog, QSize(700, 780))
     return dialog
+
+
+def _fit_dialog_to_native_layout(dialog: QWidget, minimum: QSize) -> None:
+    """Size capture fixtures after native font and style metrics are polished."""
+    dialog.ensurePolished()
+    dialog.show()
+    app = QApplication.instance()
+    if isinstance(app, QApplication):
+        for _ in range(3):
+            layout = dialog.layout()
+            if layout is not None:
+                layout.activate()
+            app.processEvents()
+    target = dialog.sizeHint().expandedTo(dialog.minimumSizeHint()).expandedTo(minimum)
+    dialog.resize(target)
+    if isinstance(app, QApplication):
+        app.processEvents()
 
 
 def _epoching_dialog() -> EpochingDialog:
@@ -942,7 +948,7 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
             ):
                 if not action.isVisibleTo(widget):
                     continue
-                label = " ".join(action.text().split()) or type(action).__name__
+                label = _semantic_control_text(action) or type(action).__name__
                 required[f"Assistant runtime action {index}: {label}"] = action
         if widget.is_processing:
             required["Assistant activity feedback"] = widget.turn_activity_widget
@@ -991,6 +997,17 @@ def _control_text(control: QWidget) -> str:
     if isinstance(control, QComboBox):
         return " ".join(control.currentText().split())
     return ""
+
+
+def _semantic_control_text(control: QWidget) -> str:
+    if isinstance(control, QAbstractButton):
+        accessible_name = " ".join(control.accessibleName().split())
+        if accessible_name:
+            return accessible_name
+        full_label = control.property("assistantFullLabel")
+        if isinstance(full_label, str) and full_label.strip():
+            return " ".join(full_label.split())
+    return _control_text(control)
 
 
 def _pixmap_image(pixmap) -> Image.Image:
@@ -1580,12 +1597,13 @@ def _assert_epoching_dialog_contract(
     for control in controls:
         if control is None or not control.isVisibleTo(dialog):
             raise RuntimeError(f"{filename} hides an Epoch configuration control.")
-        top_left = control.mapTo(dialog, control.rect().topLeft())
-        bottom_right = control.mapTo(dialog, control.rect().bottomRight())
-        if not dialog.rect().contains(top_left) or not dialog.rect().contains(
-            bottom_right
-        ):
-            raise RuntimeError(f"{filename} clips an Epoch configuration control.")
+        control_rect = QRect(control.mapTo(dialog, QPoint(0, 0)), control.size())
+        fully_visible = control.visibleRegion().contains(control.rect())
+        if not dialog.rect().contains(control_rect) or not fully_visible:
+            name = control.objectName() or type(control).__name__
+            raise RuntimeError(
+                f"{filename} clips an Epoch configuration control: {name}."
+            )
 
     buttons = {
         button.objectName(): button

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import io
+import os
 import signal
 from types import SimpleNamespace
 
 import pytest
 
 from scripts.dev import owned_process_bootstrap, owned_process_group
+
+POSIX_ONLY = pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "killpg") or not hasattr(signal, "SIGKILL"),
+    reason="requires the POSIX process-group signal contract",
+)
 
 
 class _FakeProcess:
@@ -107,6 +113,8 @@ def test_windows_force_falls_back_to_direct_owned_process_kill(monkeypatch) -> N
     assert process.killed is True
 
 
+@pytest.mark.platform_contract
+@POSIX_ONLY
 def test_posix_force_targets_only_the_owned_session(monkeypatch) -> None:
     monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "posix")
     calls: list[tuple[int, int]] = []
@@ -127,6 +135,8 @@ def test_posix_force_targets_only_the_owned_session(monkeypatch) -> None:
     assert calls == [(4321, signal.SIGKILL)]
 
 
+@pytest.mark.platform_contract
+@POSIX_ONLY
 def test_posix_group_is_still_signalled_after_its_leader_exits(monkeypatch) -> None:
     monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "posix")
     calls: list[tuple[int, int]] = []

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from math import ceil
 
 from PyQt6.QtCore import QEvent, Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QDesktopServices, QPalette, QTextOption
+from PyQt6.QtGui import QColor, QDesktopServices, QPalette, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -176,27 +176,24 @@ class _CodeBlockView(QPlainTextEdit):
         document = self.document()
         if document is None:
             return 24
-        document_layout = document.documentLayout()
-        if document_layout is not None:
-            # Materialize QTextLine geometry using the same font and pixel tab
-            # stop that QPlainTextEdit uses on screen. Python ``expandtabs`` is
-            # character-based and diverges when CJK glyphs precede a tab.
-            document_layout.documentSize()
         rendered_widths: list[float] = []
+        text_option = QTextOption(document.defaultTextOption())
+        text_option.setWrapMode(QTextOption.WrapMode.NoWrap)
+        text_option.setTabStopDistance(self.tabStopDistance())
         block = document.begin()
         while block.isValid():
-            if document_layout is not None:
-                # QPlainTextDocumentLayout lays distant blocks out lazily. Force
-                # each block through Qt's own layout path so an off-screen long
-                # line cannot make the horizontal scrollbar appear only after
-                # the user scrolls to it.
-                document_layout.blockBoundingRect(block)
-            block_layout = block.layout()
-            if block_layout is not None:
-                rendered_widths.extend(
-                    block_layout.lineAt(index).naturalTextWidth()
-                    for index in range(block_layout.lineCount())
-                )
+            # QPlainTextDocumentLayout can retain pre-polish tab geometry on
+            # Windows after a native font or DPI change. A fresh QTextLayout
+            # uses the live font and the same pixel tab stop without relying on
+            # that platform cache.
+            block_layout = QTextLayout(block.text(), document.defaultFont())
+            block_layout.setTextOption(text_option)
+            block_layout.beginLayout()
+            line = block_layout.createLine()
+            if line.isValid():
+                line.setLineWidth(1_000_000.0)
+                rendered_widths.append(line.naturalTextWidth())
+            block_layout.endLayout()
             block = block.next()
         return ceil(max(rendered_widths, default=0.0)) + 24
 

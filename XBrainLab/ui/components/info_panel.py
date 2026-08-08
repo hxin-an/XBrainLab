@@ -87,6 +87,26 @@ class SidebarScrollArea(QScrollArea):
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(10, 20, 10, 20)
         self.setWidget(self.content)
+        self._fit_content_to_viewport()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep the single sidebar surface at the live viewport width."""
+        super().resizeEvent(event)
+        self._fit_content_to_viewport()
+
+    def _fit_content_to_viewport(self) -> None:
+        """Ignore native child width hints that would create hidden overflow."""
+        if not hasattr(self, "content"):
+            return
+        viewport = self.viewport()
+        if viewport is None or viewport.width() <= 0:
+            return
+        target_width = viewport.width()
+        if (
+            self.content.minimumWidth() != target_width
+            or self.content.maximumWidth() != target_width
+        ):
+            self.content.setFixedWidth(target_width)
 
 
 class AggregateInfoPanel(QGroupBox):

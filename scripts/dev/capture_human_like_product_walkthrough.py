@@ -24,6 +24,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from io import BytesIO
+from math import ceil
 from pathlib import Path
 from typing import Any, cast
 
@@ -2248,7 +2249,7 @@ def _label_text_line_probes(
         raise RuntimeError(f"{surface_name} label has no text layout lines.")
 
     metrics = label.fontMetrics()
-    line_heights = [max(round(line.height()), metrics.height()) for line in lines]
+    line_heights = [max(ceil(line.height()), metrics.height()) for line in lines]
     required_height = sum(line_heights)
     if label.wordWrap() and required_height > content_rect.height():
         name = label.objectName() or f"QLabel({text!r})"
@@ -2268,13 +2269,9 @@ def _label_text_line_probes(
 
     probes: list[tuple[QRect, int]] = []
     for line, line_height in zip(lines, line_heights, strict=True):
-        text_width = max(
-            metrics.horizontalAdvance(text)
-            if not label.wordWrap()
-            else round(line.naturalTextWidth()),
-            1,
-        )
-        if not label.wordWrap() and text_width > content_rect.width():
+        natural_width = line.naturalTextWidth()
+        text_width = max(ceil(natural_width), 1)
+        if not label.wordWrap() and natural_width > content_rect.width():
             raise RuntimeError(f"{surface_name} label text is horizontally clipped.")
         if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
             local_x = content_rect.x() + content_rect.width() - text_width

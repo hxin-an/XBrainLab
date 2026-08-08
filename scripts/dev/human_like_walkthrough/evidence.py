@@ -1180,10 +1180,23 @@ def assistant_runtime_evidence(panel: Any) -> dict[str, Any]:
         "setup_action_visible": setup_action.isVisible(),
         "setup_action_enabled": setup_action.isEnabled(),
         "setup_action_text": setup_action.text(),
+        "setup_action_semantic_text": _semantic_action_text(setup_action),
         "retry_action_visible": retry_action.isVisible(),
         "retry_action_enabled": retry_action.isEnabled(),
         "retry_action_text": retry_action.text(),
+        "retry_action_semantic_text": _semantic_action_text(retry_action),
     }
+
+
+def _semantic_action_text(button: QAbstractButton) -> str:
+    """Read stable action identity without depending on native text elision."""
+    accessible_name = " ".join(button.accessibleName().split())
+    if accessible_name:
+        return accessible_name
+    full_label = button.property("assistantFullLabel")
+    if isinstance(full_label, str) and full_label.strip():
+        return " ".join(full_label.split())
+    return " ".join(button.text().split())
 
 
 def assistant_restored_state(

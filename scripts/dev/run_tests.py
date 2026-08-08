@@ -319,9 +319,31 @@ def _shard_runtime_args(*, gate_name: str, label: str) -> tuple[str, ...]:
                 "--cov=XBrainLab",
                 "--cov-append",
                 "--cov-report=",
+                "--cov-fail-under=0",
             )
         )
     return tuple(args)
+
+
+def _run_coverage_command(command: str) -> int:
+    """Run one coverage lifecycle command and fail closed on tool errors."""
+    args = [sys.executable, "-m", "coverage", command]
+    try:
+        completed = subprocess.run(  # noqa: S603 - current Python, internal command.
+            args,
+            cwd=ROOT,
+            check=False,
+        )
+    except OSError as error:
+        print(f"Coverage {command} failed to start: {error}", file=sys.stderr)
+        return 1
+    if completed.returncode:
+        print(
+            f"Coverage {command} failed with exit {completed.returncode}.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 def _run_shards(
@@ -428,10 +450,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         result_path.unlink(missing_ok=True)
     attestations: list[dict[str, Any]] | None = [] if result_path else None
     exit_code = 0
-    try:
-        _dispatch(parsed.command, attestations)
-    except SystemExit as error:
-        exit_code = int(error.code or 0)
+    coverage_enabled = os.environ.get("XBL_TEST_COVERAGE") == "1"
+    if coverage_enabled:
+        exit_code = _run_coverage_command("erase")
+    if exit_code == 0:
+        try:
+            _dispatch(parsed.command, attestations)
+        except SystemExit as error:
+            exit_code = int(error.code or 0)
+    if coverage_enabled and exit_code == 0:
+        exit_code = _run_coverage_command("report")
     if result_path is not None and attestations is not None:
         write_attestation(
             result_path,

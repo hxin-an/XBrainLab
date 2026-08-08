@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
-    QStyle,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -882,26 +881,23 @@ class DataSplittingPreviewDialog(BaseDialog):
         header = self.tree.header()
         header_height = 0
         if header is not None:
-            header_height = max(header.height(), header.sizeHint().height())
+            # Before first show(), QHeaderView.height() still carries Qt's
+            # generic placeholder geometry. Native styles replace it with the
+            # polished size hint, so counting the placeholder leaves an empty
+            # strip below the last result row on macOS and some Linux themes.
+            header_height = max(header.sizeHint().height(), 1)
         row_count = max(1, self.tree.topLevelItemCount())
         max_visible_rows = 8
         visible_rows = min(row_count, max_visible_rows)
         row_height_total = 0
+        fallback_row_height = max(self.tree.fontMetrics().lineSpacing() + 4, 20)
         for row in range(visible_rows):
             row_height = self.tree.sizeHintForRow(row)
-            row_height_total += row_height if row_height > 0 else 30
-        style = self.tree.style()
-        focus_margin = (
-            style.pixelMetric(
-                QStyle.PixelMetric.PM_FocusFrameVMargin,
-                None,
-                self.tree,
-            )
-            if style is not None
-            else 0
-        )
-        content_buffer = (self.tree.frameWidth() * 2) + (focus_margin * 2)
-        content_buffer += max(self.tree.fontMetrics().leading(), 1)
+            row_height_total += row_height if row_height > 0 else fallback_row_height
+        # The viewport already accounts for native focus metrics. Adding
+        # PM_FocusFrameVMargin here creates a second, empty pseudo-row whose
+        # height varies by platform style.
+        content_buffer = self.tree.frameWidth() * 2
         horizontal_scrollbar = self.tree.horizontalScrollBar()
         if horizontal_scrollbar is not None and horizontal_scrollbar.maximum() > 0:
             content_buffer += horizontal_scrollbar.sizeHint().height()
@@ -968,6 +964,7 @@ class DataSplittingPreviewDialog(BaseDialog):
     def showEvent(self, event) -> None:  # noqa: N802
         """Recompute row geometry after the platform style has been polished."""
         super().showEvent(event)
+        self._resize_tree_to_rows()
         QTimer.singleShot(0, self._resize_tree_to_rows)
 
     def confirm(self):

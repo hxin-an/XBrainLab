@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox, QWidget
@@ -242,15 +242,24 @@ def approve_product_dialog(widget: QWidget) -> dict[str, Any] | None:
     """Approve only the two real product dialogs used by this walkthrough."""
     title = " ".join(widget.windowTitle().split())
     normalized_title = title.casefold()
-    if isinstance(widget, QMessageBox) and normalized_title in {
-        "confirm action",
-        "confirm destructive action",
-    }:
+    is_message_box = isinstance(widget, QMessageBox) or widget.inherits("QMessageBox")
+    message_box = cast(QMessageBox, widget) if is_message_box else None
+    message_text = message_box.text() if message_box is not None else ""
+    normalized_message = " ".join(message_text.split()).casefold()
+    is_product_confirmation = (
+        normalized_title
+        in {
+            "confirm action",
+            "confirm destructive action",
+        }
+        or normalized_message == "apply interpretation"
+    )
+    if message_box is not None and is_product_confirmation:
         approve_button = next(
             (
                 button
-                for button in widget.buttons()
-                if widget.buttonRole(button) == QMessageBox.ButtonRole.AcceptRole
+                for button in message_box.buttons()
+                if message_box.buttonRole(button) == QMessageBox.ButtonRole.AcceptRole
                 and button.isEnabled()
             ),
             None,
@@ -258,9 +267,9 @@ def approve_product_dialog(widget: QWidget) -> dict[str, Any] | None:
         event = {
             "kind": "confirmation",
             "title": title,
-            "text": widget.text(),
-            "informative_text": widget.informativeText(),
-            "detailed_text": widget.detailedText(),
+            "text": message_box.text(),
+            "informative_text": message_box.informativeText(),
+            "detailed_text": message_box.detailedText(),
             "action": approve_button.text() if approve_button is not None else "",
             "approved": approve_button is not None,
         }

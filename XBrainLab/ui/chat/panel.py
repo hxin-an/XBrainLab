@@ -2023,15 +2023,11 @@ class ChatPanel(QWidget):
                 trailing_action = " ".join(words[-2:])
                 action_verb = full_label.split(maxsplit=1)[0]
                 compact = f"{action_verb} … {trailing_action}"
-                rendered = (
-                    compact
-                    if metrics.horizontalAdvance(compact) <= text_width
-                    else metrics.elidedText(
-                        full_label,
-                        Qt.TextElideMode.ElideRight,
-                        text_width,
-                    )
-                )
+                # This semantic compact label is intentionally stable. Native
+                # style size hints can under-report the usable text width on
+                # Windows; right-eliding the original would remove the decision
+                # context while the complete label remains in the tooltip.
+                rendered = compact
             else:
                 rendered = metrics.elidedText(
                     full_label,

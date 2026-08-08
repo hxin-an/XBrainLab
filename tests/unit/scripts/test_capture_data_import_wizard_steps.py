@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
-from PyQt6.QtCore import QPoint, QSize, Qt
+from PyQt6.QtCore import QPoint, QSize
 
 import scripts.dev.capture_data_import_wizard_steps as capture_script
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
@@ -403,13 +403,14 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
     assert dialog.apply_button.isEnabled()
     assert dialog.apply_button.isVisibleTo(dialog)
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
-    assert (
-        dialog.scroll_area.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
     vertical = dialog.scroll_area.verticalScrollBar()
     assert vertical is not None
     assert vertical.maximum() == 0
+    assert vertical.isVisible() is False
+    capture_script._assert_single_vertical_scroll_owner(
+        dialog,
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / "test-review.png",
+    )
     assert (
         dialog._review_summary_value_labels["Resource check"].text()
         == "Estimated RAM 2.0 GB / Available RAM 24.0 GB"

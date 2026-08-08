@@ -441,6 +441,45 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
         app.processEvents()
 
 
+def test_dataset_fixed_sidebar_ignores_wide_native_font_minimum_hints(qtbot):
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    original_font = QFont(app.font())
+    wide_font = QFont(original_font)
+    wide_font.setPointSizeF(original_font.pointSizeF() * 1.5)
+    wide_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 7.0)
+    app.setFont(wide_font)
+    window = None
+    try:
+        window, panel, _assistant_dock = dataset_shell_with_assistant(qtbot)
+        qtbot.wait(10)
+
+        assert_widget_fits_panel(panel.content_column, panel)
+        assert_widget_fits_panel(panel.sidebar, panel)
+        assert_dataset_horizontal_scroll_is_absent(panel)
+        for button in (
+            panel.sidebar.import_btn,
+            panel.sidebar.import_folder_btn,
+            panel.sidebar.import_bids_btn,
+            panel.sidebar.reload_recipe_btn,
+            panel.sidebar.chan_select_btn,
+            panel.sidebar.clear_btn,
+        ):
+            full_label = button.property("datasetFullLabel")
+            assert isinstance(full_label, str)
+            assert button.fontMetrics().horizontalAdvance(button.text()) + 30 <= (
+                button.contentsRect().width()
+            )
+            if button.text() != full_label:
+                assert "…" in button.text()
+                assert full_label in button.toolTip()
+    finally:
+        if window is not None:
+            window.close()
+        app.setFont(original_font)
+        app.processEvents()
+
+
 def test_update_panel_uses_query_data_list_before_stale_controller(qtbot):
     study = Study()
     data = loaded_data_stub("sub-01_task-mi_raw.fif")

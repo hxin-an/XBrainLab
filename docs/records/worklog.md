@@ -16960,3 +16960,22 @@
 - claim boundary:
   - These are pre-commit closure results. Merge review still requires the final clean pushed commit
     to complete its own exact-head CI and does not replace Windows human acceptance.
+
+### 2026-08-08 Exact-CI portability follow-up
+
+- completed:
+  - Followed exact-head CI through all jobs instead of stopping after local PASS. The public
+    multi-dataset job passed; Linux, macOS and Windows exposed native Qt geometry, Windows hardlink
+    metadata, POSIX-only signal tests and per-shard coverage-threshold assumptions.
+  - Recomputed Qt text and table geometry after native style polish, preserved semantic action text
+    through accessibility metadata, and kept screenshot gates strict after bounded layout settling.
+  - Made model-cache hardlink sizing exact on Windows and marked reviewed POSIX-only tests with the
+    explicit platform contract.
+  - Changed coverage orchestration so isolated shards collect coverage without enforcing the global
+    threshold; one final report enforces the configured 50% requirement.
+- validation:
+  - Main-agent combined developer-script, UI and model-catalog suite: `3763 passed`.
+  - Full Ruff lint/format, product-source Basedpyright and `git diff --check`: PASS.
+- claim boundary:
+  - The failed CI run is diagnostic evidence, not merge evidence. The resulting follow-up commit
+    still requires a new successful exact-head run on Linux, macOS and Windows.

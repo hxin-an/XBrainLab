@@ -726,9 +726,11 @@ def _valid_assistant_runtime_idle_phase() -> dict[str, Any]:
                 "setup_action_visible": True,
                 "setup_action_enabled": True,
                 "setup_action_text": "Open Assistant Settings",
+                "setup_action_semantic_text": "Open Assistant Settings",
                 "retry_action_visible": False,
                 "retry_action_enabled": False,
                 "retry_action_text": "Retry local assistant",
+                "retry_action_semantic_text": "Retry local assistant",
             }
         },
     }
@@ -798,9 +800,11 @@ def _valid_assistant_runtime_failed_phase() -> dict[str, Any]:
                 "setup_action_visible": True,
                 "setup_action_enabled": True,
                 "setup_action_text": "Settings",
+                "setup_action_semantic_text": "Open Assistant Settings",
                 "retry_action_visible": True,
                 "retry_action_enabled": True,
                 "retry_action_text": "Retry local assistant",
+                "retry_action_semantic_text": "Retry local assistant",
             }
         },
     }
@@ -1306,6 +1310,56 @@ def test_assistant_runtime_contract_requires_recovery_action_in_idle_and_failed(
             _valid_assistant_runtime_phase(),
             _valid_assistant_runtime_ready_phase(),
             failed,
+        ]
+    )
+
+    assert review["passed"] is False
+    assert "incorrect settings action" in "; ".join(review["findings"])
+
+
+def test_assistant_runtime_contract_accepts_elided_visible_action_with_identity() -> (
+    None
+):
+    idle = _valid_assistant_runtime_idle_phase()
+    failed = _valid_assistant_runtime_failed_phase()
+    idle_evidence = idle["notes"]["assistant_runtime"]
+    failed_evidence = failed["notes"]["assistant_runtime"]
+    idle_evidence["setup_action_text"] = "Open Assistant Set..."
+    failed_evidence["retry_action_text"] = "Retry local..."
+    recovery = _valid_assistant_runtime_phase()
+    recovery["phase"] = "assistant_runtime_recovery_loading"
+    recovery["notes"]["assistant_runtime"].update(
+        {
+            "inline_state_title": "Retrying local assistant",
+            "inline_state_detail": "Retrying the local model.",
+        }
+    )
+
+    review = build_assistant_runtime_contract_review(
+        [
+            idle,
+            _valid_assistant_runtime_phase(),
+            recovery,
+            _valid_assistant_runtime_ready_phase(),
+            failed,
+        ]
+    )
+
+    assert review["passed"] is True, review["findings"]
+
+
+def test_assistant_runtime_contract_rejects_wrong_visible_action_with_identity() -> (
+    None
+):
+    idle = _valid_assistant_runtime_idle_phase()
+    idle["notes"]["assistant_runtime"]["setup_action_text"] = "Delete settings"
+
+    review = build_assistant_runtime_contract_review(
+        [
+            idle,
+            _valid_assistant_runtime_phase(),
+            _valid_assistant_runtime_ready_phase(),
+            _valid_assistant_runtime_failed_phase(),
         ]
     )
 
