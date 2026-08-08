@@ -16919,9 +16919,24 @@
   - Closed an exact-head CI fixture-contract failure by adding the three-run OpenNeuro P300 dataset
     to the pinned `required-ci` profile instead of permitting its mandatory integration test to skip;
     the local mandatory public suite then completed with `37 passed / 0 skipped`.
+  - Followed the resulting three-platform CI run through completion. Its required public
+    multi-dataset job passed, while the general jobs exposed stale model-display assertions, an
+    eager Torch import on the Dataset startup path, asynchronous Data Interpretation timing
+    assertions, and small cross-platform Qt geometry differences. The product boundary now keeps
+    command constants in a lightweight training contract, preserves stable catalog IDs at the UI
+    command boundary, and sizes responsive Assistant/Training surfaces from live content.
+  - Updated obsolete UI expectations only where the product contract had intentionally changed:
+    blocked import decisions stay inside the wizard instead of reopening a duplicate error dialog,
+    responsive wizard step labels may use either full or compact copy with a tooltip, and a Training
+    History horizontal scrollbar is required only when the final metric column is otherwise
+    unreachable.
   - Main-agent artifact review covered BIDS selection, model settings, test curve, Evaluation
     cross-fold controls and normalized Saliency Map / Spectrogram.
+  - Integration follow-up regression completed with `2577` UI tests, `2351` LLM/Assistant tests,
+    `317` architecture/read-side guards, and `441` focused EEG-workflow tests passing locally.
+    Ruff and targeted Basedpyright remained clean after the follow-up changes.
 - claim boundary：
-  - This is an unmerged integration checkpoint. Exact-head CI and Windows human acceptance remain
-    required; the candidate does not prove scientific accuracy, full BIDS compliance, every
-    Braindecode model, or Assistant readiness.
+  - This remains an unmerged integration checkpoint. The old exact-head run is not reusable because
+    its general jobs failed, and the follow-up commit still requires its own completed successful CI
+    plus Windows human acceptance. The candidate does not prove scientific accuracy, full BIDS
+    compliance, every Braindecode model, or Assistant readiness.

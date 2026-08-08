@@ -112,6 +112,14 @@ Independent source review additionally found and closed stable model-ID loss at 
 boundary and subject-cohort conflation in cross-fold summaries; their red-first regressions and
 expanded adjacent suite passed before this checkpoint was updated.
 
+The first exact-head run after fixing the required fixture profile proved the public multi-dataset
+job itself, but its Windows/Linux/macOS general jobs failed on stale display-name assertions, eager
+training imports from Dataset startup, async callback timing, and platform-specific Qt geometry.
+The follow-up checkpoint closed those locally with `2577` UI, `2351` LLM/Assistant, `317`
+architecture/read-side, and `441` focused workflow tests. These are development-run observations,
+not final handoff totals; the latest pushed head still needs one completed successful exact-head CI
+run before merge review.
+
 可見 artifacts 位於 `artifacts/ui/bids-subject-selection/`、
 `artifacts/ui/model-catalog-checkpoint/`、`artifacts/ui/training-test-curve/`、
 `artifacts/ui/evaluation-cross-fold-summary/`，以及 ignored
