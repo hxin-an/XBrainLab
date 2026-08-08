@@ -125,26 +125,31 @@ class MetricTab(QWidget):
         self.epochs = []
         self.train_vals = []
         self.val_vals = []
+        self.test_vals = []
 
-    def update_plot(self, epoch, train_val, val_val):
+    def update_plot(self, epoch, train_val, val_val, test_val=None):
         """Append a new data point and redraw the plot.
 
         Args:
             epoch: The epoch number (1-based).
             train_val: Training metric value for this epoch.
             val_val: Validation metric value for this epoch.
+            test_val: Optional test metric published for this epoch.
 
         """
         self.epochs.append(epoch)
         self.train_vals.append(train_val)
         self.val_vals.append(val_val)
+        if test_val is not None:
+            self.test_vals.append(test_val)
         self._draw_series()
 
-    def set_series(self, epochs, train_vals, val_vals):
+    def set_series(self, epochs, train_vals, val_vals, test_vals=None):
         """Replace the full metric series and redraw once."""
         self.epochs = list(epochs)
         self.train_vals = list(train_vals)
         self.val_vals = list(val_vals)
+        self.test_vals = list(test_vals or [])
         self._draw_series()
 
     def _draw_series(self) -> None:
@@ -164,7 +169,8 @@ class MetricTab(QWidget):
             for epoch_value, value in zip(self.epochs, self.val_vals, strict=False)
             if value is not None
         ]
-        if not train_points and not val_points:
+        test_points = self._right_aligned_points(self.test_vals)
+        if not train_points and not val_points and not test_points:
             self._set_empty_state_visible(True)
             return
 
@@ -191,6 +197,17 @@ class MetricTab(QWidget):
                 color=Theme.TEXT_SECONDARY,
                 label=f"Val {self.metric_name}",
             )
+        if test_points:
+            xs, ys = zip(*test_points, strict=False)
+            self.ax.plot(
+                xs,
+                ys,
+                marker="D",
+                markersize=5,
+                linestyle=":",
+                color=Theme.ACCENT_PRIMARY,
+                label=f"Test {self.metric_name}",
+            )
 
         self.ax.set_title(f"{self.metric_name} vs Training Epoch")
         self.ax.set_xlabel("Training epoch")
@@ -204,7 +221,7 @@ class MetricTab(QWidget):
         self.ax.grid(True, linestyle="--", alpha=0.3, color=Theme.TEXT_SECONDARY)
 
         # Create Legend (Standard colors, will be themed)
-        if train_points or val_points:
+        if train_points or val_points or test_points:
             self.ax.legend(facecolor=Theme.BACKGROUND_MID, edgecolor=Theme.TEXT_MUTED)
 
         # Apply Theme (Handles styles for axes, ticks, spines, labels, and legend)
@@ -212,6 +229,20 @@ class MetricTab(QWidget):
         self._fit_axes()
 
         self._draw_canvas_now()
+
+    def _right_aligned_points(self, values):
+        """Align final-only metric publications to the last training epochs."""
+        usable_values = list(values)[-len(self.epochs) :]
+        aligned_epochs = self.epochs[-len(usable_values) :] if usable_values else []
+        return [
+            (epoch_value, value)
+            for epoch_value, value in zip(
+                aligned_epochs,
+                usable_values,
+                strict=False,
+            )
+            if value is not None
+        ]
 
     def _set_empty_state_visible(self, visible: bool) -> None:
         self.empty_state_label.setVisible(visible)
@@ -260,6 +291,8 @@ class MetricTab(QWidget):
             self.train_vals = []
         if hasattr(self, "val_vals"):
             self.val_vals = []
+        if hasattr(self, "test_vals"):
+            self.test_vals = []
         self._set_empty_state_visible(True)
 
     def _release_canvas(self) -> None:

@@ -811,6 +811,7 @@ class TrainingPanel(BasePanel):
         self.tab_acc.clear()
         self.tab_loss.clear()
         train_metrics, validation_metrics = self._history_metrics(row)
+        test_metrics = self._history_test_metrics(row)
 
         def get_val(key, source, idx):
             values = source.get(key, [])
@@ -838,7 +839,16 @@ class TrainingPanel(BasePanel):
             train_loss_values.append(get_val(TrainRecordKey.LOSS, train_metrics, i))
             val_loss_values.append(get_val(RecordKey.LOSS, validation_metrics, i))
 
-        self.tab_acc.set_series(epoch_values, train_acc_values, val_acc_values)
+        test_acc_values = [
+            get_val(RecordKey.ACC, test_metrics, index)
+            for index in range(len(test_metrics.get(RecordKey.ACC, [])))
+        ]
+        self.tab_acc.set_series(
+            epoch_values,
+            train_acc_values,
+            val_acc_values,
+            test_acc_values,
+        )
         self.tab_loss.set_series(epoch_values, train_loss_values, val_loss_values)
 
     def training_finished(
@@ -1129,13 +1139,15 @@ class TrainingPanel(BasePanel):
         return copied_rows
 
     def _row_plot_signature(self, row):
-        """Return a compact signature for copied train/validation series."""
+        """Return a compact signature for every series rendered in the plots."""
         train_metrics, validation_metrics = self._history_metrics(row)
+        test_metrics = self._history_test_metrics(row)
         return (
             self._series_signature(train_metrics, TrainRecordKey.ACC),
             self._series_signature(train_metrics, TrainRecordKey.LOSS),
             self._series_signature(validation_metrics, RecordKey.ACC),
             self._series_signature(validation_metrics, RecordKey.LOSS),
+            self._series_signature(test_metrics, RecordKey.ACC),
         )
 
     @staticmethod
