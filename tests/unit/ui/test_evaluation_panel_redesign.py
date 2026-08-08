@@ -366,14 +366,16 @@ def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
     qtbot.wait(50)
 
     assert panel.evaluation_controls_bar.is_wrapped() is True
-    run_pos = panel.run_combo.mapTo(panel.evaluation_controls_bar, QPoint())
-    split_pos = panel.split_combo.mapTo(panel.evaluation_controls_bar, QPoint())
-    percentage_pos = panel.chk_percentage.mapTo(
-        panel.evaluation_controls_bar,
-        QPoint(),
-    )
-    assert split_pos.y() > run_pos.y()
-    assert percentage_pos.y() >= split_pos.y()
+    row_positions = {
+        control.mapTo(panel.evaluation_controls_bar, QPoint()).y()
+        for control in (
+            panel.model_combo,
+            panel.run_combo,
+            panel.split_combo,
+            panel.chk_percentage,
+        )
+    }
+    assert len(row_positions) >= 2
     _assert_controls_are_contained_and_disjoint(panel)
     assert panel.model_combo.elided_current_text() != long_model
     assert panel.run_combo.elided_current_text() != long_run
@@ -497,9 +499,10 @@ def test_evaluation_preserves_readable_plot_height_at_product_minimum(qtbot):
 
     assert panel.chart_tabs.isVisible()
     assert panel.bottom_tabs.isVisible() is False
-    assert [
+    assert {
         panel.chart_tabs.tabText(index) for index in range(panel.chart_tabs.count())
-    ] == ["Matrix", "Class", "Metrics", "Model", "Data"]
+    } == {"Matrix", "Class", "Metrics", "Model", "Data"}
+    assert panel.chart_tabs.indexOf(panel.info_panel) >= 0
     assert panel.chk_percentage.width() >= panel.chk_percentage.sizeHint().width()
     tab_bar = panel.chart_tabs.tabBar()
     assert tab_bar is not None

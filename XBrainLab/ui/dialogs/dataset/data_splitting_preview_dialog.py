@@ -50,7 +50,6 @@ from XBrainLab.backend.utils.public_diagnostics import (
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.styles.theme import Theme
-from XBrainLab.ui.table_sizing import scaled_column_widths
 
 from .manual_split_dialog import ManualSplitDialog
 
@@ -357,6 +356,12 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.tree = QTreeWidget()
         self.tree.setFrameShape(QFrame.Shape.NoFrame)
         self.tree.setHeaderLabels(["Split", "Train", "Validation", "Test"])
+        header_item = self.tree.headerItem()
+        if header_item is not None:
+            for column, tooltip in enumerate(
+                ("Split", "Training rows", "Validation rows", "Test rows")
+            ):
+                header_item.setToolTip(column, tooltip)
         self.tree.setRootIsDecorated(False)
         self.tree.setAlternatingRowColors(True)
         self.tree.setUniformRowHeights(True)
@@ -897,6 +902,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         )
         content_buffer = (self.tree.frameWidth() * 2) + (focus_margin * 2)
         content_buffer += max(self.tree.fontMetrics().leading(), 1)
+        horizontal_scrollbar = self.tree.horizontalScrollBar()
+        if horizontal_scrollbar is not None and horizontal_scrollbar.maximum() > 0:
+            content_buffer += horizontal_scrollbar.sizeHint().height()
         target_height = max(
             self.tree.fontMetrics().lineSpacing() * 2,
             header_height + row_height_total + content_buffer,
@@ -920,11 +928,40 @@ class DataSplittingPreviewDialog(BaseDialog):
         viewport = self.tree.viewport()
         if viewport is None or viewport.width() <= 0:
             return
-        widths = scaled_column_widths(
-            (180, 80, 110, 80),
-            viewport.width(),
-            min_width=40,
-        )
+        base_widths = (180, 80, 110, 80)
+        header_item = self.tree.headerItem()
+        metrics = self.tree.fontMetrics()
+        minimum_widths = [
+            max(
+                40,
+                metrics.horizontalAdvance(
+                    header_item.text(column) if header_item is not None else ""
+                )
+                + 24,
+            )
+            for column in range(self.tree.columnCount())
+        ]
+        available_width = viewport.width()
+        if sum(minimum_widths) > available_width:
+            self.tree.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+            )
+            widths = minimum_widths
+        else:
+            self.tree.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+            )
+            remaining = available_width - sum(minimum_widths)
+            base_total = sum(base_widths)
+            widths = [
+                minimum_width + round(remaining * base_width / base_total)
+                for minimum_width, base_width in zip(
+                    minimum_widths,
+                    base_widths,
+                    strict=True,
+                )
+            ]
+            widths[-1] += available_width - sum(widths)
         for column, width in enumerate(widths):
             self.tree.setColumnWidth(column, width)
 

@@ -1715,6 +1715,45 @@ def test_prepared_panel_materialization_failure_rolls_back_and_can_retry(
     assert window._panel_prepare_workers == {}
 
 
+def test_materialize_panel_disposes_rejected_qobject_before_raising(
+    mock_study,
+    qtbot,
+):
+    """A newly constructed wrong-type QObject must not outlive the failed call."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+    rejected_objects: list[QObject] = []
+
+    def _wrong_type(*args, **kwargs):
+        parent = kwargs.get("parent") or args[-1]
+        rejected = QObject(parent)
+        rejected_objects.append(rejected)
+        return rejected
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.application_ui_runtime",
+            return_value=controllers,
+        ),
+    ):
+        window = MainWindow(mock_study)
+    qtbot.addWidget(window)
+
+    with pytest.raises(TypeError, match="did not create a QWidget"):
+        window._materialize_panel(1, panel_class=_wrong_type)
+
+    assert len(rejected_objects) == 1
+    assert sip.isdeleted(rejected_objects[0])
+
+
 def test_main_window_background_worker_construction_failures_release_ownership(
     mock_study,
     qtbot,

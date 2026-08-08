@@ -148,6 +148,7 @@ def test_training_path_hash_distinguishes_equal_slugs(tmp_path: Path) -> None:
     assert first_component != second_component
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
 def test_training_output_does_not_require_a_directory_fd_pseudo_path(
     tmp_path: Path,
@@ -384,6 +385,7 @@ def test_individual_generation_rolls_back_when_later_subject_handling_fails() ->
         generator.generate()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
 def test_directory_creation_rejects_symlink_swap_between_mkdir_and_open(
     tmp_path: Path,
@@ -429,6 +431,7 @@ def test_directory_creation_rejects_symlink_swap_between_mkdir_and_open(
     assert (authorized_root / "held-dataset").is_dir()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
 def test_authorized_output_root_symlink_is_rejected(tmp_path: Path) -> None:
     real_root = tmp_path / "real-root"
@@ -448,6 +451,7 @@ def test_authorized_output_root_symlink_is_rejected(tmp_path: Path) -> None:
     assert list(real_root.iterdir()) == []
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
 def test_artifact_writes_remain_bound_to_open_directory_after_symlink_swap(
     tmp_path: Path,

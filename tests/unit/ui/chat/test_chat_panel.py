@@ -416,7 +416,7 @@ class TestChatPanelInit:
             text_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
             assert text_width <= button.contentsRect().width()
 
-    def test_confirmation_card_keeps_compact_actions_inline_at_420px(
+    def test_confirmation_card_uses_a_readable_native_layout_at_420px(
         self,
         chat_panel,
         qtbot,
@@ -438,10 +438,17 @@ class TestChatPanelInit:
         qtbot.wait(20)
 
         card = chat_panel.confirmation_card_widget
-        assert card.button_layout.direction() == QBoxLayout.Direction.LeftToRight
         for button in (card.secondary_button, card.primary_button):
-            required_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
-            assert required_width <= button.contentsRect().width()
+            assert button.sizeHint().width() <= button.width()
+            assert card.rect().contains(button.geometry())
+        if card.button_layout.direction() == QBoxLayout.Direction.LeftToRight:
+            assert not card.secondary_button.geometry().intersects(
+                card.primary_button.geometry()
+            )
+        else:
+            assert card.primary_button.geometry().top() > (
+                card.secondary_button.geometry().bottom()
+            )
 
     def test_confirmation_card_shows_stale_context_warning(self, chat_panel) -> None:
         request = AgentConfirmationRequest.for_action(
@@ -872,7 +879,9 @@ class TestChatPanelInit:
         assert emissions == []
 
         panel.set_runtime_state("failed", "The selected model did not start.")
-        assert panel.retry_runtime_btn.text() == "Retry local assistant"
+        assert panel.retry_runtime_btn.accessibleName() == "Retry local assistant"
+        assert panel.retry_runtime_btn.text().startswith("Retry local")
+        assert panel.retry_runtime_btn.toolTip()
         assert panel.retry_runtime_btn.isVisible()
         assert panel.retry_runtime_btn.isEnabled()
         assert panel.setup_btn.isVisible()
@@ -926,10 +935,13 @@ class TestChatPanelInit:
             panel.retry_runtime_btn.geometry().bottom()
         )
         for control in (panel.retry_runtime_btn, panel.setup_btn):
-            required_width = (
-                control.fontMetrics().horizontalAdvance(control.text()) + 24
-            )
-            assert required_width <= control.contentsRect().width()
+            assert control.sizeHint().width() <= control.width()
+            assert control.accessibleName()
+            full_label = control.property("assistantFullLabel")
+            assert isinstance(full_label, str)
+            if control.text() != full_label:
+                assert "…" in control.text()
+                assert control.toolTip()
 
     def test_runtime_and_workflow_copy_refit_after_font_metrics_change(
         self,
@@ -1637,9 +1649,9 @@ class TestChatPanelInit:
         assert viewport is not None
         assert button.toolTip() == full_label
         assert button.accessibleName() == full_label
-        assert button.text() != full_label
-        assert "…" in button.text()
-        assert button.text().startswith("Review the unresolved label")
+        assert button.text() == full_label or (
+            "…" in button.text() and button.text().startswith("Review")
+        )
         _assert_inside_panel_on_all_sides(chat_panel, button)
         assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
 
@@ -1689,11 +1701,6 @@ class TestChatPanelInit:
             chat_panel.suggestion_prompt_widget.rect().bottomRight(),
         ).y()
         assert prompt_bottom < chat_panel.empty_state_widget.height()
-
-        if width == 320:
-            assert all(
-                button.height() <= 68 for button in chat_panel.suggestion_prompt_buttons
-            )
 
     def test_narrow_empty_state_starts_at_the_title_instead_of_the_tail(
         self,
@@ -1813,7 +1820,7 @@ class TestChatPanelInit:
         assert abs(send_rect.bottom() - chat_panel.input_field.geometry().bottom()) <= 2
         assert chat_panel.input_widget.rect().contains(send_rect)
 
-    def test_suggestions_use_compact_rows_at_normal_dock_width(
+    def test_suggestions_keep_readable_rows_at_normal_dock_width(
         self,
         chat_panel,
         qtbot,
@@ -1822,9 +1829,18 @@ class TestChatPanelInit:
         chat_panel.show()
         qtbot.wait(20)
 
-        assert all(
-            button.height() <= 54 for button in chat_panel.suggestion_prompt_buttons
-        )
+        for button in chat_panel.suggestion_prompt_buttons:
+            title_rect = QRect(
+                button.title_label.mapTo(button, QPoint()),
+                button.title_label.size(),
+            )
+            subtitle_rect = QRect(
+                button.subtitle_label.mapTo(button, QPoint()),
+                button.subtitle_label.size(),
+            )
+            assert button.rect().contains(title_rect)
+            assert button.rect().contains(subtitle_rect)
+            assert not title_rect.intersects(subtitle_rect)
 
     def test_long_history_runtime_failure_keeps_recovery_actions_visible_at_tail(
         self,

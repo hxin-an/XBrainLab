@@ -123,8 +123,8 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         table.setMinimumHeight(42 + max(len(rows), 1) * 38)
         grid = QGridLayout(table)
-        grid.setContentsMargins(13, 12, 13, 13)
-        grid.setHorizontalSpacing(10)
+        grid.setContentsMargins(10, 12, 10, 13)
+        grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(11)
         headers = [
             "Event",
@@ -190,8 +190,8 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         table.setMinimumHeight(42 + max(len(rows), 1) * 36)
         grid = QGridLayout(table)
-        grid.setContentsMargins(13, 12, 13, 13)
-        grid.setHorizontalSpacing(10)
+        grid.setContentsMargins(10, 12, 10, 13)
+        grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(10)
         headers = [
             "Event",

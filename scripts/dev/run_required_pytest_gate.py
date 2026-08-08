@@ -27,6 +27,7 @@ class RequiredPytestGate:
 
     def __init__(self) -> None:
         self.skipped: list[str] = []
+        self.platform_skipped: list[str] = []
         self.xfailed: list[str] = []
         self.xpassed: list[str] = []
         self.deselected: list[str] = []
@@ -55,7 +56,14 @@ class RequiredPytestGate:
         if bool(getattr(report, "failed", False)):
             outcome = "failed" if when == "call" else "errors"
         if bool(getattr(report, "skipped", False)):
-            target = self.xfailed if was_xfail else self.skipped
+            keywords = getattr(report, "keywords", {}) or {}
+            target = (
+                self.xfailed
+                if was_xfail
+                else self.platform_skipped
+                if "platform_contract" in keywords
+                else self.skipped
+            )
             if nodeid not in target:
                 target.append(nodeid)
             outcome = "xfailed" if was_xfail else "skipped"

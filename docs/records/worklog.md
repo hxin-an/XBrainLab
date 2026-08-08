@@ -16940,3 +16940,23 @@
     its general jobs failed, and the follow-up commit still requires its own completed successful CI
     plus Windows human acceptance. The candidate does not prove scientific accuracy, full BIDS
     compliance, every Braindecode model, or Assistant readiness.
+
+### 2026-08-08 Cross-platform candidate closure
+
+- completed:
+  - Repaired native Qt sizing and text-fit differences without shortening product terminology or
+    weakening the Review and Import geometry contract.
+  - Made Data Interpretation path identity, local-model disk accounting, public-fixture tests and
+    handoff evidence portable across Linux, macOS and Windows.
+  - Added an explicit `platform_contract` marker so the required pytest gate admits only reviewed
+    operating-system-specific skips; ordinary skip, xfail, xpass and deselection still fail closed.
+  - Replaced CUDA-hardware-only unit assumptions with CPU-backed fake-CUDA contract tests while
+    preserving device, tensor and hashing behavior.
+- validation:
+  - Product-source Basedpyright: `0 errors, 0 warnings, 0 notes`.
+  - Focused backend/LLM: `169 passed`; scoped UI: `589 passed`; script/evidence suite:
+    `513 passed`.
+  - Full Ruff lint/format checks and `git diff --check`: PASS.
+- claim boundary:
+  - These are pre-commit closure results. Merge review still requires the final clean pushed commit
+    to complete its own exact-head CI and does not replace Windows human acceptance.

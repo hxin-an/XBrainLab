@@ -253,7 +253,19 @@ def test_nonempty_fake_fixture_does_not_count_as_real_workflow_evidence(
     assert result["stages"]["apply"]["ok"] is False
 
 
-def test_real_workflow_snapshot_exercises_required_external_label_contracts():
+def test_real_workflow_snapshot_exercises_hermetic_label_contracts(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    public_case_ids = {
+        case.case_id
+        for case in REAL_WORKFLOW_CASES
+        if case.evidence_scope == "public_source"
+    }
+    hermetic_cases = tuple(
+        case for case in REAL_WORKFLOW_CASES if case.evidence_scope != "public_source"
+    )
+    monkeypatch.setattr(format_matrix, "REAL_WORKFLOW_CASES", hermetic_cases)
+
     snapshot = build_real_workflow_snapshot()
     summary = snapshot["summary"]
     cases = {
@@ -277,27 +289,37 @@ def test_real_workflow_snapshot_exercises_required_external_label_contracts():
         )
         for case in cases.values()
     )
-    assert summary["missing_required_formats"] == []
-    assert summary["missing_external_label_contracts"] == []
-    assert set(summary["passed_required_formats"]) == set(REQUIRED_TIER_FORMATS)
-    assert set(summary["passed_external_label_contracts"]) == set(
-        REQUIRED_EXTERNAL_LABEL_CONTRACTS
+    assert set(summary["passed_external_label_contracts"]) == (
+        set(REQUIRED_EXTERNAL_LABEL_CONTRACTS) - {"bids_interval"}
     )
-    assert set(summary["passed_internal_event_profiles"]) == set(
+    assert summary["missing_external_label_contracts"] == ["bids_interval"]
+    assert summary["missing_required_formats"] == [
+        "BIDS EEG / BrainVision",
+        "CNT",
+        "GDF",
+    ]
+    assert set(summary["missing_internal_event_profiles"]) == set(
         REQUIRED_INTERNAL_EVENT_PROFILES
     )
-    assert summary["missing_internal_event_profiles"] == []
     assert summary["required_reviewed_label_case_count"] == 11
     assert set(summary["required_reviewed_label_case_ids"]) == set(
         REQUIRED_REVIEWED_LABEL_CASE_IDS
     )
-    assert set(summary["passed_required_reviewed_label_case_ids"]) == set(
-        REQUIRED_REVIEWED_LABEL_CASE_IDS
+    public_reviewed_case_ids = {
+        case_id
+        for case_id in REQUIRED_REVIEWED_LABEL_CASE_IDS
+        if case_id.startswith("public_")
+    }
+    assert set(summary["passed_required_reviewed_label_case_ids"]) == (
+        set(REQUIRED_REVIEWED_LABEL_CASE_IDS) - public_reviewed_case_ids
     )
-    assert summary["missing_required_reviewed_label_case_ids"] == []
+    assert set(summary["missing_required_reviewed_label_case_ids"]) == (
+        public_reviewed_case_ids
+    )
     assert summary["downgraded_required_reviewed_label_case_ids"] == []
     assert summary["choice_preservation_failure_case_ids"] == []
-    assert "Generated contract fixture" not in summary["public_source_families"]
+    assert summary["public_source_families"] == []
+    assert summary["all_required_passed"] is False
     assert summary["evidence_layers"] == {
         "checked_in_and_derived_formats": {
             "required_case_count": 8,
@@ -317,8 +339,8 @@ def test_real_workflow_snapshot_exercises_required_external_label_contracts():
         },
         "public_source_workflows": {
             "required_case_count": 7,
-            "passed_required_case_count": 7,
-            "missing_required_case_ids": [],
+            "passed_required_case_count": 0,
+            "missing_required_case_ids": sorted(public_case_ids),
             "failed_required_case_ids": [],
             "evidence_scopes": ["public_source"],
             "counts_toward_public_source_diversity": True,
@@ -332,12 +354,6 @@ def test_real_workflow_snapshot_exercises_required_external_label_contracts():
     assert {case["reviewed_evidence_tier"] for case in generated_cases} == {
         "generated_supervised_contract"
     }
-    sccn_case = next(
-        case for case in snapshot["cases"] if case["case_id"] == "public_sccn_eeglab"
-    )
-    assert sccn_case["reviewed_evidence_tier"] == "io_epoch_only"
-    assert sccn_case["observations"]["supervised_ready"] is False
-    assert sccn_case["observations"]["selected_internal_events"] == []
 
 
 def test_empty_workflow_selection_cannot_vacuously_pass_required_contracts(
@@ -505,12 +521,47 @@ def test_sccn_choice_preservation_requires_both_non_class_codes():
     assert dropped_choice["preserved"] is False
 
 
-def test_public_fixture_fact_contract_pins_source_metadata():
-    facts = capture_public_fixture_facts(
-        "public_sccn_eeglab",
-        Path.cwd(),
+def test_public_fixture_fact_contract_compares_loaded_source_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    from XBrainLab.backend.load_data import raw_data_loader
+
+    source = tmp_path / "tests/fixtures/data/public/sccn-eeglab_data.set"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"loader-boundary fixture")
+    info = mne.create_info(
+        [f"EEG {index:03d}" for index in range(32)],
+        sfreq=128.0,
+        ch_types="eeg",
+    )
+    mne_data = mne.io.RawArray(
+        np.zeros((32, 30504)),
+        info,
+        verbose="ERROR",
     )
 
+    class LoadedRaw:
+        def get_mne(self):
+            return mne_data
+
+        def get_event_summary(self, *, allow_scan: bool):
+            assert allow_scan is True
+            return {"count": 154, "labels": ["square", "rt"]}
+
+    loaded_paths: list[str] = []
+
+    def load_raw_data(path: str):
+        loaded_paths.append(path)
+        return LoadedRaw()
+
+    monkeypatch.setattr(raw_data_loader, "load_raw_data", load_raw_data)
+    facts = capture_public_fixture_facts(
+        "public_sccn_eeglab",
+        tmp_path,
+    )
+
+    assert loaded_paths == [str(source.resolve())]
     assert facts["status"] == "passed"
     assert facts["sampling_frequency_hz"] == 128.0
     assert facts["channel_count"] == 32

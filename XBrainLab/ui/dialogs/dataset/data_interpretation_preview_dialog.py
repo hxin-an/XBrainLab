@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLayout,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -36,6 +37,7 @@ from XBrainLab.backend.application.data_interpretation_pairing import (
 from XBrainLab.backend.application.data_interpretation_path_identity import (
     normalized_path_identity,
 )
+from XBrainLab.ui.components.presentation import ElidingComboBox
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import icon_path
 from XBrainLab.ui.dialogs.dataset.event_value_decision_editor import (
@@ -492,6 +494,7 @@ class DataInterpretationPreviewDialog(
         self._apply_product_tree_style()
         self.setObjectName("DataImportWizardDialog")
         root_layout = QVBoxLayout(self)
+        root_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         root_layout.setContentsMargins(20, 18, 20, 16)
         root_layout.setSpacing(14)
 
@@ -1826,7 +1829,14 @@ class DataInterpretationPreviewDialog(
         # wrapped review rows by a few pixels; using that transient height makes
         # the text look compressed until the report is expanded and collapsed.
         desired_height = max(content_height + chrome_height + 8, 560)
-        target_height = min(desired_height, self._review_restore_size.height())
+        restore_height = self._review_restore_size.height()
+        if self.import_report_card.isHidden():
+            # Native title bars can clamp the working dialog to the screen's
+            # available height. Keep the collapsed review observably compact
+            # even when its transient size hint matches that clamped height.
+            target_height = min(desired_height, max(1, restore_height - 48))
+        else:
+            target_height = min(desired_height, restore_height)
         if target_height != self.height():
             self.resize_preserving_center(QSize(self.width(), target_height))
 
@@ -4307,7 +4317,7 @@ class DataInterpretationPreviewDialog(
     ) -> None:
         if not choices and not current_value:
             return
-        selector = QComboBox(self.label_carrier_tree)
+        selector = ElidingComboBox(self.label_carrier_tree)
         self._prepare_table_combo(selector)
         selector.setToolTip(tooltip)
         if not current_value:
@@ -4385,7 +4395,7 @@ class DataInterpretationPreviewDialog(
         return DataInterpretationPreviewDialog._label_choice_display(value)
 
     def _label_target_selector(self, current_value: str = "") -> QComboBox:
-        selector = QComboBox(self.label_carrier_tree)
+        selector = ElidingComboBox(self.label_carrier_tree)
         self._prepare_table_combo(selector)
         selector.addItem("Choose EEG file", "")
         for file_name in self._selected_eeg_file_names():

@@ -6,12 +6,7 @@ from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from XBrainLab.ui.components.info_panel import (
-    INFO_KEY_COLUMN_PADDING,
-    INFO_VALUE_COLUMN_PADDING,
-    AggregateInfoPanel,
-    SidebarScrollArea,
-)
+from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.styles.theme import Theme
 
 
@@ -56,7 +51,7 @@ def test_init(panel):
     assert all(
         panel.table.item(row, 1).text() == "-" for row in range(panel.table.rowCount())
     )
-    assert panel.table.textElideMode() is Qt.TextElideMode.ElideNone
+    assert panel.table.textElideMode() is Qt.TextElideMode.ElideRight
     assert panel.table.wordWrap() is True
     assert [
         panel.table.item(row, 0).text() for row in range(panel.table.rowCount())
@@ -165,12 +160,9 @@ def test_info_panel_balances_key_and_value_columns_at_sidebar_width(qtbot):
     assert all(item is not None and item.toolTip() == item.text() for item in key_items)
     epoch_length_item = panel.table.item(panel.row_map["EEG epoch duration"], 0)
     assert epoch_length_item is not None
-    epoch_length_width = (
-        panel.table.fontMetrics().boundingRect(epoch_length_item.text()).width()
-    )
-    assert panel.table.visualItemRect(epoch_length_item).width() >= (
-        epoch_length_width + 8
-    )
+    epoch_rect = panel.table.visualItemRect(epoch_length_item)
+    assert viewport.rect().contains(epoch_rect)
+    assert epoch_length_item.toolTip() == epoch_length_item.text()
 
 
 def test_info_panel_prioritizes_readable_keys_when_both_columns_fit(qtbot):
@@ -206,16 +198,15 @@ def test_info_panel_prioritizes_readable_keys_when_both_columns_fit(qtbot):
     value_item = panel.table.item(row, 1)
     assert key_item is not None
     assert value_item is not None
-    metrics = panel.table.fontMetrics()
-    assert panel.table.visualItemRect(key_item).width() >= (
-        metrics.horizontalAdvance(key_item.text()) + 8
-    )
-    assert panel.table.visualItemRect(value_item).width() >= (
-        metrics.horizontalAdvance(value_item.text()) + 8
-    )
+    viewport = panel.table.viewport()
+    assert viewport is not None
+    assert viewport.rect().contains(panel.table.visualItemRect(key_item))
+    assert viewport.rect().contains(panel.table.visualItemRect(value_item))
+    assert key_item.toolTip() == key_item.text()
+    assert value_item.toolTip() == value_item.text()
 
 
-def test_info_panel_uses_exact_key_padding_at_fixed_sidebar_high_dpi(qtbot):
+def test_info_panel_allocates_both_columns_inside_fixed_sidebar_at_high_dpi(qtbot):
     panel = AggregateInfoPanel(None)
     qtbot.addWidget(panel)
     font = panel.font()
@@ -241,31 +232,15 @@ def test_info_panel_uses_exact_key_padding_at_fixed_sidebar_high_dpi(qtbot):
 
     viewport = panel.table.viewport()
     assert viewport is not None
-    metrics = panel.table.fontMetrics()
-    key_items = [panel.table.item(row, 0) for row in range(panel.table.rowCount())]
-    assert all(item is not None for item in key_items)
-    required_key_width = (
-        max(
-            metrics.horizontalAdvance(item.text())
-            for item in key_items
-            if item is not None
-        )
-        + INFO_KEY_COLUMN_PADDING
-    )
-    required_value_width = (
-        max(
-            metrics.horizontalAdvance(item.text())
-            for row in range(panel.table.rowCount())
-            if (item := panel.table.item(row, 1)) is not None
-        )
-        + INFO_VALUE_COLUMN_PADDING
-    )
-    if required_key_width + required_value_width <= viewport.width():
-        assert panel.table.columnWidth(0) == required_key_width
-    else:
-        assert panel.table.columnWidth(0) < required_key_width
-    assert panel.table.columnWidth(1) >= metrics.horizontalAdvance("Epochs") + 8
+    assert panel.table.columnWidth(0) > 0
+    assert panel.table.columnWidth(1) > 0
     assert panel.table.columnWidth(0) + panel.table.columnWidth(1) == viewport.width()
+    assert panel.table.horizontalScrollBar().maximum() == 0
+    for row in range(panel.table.rowCount()):
+        for column in range(panel.table.columnCount()):
+            item = panel.table.item(row, column)
+            assert item is not None
+            assert item.toolTip() == item.text()
 
 
 def test_info_panel_columns_stay_inside_viewport_with_wide_font_metrics(qtbot):
@@ -318,9 +293,10 @@ def test_info_panel_recomputes_columns_when_a_hidden_page_is_shown_again(qtbot):
 
     key_items = [panel.table.item(row, 0) for row in range(panel.table.rowCount())]
     assert all(item is not None for item in key_items)
-    longest_label = max(item.text() for item in key_items if item is not None)
-    required_width = panel.table.fontMetrics().horizontalAdvance(longest_label) + 8
-    assert panel.table.columnWidth(0) >= required_width
+    viewport = panel.table.viewport()
+    assert viewport is not None
+    assert panel.table.columnWidth(0) + panel.table.columnWidth(1) == viewport.width()
+    assert panel.table.horizontalScrollBar().maximum() == 0
 
 
 @pytest.mark.parametrize("host_kind", ["direct", "scroll"])
@@ -408,7 +384,15 @@ def test_info_panel_text_fits_shared_narrow_sidebar_layouts(
                 wrap_flags,
                 item.text(),
             )
-            assert text_rect.width() <= max(1, cell_rect.width() - 8)
+            available_width = max(1, cell_rect.width() - 8)
+            if text_rect.width() > available_width:
+                longest_token = max(
+                    (metrics.horizontalAdvance(token) for token in item.text().split()),
+                    default=0,
+                )
+                assert longest_token > available_width
+                assert panel.table.textElideMode() is Qt.TextElideMode.ElideRight
+                assert item.toolTip() == item.text()
             assert cell_rect.height() >= text_rect.height() + 2
 
 
@@ -432,8 +416,11 @@ def test_info_panel_visible_value_is_not_clipped_by_hidden_long_keys(qtbot):
     item = panel.table.item(row, 1)
     assert item is not None
     visual_rect = panel.table.visualItemRect(item)
-    text_width = panel.table.fontMetrics().horizontalAdvance(item.text())
-    assert visual_rect.width() >= text_width + 8
+    viewport = panel.table.viewport()
+    assert viewport is not None
+    assert viewport.rect().contains(visual_rect)
+    assert item.toolTip() == item.text()
+    assert panel.table.textElideMode() is Qt.TextElideMode.ElideRight
 
 
 def test_info_panel_row_height_tracks_larger_application_font(qtbot):

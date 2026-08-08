@@ -88,8 +88,12 @@ def _rewrite_check(
 
 
 def _wsl_cache_aliases(path: Path) -> tuple[str, ...]:
-    canonical = str(path)
-    remainder = canonical.removeprefix("/mnt/d/")
+    if path.drive:
+        remainder = path.as_posix().split(":/", maxsplit=1)[1]
+        canonical = f"/mnt/{path.drive[0].lower()}/{remainder}"
+    else:
+        canonical = path.as_posix()
+        remainder = canonical.removeprefix("/mnt/d/")
     windows_remainder = remainder.replace("/", "\\")
     windows = f"D:\\{windows_remainder}"
     return (
@@ -100,6 +104,12 @@ def _wsl_cache_aliases(path: Path) -> tuple[str, ...]:
         f"\\\\wsl.localhost\\Ubuntu\\mnt\\d\\{windows_remainder}",
         f"\\\\wsl$\\Ubuntu\\mnt\\d\\{windows_remainder}",
     )
+
+
+def _d_cache_path(name: str) -> Path:
+    if os.name == "nt":
+        return Path(f"D:/XBrainLabCache/{name}")
+    return Path(f"/mnt/d/XBrainLabCache/{name}")
 
 
 def test_recorded_command_is_bound_to_clean_sha_and_hashed_logs(tmp_path) -> None:
@@ -308,30 +318,34 @@ def test_local_runtime_cache_environment_is_explicit_d_mounted_and_redacted(
 ) -> None:
     repo, sha, branch = _repo(tmp_path)
     evidence_root = repo / "build" / "handoff-evidence" / sha
-    model_cache = Path("/mnt/d/XBrainLabCache/models")
-    rag_cache = Path("/mnt/d/XBrainLabCache/rag")
+    model_cache = _d_cache_path("models")
+    rag_cache = _d_cache_path("rag")
     details_artifact = evidence_root / "runtime-details.json"
     source = (
-        "from pathlib import Path; import json, os, sys; "
-        "model=os.environ['XBRAINLAB_MODEL_CACHE_DIR']; "
-        "rag=os.environ['XBRAINLAB_RAG_CACHE_DIR']; "
-        "assert model.startswith('/mnt/d/'); "
-        "assert rag.startswith('/mnt/d/'); "
-        "slash=chr(92); "
-        "model_rest=model.removeprefix('/mnt/d/'); "
-        "rag_rest=rag.removeprefix('/mnt/d/'); "
-        "model_win=model_rest.replace('/', slash); "
-        "rag_win=rag_rest.replace('/', slash); "
-        "model_aliases=[model, 'D:/'+model_rest, 'D:'+slash+model_win, "
-        "slash*2+'wsl.localhost'+slash+'Ubuntu'+slash+'mnt'+slash+'d'+slash+model_win, "
-        "slash*2+'wsl$'+slash+'Ubuntu'+slash+'mnt'+slash+'d'+slash+model_win]; "
-        "rag_aliases=[rag, 'D:/'+rag_rest, 'D:'+slash+rag_win, "
-        "slash*2+'wsl.localhost'+slash+'Ubuntu'+slash+'mnt'+slash+'d'+slash+rag_win, "
-        "slash*2+'wsl$'+slash+'Ubuntu'+slash+'mnt'+slash+'d'+slash+rag_win]; "
-        "payload={'model_cache_aliases':model_aliases,'rag_cache_aliases':rag_aliases}; "
-        "rendered=json.dumps(payload); print(rendered); "
-        "print(rendered, file=sys.stderr); "
-        f"Path({str(details_artifact)!r}).write_text(rendered, encoding='utf-8')"
+        "from pathlib import Path\n"
+        "import json, os, sys\n"
+        "def aliases(value):\n"
+        "    path = Path(value)\n"
+        "    if path.drive:\n"
+        "        remainder = path.as_posix().split(':/', maxsplit=1)[1]\n"
+        "        canonical = f'/mnt/{path.drive[0].lower()}/{remainder}'\n"
+        "    else:\n"
+        "        canonical = path.as_posix()\n"
+        "        remainder = canonical.removeprefix('/mnt/d/')\n"
+        "    windows_remainder = remainder.replace('/', '\\\\')\n"
+        "    windows = f'D:\\\\{windows_remainder}'\n"
+        "    return (canonical, f'D:/{remainder}', windows, "
+        "json.dumps(windows)[1:-1], "
+        "f'\\\\\\\\wsl.localhost\\\\Ubuntu\\\\mnt\\\\d\\\\{windows_remainder}', "
+        "f'\\\\\\\\wsl$\\\\Ubuntu\\\\mnt\\\\d\\\\{windows_remainder}')\n"
+        "model = os.environ['XBRAINLAB_MODEL_CACHE_DIR']\n"
+        "rag = os.environ['XBRAINLAB_RAG_CACHE_DIR']\n"
+        "payload = {'model_cache_aliases': aliases(model), "
+        "'rag_cache_aliases': aliases(rag)}\n"
+        "rendered = json.dumps(payload)\n"
+        "print(rendered)\n"
+        "print(rendered, file=sys.stderr)\n"
+        f"Path({str(details_artifact)!r}).write_text(rendered, encoding='utf-8')\n"
     )
     command = (sys.executable, "-c", source)
     spec = GateSpec(
@@ -375,7 +389,11 @@ def test_local_runtime_cache_environment_is_explicit_d_mounted_and_redacted(
             timeout_seconds=spec.timeout_seconds,
             expected_branch=branch,
             require_upstream=False,
-            model_cache_dir=Path("/home/test/models"),
+            model_cache_dir=(
+                Path("C:/XBrainLabCache/models")
+                if os.name == "nt"
+                else Path("/home/test/models")
+            ),
             rag_cache_dir=rag_cache,
         )
 
@@ -410,7 +428,7 @@ def test_local_runtime_cache_environment_is_explicit_d_mounted_and_redacted(
     assert "<redacted:XBRAINLAB_MODEL_CACHE_DIR>" in evidence_text
     assert "<redacted:XBRAINLAB_RAG_CACHE_DIR>" in evidence_text
     assert record["environment"]["XBRAINLAB_MODEL_CACHE_DIR"] == {
-        "mount": "/mnt/d",
+        "mount": "D:" if os.name == "nt" else "/mnt/d",
         "path_sha256": hashlib.sha256(str(model_cache).encode()).hexdigest(),
         "redacted": True,
     }
@@ -451,7 +469,7 @@ def test_validator_rejects_cache_path_reintroduced_into_registered_json(
 ) -> None:
     repo, sha, branch = _repo(tmp_path)
     evidence_root = repo / "build" / "handoff-evidence" / sha
-    model_cache = Path("/mnt/d/XBrainLabCache/models")
+    model_cache = _d_cache_path("models")
     artifact = evidence_root / "runtime.json"
     command = (
         sys.executable,
@@ -728,6 +746,7 @@ def test_recorder_removes_python_and_pytest_injection_environment(
     assert record["sanitized_environment_names"] == list(names)
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX process-group contract")
 def test_recorder_timeout_terminates_its_owned_child_process_group(
     tmp_path,
@@ -774,6 +793,7 @@ def test_recorder_timeout_terminates_its_owned_child_process_group(
     assert not Path(f"/proc/{child_pid}").exists()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX process-group contract")
 def test_recorder_cleans_owned_child_after_parent_exits_normally(tmp_path) -> None:
     child_pid_path = tmp_path / "normal-exit-child.pid"

@@ -5,7 +5,7 @@ import copy
 import json
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from PyQt6.QtWidgets import QLabel
 
 from scripts.dev import capture_chatpanel_ui_ux_walkthrough as walkthrough_module
@@ -388,6 +388,40 @@ def test_image_content_gate_rejects_blank_canvas_and_required_regions(tmp_path) 
     assert evidence["passed"] is False
     assert evidence["full_frame"]["passed"] is False
     assert all(region["passed"] is False for region in evidence["regions"].values())
+
+
+def test_image_content_gate_uses_font_tolerant_profile_only_for_text_regions(
+    tmp_path,
+) -> None:
+    path = tmp_path / "painted-text-region.png"
+    image = Image.new("RGB", (240, 180), "#202020")
+    draw = ImageDraw.Draw(image)
+    for index, color in enumerate(
+        ("#303030", "#404040", "#505050", "#606060", "#707070", "#808080", "#909090")
+    ):
+        draw.rectangle((index * 20, 80, index * 20 + 19, 179), fill=color)
+    text_bounds = (20, 20, 180, 40)
+    draw.rectangle((20, 20, 199, 59), fill="#202020")
+    for left in range(28, 192, 24):
+        draw.rectangle((left, 30, left + 11, 45), fill="#eeeeee")
+    image.save(path)
+
+    generic = image_content_evidence(
+        path,
+        required_regions={"empty_state": text_bounds},
+    )
+    text_profile = image_content_evidence(
+        path,
+        required_regions={"empty_state": text_bounds},
+        text_region_names=("empty_state",),
+    )
+
+    assert generic["regions"]["empty_state"]["passed"] is False
+    assert text_profile["passed"] is True
+    assert text_profile["regions"]["empty_state"] == {
+        **generic["regions"]["empty_state"],
+        "passed": True,
+    }
 
 
 def test_scaled_child_regions_maps_logical_geometry_to_physical_pixels(

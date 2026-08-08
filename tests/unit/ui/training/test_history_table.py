@@ -307,6 +307,8 @@ def test_large_history_caps_height_and_enables_row_scrolling(history_table, qtbo
             history_table.columnCount() - 1,
         )
         assert viewport.rect().intersects(history_table.visualRect(last_index))
+        horizontal_scrollbar.setValue(0)
+        qtbot.wait(0)
     for row in range(history_table.MAX_VISIBLE_ROWS):
         assert viewport.rect().contains(
             history_table.visualItemRect(history_table.item(row, 0))

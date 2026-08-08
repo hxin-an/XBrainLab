@@ -1594,12 +1594,10 @@ class ChatPanel(QWidget):
         full_label = button.property("assistantFullLabel")
         if not isinstance(full_label, str) or not full_label:
             return
+        button.setText(full_label)
         button.ensurePolished()
         metrics = button.fontMetrics()
         available_width = button.contentsRect().width()
-        if button.sizeHint().width() <= available_width:
-            button.setText(full_label)
-            return
         decoration_width = max(
             button.sizeHint().width() - metrics.horizontalAdvance(full_label),
             0,
@@ -2015,19 +2013,25 @@ class ChatPanel(QWidget):
             if button_width <= 0:
                 button_width = container_width
             text_width = max(button_width - decoration_width, 1)
+            if metrics.horizontalAdvance(full_label) <= text_width:
+                button.setText(full_label)
+                continue
             words = full_label.rsplit(maxsplit=2)
             if len(words) == 3 and " ".join(words[-2:]).casefold() == (
                 "before continuing"
             ):
                 trailing_action = " ".join(words[-2:])
-                trailing_width = metrics.horizontalAdvance(f" {trailing_action}")
-                leading_width = max(text_width - trailing_width, 20)
-                leading = metrics.elidedText(
-                    words[0],
-                    Qt.TextElideMode.ElideRight,
-                    leading_width,
+                action_verb = full_label.split(maxsplit=1)[0]
+                compact = f"{action_verb} … {trailing_action}"
+                rendered = (
+                    compact
+                    if metrics.horizontalAdvance(compact) <= text_width
+                    else metrics.elidedText(
+                        full_label,
+                        Qt.TextElideMode.ElideRight,
+                        text_width,
+                    )
                 )
-                rendered = f"{leading} {trailing_action}"
             else:
                 rendered = metrics.elidedText(
                     full_label,

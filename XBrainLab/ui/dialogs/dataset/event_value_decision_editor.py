@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -36,6 +36,33 @@ _USE_CHOICES = (
     ("Keep as EEG event", "event"),
     ("Do not use", "ignore"),
 )
+
+
+class _ElidingValueLabel(QLabel):
+    """Render a raw event value without clipping its accessible full text."""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setAccessibleName(text)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_text()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._fit_text()
+
+    def _fit_text(self) -> None:
+        available = max(self.contentsRect().width(), 1)
+        rendered = self.fontMetrics().elidedText(
+            self._full_text,
+            Qt.TextElideMode.ElideRight,
+            available,
+        )
+        if self.text() != rendered:
+            self.setText(rendered)
 
 
 @dataclass(frozen=True)
@@ -508,10 +535,10 @@ class EventValueDecisionEditor(QWidget):
         layout.setSpacing(0)
         raw_value = occurrences[0].raw_value
         tooltip = self._value_tooltip(occurrences)
-        value_label = QLabel(raw_value, cell)
+        value_label = _ElidingValueLabel(raw_value, cell)
         value_label.setObjectName("DataImportValueDecisionValue")
-        value_label.setToolTip(tooltip)
-        value_label.setWordWrap(True)
+        value_label.setToolTip(f"{tooltip}\nValue: {raw_value}".strip())
+        value_label.setWordWrap(False)
         value_label.setMinimumWidth(
             min(value_label.fontMetrics().horizontalAdvance(raw_value) + 4, 180)
         )

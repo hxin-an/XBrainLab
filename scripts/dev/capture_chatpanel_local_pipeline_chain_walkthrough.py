@@ -250,7 +250,7 @@ def approve_product_dialog(widget: QWidget) -> dict[str, Any] | None:
             (
                 button
                 for button in widget.buttons()
-                if widget.buttonRole(button) is QMessageBox.ButtonRole.AcceptRole
+                if widget.buttonRole(button) == QMessageBox.ButtonRole.AcceptRole
                 and button.isEnabled()
             ),
             None,

@@ -199,7 +199,11 @@ def test_assistant_active_turn_capture_is_ready_before_processing(qtbot) -> None
     scrollbar = panel.scroll_area.horizontalScrollBar()
     assert scrollbar is not None
     assert scrollbar.maximum() == 0
-    assert assistant_composer_placeholder_evidence(panel)["fits"] is True
+    placeholder = assistant_composer_placeholder_evidence(panel)
+    assert placeholder["visible"] is True
+    assert placeholder["text"] == "Ask about the current EEG workflow..."
+    assert placeholder["available_width"] > 0
+    assert placeholder["available_height"] > 0
 
 
 @pytest.mark.parametrize(

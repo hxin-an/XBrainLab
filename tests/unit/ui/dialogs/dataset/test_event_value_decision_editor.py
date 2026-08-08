@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtWidgets import QComboBox, QFrame, QLabel, QLineEdit, QScrollArea
 
 from XBrainLab.ui.dialogs.dataset.event_value_decision_editor import (
@@ -300,22 +299,14 @@ def test_editor_fits_a_narrow_wizard_viewport_without_horizontal_clipping(
             *editor.findChildren(QLineEdit),
         )
     )
-    value_rects = [
-        (
-            label.text(),
-            label.size(),
-            label.fontMetrics().boundingRect(
-                QRect(0, 0, max(label.width(), 1), 10_000),
-                int(Qt.AlignmentFlag.AlignLeft) | int(Qt.TextFlag.TextWordWrap),
-                label.text(),
-            ),
-        )
-        for label in editor.findChildren(QLabel, "DataImportValueDecisionValue")
-    ]
+    value_labels = editor.findChildren(QLabel, "DataImportValueDecisionValue")
     assert all(
-        text_rect.width() <= size.width() and text_rect.height() <= size.height()
-        for _text, size, text_rect in value_rects
-    ), value_rects
+        label.fontMetrics().horizontalAdvance(label.text())
+        <= label.contentsRect().width()
+        for label in value_labels
+    )
+    assert {label.accessibleName() for label in value_labels} == set(values)
+    assert all("Value:" in label.toolTip() for label in value_labels)
     assert all(
         label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
         for label in editor.findChildren(QLabel, "DataImportValueDecisionCoverage")

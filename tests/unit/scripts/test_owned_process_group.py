@@ -114,6 +114,7 @@ def test_posix_force_targets_only_the_owned_session(monkeypatch) -> None:
         owned_process_group.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
     process = _FakeProcess()
 
@@ -133,6 +134,7 @@ def test_posix_group_is_still_signalled_after_its_leader_exits(monkeypatch) -> N
         owned_process_group.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
     process = _FakeProcess(running=False)
 

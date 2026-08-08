@@ -179,6 +179,7 @@ testpaths = ["tests"]
 norecursedirs = ["XBrainLab", ".git", "__pycache__", "*.egg-info"]
 markers = [
     "timeout: Mark test with a timeout.",
+    "platform_contract: Test validates an explicit OS-specific contract.",
 ]
 filterwarnings = [
     "ignore::pytest.PytestUnknownMarkWarning",

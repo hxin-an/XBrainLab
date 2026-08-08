@@ -511,7 +511,18 @@ def test_required_region_guard_rejects_large_same_theme_content_erasure(
         capture_script._assert_required_capture_regions(dialog, screenshot)
 
 
-def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
+def test_historical_review_import_artifact_preserves_canonical_visual_contract():
+    spec = next(
+        spec
+        for spec in capture_script._canonical_capture_specs()
+        if spec.filename == "05-review-and-import.png"
+    )
+    historical = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
+
+    capture_script._assert_canonical_png_artifact(historical, spec)
+
+
+def test_review_import_live_action_matches_current_platform_control(qtbot, tmp_path):
     spec = next(
         spec
         for spec in capture_script._canonical_capture_specs()
@@ -526,9 +537,12 @@ def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
     qtbot.wait(20)
 
+    live_capture = tmp_path / spec.filename
+    assert dialog.grab().save(str(live_capture))
+    capture_script._normalize_png_for_artifact(live_capture)
     capture_script._assert_text_controls_rendered(
         dialog,
-        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename,
+        live_capture,
         [dialog.apply_button],
         surface_name="Review primary action",
     )

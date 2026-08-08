@@ -15,7 +15,7 @@ import json
 import os
 import sys
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import pairwise
@@ -1564,6 +1564,7 @@ def _capture_widget(
     *,
     render_pixel_ratio: float,
     required_content_widgets: Mapping[str, QWidget] | None = None,
+    text_content_regions: Collection[str] = (),
 ) -> dict[str, Any]:
     """Capture two content-ready frames while preserving Qt's observed DPR."""
     synthetic_capture = render_pixel_ratio != 1.0
@@ -1614,6 +1615,7 @@ def _capture_widget(
         content = image_content_evidence(
             output_path,
             required_regions=required_regions,
+            text_region_names=text_content_regions,
         )
         consecutive_ready = consecutive_ready + 1 if content["passed"] else 0
         if consecutive_ready >= 2:
@@ -1658,6 +1660,8 @@ def _physical_dimension(logical_size: int, device_pixel_ratio: float) -> int:
 def _region_content_evidence(
     image: Image.Image,
     box: tuple[int, int, int, int],
+    *,
+    minimum_color_count: int = 8,
 ) -> dict[str, Any]:
     """Measure whether one required image region contains painted UI detail."""
     x, y, width, height = box
@@ -1684,7 +1688,7 @@ def _region_content_evidence(
     dominant_ratio = dominant / max(pixel_count, 1)
     passed = bool(
         pixel_count >= 64
-        and color_count >= 8
+        and color_count >= minimum_color_count
         and channel_range >= 16
         and dominant_ratio < 0.995
     )
@@ -1702,6 +1706,7 @@ def image_content_evidence(
     path: Path,
     *,
     required_regions: Mapping[str, tuple[int, int, int, int]] | None = None,
+    text_region_names: Collection[str] = (),
 ) -> dict[str, Any]:
     """Reject blank frames and blank required shell/transcript/action regions."""
     with Image.open(path) as source:
@@ -1711,7 +1716,11 @@ def image_content_evidence(
         (0, 0, image.width, image.height),
     )
     regions = {
-        name: _region_content_evidence(image, box)
+        name: _region_content_evidence(
+            image,
+            box,
+            minimum_color_count=2 if name in text_region_names else 8,
+        )
         for name, box in (required_regions or {}).items()
     }
     return {
@@ -1909,6 +1918,7 @@ def _capture_metric_tab_transition(
         output_dir / METRIC_TAB_SCREEN_FILES[0],
         render_pixel_ratio=1.0,
         required_content_widgets={"empty_state": tab.empty_state_label},
+        text_content_regions=("empty_state",),
     )
     before.update(before_capture)
     before["file"] = METRIC_TAB_SCREEN_FILES[0]

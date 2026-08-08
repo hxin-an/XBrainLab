@@ -163,16 +163,33 @@ def test_preprocess_signal_legend_shares_the_control_row_when_space_allows(
     widget._set_preview_interactive(True, state="loaded")
     qtbot.wait(0)
 
-    assert not widget.legend_wrap_row.isVisibleTo(widget)
-    control_center = widget.chan_combo.mapTo(
-        widget.controls_legend_container,
-        widget.chan_combo.rect().center(),
-    ).y()
-    legend_center = widget.signal_legend.mapTo(
-        widget.controls_legend_container,
-        widget.signal_legend.rect().center(),
-    ).y()
-    assert abs(control_center - legend_center) <= 2
+    available_width = max(
+        widget.controls_legend_container.contentsRect().width(),
+        widget.contentsRect().width() - 40,
+    )
+    required_width = (
+        control_width + widget.signal_legend.sizeHint().width() + 40 + spacing * 4 + 12
+    )
+    wraps = widget.legend_wrap_row.isVisibleTo(widget)
+    assert wraps is (available_width < required_width)
+    if not wraps:
+        control_center = widget.chan_combo.mapTo(
+            widget.controls_legend_container,
+            widget.chan_combo.rect().center(),
+        ).y()
+        legend_center = widget.signal_legend.mapTo(
+            widget.controls_legend_container,
+            widget.signal_legend.rect().center(),
+        ).y()
+        assert abs(control_center - legend_center) <= 2
+    for label in (
+        widget.loaded_signal_legend_text,
+        widget.current_signal_legend_text,
+        widget.event_legend_text,
+        widget.excluded_legend_text,
+    ):
+        assert label.isVisibleTo(widget)
+        assert label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
 
 
 def test_preprocess_psd_hides_time_only_event_legends(qtbot) -> None:

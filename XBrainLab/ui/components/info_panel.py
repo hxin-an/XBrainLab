@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHeaderView,
-    QLayout,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
@@ -87,7 +86,6 @@ class SidebarScrollArea(QScrollArea):
         )
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(10, 20, 10, 20)
-        self.content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self.setWidget(self.content)
 
 
@@ -144,7 +142,10 @@ class AggregateInfoPanel(QGroupBox):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.table.setWordWrap(True)
-        self.table.setTextElideMode(Qt.TextElideMode.ElideNone)
+        # Native fonts can make a single token wider than the fixed sidebar.
+        # Elide that exceptional token instead of silently clipping it; every
+        # cell keeps the complete value in its tooltip.
+        self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.table.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
@@ -311,7 +312,12 @@ class AggregateInfoPanel(QGroupBox):
                 for row, row_height in enumerate(row_heights):
                     vertical_header.resizeSection(row, row_height)
 
-            total_height = sum(row_heights) + max(
+            rendered_rows_height = (
+                vertical_header.length()
+                if vertical_header is not None
+                else sum(row_heights)
+            )
+            total_height = rendered_rows_height + max(
                 INFO_TABLE_FRAME_BUFFER,
                 self.table.frameWidth() * 2,
             )

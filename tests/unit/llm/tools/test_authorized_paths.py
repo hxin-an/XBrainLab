@@ -37,6 +37,7 @@ class _FakeDirectoryLease:
         self.active = False
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow regression")
 @pytest.mark.parametrize("target_kind", ("file", "directory"))
 def test_posix_containment_rejects_lexical_descendant_symlink_escape(

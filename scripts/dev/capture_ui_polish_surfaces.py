@@ -319,7 +319,10 @@ def _epoching_internal_events_dialog() -> EpochingDialog:
             "window_evidence": "Suggested from the import label matching step.",
         },
     )
-    dialog.resize(QSize(640, 740))
+    dialog.adjustSize()
+    dialog.resize(
+        QSize(max(640, dialog.sizeHint().width()), max(740, dialog.sizeHint().height()))
+    )
     return dialog
 
 
@@ -355,7 +358,10 @@ def _epoching_bids_interval_duration_dialog() -> EpochingDialog:
             },
         },
     )
-    dialog.resize(QSize(700, 780))
+    dialog.adjustSize()
+    dialog.resize(
+        QSize(max(700, dialog.sizeHint().width()), max(780, dialog.sizeHint().height()))
+    )
     return dialog
 
 
@@ -638,6 +644,7 @@ def _training_history_few_rows() -> TrainingPanel:
     )
     panel.sidebar.btn_start.setEnabled(True)
     panel.sidebar.btn_stop.setEnabled(False)
+    _fit_training_history_capture(panel)
     return panel
 
 
@@ -648,7 +655,23 @@ def _training_history_many_rows() -> TrainingPanel:
     )
     panel.sidebar.btn_start.setEnabled(False)
     panel.sidebar.btn_stop.setEnabled(True)
+    _fit_training_history_capture(panel)
     return panel
+
+
+def _fit_training_history_capture(panel: TrainingPanel) -> None:
+    """Give the evidence viewport enough width to expose every table column."""
+    panel.ensurePolished()
+    layout = panel.layout()
+    if layout is not None:
+        layout.activate()
+    header = panel.history_table.horizontalHeader()
+    viewport = panel.history_table.viewport()
+    if header is None or viewport is None:
+        return
+    missing_width = max(header.length() - viewport.width(), 0)
+    if missing_width:
+        panel.resize(QSize(panel.width() + missing_width + 24, panel.height()))
 
 
 def _training_history_panel() -> TrainingPanel:

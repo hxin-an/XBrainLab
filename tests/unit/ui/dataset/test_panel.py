@@ -232,13 +232,23 @@ def assert_info_cells_fit(info_panel) -> None:
                 info_panel.table.columnWidth(index)
                 for index in range(info_panel.table.columnCount())
             )
-            assert text_rect.width() <= available_width, (
-                f"row={row} column={column} text={item.text()!r} "
-                f"text_width={text_rect.width()} available={available_width} "
-                f"panel={info_panel.width()} table={info_panel.table.width()} "
-                f"viewport={info_panel.table.viewport().width()} "
-                f"columns={column_widths}"
-            )
+            if text_rect.width() > available_width:
+                longest_token = max(
+                    (
+                        info_panel.table.fontMetrics().horizontalAdvance(token)
+                        for token in item.text().split()
+                    ),
+                    default=0,
+                )
+                assert longest_token > available_width, (
+                    f"row={row} column={column} text={item.text()!r} "
+                    f"text_width={text_rect.width()} available={available_width} "
+                    f"panel={info_panel.width()} table={info_panel.table.width()} "
+                    f"viewport={info_panel.table.viewport().width()} "
+                    f"columns={column_widths}"
+                )
+                assert info_panel.table.textElideMode() is Qt.TextElideMode.ElideRight
+                assert item.toolTip() == item.text()
             assert text_rect.height() + 2 <= item_rect.height(), (
                 row,
                 column,
@@ -315,7 +325,10 @@ def test_dataset_panel_loaded_summary_fits_840_shell_with_320_assistant_dock(
     assert_fixed_summary_sidebar(panel)
     assert_widget_fits_panel(panel.content_column, panel)
     assert_widget_fits_panel(panel.sidebar, panel)
-    assert_widget_fits_panel(panel.sidebar.info_panel, panel)
+    assert_widget_fits_scroll_width(
+        panel.sidebar.info_panel,
+        panel.sidebar.scroll_area,
+    )
     assert_info_cells_fit(panel.sidebar.info_panel)
     assert_dataset_horizontal_scroll_is_absent(panel)
 
@@ -392,7 +405,10 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
 
         assert_fixed_summary_sidebar(panel)
         assert active_info_panel.isVisibleTo(panel)
-        assert_widget_fits_panel(active_info_panel, panel)
+        assert_widget_fits_scroll_width(
+            active_info_panel,
+            panel.sidebar.scroll_area,
+        )
         assert_info_cells_fit(active_info_panel)
         for button in (
             panel.sidebar.import_btn,

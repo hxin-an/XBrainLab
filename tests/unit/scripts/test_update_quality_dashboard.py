@@ -325,7 +325,9 @@ def test_every_required_dashboard_pytest_check_uses_attesting_runner(monkeypatch
     for check in required:
         command = str(check["command"])
         assert (
-            dashboard._dashboard_pytest_attestation_contract(shlex.split(command))
+            dashboard._dashboard_pytest_attestation_contract(
+                shlex.split(command, posix=os.name != "nt")
+            )
             is not None
         ), check["key"]
 
@@ -958,6 +960,7 @@ def test_bounded_command_terminates_timed_out_process():
     assert completed.returncode == 124
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX process-group contract")
 def test_bounded_command_cleans_child_when_parent_exits_normally(tmp_path):
     child_pid_path = tmp_path / "dashboard-child.pid"

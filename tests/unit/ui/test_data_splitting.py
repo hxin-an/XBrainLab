@@ -529,7 +529,7 @@ class TestDataSplittingPreviewDialogSplitters:
         ]
         assert QSizePolicy.Policy.Maximum in right_panel_heights
 
-    def test_step2_results_table_uses_width_without_small_row_scrollbar(
+    def test_step2_results_table_keeps_full_headers_with_one_scroll_owner(
         self,
         dlg,
         qtbot,
@@ -557,7 +557,31 @@ class TestDataSplittingPreviewDialogSplitters:
             dlg.tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         assert dlg.tree.verticalScrollBar().maximum() == 0
-        assert dlg.tree.width() >= int(dlg.contentsRect().width() * 0.45)
+        viewport = dlg.tree.viewport()
+        header = dlg.tree.header()
+        assert viewport is not None
+        assert header is not None
+        horizontal_scrollbar = dlg.tree.horizontalScrollBar()
+        assert horizontal_scrollbar is not None
+        if header.length() > viewport.width():
+            assert horizontal_scrollbar.maximum() > 0
+        else:
+            assert abs(header.length() - viewport.width()) <= 2
+            assert horizontal_scrollbar.maximum() == 0
+        header_item = dlg.tree.headerItem()
+        assert header_item is not None
+        assert [header_item.text(column) for column in range(4)] == [
+            "Split",
+            "Train",
+            "Validation",
+            "Test",
+        ]
+        assert [header_item.toolTip(column) for column in range(4)] == [
+            "Split",
+            "Training rows",
+            "Validation rows",
+            "Test rows",
+        ]
 
     def test_step2_cards_do_not_use_vertical_separator_frames(self, dlg):
         separators = [

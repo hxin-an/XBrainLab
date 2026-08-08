@@ -219,7 +219,8 @@ def walkthrough_source_fingerprint() -> str:
     digest = hashlib.sha256()
     for path in ASSISTANT_FINGERPRINT_PATHS:
         relative = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name
-        digest.update(str(relative).encode("utf-8"))
+        relative_text = relative.as_posix() if isinstance(relative, Path) else relative
+        digest.update(str(relative_text).encode("utf-8"))
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")

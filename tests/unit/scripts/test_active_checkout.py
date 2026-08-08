@@ -36,8 +36,9 @@ def test_active_checkout_guard_prepends_the_current_checkout(
 
 
 def test_active_checkout_guard_rejects_another_checkout(tmp_path) -> None:
-    package = tmp_path / "XBrainLab" / "__init__.py"
-    package.parent.mkdir()
+    expected_root = tmp_path / "expected-checkout"
+    package = tmp_path / "foreign-checkout" / "XBrainLab" / "__init__.py"
+    package.parent.mkdir(parents=True)
     package.write_text("", encoding="utf-8")
 
     with (
@@ -47,7 +48,7 @@ def test_active_checkout_guard_rejects_another_checkout(tmp_path) -> None:
         ),
         pytest.raises(RuntimeError, match="different checkout"),
     ):
-        assert_active_checkout_import(Path(__file__).resolve().parents[3])
+        assert_active_checkout_import(expected_root)
 
 
 @pytest.mark.parametrize(
@@ -62,7 +63,8 @@ def test_active_checkout_guard_rejects_mixed_loaded_modules(
     relative_path: Path,
     tmp_path: Path,
 ) -> None:
-    foreign_module = tmp_path / relative_path
+    expected_root = tmp_path / "expected-checkout"
+    foreign_module = tmp_path / "foreign-checkout" / relative_path
     foreign_module.parent.mkdir(parents=True)
     foreign_module.write_text("", encoding="utf-8")
 
@@ -73,7 +75,7 @@ def test_active_checkout_guard_rejects_mixed_loaded_modules(
         ),
         pytest.raises(RuntimeError, match="different checkout"),
     ):
-        assert_active_checkout_import(Path(__file__).resolve().parents[3])
+        assert_active_checkout_import(expected_root)
 
 
 @pytest.mark.parametrize("script_name", REQUIRED_CHECKOUT_GUARDED_SCRIPTS)

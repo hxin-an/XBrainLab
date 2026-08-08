@@ -91,6 +91,28 @@ class FakeModel(torch.nn.Module):
         return x
 
 
+class _FakeCudaTensor(torch.Tensor):
+    """CPU-backed optimizer tensor that records a logical CUDA-to-CPU move."""
+
+    @staticmethod
+    def __new__(cls, value: torch.Tensor) -> "_FakeCudaTensor":
+        return torch.Tensor._make_subclass(  # pyright: ignore[reportPrivateUsage]
+            cls,
+            value,
+            value.requires_grad,
+        )
+
+    @property
+    def device(self) -> torch.device:
+        return torch.device("cuda")
+
+    def to(self, *args, **kwargs) -> torch.Tensor:
+        device = kwargs.get("device", args[0] if args else None)
+        if device is not None and torch.device(device).type == "cpu":
+            return self.as_subclass(torch.Tensor)
+        return super().to(*args, **kwargs)
+
+
 @pytest.fixture
 def y():
     return np.arange(SAMPLE_NUM).repeat(REPEAT)
@@ -1025,22 +1047,19 @@ def test_safe_move_to_cpu_preserves_optimizer_and_moves_nested_state(base_holder
     assert state["nested"][1]["value"].device.type == "cpu"
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
 def test_safe_move_to_cpu_releases_model_and_optimizer_gpu_state(base_holder):
     record = base_holder.get_plans()[0]
-    record.model.to("cuda:0")
     optimizer = record.optim
     parameter = next(record.model.parameters())
     optimizer.state[parameter] = {
-        "exp_avg": torch.ones_like(parameter, device="cuda:0"),
-        "exp_avg_sq": torch.ones_like(parameter, device="cuda:0"),
+        "exp_avg": _FakeCudaTensor(torch.ones_like(parameter)),
+        "exp_avg_sq": _FakeCudaTensor(torch.ones_like(parameter)),
     }
 
-    base_holder._safe_move_to_cpu(record)
+    with patch.object(record.model, "cpu", wraps=record.model.cpu) as move_model:
+        base_holder._safe_move_to_cpu(record)
 
-    assert all(
-        parameter.device.type == "cpu" for parameter in record.model.parameters()
-    )
+    move_model.assert_called_once_with()
     assert all(
         value.device.type == "cpu"
         for state in optimizer.state.values()

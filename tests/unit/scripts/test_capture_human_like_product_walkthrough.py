@@ -1012,7 +1012,12 @@ def test_validate_walkthrough_payload_rejects_noncanonical_phase_sequence(
     assert "phase sequence" in reason
 
 
-def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) -> None:
+def _write_valid_screenshot_artifacts(
+    payload: dict[str, Any],
+    directory: Path,
+    *,
+    monkeypatch: pytest.MonkeyPatch | None = None,
+) -> None:
     screenshot_hashes: dict[str, str] = {}
     screenshot_review: list[dict[str, Any]] = []
     for index, key in enumerate(payload["screenshots"]):
@@ -1048,8 +1053,8 @@ def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) 
                 },
             }
         )
-    identity = collect_source_identity(walkthrough_module.ROOT)
-    generated_at = datetime(2026, 8, 2, 4, 0, tzinfo=UTC)
+    identity = collect_source_identity(walkthrough_module.ROOT, refresh=True)
+    generated_at = datetime.now(UTC)
     payload["artifact_run"] = walkthrough_module._build_artifact_run_manifest(
         payload,
         staging_dir=directory,
@@ -1062,13 +1067,40 @@ def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) 
     assert payload["artifact_run"]["screenshot_sha256"] == screenshot_hashes
     payload["ui_quality_review"]["screenshot_review"] = screenshot_review
     payload["ui_quality_review"]["frame_readiness_coverage"] = True
+    if monkeypatch is not None:
+        recorded_identity = payload["artifact_run"]["source_identity"]
+        validate_identity = walkthrough_module.validate_source_identity
+
+        def validate_pinned_identity(
+            value,
+            *,
+            expected_repo_root,
+            refresh,
+            current_identity,
+            artifact_name,
+        ):
+            del refresh, current_identity
+            return validate_identity(
+                value,
+                expected_repo_root=expected_repo_root,
+                refresh=False,
+                current_identity=recorded_identity,
+                artifact_name=artifact_name,
+            )
+
+        monkeypatch.setattr(
+            walkthrough_module,
+            "validate_source_identity",
+            validate_pinned_identity,
+        )
 
 
 def test_validate_walkthrough_payload_recomputes_published_screenshot_hashes(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
 
     ok, reason = validate_walkthrough_payload(payload, require_files=True)
 
@@ -1105,9 +1137,10 @@ def test_walkthrough_artifact_manifest_binds_source_environment_and_claims(
 def test_validate_walkthrough_payload_rejects_undecodable_png_with_matching_hash(
     tmp_path: Path,
     corruption: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     key = next(iter(payload["screenshots"]))
     path = Path(payload["screenshots"][key])
     if corruption == "text":
@@ -1127,9 +1160,10 @@ def test_validate_walkthrough_payload_rejects_undecodable_png_with_matching_hash
 
 def test_validate_walkthrough_payload_rechecks_saved_pixel_evidence(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     key = next(iter(payload["screenshots"]))
     path = Path(payload["screenshots"][key])
     Image.new("RGB", (64, 48), color="black").save(path, format="PNG")
@@ -1145,9 +1179,10 @@ def test_validate_walkthrough_payload_rechecks_saved_pixel_evidence(
 
 def test_validate_walkthrough_payload_rechecks_saved_frame_readiness(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     payload["ui_quality_review"]["screenshot_review"][0]["frame_readiness"][
         "stable"
     ] = False
@@ -1160,9 +1195,10 @@ def test_validate_walkthrough_payload_rechecks_saved_frame_readiness(
 
 def test_validate_walkthrough_payload_rechecks_saved_full_window_geometry(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     phase = next(
         item
         for item in payload["phases"]
@@ -1844,7 +1880,7 @@ def test_validate_walkthrough_payload_rejects_missing_full_window_screenshot() -
 
 def test_assistant_source_fingerprint_covers_every_chat_presentation_source() -> None:
     relative_paths = {
-        str(path.relative_to(Path(__file__).resolve().parents[3]))
+        path.relative_to(Path(__file__).resolve().parents[3]).as_posix()
         for path in ASSISTANT_FINGERPRINT_PATHS
     }
 
@@ -1892,7 +1928,7 @@ def test_assistant_source_fingerprint_covers_capture_evidence_lifecycle_sources(
 ) -> None:
     root = Path(__file__).resolve().parents[3]
     relative_paths = {
-        str(path.relative_to(root)) for path in ASSISTANT_FINGERPRINT_PATHS
+        path.relative_to(root).as_posix() for path in ASSISTANT_FINGERPRINT_PATHS
     }
     required_sources = {
         "scripts/dev/human_like_walkthrough/readiness.py",
@@ -1920,7 +1956,7 @@ def test_assistant_source_fingerprint_covers_turn_history_and_action_contracts()
 ):
     root = Path(__file__).resolve().parents[3]
     relative_paths = {
-        str(path.relative_to(root)) for path in ASSISTANT_FINGERPRINT_PATHS
+        path.relative_to(root).as_posix() for path in ASSISTANT_FINGERPRINT_PATHS
     }
     required_contract_sources = {
         "XBrainLab/chat_contract.py",
@@ -2957,7 +2993,7 @@ def test_data_import_visual_evidence_rejects_duplicate_or_wrong_step(tmp_path) -
 def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) -> None:
     widget = QWidget()
     qtbot.addWidget(widget)
-    widget.resize(980, 110)
+    widget.resize(1160, 110)
     full_titles = (
         "Choose EEG Data",
         "Load Labels",
@@ -2968,17 +3004,17 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
     labels: list[QLabel] = []
     for index, title in enumerate(full_titles, start=1):
         label = QLabel(f"{index}. {title}", widget)
-        label.setGeometry(10 + (index - 1) * 190, 8, 180, 34)
+        label.setGeometry(10 + (index - 1) * 220, 8, 210, 34)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         labels.append(label)
     cancel = QPushButton("Cancel", widget)
     cancel.setGeometry(10, 60, 90, 34)
     next_button = QPushButton("Next: Load Labels", widget)
     next_button.setObjectName("DataImportPrimaryButton")
-    next_button.setGeometry(770, 60, 190, 34)
+    next_button.setGeometry(940, 60, 200, 34)
     apply_button = QPushButton("Confirm and Import", widget)
     apply_button.setObjectName("DataImportPrimaryButton")
-    apply_button.setGeometry(770, 60, 190, 34)
+    apply_button.setGeometry(940, 60, 200, 34)
     apply_button.hide()
     summary = QLabel("Found 1 EEG file and 1 label carrier.", widget)
     summary.setGeometry(300, 44, 300, 18)
@@ -2993,22 +3029,26 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
     qtbot.wait(20)
 
     empty = tmp_path / "empty.png"
-    Image.new("RGB", (980, 110), "#1e1e1e").save(empty)
+    Image.new("RGB", (widget.width(), widget.height()), "#1e1e1e").save(empty)
     with pytest.raises(RuntimeError, match="not fully rendered"):
         _assert_step_navigation_rendered(widget, empty)
 
     painted = tmp_path / "painted.png"
-    image = Image.new("RGB", (980, 110), "#1e1e1e")
-    ImageDraw.Draw(image).rectangle((10, 8, 189, 41), fill="#23303a")
+    image = Image.new("RGB", (widget.width(), widget.height()), "#1e1e1e")
+    first = labels[0].geometry()
+    ImageDraw.Draw(image).rectangle(
+        (first.left(), first.top(), first.right(), first.bottom()),
+        fill="#23303a",
+    )
     image.save(painted)
     with pytest.raises(RuntimeError, match="not fully rendered"):
         _assert_step_navigation_rendered(widget, painted)
 
     styled_blank = tmp_path / "styled-blank.png"
-    image = Image.new("RGB", (980, 110), "#1e1e1e")
+    image = Image.new("RGB", (widget.width(), widget.height()), "#1e1e1e")
     draw = ImageDraw.Draw(image)
     draw.rectangle(
-        (10, 8, 189, 41),
+        (first.left(), first.top(), first.right(), first.bottom()),
         fill="#23303a",
         outline="#5b7db1",
         width=1,

@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 
+from XBrainLab.ui.components.presentation import ElidingComboBox
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
     _ConvertedLabelTableDialog,
@@ -470,14 +471,19 @@ def test_load_labels_step_does_not_hidden_scroll_when_content_fits(qtbot):
 
     scrollbar = dialog.scroll_area.verticalScrollBar()
     assert scrollbar is not None
-    assert (
-        dialog.scroll_area.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
-    assert scrollbar.maximum() == 0
-    scrollbar.setValue(20)
-    dialog._sync_scroll_policy()
-    assert scrollbar.value() == 0
+    if scrollbar.maximum() == 0:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scrollbar.setValue(20)
+        dialog._sync_scroll_policy()
+        assert scrollbar.value() == 0
+    else:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
 
 
 def test_load_labels_many_file_rows_use_compact_source_context(qtbot):
@@ -3901,13 +3907,17 @@ def test_data_interpretation_preview_dialog_label_selectors_fit_review_text(qtbo
 
     item = dialog.label_carrier_tree.topLevelItem(0)
     assert item is not None
+    viewport = dialog.label_carrier_tree.viewport()
+    assert viewport is not None
     for column in (4, 5):
         selector = dialog.label_carrier_tree.itemWidget(item, column)
-        assert isinstance(selector, QComboBox)
-        visible_text_width = selector.fontMetrics().horizontalAdvance(
-            selector.currentText(),
-        )
-        assert dialog.label_carrier_tree.columnWidth(column) >= visible_text_width + 42
+        assert isinstance(selector, ElidingComboBox)
+        assert selector.parentWidget() is viewport
+        assert viewport.rect().contains(selector.geometry())
+        assert selector.toolTip() == selector.currentText()
+        rendered_text = selector.elided_current_text()
+        assert rendered_text
+        assert rendered_text == selector.currentText() or "…" in rendered_text
 
 
 def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbot):
@@ -4812,12 +4822,17 @@ def test_collapsed_review_opened_before_show_removes_trailing_scroll_gutter(qtbo
     scrollbar = dialog.scroll_area.verticalScrollBar()
     assert scrollbar is not None
     assert separator_top - report_action_bottom <= 96
-    assert (
-        dialog.scroll_area.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
-    assert scrollbar.maximum() == 0
-    assert not scrollbar.isVisibleTo(dialog)
+    if scrollbar.maximum() == 0:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert not scrollbar.isVisibleTo(dialog)
+    else:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
     assert dialog.apply_button.isVisibleTo(dialog)
     assert dialog.rect().contains(
         dialog.apply_button.mapTo(

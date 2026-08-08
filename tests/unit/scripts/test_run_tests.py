@@ -14,6 +14,13 @@ from scripts.dev.pytest_completion_attestation import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ci_shard_evidence_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep runner unit tests independent from the outer CI shard settings."""
+    monkeypatch.delenv("XBL_TEST_JUNIT_DIR", raising=False)
+    monkeypatch.delenv("XBL_TEST_COVERAGE", raising=False)
+
+
 def test_headless_runner_uses_one_wsl_safe_temp_namespace(monkeypatch) -> None:
     monkeypatch.delenv("XBRAINLAB_TEST_TMPDIR", raising=False)
     monkeypatch.delenv("TMPDIR", raising=False)
@@ -25,7 +32,11 @@ def test_headless_runner_uses_one_wsl_safe_temp_namespace(monkeypatch) -> None:
 
     temp_root = Path(os.environ["TMPDIR"]).resolve()
     matplotlib_root = Path(os.environ["MPLCONFIGDIR"]).resolve()
-    assert temp_root.is_relative_to("/dev/shm")
+    if Path("/dev/shm").is_dir() and os.access("/dev/shm", os.W_OK):
+        assert temp_root.is_relative_to("/dev/shm")
+    else:
+        repo_root = Path(run_tests.__file__).resolve().parents[2]
+        assert temp_root == (repo_root / ".test-tmp").resolve()
     assert matplotlib_root.parent == temp_root
     assert matplotlib_root.name == f"matplotlib-{os.getpid()}"
     assert Path(tempfile.gettempdir()).resolve() == temp_root
@@ -138,11 +149,13 @@ def test_ui_gate_runs_every_ui_domain_in_isolated_processes(
     run_tests.ui()
 
     expected_paths = {
-        path for _label, paths in run_tests.UI_UNIT_SHARDS for path in paths
+        Path(path).as_posix()
+        for _label, paths in run_tests.UI_UNIT_SHARDS
+        for path in paths
     }
-    root_tests = {str(path) for path in Path("tests/unit/ui").glob("test_*.py")}
+    root_tests = {path.as_posix() for path in Path("tests/unit/ui").glob("test_*.py")}
     domain_paths = {
-        str(path)
+        path.as_posix()
         for path in Path("tests/unit/ui").iterdir()
         if path.is_dir() and any(path.rglob("test_*.py"))
     }

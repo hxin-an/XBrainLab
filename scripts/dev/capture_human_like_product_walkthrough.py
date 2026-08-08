@@ -2268,7 +2268,12 @@ def _label_text_line_probes(
 
     probes: list[tuple[QRect, int]] = []
     for line, line_height in zip(lines, line_heights, strict=True):
-        text_width = max(round(line.naturalTextWidth()), 1)
+        text_width = max(
+            metrics.horizontalAdvance(text)
+            if not label.wordWrap()
+            else round(line.naturalTextWidth()),
+            1,
+        )
         if not label.wordWrap() and text_width > content_rect.width():
             raise RuntimeError(f"{surface_name} label text is horizontally clipped.")
         if horizontal_alignment == Qt.AlignmentFlag.AlignRight:

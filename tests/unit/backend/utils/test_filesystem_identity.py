@@ -35,6 +35,7 @@ def test_directory_snapshot_rejects_same_path_replacement(tmp_path: Path) -> Non
         retain_directory_identity(target, expected=snapshot)
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX directory identity contract")
 def test_non_windows_directory_identity_revalidates_normally(tmp_path: Path) -> None:
     with retain_directory_identity(tmp_path) as identity:

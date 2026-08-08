@@ -62,8 +62,13 @@ def test_smart_parser_preview_exposes_complete_filename_in_tooltip(qtbot):
     assert file_item.toolTip() == filepath
 
 
-def test_smart_parser_regex_controls_are_compact(dialog):
+def test_smart_parser_regex_controls_are_readable_after_native_layout(
+    dialog,
+    qtbot,
+):
     dialog.radio_regex.setChecked(True)
+    dialog.show()
+    qtbot.wait(0)
 
     assert dialog.settings_stack.currentIndex() == 1
     assert dialog.regex_input.minimumWidth() == 320

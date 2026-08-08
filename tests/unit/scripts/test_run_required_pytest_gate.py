@@ -20,6 +20,7 @@ def test_required_gate_records_skip_xpass_and_deselection() -> None:
             passed=False,
             wasxfail=None,
             longrepr="fixture missing",
+            keywords={},
         )
     )
     observer.pytest_runtest_logreport(
@@ -54,6 +55,7 @@ def test_required_gate_main_fails_when_pytest_skips(monkeypatch, tmp_path) -> No
                 passed=False,
                 wasxfail=None,
                 longrepr="missing fixture",
+                keywords={},
             )
         )
         return 0
@@ -77,6 +79,59 @@ def test_required_gate_main_fails_when_pytest_skips(monkeypatch, tmp_path) -> No
     assert payload["completed"] is True
     assert payload["exit_code"] == 1
     assert payload["counts"]["skipped"] == 1
+
+
+def test_required_gate_allows_explicit_platform_contract_skip(
+    monkeypatch, tmp_path
+) -> None:
+    def fake_main(args, *, plugins):
+        assert args == ["tests/test_platform.py", "-q"]
+        observer = plugins[0]
+        observer.pytest_collection_finish(SimpleNamespace(items=[object()]))
+        observer.pytest_runtest_logreport(
+            SimpleNamespace(
+                nodeid="tests/test_platform.py::test_posix_contract",
+                when="setup",
+                skipped=True,
+                failed=False,
+                passed=False,
+                wasxfail=None,
+                keywords={"platform_contract": True},
+            )
+        )
+        return 0
+
+    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    result_path = tmp_path / "platform-skip-result.json"
+
+    assert (
+        gate.main(
+            [
+                "--result-json",
+                str(result_path),
+                "--",
+                "tests/test_platform.py",
+                "-q",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["counts"]["skipped"] == 1
+
+
+def test_os_specific_skip_contracts_are_explicitly_marked() -> None:
+    offenders: list[str] = []
+    for path in Path("tests").rglob("test_*.py"):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if not line.strip().startswith("@pytest.mark.skipif(os.name"):
+                continue
+            decorators = lines[max(0, index - 2) : index]
+            if not any("@pytest.mark.platform_contract" in item for item in decorators):
+                offenders.append(f"{path.as_posix()}:{index + 1}")
+
+    assert offenders == []
 
 
 def test_required_gate_main_preserves_pytest_failure(monkeypatch, tmp_path) -> None:

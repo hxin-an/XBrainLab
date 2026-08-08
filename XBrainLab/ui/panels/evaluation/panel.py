@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QSizePolicy,
     QStackedWidget,
     QTabWidget,
@@ -1371,6 +1372,8 @@ class EvaluationPanel(BasePanel):
             """
         )
         main_layout = QHBoxLayout(self)
+        # Native minimum hints must not prevent the tabbed compact mode.
+        main_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
@@ -1570,6 +1573,11 @@ class EvaluationPanel(BasePanel):
         super().resizeEvent(event)
         if hasattr(self, "charts_container"):
             QTimer.singleShot(0, self._update_responsive_layout)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Apply responsive mode after the platform style is polished."""
+        super().showEvent(event)
+        self._update_responsive_layout()
 
     def _update_responsive_layout(self) -> None:
         compact_summary = self.contentsRect().width() < COMPACT_INFO_SIDEBAR_BREAKPOINT

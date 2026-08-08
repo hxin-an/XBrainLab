@@ -1085,9 +1085,9 @@ class MainWindow(QMainWindow):
         else:
             raise RuntimeError(f"No typed product bootstrap for {spec.class_name}")
         if not isinstance(panel, QWidget):
-            if isinstance(panel, QObject):
+            if isinstance(panel, QObject) and not sip.isdeleted(panel):
                 panel.setParent(None)
-                panel.deleteLater()
+                sip.delete(panel)
             raise TypeError(f"{spec.class_name} did not create a QWidget")
 
         old_widget = self.stack.widget(index)

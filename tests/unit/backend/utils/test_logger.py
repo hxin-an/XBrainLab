@@ -439,6 +439,7 @@ def test_detailed_logger_requires_explicit_disclosure_and_strips_controls(
         handler.close()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not Windows ACLs")
 def test_logger_files_are_owner_only_by_default(temp_log_dir):
     log_file = os.path.join(temp_log_dir, "private-mode.log")
@@ -964,6 +965,7 @@ def test_existing_log_family_removes_noncanonical_and_excess_numeric_backups(
     handler.close()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX no-follow semantics")
 def test_active_log_symlink_fails_closed_without_touching_target(temp_log_dir) -> None:
     target = Path(temp_log_dir) / "outside.log"
@@ -984,6 +986,7 @@ def test_active_log_symlink_fails_closed_without_touching_target(temp_log_dir) -
     assert target.read_bytes() == original
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX hard-link semantics")
 def test_active_log_hard_link_fails_closed_without_touching_target(
     temp_log_dir,
@@ -1009,6 +1012,7 @@ def test_active_log_hard_link_fails_closed_without_touching_target(
     assert target.stat().st_nlink == 2
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX no-follow semantics")
 def test_symlinked_parent_log_directory_fails_closed(temp_log_dir) -> None:
     target = Path(temp_log_dir) / "real-directory"
@@ -1027,6 +1031,7 @@ def test_symlinked_parent_log_directory_fails_closed(temp_log_dir) -> None:
     assert not (target / "app.log").exists()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not Windows ACLs")
 def test_log_descriptor_rejects_ineffective_owner_only_mode(
     temp_log_dir,
@@ -1044,6 +1049,7 @@ def test_log_descriptor_rejects_ineffective_owner_only_mode(
         )
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX no-follow semantics")
 def test_backup_log_symlink_disables_handler_without_touching_target(
     temp_log_dir,
@@ -1068,6 +1074,7 @@ def test_backup_log_symlink_disables_handler_without_touching_target(
     handler.close()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX hard-link semantics")
 def test_backup_log_hard_link_fails_closed_without_touching_target(
     temp_log_dir,
@@ -1181,6 +1188,7 @@ def test_forged_log_record_disclosure_marker_cannot_skip_redaction(
         handler.close()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not Windows ACLs")
 def test_rotated_log_files_are_owner_only(temp_log_dir):
     log_file = os.path.join(temp_log_dir, "rotated-mode.log")

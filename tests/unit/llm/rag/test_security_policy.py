@@ -564,6 +564,7 @@ def test_embedding_publication_lock_is_bounded_across_processes(
     assert not list(cache_dir.glob(f"{rag_downloader._ATTEMPT_PREFIX}*"))
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission-bit assertion")
 @pytest.mark.parametrize("link_kind", ("symlink", "hardlink"))
 def test_publication_lock_rejects_links_without_touching_external_target(
