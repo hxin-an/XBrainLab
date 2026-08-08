@@ -153,6 +153,26 @@ def test_posix_group_is_still_signalled_after_its_leader_exits(monkeypatch) -> N
     assert calls == [(4321, signal.SIGKILL)]
 
 
+@pytest.mark.platform_contract
+@POSIX_ONLY
+def test_posix_orphaned_group_permission_error_does_not_escape_or_widen_cleanup(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "posix")
+    process = _FakeProcess(running=False)
+    monkeypatch.setattr(
+        owned_process_group.os,
+        "killpg",
+        lambda _pid, _sig: (_ for _ in ()).throw(PermissionError("orphaned group")),
+        raising=False,
+    )
+
+    owned_process_group.signal_owned_group(process, force=True)
+
+    assert process.killed is False
+    assert process.terminated is False
+
+
 def test_windows_owner_closes_job_after_parent_already_exited(monkeypatch) -> None:
     monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "nt")
     calls: list[str] = []
