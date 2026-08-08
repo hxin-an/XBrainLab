@@ -43,3 +43,16 @@ def test_model_holder_returns_parameter_snapshot():
     snapshot["nested"]["depth"] = 9
 
     assert holder.model_params_map == {"nested": {"depth": 2}}
+
+
+def test_model_holder_preserves_stable_catalog_identity():
+    holder = ModelHolder(
+        FakeModel,
+        {},
+        model_id="braindecode.eegnet",
+        display_name="EEGNet (Braindecode)",
+    )
+
+    assert holder.model_id == "braindecode.eegnet"
+    assert holder.display_name == "EEGNet (Braindecode)"
+    assert holder.get_model_desc_str() == "EEGNet (Braindecode)"

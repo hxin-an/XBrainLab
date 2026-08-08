@@ -72,6 +72,22 @@ class TestModelSelection:
         assert dialog.model_combo.count() == 1
         assert dialog.model_combo.currentText() == "DummyModel"
 
+    def test_product_catalog_defaults_to_braindecode_eegnet(self, qtbot):
+        dialog = ModelSelectionDialog(None, MagicMock())
+        qtbot.addWidget(dialog)
+
+        assert dialog.model_combo.currentText() == "EEGNet (Braindecode)"
+        assert dialog.model_combo.count() == 13
+        assert dialog.model_combo.findText("EEGNet (XBrainLab)") >= 0
+        assert dialog.model_combo.findText("CTNet (Braindecode)") >= 0
+        parameter_keys = {
+            dialog.params_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            for row in range(dialog.params_table.rowCount())
+        }
+        assert parameter_keys.isdisjoint(
+            {"n_outputs", "n_chans", "n_times", "sfreq"},
+        )
+
     def test_params_population(self, dialog):
         # Verify params table is populated
         assert dialog.params_table.rowCount() == 3

@@ -7,9 +7,7 @@ from typing import Any
 
 import torch
 
-from XBrainLab.backend.model_base.EEGNet import EEGNet
-from XBrainLab.backend.model_base.SCCNet import SCCNet
-from XBrainLab.backend.model_base.ShallowConvNet import ShallowConvNet
+from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.input_contract import (
     normalize_non_negative_integer,
@@ -115,11 +113,13 @@ class TrainingCommandService:
 
         holder: ModelHolder | None = None
         if command.model_name:
-            model_class = self._resolve_model_class(command.model_name)
+            model_spec = get_model_spec(command.model_name)
             holder = ModelHolder(
-                model_class,
+                model_spec.factory,
                 dict(command.model_params),
                 command.pretrained_weight_path,
+                model_id=model_spec.model_id,
+                display_name=model_spec.display_name,
             )
 
         self.training.apply_configuration(
@@ -373,18 +373,6 @@ class TrainingCommandService:
     @staticmethod
     def training_option_snapshot(option: Any) -> dict[str, Any]:
         return build_training_option_snapshot(option)
-
-    @staticmethod
-    def _resolve_model_class(model_name: str) -> type:
-        models_map = {
-            "eegnet": EEGNet,
-            "sccnet": SCCNet,
-            "shallowconvnet": ShallowConvNet,
-        }
-        model_class = models_map.get(model_name.lower())
-        if model_class is None:
-            raise ValueError(f"Unknown model architecture: {model_name}")
-        return model_class
 
     @staticmethod
     def _resolve_optimizer(name: str) -> type[torch.optim.Optimizer]:

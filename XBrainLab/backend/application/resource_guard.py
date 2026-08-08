@@ -76,6 +76,14 @@ MODEL_ACTIVATION_FACTORS = {
     "eegnet": 8.0,
     "sccnet": 10.0,
     "shallowconvnet": 6.0,
+    "shallowfbcspnet": 6.0,
+    "deep4net": 12.0,
+    "eegconformer": 18.0,
+    "atcnet": 14.0,
+    "eeginceptionerp": 10.0,
+    "eegnex": 10.0,
+    "eegitnet": 12.0,
+    "ctnet": 18.0,
     "transformer": 18.0,
 }
 
@@ -1864,7 +1872,14 @@ def _optimizer_state_multiplier(option: Any) -> float:
 
 def _activation_factor(model_holder: Any | None) -> float:
     target_model = getattr(model_holder, "target_model", None)
-    name = str(getattr(target_model, "__name__", "") or "").lower()
+    name = " ".join(
+        str(value or "")
+        for value in (
+            getattr(model_holder, "model_id", None),
+            getattr(model_holder, "display_name", None),
+            getattr(target_model, "__name__", ""),
+        )
+    ).lower()
     for key, factor in MODEL_ACTIVATION_FACTORS.items():
         if key in name:
             return factor

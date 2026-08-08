@@ -4,7 +4,6 @@ Dynamically generates parameter inputs based on the selected model class
 signature and supports loading pretrained weights.
 """
 
-import inspect
 import os
 from pathlib import Path
 from typing import Any
@@ -29,6 +28,11 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend import model_base
+from XBrainLab.backend.model_base.model_catalog import (
+    ModelSpec,
+    default_model_id,
+    discover_model_specs,
+)
 from XBrainLab.backend.training import ModelHolder
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -41,41 +45,6 @@ from XBrainLab.ui.dialogs.common import (
 )
 from XBrainLab.ui.styles.theme import Theme
 
-ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
-_MODEL_PARAMETER_PRESENTATION = {
-    "f1": (
-        "Temporal filters",
-        "f1: number of temporal filters in the first EEGNet convolution.",
-    ),
-    "f2": (
-        "Pointwise filters",
-        "f2: number of pointwise filters in the EEGNet separable convolution.",
-    ),
-    "d": (
-        "Depth multiplier",
-        "d: number of spatial filters learned for each temporal filter.",
-    ),
-    "pool_1": (
-        "First pooling size",
-        "pool_1: first average-pooling window, measured in samples.",
-    ),
-    "pool_2": (
-        "Second pooling size",
-        "pool_2: second average-pooling window, measured in samples.",
-    ),
-    "ns": (
-        "Spatial filters",
-        "ns: number of spatial filters used by SCCNet.",
-    ),
-    "pool_len": (
-        "Pooling window",
-        "pool_len: average-pooling window, measured in samples.",
-    ),
-    "pool_stride": (
-        "Pooling stride",
-        "pool_stride: distance between pooling windows, measured in samples.",
-    ),
-}
 _CHEVRON_DOWN_ICON = (
     Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
 ).as_posix()
@@ -119,10 +88,10 @@ class ModelSelectionDialog(BaseDialog):
         self.content_scroll: QScrollArea | None = None
 
         # Fetch model list
-        self.model_map = {
-            m[0]: m[1] for m in inspect.getmembers(model_base, inspect.isclass)
-        }
-        self.model_list = list(self.model_map.keys())
+        self.model_specs = discover_model_specs(model_base)
+        self.model_map = {spec.display_name: spec.factory for spec in self.model_specs}
+        self._spec_by_name = {spec.display_name: spec for spec in self.model_specs}
+        self.model_list = [spec.display_name for spec in self.model_specs]
         self.initial_model_name = self._canonical_model_name(initial_model_name)
 
         super().__init__(parent, title="Model Selection")
@@ -144,16 +113,25 @@ class ModelSelectionDialog(BaseDialog):
 
     def _canonical_model_name(self, model_name: str | None) -> str | None:
         if not isinstance(model_name, str):
-            return None
+            default_id = default_model_id()
+            return next(
+                (
+                    spec.display_name
+                    for spec in self.model_specs
+                    if spec.model_id == default_id
+                ),
+                self.model_list[0] if self.model_list else None,
+            )
         requested_name = model_name.casefold()
-        return next(
-            (
-                available_name
-                for available_name in self.model_list
-                if available_name.casefold() == requested_name
-            ),
-            None,
-        )
+        for spec in self.model_specs:
+            factory_name = getattr(spec.factory, "__name__", "").casefold()
+            if requested_name in {
+                spec.model_id.casefold(),
+                spec.display_name.casefold(),
+                factory_name,
+            }:
+                return spec.display_name
+        return None
 
     def init_ui(self):
         """Initialize the dialog UI with model combo, parameter table, and buttons."""
@@ -389,37 +367,21 @@ class ModelSelectionDialog(BaseDialog):
         if not self.params_table or not self.params_group:
             return
 
-        target = self.model_map[model_name]
+        spec = self._spec_by_name[model_name]
         self.params_table.setRowCount(0)
 
-        if target:
-            sigs = inspect.signature(target.__init__)
-            params = sigs.parameters
-
-            rows = []
-            for param in params:
-                if param in ARG_DICT_SKIP_SET:
-                    continue
-
-                default_val = ""
-                if params[param].default != inspect._empty:
-                    default_val = str(params[param].default)
-
-                rows.append((param, default_val))
-
+        if spec:
+            rows = list(spec.parameters)
             self.params_table.setRowCount(len(rows))
-            for i, (param, val) in enumerate(rows):
-                label, tooltip = _MODEL_PARAMETER_PRESENTATION.get(
-                    param,
-                    (param, f"Model constructor parameter: {param}"),
-                )
-                item_param = QTableWidgetItem(label)
-                item_param.setData(Qt.ItemDataRole.UserRole, param)
-                item_param.setToolTip(tooltip)
+            for i, parameter in enumerate(rows):
+                item_param = QTableWidgetItem(parameter.label)
+                item_param.setData(Qt.ItemDataRole.UserRole, parameter.key)
+                item_param.setToolTip(parameter.tooltip)
                 item_param.setFlags(item_param.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.params_table.setItem(i, 0, item_param)
-                value_item = QTableWidgetItem(val)
-                value_item.setToolTip(tooltip)
+                value = "" if parameter.default is None else str(parameter.default)
+                value_item = QTableWidgetItem(value)
+                value_item.setToolTip(parameter.tooltip)
                 self.params_table.setItem(i, 1, value_item)
 
             if not rows:
@@ -506,7 +468,7 @@ class ModelSelectionDialog(BaseDialog):
         if not self.model_combo or not self.params_table:
             return
 
-        target_model = self.model_map[self.model_combo.currentText()]
+        spec: ModelSpec = self._spec_by_name[self.model_combo.currentText()]
         model_params_map = {}
 
         try:
@@ -538,9 +500,11 @@ class ModelSelectionDialog(BaseDialog):
                     model_params_map[param] = value
 
             self.model_holder = ModelHolder(
-                target_model,
+                spec.factory,
                 model_params_map,
                 self.pretrained_weight_path,
+                model_id=spec.model_id,
+                display_name=spec.display_name,
             )
             super().accept()
 

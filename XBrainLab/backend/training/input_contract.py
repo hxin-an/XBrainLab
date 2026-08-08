@@ -7,8 +7,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from XBrainLab.backend.model_catalog_contract import (
+    TRAINING_MODEL_NAMES as _TRAINING_MODEL_NAMES,
+)
+
 REQUIRED_TRAINING_FIELDS = ("epoch", "batch_size", "learning_rate")
-TRAINING_MODEL_NAMES = ("EEGNet", "ShallowConvNet", "SCCNet")
+TRAINING_MODEL_NAMES = _TRAINING_MODEL_NAMES
 TRAINING_OPTIMIZER_NAMES = ("adam", "sgd", "adamw")
 TRAINING_DEVICE_NAMES = ("cpu", "cuda")
 TRAINING_EVALUATION_NAMES = ("val_loss", "val_auc", "val_acc", "last_epoch")
