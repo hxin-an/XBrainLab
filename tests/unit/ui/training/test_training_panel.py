@@ -588,6 +588,33 @@ def _make_detached_history_entry(
     }
 
 
+def test_training_panel_plots_final_test_accuracy_at_last_epoch(
+    mock_main_window,
+    qtbot,
+):
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+    row = _make_detached_history_entry(epoch_count=2, status="Completed")
+
+    panel.refresh_plot(row)
+
+    assert panel.tab_acc.test_vals == [0.77]
+    test_line = next(
+        line for line in panel.tab_acc.ax.lines if line.get_label() == "Test Accuracy"
+    )
+    assert list(test_line.get_xdata()) == [2]
+    assert panel.tab_loss.test_vals == []
+
+
 def test_training_history_signature_covers_every_rendered_metric_and_detail() -> None:
     original = _make_detached_history_entry(status="Failed")
     original["status_detail"] = "CUDA out of memory."
