@@ -17,6 +17,7 @@ from typing import Any, cast
 
 from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
 
+from .bids_subject_catalog import inspect_bids_subject_catalog
 from .commands import (
     ApplyInterpretationCommand,
     Command,
@@ -173,11 +174,23 @@ class DataInterpretationCommandService:
         """Scan a file, folder, BIDS root, device export, or recipe source."""
         if not isinstance(command, ScanSourceCommand):
             raise TypeError("Invalid command for scan_source")
+        if command.catalog_only:
+            if str(command.source_hint).strip().casefold() != "bids":
+                raise ValueError("Catalog-only discovery requires a BIDS source.")
+            catalog = inspect_bids_subject_catalog(command.source_path)
+            return (
+                f"Found {catalog['subject_count']} BIDS subject(s).",
+                {
+                    "payload_type": "bids_subject_catalog",
+                    "bids_subject_catalog": catalog,
+                },
+            )
         scan_id = self.state.next_id("scan")
         scope = discover_source_preflight_scope(
             source_path=command.source_path,
             source_hint=command.source_hint,
             label_sources=command.label_sources,
+            selected_bids_subjects=command.selected_bids_subjects,
         )
         preflight = check_import_resource_preflight(scope.paths)
         resource_reader = AdmittedResourceReader.from_resource_preflight(
@@ -901,6 +914,7 @@ class DataInterpretationCommandService:
                 source_path=source_path,
                 source_hint=source_hint,
                 label_sources=label_sources,
+                selected_bids_subjects=self._selected_bids_subjects(choices),
             )
         provisional_scan_id = scan_id or "resource-preflight"
         admission = self._resolve_preview_resource_preflight(
@@ -955,6 +969,13 @@ class DataInterpretationCommandService:
             if target and target not in selected:
                 selected.append(target)
         return selected
+
+    @staticmethod
+    def _selected_bids_subjects(choices: dict[str, Any]) -> list[str]:
+        raw_subjects = choices.get("selected_bids_subjects", [])
+        if not isinstance(raw_subjects, (list, tuple)):
+            return []
+        return [str(value).strip() for value in raw_subjects if str(value).strip()]
 
     @classmethod
     def _preview_narrows_discovered_scope(

@@ -17,6 +17,7 @@ from XBrainLab.backend.application.commands import (
     PreviewInterpretationCommand,
     ReviewInterpretationCommand,
     SaveInterpretationRecipeCommand,
+    ScanSourceCommand,
     ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
@@ -153,11 +154,13 @@ class DataInterpretationActionCoordinator:
         host: DataInterpretationActionHost,
         *,
         preview_dialog_class: Callable[[], type[Any]],
+        bids_subject_dialog_class: Callable[[], type[Any]],
         bindings: DataInterpretationActionBindings | None = None,
     ) -> None:
         self._host = host
         self.panel = host.panel
         self._preview_dialog_class = preview_dialog_class
+        self._bids_subject_dialog_class = bids_subject_dialog_class
         self._bindings = bindings or default_data_interpretation_action_bindings()
         self._recipe_reload = DataInterpretationRecipeReloadCoordinator(
             self,
@@ -540,10 +543,7 @@ class DataInterpretationActionCoordinator:
         if not source_path:
             return
         try:
-            handled = self._run_data_interpretation_import(
-                [source_path],
-                source_hint="bids",
-            )
+            handled = self._start_bids_subject_selection_async(source_path)
             if not handled:
                 self._bindings.message_box().critical(
                     self.panel,
@@ -556,6 +556,65 @@ class DataInterpretationActionCoordinator:
                 UnexpectedErrorContext.DATA_IMPORT,
                 message_box=self._bindings.message_box(),
             )
+
+    def _start_bids_subject_selection_async(
+        self,
+        source_path: str,
+    ) -> InteractionOutcome | None:
+        """Inspect one BIDS root, then admit only user-selected subjects."""
+
+        def _handle_catalog_result(result) -> InteractionOutcome:
+            if self._result_failed(result, "BIDS subject discovery failed"):
+                return self._interaction_failure_outcome(result, result.message)
+            catalog = self._diagnostic_payload(result, "bids_subject_catalog")
+            if (
+                not list(catalog.get("subjects") or [])
+                or int(catalog.get("eeg_file_count") or 0) <= 0
+            ):
+                message = "No importable BIDS subjects were found in this folder."
+                self._bindings.message_box().warning(
+                    self.panel,
+                    "No BIDS subjects found",
+                    message,
+                )
+                return InteractionOutcome.blocked(message)
+
+            dialog_class = self._bids_subject_dialog_class()
+            dialog = dialog_class(self.panel, catalog=catalog)
+            if not dialog.exec():
+                return InteractionOutcome.cancelled(
+                    "BIDS subject selection was cancelled."
+                )
+            selected_subjects = [
+                str(value).strip()
+                for value in list(dialog.get_result() or [])
+                if str(value).strip()
+            ]
+            if not selected_subjects:
+                return InteractionOutcome.blocked(
+                    "Select at least one BIDS subject before continuing."
+                )
+            return self._run_data_interpretation_import(
+                [source_path],
+                source_hint="bids",
+                initial_choices={
+                    "selected_bids_subjects": selected_subjects,
+                },
+            ) or InteractionOutcome.blocked(
+                "Data interpretation review could not be started."
+            )
+
+        self._show_status("Reading BIDS subject catalog...")
+        return self._execute_interpretation_command_async(
+            ScanSourceCommand(
+                source_path=source_path,
+                source_hint="bids",
+                catalog_only=True,
+            ),
+            on_result=_handle_catalog_result,
+            error_title="BIDS subject discovery failed",
+            unexpected_error_context=UnexpectedErrorContext.DATA_IMPORT,
+        )
 
     def reload_interpretation_recipe(self):
         """Delegate recipe reload to its focused workflow owner."""
@@ -604,9 +663,15 @@ class DataInterpretationActionCoordinator:
         filepaths: list[str],
         *,
         source_hint: str = "auto",
+        initial_choices: dict[str, Any] | None = None,
     ) -> InteractionOutcome | None:
         """Run the Data Interpretation command sequence for selected files."""
         source_path, choices = self._interpretation_source_and_choices(filepaths)
+        if initial_choices:
+            choices = self._merge_interpretation_choices(
+                choices,
+                dict(initial_choices),
+            )
         return self._start_interpretation_review_async(
             source_path,
             source_hint,

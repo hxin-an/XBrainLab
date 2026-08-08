@@ -104,6 +104,8 @@ class ScanSourceCommand:
     source_path: str
     source_hint: str = "auto"
     label_sources: list[str] = field(default_factory=list)
+    selected_bids_subjects: list[str] = field(default_factory=list)
+    catalog_only: bool = False
 
     @property
     def name(self) -> CommandName:

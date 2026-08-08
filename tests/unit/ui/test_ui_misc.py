@@ -664,6 +664,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
         handler.panel.update_panel.assert_not_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.BidsSubjectSelectionDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
@@ -672,11 +673,13 @@ class TestDatasetActionHandler:
         mock_mb,
         mock_fd,
         mock_preview_dialog,
+        mock_subject_dialog,
         handler,
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
             ReviewInterpretationCommand,
+            ScanSourceCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -687,10 +690,25 @@ class TestDatasetActionHandler:
             "confirmed": False,
             "save_recipe": False,
         }
+        mock_subject_dialog.return_value.exec.return_value = True
+        mock_subject_dialog.return_value.get_result.return_value = ["02"]
         commands = []
 
         def fake_execute(_panel, command):
             commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(
+                    bids_subject_catalog={
+                        "eeg_file_count": 2,
+                        "subjects": [
+                            {
+                                "subject": "02",
+                                "label": "sub-02",
+                                "eeg_file_count": 2,
+                            }
+                        ],
+                    }
+                )
             if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
                     scan_result={"source_path": command.source_path},
@@ -713,9 +731,12 @@ class TestDatasetActionHandler:
         ):
             handler.import_bids_source()
 
-        assert isinstance(commands[0], ReviewInterpretationCommand)
-        assert commands[0].source_path == "/tmp/bids-root"
-        assert commands[0].source_hint == "bids"
+        assert isinstance(commands[0], ScanSourceCommand)
+        assert commands[0].catalog_only is True
+        assert isinstance(commands[1], ReviewInterpretationCommand)
+        assert commands[1].source_path == "/tmp/bids-root"
+        assert commands[1].source_hint == "bids"
+        assert commands[1].choices["selected_bids_subjects"] == ["02"]
         mock_mb.critical.assert_not_called()
 
     def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
