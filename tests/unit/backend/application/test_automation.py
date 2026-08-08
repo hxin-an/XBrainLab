@@ -436,10 +436,12 @@ def test_automation_public_serializer_redacts_internal_result_and_state(
     internal_text = json.dumps(internal)
     public_text = json.dumps(public)
     canonical_source = filesystem_path_key(source)
+    encoded_source = json.dumps(str(source))[1:-1]
+    encoded_canonical_source = json.dumps(canonical_source)[1:-1]
 
-    assert canonical_source in internal_text
-    assert str(source) not in public_text
-    assert canonical_source not in public_text
+    assert encoded_source in internal_text
+    assert encoded_source not in public_text
+    assert encoded_canonical_source not in public_text.casefold()
     assert "Clinical Records" not in public_text
     assert "Mary Example" not in public_text
     assert "[REDACTED_PATH]" in public_text

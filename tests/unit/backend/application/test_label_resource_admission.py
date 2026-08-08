@@ -64,9 +64,8 @@ class _Interpretation:
 
     def record_label_import_for_recipe(self, **kwargs: Any) -> dict[str, Any]:
         self.recorded.append(kwargs)
-        plan = kwargs["plan"]
         return {
-            "label_carriers": sorted(str(path) for path in plan.label_paths),
+            "label_carriers": sorted(set(kwargs["file_mapping"].values())),
             "mode": kwargs["mode"],
         }
 

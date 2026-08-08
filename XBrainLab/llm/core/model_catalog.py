@@ -492,6 +492,7 @@ def _directory_size_bytes(
     total = 0
     entry_count = 0
     seen: set[tuple[int, int]] = set()
+    linked_files_by_size: dict[int, list[Path]] = {}
     pending: list[tuple[Path, int]] = [(path, 0)]
     try:
         while pending:
@@ -517,6 +518,17 @@ def _directory_size_bytes(
                     if not stat.S_ISREG(entry_stat.st_mode):
                         continue
                     inode_key = (entry_stat.st_dev, entry_stat.st_ino)
+                    if entry_stat.st_nlink > 1:
+                        linked_files = linked_files_by_size.setdefault(
+                            entry_stat.st_size,
+                            [],
+                        )
+                        if any(
+                            os.path.samefile(entry_path, linked_path)
+                            for linked_path in linked_files
+                        ):
+                            continue
+                        linked_files.append(entry_path)
                     if entry_stat.st_ino and inode_key in seen:
                         continue
                     if entry_stat.st_ino:

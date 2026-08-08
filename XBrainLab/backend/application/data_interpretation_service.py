@@ -99,6 +99,19 @@ IMPORT_PREFLIGHT_RECEIPT_TTL_SECONDS = DEFAULT_RESOURCE_RECEIPT_TTL_SECONDS
 IMPORT_PREFLIGHT_RECEIPT_LIMIT = DEFAULT_RESOURCE_RECEIPT_LIMIT
 
 
+def _deduplicate_resource_paths(paths: list[str]) -> list[str]:
+    """Preserve display spelling while collapsing filesystem-equivalent paths."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        identity = normalized_path_identity(path)
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        result.append(path)
+    return result
+
+
 _ImportPreflightReceipt = ResourceReceiptRecord[ResourcePreflightResult]
 
 
@@ -636,10 +649,9 @@ class DataInterpretationCommandService:
     ) -> _PreviewResourceAdmission:
         """Check all payloads before candidate preview may materialize labels."""
         scope = resolve_interpretation_resource_scope(scan, choices)
-        resource_paths: list[str] = []
-        for path in [*scope.paths, *(additional_paths or [])]:
-            if path not in resource_paths:
-                resource_paths.append(path)
+        resource_paths = _deduplicate_resource_paths(
+            [*scope.paths, *(additional_paths or [])]
+        )
         cache_key = self._preview_admission_cache_key(
             receipt_authority=receipt_authority,
             scan=scan,
@@ -704,14 +716,13 @@ class DataInterpretationCommandService:
             preflight,
         )
         sidecar_paths = {
-            Path(path).expanduser().resolve(strict=False)
-            for path in scope.bids_events_json_files
+            normalized_path_identity(path) for path in scope.bids_events_json_files
         }
         resource_reader = AdmittedResourceReader.from_resource_preflight(
             [
                 path
                 for path in resource_paths
-                if Path(path).expanduser().resolve(strict=False) not in sidecar_paths
+                if normalized_path_identity(path) not in sidecar_paths
             ],
             preflight,
             dependent_files=scope.eeg_dependencies_by_file,
@@ -1000,15 +1011,13 @@ class DataInterpretationCommandService:
     @staticmethod
     def _candidate_resource_paths(candidate: InterpretationCandidate) -> list[str]:
         """Return the deduplicated EEG and external-label apply scope."""
-        result: list[str] = []
-        for path in [
-            *candidate.selected_eeg_files,
-            *candidate.label_carriers,
-            *identity_paths(candidate.content_identity),
-        ]:
-            if path not in result:
-                result.append(path)
-        return result
+        return _deduplicate_resource_paths(
+            [
+                *candidate.selected_eeg_files,
+                *candidate.label_carriers,
+                *identity_paths(candidate.content_identity),
+            ]
+        )
 
     def _matching_import_preflight_receipt(
         self,

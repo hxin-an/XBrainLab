@@ -339,18 +339,18 @@ def test_cache_root_resolve_failure_emits_exactly_once_and_thread_terminates(
     )
 
     with patch.object(Path, "resolve", side_effect=RuntimeError(sensitive)):
-        try:
-            assert lifecycle.request_cache_removal(
-                "repo/id",
-                str(tmp_path),
-                reason=ModelCacheCleanupReason.USER_DELETE,
-            )
-            qtbot.waitUntil(lambda: bool(terminals), timeout=2000)
-        finally:
-            thread = lifecycle._cleanup_thread
-            if thread is not None:
-                thread.quit()
-                qtbot.waitUntil(lambda: not thread.isRunning(), timeout=2000)
+        assert lifecycle.request_cache_removal(
+            "repo/id",
+            str(tmp_path),
+            reason=ModelCacheCleanupReason.USER_DELETE,
+        )
+        thread = lifecycle._cleanup_thread
+        assert thread is not None
+        qtbot.waitUntil(lambda: bool(terminals), timeout=2000)
+        qtbot.waitUntil(
+            lambda: sip.isdeleted(thread) or lifecycle._cleanup_thread is None,
+            timeout=2000,
+        )
 
     assert len(results) == 1
     assert results[0].ok is False

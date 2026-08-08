@@ -287,6 +287,18 @@ def _review_integrity_candidate(
     return candidate_id
 
 
+def test_resource_admission_deduplicates_cross_host_path_aliases() -> None:
+    first_spelling = r"C:\EEG Data\Subject.fif"
+
+    assert service_module._deduplicate_resource_paths(
+        [
+            first_spelling,
+            r"c:\eeg data\subject.fif",
+            r"C:\EEG Data\labels.tsv",
+        ]
+    ) == [first_spelling, r"C:\EEG Data\labels.tsv"]
+
+
 def test_scan_preview_validate_and_clear_are_owned_by_interpretation_service(
     tmp_path: Path,
 ) -> None:
@@ -2221,7 +2233,11 @@ def test_apply_resource_preflight_includes_external_label_carriers(
             ApplyInterpretationCommand(confirmed=True),
         )
 
-    assert checked_scopes == [(str(eeg_path.resolve()), str(label_path.resolve()))]
+    assert len(checked_scopes) == 1
+    assert_filesystem_path_lists_equal(
+        checked_scopes[0],
+        [eeg_path, label_path],
+    )
     assert dataset.imported_paths == []
 
 
