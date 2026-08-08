@@ -1226,13 +1226,8 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
         else:
             inside = human_evidence._widget_inside(panel, button)
         text = " ".join(str(button.text() or "").split())
-        text_width = button.fontMetrics().horizontalAdvance(text) + 18
         text_rendered = human_evidence._button_renders_text(button)
-        text_fits = (
-            not text_rendered
-            or not text
-            or text_width <= button.contentsRect().width() + 2
-        )
+        text_fits = human_evidence.button_visible_text_fits(button)
         records.append(
             {
                 "name": name,

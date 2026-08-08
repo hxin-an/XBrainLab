@@ -368,6 +368,33 @@ def test_training_setting_reserves_native_combo_edit_field_chrome(qapp) -> None:
     assert evaluation["input_text_clipped"] is False
 
 
+def test_training_setting_reserves_stylesheet_combo_chrome(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.evaluation_combo is not None
+        capture_script._apply_training_setting_font_scale(dialog, 1.5)
+        _settle(qapp, dialog)
+
+        widest = max(
+            dialog.evaluation_combo.fontMetrics().horizontalAdvance(
+                dialog.evaluation_combo.itemText(index)
+            )
+            for index in range(dialog.evaluation_combo.count())
+        )
+        assert dialog.evaluation_combo.width() >= (
+            widest + dialog._COMBO_HORIZONTAL_CHROME_FALLBACK
+        )
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=1.5,
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+    evaluation = next(row for row in check["rows"] if row["label"] == "Evaluation")
+    assert evaluation["input_text_clipped"] is False
+
+
 def test_training_setting_geometry_guard_rejects_overlap(qapp) -> None:
     dialog = capture_script._training_setting_dialog()
     try:

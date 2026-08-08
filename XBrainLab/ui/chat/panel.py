@@ -1881,107 +1881,122 @@ class ChatPanel(QWidget):
             (self.turn_activity_widget, STATE_SURFACE_MAX_WIDTH),
         )
         for surface, maximum_width in surface_widths:
-            surface.setFixedWidth(min(transcript_surface_width, maximum_width))
-            surface_layout = surface.layout()
-            if surface_layout is not None:
-                surface_layout.invalidate()
-                surface_layout.activate()
+            target_width = min(transcript_surface_width, maximum_width)
+            if surface.width() != target_width:
+                surface.setFixedWidth(target_width)
+                surface_layout = surface.layout()
+                if surface_layout is not None:
+                    surface_layout.invalidate()
+                    surface_layout.activate()
 
-        empty_margins = self.empty_state_layout.contentsMargins()
-        suggestion_width = max(
-            self.empty_state_widget.width()
-            - empty_margins.left()
-            - empty_margins.right(),
-            1,
-        )
-        for suggestion in self.suggestion_prompt_buttons:
-            suggestion.fit_to_width(suggestion_width)
-        for label in (
-            self.empty_state_title,
-            self.empty_state_intro,
-            self.empty_state_next_label,
-        ):
-            self._fit_wrapped_label_height(label)
-        visible_suggestions = [
-            suggestion
-            for suggestion in self.suggestion_prompt_buttons
-            if not suggestion.isHidden()
-        ]
-        prompt_margins = self.suggestion_prompt_layout.contentsMargins()
-        prompt_height = (
-            prompt_margins.top()
-            + prompt_margins.bottom()
-            + sum(suggestion.height() for suggestion in visible_suggestions)
-            + self.suggestion_prompt_layout.spacing()
-            * max(len(visible_suggestions) - 1, 0)
-        )
-        self.suggestion_prompt_widget.setMinimumHeight(prompt_height)
-        self.suggestion_prompt_widget.updateGeometry()
-        self.empty_state_layout.invalidate()
-        self.empty_state_layout.activate()
-        self.empty_state_widget.setMinimumHeight(
-            max(
-                self.empty_state_layout.minimumSize().height(),
-                self.empty_state_layout.sizeHint().height(),
+        if not self.empty_state_widget.isHidden():
+            empty_margins = self.empty_state_layout.contentsMargins()
+            suggestion_width = max(
+                self.empty_state_widget.width()
+                - empty_margins.left()
+                - empty_margins.right(),
+                1,
             )
-            + 8
-        )
-        self.empty_state_widget.updateGeometry()
-        self._fit_response_action_labels(transcript_surface_width)
-        for button in (self.retry_runtime_btn, self.setup_btn):
-            full_label = button.property("assistantFullLabel")
-            if isinstance(full_label, str) and full_label:
-                button.setText(full_label)
-                button.ensurePolished()
-        runtime_state_layout = self.runtime_state_widget.layout()
-        runtime_action_width = self.runtime_state_widget.width()
-        if runtime_state_layout is not None:
-            runtime_margins = runtime_state_layout.contentsMargins()
-            runtime_action_width -= runtime_margins.left() + runtime_margins.right()
-        runtime_action_width = max(runtime_action_width, 1)
-        visible_runtime_actions = [
-            button
-            for button in (self.retry_runtime_btn, self.setup_btn)
-            if not button.isHidden()
-        ]
-        required_runtime_action_width = sum(
-            button.sizeHint().width() for button in visible_runtime_actions
-        ) + self.runtime_action_layout.spacing() * max(
-            len(visible_runtime_actions) - 1,
-            0,
-        )
-        self.runtime_action_layout.setDirection(
-            QBoxLayout.Direction.TopToBottom
-            if (
-                container_width < 360
-                or required_runtime_action_width > runtime_action_width
+            for suggestion in self.suggestion_prompt_buttons:
+                suggestion.fit_to_width(suggestion_width)
+            for label in (
+                self.empty_state_title,
+                self.empty_state_intro,
+                self.empty_state_next_label,
+            ):
+                self._fit_wrapped_label_height(label)
+            visible_suggestions = [
+                suggestion
+                for suggestion in self.suggestion_prompt_buttons
+                if not suggestion.isHidden()
+            ]
+            prompt_margins = self.suggestion_prompt_layout.contentsMargins()
+            prompt_height = (
+                prompt_margins.top()
+                + prompt_margins.bottom()
+                + sum(suggestion.height() for suggestion in visible_suggestions)
+                + self.suggestion_prompt_layout.spacing()
+                * max(len(visible_suggestions) - 1, 0)
             )
-            else QBoxLayout.Direction.LeftToRight
-        )
-        self._layout_suggestion_prompts(2 if container_width >= 520 else 1)
+            self.suggestion_prompt_widget.setMinimumHeight(prompt_height)
+            self.suggestion_prompt_widget.updateGeometry()
+            self.empty_state_layout.invalidate()
+            self.empty_state_layout.activate()
+            self.empty_state_widget.setMinimumHeight(
+                max(
+                    self.empty_state_layout.minimumSize().height(),
+                    self.empty_state_layout.sizeHint().height(),
+                )
+                + 8
+            )
+            self.empty_state_widget.updateGeometry()
+            self._layout_suggestion_prompts(2 if container_width >= 520 else 1)
+
+        if not self.response_actions_widget.isHidden():
+            self._fit_response_action_labels(transcript_surface_width)
+
+        if not self.runtime_state_widget.isHidden():
+            for button in (self.retry_runtime_btn, self.setup_btn):
+                full_label = button.property("assistantFullLabel")
+                if isinstance(full_label, str) and full_label:
+                    button.setText(full_label)
+                    button.ensurePolished()
+            runtime_state_layout = self.runtime_state_widget.layout()
+            runtime_action_width = self.runtime_state_widget.width()
+            if runtime_state_layout is not None:
+                runtime_margins = runtime_state_layout.contentsMargins()
+                runtime_action_width -= runtime_margins.left() + runtime_margins.right()
+            runtime_action_width = max(runtime_action_width, 1)
+            visible_runtime_actions = [
+                button
+                for button in (self.retry_runtime_btn, self.setup_btn)
+                if not button.isHidden()
+            ]
+            required_runtime_action_width = sum(
+                button.sizeHint().width() for button in visible_runtime_actions
+            ) + self.runtime_action_layout.spacing() * max(
+                len(visible_runtime_actions) - 1,
+                0,
+            )
+            self.runtime_action_layout.setDirection(
+                QBoxLayout.Direction.TopToBottom
+                if (
+                    container_width < 360
+                    or required_runtime_action_width > runtime_action_width
+                )
+                else QBoxLayout.Direction.LeftToRight
+            )
+            for label in (
+                self.runtime_state_title,
+                self.runtime_state_detail,
+            ):
+                self._fit_wrapped_label_height(label)
+            self._fit_runtime_state_to_contents()
+
         self.input_layout.setDirection(QBoxLayout.Direction.LeftToRight)
         self.input_layout.setAlignment(
             self.composer_actions,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
         )
-        for label in (
-            self.runtime_state_title,
-            self.runtime_state_detail,
-            self.turn_activity_title,
-            self.turn_activity_step,
-            self.turn_activity_scope,
-            self.turn_activity_cancelability,
-        ):
-            self._fit_wrapped_label_height(label)
-        self._fit_runtime_state_to_contents()
-        turn_layout = self.turn_activity_widget.layout()
-        if turn_layout is not None:
-            turn_layout.invalidate()
-            turn_layout.activate()
-            self.turn_activity_widget.setMinimumHeight(
-                max(turn_layout.minimumSize().height(), turn_layout.sizeHint().height())
-            )
-            self.turn_activity_widget.updateGeometry()
+        if not self.turn_activity_widget.isHidden():
+            for label in (
+                self.turn_activity_title,
+                self.turn_activity_step,
+                self.turn_activity_scope,
+                self.turn_activity_cancelability,
+            ):
+                self._fit_wrapped_label_height(label)
+            turn_layout = self.turn_activity_widget.layout()
+            if turn_layout is not None:
+                turn_layout.invalidate()
+                turn_layout.activate()
+                self.turn_activity_widget.setMinimumHeight(
+                    max(
+                        turn_layout.minimumSize().height(),
+                        turn_layout.sizeHint().height(),
+                    )
+                )
+                self.turn_activity_widget.updateGeometry()
 
     def _complete_chat_reflow(self) -> None:
         """Commit shared geometry after surfaces and bubbles have been fitted."""

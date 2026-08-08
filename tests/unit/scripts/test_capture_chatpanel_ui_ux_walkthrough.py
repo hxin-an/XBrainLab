@@ -560,8 +560,28 @@ def test_custom_suggestion_card_is_measured_through_its_child_labels(qapp) -> No
     card = panel.suggestion_prompt_buttons[0]
     assert card.property("assistantCustomContent") is True
     assert human_evidence._button_renders_text(card) is False
+    assert human_evidence.button_visible_text_fits(card) is True
     assert human_evidence._label_text_exceeds_bounds(card.title_label) is False
     assert human_evidence._label_text_exceeds_bounds(card.subtitle_label) is False
+
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_visible_button_fit_uses_styled_native_size_hint(qapp) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 520)
+    panel.set_runtime_state("ready")
+    panel.show()
+    qapp.processEvents()
+
+    panel.send_btn.setText("Working")
+    panel.send_btn.setFixedWidth(max(panel.send_btn.sizeHint().width() - 4, 1))
+    assert human_evidence.button_visible_text_fits(panel.send_btn) is False
+
+    panel._fit_composer_action_width()
+    assert human_evidence.button_visible_text_fits(panel.send_btn) is True
 
     panel.close()
     panel.deleteLater()

@@ -75,6 +75,12 @@ class TrainingSettingDialog(BaseDialog):
 
     """
 
+    # ``dark_dialog_stylesheet`` reserves 28 px for the combo arrow in
+    # addition to the shared horizontal input padding. Some native Windows
+    # styles report an edit-field rectangle that excludes only part of that
+    # stylesheet chrome, so keep a platform-independent lower bound too.
+    _COMBO_HORIZONTAL_CHROME_FALLBACK = 64
+
     def __init__(self, parent, controller, initial_option: Any | None = None):
         # self.controller is handled by BaseDialog
 
@@ -205,6 +211,7 @@ class TrainingSettingDialog(BaseDialog):
                 self.evaluation_combo.sizeHint().width(),
                 widest_item + native_chrome_width + 8,
                 native_content_width,
+                widest_item + self._COMBO_HORIZONTAL_CHROME_FALLBACK,
             )
             input_column_width = min(
                 max(input_column_width, evaluation_width),

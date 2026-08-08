@@ -723,6 +723,14 @@ def _button_renders_text(button: QAbstractButton) -> bool:
     )
 
 
+def button_visible_text_fits(button: QAbstractButton) -> bool:
+    """Measure native/styled button text with Qt's own content contract."""
+    if not _button_renders_text(button) or not button.text().strip():
+        return True
+    button.ensurePolished()
+    return button.sizeHint().width() <= button.width() + 2
+
+
 def icon_only_control_contrast_evidence(
     root: QWidget,
     screenshot: Path,
@@ -789,9 +797,12 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
             continue
         if isinstance(widget, QAbstractButton) and not _button_renders_text(widget):
             continue
+        if isinstance(widget, QAbstractButton):
+            if not button_visible_text_fits(widget):
+                overflows.append(name)
+            continue
         available = max(widget.contentsRect().width(), 1)
-        padding = 18 if isinstance(widget, QAbstractButton) else 0
-        if widget.fontMetrics().horizontalAdvance(text) + padding > available + 2:
+        if widget.fontMetrics().horizontalAdvance(text) > available + 2:
             overflows.append(name)
 
     for name in (
