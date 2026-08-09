@@ -196,6 +196,8 @@ _ASSISTANT_TERMINAL_RENDER_RETRY_INTERVAL_MS = 500
 class AssistantDockTitleBar(QWidget):
     """Product header for the assistant dock with native drag behavior."""
 
+    MINIMUM_DOCK_WIDTH = 320
+
     def __init__(self, on_float_toggle, parent=None):
         super().__init__(parent)
         self._on_float_toggle = on_float_toggle
@@ -218,6 +220,11 @@ class AssistantDockTitleBar(QWidget):
         if self.title_label is not None:
             self.title_label.setToolTip(normalized)
             self.title_label.setAccessibleDescription(f"Assistant status: {normalized}")
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Do not let platform font hints widen the dock past its product floor."""
+        hint = super().minimumSizeHint()
+        return QSize(min(hint.width(), self.MINIMUM_DOCK_WIDTH), hint.height())
 
     def resizeEvent(self, event):  # noqa: N802
         """Keep essential title actions readable at narrow dock widths."""

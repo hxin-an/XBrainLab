@@ -3842,7 +3842,8 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
             "Review and Import",
         ]
     assert all(
-        label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
+        label.fontMetrics().horizontalAdvance(label.text())
+        <= label.contentsRect().width() + 1
         for label in dialog.step_labels
     )
 

@@ -103,8 +103,12 @@ def test_evaluation_page_empty_state_uses_command_blocked_reason(qtbot, study):
     """Evaluation page should render backend blocked-state truth."""
     window = MainWindow(study)
     qtbot.addWidget(window)
+    window.resize(1280, 800)
+    window.show()
+    qtbot.waitUntil(window.isVisible, timeout=2_000)
 
     eval_panel = _switch_and_wait_for_panel(window, 3, qtbot)
+    qtbot.waitUntil(lambda: eval_panel.width() > 0, timeout=2_000)
     eval_panel.update_panel()
 
     publication = get_application_view_publication(window)
@@ -120,6 +124,7 @@ def test_evaluation_page_empty_state_uses_command_blocked_reason(qtbot, study):
     assert eval_panel.no_data_label.text() == blocked_reason
     assert eval_panel.run_combo.count() == 0
     assert eval_panel.plot_stack.currentIndex() == 1
+    assert eval_panel.bottom_tabs.count() == 2
     assert eval_panel.bottom_tabs.tabText(0) == "Metrics Summary"
     assert eval_panel.bottom_tabs.tabText(1) == "Model Summary"
 

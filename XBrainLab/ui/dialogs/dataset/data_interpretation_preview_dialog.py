@@ -1912,13 +1912,14 @@ class DataInterpretationPreviewDialog(
             return
         spacing = 8 * max(len(self._step_titles) - 1, 0)
         available_width = max(self.width() - 40 - spacing, 0)
-        full_width = sum(
+        full_cell_widths = [
             label.fontMetrics().horizontalAdvance(f"{index}. {title}") + 20
             for index, (label, title) in enumerate(
                 zip(self.step_labels, self._step_titles, strict=True),
                 start=1,
             )
-        )
+        ]
+        full_width = max(full_cell_widths, default=0) * len(full_cell_widths)
         titles = (
             self._compact_step_titles
             if full_width > available_width

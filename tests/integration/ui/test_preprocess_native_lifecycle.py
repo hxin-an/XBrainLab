@@ -45,7 +45,8 @@ def test_real_gdf_time_psd_cancelled_close_and_final_close_are_native_safe():
         if line.startswith("PREPROCESS_NATIVE_STRESS=")
     )
     result = json.loads(result_line.split("=", 1)[1])
-    assert result["core_dumps_disabled"] is True
+    assert result["core_dump_limit_supported"] is (os.name == "posix")
+    assert result["core_dumps_disabled"] is (os.name == "posix")
     assert result["cycles"] == 8
     assert result["time_render_cycles"] == 8
     assert result["psd_render_cycles"] == 8

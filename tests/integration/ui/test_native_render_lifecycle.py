@@ -50,9 +50,12 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
         "cocoa" if sys.platform == "darwin" else "offscreen"
     )
     assert result["active_qthreadpool_workers"] == 0
+    assert result["core_dump_limit_supported"] is (os.name == "posix")
     assert isinstance(result["core_dumps_disabled"], bool)
     if os.name == "posix":
         assert result["core_dumps_disabled"] is True
+    else:
+        assert result["core_dumps_disabled"] is False
     assert result["saliency_cycles"] == 8
     assert result["saliency_cleanup_owners_drained"] == 8
     assert result["saliency_cleanup_owners_deleted"] == 8

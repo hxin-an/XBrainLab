@@ -13,6 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from scripts.dev import native_process_safety
+
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[3]
     / "scripts"
@@ -34,20 +36,6 @@ def _script_tree() -> ast.Module:
     return ast.parse(SCRIPT_PATH.read_text(encoding="utf-8"))
 
 
-def _core_limit_function() -> ast.FunctionDef:
-    function = next(
-        (
-            node
-            for node in _script_tree().body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_disable_core_dumps_for_native_stress"
-        ),
-        None,
-    )
-    assert function is not None
-    return function
-
-
 def _named_function(name: str) -> ast.FunctionDef:
     function = next(
         (
@@ -64,17 +52,10 @@ def _named_function(name: str) -> ast.FunctionDef:
 def _load_core_limit_function(
     monkeypatch,
     resource_module,
-) -> Callable[[], bool]:
+) -> Callable[[], native_process_safety.NativeProcessSafety]:
+    monkeypatch.setattr(native_process_safety.os, "name", "posix")
     monkeypatch.setitem(sys.modules, "resource", resource_module)
-    function = _core_limit_function()
-    namespace: dict[str, object] = {}
-    module = ast.Module(body=[function], type_ignores=[])
-    ast.fix_missing_locations(module)
-    exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
-    return cast(
-        Callable[[], bool],
-        namespace["_disable_core_dumps_for_native_stress"],
-    )
+    return native_process_safety.disable_core_dumps
 
 
 def _load_stress_contract_function() -> Callable[..., list[str]]:
@@ -143,6 +124,7 @@ def _passing_stress_result(
     expected_3d_updates = cycles
     result: dict[str, object] = {
         "qt_qpa_platform": "offscreen",
+        "core_dump_limit_supported": True,
         "core_dumps_disabled": True,
         "active_render_close_fenced": True,
         "active_render_close_completed": True,
@@ -261,7 +243,7 @@ def test_core_dump_limit_is_applied_before_native_imports():
             if isinstance(node, (ast.Assign, ast.AnnAssign))
             and isinstance(node.value, ast.Call)
             and isinstance(node.value.func, ast.Name)
-            and node.value.func.id == "_disable_core_dumps_for_native_stress"
+            and node.value.func.id == "disable_core_dumps"
         ),
         None,
     )
@@ -271,6 +253,10 @@ def test_core_dump_limit_is_applied_before_native_imports():
         node.lineno
         for node in tree.body
         if isinstance(node, (ast.Import, ast.ImportFrom))
+        and not (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "scripts.dev.native_process_safety"
+        )
         and (
             (
                 isinstance(node, ast.Import)
@@ -290,12 +276,16 @@ def test_core_dump_limit_is_applied_before_native_imports():
     assert assignment.lineno < min(native_import_lines)
 
 
-def test_posix_parent_stops_before_native_imports_when_core_guard_fails():
+def test_supported_parent_stops_before_native_imports_when_core_guard_fails():
     tree = _script_tree()
     native_import_line = min(
         node.lineno
         for node in tree.body
         if isinstance(node, (ast.Import, ast.ImportFrom))
+        and not (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "scripts.dev.native_process_safety"
+        )
         and (
             (
                 isinstance(node, ast.Import)
@@ -318,8 +308,13 @@ def test_posix_parent_stops_before_native_imports_when_core_guard_fails():
             if isinstance(node, ast.If)
             and node.lineno < native_import_line
             and any(
-                isinstance(candidate, ast.Name)
-                and candidate.id == "_CORE_DUMPS_DISABLED"
+                isinstance(candidate, ast.Attribute)
+                and candidate.attr == "core_dumps_disabled"
+                for candidate in ast.walk(node.test)
+            )
+            and any(
+                isinstance(candidate, ast.Attribute)
+                and candidate.attr == "core_dump_limit_supported"
                 for candidate in ast.walk(node.test)
             )
         ),
@@ -695,7 +690,6 @@ def test_stress_failures_return_nonzero_without_intentional_native_crash():
 @pytest.mark.parametrize(
     "failed_metric",
     [
-        "core_dumps_disabled",
         "pool_drained_before_close",
         "unrelated_global_work_started",
         "unrelated_global_work_active_at_finalize",
@@ -841,7 +835,10 @@ def test_core_dump_limit_is_process_local_when_posix_supports_it(monkeypatch):
     )
     disable = _load_core_limit_function(monkeypatch, resource_module)
 
-    assert disable() is True
+    policy = disable()
+
+    assert policy.core_dump_limit_supported is True
+    assert policy.core_dumps_disabled is True
     setrlimit.assert_called_once_with(4, (0, 0))
     getrlimit.assert_called_once_with(4)
 
@@ -856,15 +853,24 @@ def test_core_dump_limit_fails_closed_when_zero_limit_cannot_be_verified(
     )
     disable = _load_core_limit_function(monkeypatch, resource_module)
 
-    assert disable() is False
+    policy = disable()
+
+    assert policy.core_dump_limit_supported is True
+    assert policy.core_dumps_disabled is False
 
 
 @pytest.mark.parametrize("failure", [AttributeError, OSError, ValueError])
-def test_core_dump_limit_safely_skips_unsupported_runtimes(monkeypatch, failure):
+def test_core_dump_limit_fails_closed_when_posix_limit_setup_errors(
+    monkeypatch,
+    failure,
+):
     resource_module = SimpleNamespace(
         RLIMIT_CORE=4,
         setrlimit=MagicMock(side_effect=failure("unsupported")),
     )
     disable = _load_core_limit_function(monkeypatch, resource_module)
 
-    assert disable() is False
+    policy = disable()
+
+    assert policy.core_dump_limit_supported is True
+    assert policy.core_dumps_disabled is False

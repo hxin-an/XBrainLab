@@ -17,23 +17,13 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
+from scripts.dev.native_process_safety import disable_core_dumps
 
-def _disable_core_dumps_for_native_stress() -> bool:
-    """Disable core files for this stress process before native libraries load."""
-    try:
-        import resource
-    except ImportError:
-        return False
-    try:
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        core_limit = resource.getrlimit(resource.RLIMIT_CORE)
-    except (AttributeError, OSError, ValueError):
-        return False
-    return core_limit == (0, 0)
-
-
-_CORE_DUMPS_DISABLED = _disable_core_dumps_for_native_stress()
-if os.name == "posix" and not _CORE_DUMPS_DISABLED:
+_NATIVE_PROCESS_SAFETY = disable_core_dumps()
+if (
+    _NATIVE_PROCESS_SAFETY.core_dump_limit_supported
+    and not _NATIVE_PROCESS_SAFETY.core_dumps_disabled
+):
     raise RuntimeError(
         "Native render stress refused to load Qt because RLIMIT_CORE=0 failed."
     )
@@ -1278,7 +1268,6 @@ def _stress_contract_failures(
     warmup_cycles: int = 0,
 ) -> list[str]:
     required_true_metrics = (
-        "core_dumps_disabled",
         "active_render_close_fenced",
         "active_render_close_completed",
         "pool_drained_before_close",
@@ -1564,7 +1553,8 @@ def run_stress(
         **product_memory_metrics,
         **active_3d_worker_metrics,
         **active_close_metrics,
-        "core_dumps_disabled": _CORE_DUMPS_DISABLED,
+        "core_dump_limit_supported": (_NATIVE_PROCESS_SAFETY.core_dump_limit_supported),
+        "core_dumps_disabled": _NATIVE_PROCESS_SAFETY.core_dumps_disabled,
     }
 
     failed_contracts = _stress_contract_failures(

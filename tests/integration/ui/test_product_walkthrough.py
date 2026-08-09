@@ -638,6 +638,33 @@ def test_assistant_dock_width_stays_within_responsive_product_bounds(
     assert observed_widths == sorted(observed_widths)
 
 
+def test_assistant_dock_preserves_workflow_width_with_wide_platform_title(
+    test_app,
+    qtbot,
+) -> None:
+    """Platform title metrics cannot consume the workflow's usable width."""
+    test_app.resize(760, 800)
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    dock = manager.chat_dock
+    title = dock.findChild(QLabel, "AssistantDockTitle")
+    assert title is not None
+
+    title.setMinimumWidth(title.minimumWidth() + 48)
+    dock.show()
+    test_app.resize(760, 800)
+    qtbot.waitUntil(dock.isVisible, timeout=2_000)
+    qtbot.wait(50)
+
+    assert manager.assistant_header.minimumSizeHint().width() <= 320
+    assert 320 <= dock.width() <= 420
+    assert manager.chat_panel.width() == dock.width()
+    assert test_app.centralWidget().width() >= 436
+    assert title.fontMetrics().horizontalAdvance(title.text()) <= (
+        title.contentsRect().width() + 1
+    )
+
+
 @pytest.mark.parametrize(
     ("choice", "outcome_message", "visible_message"),
     [
