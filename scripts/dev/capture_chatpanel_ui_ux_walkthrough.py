@@ -895,7 +895,7 @@ SCENARIOS = (
         expected_confirmation_title="Suggested change",
         expected_confirmation_values=("Parameter 00", "Parameter 13"),
         expected_confirmation_actions=(
-            "Keep current settings",
+            "Keep current",
             "Apply changes",
         ),
         scroll_to_bottom=True,

@@ -86,7 +86,7 @@ def _setting_change_action_labels(
     """Match setting-change actions to the number of proposed values."""
     if len(request.parameter_rows) == 1:
         return "Apply change", "Keep current value"
-    return "Apply changes", "Keep current settings"
+    return "Apply changes", "Keep current"
 
 
 def _add_soft_wrap_opportunities(text: str) -> str:

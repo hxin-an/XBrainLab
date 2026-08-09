@@ -153,10 +153,17 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         for screen in payload["screens"]
         if screen["failures"]
     ]
-    assert payload["status"] == "passed", {
-        "failures": payload["failures"],
-        "failed_screens": failed_screens,
-    }
+    if payload["status"] != "passed":
+        pytest.fail(
+            json.dumps(
+                {
+                    "failures": payload["failures"],
+                    "failed_screens": failed_screens,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     assert payload["failures"] == []
     assert payload["source_fingerprint"] == current_fingerprint
     assert payload["capture_source"] == {

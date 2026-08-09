@@ -207,7 +207,7 @@ def test_large_setting_proposal_delegates_vertical_scroll_and_keeps_every_value(
             )
             assert needed.height() <= label.contentsRect().height() + 3
     assert card.primary_button.text() == "Apply changes"
-    assert card.secondary_button.text() == "Keep current settings"
+    assert card.secondary_button.text() == "Keep current"
 
     viewport = scroll.viewport()
     last_row = card.proposal_rows[-1]
