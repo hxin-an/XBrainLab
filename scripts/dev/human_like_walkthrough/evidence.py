@@ -728,7 +728,7 @@ def button_visible_text_fits(button: QAbstractButton) -> bool:
     if not _button_renders_text(button) or not button.text().strip():
         return True
     button.ensurePolished()
-    required = button.fontMetrics().horizontalAdvance(button.text())
+    required = button.fontMetrics().tightBoundingRect(button.text()).width()
     if not button.icon().isNull():
         required += button.iconSize().width() + 4
     # Qt's stylesheet proxy reports platform-dependent content rectangles and
@@ -736,6 +736,22 @@ def button_visible_text_fits(button: QAbstractButton) -> bool:
     # gate already reviews padding visually, so this guard focuses on literal
     # clipping against the live widget geometry.
     return required <= max(button.width(), 0) + 2
+
+
+def button_visible_text_measurement(button: QAbstractButton) -> dict[str, int | bool]:
+    """Return portable button-fit diagnostics for walkthrough artifacts."""
+    text_rendered = _button_renders_text(button)
+    required = 0
+    if text_rendered and button.text().strip():
+        required = button.fontMetrics().tightBoundingRect(button.text()).width()
+        if not button.icon().isNull():
+            required += button.iconSize().width() + 4
+    return {
+        "text_rendered": text_rendered,
+        "required_width": required,
+        "available_width": max(button.width(), 0),
+        "fits": not text_rendered or required <= max(button.width(), 0) + 2,
+    }
 
 
 def icon_only_control_contrast_evidence(

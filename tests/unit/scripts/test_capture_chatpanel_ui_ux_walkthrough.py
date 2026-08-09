@@ -140,7 +140,19 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     payload = capture_walkthrough(qapp, tmp_path)
     current_fingerprint = source_fingerprint()
 
-    assert payload["status"] == "passed", payload["failures"]
+    failed_screens = [
+        {
+            "name": screen["name"],
+            "failures": screen["failures"],
+            "visible_buttons": screen["visible_buttons"],
+        }
+        for screen in payload["screens"]
+        if screen["failures"]
+    ]
+    assert payload["status"] == "passed", {
+        "failures": payload["failures"],
+        "failed_screens": failed_screens,
+    }
     assert payload["failures"] == []
     assert payload["source_fingerprint"] == current_fingerprint
     assert payload["capture_source"] == {
@@ -577,7 +589,7 @@ def test_visible_button_fit_uses_live_content_rect(qapp) -> None:
     qapp.processEvents()
 
     button.setFixedWidth(
-        max(button.fontMetrics().horizontalAdvance(button.text()) - 4, 1)
+        max(button.fontMetrics().tightBoundingRect(button.text()).width() - 4, 1)
     )
     assert human_evidence.button_visible_text_fits(button) is False
 
@@ -597,7 +609,7 @@ def test_visible_tool_button_fit_uses_live_content_rect(qapp) -> None:
     qapp.processEvents()
 
     button.setFixedWidth(
-        max(button.fontMetrics().horizontalAdvance(button.text()) - 4, 1)
+        max(button.fontMetrics().tightBoundingRect(button.text()).width() - 4, 1)
     )
     assert human_evidence.button_visible_text_fits(button) is False
 

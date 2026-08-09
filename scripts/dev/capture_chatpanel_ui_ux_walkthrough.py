@@ -1226,8 +1226,9 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
         else:
             inside = human_evidence._widget_inside(panel, button)
         text = " ".join(str(button.text() or "").split())
-        text_rendered = human_evidence._button_renders_text(button)
-        text_fits = human_evidence.button_visible_text_fits(button)
+        text_measurement = human_evidence.button_visible_text_measurement(button)
+        text_rendered = bool(text_measurement["text_rendered"])
+        text_fits = bool(text_measurement["fits"])
         records.append(
             {
                 "name": name,
@@ -1238,6 +1239,8 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
                 "inside_panel": inside,
                 "inside_scroll_content": inside_scroll_content,
                 "text_fits": text_fits,
+                "text_required_width": text_measurement["required_width"],
+                "text_available_width": text_measurement["available_width"],
             }
         )
         if not inside:
