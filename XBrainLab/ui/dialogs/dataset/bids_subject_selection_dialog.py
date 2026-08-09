@@ -25,7 +25,7 @@ from XBrainLab.ui.dialogs.common import (
 class BidsSubjectSelectionDialog(BaseDialog):
     """Select the BIDS subjects admitted to the expensive import scan."""
 
-    _SCOPE_TEXT_LIMIT = 24
+    _SCOPE_TEXT_LIMIT = 28
     _SCOPE_ITEM_LIMIT = 3
 
     def __init__(self, parent, *, catalog: dict[str, Any]) -> None:

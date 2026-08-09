@@ -98,6 +98,25 @@ def test_three_selected_subjects_show_compact_ids_files_and_runs(qtbot) -> None:
     )
 
 
+def test_three_standard_bids_subject_ids_remain_visible_in_summary(qtbot) -> None:
+    dialog = BidsSubjectSelectionDialog(
+        None,
+        catalog=_catalog(
+            _subject("001", eeg_file_count=3, runs=["1", "2", "3"]),
+            _subject("002", eeg_file_count=3, runs=["1", "2", "3"]),
+            _subject("003", eeg_file_count=3, runs=["1", "2", "3"]),
+        ),
+    )
+    qtbot.addWidget(dialog)
+
+    for row in range(1, dialog.subject_table.rowCount()):
+        dialog.subject_table.item(row, 0).setCheckState(Qt.CheckState.Checked)
+
+    assert dialog.selection_summary.text() == (
+        "3 subjects (sub-001, sub-002, sub-003) · 9 EEG files · Runs 1, 2, 3"
+    )
+
+
 def test_zero_file_row_is_wholly_noninteractive_and_skipped_by_default(qtbot) -> None:
     dialog = BidsSubjectSelectionDialog(
         None,
@@ -131,9 +150,10 @@ def test_long_scope_is_bounded_and_full_values_remain_in_tooltips(qtbot) -> None
         dialog.subject_table.item(row, 0).setCheckState(Qt.CheckState.Checked)
 
     summary = dialog.selection_summary.text()
-    assert "4 subjects (sub-participant-w..., +3)" in summary
-    assert "Runs recording-run-wit..., +3" in summary
-    assert len(summary) <= 90
+    assert summary.startswith("4 subjects (sub-participant-")
+    assert ", +3) · 4 EEG files · Runs recording-run-" in summary
+    assert summary.endswith(", +3")
+    assert len(summary) <= 100
     assert dialog.subject_table.item(0, 0).toolTip() == subjects[0]["label"]
     assert dialog.subject_table.item(0, 4).toolTip() == subjects[0]["runs"][0]
     assert dialog.selection_summary.toolTip() == (
