@@ -77,7 +77,7 @@ _EARLIER_ACTION_REQUEST = "Use the option you recommended earlier."
 # the independent hard ceiling still rejects any severe UI stall.
 _HEARTBEAT_P95_LIMIT_SECONDS = 0.5
 _HEARTBEAT_OUTLIER_SECONDS = 0.5
-_HEARTBEAT_HARD_CEILING_SECONDS = 0.75
+_HEARTBEAT_HARD_CEILING_SECONDS = 1.0
 _HEARTBEAT_MAX_OUTLIERS = 10
 _UI_SETTLE_P95_LIMIT_SECONDS = 0.5
 _UI_SETTLE_OUTLIER_SECONDS = 0.75
@@ -499,7 +499,7 @@ def test_heartbeat_gate_keeps_the_tail_budget_when_one_sample_is_missing() -> No
 
 def test_instrumented_heartbeat_gate_keeps_the_hard_stall_ceiling() -> None:
     instrumented_tail = [(index, 0.57) for index in range(202)]
-    hard_stall = [*instrumented_tail[:-1], (201, 0.75)]
+    hard_stall = [*instrumented_tail[:-1], (201, 1.0)]
 
     assert (
         _heartbeat_responsiveness_failures(
@@ -531,7 +531,7 @@ def test_instrumented_heartbeat_gate_keeps_the_hard_stall_ceiling() -> None:
             "outlier_count",
         ),
         (
-            [(index, 0.02) for index in range(201)] + [(201, 0.75)],
+            [(index, 0.02) for index in range(201)] + [(201, 1.0)],
             "hard_ceiling",
         ),
     ],

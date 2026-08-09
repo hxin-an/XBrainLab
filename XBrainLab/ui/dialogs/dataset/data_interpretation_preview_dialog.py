@@ -407,7 +407,7 @@ class DataInterpretationPreviewDialog(
             "Review and Import",
         ]
         self._compact_step_titles = [
-            "EEG Data",
+            "EEG",
             "Labels",
             "Metadata",
             "Match",
