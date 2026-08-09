@@ -6814,8 +6814,13 @@ call sites into explicit legacy/fallback helpers.
 - The first exact-head parallel CI run completed the long-session product semantics but rejected a
   one-shot Qt UI-settle `p95=0.5529s` against a `0.5s` local timing budget on a shared GitHub runner.
 - Shared CI now keeps all long-session state, pruning, history, confirmation, publication, request
-  bound, and hard-stall assertions, while machine-sensitive p95/tail and average budgets remain for
-  controlled timing runs rather than masquerading as a cross-machine performance benchmark.
+  bounds, per-phase liveness deadlines, and complete-turn assertions, while machine-sensitive
+  absolute/p95/tail/average budgets remain for controlled timing runs rather than masquerading as a
+  cross-machine performance benchmark.
 - A workflow source guard requires the explicit shared-runner policy, and the full 202-turn Qt
   long-session test passed locally under that policy. This does not establish a reproducible p95;
   the repeated benchmark work in `docs/planning/now.md` remains open.
+- The Linux-authored 41-phase screenshot/resource artifact gate now has its own integration test
+  file. It remains in the authoritative Linux suite, while Windows/macOS retain the remaining
+  product, layout, launcher, chat, native-render, and preprocess lifecycle contracts without using
+  Linux font geometry or OS-thread introspection as a false cross-platform oracle.

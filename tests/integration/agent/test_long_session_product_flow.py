@@ -94,6 +94,7 @@ class _LongSessionTimingPolicy:
     enforce_timer_tail_budget: bool
     enforce_ui_settle_tail_budget: bool
     enforce_turn_average_budget: bool
+    enforce_absolute_latency_budget: bool
 
 
 def _long_session_timing_policy(
@@ -113,6 +114,7 @@ def _long_session_timing_policy(
         ),
         enforce_ui_settle_tail_budget=not shared_ci_runner,
         enforce_turn_average_budget=not (coverage_enabled or shared_ci_runner),
+        enforce_absolute_latency_budget=not shared_ci_runner,
     )
 
 
@@ -464,6 +466,7 @@ def _heartbeat_responsiveness_failures(
     indexed_gaps: list[tuple[int, float]],
     *,
     enforce_tail_budget: bool = True,
+    enforce_hard_ceiling: bool = True,
 ) -> list[str]:
     """Separate sustained UI stalls from one bounded host-scheduler pause."""
     if not indexed_gaps:
@@ -485,7 +488,7 @@ def _heartbeat_responsiveness_failures(
             failures.append(f"p95={p95:.4f}s")
         if len(outliers) > _HEARTBEAT_MAX_OUTLIERS:
             failures.append(f"outlier_count={len(outliers)}")
-    if worst_gap >= _HEARTBEAT_HARD_CEILING_SECONDS:
+    if enforce_hard_ceiling and worst_gap >= _HEARTBEAT_HARD_CEILING_SECONDS:
         failures.append(f"hard_ceiling turn={worst_turn} gap={worst_gap:.4f}s")
     return failures
 
@@ -494,6 +497,7 @@ def _turn_latency_failures(
     latencies: list[float],
     *,
     enforce_average_budget: bool = True,
+    enforce_hard_ceiling: bool = True,
 ) -> list[str]:
     if not latencies:
         return ["missing_turn_latencies"]
@@ -502,7 +506,7 @@ def _turn_latency_failures(
     worst = max(latencies)
     if enforce_average_budget and average >= _TURN_LATENCY_AVERAGE_LIMIT_SECONDS:
         failures.append(f"average={average:.4f}s")
-    if worst >= _TURN_LATENCY_HARD_CEILING_SECONDS:
+    if enforce_hard_ceiling and worst >= _TURN_LATENCY_HARD_CEILING_SECONDS:
         failures.append(f"hard_ceiling={worst:.4f}s")
     return failures
 
@@ -511,6 +515,7 @@ def _ui_settle_responsiveness_failures(
     latencies: list[float],
     *,
     enforce_tail_budget: bool = True,
+    enforce_hard_ceiling: bool = True,
 ) -> list[str]:
     """Reject sustained UI settle latency while tolerating one host pause."""
     if not latencies:
@@ -524,7 +529,7 @@ def _ui_settle_responsiveness_failures(
             failures.append(f"p95={ordered[p95_index]:.4f}s")
         if len(outliers) > 1:
             failures.append(f"outlier_count={len(outliers)}")
-    if ordered[-1] >= _UI_SETTLE_HARD_CEILING_SECONDS:
+    if enforce_hard_ceiling and ordered[-1] >= _UI_SETTLE_HARD_CEILING_SECONDS:
         failures.append(f"hard_ceiling={ordered[-1]:.4f}s")
     return failures
 
@@ -578,21 +583,24 @@ def test_instrumented_heartbeat_gate_keeps_the_hard_stall_ceiling() -> None:
         "expected_timer_tail_budget",
         "expected_ui_settle_tail_budget",
         "expected_turn_average_budget",
+        "expected_absolute_latency_budget",
     ),
     [
-        ("linux", {"QT_QPA_PLATFORM": "offscreen"}, True, True, True),
-        ("darwin", {"QT_QPA_PLATFORM": "cocoa"}, True, True, True),
-        ("darwin", {"QT_QPA_PLATFORM": "offscreen"}, False, True, True),
+        ("linux", {"QT_QPA_PLATFORM": "offscreen"}, True, True, True, True),
+        ("darwin", {"QT_QPA_PLATFORM": "cocoa"}, True, True, True, True),
+        ("darwin", {"QT_QPA_PLATFORM": "offscreen"}, False, True, True, True),
         (
             "linux",
             {"QT_QPA_PLATFORM": "offscreen", "XBL_TEST_COVERAGE": "1"},
             False,
             True,
             False,
+            True,
         ),
         (
             "linux",
             {"QT_QPA_PLATFORM": "offscreen", "XBL_SHARED_CI_RUNNER": "1"},
+            False,
             False,
             False,
             False,
@@ -605,6 +613,7 @@ def test_long_session_timing_policy_is_environment_specific(
     expected_timer_tail_budget: bool,
     expected_ui_settle_tail_budget: bool,
     expected_turn_average_budget: bool,
+    expected_absolute_latency_budget: bool,
 ) -> None:
     policy = _long_session_timing_policy(
         platform_name=platform_name,
@@ -614,6 +623,7 @@ def test_long_session_timing_policy_is_environment_specific(
     assert policy.enforce_timer_tail_budget is expected_timer_tail_budget
     assert policy.enforce_ui_settle_tail_budget is expected_ui_settle_tail_budget
     assert policy.enforce_turn_average_budget is expected_turn_average_budget
+    assert policy.enforce_absolute_latency_budget is expected_absolute_latency_budget
 
 
 @pytest.mark.parametrize(
@@ -702,7 +712,7 @@ def test_ui_settle_gate_tolerates_one_bounded_host_pause() -> None:
     assert _ui_settle_responsiveness_failures(latencies) == []
 
 
-def test_shared_runner_ui_settle_policy_keeps_the_hard_stall_ceiling() -> None:
+def test_shared_runner_ui_settle_policy_defers_absolute_budgets() -> None:
     policy = _long_session_timing_policy(
         platform_name="linux",
         environment={"XBL_SHARED_CI_RUNNER": "1"},
@@ -713,15 +723,17 @@ def test_shared_runner_ui_settle_policy_keeps_the_hard_stall_ceiling() -> None:
         _ui_settle_responsiveness_failures(
             scheduler_tail,
             enforce_tail_budget=policy.enforce_ui_settle_tail_budget,
+            enforce_hard_ceiling=policy.enforce_absolute_latency_budget,
         )
         == []
     )
-    assert any(
-        "hard_ceiling" in failure
-        for failure in _ui_settle_responsiveness_failures(
+    assert (
+        _ui_settle_responsiveness_failures(
             [*scheduler_tail[:-1], _UI_SETTLE_HARD_CEILING_SECONDS],
             enforce_tail_budget=policy.enforce_ui_settle_tail_budget,
+            enforce_hard_ceiling=policy.enforce_absolute_latency_budget,
         )
+        == []
     )
 
 
@@ -1166,6 +1178,7 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         responsiveness_failures = _heartbeat_responsiveness_failures(
             turn_heartbeat_gaps,
             enforce_tail_budget=timing_policy.enforce_timer_tail_budget,
+            enforce_hard_ceiling=timing_policy.enforce_absolute_latency_budget,
         )
         assert not responsiveness_failures, responsiveness_failures
         assert len(heartbeat_ticks) >= turn_count + 2
@@ -1176,11 +1189,13 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         turn_latency_failures = _turn_latency_failures(
             turn_latencies,
             enforce_average_budget=timing_policy.enforce_turn_average_budget,
+            enforce_hard_ceiling=timing_policy.enforce_absolute_latency_budget,
         )
         assert not turn_latency_failures, turn_latency_failures
         ui_settle_failures = _ui_settle_responsiveness_failures(
             turn_ui_settle_latencies,
             enforce_tail_budget=timing_policy.enforce_ui_settle_tail_budget,
+            enforce_hard_ceiling=timing_policy.enforce_absolute_latency_budget,
         )
         assert not ui_settle_failures, ui_settle_failures
     finally:

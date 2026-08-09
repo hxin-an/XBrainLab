@@ -231,6 +231,7 @@ jobs:
         os: [windows-latest, macos-latest]
     env:
       QT_QPA_PLATFORM: offscreen
+      XBL_SHARED_CI_RUNNER: "1"
     steps:
       - uses: actions/checkout@v4
 

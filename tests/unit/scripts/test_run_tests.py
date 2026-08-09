@@ -635,6 +635,7 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     assert "os: [ubuntu-latest, windows-latest, macos-latest]" not in workflow
     assert "fetch-depth: 0" not in workflow
     assert "coverage combine test-results" in workflow
+    assert workflow.count('XBL_SHARED_CI_RUNNER: "1"') == 2
     assert "poetry run pytest tests/" not in workflow
 
 
