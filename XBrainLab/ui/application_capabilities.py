@@ -461,6 +461,16 @@ class _StudyApplicationUiRuntime:
         )
         if callable(cancel_deferred) and cancel_deferred(event_name, callback):
             return
+        if bool(getattr(host, "_closing_in_progress", False)):
+            from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+                get_initialized_application_service,
+            )
+
+            service = get_initialized_application_service(self.study)
+            if service is None:
+                return
+            service.unsubscribe(event_name, callback)
+            return
         self._service().unsubscribe(event_name, callback)
 
     def get_training_resource_preflight(self) -> ResourcePreflightResult | None:
