@@ -342,7 +342,7 @@ DATA_IMPORT_STEP_TITLES = (
 DATA_IMPORT_COMPACT_STEP_TITLES = (
     "EEG",
     "Labels",
-    "Metadata",
+    "Details",
     "Match",
     "Review",
 )

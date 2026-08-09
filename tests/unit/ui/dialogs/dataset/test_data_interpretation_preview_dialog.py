@@ -3828,7 +3828,7 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
     compact_step_labels = [
         "1. EEG",
         "2. Labels",
-        "3. Metadata",
+        "3. Details",
         "4. Match",
         "5. Review",
     ]

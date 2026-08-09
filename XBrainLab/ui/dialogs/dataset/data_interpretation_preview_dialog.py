@@ -409,7 +409,7 @@ class DataInterpretationPreviewDialog(
         self._compact_step_titles = [
             "EEG",
             "Labels",
-            "Metadata",
+            "Details",
             "Match",
             "Review",
         ]
