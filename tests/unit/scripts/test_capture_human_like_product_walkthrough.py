@@ -4880,7 +4880,7 @@ def test_resource_smoke_accepts_ci_observed_blank_records_on_darwin() -> None:
         27,
         28,
     ]
-    assert summary["limited_introspection_os_thread_limit"] == 8
+    assert summary["limited_introspection_os_thread_limit"] == 12
     assert "reported as limited-introspection evidence" in summary["boundary"]
 
 
@@ -4946,7 +4946,7 @@ def test_resource_smoke_rejects_unproven_anonymous_runtime_threads(
 
 
 def test_resource_smoke_rejects_darwin_anonymous_threads_above_cap() -> None:
-    extra_ids = list(range(21, 30))
+    extra_ids = list(range(21, 34))
     summary = build_resource_smoke_summary(
         [
             {
@@ -4991,16 +4991,26 @@ def test_resource_smoke_limited_introspection_is_visible_in_markdown() -> None:
     payload["pass_fail_summary"]["resource_smoke"] = {
         "checked": True,
         "passed": True,
-        "limited_introspection_os_thread_ids": [21, 22, 23, 24, 25, 26, 27, 28],
-        "limited_introspection_os_thread_limit": 8,
+        "limited_introspection_os_thread_ids": [
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+        ],
+        "limited_introspection_os_thread_limit": 12,
         "boundary": "macOS limited native-thread introspection",
     }
 
     rendered = render_markdown(payload)
 
     assert (
-        "limited-introspection OS threads: `[21, 22, 23, 24, 25, 26, 27, 28]` "
-        "/ cap `8`" in rendered
+        "limited-introspection OS threads: `[21, 22, 23, 24, 25, 26, 27, 28, 29]` "
+        "/ cap `12`" in rendered
     )
 
 

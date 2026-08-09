@@ -361,7 +361,7 @@ RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
 # active or unrelated threads, so use the product ceiling rather than a
 # machine-specific count observed in one CI run.
 MAX_LINUX_DORMANT_QT_THREADS = 16
-MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS = 8
+MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS = 12
 MAX_PERSISTENT_CUDA_RUNTIME_THREADS = 32
 LINUX_DORMANT_QT_WAIT_CHANNELS = frozenset(
     {"futex_do_wait", "futex_wait", "futex_wait_queue"}

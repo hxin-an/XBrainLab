@@ -144,7 +144,11 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         {
             "name": screen["name"],
             "failures": screen["failures"],
-            "visible_buttons": screen["visible_buttons"],
+            "failed_buttons": [
+                button
+                for button in screen["visible_buttons"]
+                if not button["text_fits"]
+            ],
         }
         for screen in payload["screens"]
         if screen["failures"]
