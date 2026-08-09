@@ -34,11 +34,26 @@ from scripts.dev.test_runtime_paths import (
     matplotlib_cache_root,
 )
 
-UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+LLM_UNIT_ROOT_TESTS = tuple(
+    path.as_posix() for path in sorted(Path("tests/unit/llm").glob("test_*.py"))
+)
+LLM_UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("root-contracts", LLM_UNIT_ROOT_TESTS),
+    ("agent", ("tests/unit/llm/agent",)),
+    ("core", ("tests/unit/llm/core",)),
+    ("rag", ("tests/unit/llm/rag",)),
+    ("tools", ("tests/unit/llm/tools",)),
+)
+UNIT_DOMAIN_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend", ("tests/unit/backend",)),
     ("llm", ("tests/unit/llm",)),
     ("developer-scripts", ("tests/unit/scripts",)),
     ("ui", ("tests/unit/ui",)),
+)
+UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    UNIT_DOMAIN_SHARDS[0],
+    *((f"llm-{label}", paths) for label, paths in LLM_UNIT_SHARDS),
+    *UNIT_DOMAIN_SHARDS[2:],
 )
 UI_UNIT_ROOT_TESTS = tuple(
     str(path) for path in sorted(Path("tests/unit/ui").glob("test_*.py"))
@@ -207,9 +222,18 @@ def ui(attestation_sink: list[dict[str, Any]] | None = None) -> None:
 
 
 def run_llm_tests(attestation_sink: list[dict[str, Any]] | None = None) -> None:
-    """Run LLM unit tests."""
+    """Run LLM native-lifecycle domains in isolated processes."""
     print("Running LLM Tests...")
-    _run_one_or_exit(["tests/unit/llm"], attestation_sink=attestation_sink)
+    configure_headless_ui_env()
+    _assert_all_test_domains_declared(
+        root=Path("tests/unit/llm"),
+        shards=LLM_UNIT_SHARDS[1:],
+    )
+    _run_shards(
+        gate_name="LLM unit",
+        shards=LLM_UNIT_SHARDS,
+        attestation_sink=attestation_sink,
+    )
 
 
 def run_remote_tests(attestation_sink: list[dict[str, Any]] | None = None) -> None:
@@ -233,7 +257,7 @@ def unit(attestation_sink: list[dict[str, Any]] | None = None) -> None:
     configure_headless_ui_env()
     _assert_all_test_domains_declared(
         root=Path("tests/unit"),
-        shards=(*UNIT_SHARDS, MCP_COMPATIBILITY_SHARDS[0]),
+        shards=(*UNIT_DOMAIN_SHARDS, MCP_COMPATIBILITY_SHARDS[0]),
     )
     root_tests = tuple(
         str(path) for path in sorted(Path("tests/unit").glob("test_*.py"))
