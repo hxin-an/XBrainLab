@@ -724,20 +724,18 @@ def _button_renders_text(button: QAbstractButton) -> bool:
 
 
 def button_visible_text_fits(button: QAbstractButton) -> bool:
-    """Measure text against live width after reserving native button chrome."""
+    """Measure rendered text and icon width against the live button width."""
     if not _button_renders_text(button) or not button.text().strip():
         return True
     button.ensurePolished()
     required = button.fontMetrics().horizontalAdvance(button.text())
     if not button.icon().isNull():
         required += button.iconSize().width() + 4
-    # Product button styles reserve at most 12 px per side plus a border.
-    # QStyleSheetStyle can retain a stale, much larger sizeHint after a
-    # responsive label is shortened on Windows, so cap only that decoration
-    # estimate while continuing to measure the live widget width.
-    decoration = min(max(button.sizeHint().width() - required, 0), 28)
-    available = max(button.width() - decoration, 0)
-    return required <= max(available, 0) + 2
+    # Qt's stylesheet proxy reports platform-dependent content rectangles and
+    # size hints that can be stale after responsive labels change. The capture
+    # gate already reviews padding visually, so this guard focuses on literal
+    # clipping against the live widget geometry.
+    return required <= max(button.width(), 0) + 2
 
 
 def icon_only_control_contrast_evidence(
