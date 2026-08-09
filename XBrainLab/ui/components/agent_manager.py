@@ -481,6 +481,10 @@ class AgentManager(QObject):
         chat_dock = QDockWidget("XBrainLab", self.main_window)
         self.chat_dock = chat_dock
         chat_dock.setWidget(chat_panel)
+        # QDockWidget's native frame consumes platform-dependent horizontal
+        # chrome. Keep the supported 320 px floor on the actual assistant
+        # surface so Windows does not receive a narrower first layout.
+        chat_panel.setMinimumWidth(320)
         chat_dock.setAllowedAreas(
             Qt.DockWidgetArea.RightDockWidgetArea
             | Qt.DockWidgetArea.LeftDockWidgetArea,

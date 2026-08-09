@@ -3621,6 +3621,7 @@ class TestAgentManagerMethods:
         assert features & QDockWidget.DockWidgetFeature.DockWidgetMovable
         assert features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
         assert manager.chat_dock.minimumWidth() >= 320
+        assert manager.chat_panel.minimumWidth() >= 320
         title = manager.chat_dock.findChild(QLabel, "AssistantDockTitle")
         assert title is not None
         assert title.minimumWidth() >= title.fontMetrics().horizontalAdvance(

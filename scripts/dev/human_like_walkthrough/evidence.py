@@ -14,10 +14,6 @@ from PyQt6.QtWidgets import (
     QAbstractButton,
     QComboBox,
     QLabel,
-    QPushButton,
-    QStyle,
-    QStyleOptionButton,
-    QStyleOptionToolButton,
     QToolButton,
     QWidget,
 )
@@ -728,42 +724,15 @@ def _button_renders_text(button: QAbstractButton) -> bool:
 
 
 def button_visible_text_fits(button: QAbstractButton) -> bool:
-    """Measure text against the live styled content rectangle."""
+    """Measure text against live width after reserving native button chrome."""
     if not _button_renders_text(button) or not button.text().strip():
         return True
     button.ensurePolished()
-    available = button.contentsRect().width()
-    if isinstance(button, QPushButton):
-        option = QStyleOptionButton()
-        option.initFrom(button)
-        option.rect = button.rect()
-        option.text = button.text()
-        style = button.style()
-        if style is not None:
-            styled_contents = style.subElementRect(
-                QStyle.SubElement.SE_PushButtonContents,
-                option,
-                button,
-            )
-            if styled_contents.width() > 0:
-                available = styled_contents.width()
-    elif isinstance(button, QToolButton):
-        option = QStyleOptionToolButton()
-        option.initFrom(button)
-        option.rect = button.rect()
-        option.text = button.text()
-        style = button.style()
-        if style is not None:
-            styled_contents = style.subElementRect(
-                QStyle.SubElement.SE_ToolButtonLayoutItem,
-                option,
-                button,
-            )
-            if styled_contents.width() > 0:
-                available = styled_contents.width()
     required = button.fontMetrics().horizontalAdvance(button.text())
     if not button.icon().isNull():
         required += button.iconSize().width() + 4
+    decoration = max(button.sizeHint().width() - required, 0)
+    available = max(button.contentsRect().width() - decoration, 0)
     return required <= max(available, 0) + 2
 
 
