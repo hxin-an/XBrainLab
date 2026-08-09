@@ -1931,6 +1931,36 @@ class DataInterpretationPreviewDialog(
         ):
             label.setText(f"{index}. {title}")
             label.setToolTip(full_title if title != full_title else "")
+        if titles is self._step_titles:
+            # Native font metrics can settle after the first layout pass. Check
+            # the allocated cells once more so Windows never paints clipped full
+            # titles before the compact labels are selected.
+            QTimer.singleShot(0, self._compact_clipped_step_labels)
+
+    def _compact_clipped_step_labels(self) -> None:
+        """Use compact step titles when native layout allocation clips text."""
+        if not hasattr(self, "step_labels"):
+            return
+        clipped = any(
+            label.contentsRect().width() > 0
+            and label.fontMetrics().horizontalAdvance(label.text())
+            > label.contentsRect().width() + 1
+            for label in self.step_labels
+        )
+        if not clipped:
+            return
+        for index, (label, compact_title, full_title) in enumerate(
+            zip(
+                self.step_labels,
+                self._compact_step_titles,
+                self._step_titles,
+                strict=True,
+            ),
+            start=1,
+        ):
+            label.setText(f"{index}. {compact_title}")
+            label.setToolTip(full_title)
+            label.updateGeometry()
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)

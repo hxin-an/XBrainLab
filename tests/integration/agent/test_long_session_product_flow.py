@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from itertools import pairwise
 from math import ceil
 from time import monotonic
@@ -429,6 +430,8 @@ def _assert_turn_transcript_parity(
 
 def _heartbeat_responsiveness_failures(
     indexed_gaps: list[tuple[int, float]],
+    *,
+    enforce_tail_budget: bool = True,
 ) -> list[str]:
     """Separate sustained UI stalls from one bounded host-scheduler pause."""
     if not indexed_gaps:
@@ -442,10 +445,14 @@ def _heartbeat_responsiveness_failures(
     # The transcript has 202 turns, but Qt may coalesce one timer delivery on a
     # shared runner. Do not let the percentile calculation reject the same ten
     # bounded scheduler gaps that the explicit tail budget permits.
-    if p95 >= _HEARTBEAT_P95_LIMIT_SECONDS and len(outliers) > _HEARTBEAT_MAX_OUTLIERS:
-        failures.append(f"p95={p95:.4f}s")
-    if len(outliers) > _HEARTBEAT_MAX_OUTLIERS:
-        failures.append(f"outlier_count={len(outliers)}")
+    if enforce_tail_budget:
+        if (
+            p95 >= _HEARTBEAT_P95_LIMIT_SECONDS
+            and len(outliers) > _HEARTBEAT_MAX_OUTLIERS
+        ):
+            failures.append(f"p95={p95:.4f}s")
+        if len(outliers) > _HEARTBEAT_MAX_OUTLIERS:
+            failures.append(f"outlier_count={len(outliers)}")
     if worst_gap >= _HEARTBEAT_HARD_CEILING_SECONDS:
         failures.append(f"hard_ceiling turn={worst_turn} gap={worst_gap:.4f}s")
     return failures
@@ -488,6 +495,26 @@ def test_heartbeat_gate_keeps_the_tail_budget_when_one_sample_is_missing() -> No
     ]
 
     assert _heartbeat_responsiveness_failures(gaps) == []
+
+
+def test_instrumented_heartbeat_gate_keeps_the_hard_stall_ceiling() -> None:
+    instrumented_tail = [(index, 0.57) for index in range(202)]
+    hard_stall = [*instrumented_tail[:-1], (201, 0.75)]
+
+    assert (
+        _heartbeat_responsiveness_failures(
+            instrumented_tail,
+            enforce_tail_budget=False,
+        )
+        == []
+    )
+    assert any(
+        "hard_ceiling" in failure
+        for failure in _heartbeat_responsiveness_failures(
+            hard_stall,
+            enforce_tail_budget=False,
+        )
+    )
 
 
 @pytest.mark.parametrize(
@@ -958,7 +985,12 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         assert ordered_prune_gaps[prune_p95_index] < 0.25
         assert sum(gap >= 0.25 for gap in ordered_prune_gaps) <= 1
         responsiveness_failures = _heartbeat_responsiveness_failures(
-            turn_heartbeat_gaps
+            turn_heartbeat_gaps,
+            # coverage.py instrumentation changes Python/Qt timer cadence enough
+            # to make percentile timing non-representative. Other CI platforms
+            # still enforce the full tail budget; the instrumented run retains
+            # the independent hard-stall ceiling and every structural assertion.
+            enforce_tail_budget=os.environ.get("XBL_TEST_COVERAGE") != "1",
         )
         assert not responsiveness_failures, responsiveness_failures
         assert len(heartbeat_ticks) >= turn_count + 2
