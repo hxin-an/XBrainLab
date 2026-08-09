@@ -6,6 +6,7 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QLabel, QWidget
 
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training import TrainingEvaluation
 from XBrainLab.ui.dialogs.training import (
     DeviceSettingDialog,
     OptimizerSettingDialog,
@@ -52,7 +53,8 @@ class TestTrainingSetting:
         assert window.optim == torch.optim.Adam  # Real Adam class
         assert window.opt_label.text() == "Adam"
         assert window.use_cpu is True
-        assert window.evaluation_combo.currentText() == "Best validation loss"
+        assert window.evaluation_combo.currentText() == "Validation loss"
+        assert window.evaluation_combo.currentData() is TrainingEvaluation.VAL_LOSS
         assert all(
             "testing" not in window.evaluation_combo.itemText(index).lower()
             for index in range(window.evaluation_combo.count())
@@ -217,7 +219,8 @@ class TestTrainingSetting:
             dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
             qtbot.addWidget(dialog)
 
-        assert dialog.evaluation_combo.currentText() == "Best validation performance"
+        assert dialog.evaluation_combo.currentText() == "Validation accuracy"
+        assert dialog.evaluation_combo.currentData() is TrainingEvaluation.VAL_ACC
 
     def test_set_output_dir(self, window):
         with patch(
@@ -283,7 +286,8 @@ class TestTrainingSetting:
             # GPU check depends on parse_device_name logic
             assert "0 - Test GPU" in window.dev_label.text()
 
-        assert window.evaluation_combo.currentText() == "Last Epoch"
+        assert window.evaluation_combo.currentText() == "Last epoch"
+        assert window.evaluation_combo.currentData() is TrainingEvaluation.LAST_EPOCH
 
     def test_real_study_without_initial_option_does_not_read_controller_defaults(
         self,

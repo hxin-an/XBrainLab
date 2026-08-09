@@ -148,6 +148,7 @@ def test_assistant_setup_capture_is_a_valid_320px_state(qtbot) -> None:
     panel = _assistant_setup_required_narrow()
     qtbot.addWidget(panel)
     panel.show()
+    _settle_capture_widget(QApplication.instance(), panel)
 
     _assert_capture_geometry("assistant-setup-required-narrow.png", panel)
 
@@ -235,6 +236,7 @@ def test_assistant_standard_runtime_captures_are_semantically_valid(
     panel = factory()
     qtbot.addWidget(panel)
     panel.show()
+    _settle_capture_widget(QApplication.instance(), panel)
 
     _assert_capture_geometry(filename, panel)
 

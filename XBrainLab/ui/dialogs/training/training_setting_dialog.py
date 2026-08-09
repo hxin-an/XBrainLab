@@ -4,7 +4,7 @@ Aggregates settings for epochs, batch size, learning rate, optimizer,
 device, output directory, evaluation strategy, and repeat count.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from PyQt6.QtCore import QEvent, QRect, QSize, Qt
 from PyQt6.QtWidgets import (
@@ -80,6 +80,12 @@ class TrainingSettingDialog(BaseDialog):
     # styles report an edit-field rectangle that excludes only part of that
     # stylesheet chrome, so keep a platform-independent lower bound too.
     _COMBO_HORIZONTAL_CHROME_FALLBACK = 64
+    _EVALUATION_DISPLAY_LABELS: ClassVar[dict[TrainingEvaluation, str]] = {
+        TrainingEvaluation.VAL_LOSS: "Validation loss",
+        TrainingEvaluation.VAL_AUC: "Validation AUC",
+        TrainingEvaluation.VAL_ACC: "Validation accuracy",
+        TrainingEvaluation.LAST_EPOCH: "Last epoch",
+    }
 
     def __init__(self, parent, controller, initial_option: Any | None = None):
         # self.controller is handled by BaseDialog
@@ -138,7 +144,7 @@ class TrainingSettingDialog(BaseDialog):
             (label.fontMetrics().horizontalAdvance(label.text()) for label in labels),
             default=128,
         )
-        label_column_width = min(max(label_text_width + 24, 160), 260)
+        label_column_width = min(max(label_text_width + 24, 160), 200)
         for label in labels:
             label.setWordWrap(True)
             label.setMinimumWidth(label_column_width)
@@ -232,6 +238,21 @@ class TrainingSettingDialog(BaseDialog):
         self.setMinimumSize(target_width, target_height)
         self.resize(max(self.width(), target_width), max(self.height(), target_height))
 
+    def _set_evaluation_option(self, option: Any) -> None:
+        """Select one backend strategy through its compact UI label."""
+        if self.evaluation_combo is None:
+            return
+        normalized = option
+        if not isinstance(normalized, TrainingEvaluation):
+            normalized = getattr(normalized, "value", normalized)
+            try:
+                normalized = TrainingEvaluation(str(normalized))
+            except ValueError:
+                return
+        index = self.evaluation_combo.findData(normalized)
+        if index >= 0:
+            self.evaluation_combo.setCurrentIndex(index)
+
     def load_settings(self):
         """Load settings from a snapshot or controller compatibility."""
         opt = self.initial_option
@@ -273,7 +294,7 @@ class TrainingSettingDialog(BaseDialog):
 
             # Restore evaluation
             if opt.evaluation_option and self.evaluation_combo:
-                self.evaluation_combo.setCurrentText(opt.evaluation_option.value)
+                self._set_evaluation_option(opt.evaluation_option)
 
     def _compatibility_training_option(self) -> Any | None:
         """Read training option only for mock / compatibility dialog contexts."""
@@ -332,7 +353,7 @@ class TrainingSettingDialog(BaseDialog):
 
         evaluation = option.get("evaluation_option")
         if evaluation and self.evaluation_combo:
-            self.evaluation_combo.setCurrentText(str(evaluation))
+            self._set_evaluation_option(evaluation)
 
     @staticmethod
     def _gpu_index_from_device(device: str) -> int | None:
@@ -445,9 +466,15 @@ class TrainingSettingDialog(BaseDialog):
 
         # Evaluation
         self.evaluation_combo = QComboBox()
-        self.evaluation_list = [i.value for i in TrainingEvaluation]
-        self.evaluation_combo.addItems(self.evaluation_list)
-        self.evaluation_combo.setCurrentText(TrainingEvaluation.VAL_LOSS.value)
+        self.evaluation_list = [
+            self._EVALUATION_DISPLAY_LABELS[option] for option in TrainingEvaluation
+        ]
+        for option in TrainingEvaluation:
+            self.evaluation_combo.addItem(
+                self._EVALUATION_DISPLAY_LABELS[option],
+                option,
+            )
+        self._set_evaluation_option(TrainingEvaluation.VAL_LOSS)
         add_simple_row(7, "Evaluation", self.evaluation_combo)
 
         self.repeat_entry = QLineEdit("1")
@@ -513,10 +540,12 @@ class TrainingSettingDialog(BaseDialog):
         ):
             return
 
-        evaluation_option = TrainingEvaluation.VAL_LOSS
-        for i in TrainingEvaluation:
-            if i.value == self.evaluation_combo.currentText():
-                evaluation_option = i
+        selected_evaluation = self.evaluation_combo.currentData()
+        evaluation_option = (
+            selected_evaluation
+            if isinstance(selected_evaluation, TrainingEvaluation)
+            else TrainingEvaluation.VAL_LOSS
+        )
 
         try:
             # Validate inputs

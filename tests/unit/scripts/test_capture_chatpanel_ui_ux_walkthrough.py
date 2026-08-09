@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLabel, QPushButton
 
 from scripts.dev import capture_chatpanel_ui_ux_walkthrough as walkthrough_module
 from scripts.dev.capture_chatpanel_ui_ux_walkthrough import (
@@ -569,22 +569,21 @@ def test_custom_suggestion_card_is_measured_through_its_child_labels(qapp) -> No
     qapp.processEvents()
 
 
-def test_visible_button_fit_uses_styled_native_size_hint(qapp) -> None:
-    panel = ChatPanel()
-    panel.resize(320, 520)
-    panel.set_runtime_state("ready")
-    panel.show()
+def test_visible_button_fit_uses_live_content_rect(qapp) -> None:
+    button = QPushButton("Working")
+    button.show()
     qapp.processEvents()
 
-    panel.send_btn.setText("Working")
-    panel.send_btn.setFixedWidth(max(panel.send_btn.sizeHint().width() - 4, 1))
-    assert human_evidence.button_visible_text_fits(panel.send_btn) is False
+    button.setFixedWidth(
+        max(button.fontMetrics().horizontalAdvance(button.text()) - 1, 1)
+    )
+    assert human_evidence.button_visible_text_fits(button) is False
 
-    panel._fit_composer_action_width()
-    assert human_evidence.button_visible_text_fits(panel.send_btn) is True
+    button.setFixedWidth(button.sizeHint().width())
+    assert human_evidence.button_visible_text_fits(button) is True
 
-    panel.close()
-    panel.deleteLater()
+    button.close()
+    button.deleteLater()
     qapp.processEvents()
 
 

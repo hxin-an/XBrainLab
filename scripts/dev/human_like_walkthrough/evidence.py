@@ -14,6 +14,9 @@ from PyQt6.QtWidgets import (
     QAbstractButton,
     QComboBox,
     QLabel,
+    QPushButton,
+    QStyle,
+    QStyleOptionButton,
     QToolButton,
     QWidget,
 )
@@ -724,11 +727,27 @@ def _button_renders_text(button: QAbstractButton) -> bool:
 
 
 def button_visible_text_fits(button: QAbstractButton) -> bool:
-    """Measure native/styled button text with Qt's own content contract."""
+    """Measure text against the live styled content rectangle."""
     if not _button_renders_text(button) or not button.text().strip():
         return True
     button.ensurePolished()
-    return button.sizeHint().width() <= button.width() + 2
+    available = button.contentsRect().width()
+    if isinstance(button, QPushButton):
+        option = QStyleOptionButton()
+        option.initFrom(button)
+        option.rect = button.rect()
+        option.text = button.text()
+        style = button.style()
+        if style is not None:
+            available = style.subElementRect(
+                QStyle.SubElement.SE_PushButtonContents,
+                option,
+                button,
+            ).width()
+    required = button.fontMetrics().horizontalAdvance(button.text())
+    if not button.icon().isNull():
+        required += button.iconSize().width() + 4
+    return required <= max(available, 0) + 2
 
 
 def icon_only_control_contrast_evidence(
