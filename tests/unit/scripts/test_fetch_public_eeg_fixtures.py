@@ -16,14 +16,18 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     MNE_BIDS_TINY_NAME,
     MNE_BIDS_TINY_REVISION,
     MNE_TESTING_DATA_REVISION,
+    OPENNEURO_P300_MULTISUBJECT_NAME,
     OPENNEURO_P300_NAME,
     OPENNEURO_P300_VERSION,
+    P300_MULTISUBJECT_GROUP_NAMES,
+    P300_MULTISUBJECT_MAX_BYTES,
     TEACHER_PREFLIGHT_GROUP_NAMES,
     TEACHER_PREFLIGHT_MAX_BYTES,
     FixtureFile,
     FixtureGroup,
     _mne_bids_tiny_downloads,
     _openneuro_p300_downloads,
+    _openneuro_p300_multisubject_downloads,
     download_fixture_file,
     fixture_file_is_valid,
     fixture_groups_for_profile,
@@ -171,6 +175,36 @@ def test_openneuro_p300_manifest_contains_three_paired_bids_runs():
     )
     assert OPENNEURO_P300_VERSION == "1.1.2"
     assert OPENNEURO_P300_VERSION in openneuro_group["source"]
+
+
+def test_p300_multisubject_profile_adds_two_complete_subjects_without_expanding_ci():
+    required_groups = fixture_groups_for_profile("required-ci")
+    multisubject_groups = fixture_groups_for_profile("p300-multisubject")
+    multisubject_names = {str(group["name"]) for group in multisubject_groups}
+    downloads = _openneuro_p300_multisubject_downloads()
+    filenames = {download["filename"] for download in downloads}
+
+    assert multisubject_names == set(P300_MULTISUBJECT_GROUP_NAMES)
+    assert OPENNEURO_P300_MULTISUBJECT_NAME not in {
+        str(group["name"]) for group in required_groups
+    }
+    for subject in ("002", "003"):
+        for run in (1, 2, 3):
+            prefix = (
+                f"{OPENNEURO_P300_NAME}/sub-{subject}/eeg/"
+                f"sub-{subject}_task-P300_run-{run}"
+            )
+            assert f"{prefix}_eeg.set" in filenames
+            assert f"{prefix}_events.tsv" in filenames
+            assert f"{prefix}_channels.tsv" in filenames
+            assert f"{prefix}_eeg.json" in filenames
+    assert all(len(download["sha256"]) == 64 for download in downloads)
+    assert fixture_profile_size_bytes(multisubject_groups) > fixture_profile_size_bytes(
+        required_groups
+    )
+    assert (
+        fixture_profile_size_bytes(multisubject_groups) <= P300_MULTISUBJECT_MAX_BYTES
+    )
 
 
 def test_mne_testing_data_downloads_are_pinned_to_revision():

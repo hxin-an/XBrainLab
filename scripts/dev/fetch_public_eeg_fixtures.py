@@ -33,8 +33,10 @@ MNE_TESTING_DATA_REVISION = (
     "f9dc9fc10d35e817e45136d9a3932f2ee0d7053c"  # pragma: allowlist secret
 )
 OPENNEURO_P300_NAME = "openneuro-ds003061-p300"
+OPENNEURO_P300_MULTISUBJECT_NAME = "openneuro-ds003061-p300-multisubject-extension"
 OPENNEURO_P300_VERSION = "1.1.2"
 OPENNEURO_P300_BASE_URL = "https://s3.amazonaws.com/openneuro.org/ds003061"
+P300_MULTISUBJECT_MAX_BYTES = 700 * 1024 * 1024
 
 
 class FixtureFile(TypedDict):
@@ -402,6 +404,130 @@ def _openneuro_p300_downloads() -> list[FixtureFile]:
     ]
 
 
+_P300_SHARED_SIDECARS: tuple[tuple[str, str, int], ...] = (
+    (
+        "channels.tsv",
+        "2ff571acb0e9f9fe82027fb00bcf3927ff9f6794eeaa978ff4b9580a3b7907be",  # pragma: allowlist secret
+        1152,
+    ),
+    (
+        "coordsystem.json",
+        "38cbd743cd80f8243716dcfe326138c49c124855551fbed50f935724a5ee71d3",  # pragma: allowlist secret
+        97,
+    ),
+    (
+        "electrodes.tsv",
+        "7159f6f8f95410bfa3653d42985a10cf176400486a4ec8732b42bde7eebe30c0",  # pragma: allowlist secret
+        1717,
+    ),
+    (
+        "events.json",
+        "1c1447887fded4c86acf66cc6a35326a5b56152c14a47163c111c48fced966c5",  # pragma: allowlist secret
+        1893,
+    ),
+)
+
+# subject, run, eeg.set hash/size, eeg.json hash/size, events.tsv hash/size
+OPENNEURO_P300_MULTISUBJECT_RUNS: tuple[
+    tuple[str, int, str, int, str, int, str, int], ...
+] = (
+    (
+        "002",
+        1,
+        "78640f17bbe0069ce421dc754a4be7f9594bfa61f1b96ec13ebae2682498f322",  # pragma: allowlist secret
+        63068800,
+        "b3a287656ffe3ae053d54660f89f7e466fcb1db1db798530c16be1d1cc37bcfd",  # pragma: allowlist secret
+        1392,
+        "6859df45d6729e8cb5e3ddb39bbcb58ea7ba5cd11ad13df9345cc430cfabc724",  # pragma: allowlist secret
+        42059,
+    ),
+    (
+        "002",
+        2,
+        "14837ab4f65114bd2cc725b42958659089d1ef364f605c53c18914141ba79447",  # pragma: allowlist secret
+        62982648,
+        "1ec2ee7a2ecfe2b4b8b84a9275e9bb5cba6d87a999dfb226cfc4bc45b25fac2b",  # pragma: allowlist secret
+        1419,
+        "ab2ad846dbeb1c6ef2e99f3e0c2d37e3bddc37fcd7a5cbd6c98b816ae3e096f0",  # pragma: allowlist secret
+        41717,
+    ),
+    (
+        "002",
+        3,
+        "3e9c88e465485952f1b452e347a8afa46fc5b86d6f209d1f87a284415fa82500",  # pragma: allowlist secret
+        62977424,
+        "1ee05bd171585199334ee637286f37cc760c094e9df48912814c28e8246b9034",  # pragma: allowlist secret
+        1444,
+        "389a280e3b8681cf3860db4e62dfa9dfcff7aaf9c25c677be94343231c180d6b",  # pragma: allowlist secret
+        41231,
+    ),
+    (
+        "003",
+        1,
+        "c56852d7507875362867161dd51bba1b53352e74305ee3f99f70e6c23c8fec5e",  # pragma: allowlist secret
+        63100664,
+        "8fe2465a9e9e6bb564f1310b4af80f693c2b768e698d99e32c1a5271b870aba9",  # pragma: allowlist secret
+        1377,
+        "bf07a2aa96ddb511f92766b31f8fd1a61733fe87426cfcfbae1d2812e3f6b186",  # pragma: allowlist secret
+        45216,
+    ),
+    (
+        "003",
+        2,
+        "298b29e41b6574286557f5fb4207c8467e18d294a84d1fc4036c450d6857635f",  # pragma: allowlist secret
+        63099800,
+        "8fe2465a9e9e6bb564f1310b4af80f693c2b768e698d99e32c1a5271b870aba9",  # pragma: allowlist secret
+        1377,
+        "86732188c5f6339a8ddc4e118848282cbfe95d3f49faae2a9cce71069761b3d9",  # pragma: allowlist secret
+        44968,
+    ),
+    (
+        "003",
+        3,
+        "53f5fa0584140e55025863437042972245d2842e9c2fe5a0e79b7f50454dc8f6",  # pragma: allowlist secret
+        63183600,
+        "becb08e89527b1595cf9a195b034466c481d674a31acec6000f925a4274d5fed",  # pragma: allowlist secret
+        1377,
+        "e1621a50fe6825e3eb3910eb0f51c0e8fabe15d42d596e4b718cdb1255c7e256",  # pragma: allowlist secret
+        45202,
+    ),
+)
+
+
+def _openneuro_p300_multisubject_downloads() -> list[FixtureFile]:
+    """Return two extra complete subjects for manual BIDS selector testing."""
+    downloads: list[FixtureFile] = []
+    for (
+        subject,
+        run,
+        eeg_set_sha256,
+        eeg_set_size,
+        eeg_json_sha256,
+        eeg_json_size,
+        events_tsv_sha256,
+        events_tsv_size,
+    ) in OPENNEURO_P300_MULTISUBJECT_RUNS:
+        prefix = f"sub-{subject}/eeg/sub-{subject}_task-P300_run-{run}"
+        files = (
+            ("eeg.set", eeg_set_sha256, eeg_set_size),
+            ("eeg.json", eeg_json_sha256, eeg_json_size),
+            ("events.tsv", events_tsv_sha256, events_tsv_size),
+            *_P300_SHARED_SIDECARS,
+        )
+        downloads.extend(
+            {
+                "filename": f"{OPENNEURO_P300_NAME}/{prefix}_{suffix}",
+                "url": (
+                    f"{OPENNEURO_P300_BASE_URL}/{quote(f'{prefix}_{suffix}', safe='/')}"
+                ),
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+            }
+            for suffix, sha256, size_bytes in files
+        )
+    return downloads
+
+
 FIXTURE_GROUPS: list[FixtureGroup] = [
     {
         "name": "physionet-edf-rest",
@@ -534,6 +660,19 @@ FIXTURE_GROUPS: list[FixtureGroup] = [
         "files": _openneuro_p300_downloads(),
     },
     {
+        "name": OPENNEURO_P300_MULTISUBJECT_NAME,
+        "description": (
+            "Two additional complete ds003061 P300 subjects for exercising "
+            "BIDS subject selection with three subjects and nine runs total."
+        ),
+        "source": (
+            f"OpenNeuro ds003061 snapshot {OPENNEURO_P300_VERSION}; exact-byte "
+            "pinned subject-selection extension for local product testing"
+        ),
+        "entrypoint": OPENNEURO_P300_NAME,
+        "files": _openneuro_p300_multisubject_downloads(),
+    },
+    {
         "name": "chbmit-chb01",
         "description": (
             "CHB-MIT scalp EEG seizure recording with the source summary and "
@@ -618,6 +757,9 @@ TEACHER_PREFLIGHT_GROUP_NAMES = frozenset(
         "chbmit-chb01",
         "sleep-edfx-st7011",
     }
+)
+P300_MULTISUBJECT_GROUP_NAMES = frozenset(
+    {OPENNEURO_P300_NAME, OPENNEURO_P300_MULTISUBJECT_NAME}
 )
 
 _ALLOWED_DOWNLOAD_HOSTS = {
@@ -712,6 +854,20 @@ def fixture_groups_for_profile(profile: str) -> list[FixtureGroup]:
         if missing_groups:
             raise RuntimeError(
                 "Teacher preflight fixture groups are not defined: "
+                + ", ".join(sorted(missing_groups))
+            )
+        return selected
+    if profile == "p300-multisubject":
+        selected = [
+            group
+            for group in FIXTURE_GROUPS
+            if group["name"] in P300_MULTISUBJECT_GROUP_NAMES
+        ]
+        selected_names = {group["name"] for group in selected}
+        missing_groups = P300_MULTISUBJECT_GROUP_NAMES - selected_names
+        if missing_groups:
+            raise RuntimeError(
+                "P300 multi-subject fixture groups are not defined: "
                 + ", ".join(sorted(missing_groups))
             )
         return selected
@@ -850,11 +1006,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--profile",
-        choices=("all", "required-ci", "teacher-preflight"),
+        choices=("all", "required-ci", "teacher-preflight", "p300-multisubject"),
         default=DEFAULT_FIXTURE_PROFILE,
         help=(
             "Select all fixtures, the compact required CI profile, or the "
-            "larger local teacher-preflight profile."
+            "larger local teacher-preflight profile, or the three-subject "
+            "P300 BIDS profile."
         ),
     )
     parser.add_argument(
@@ -877,6 +1034,14 @@ def main() -> int:
         raise ValueError(
             "Teacher preflight fixture profile exceeds its download boundary: "
             f"{profile_size_bytes} > {TEACHER_PREFLIGHT_MAX_BYTES} bytes"
+        )
+    if (
+        args.profile == "p300-multisubject"
+        and profile_size_bytes > P300_MULTISUBJECT_MAX_BYTES
+    ):
+        raise ValueError(
+            "P300 multi-subject fixture profile exceeds its download boundary: "
+            f"{profile_size_bytes} > {P300_MULTISUBJECT_MAX_BYTES} bytes"
         )
 
     if args.list:
