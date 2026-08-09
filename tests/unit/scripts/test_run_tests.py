@@ -12,7 +12,9 @@ import pytest
 from scripts.dev import run_tests
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
+    SHARDED_PYTEST_RUNNER_ID,
     build_attestation,
+    write_attestation,
 )
 
 
@@ -134,6 +136,196 @@ def test_all_tests_delegates_to_every_isolated_gate(
     run_tests.all_tests()
 
     assert calls == ["unit", "integration", "regression"]
+
+
+def test_covered_all_gate_uses_the_reviewed_wall_clock_split(monkeypatch) -> None:
+    observed: list[tuple[str, bool]] = []
+    monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
+
+    def capture_group(command, sink) -> None:
+        assert sink is None
+        observed.append((command, "XBL_TEST_COVERAGE" in os.environ))
+
+    monkeypatch.setattr(run_tests, "run_linux_ci_group", capture_group)
+
+    run_tests.all_tests()
+
+    assert [command for command, _covered in observed] == list(
+        run_tests.LINUX_CI_COMMANDS
+    )
+    assert observed == [
+        (command, command not in run_tests.LINUX_CI_UNCOVERED_COMMANDS)
+        for command in run_tests.LINUX_CI_COMMANDS
+    ]
+    assert os.environ["XBL_TEST_COVERAGE"] == "1"
+
+
+def test_platform_gate_runs_only_explicit_cross_platform_regressions(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        run_tests,
+        "configure_headless_ui_env",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        run_tests,
+        "run_pytest",
+        lambda args: calls.append(tuple(args)) or 0,
+    )
+
+    run_tests.platform()
+
+    expected_calls = [
+        ("--capture=sys", *paths, "-q") for _label, paths in run_tests.PLATFORM_SHARDS
+    ]
+    assert calls == expected_calls
+
+    selected_paths = [
+        path for _label, paths in run_tests.PLATFORM_SHARDS for path in paths
+    ]
+    assert selected_paths
+    assert len(selected_paths) == len(set(selected_paths))
+    assert all(Path(path).is_file() for path in selected_paths)
+    assert all(Path(path).name.startswith("test_") for path in selected_paths)
+    assert "tests/unit" not in selected_paths
+    assert "tests/integration" not in selected_paths
+    assert "tests/regression" not in selected_paths
+
+
+def test_platform_native_lifecycle_tests_keep_separate_process_boundaries() -> None:
+    native_lifecycle_paths = {
+        "tests/integration/ui/test_native_render_lifecycle.py",
+        "tests/integration/ui/test_preprocess_async_filter_lifecycle.py",
+        "tests/integration/ui/test_preprocess_native_lifecycle.py",
+    }
+    path_to_label = {
+        path: label
+        for label, paths in run_tests.PLATFORM_SHARDS
+        for path in paths
+        if path in native_lifecycle_paths
+    }
+
+    assert set(path_to_label) == native_lifecycle_paths
+    assert len(set(path_to_label.values())) == len(native_lifecycle_paths)
+
+
+def _expand_test_paths(paths: tuple[str, ...]) -> set[Path]:
+    expanded: set[Path] = set()
+    for value in paths:
+        path = Path(value)
+        if path.is_dir():
+            expanded.update(path.rglob("test_*.py"))
+        else:
+            expanded.add(path)
+    return expanded
+
+
+def test_linux_ci_groups_partition_the_authoritative_suite_exactly_once() -> None:
+    grouped_files: list[Path] = []
+    for _command, shards in run_tests.LINUX_CI_GROUPS:
+        for _label, paths in shards:
+            grouped_files.extend(sorted(_expand_test_paths(paths)))
+
+    authoritative_files = {
+        *Path("tests/unit").rglob("test_*.py"),
+        *Path("tests/integration").rglob("test_*.py"),
+        *Path("tests/regression").rglob("test_*.py"),
+    } - {
+        *Path("tests/unit/mcp").rglob("test_*.py"),
+        *Path("tests/integration/mcp").rglob("test_*.py"),
+    }
+
+    assert set(grouped_files) == authoritative_files
+    assert len(grouped_files) == len(set(grouped_files))
+
+
+def test_linux_ci_isolates_only_wall_clock_agent_timing_from_coverage() -> None:
+    assert (
+        frozenset({"linux-integration-agent-timing"})
+        == run_tests.LINUX_CI_UNCOVERED_COMMANDS
+    )
+    groups = dict(run_tests.LINUX_CI_GROUPS)
+    assert groups["linux-integration-agent-timing"] == (
+        (
+            "agent-wall-clock",
+            ("tests/integration/agent/test_long_session_product_flow.py",),
+        ),
+    )
+
+
+def test_linux_ci_group_preserves_declared_process_boundaries(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+    command, shards = run_tests.LINUX_CI_GROUPS[0]
+
+    monkeypatch.setattr(run_tests, "configure_headless_ui_env", lambda: None)
+
+    def capture_run(**kwargs) -> None:
+        observed.update(kwargs)
+
+    monkeypatch.setattr(run_tests, "_run_shards", capture_run)
+
+    run_tests.run_linux_ci_group(command)
+
+    assert observed == {
+        "gate_name": f"Linux CI {command}",
+        "shards": shards,
+        "attestation_sink": None,
+    }
+
+
+def _write_linux_ci_evidence(root: Path) -> None:
+    counts = {
+        "collected": 1,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xfailed": 0,
+        "xpassed": 0,
+        "deselected": 0,
+    }
+    for command, _shards in run_tests.LINUX_CI_GROUPS:
+        write_attestation(
+            root / f"{command}.json",
+            build_attestation(
+                runner=SHARDED_PYTEST_RUNNER_ID,
+                command_args=(command,),
+                exit_code=0,
+                counts=counts,
+            ),
+        )
+        if command not in run_tests.LINUX_CI_UNCOVERED_COMMANDS:
+            (root / f".coverage.{command}").write_bytes(b"coverage-data")
+
+
+def test_linux_ci_evidence_verifier_aggregates_every_required_group(tmp_path) -> None:
+    result_path = tmp_path / "all-regression.json"
+    _write_linux_ci_evidence(tmp_path)
+
+    assert run_tests.verify_linux_ci_evidence(tmp_path, result_path) == 0
+
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["runner"] == SHARDED_PYTEST_RUNNER_ID
+    assert payload["command_args"] == ["all"]
+    assert payload["exit_code"] == 0
+    assert payload["counts"]["passed"] == len(run_tests.LINUX_CI_GROUPS)
+
+
+def test_linux_ci_evidence_verifier_fails_closed_for_missing_coverage(
+    tmp_path,
+) -> None:
+    result_path = tmp_path / "all-regression.json"
+    _write_linux_ci_evidence(tmp_path)
+    (tmp_path / ".coverage.linux-unit-backend").unlink()
+
+    assert run_tests.verify_linux_ci_evidence(tmp_path, result_path) == 1
+
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["exit_code"] == 1
 
 
 def test_declared_integration_shards_cover_every_test_domain() -> None:
@@ -341,6 +533,45 @@ def test_main_does_not_report_partial_coverage_after_shard_failure(
     ]
 
 
+def test_linux_ci_covered_group_defers_coverage_report_until_aggregate(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def record_command(args, **kwargs):
+        calls.append(tuple(args))
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.delenv("XBL_TEST_COVERAGE", raising=False)
+    monkeypatch.setattr(run_tests.subprocess, "run", record_command)
+    monkeypatch.setattr(
+        run_tests,
+        "_dispatch",
+        lambda command, sink: calls.append(("dispatch", command)),
+    )
+
+    assert run_tests.main(["linux-unit-backend"]) == 0
+    assert calls == [
+        (sys.executable, "-m", "coverage", "erase"),
+        ("dispatch", "linux-unit-backend"),
+    ]
+
+
+def test_linux_ci_wall_clock_group_disables_coverage_instrumentation(
+    monkeypatch,
+) -> None:
+    observed: list[tuple[str, bool]] = []
+    monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
+
+    def capture_dispatch(command, sink):
+        observed.append((command, "XBL_TEST_COVERAGE" in os.environ))
+
+    monkeypatch.setattr(run_tests, "_dispatch", capture_dispatch)
+
+    assert run_tests.main(["linux-integration-agent-timing"]) == 0
+    assert observed == [("linux-integration-agent-timing", False)]
+
+
 @pytest.mark.parametrize("failing_command", ["erase", "report"])
 def test_main_fails_closed_for_unusable_coverage_data(
     monkeypatch,
@@ -368,10 +599,19 @@ def test_main_fails_closed_for_unusable_coverage_data(
     assert payload["exit_code"] == 1
 
 
-def test_ci_uses_the_isolated_test_runner() -> None:
+def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    assert "scripts/dev/run_tests.py all" in workflow
+    assert "max-parallel: 4" in workflow
+    assert "scripts/dev/run_tests.py ${{ matrix.command }}" in workflow
+    for command, _shards in run_tests.LINUX_CI_GROUPS:
+        assert f"- {command}" in workflow
+    assert "scripts/dev/run_tests.py verify-linux-ci" in workflow
+    assert workflow.count("scripts/dev/run_tests.py platform") == 1
+    assert "os: [windows-latest, macos-latest]" in workflow
+    assert "os: [ubuntu-latest, windows-latest, macos-latest]" not in workflow
+    assert "fetch-depth: 0" not in workflow
+    assert "coverage combine test-results" in workflow
     assert "poetry run pytest tests/" not in workflow
 
 

@@ -29,18 +29,23 @@ jobs:
       product: ${{ steps.scope.outputs.product }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Detect product-relevant changes
         id: scope
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1
-            changed_files="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            git fetch --no-tags origin "$base_sha" --depth=1
+            changed_files="$(git diff --name-only "$base_sha" HEAD)"
           else
-            changed_files="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" || true)"
+            base_sha="${{ github.event.before }}"
+            if [[ "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
+              echo "product=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git fetch --no-tags origin "$base_sha" --depth=1
+            changed_files="$(git diff --name-only "$base_sha" "${{ github.sha }}")"
           fi
 
           if [[ -z "$changed_files" ]]; then
@@ -92,31 +97,39 @@ jobs:
       - name: Ruff format check
         run: ruff format --check XBrainLab/ tests/
 
-  test:
-    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
+  linux-shard:
+    name: Linux Shard (${{ matrix.command }})
     needs: changes
     if: needs.changes.outputs.product == 'true'
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.11"]
+        command:
+          - linux-unit-backend
+          - linux-unit-llm-agent
+          - linux-unit-scripts
+          - linux-unit-ui
+          - linux-unit-rest
+          - linux-integration-agent-timing
+          - linux-integration-ui
+          - linux-integration-rest
     env:
       QT_QPA_PLATFORM: offscreen
+      COVERAGE_FILE: test-results/.coverage.${{ matrix.command }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
 
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -132,52 +145,130 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
           restore-keys: |
-            venv-${{ runner.os }}-${{ matrix.python-version }}-
+            venv-${{ runner.os }}-3.11-
 
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      # Coverage only on Linux. Every test family still runs in a fresh process
-      # so Qt, Matplotlib, MNE, and PyTorch native state cannot leak between
-      # otherwise unrelated domains.
-      - name: Run isolated test gates with coverage
-        if: runner.os == 'Linux'
+      - name: Run authoritative Linux shard
         env:
-          XBL_TEST_COVERAGE: "1"
           XBL_TEST_JUNIT_DIR: test-results
           XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
           mkdir -p test-results
-          poetry run -- coverage erase
-          poetry run -- python scripts/dev/run_tests.py all --result-json test-results/all-regression.json
-          poetry run -- coverage xml -o coverage.xml
-          poetry run -- coverage report
+          poetry run -- python scripts/dev/run_tests.py ${{ matrix.command }} \
+            --result-json test-results/${{ matrix.command }}.json
 
-      - name: Run isolated test gates
-        if: runner.os != 'Linux'
+      - name: Upload shard evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-shard-${{ matrix.command }}
+          path: test-results
+          include-hidden-files: true
+
+  linux-test:
+    name: Full Test Suite (Linux, py3.11)
+    needs: [changes, linux-shard]
+    if: always() && needs.changes.outputs.product == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install aggregate dependencies
+        run: pip install "coverage>=7,<8" pytest
+
+      - name: Download Linux shard evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: linux-shard-*
+          path: test-results
+          merge-multiple: true
+
+      - name: Verify complete shard evidence
+        run: |
+          python scripts/dev/run_tests.py verify-linux-ci \
+            --evidence-dir test-results \
+            --result-json test-results/all-regression.json
+
+      - name: Combine coverage
+        env:
+          COVERAGE_FILE: test-results/.coverage
+        run: |
+          coverage combine test-results
+          coverage xml -o coverage.xml
+          coverage report
+
+      - name: Upload aggregate Linux evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-ubuntu-latest-py3.11
+          path: |
+            test-results/all-regression.json
+            test-results/*.xml
+            coverage.xml
+
+  platform-test:
+    name: Platform Tests (${{ matrix.os }}, py3.11)
+    needs: changes
+    if: needs.changes.outputs.product == 'true'
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
         shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-3.11-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run focused platform test gates
         env:
           XBL_TEST_JUNIT_DIR: test-results
           XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
           mkdir -p test-results
-          poetry run -- python scripts/dev/run_tests.py all --result-json test-results/all-regression.json
+          poetry run -- python scripts/dev/run_tests.py platform --result-json test-results/platform-regression.json
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: test-results-${{ matrix.os }}-py3.11
           path: test-results/*.xml
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        if: runner.os == 'Linux' && always()
-        with:
-          name: coverage-py${{ matrix.python-version }}
-          path: coverage.xml
 
   public-dataset-gate:
     name: Required Public Multi-Dataset Gate
@@ -225,9 +316,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: tests/fixtures/data/public
-          key: public-eeg-fixtures-v1-${{ hashFiles('scripts/dev/fetch_public_eeg_fixtures.py') }}
+          key: public-eeg-required-ci-f7bb9c3938cdaad72cc6843ee6ba1c22d403ff5ec6c5432fc51459de0d44983e
           restore-keys: |
-            public-eeg-fixtures-v1-
+            public-eeg-required-ci-
 
       - name: Fetch pinned size-bounded public fixtures
         run: poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
