@@ -6808,3 +6808,14 @@ call sites into explicit legacy/fallback helpers.
   and narrower per-turn tool schemas for Granite 2B. Assistant remains not handoff-ready.
 - Exact-head GitHub Actions and Windows human acceptance remain required; this is a candidate
   preparation checkpoint, not product or performance completion.
+
+## 2026-08-09 Shared-runner responsiveness gate correction
+
+- The first exact-head parallel CI run completed the long-session product semantics but rejected a
+  one-shot Qt UI-settle `p95=0.5529s` against a `0.5s` local timing budget on a shared GitHub runner.
+- Shared CI now keeps all long-session state, pruning, history, confirmation, publication, request
+  bound, and hard-stall assertions, while machine-sensitive p95/tail and average budgets remain for
+  controlled timing runs rather than masquerading as a cross-machine performance benchmark.
+- A workflow source guard requires the explicit shared-runner policy, and the full 202-turn Qt
+  long-session test passed locally under that policy. This does not establish a reproducible p95;
+  the repeated benchmark work in `docs/planning/now.md` remains open.

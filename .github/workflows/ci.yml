@@ -120,6 +120,7 @@ jobs:
           - linux-integration-rest
     env:
       QT_QPA_PLATFORM: offscreen
+      XBL_SHARED_CI_RUNNER: "1"
       COVERAGE_FILE: test-results/.coverage.${{ matrix.command }}
     steps:
       - uses: actions/checkout@v4

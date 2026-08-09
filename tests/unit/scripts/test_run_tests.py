@@ -624,6 +624,7 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "max-parallel: 4" in workflow
+    assert 'XBL_SHARED_CI_RUNNER: "1"' in workflow
     assert "scripts/dev/run_tests.py ${{ matrix.command }}" in workflow
     for command, _shards in run_tests.LINUX_CI_GROUPS:
         assert f"- {command}" in workflow

@@ -92,6 +92,7 @@ _TURN_LATENCY_HARD_CEILING_SECONDS = 0.75
 @dataclass(frozen=True)
 class _LongSessionTimingPolicy:
     enforce_timer_tail_budget: bool
+    enforce_ui_settle_tail_budget: bool
     enforce_turn_average_budget: bool
 
 
@@ -101,13 +102,17 @@ def _long_session_timing_policy(
     environment: Mapping[str, str],
 ) -> _LongSessionTimingPolicy:
     coverage_enabled = environment.get("XBL_TEST_COVERAGE") == "1"
+    shared_ci_runner = environment.get("XBL_SHARED_CI_RUNNER") == "1"
     macos_offscreen = (
         platform_name == "darwin"
         and environment.get("QT_QPA_PLATFORM", "").strip().lower() == "offscreen"
     )
     return _LongSessionTimingPolicy(
-        enforce_timer_tail_budget=not (coverage_enabled or macos_offscreen),
-        enforce_turn_average_budget=not coverage_enabled,
+        enforce_timer_tail_budget=not (
+            coverage_enabled or macos_offscreen or shared_ci_runner
+        ),
+        enforce_ui_settle_tail_budget=not shared_ci_runner,
+        enforce_turn_average_budget=not (coverage_enabled or shared_ci_runner),
     )
 
 
@@ -502,18 +507,23 @@ def _turn_latency_failures(
     return failures
 
 
-def _ui_settle_responsiveness_failures(latencies: list[float]) -> list[str]:
+def _ui_settle_responsiveness_failures(
+    latencies: list[float],
+    *,
+    enforce_tail_budget: bool = True,
+) -> list[str]:
     """Reject sustained UI settle latency while tolerating one host pause."""
     if not latencies:
         return ["missing_ui_settle_latencies"]
     ordered = sorted(latencies)
     p95_index = max(ceil(len(ordered) * 0.95) - 1, 0)
     failures: list[str] = []
-    if ordered[p95_index] >= _UI_SETTLE_P95_LIMIT_SECONDS:
-        failures.append(f"p95={ordered[p95_index]:.4f}s")
     outliers = [value for value in latencies if value >= _UI_SETTLE_OUTLIER_SECONDS]
-    if len(outliers) > 1:
-        failures.append(f"outlier_count={len(outliers)}")
+    if enforce_tail_budget:
+        if ordered[p95_index] >= _UI_SETTLE_P95_LIMIT_SECONDS:
+            failures.append(f"p95={ordered[p95_index]:.4f}s")
+        if len(outliers) > 1:
+            failures.append(f"outlier_count={len(outliers)}")
     if ordered[-1] >= _UI_SETTLE_HARD_CEILING_SECONDS:
         failures.append(f"hard_ceiling={ordered[-1]:.4f}s")
     return failures
@@ -566,15 +576,24 @@ def test_instrumented_heartbeat_gate_keeps_the_hard_stall_ceiling() -> None:
         "platform_name",
         "environment",
         "expected_timer_tail_budget",
+        "expected_ui_settle_tail_budget",
         "expected_turn_average_budget",
     ),
     [
-        ("linux", {"QT_QPA_PLATFORM": "offscreen"}, True, True),
-        ("darwin", {"QT_QPA_PLATFORM": "cocoa"}, True, True),
-        ("darwin", {"QT_QPA_PLATFORM": "offscreen"}, False, True),
+        ("linux", {"QT_QPA_PLATFORM": "offscreen"}, True, True, True),
+        ("darwin", {"QT_QPA_PLATFORM": "cocoa"}, True, True, True),
+        ("darwin", {"QT_QPA_PLATFORM": "offscreen"}, False, True, True),
         (
             "linux",
             {"QT_QPA_PLATFORM": "offscreen", "XBL_TEST_COVERAGE": "1"},
+            False,
+            True,
+            False,
+        ),
+        (
+            "linux",
+            {"QT_QPA_PLATFORM": "offscreen", "XBL_SHARED_CI_RUNNER": "1"},
+            False,
             False,
             False,
         ),
@@ -584,6 +603,7 @@ def test_long_session_timing_policy_is_environment_specific(
     platform_name: str,
     environment: dict[str, str],
     expected_timer_tail_budget: bool,
+    expected_ui_settle_tail_budget: bool,
     expected_turn_average_budget: bool,
 ) -> None:
     policy = _long_session_timing_policy(
@@ -592,6 +612,7 @@ def test_long_session_timing_policy_is_environment_specific(
     )
 
     assert policy.enforce_timer_tail_budget is expected_timer_tail_budget
+    assert policy.enforce_ui_settle_tail_budget is expected_ui_settle_tail_budget
     assert policy.enforce_turn_average_budget is expected_turn_average_budget
 
 
@@ -679,6 +700,29 @@ def test_ui_settle_gate_tolerates_one_bounded_host_pause() -> None:
     latencies = [0.14] * 201 + [0.952]
 
     assert _ui_settle_responsiveness_failures(latencies) == []
+
+
+def test_shared_runner_ui_settle_policy_keeps_the_hard_stall_ceiling() -> None:
+    policy = _long_session_timing_policy(
+        platform_name="linux",
+        environment={"XBL_SHARED_CI_RUNNER": "1"},
+    )
+    scheduler_tail = [0.5529] * 202
+
+    assert (
+        _ui_settle_responsiveness_failures(
+            scheduler_tail,
+            enforce_tail_budget=policy.enforce_ui_settle_tail_budget,
+        )
+        == []
+    )
+    assert any(
+        "hard_ceiling" in failure
+        for failure in _ui_settle_responsiveness_failures(
+            [*scheduler_tail[:-1], _UI_SETTLE_HARD_CEILING_SECONDS],
+            enforce_tail_budget=policy.enforce_ui_settle_tail_budget,
+        )
+    )
 
 
 @pytest.mark.parametrize(
@@ -1135,7 +1179,8 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         )
         assert not turn_latency_failures, turn_latency_failures
         ui_settle_failures = _ui_settle_responsiveness_failures(
-            turn_ui_settle_latencies
+            turn_ui_settle_latencies,
+            enforce_tail_budget=timing_policy.enforce_ui_settle_tail_budget,
         )
         assert not ui_settle_failures, ui_settle_failures
     finally:
