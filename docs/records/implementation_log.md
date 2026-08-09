@@ -6783,3 +6783,28 @@ call sites into explicit legacy/fallback helpers.
 - This is an automated handoff candidate, not product completion or a benchmark result.
 - Windows native click-through, DPI/multi-monitor behavior, interactive 3D, long local-model
   sessions, and the frozen XBrainLab benchmark still require separate acceptance.
+
+## 2026-08-09 Multi-subject BIDS, CI runtime, and Assistant contract audit
+
+### 實作
+
+- Added a local-only OpenNeuro ds003061 P300 profile with 3 subjects and 9 runs, plus exact selected
+  scope catalog/scan/ApplicationService regressions and a reviewed subject-selector artifact.
+- Reduced selected BIDS review latency with bounded content hashing, admitted-path filtering, and
+  bounded public issue projection while preserving full apply freshness validation.
+- Partitioned the authoritative Linux suite into eight fail-closed evidence shards and retained a
+  focused Windows/macOS platform gate plus the required public multi-dataset gate.
+- Removed duplicated mock tool/controller coverage and a no-assertion downloader test only after
+  stronger retained behavior tests were identified and rerun.
+
+### 驗證與邊界
+
+- Multi-subject scope regression: `6 passed`; CI runner/workflow tests: `30 passed`; retained mock
+  tools: `47 passed`; downloader/misc: `46 passed`; retained controller partitions: `273 passed`.
+- BIDS performance review found no correctness/security blocker, but requested repeated phase
+  benchmarks with environment and fixture identity before a reproducible latency claim.
+- Assistant audit found no P0 execution bypass, but identified three P1 product gaps: typed
+  confirmation for high-impact setting changes, separate GUI-handoff versus confirmation states,
+  and narrower per-turn tool schemas for Granite 2B. Assistant remains not handoff-ready.
+- Exact-head GitHub Actions and Windows human acceptance remain required; this is a candidate
+  preparation checkpoint, not product or performance completion.

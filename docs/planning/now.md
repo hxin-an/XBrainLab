@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-08`
+最後更新：`2026-08-09`
 
 這頁只保存 active delivery context、近期施工順序和 exit condition。舊
 [Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 保留為此次 main checkpoint
@@ -35,9 +35,9 @@ owner 的 dirty changes。
 | 順序 | 工作 | Exit signal |
 | --- | --- | --- |
 | 1 | Stabilize teacher-facing GUI/data flow | 針對 GDF、BIDS 與老師新增資料逐一走 import -> preprocess -> epoch -> training；發現 blocker 就用 focused regression 修正。 |
-| 1a | Review EEG workflow improvements candidate | 檢查 Braindecode catalog、BIDS subject preselection、test curve、Evaluation / Saliency cross-fold summary 與 Normalize 的 exact-head CI、Windows UI 與資料語意；通過前不合併。 |
-| 2 | Measure and polish performance | 對 load、publication refresh、plots、preprocess 與 training startup 記錄 latency / UI heartbeat；不以主觀「看起來快」結案。 |
-| 3 | Simplify Assistant prototype | 移除要求使用者先理解 Single step / Workflow 的心智負擔；由自然語言決定執行範圍，重要操作仍遵守 confirmation policy。 |
+| 1a | Review EEG workflow improvements candidate | 檢查 Braindecode catalog、BIDS subject preselection、test curve、Evaluation / Saliency cross-fold summary 與 Normalize 的 exact-head CI、Windows UI 與資料語意；3-subject / 9-run P300 profile 只算 local regression，通過前不合併。 |
+| 2 | Measure and polish performance | 保留目前 BIDS review latency checkpoint，補 phase timing、fixture manifest、環境、至少 3 samples 的 median/p95；wall-clock ceiling 不和 semantic CI gate 混在一起。再量 load、publication refresh、plots、preprocess 與 training startup。 |
+| 3 | Simplify Assistant prototype | 先建立 typed confirmation risk，讓 high-impact setting change 真的顯示 current/proposed card；再拆開 GUI handoff 與 confirmation，並把每回合 Granite 2B tool exposure 收斂成單一 canonical action contract。 |
 | 4 | Recalibrate Agent gates | 盤點並修改舊 prompt/tool/gate assumptions；建立與目前 Assistant UX、Granite 2B、真實 GUI state 一致的可重跑 gate。 |
 | 5 | Expand dataset acceptance | 每新增一個真人資料集都記錄來源、格式、label semantics、可完成步驟與限制；不同副檔名不冒充不同資料集。 |
 | 6 | Candidate gate | 在明確候選 commit 跑 relevant regression、multi-dataset、UI artifact、static/docs 與真人 Windows acceptance，再決定 release claim。 |
@@ -75,6 +75,9 @@ checkpoint evidence。
 5. Branch 已 push；worktree clean，或只保留規則允許且未 stage 的 protected local settings。
 6. Final report 明確列出 Windows DPI/multi-monitor、interactive 3D、teacher datasets 和
    long-session 等剩餘人工風險。
+
+本候選另需讓新的 Linux parallel shards、focused Windows/macOS platform gate 與 coverage
+aggregation 在同一 exact head 的 GitHub Actions 完成；本機 runner tests 不能替代該結果。
 
 達成以上條件後，狀態才能提升為下一個 **Windows handoff candidate**。目前 `main` 只是已接受
 的開發 checkpoint，仍不是 product complete。

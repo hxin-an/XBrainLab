@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-08`
+最後更新：`2026-08-09`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -11,7 +11,7 @@
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
-| Current candidate | `integration/eeg-workflow-improvements-v1`；已 push、未合併 checkpoint。 |
+| Current candidate | `integration/eeg-workflow-improvements-v1`；未合併 checkpoint；只有 exact-head push / CI 可以提升證據狀態。 |
 | Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b` |
 | Closure state | Merged development checkpoint；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
@@ -20,6 +20,22 @@
 `ux/assistant-product-v1@3869aaef` 或舊 stabilization branch 的 PASS evidence 不能代表目前
 `main`。目前可用的人工作品 evidence 僅限 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS
 各一個資料集；這不是 format-wide acceptance，也不包含 Assistant 或效能完成判定。
+
+## 2026-08-09 Integration Checkpoint
+
+- Local-only `p300-multisubject` fixture profile 包含 OpenNeuro ds003061 的 3 subjects、9 EEG
+  runs（約 543 MiB）。Exact scope tests 走 real catalog / scan / ApplicationService review，
+  但不是 Windows multi-subject acceptance，也不加入 required-ci 下載量。
+- 相同 P300 fixture 的 BIDS full review 由約 `9.15s` 降至 `7.92s`；selected discovery 約
+  `3.39s -> 2.87s`，content identity 約 `2.00s -> 1.27s`。這是同機 checkpoint；現有
+  one-shot ceiling 不支撐跨機 p95 或效能 closure。
+- Authoritative Linux suite 已分成 8 個互斥 shards，aggregate 會拒絕缺少 attestation 或
+  coverage file 的結果；Windows / macOS 改跑 focused platform contract。Required public
+  multi-dataset gate 未移除。Runner tests、Ruff 與 YAML check 已在本機通過，仍需 exact-head
+  GitHub Actions 證明實際 scheduling、coverage combine 與 native platform 結果。
+- 移除三組已證明重複或無 assertion 的 tests；保留的 tool/controller/downloader suites
+  提供較強 state、failure、shutdown 與 duplicate-start assertions。這是 test hygiene，不是以
+  減少 authoritative product inventory 換取 CI 速度。
 
 ## Evidence 原則
 
