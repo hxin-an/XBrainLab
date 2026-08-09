@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -23,6 +24,9 @@ from XBrainLab.ui.dialogs.common import (
 
 class BidsSubjectSelectionDialog(BaseDialog):
     """Select the BIDS subjects admitted to the expensive import scan."""
+
+    _SCOPE_TEXT_LIMIT = 24
+    _SCOPE_ITEM_LIMIT = 3
 
     def __init__(self, parent, *, catalog: dict[str, Any]) -> None:
         self.catalog = dict(catalog)
@@ -62,6 +66,7 @@ class BidsSubjectSelectionDialog(BaseDialog):
             object_name="BidsSubjectSelectionTable",
             no_selection=True,
         )
+        self.subject_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.subject_table.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
@@ -97,7 +102,9 @@ class BidsSubjectSelectionDialog(BaseDialog):
                 str(subject.get("subject") or ""),
             )
             subject_item.setFlags(
-                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+                | Qt.ItemFlag.ItemIsUserCheckable
                 if eeg_file_count > 0
                 else Qt.ItemFlag.NoItemFlags
             )
@@ -106,28 +113,28 @@ class BidsSubjectSelectionDialog(BaseDialog):
                 if row_index == first_importable_row
                 else Qt.CheckState.Unchecked
             )
+            if eeg_file_count > 0:
+                subject_item.setToolTip(subject_item.text())
             self.subject_table.setItem(row_index, 0, subject_item)
-            self.subject_table.setItem(
-                row_index,
-                1,
-                QTableWidgetItem(str(eeg_file_count)),
+            display_values = (
+                str(eeg_file_count),
+                self._summary(subject.get("sessions")),
+                self._summary(subject.get("tasks")),
+                self._summary(subject.get("runs")),
             )
-            self.subject_table.setItem(
-                row_index,
-                2,
-                QTableWidgetItem(self._summary(subject.get("sessions"))),
-            )
-            self.subject_table.setItem(
-                row_index,
-                3,
-                QTableWidgetItem(self._summary(subject.get("tasks"))),
-            )
-            self.subject_table.setItem(
-                row_index,
-                4,
-                QTableWidgetItem(self._summary(subject.get("runs"))),
-            )
+            for column, value in enumerate(display_values, start=1):
+                item = QTableWidgetItem(value)
+                item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    if eeg_file_count > 0
+                    else Qt.ItemFlag.NoItemFlags
+                )
+                if eeg_file_count > 0:
+                    item.setToolTip(value)
+                self.subject_table.setItem(row_index, column, item)
         self.subject_table.blockSignals(False)
+        if first_importable_row >= 0:
+            self.subject_table.setCurrentCell(first_importable_row, 0)
         self.subject_table.itemChanged.connect(self._update_selection_state)
         layout.addWidget(self.subject_table, 1)
 
@@ -150,7 +157,12 @@ class BidsSubjectSelectionDialog(BaseDialog):
         selected: list[str] = []
         for row in range(self.subject_table.rowCount()):
             item = self.subject_table.item(row, 0)
-            if item is not None and item.checkState() is Qt.CheckState.Checked:
+            if (
+                item is not None
+                and item.flags() & Qt.ItemFlag.ItemIsEnabled
+                and item.flags() & Qt.ItemFlag.ItemIsUserCheckable
+                and item.checkState() is Qt.CheckState.Checked
+            ):
                 selected.append(str(item.data(Qt.ItemDataRole.UserRole)))
         return selected
 
@@ -160,22 +172,67 @@ class BidsSubjectSelectionDialog(BaseDialog):
             self.continue_button.setEnabled(bool(selected))
         if not selected:
             self.selection_summary.setText("Select at least one subject.")
+            self.selection_summary.setToolTip("")
             return
         selected_set = set(selected)
-        file_count = sum(
-            int(row.get("eeg_file_count") or 0)
+        selected_rows = [
+            row
             for row in self.subject_rows
             if str(row.get("subject") or "") in selected_set
+        ]
+        file_count = sum(int(row.get("eeg_file_count") or 0) for row in selected_rows)
+        subject_ids = [
+            str(row.get("label") or f"sub-{row.get('subject', '')}")
+            for row in selected_rows
+        ]
+        runs = self._unique_values(
+            run
+            for row in selected_rows
+            for run in self._normalized_values(row.get("runs"))
         )
         subject_label = "subject" if len(selected) == 1 else "subjects"
         file_label = "EEG file" if file_count == 1 else "EEG files"
+        run_summary = self._compact_values(runs) if runs else "not specified"
         self.selection_summary.setText(
-            f"{len(selected)} {subject_label} selected · {file_count} {file_label}"
+            f"{len(selected)} {subject_label} ({self._compact_values(subject_ids)}) "
+            f"· {file_count} {file_label} · Runs {run_summary}"
+        )
+        self.selection_summary.setToolTip(
+            f"Subjects: {', '.join(subject_ids)}\n"
+            f"EEG files: {file_count}\n"
+            f"Runs: {', '.join(runs) if runs else 'Not specified'}"
         )
 
     @staticmethod
     def _summary(values: Any) -> str:
-        if not isinstance(values, (list, tuple)):
-            return "Not specified"
-        normalized = [str(value).strip() for value in values if str(value).strip()]
+        normalized = BidsSubjectSelectionDialog._normalized_values(values)
         return ", ".join(normalized) if normalized else "Not specified"
+
+    @staticmethod
+    def _normalized_values(values: Any) -> list[str]:
+        if not isinstance(values, (list, tuple)):
+            return []
+        return [str(value).strip() for value in values if str(value).strip()]
+
+    @staticmethod
+    def _unique_values(values: Iterable[str]) -> list[str]:
+        return list(dict.fromkeys(values))
+
+    @classmethod
+    def _compact_values(cls, values: list[str]) -> str:
+        visible = values[: cls._SCOPE_ITEM_LIMIT]
+        hidden_count = len(values) - len(visible)
+        while len(visible) > 1:
+            suffix = f", +{hidden_count}" if hidden_count else ""
+            if len(", ".join(visible) + suffix) <= cls._SCOPE_TEXT_LIMIT:
+                break
+            visible.pop()
+            hidden_count += 1
+
+        suffix = f", +{hidden_count}" if hidden_count else ""
+        text = ", ".join(visible)
+        if len(text + suffix) <= cls._SCOPE_TEXT_LIMIT:
+            return text + suffix
+
+        available = cls._SCOPE_TEXT_LIMIT - len(suffix) - len("...")
+        return f"{text[:available]}...{suffix}"
