@@ -109,12 +109,35 @@ def test_catalog_reports_three_complete_subjects_and_nine_recordings() -> None:
 
 @pytest.mark.parametrize(
     "subjects",
-    [ALL_SUBJECTS, ("002", "003")],
-    ids=["subjects-001-002-003", "subjects-002-003"],
+    [("001",), ("002",), ("003",), ("002", "003")],
+    ids=["subject-001", "subject-002", "subject-003", "subjects-002-003"],
 )
-def test_review_uses_only_the_exact_selected_subject_scope(
+def test_scan_uses_only_the_exact_selected_subject_scope(
     subjects: tuple[str, ...],
 ) -> None:
+    result = ApplicationService().execute(
+        ScanSourceCommand(
+            source_path=str(OPENNEURO_P300_ROOT),
+            source_hint="bids",
+            selected_bids_subjects=list(subjects),
+        )
+    )
+
+    assert result.ok, result.message
+    scan = result.diagnostics["scan_result"]
+    expected_scope = _selected_scope(subjects)
+    expected_eeg_files = expected_scope["eeg_files"]
+    expected_events_files = expected_scope["events_files"]
+    assert isinstance(expected_eeg_files, list)
+    assert isinstance(expected_events_files, list)
+
+    assert scan["eeg_files"] == expected_eeg_files
+    assert scan["label_carriers"] == expected_events_files
+    assert scan["bids"]["selected_scope"] == expected_scope
+
+
+def test_review_pairs_events_only_with_selected_subjects_002_and_003() -> None:
+    subjects = ("002", "003")
     result = ApplicationService().execute(
         ReviewInterpretationCommand(
             source_path=str(OPENNEURO_P300_ROOT),
